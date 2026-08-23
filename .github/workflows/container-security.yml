@@ -76,8 +76,8 @@ jobs:
             exit 1
           fi
 
-          pid_uid="$(docker exec "$container_name" sh -c "awk '/^Uid:/{print \$2}' /proc/1/status")"
-          pid_gid="$(docker exec "$container_name" sh -c "awk '/^Gid:/{print \$2}' /proc/1/status")"
+          pid_uid="$(docker exec "$container_name" cat /proc/1/status | awk '/^Uid:/{print $2}')"
+          pid_gid="$(docker exec "$container_name" cat /proc/1/status | awk '/^Gid:/{print $2}')"
           test "$pid_uid" = "12345"
           test "$pid_gid" = "12345"
 
