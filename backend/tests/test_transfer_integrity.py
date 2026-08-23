@@ -286,6 +286,38 @@ async def test_mixed_existing_and_missing_manifest_downloads_only_missing_file(t
 
 
 @pytest.mark.asyncio
+async def test_two_missing_files_in_otherwise_complete_manifest_stay_queued(tmp_path):
+    root = tmp_path / "Example"
+    root.mkdir(parents=True)
+    for name, payload in (
+        ("01.bin", b"1111"),
+        ("02.bin", b"2222"),
+        ("03.bin", b"3333"),
+    ):
+        (root / name).write_bytes(payload)
+
+    files = [
+        {
+            "path": f"Example/{name}",
+            "size": 4,
+            "link": f"https://provider.invalid/{name}",
+        }
+        for name in ("01.bin", "02.bin", "03.bin", "Cover-A.jpg", "Cover-B.jpg")
+    ]
+
+    db = _FakeDb()
+    manager = _manager(files)
+    await _run_materializer(tmp_path, manager, db)
+
+    statuses = [row[6] for row in db.manifest_rows]
+    assert statuses == ["completed", "completed", "completed", "pending", "pending"]
+    assert _parent_status_updates(db)[-1][0] == "queued"
+    manager.advance_aria2_queue.assert_awaited_once()
+    manager._delete_magnet_after_completion.assert_not_awaited()
+    manager._mark_finished.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_stopped_complete_result_does_not_satisfy_fresh_builtin_dispatch():
     service = TransferIntegrityAria2Service(
         "http://localhost:6800/jsonrpc", timeout_seconds=5
@@ -369,8 +401,13 @@ def test_integrity_policy_requires_exact_stable_manifest_match():
         / "transfer_integrity.py"
     ).read_text()
     assert "_local_payload_matches_manifest" in source
-    assert "info.st_size) == expected_size" in source
-    assert 'Path(f"{local_path}.aria2").exists()' in source
+    assert "_directory_contains_name" in source
+    assert "os.scandir" in source
+    assert "os.open" in source
+    assert "os.fstat" in source
+    assert "os.pread" in source
     assert "await asyncio.sleep(_EXISTING_PAYLOAD_STABILITY_SECONDS)" in source
+    assert "_EXISTING_PAYLOAD_STABILITY_SECONDS = 3.25" in source
+    assert "accounted_count" in source
     assert "completed_at=NULL" in source
     assert "filesystem/aria2 delivery authority" in source
