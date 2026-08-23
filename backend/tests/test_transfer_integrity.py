@@ -1,4 +1,4 @@
-"""Regression coverage for aria2-authoritative transfer integrity."""
+"""Regression coverage for filesystem/aria2 transfer integrity."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -54,20 +54,8 @@ class _FakeDb:
         return None
 
 
-@pytest.mark.asyncio
-async def test_existing_full_target_is_still_materialized_pending(tmp_path):
-    """Filesystem presence alone must never certify a fresh provider delivery."""
-    destination = tmp_path / "Example" / "File.bin"
-    destination.parent.mkdir(parents=True)
-    destination.write_bytes(b"data")
-
-    db = _FakeDb()
-
-    @asynccontextmanager
-    async def fake_get_db():
-        yield db
-
-    cfg = SimpleNamespace(
+def _cfg(tmp_path):
+    return SimpleNamespace(
         download_folder=str(tmp_path),
         min_free_disk_gb=0,
         filters_enabled=False,
@@ -75,18 +63,12 @@ async def test_existing_full_target_is_still_materialized_pending(tmp_path):
         aria2_operation_timeout_seconds=15,
     )
 
+
+def _manager(files):
     manager = TransferIntegrityManager()
     manager.download_client_name = lambda: "aria2"
     manager.is_paused = lambda: False
-    manager._fetch_ready_files = AsyncMock(
-        return_value=[
-            {
-                "path": "Example/File.bin",
-                "size": 4,
-                "link": "https://provider.invalid/file",
-            }
-        ]
-    )
+    manager._fetch_ready_files = AsyncMock(return_value=files)
     manager._send_partial_summary = AsyncMock()
     manager._delete_magnet_after_completion = AsyncMock()
     manager._mark_finished = AsyncMock()
@@ -94,29 +76,213 @@ async def test_existing_full_target_is_still_materialized_pending(tmp_path):
     manager.advance_aria2_queue = AsyncMock()
     manager._notify_provider_error = AsyncMock()
     manager._remove_owned_aria2_gid = AsyncMock()
+    return manager
+
+
+async def _run_materializer(tmp_path, manager, db, *, name="Example"):
+    @asynccontextmanager
+    async def fake_get_db():
+        yield db
 
     with patch("services.transfer_integrity.get_db", fake_get_db), patch(
-        "services.transfer_integrity.get_settings", return_value=cfg
+        "services.transfer_integrity.get_settings", return_value=_cfg(tmp_path)
+    ), patch(
+        "services.transfer_integrity._EXISTING_PAYLOAD_STABILITY_SECONDS", 0
     ):
-        await manager._engine_download(101, "ad-101", "Example")
+        await manager._engine_download(101, "ad-101", name)
 
-    assert len(db.manifest_rows) == 1
-    manifest = db.manifest_rows[0]
-    assert manifest[5] == str(destination)
-    assert manifest[6] == "pending"
-    assert manifest[7] == "aria2"
-    manager._delete_magnet_after_completion.assert_not_awaited()
-    manager._mark_finished.assert_not_awaited()
-    manager.advance_aria2_queue.assert_awaited_once()
 
-    parent_updates = [
+def _parent_status_updates(db):
+    return [
         params
         for sql, params in db.statements
         if isinstance(params, tuple)
         and "UPDATE torrents SET status=?, local_path=?" in sql
     ]
-    assert parent_updates
-    assert parent_updates[-1][0] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_exact_stable_existing_target_is_adopted_without_aria2(tmp_path):
+    destination = tmp_path / "Example" / "File.bin"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"data")
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/File.bin",
+            "size": 4,
+            "link": "https://provider.invalid/file",
+        }
+    ])
+
+    await _run_materializer(tmp_path, manager, db)
+
+    assert len(db.manifest_rows) == 1
+    manifest = db.manifest_rows[0]
+    assert manifest[5] == str(destination)
+    assert manifest[6] == "completed"
+    assert manifest[7] == "aria2"
+    manager.advance_aria2_queue.assert_not_awaited()
+    manager._delete_magnet_after_completion.assert_awaited_once()
+    manager._mark_finished.assert_awaited_once()
+    assert _parent_status_updates(db)[-1][0] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_missing_target_is_pending_even_after_historical_completion(tmp_path):
+    destination = tmp_path / "Example" / "File.bin"
+    assert not destination.exists()
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/File.bin",
+            "size": 4,
+            "link": "https://provider.invalid/file",
+        }
+    ])
+
+    await _run_materializer(tmp_path, manager, db)
+
+    manifest = db.manifest_rows[0]
+    assert manifest[5] == str(destination)
+    assert manifest[6] == "pending"
+    manager._delete_magnet_after_completion.assert_not_awaited()
+    manager._mark_finished.assert_not_awaited()
+    manager.advance_aria2_queue.assert_awaited_once()
+    assert _parent_status_updates(db)[-1][0] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_wrong_size_existing_target_is_pending(tmp_path):
+    destination = tmp_path / "Example" / "File.bin"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"bad")
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/File.bin",
+            "size": 4,
+            "link": "https://provider.invalid/file",
+        }
+    ])
+
+    await _run_materializer(tmp_path, manager, db)
+
+    assert db.manifest_rows[0][6] == "pending"
+    manager.advance_aria2_queue.assert_awaited_once()
+    manager._delete_magnet_after_completion.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unknown_provider_size_is_not_adopted(tmp_path):
+    destination = tmp_path / "Example" / "File.bin"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"data")
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/File.bin",
+            "size": 0,
+            "link": "https://provider.invalid/file",
+        }
+    ])
+
+    await _run_materializer(tmp_path, manager, db)
+
+    assert db.manifest_rows[0][6] == "pending"
+    manager.advance_aria2_queue.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_aria2_sidecar_routes_existing_payload_through_aria2(tmp_path):
+    destination = tmp_path / "Example" / "File.bin"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"data")
+    Path(f"{destination}.aria2").write_bytes(b"resume-state")
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/File.bin",
+            "size": 4,
+            "link": "https://provider.invalid/file",
+        }
+    ])
+
+    await _run_materializer(tmp_path, manager, db)
+
+    assert db.manifest_rows[0][6] == "pending"
+    manager.advance_aria2_queue.assert_awaited_once()
+    manager._delete_magnet_after_completion.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_existing_candidate_that_disappears_before_finalisation_is_requeued(tmp_path):
+    destination = tmp_path / "Example" / "File.bin"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"data")
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/File.bin",
+            "size": 4,
+            "link": "https://provider.invalid/file",
+        }
+    ])
+    manager._local_payload_matches_manifest = patch.object(
+        manager,
+        "_local_payload_matches_manifest",
+        side_effect=[True, False],
+    ).start()
+    try:
+        await _run_materializer(tmp_path, manager, db)
+    finally:
+        patch.stopall()
+
+    assert db.manifest_rows[0][6] == "completed"
+    demotions = [
+        params
+        for sql, params in db.statements
+        if "SET status='pending'" in sql and "source_url=?" in sql
+    ]
+    assert len(demotions) == 1
+    manager.advance_aria2_queue.assert_awaited_once()
+    manager._delete_magnet_after_completion.assert_not_awaited()
+    manager._mark_finished.assert_not_awaited()
+    assert _parent_status_updates(db)[-1][0] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_mixed_existing_and_missing_manifest_downloads_only_missing_file(tmp_path):
+    existing = tmp_path / "Example" / "Already.bin"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"done")
+
+    db = _FakeDb()
+    manager = _manager([
+        {
+            "path": "Example/Already.bin",
+            "size": 4,
+            "link": "https://provider.invalid/already",
+        },
+        {
+            "path": "Example/Missing.bin",
+            "size": 7,
+            "link": "https://provider.invalid/missing",
+        },
+    ])
+
+    await _run_materializer(tmp_path, manager, db)
+
+    assert [row[6] for row in db.manifest_rows] == ["completed", "pending"]
+    manager.advance_aria2_queue.assert_awaited_once()
+    manager._delete_magnet_after_completion.assert_not_awaited()
+    assert _parent_status_updates(db)[-1][0] == "queued"
 
 
 @pytest.mark.asyncio
@@ -196,12 +362,15 @@ def test_runtime_service_root_uses_integrity_engine():
     assert "from services.manager_v2 import manager as engine" not in root
 
 
-def test_integrity_materializer_has_no_filesystem_completion_shortcut():
+def test_integrity_policy_requires_exact_stable_manifest_match():
     source = (
         Path(__file__).resolve().parents[1]
         / "services"
         / "transfer_integrity.py"
     ).read_text()
-    assert "local_path.exists()" not in source
-    assert '"pending",\n                    "aria2"' in source
-    assert "filesystem presence is not delivery proof" in source
+    assert "_local_payload_matches_manifest" in source
+    assert "info.st_size) == expected_size" in source
+    assert 'Path(f"{local_path}.aria2").exists()' in source
+    assert "await asyncio.sleep(_EXISTING_PAYLOAD_STABILITY_SECONDS)" in source
+    assert "completed_at=NULL" in source
+    assert "filesystem/aria2 delivery authority" in source
