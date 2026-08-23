@@ -9,10 +9,11 @@ DebridPulse separates three kinds of state that the inherited client conflated:
 A historical ``completed`` row is never proof that the payload still exists. A
 local file may be adopted without re-downloading only when it is a regular file,
 has the exact size advertised by the current provider manifest, has no aria2
-control sidecar, and remains valid across a second stability check before parent
-finalisation. Missing, partial, unknown-size, unstable, or resumable files are
-staged through aria2. Stopped aria2 history (complete/removed/error) likewise
-cannot satisfy a fresh dispatch.
+control sidecar, can be opened and read through the application's current
+filesystem namespace, and remains valid across a delayed second validation.
+Missing, partial, unknown-size, unstable, or resumable files are staged through
+aria2. Stopped aria2 history (complete/removed/error) likewise cannot satisfy a
+fresh dispatch.
 
 The legacy TorrentManager remains the compatibility implementation for the rest
 of V1. This derived engine intentionally overrides only these integrity
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import stat
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional, Set, Tuple
@@ -42,7 +44,11 @@ from services.manager_v2 import (
 logger = logging.getLogger("debridpulse.transfer_integrity")
 
 _LIVE_ARIA2_STATES = frozenset({"active", "waiting", "paused"})
-_EXISTING_PAYLOAD_STABILITY_SECONDS = 0.20
+# Candidate-existing payloads are uncommon and worth a small confirmation delay.
+# 200 ms was too short for shared/NFS-backed paths where positive directory or
+# inode attributes can remain cached across another actor's unlink. Three-plus
+# seconds also spans Linux NFS's common minimum regular-file attribute cache.
+_EXISTING_PAYLOAD_STABILITY_SECONDS = 3.25
 
 
 class TransferIntegrityAria2Service(Aria2Service):
@@ -94,26 +100,73 @@ class TransferIntegrityManager(TorrentManager):
         return self._aria2
 
     @staticmethod
-    def _local_payload_matches_manifest(local_path: Path, expected_size: int) -> bool:
-        """Return True only for a complete, non-resumable local payload.
+    def _directory_contains_name(local_path: Path) -> bool:
+        """Require the target to be present in a current parent-directory view."""
+        try:
+            with os.scandir(local_path.parent) as entries:
+                return any(entry.name == local_path.name for entry in entries)
+        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+            return False
 
-        Provider size is the strongest inexpensive proof currently available for
-        individual files. Unknown sizes are intentionally not adopted. A .aria2
-        control sidecar means aria2 owns resumable state and must decide how to
-        continue that file instead of DebridPulse declaring it complete.
+    @classmethod
+    def _local_payload_matches_manifest(
+        cls, local_path: Path, expected_size: int
+    ) -> bool:
+        """Return True only for a complete, directly readable local payload.
+
+        A metadata-only ``exists()/stat()`` probe is insufficient on shared or
+        network-backed paths because a positive inode/dentry result can outlive
+        an unlink performed through another filesystem client. Require all of:
+
+        * a current directory entry for the exact basename;
+        * no aria2 control sidecar;
+        * an O_NOFOLLOW file open where supported;
+        * regular-file type and exact provider-advertised size from fstat();
+        * readable first and final bytes from the opened descriptor.
+
+        Unknown sizes are intentionally not adopted. A .aria2 sidecar means
+        aria2 owns resumable state and must decide how to continue the file.
         """
         expected_size = int(expected_size or 0)
         if expected_size <= 0:
             return False
+
+        if not cls._directory_contains_name(local_path):
+            return False
+
+        sidecar = Path(f"{local_path}.aria2")
+        if cls._directory_contains_name(sidecar):
+            return False
+
+        flags = os.O_RDONLY
+        flags |= int(getattr(os, "O_NOFOLLOW", 0) or 0)
+        fd = None
         try:
-            if Path(f"{local_path}.aria2").exists():
+            fd = os.open(local_path, flags)
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
                 return False
-            info = local_path.lstat()
-        except (FileNotFoundError, OSError):
+            if int(info.st_size) != expected_size:
+                return False
+
+            # Force real data access through the opened file descriptor instead
+            # of accepting a cached pathname metadata result as possession proof.
+            first = os.pread(fd, 1, 0)
+            if len(first) != 1:
+                return False
+            if expected_size > 1:
+                last = os.pread(fd, 1, expected_size - 1)
+                if len(last) != 1:
+                    return False
+            return True
+        except (FileNotFoundError, PermissionError, OSError):
             return False
-        if not stat.S_ISREG(info.st_mode):
-            return False
-        return int(info.st_size) == expected_size
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
 
     async def _engine_download(self, torrent_id: int, ad_id: str, name: str):
         cfg = get_settings()
@@ -201,13 +254,14 @@ class TransferIntegrityManager(TorrentManager):
             raise Exception("No downloadable files returned from AllDebrid")
 
         destination_root = Path(cfg.download_folder) / safe_name(name)
-        total_files = len(flat_files)
+        provider_file_count = len(flat_files)
         blocked_items: List[dict] = []
         existing_items: List[dict] = []
         queued_items: List[dict] = []
         failed_items: List[dict] = []
         seen_queue_keys: Set[Tuple[str, str]] = set()
         manifest_rows: List[tuple] = []
+        duplicate_entries = 0
 
         for file_info in flat_files:
             relative_path = (
@@ -233,6 +287,7 @@ class TransferIntegrityManager(TorrentManager):
             local_path = destination_root / relative_target
             dedupe_key = (display_name.lower(), source_link.strip())
             if dedupe_key in seen_queue_keys:
+                duplicate_entries += 1
                 logger.info(
                     "Skipping duplicate AllDebrid file entry for %s", display_name
                 )
@@ -304,8 +359,9 @@ class TransferIntegrityManager(TorrentManager):
                 await db.commit()
 
         # Do not authorize completion from one filesystem observation. Existing
-        # candidates must remain exact and stable after the manifest is durable.
-        # One batch delay avoids adding per-file latency for multi-file torrents.
+        # candidates must remain exact/readable after the manifest is durable.
+        # One batch delay avoids per-file latency while spanning shared-filesystem
+        # metadata caches that can otherwise preserve a stale positive lookup.
         if existing_items:
             await asyncio.sleep(_EXISTING_PAYLOAD_STABILITY_SECONDS)
             unstable_items: List[dict] = []
@@ -335,8 +391,9 @@ class TransferIntegrityManager(TorrentManager):
                     await db.commit()
                 queued_items.extend(unstable_items)
                 logger.warning(
-                    "integrity materializer: %d existing file(s) changed or disappeared "
-                    "during validation for torrent %s; routing them through aria2",
+                    "integrity materializer: %d existing file(s) changed, disappeared, "
+                    "or became unreadable during validation for torrent %s; routing "
+                    "them through aria2",
                     len(unstable_items),
                     torrent_id,
                 )
@@ -346,15 +403,46 @@ class TransferIntegrityManager(TorrentManager):
         failed_count = len(failed_items)
         completed_count = len(existing_items)
         queued_count = len(queued_items)
+        manifest_count = len(manifest_rows)
+        accounted_count = (
+            blocked_count + failed_count + completed_count + queued_count
+        )
         total_size_bytes = _size_sum(
             blocked_items + existing_items + queued_items + failed_items
         )
 
-        if blocked_count == total_files and total_files > 0 and failed_count == 0:
+        logger.info(
+            "integrity materializer: torrent %s provider=%d manifest=%d existing=%d "
+            "queued=%d blocked=%d failed=%d duplicates=%d",
+            torrent_id,
+            provider_file_count,
+            manifest_count,
+            completed_count,
+            queued_count,
+            blocked_count,
+            failed_count,
+            duplicate_entries,
+        )
+
+        # Completion is a manifest-wide invariant. Never infer terminal success
+        # merely because at least one file was verified and nothing happened to
+        # be queued. Every durable manifest row must be explicitly accounted for.
+        if manifest_count <= 0 or accounted_count != manifest_count:
+            final_status = "error"
+            logger.error(
+                "integrity materializer: manifest accounting mismatch for torrent %s "
+                "(manifest=%d accounted=%d)",
+                torrent_id,
+                manifest_count,
+                accounted_count,
+            )
+        elif blocked_count == manifest_count and failed_count == 0:
             final_status = "completed"
         elif queued_count > 0:
             final_status = "queued"
-        elif failed_count == 0 and completed_count > 0:
+        elif failed_count > 0:
+            final_status = "error"
+        elif completed_count + blocked_count == manifest_count and completed_count > 0:
             final_status = "completed"
         else:
             final_status = "error"
@@ -386,7 +474,7 @@ class TransferIntegrityManager(TorrentManager):
                     (torrent_id,),
                 )
 
-            if blocked_count == total_files and total_files > 0:
+            if blocked_count == manifest_count and manifest_count > 0:
                 event_message = (
                     f"All {blocked_count} file(s) filtered/blocked — marked completed, "
                     "removed from AllDebrid"
@@ -404,6 +492,8 @@ class TransferIntegrityManager(TorrentManager):
                     details.append(f"{completed_count} existing file(s) verified")
                 if blocked_count:
                     details.append(f"{blocked_count} filtered")
+                if failed_count:
+                    details.append(f"{failed_count} failed")
                 event_message = f"Download {final_status}: " + ", ".join(details)
                 event_level = (
                     "info"
@@ -432,7 +522,7 @@ class TransferIntegrityManager(TorrentManager):
             await self._mark_finished(torrent_id, name=name)
             if (
                 cfg.discord_notify_finished
-                and blocked_count < total_files
+                and blocked_count < manifest_count
                 and completed_count > 0
             ):
                 await self.notify().send_complete(
