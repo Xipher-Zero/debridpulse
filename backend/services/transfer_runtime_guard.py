@@ -388,9 +388,14 @@ class GuardedTransferIntegrityManager(TransferIntegrityManager):
 
             ad_id = str(row["alldebrid_id"] or "").strip()
             source = str(row["source"] or "").strip()
+            status = str(row["status"] or "").strip()
             if delete_from_ad and ad_id and source != DIRECT_LINK_SOURCE:
                 deleted = await self.ad().delete_magnet(ad_id)
-                if not deleted:
+                already_cleaned_owned_completion = (
+                    status == "completed"
+                    and self._provider_delete_authorized(source)
+                )
+                if not deleted and not already_cleaned_owned_completion:
                     raise RuntimeError(
                         f"AllDebrid deletion was not confirmed for transfer {torrent_id}"
                     )
