@@ -1,22 +1,29 @@
 """Transfer-integrity overrides for DebridPulse V1.
 
-The inherited AllDebrid-Client materializer treated a same-sized filesystem
-object as proof that a provider file had already been delivered.  That allowed a
-fresh transfer to become ``completed`` without aria2 ever owning or confirming
-it.  DebridPulse instead treats aria2 as the delivery authority:
+DebridPulse separates three kinds of state that the inherited client conflated:
 
-* every required provider file is materialized as ``pending``;
-* aria2 decides whether an existing partial can resume or must be overwritten;
-* stopped aria2 history (complete/removed/error) cannot satisfy a fresh dispatch.
+* the database records transfer history and operator intent;
+* the filesystem records whether a local payload is presently available;
+* aria2 is authoritative for delivery of anything not already proven local.
+
+A historical ``completed`` row is never proof that the payload still exists. A
+local file may be adopted without re-downloading only when it is a regular file,
+has the exact size advertised by the current provider manifest, has no aria2
+control sidecar, and remains valid across a second stability check before parent
+finalisation. Missing, partial, unknown-size, unstable, or resumable files are
+staged through aria2. Stopped aria2 history (complete/removed/error) likewise
+cannot satisfy a fresh dispatch.
 
 The legacy TorrentManager remains the compatibility implementation for the rest
-of V1.  This derived engine intentionally overrides only those integrity
-boundaries so the correction is isolated and removable when materialization is
-fully extracted from manager_v2.
+of V1. This derived engine intentionally overrides only these integrity
+boundaries so the policy stays isolated until materialisation is fully extracted
+from manager_v2.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import stat
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -35,6 +42,7 @@ from services.manager_v2 import (
 logger = logging.getLogger("debridpulse.transfer_integrity")
 
 _LIVE_ARIA2_STATES = frozenset({"active", "waiting", "paused"})
+_EXISTING_PAYLOAD_STABILITY_SECONDS = 0.20
 
 
 class TransferIntegrityAria2Service(Aria2Service):
@@ -49,9 +57,9 @@ class TransferIntegrityAria2Service(Aria2Service):
         cached_downloads=None,
     ) -> str:
         # Built-in aria2 historically allowed a stopped complete/removed result
-        # to be returned as if it were a live transfer.  Resolve one snapshot
+        # to be returned as if it were a live transfer. Resolve one snapshot
         # here, then expose only resumable/live states to the inherited
-        # deduplication logic.  External mode already refuses terminal adoption,
+        # deduplication logic. External mode already refuses terminal adoption,
         # but filtering supplied snapshots keeps both modes on the same contract.
         if cached_downloads is None and is_builtin_mode():
             cached_downloads = await self.get_all()
@@ -72,7 +80,7 @@ class TransferIntegrityAria2Service(Aria2Service):
 
 
 class TransferIntegrityManager(TorrentManager):
-    """TorrentManager with aria2-authoritative local delivery semantics."""
+    """TorrentManager with explicit filesystem/aria2 delivery authority."""
 
     def aria2(self) -> Aria2Service:
         if self._aria2 is None:
@@ -84,6 +92,28 @@ class TransferIntegrityManager(TorrentManager):
                 cfg.aria2_operation_timeout_seconds,
             )
         return self._aria2
+
+    @staticmethod
+    def _local_payload_matches_manifest(local_path: Path, expected_size: int) -> bool:
+        """Return True only for a complete, non-resumable local payload.
+
+        Provider size is the strongest inexpensive proof currently available for
+        individual files. Unknown sizes are intentionally not adopted. A .aria2
+        control sidecar means aria2 owns resumable state and must decide how to
+        continue that file instead of DebridPulse declaring it complete.
+        """
+        expected_size = int(expected_size or 0)
+        if expected_size <= 0:
+            return False
+        try:
+            if Path(f"{local_path}.aria2").exists():
+                return False
+            info = local_path.lstat()
+        except (FileNotFoundError, OSError):
+            return False
+        if not stat.S_ISREG(info.st_mode):
+            return False
+        return int(info.st_size) == expected_size
 
     async def _engine_download(self, torrent_id: int, ad_id: str, name: str):
         cfg = get_settings()
@@ -125,7 +155,7 @@ class TransferIntegrityManager(TorrentManager):
                 return
 
         # Cancel any live aria2 jobs previously associated with this transaction
-        # before rebuilding its manifest.  Stopped results are deliberately
+        # before rebuilding its manifest. Stopped results are deliberately
         # preserved by the existing external-daemon ownership policy.
         try:
             async with get_db() as db:
@@ -161,7 +191,7 @@ class TransferIntegrityManager(TorrentManager):
             )
             await db.execute(
                 "UPDATE torrents SET status=?, download_client=?, error_message=NULL, "
-                "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "completed_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (initial_status, client_name, torrent_id),
             )
             await db.commit()
@@ -173,6 +203,7 @@ class TransferIntegrityManager(TorrentManager):
         destination_root = Path(cfg.download_folder) / safe_name(name)
         total_files = len(flat_files)
         blocked_items: List[dict] = []
+        existing_items: List[dict] = []
         queued_items: List[dict] = []
         failed_items: List[dict] = []
         seen_queue_keys: Set[Tuple[str, str]] = set()
@@ -232,14 +263,19 @@ class TransferIntegrityManager(TorrentManager):
                 )
                 continue
 
-            # Integrity boundary: filesystem presence is not delivery proof.
-            # Even a same-sized target is staged as pending.  aria2 owns the
-            # deterministic path and, through allow-overwrite/continue policy,
-            # decides whether valid control state permits resume or whether the
-            # target must be reacquired.
-            queued_items.append(
-                {"filename": display_name, "size_bytes": file_size}
-            )
+            item = {
+                "filename": display_name,
+                "size_bytes": file_size,
+                "source_link": source_link,
+                "local_path": local_path,
+            }
+            if self._local_payload_matches_manifest(local_path, file_size):
+                existing_items.append(item)
+                manifest_status = "completed"
+            else:
+                queued_items.append(item)
+                manifest_status = "pending"
+
             manifest_rows.append(
                 (
                     torrent_id,
@@ -248,7 +284,7 @@ class TransferIntegrityManager(TorrentManager):
                     source_link,
                     source_link,
                     str(local_path),
-                    "pending",
+                    manifest_status,
                     "aria2",
                     0,
                     None,
@@ -267,19 +303,59 @@ class TransferIntegrityManager(TorrentManager):
                 )
                 await db.commit()
 
+        # Do not authorize completion from one filesystem observation. Existing
+        # candidates must remain exact and stable after the manifest is durable.
+        # One batch delay avoids adding per-file latency for multi-file torrents.
+        if existing_items:
+            await asyncio.sleep(_EXISTING_PAYLOAD_STABILITY_SECONDS)
+            unstable_items: List[dict] = []
+            stable_items: List[dict] = []
+            for item in existing_items:
+                if self._local_payload_matches_manifest(
+                    item["local_path"], item["size_bytes"]
+                ):
+                    stable_items.append(item)
+                else:
+                    unstable_items.append(item)
+
+            if unstable_items:
+                async with get_db() as db:
+                    for item in unstable_items:
+                        await db.execute(
+                            """UPDATE download_files
+                               SET status='pending', updated_at=CURRENT_TIMESTAMP
+                               WHERE torrent_id=? AND source_url=? AND local_path=?
+                                 AND status='completed' AND blocked=0""",
+                            (
+                                torrent_id,
+                                item["source_link"],
+                                str(item["local_path"]),
+                            ),
+                        )
+                    await db.commit()
+                queued_items.extend(unstable_items)
+                logger.warning(
+                    "integrity materializer: %d existing file(s) changed or disappeared "
+                    "during validation for torrent %s; routing them through aria2",
+                    len(unstable_items),
+                    torrent_id,
+                )
+            existing_items = stable_items
+
         blocked_count = len(blocked_items)
         failed_count = len(failed_items)
+        completed_count = len(existing_items)
         queued_count = len(queued_items)
         total_size_bytes = _size_sum(
-            blocked_items + queued_items + failed_items
+            blocked_items + existing_items + queued_items + failed_items
         )
 
-        # A newly materialized required file cannot be completed here.  The only
-        # legitimate zero-delivery terminal case is an entirely filtered set.
         if blocked_count == total_files and total_files > 0 and failed_count == 0:
             final_status = "completed"
         elif queued_count > 0:
             final_status = "queued"
+        elif failed_count == 0 and completed_count > 0:
+            final_status = "completed"
         else:
             final_status = "error"
 
@@ -316,20 +392,19 @@ class TransferIntegrityManager(TorrentManager):
                     "removed from AllDebrid"
                 )
                 event_level = "info"
-            elif blocked_count > 0:
+            elif final_status == "completed" and completed_count > 0:
                 event_message = (
-                    f"Download {final_status}: {queued_count} files prepared for aria2, "
-                    f"{blocked_count} filtered"
+                    f"Verified {completed_count} existing local file(s) against the "
+                    "provider manifest; no aria2 transfer required"
                 )
-                event_level = (
-                    "info"
-                    if final_status in {"queued", "paused"}
-                    else "warn"
-                )
+                event_level = "info"
             else:
-                event_message = (
-                    f"Download {final_status}: {queued_count} files prepared for aria2"
-                )
+                details = [f"{queued_count} file(s) prepared for aria2"]
+                if completed_count:
+                    details.append(f"{completed_count} existing file(s) verified")
+                if blocked_count:
+                    details.append(f"{blocked_count} filtered")
+                event_message = f"Download {final_status}: " + ", ".join(details)
                 event_level = (
                     "info"
                     if final_status in {"queued", "paused"}
@@ -346,7 +421,7 @@ class TransferIntegrityManager(TorrentManager):
             name,
             flat_files,
             blocked_items,
-            queued_items,
+            existing_items + queued_items,
             failed_items,
         )
 
@@ -355,8 +430,17 @@ class TransferIntegrityManager(TorrentManager):
                 torrent_id, ad_id, transfer_source
             )
             await self._mark_finished(torrent_id, name=name)
-            # Only the all-filtered case can finish during materialization, so
-            # no successful-delivery notification is emitted here.
+            if (
+                cfg.discord_notify_finished
+                and blocked_count < total_files
+                and completed_count > 0
+            ):
+                await self.notify().send_complete(
+                    name,
+                    file_count=completed_count,
+                    destination=str(destination_root),
+                    download_client="aria2",
+                )
         elif final_status in {"queued", "paused"}:
             await self._log_event(
                 torrent_id,
@@ -369,7 +453,8 @@ class TransferIntegrityManager(TorrentManager):
                 name,
                 reason="Kept on AllDebrid for inspection",
                 context=(
-                    "No required provider file could be staged for aria2 delivery."
+                    "No required provider file could be verified locally or staged "
+                    "for aria2 delivery."
                 ),
                 alldebrid_id=str(ad_id or ""),
             )
