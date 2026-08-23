@@ -233,3 +233,37 @@ async def test_explicit_delete_honors_provider_deletion_for_completed_import(mon
 
     provider.delete_magnet.assert_awaited_once_with("999")
     base_delete.assert_awaited_once_with(11, delete_from_ad=False)
+
+
+@pytest.mark.asyncio
+async def test_explicit_delete_tolerates_already_cleaned_owned_completed_provider(monkeypatch):
+    manager = GuardedTransferIntegrityManager()
+    provider = AsyncMock()
+    provider.delete_magnet.return_value = False
+    base_delete = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(
+        manager,
+        "_load_transfer_row",
+        AsyncMock(
+            return_value={
+                "id": 12,
+                "hash": "d" * 40,
+                "name": "Owned",
+                "status": "completed",
+                "source": "manual",
+                "alldebrid_id": "1000",
+            }
+        ),
+    )
+    monkeypatch.setattr(manager, "ad", lambda: provider)
+    monkeypatch.setattr(
+        TransferIntegrityManager,
+        "delete_torrent",
+        base_delete,
+    )
+
+    await manager.delete_torrent(12, delete_from_ad=True)
+
+    provider.delete_magnet.assert_awaited_once_with("1000")
+    base_delete.assert_awaited_once_with(12, delete_from_ad=False)
