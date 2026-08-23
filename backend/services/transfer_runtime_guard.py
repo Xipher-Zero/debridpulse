@@ -43,8 +43,8 @@ from services.transfer_integrity import (
 
 logger = logging.getLogger("debridpulse.transfer_runtime_guard")
 
-_PREFETCHED_MANIFEST: ContextVar[tuple[str, list[dict]] | None] = ContextVar(
-    "debridpulse_prefetched_manifest", default=None
+_MATERIALIZATION_CONTEXT: ContextVar[tuple[int, str] | None] = ContextVar(
+    "debridpulse_materialization_context", default=None
 )
 
 
@@ -359,25 +359,24 @@ class GuardedTransferIntegrityManager(TransferIntegrityManager):
             claimed[path_key] = identity
 
     async def _fetch_ready_files(self, ad_id: str):
-        prefetched = _PREFETCHED_MANIFEST.get()
-        if prefetched is not None and prefetched[0] == str(ad_id):
-            return list(prefetched[1])
-        return await super()._fetch_ready_files(ad_id)
+        flat_files = await super()._fetch_ready_files(ad_id)
+        context = _MATERIALIZATION_CONTEXT.get()
+        if context is not None:
+            self._validate_manifest_destinations(context[1], flat_files)
+        return flat_files
 
     async def _engine_download(self, torrent_id: int, ad_id: str, name: str):
-        """Serialize materialization against Delete and preflight one immutable manifest."""
+        """Serialize materialization against Delete without changing engine ordering."""
         async with self._lifecycle_lock(torrent_id):
             row = await self._load_transfer_row(torrent_id)
             if row is None or str(row["status"] or "") == "deleted":
                 return
 
-            flat_files = await super()._fetch_ready_files(ad_id)
-            self._validate_manifest_destinations(name, flat_files)
-            token = _PREFETCHED_MANIFEST.set((str(ad_id), list(flat_files)))
+            token = _MATERIALIZATION_CONTEXT.set((int(torrent_id), str(name or "")))
             try:
                 return await super()._engine_download(torrent_id, ad_id, name)
             finally:
-                _PREFETCHED_MANIFEST.reset(token)
+                _MATERIALIZATION_CONTEXT.reset(token)
 
     async def delete_torrent(self, torrent_id: int, delete_from_ad: bool = True):
         """Make explicit operator deletion the final authority for this transfer."""
