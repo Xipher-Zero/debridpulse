@@ -21,11 +21,14 @@ errors from AllDebrid closing keep-alive connections.
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import aiohttp
 import bencode2
 import logging
+import socket
 from typing import Optional, List, Dict, Any
+from urllib.parse import urlsplit
 
 from core.logging_utils import sanitize_exception
 from core.branding import APP_SHORT_NAME
@@ -46,6 +49,53 @@ class AllDebridAPIError(Exception):
         self.code = str(code or "UNKNOWN")
         self.message = str(message or "")
         super().__init__(f"AllDebrid [{self.code}]: {self.message}")
+
+
+def validate_provider_download_url(value: object, *, context: str = "download link") -> str:
+    """Validate a provider-issued URL before handing it to the local downloader.
+
+    AllDebrid is trusted to broker the remote object, but the returned capability
+    URL still crosses a network trust boundary: aria2 will resolve and connect to
+    it from the DebridPulse host. Keep that boundary explicit and reject schemes,
+    credentials, and literal/local destinations that should never be necessary
+    for an AllDebrid download URL.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        raise Exception(f"AllDebrid returned an empty {context}")
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port  # force validation of malformed/out-of-range ports
+    except ValueError as exc:
+        raise Exception(f"AllDebrid returned an invalid {context}") from exc
+
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        raise Exception(f"AllDebrid returned a non-HTTP(S) {context}")
+    if parsed.username is not None or parsed.password is not None:
+        raise Exception(f"AllDebrid returned a credential-bearing {context}")
+    if port is not None and not (1 <= port <= 65535):
+        raise Exception(f"AllDebrid returned an invalid {context}")
+
+    host = parsed.hostname.rstrip(".").casefold()
+    if not host or "%" in host:
+        raise Exception(f"AllDebrid returned an invalid {context} host")
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        raise Exception(f"AllDebrid returned a local {context} host")
+
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        # inet_aton also recognizes legacy numeric IPv4 spellings such as
+        # 2130706433 or 0x7f000001 that strict ipaddress intentionally rejects
+        # but some network stacks still resolve as loopback/private addresses.
+        try:
+            address = ipaddress.ip_address(socket.inet_aton(host))
+        except OSError:
+            address = None
+    if address is not None and not address.is_global:
+        raise Exception(f"AllDebrid returned a non-public {context} address")
+
+    return raw
 
 
 class AllDebridService:
@@ -141,7 +191,6 @@ class AllDebridService:
         if err:
             if isinstance(err, dict):
                 code = err.get("code") or "UNKNOWN"
-                # AllDebrid sometimes echoes the magnet URL as the error message — replace with a clear description
                 raw_msg = str(err.get("message") or "")
                 msg = raw_msg if not raw_msg.startswith("magnet:") else f"AllDebrid rejected the magnet (code: {code})"
             else:
@@ -187,14 +236,13 @@ class AllDebridService:
             return raw if isinstance(raw, list) else []
         except Exception as e:
             if magnet_id:
-                raise  # per-ID failure is a real error
+                raise
             err = str(e)
             if not any(kw in err for kw in
                        ("DISCONTINUED", "discontinued", "deprecated", "migrate")):
                 raise
             logger.debug(f"v4.1 get-all unavailable, trying v4: {err}")
 
-        # Fallback: deprecated /v4/magnet/status
         try:
             data = await self._post(API_V4, "magnet/status", payload, retries=3)
             raw = data.get("magnets", [])
@@ -235,8 +283,14 @@ class AllDebridService:
         result = await self._post(
             API_V4, "link/unlock", {"link": link}, retries=3
         )
-        if str(result.get("link") or "").strip():
-            return result
+        immediate_link = str(result.get("link") or "").strip()
+        if immediate_link:
+            return {
+                **result,
+                "link": validate_provider_download_url(
+                    immediate_link, context="unlocked download link"
+                ),
+            }
 
         delayed_id = result.get("delayed")
         if delayed_id in (None, "", 0, "0"):
@@ -246,9 +300,6 @@ class AllDebridService:
                 )
             raise Exception("AllDebrid returned no download link or delayed generation ID")
 
-        # AllDebrid requires delayed generations to be polled no faster than
-        # every five seconds. Keep the filename/size returned by link/unlock
-        # and merge the final URL when generation completes.
         for _attempt in range(120):
             await asyncio.sleep(5)
             delayed = await self._post(
@@ -260,14 +311,20 @@ class AllDebridService:
             status = int(delayed.get("status") or 0)
             generated_link = str(delayed.get("link") or "").strip()
             if status == 2 and generated_link:
-                return {**result, **delayed, "link": generated_link}
+                return {
+                    **result,
+                    **delayed,
+                    "link": validate_provider_download_url(
+                        generated_link, context="delayed download link"
+                    ),
+                }
             if status == 3:
                 raise Exception("AllDebrid delayed link generation failed")
 
         raise Exception("AllDebrid delayed link generation timed out after 10 minutes")
 
     async def close(self):
-        pass  # no persistent session to close
+        pass
 
 
 def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
@@ -283,7 +340,9 @@ def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
                 "name": name,
                 "path": current or name,
                 "size": node.get("s", 0),
-                "link": node["l"],
+                "link": validate_provider_download_url(
+                    node["l"], context="magnet file download link"
+                ),
             })
         elif "e" in node and isinstance(node["e"], list):
             result.extend(flatten_files(node["e"], current))
@@ -308,8 +367,6 @@ def extract_hash_from_torrent(data: bytes) -> str:
         if not isinstance(info, dict):
             return ""
         info_bytes = bencode2.bencode(info)
-        # SHA-1 is mandated by the BitTorrent v1 info-hash protocol and is not
-        # used here for a security decision.
         return hashlib.sha1(info_bytes, usedforsecurity=False).hexdigest()
     except Exception:
         return ""

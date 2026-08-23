@@ -1,0 +1,110 @@
+# Runtime/container security gate for DebridPulse.
+# Complements pip-audit/CodeQL/Bandit by scanning the image that is actually shipped.
+name: Container Security
+
+on:
+  push:
+    branches:
+      - main
+      - 'staging/**'
+  pull_request:
+    branches:
+      - main
+      - 'staging/**'
+  schedule:
+    - cron: '31 19 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_REF: local/debridpulse:security-${{ github.sha }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  image-security:
+    name: Image vulnerability and non-root validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Build release image for security validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$(tr -d '\r\n' < VERSION)" \
+            --build-arg VCS_REF="${GITHUB_SHA}" \
+            --tag "${IMAGE_REF}" \
+            .
+
+      - name: Validate non-root runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-nonroot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          docker run --detach \
+            --name "$container_name" \
+            --env PUID=12345 \
+            --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "${IMAGE_REF}"
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if docker exec "$container_name" \
+              curl --fail --silent --show-error \
+              http://127.0.0.1:8080/api/health >/dev/null; then
+              healthy=1
+              break
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != "true" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            docker logs "$container_name" || true
+            exit 1
+          fi
+
+          pid_uid="$(docker exec "$container_name" sh -c "awk '/^Uid:/{print \$2}' /proc/1/status")"
+          pid_gid="$(docker exec "$container_name" sh -c "awk '/^Gid:/{print \$2}' /proc/1/status")"
+          test "$pid_uid" = "12345"
+          test "$pid_gid" = "12345"
+
+          docker exec --user 12345:12345 "$container_name" sh -c '
+            set -eu
+            touch /app/data/.nonroot-smoke
+            touch /app/config/.nonroot-smoke
+            touch /download/.nonroot-smoke
+            rm -f /app/data/.nonroot-smoke /app/config/.nonroot-smoke /download/.nonroot-smoke
+          '
+
+      - name: Report runtime vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: '${{ env.IMAGE_REF }}'
+          format: 'table'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: false
+          exit-code: '0'
+
+      - name: Block fixable high or critical runtime vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: '${{ env.IMAGE_REF }}'
+          format: 'table'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
