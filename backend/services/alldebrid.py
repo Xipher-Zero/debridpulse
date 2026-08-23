@@ -191,6 +191,7 @@ class AllDebridService:
         if err:
             if isinstance(err, dict):
                 code = err.get("code") or "UNKNOWN"
+                # AllDebrid sometimes echoes the magnet URL as the error message — replace with a clear description
                 raw_msg = str(err.get("message") or "")
                 msg = raw_msg if not raw_msg.startswith("magnet:") else f"AllDebrid rejected the magnet (code: {code})"
             else:
@@ -236,13 +237,14 @@ class AllDebridService:
             return raw if isinstance(raw, list) else []
         except Exception as e:
             if magnet_id:
-                raise
+                raise  # per-ID failure is a real error
             err = str(e)
             if not any(kw in err for kw in
                        ("DISCONTINUED", "discontinued", "deprecated", "migrate")):
                 raise
             logger.debug(f"v4.1 get-all unavailable, trying v4: {err}")
 
+        # Fallback: deprecated /v4/magnet/status
         try:
             data = await self._post(API_V4, "magnet/status", payload, retries=3)
             raw = data.get("magnets", [])
@@ -300,6 +302,9 @@ class AllDebridService:
                 )
             raise Exception("AllDebrid returned no download link or delayed generation ID")
 
+        # AllDebrid requires delayed generations to be polled no faster than
+        # every five seconds. Keep the filename/size returned by link/unlock
+        # and merge the final URL when generation completes.
         for _attempt in range(120):
             await asyncio.sleep(5)
             delayed = await self._post(
@@ -324,7 +329,7 @@ class AllDebridService:
         raise Exception("AllDebrid delayed link generation timed out after 10 minutes")
 
     async def close(self):
-        pass
+        pass  # no persistent session to close
 
 
 def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
@@ -367,6 +372,8 @@ def extract_hash_from_torrent(data: bytes) -> str:
         if not isinstance(info, dict):
             return ""
         info_bytes = bencode2.bencode(info)
+        # SHA-1 is mandated by the BitTorrent v1 info-hash protocol and is not
+        # used here for a security decision.
         return hashlib.sha1(info_bytes, usedforsecurity=False).hexdigest()
     except Exception:
         return ""

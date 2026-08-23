@@ -44,19 +44,23 @@ logger = logging.getLogger("alldebrid.extractor")
 # Archive detection
 # ---------------------------------------------------------------------------
 
+# Extension groups in priority order
 _ZIP_EXTS  = {".zip"}
 _TAR_EXTS  = {".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2",
                ".tar.xz", ".txz"}
+# .tar.zst and .tar.lzma need 7z — keep separate so _extract_sync routes correctly
 _TAR_7Z_EXTS = {".tar.zst", ".tzst", ".tar.lzma"}
-_GZ_EXTS   = {".gz"}
+_GZ_EXTS   = {".gz"}   # single-file gzip (not .tar.gz — that's handled by tar)
 _BZ2_EXTS  = {".bz2"}
 _XZ_EXTS   = {".xz"}
 _7Z_EXTS   = {".7z"}
 _RAR_EXTS  = {".rar", ".r00", ".r01", ".r02"}
 
+# Multi-part RAR detection: file.part1.rar, file.part01.rar, file.r00
 _MULTIPART_RAR = re.compile(
     r"\.part\d+\.rar$|\.r\d{2}$", re.IGNORECASE
 )
+# Only the first part should be extracted; subsequent parts are auto-read
 _MULTIPART_FIRST = re.compile(
     r"\.part0*1\.rar$|\.r00$", re.IGNORECASE
 )
@@ -78,6 +82,7 @@ def is_archive(path: Path) -> bool:
     if s in _ZIP_EXTS | _TAR_EXTS | _TAR_7Z_EXTS | _GZ_EXTS | _BZ2_EXTS | _XZ_EXTS | _7Z_EXTS:
         return True
     if s in _RAR_EXTS:
+        # Skip non-first parts of multi-part RAR sets
         if _MULTIPART_RAR.search(path.name):
             return _MULTIPART_FIRST.search(path.name) is not None
         return True
@@ -187,6 +192,8 @@ def _extract_zip(archive: Path, dest: Path) -> None:
         members = zf.infolist()
         validate_zip_members(archive, members)
         for member in members:
+            # ZIP member names are POSIX paths. Treat backslashes as separators
+            # as well so a Windows-style traversal remains unsafe on Linux.
             member_name = member.filename.replace("\\", "/")
             relative = PurePosixPath(member_name)
             parts = tuple(part for part in relative.parts if part not in ("", "."))
@@ -222,6 +229,9 @@ def _extract_zip(archive: Path, dest: Path) -> None:
             if target.is_symlink():
                 raise ValueError(f"ZIP file replaces a symlink: {member.filename!r}")
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | no_follow
+            # Create regular extracted files with standard non-writable group/
+            # other permissions.  Do not rely on the process umask to remove
+            # potentially dangerous write bits from a permissive mode.
             fd = os.open(target, flags, 0o644)
             with zf.open(member, "r") as source, os.fdopen(fd, "wb") as output:
                 shutil.copyfileobj(source, output)
@@ -237,7 +247,7 @@ def _extract_tar(archive: Path, dest: Path) -> None:
 def _extract_gz_single(archive: Path, dest: Path) -> None:
     """Single-file .gz (not .tar.gz)."""
     import gzip
-    out_name = archive.stem
+    out_name = archive.stem  # strip .gz
     out_path = dest / out_name
     try:
         with gzip.open(archive, "rb") as gz_in, open(out_path, "wb") as f_out:
@@ -388,8 +398,11 @@ def _extract_sync(archive: Path, dest: Path) -> None:
     elif s in _TAR_EXTS:
         _extract_tar(archive, dest)
     elif s in _TAR_7Z_EXTS:
+        # tar.zst and tar.lzma: Python tarfile cannot decompress these natively;
+        # route through 7z which handles them correctly.
         _extract_7z(archive, dest)
     elif s in _GZ_EXTS:
+        # Could be a .gz that is NOT a tar — check magic bytes via tarfile
         if tarfile.is_tarfile(str(archive)):
             _extract_tar(archive, dest)
         else:
@@ -457,7 +470,7 @@ class Extractor:
         Returns (success, message).
         """
         async with self._sem:
-            loop = asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()  # get_event_loop() is deprecated in 3.10+
             retries = 1
             last_err: str = ""
             for attempt in range(retries + 1):
@@ -466,6 +479,9 @@ class Extractor:
                         logger.info("Retrying extraction of %s (attempt %d)", archive, attempt + 1)
                     logger.info("Extracting %s → %s", archive, dest)
                     await loop.run_in_executor(self._executor, _extract_sync, archive, dest)
+                    # Nested archive support: scan sub-directories of dest for more archives.
+                    # We only scan SUBDIRECTORIES (not dest itself) to avoid treating
+                    # sibling archives in the same folder as "nested" archives.
                     try:
                         nested_archives = []
                         for subdir in [d for d in dest.iterdir() if d.is_dir()]:
@@ -518,6 +534,8 @@ class Extractor:
             logger.debug("No archives found in %s", folder)
             return []
 
+        # Create real Tasks so they run concurrently and the semaphore has effect.
+        # Previously coroutines were awaited serially, making max_concurrent useless.
         tasks = [
             asyncio.create_task(
                 self.extract_archive(archive, archive.parent, delete_after=delete_after)
