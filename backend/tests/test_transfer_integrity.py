@@ -70,6 +70,7 @@ async def test_existing_full_target_is_still_materialized_pending(tmp_path):
     cfg = SimpleNamespace(
         download_folder=str(tmp_path),
         min_free_disk_gb=0,
+        filters_enabled=False,
         discord_notify_finished=False,
         aria2_operation_timeout_seconds=15,
     )
