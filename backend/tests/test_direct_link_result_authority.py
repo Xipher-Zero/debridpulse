@@ -36,9 +36,21 @@ def _read_all(db_path: Path, sql: str, params=()):
         conn.close()
 
 
-async def _insert_transfer(db_path: Path, *, physical_status: str, physical_reason=None):
+async def _insert_transfer(
+    db_path: Path,
+    *,
+    physical_status: str,
+    physical_reason=None,
+    include_source_failures: bool = True,
+):
     conn = sqlite3.connect(db_path)
     try:
+        total_links = 11 if include_source_failures else 3
+        initial_error = (
+            "8 of 11 links could not be generated"
+            if include_source_failures
+            else None
+        )
         cur = conn.execute(
             """INSERT INTO torrents
                (hash, name, status, source, download_client, provider_status,
@@ -46,11 +58,11 @@ async def _insert_transfer(db_path: Path, *, physical_status: str, physical_reas
                VALUES (?, ?, ?, 'direct_link', 'aria2', 'ready', ?, ?, ?)""",
             (
                 "direct:test-result-authority",
-                "GF200826-TMNTSFS-RN.rar (11 links)",
+                f"GF200826-TMNTSFS-RN.rar ({total_links} links)",
                 "downloading",
                 3_595_501_360,
                 99.8,
-                "8 of 11 links could not be generated",
+                initial_error,
             ),
         )
         torrent_id = int(cur.lastrowid)
@@ -102,20 +114,21 @@ async def _insert_transfer(db_path: Path, *, physical_status: str, physical_reas
             ("ddownload.com", "missing"),
             ("datanodes.to", "error"),
         ]
-        for index, (host, status) in enumerate(source_outcomes, start=1):
-            conn.execute(
-                """INSERT INTO download_files
-                   (torrent_id, filename, size_bytes, source_url, status,
-                    download_client, blocked, block_reason)
-                   VALUES (?, ?, 0, ?, ?, 'aria2', 0, ?)""",
-                (
-                    torrent_id,
-                    f"unavailable-{index}",
-                    f"https://{host}/missing-{index}",
-                    status,
-                    "source unavailable before aria2 dispatch",
-                ),
-            )
+        if include_source_failures:
+            for index, (host, status) in enumerate(source_outcomes, start=1):
+                conn.execute(
+                    """INSERT INTO download_files
+                       (torrent_id, filename, size_bytes, source_url, status,
+                        download_client, blocked, block_reason)
+                       VALUES (?, ?, 0, ?, ?, 'aria2', 0, ?)""",
+                    (
+                        torrent_id,
+                        f"unavailable-{index}",
+                        f"https://{host}/missing-{index}",
+                        status,
+                        "source unavailable before aria2 dispatch",
+                    ),
+                )
 
         conn.commit()
         return torrent_id
@@ -172,6 +185,52 @@ async def test_completed_payload_with_failed_sources_is_success_with_warning(tmp
     ]
     assert len(source_rows) == 8
     assert all(row["blocked"] is None for row in source_rows)
+    manager._mark_finished.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_completed_payload_with_only_duplicate_mirrors_is_plain_success(tmp_path, monkeypatch):
+    db_path = await _prepare_db(tmp_path, monkeypatch)
+    torrent_id = await _insert_transfer(
+        db_path,
+        physical_status="completed",
+        include_source_failures=False,
+    )
+    manager = DirectLinkResultGuardManager()
+    _disable_completion_side_effects(manager, monkeypatch)
+
+    await manager._finalize_aria2_torrent(torrent_id)
+
+    parent = _read_one(
+        db_path,
+        "SELECT status, progress, size_bytes, error_message, completed_at FROM torrents WHERE id=?",
+        (torrent_id,),
+    )
+    assert parent["status"] == "completed"
+    assert parent["progress"] == 100.0
+    assert parent["size_bytes"] == 3_595_501_360
+    assert parent["error_message"] is None
+    assert parent["completed_at"] is not None
+
+    rows = _read_all(
+        db_path,
+        "SELECT status, blocked, local_path FROM download_files WHERE torrent_id=? ORDER BY id",
+        (torrent_id,),
+    )
+    assert len(rows) == 3
+    assert sum(row["status"] == "completed" for row in rows) == 1
+    assert sum(row["status"] == "duplicate" for row in rows) == 2
+    assert not any(row["status"] in {"error", "missing"} for row in rows)
+
+    events = _read_all(
+        db_path,
+        "SELECT level, message FROM events WHERE torrent_id=? ORDER BY id",
+        (torrent_id,),
+    )
+    assert any(
+        row["level"] == "info" and "2 duplicate mirror(s) suppressed" in row["message"]
+        for row in events
+    )
     manager._mark_finished.assert_awaited_once()
 
 
