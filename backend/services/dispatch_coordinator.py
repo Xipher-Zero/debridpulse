@@ -23,7 +23,7 @@ _PRIMARY_STATUS_PRIORITY = {
 }
 
 _SUPPRESSIBLE_MIRROR_STATUSES = frozenset({"pending", "queued", "paused"})
-_MAX_MIRROR_SIZE_DELTA_BYTES = 2 * 1024 * 1024
+_MAX_MIRROR_SIZE_DELTA_BYTES = 512 * 1024 * 1024
 _MAX_MIRROR_SIZE_DELTA_PER_MILLE = 1  # 0.1%
 
 
@@ -56,14 +56,23 @@ def _mirror_metadata(row: dict) -> tuple[str, int] | None:
     return filename, size_bytes
 
 
+def _mirror_size_variance(left: int, right: int) -> tuple[int, float]:
+    """Return absolute byte delta and percent delta relative to the larger size."""
+    left = int(left)
+    right = int(right)
+    delta = abs(left - right)
+    larger = max(left, right)
+    percent = (delta / larger * 100.0) if larger > 0 else 0.0
+    return delta, percent
+
+
 def _mirror_sizes_match(left: int, right: int) -> bool:
     """Return True only for tightly equivalent non-zero provider sizes.
 
     Real hosters may report slightly different metadata for an identical file.
-    Require both a relative <=0.1% difference and an absolute <=2 MiB
-    difference. This admits the observed 1.53 MB / 0.043% mirror variance while
-    still rejecting materially different same-name payloads and tiny-file
-    mismatches where even a one-byte difference is proportionally significant.
+    The relative <=0.1% bound is authoritative and scales with file size. A much
+    larger absolute <=512 MiB ceiling exists only as a catastrophe guard for
+    very large same-name payloads; it is not intended to govern normal matching.
     """
     try:
         left = int(left)
@@ -182,10 +191,20 @@ async def collapse_direct_link_mirrors() -> int:
         groups_by_parent: dict[int, set[tuple[str, int]]] = defaultdict(set)
         for duplicate, primary in plan:
             primary_host = str(primary.get("_mirror_host") or "")
+            primary_size = int(primary.get("size_bytes") or 0)
+            duplicate_size = int(duplicate.get("size_bytes") or 0)
+            delta_bytes, delta_percent = _mirror_size_variance(
+                primary_size,
+                duplicate_size,
+            )
             reason = (
-                f"Duplicate mirror of {primary_host}; matching resolved filename and size"
+                f"Duplicate mirror of {primary_host}; matching resolved filename; "
+                f"size variance {delta_bytes} bytes ({delta_percent:.4f}%)"
                 if primary_host
-                else "Duplicate cross-hoster mirror; matching resolved filename and size"
+                else (
+                    "Duplicate cross-hoster mirror; matching resolved filename; "
+                    f"size variance {delta_bytes} bytes ({delta_percent:.4f}%)"
+                )
             )
             cursor = await db.execute(
                 """UPDATE download_files
@@ -205,18 +224,21 @@ async def collapse_direct_link_mirrors() -> int:
             groups_by_parent[torrent_id].add(
                 (
                     str(primary.get("filename") or "").casefold(),
-                    int(primary.get("size_bytes") or 0),
+                    primary_size,
                 )
             )
             logger.info(
                 "direct-link mirror duplicate: transfer=%s file=%s size=%s "
-                "primary_host=%s alternate_host=%s alternate_size=%s",
+                "primary_host=%s alternate_host=%s alternate_size=%s "
+                "delta_bytes=%s delta_percent=%.4f",
                 torrent_id,
                 str(primary.get("filename") or "")[:120],
-                int(primary.get("size_bytes") or 0),
+                primary_size,
                 primary_host,
                 duplicate.get("_mirror_host"),
-                int(duplicate.get("size_bytes") or 0),
+                duplicate_size,
+                delta_bytes,
+                delta_percent,
             )
 
         for torrent_id, classified in classified_by_parent.items():
