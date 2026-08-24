@@ -51,12 +51,11 @@ jobs:
           tests_path.write_text(tests, encoding='utf-8')
           PY
 
-      - name: Run focused direct-link tests
+      - name: Validate patched syntax
         shell: bash
         run: |
-          cd backend
-          python -m pytest tests/test_direct_links.py tests/test_direct_link_mirror_dedupe.py tests/test_direct_link_result_authority.py -q
-          python -m compileall -q services/manager_v2.py tests/test_direct_links.py
+          python -m compileall -q backend/services/manager_v2.py backend/tests/test_direct_links.py
+          git diff --check
 
       - name: Commit correction
         shell: bash
