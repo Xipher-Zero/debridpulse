@@ -808,11 +808,25 @@ class GuardedTransferIntegrityManager(TransferIntegrityManager):
 
         if ad_id and self._provider_delete_authorized(row.get("source")):
             try:
-                await self.ad().delete_magnet(ad_id)
-                logger.info(
-                    "Deleted failed magnet %s from AllDebrid before re-upload",
-                    ad_id,
-                )
+                removed_old = bool(await self.ad().delete_magnet(ad_id))
+                if removed_old:
+                    async with get_db() as db:
+                        await db.execute(
+                            """UPDATE torrents
+                               SET alldebrid_id=NULL, updated_at=CURRENT_TIMESTAMP
+                               WHERE id=? AND status!='deleted' AND alldebrid_id=?""",
+                            (torrent_id, ad_id),
+                        )
+                        await db.commit()
+                    logger.info(
+                        "Deleted failed magnet %s from AllDebrid before re-upload",
+                        ad_id,
+                    )
+                else:
+                    logger.warning(
+                        "Could not confirm deletion of failed magnet %s before re-upload",
+                        ad_id,
+                    )
             except Exception as exc:
                 logger.debug(
                     "Could not delete failed magnet %s: %s",
