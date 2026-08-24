@@ -1,0 +1,555 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str, label: str) -> None:
+    file_path = Path(path)
+    text = file_path.read_text()
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one match, found {count}")
+    file_path.write_text(text.replace(old, new, 1))
+
+
+# Persist post-download extraction independently from transport state.
+replace_once(
+    "backend/db/database.py",
+    '''    ("upload_retry_count", "INTEGER DEFAULT 0"),
+]''',
+    '''    ("upload_retry_count", "INTEGER DEFAULT 0"),
+    ("extraction_status", "TEXT DEFAULT ''"),
+    ("extraction_error", "TEXT"),
+]''',
+    "torrent extraction migration columns",
+)
+replace_once(
+    "backend/db/database.py",
+    '''                error_message TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,''',
+    '''                error_message TEXT,
+                extraction_status TEXT DEFAULT '',
+                extraction_error TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,''',
+    "new database extraction columns",
+)
+
+# Missing/inaccessible paths must be explicit failures, never an empty result.
+replace_once(
+    "backend/services/extractor.py",
+    '''        scheduled = [archive for archive in unique_archives if archive.exists()]
+        tasks = [
+            asyncio.create_task(
+                self.extract_archive(archive, archive.parent, delete_after=delete_after)
+            )
+            for archive in scheduled
+        ]
+        if not tasks:
+            return []
+        results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+        results: List[Tuple[Path, bool, str]] = []
+        for archive, raw in zip(scheduled, results_raw):
+            if isinstance(raw, Exception):
+                results.append((archive, False, f"Extraction failed for {archive.name}: {raw}"))
+            else:
+                ok, msg = raw
+                results.append((archive, ok, msg))
+        return results
+''',
+    '''        scheduled: List[Path] = []
+        results: List[Tuple[Path, bool, str]] = []
+        for archive in unique_archives:
+            if archive.exists():
+                scheduled.append(archive)
+            else:
+                results.append(
+                    (
+                        archive,
+                        False,
+                        f"Archive path is not accessible to DebridPulse: {archive}",
+                    )
+                )
+
+        tasks = [
+            asyncio.create_task(
+                self.extract_archive(archive, archive.parent, delete_after=delete_after)
+            )
+            for archive in scheduled
+        ]
+        if tasks:
+            results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+            for archive, raw in zip(scheduled, results_raw):
+                if isinstance(raw, Exception):
+                    results.append((archive, False, f"Extraction failed for {archive.name}: {raw}"))
+                else:
+                    ok, msg = raw
+                    results.append((archive, ok, msg))
+        return results
+''',
+    "observable inaccessible extraction paths",
+)
+
+# Make the architecture extraction boundary own lifecycle + reporting.
+Path("backend/services/extraction_service.py").write_text('''"""Post-download extraction orchestration for completed transfers."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from core.config import get_settings
+from db.database import get_db
+from services.event_bus import publish
+from services.extractor import archive_paths_from_downloads, get_extractor
+from services.notifications import NotificationService
+
+
+class ExtractionService:
+    async def extract_archive(self, *args, **kwargs):
+        return await get_extractor().extract_archive(*args, **kwargs)
+
+    async def _publish_state(
+        self,
+        torrent_id: int,
+        name: str,
+        extraction_status: str,
+    ) -> None:
+        try:
+            await publish(
+                "torrent_updated",
+                {
+                    "id": int(torrent_id),
+                    "status": "completed",
+                    "name": str(name or ""),
+                    "extraction_status": extraction_status,
+                },
+            )
+            await publish("stats_changed", {})
+        except Exception:
+            pass
+
+    async def extract_completed_transfer(
+        self,
+        torrent_id: int,
+        torrent_dict: dict | None = None,
+    ) -> dict:
+        """Extract known completed archive children without changing transport truth."""
+        cfg = get_settings()
+        if not bool(getattr(cfg, "extract_enabled", False)):
+            return {"attempted": False, "reason": "disabled"}
+
+        torrent_id = int(torrent_id)
+        async with get_db() as db:
+            parent = await db.fetchone(
+                "SELECT * FROM torrents WHERE id=?",
+                (torrent_id,),
+            )
+            rows = await db.fetchall(
+                """SELECT local_path FROM download_files
+                   WHERE torrent_id=? AND status='completed'
+                     AND local_path IS NOT NULL""",
+                (torrent_id,),
+            )
+
+        if not parent or str(parent.get("status") or "") != "completed":
+            return {"attempted": False, "reason": "not-completed"}
+
+        archives = archive_paths_from_downloads(
+            [row.get("local_path") for row in rows if row.get("local_path")]
+        )
+        if not archives:
+            return {"attempted": False, "reason": "no-archives"}
+
+        name = str(
+            parent.get("name")
+            or (torrent_dict or {}).get("name")
+            or f"transfer {torrent_id}"
+        )
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE torrents
+                   SET extraction_status='extracting', extraction_error=NULL,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='completed'""",
+                (torrent_id,),
+            )
+            await db.execute(
+                "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
+                (torrent_id, f"Auto-extract started for {len(archives)} archive(s)"),
+            )
+            await db.commit()
+
+        await self._publish_state(torrent_id, name, "extracting")
+
+        extractor = get_extractor()
+        extractor.update_max_concurrent(
+            max(1, int(getattr(cfg, "extract_max_concurrent", 1) or 1))
+        )
+        results = await extractor.extract_archives(
+            archives,
+            delete_after=bool(getattr(cfg, "extract_delete_archive", True)),
+        )
+        failures = [(path, msg) for path, ok, msg in results if not ok]
+        successes = [(path, msg) for path, ok, msg in results if ok]
+
+        if not results:
+            failures = [
+                (
+                    archives[0],
+                    "Auto-extract produced no result for a detected archive",
+                )
+            ]
+
+        if failures:
+            detail = "; ".join(str(msg) for _path, msg in failures[:3])
+            if len(failures) > 3:
+                detail += f"; +{len(failures) - 3} more extraction failure(s)"
+            detail = detail[:1000]
+            final_state = "error"
+            event_level = "error"
+            event_message = (
+                f"Auto-extract failed for {len(failures)} of {len(archives)} archive(s): {detail}"
+            )[:1200]
+        else:
+            detail = ""
+            final_state = "completed"
+            event_level = "info"
+            event_message = f"Auto-extract completed for {len(successes)} archive(s)"
+
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE torrents
+                   SET extraction_status=?, extraction_error=?,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status!='deleted'""",
+                (final_state, detail or None, torrent_id),
+            )
+            await db.execute(
+                "INSERT INTO events (torrent_id, level, message) VALUES (?, ?, ?)",
+                (torrent_id, event_level, event_message),
+            )
+            await db.commit()
+
+        await self._publish_state(torrent_id, name, final_state)
+
+        if bool(getattr(cfg, "discord_notify_extract", False)):
+            notify = NotificationService(
+                webhook_url=str(getattr(cfg, "discord_webhook_url", "") or ""),
+                added_webhook_url=str(getattr(cfg, "discord_webhook_added", "") or ""),
+            )
+            if successes:
+                await notify.send_extract_complete(
+                    name,
+                    archive_count=len(successes),
+                    dest=str(Path(successes[0][0]).parent),
+                )
+            for _path, message in failures:
+                await notify.send_extract_failed(name, reason=str(message))
+
+        return {
+            "attempted": True,
+            "status": final_state,
+            "archives": len(archives),
+            "succeeded": len(successes),
+            "failed": len(failures),
+            "error": detail or None,
+        }
+''')
+
+# Normal application runtime is bound to TransferService; route inherited
+# post-download callbacks through the explicit extraction service.
+replace_once(
+    "backend/services/direct_link_result_guard.py",
+    '''    async def _finalize_aria2_torrent(self, torrent_id: int):
+''',
+    '''    async def _extract_torrent(self, torrent_id: int, torrent_dict: dict) -> None:
+        if self._architecture is not None:
+            await self._architecture.extraction.extract_completed_transfer(
+                int(torrent_id), dict(torrent_dict or {})
+            )
+            return
+        await super()._extract_torrent(torrent_id, torrent_dict)
+
+    async def _finalize_aria2_torrent(self, torrent_id: int):
+''',
+    "architecture extraction callback",
+)
+
+# Active transport remains transport-only; expose a separate operator
+# active-operation count so extraction does not pollute aria2 telemetry.
+replace_once(
+    "backend/api/routes.py",
+    '''                   SUM(CASE WHEN status IN ('downloading','processing','uploading','paused')
+                            THEN 1 ELSE 0 END) AS active_downloads,
+''',
+    '''                   SUM(CASE WHEN status IN ('downloading','processing','uploading','paused')
+                            THEN 1 ELSE 0 END) AS active_downloads,
+                   SUM(CASE WHEN COALESCE(extraction_status,'')='extracting'
+                            THEN 1 ELSE 0 END) AS extracting_count,
+''',
+    "stats extraction count",
+)
+replace_once(
+    "backend/api/routes.py",
+    "                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed_count,\n",
+    "                   SUM(CASE WHEN status='completed' AND COALESCE(extraction_status,'')!='extracting' THEN 1 ELSE 0 END) AS completed_count,\n",
+    "stats completed count excludes live extraction",
+)
+replace_once(
+    "backend/api/routes.py",
+    '''                   SUM(CASE WHEN completed_at >= {last_24h_expr} THEN 1 ELSE 0 END)
+                       AS completed_last_24h,
+                   SUM(CASE WHEN completed_at >= {last_7d_expr} THEN 1 ELSE 0 END)
+                       AS completed_last_7d,
+''',
+    '''                   SUM(CASE WHEN completed_at >= {last_24h_expr}
+                                AND COALESCE(extraction_status,'')!='extracting' THEN 1 ELSE 0 END)
+                       AS completed_last_24h,
+                   SUM(CASE WHEN completed_at >= {last_7d_expr}
+                                AND COALESCE(extraction_status,'')!='extracting' THEN 1 ELSE 0 END)
+                       AS completed_last_7d,
+''',
+    "recent completion counts exclude live extraction",
+)
+replace_once(
+    "backend/api/routes.py",
+    '''    error_count = int(aggregate.get("error_count") or 0)
+    completed_count = int(aggregate.get("completed_count") or 0)
+''',
+    '''    error_count = int(aggregate.get("error_count") or 0)
+    completed_count = int(aggregate.get("completed_count") or 0)
+    active_downloads = int(aggregate.get("active_downloads") or 0)
+    extracting_count = int(aggregate.get("extracting_count") or 0)
+''',
+    "stats operation counters",
+)
+replace_once(
+    "backend/api/routes.py",
+    '''        "active_downloads": int(aggregate.get("active_downloads") or 0),
+        "queued_downloads": int(aggregate.get("queued_downloads") or 0),
+''',
+    '''        "active_downloads": active_downloads,
+        "active_operations": active_downloads + extracting_count,
+        "extracting_count": extracting_count,
+        "queued_downloads": int(aggregate.get("queued_downloads") or 0),
+''',
+    "stats active operation result",
+)
+replace_once(
+    "backend/api/routes.py",
+    '''    where_comp = (f"WHERE status='completed' AND completed_at >= {cutoff}"
+                  if cutoff else "WHERE status='completed'")
+''',
+    '''    where_comp = (
+        f"WHERE status='completed' AND COALESCE(extraction_status,'')!='extracting' AND completed_at >= {cutoff}"
+        if cutoff
+        else "WHERE status='completed' AND COALESCE(extraction_status,'')!='extracting'"
+    )
+''',
+    "detail completed state excludes live extraction",
+)
+replace_once(
+    "backend/api/routes.py",
+    '''            "WHERE status IN ('processing','downloading','dispatched','partial')"
+''',
+    '''            "WHERE (status IN ('processing','downloading','dispatched','partial') OR COALESCE(extraction_status,'')='extracting')"
+''',
+    "detail active extraction count",
+)
+
+# Operator-facing extraction state and error detail.
+replace_once(
+    "frontend/static/app.js",
+    "  const m = {pending:'⏳ Pending',uploading:'⬆ Uploading',processing:'⚙ Processing',\n",
+    "  const m = {pending:'⏳ Pending',uploading:'⬆ Uploading',processing:'⚙ Processing',extracting:'📦 Extracting',\n",
+    "extracting badge label",
+)
+replace_once(
+    "frontend/static/app.js",
+    '''function transferDisplayStatus(t) {
+''',
+    '''function transferDisplayStatus(t) {
+  if (t && String(t.extraction_status || '').trim() === 'extracting') {
+    return 'extracting';
+  }
+  if (
+    t &&
+    t.status === 'completed' &&
+    String(t.extraction_status || '').trim() === 'error'
+  ) {
+    return 'completed_with_errors';
+  }
+''',
+    "extraction display status",
+)
+replace_once(
+    "frontend/static/app.js",
+    "      document.getElementById('s-active').textContent = s.active_downloads||0;\n",
+    "      document.getElementById('s-active').textContent = s.active_operations ?? s.active_downloads ?? 0;\n",
+    "dashboard active operation count",
+)
+replace_once(
+    "frontend/static/app.js",
+    "      document.getElementById('i-queue-copy').textContent = `${s.active_downloads||0} active / ${s.queued_downloads||0} queued`;\n",
+    "      document.getElementById('i-queue-copy').textContent = `${s.active_operations ?? s.active_downloads ?? 0} active / ${s.queued_downloads||0} queued`;\n",
+    "queue active operation copy",
+)
+replace_once(
+    "frontend/static/app.js",
+    "      const active = s.active_downloads || 0;\n",
+    "      const active = s.active_operations ?? s.active_downloads ?? 0;\n",
+    "sidebar active operation count",
+)
+replace_once(
+    "frontend/static/app.js",
+    '''        ${t.error_message?`<div style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
+''',
+    '''        ${t.error_message?`<div style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
+        ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
+        ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
+''',
+    "extraction detail fields",
+)
+replace_once(
+    "frontend/static/index.html",
+    '<script src="/app.js?v=12" defer></script>',
+    '<script src="/app.js?v=13" defer></script>',
+    "app cache bust",
+)
+
+Path("backend/tests/test_extraction_lifecycle.py").write_text('''from pathlib import Path
+import sqlite3
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+import zipfile
+
+import pytest
+
+import db.database as database
+import services.extraction_service as extraction_service
+from services.extraction_service import ExtractionService
+from services.extractor import Extractor
+
+
+async def _prepare_db(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "extraction.db"
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    await database.init_db()
+    return db_path
+
+
+def _settings(**overrides):
+    values = {
+        "extract_enabled": True,
+        "extract_delete_archive": True,
+        "extract_max_concurrent": 1,
+        "discord_notify_extract": False,
+        "discord_webhook_url": "",
+        "discord_webhook_added": "",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _insert_completed(db_path: Path, local_path: Path) -> int:
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.execute(
+            """INSERT INTO torrents
+               (hash, name, status, source, download_client, progress, completed_at)
+               VALUES (?, ?, 'completed', 'direct_link', 'aria2', 100, CURRENT_TIMESTAMP)""",
+            ("extract:" + local_path.name, local_path.name),
+        )
+        torrent_id = int(cur.lastrowid)
+        conn.execute(
+            """INSERT INTO download_files
+               (torrent_id, filename, local_path, status, download_client, blocked)
+               VALUES (?, ?, ?, 'completed', 'aria2', 0)""",
+            (torrent_id, local_path.name, str(local_path)),
+        )
+        conn.commit()
+        return torrent_id
+    finally:
+        conn.close()
+
+
+def _parent(db_path: Path, torrent_id: int):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        return dict(conn.execute(
+            "SELECT extraction_status, extraction_error, status FROM torrents WHERE id=?",
+            (torrent_id,),
+        ).fetchone())
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
+async def test_completed_zip_runs_through_post_download_extraction(tmp_path, monkeypatch):
+    db_path = await _prepare_db(tmp_path, monkeypatch)
+    archive = tmp_path / "payload.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("payload.txt", b"payload")
+    torrent_id = _insert_completed(db_path, archive)
+    monkeypatch.setattr(extraction_service, "get_settings", lambda: _settings())
+    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
+
+    result = await ExtractionService().extract_completed_transfer(torrent_id)
+
+    assert result["attempted"] is True
+    assert result["status"] == "completed"
+    assert not archive.exists()
+    assert (tmp_path / "payload.txt").read_bytes() == b"payload"
+    assert _parent(db_path, torrent_id) == {
+        "extraction_status": "completed",
+        "extraction_error": None,
+        "status": "completed",
+    }
+    published_states = [
+        call.args[1].get("extraction_status")
+        for call in extraction_service.publish.await_args_list
+        if call.args and call.args[0] == "torrent_updated"
+    ]
+    assert published_states == ["extracting", "completed"]
+
+
+@pytest.mark.asyncio
+async def test_inaccessible_rar_is_visible_failure_not_silent_skip(tmp_path, monkeypatch):
+    db_path = await _prepare_db(tmp_path, monkeypatch)
+    archive = tmp_path / "missing.rar"
+    torrent_id = _insert_completed(db_path, archive)
+    monkeypatch.setattr(extraction_service, "get_settings", lambda: _settings())
+    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
+
+    result = await ExtractionService().extract_completed_transfer(torrent_id)
+
+    assert result["attempted"] is True
+    assert result["status"] == "error"
+    parent = _parent(db_path, torrent_id)
+    assert parent["status"] == "completed"
+    assert parent["extraction_status"] == "error"
+    assert "not accessible to DebridPulse" in parent["extraction_error"]
+
+
+@pytest.mark.asyncio
+async def test_extract_archives_reports_missing_archive(tmp_path):
+    archive = tmp_path / "missing.rar"
+    results = await Extractor(max_concurrent=1).extract_archives([archive])
+    assert len(results) == 1
+    path, ok, message = results[0]
+    assert path == archive
+    assert ok is False
+    assert "not accessible to DebridPulse" in message
+
+
+def test_extraction_state_is_persisted_and_operator_visible():
+    root = Path(__file__).resolve().parents[2]
+    database_source = (root / "backend/db/database.py").read_text()
+    routes_source = (root / "backend/api/routes.py").read_text()
+    app_source = (root / "frontend/static/app.js").read_text()
+    assert '("extraction_status", "TEXT DEFAULT \'\'")' in database_source
+    assert '("extraction_error", "TEXT")' in database_source
+    assert "active_operations" in routes_source
+    assert "extracting_count" in routes_source
+    assert "extracting:'📦 Extracting'" in app_source
+    assert "t.extraction_status" in app_source
+''')
+
+print("Extraction lifecycle correction applied")
