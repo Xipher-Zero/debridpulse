@@ -21,6 +21,7 @@ def _row(
     status="pending",
     download_id=None,
     torrent_id=42,
+    blocked=0,
 ):
     return {
         "file_id": file_id,
@@ -30,6 +31,10 @@ def _row(
         "source_url": f"https://{host}/file/{file_id}",
         "status": status,
         "download_id": download_id,
+        "blocked": blocked,
+        "block_reason": None,
+        "download_url": f"https://generated.example/{file_id}",
+        "local_path": f"/download/{filename}",
     }
 
 
@@ -47,6 +52,19 @@ def test_cross_hoster_same_name_and_exact_size_collapses_to_one_logical_file():
     assert duplicate["file_id"] == 2
 
 
+def test_three_working_real_world_mirrors_classify_both_alternates():
+    rows = [
+        _row(1, "1fichier.com", size=3595501360),
+        _row(2, "rapidgator.net", size=3595501360),
+        _row(3, "megaup.net", size=3595501360),
+    ]
+
+    plan = plan_direct_link_mirror_suppression(rows)
+
+    assert [duplicate["file_id"] for duplicate, _primary in plan] == [2, 3]
+    assert {primary["file_id"] for _duplicate, primary in plan} == {1}
+
+
 def test_five_working_mirror_hosts_dispatch_only_first_logical_file():
     rows = [
         _row(1, "1fichier.com"),
@@ -60,6 +78,18 @@ def test_five_working_mirror_hosts_dispatch_only_first_logical_file():
 
     assert [duplicate["file_id"] for duplicate, _primary in plan] == [2, 3, 4, 5]
     assert {primary["file_id"] for _duplicate, primary in plan} == {1}
+
+
+def test_paused_unstarted_mirrors_can_be_classified_before_resume():
+    rows = [
+        _row(1, "1fichier.com", status="paused"),
+        _row(2, "rapidgator.net", status="paused"),
+        _row(3, "megaup.net", status="paused"),
+    ]
+
+    plan = plan_direct_link_mirror_suppression(rows)
+
+    assert [duplicate["file_id"] for duplicate, _primary in plan] == [2, 3]
 
 
 def test_same_filename_with_different_exact_size_is_not_collapsed():
@@ -112,7 +142,7 @@ def test_existing_running_mirror_is_preferred_over_pending_alternate():
     assert duplicate["file_id"] == 1
 
 
-def test_already_dispatched_duplicate_is_never_removed():
+def test_already_dispatched_duplicate_is_never_reclassified():
     rows = [
         _row(1, "1fichier.com", status="downloading", download_id="gid-1"),
         _row(2, "rapidgator.net", status="queued", download_id="gid-2"),
@@ -129,7 +159,7 @@ class _Cursor:
 class _FakeDb:
     def __init__(self, rows):
         self.rows = list(rows)
-        self.deleted = []
+        self.classified = []
         self.parent_sizes = []
         self.events = []
         self.committed = False
@@ -137,24 +167,31 @@ class _FakeDb:
     async def fetchall(self, sql, params=()):
         assert "t.source=?" in sql
         assert params == ("direct_link",)
-        return list(self.rows)
+        return [row for row in self.rows if row.get("blocked") == 0]
 
     async def fetchone(self, sql, params=()):
         assert "SUM(size_bytes)" in sql
-        surviving = [row for row in self.rows if row["file_id"] not in self.deleted]
+        surviving = [row for row in self.rows if row.get("blocked") == 0]
         return {"total": sum(int(row.get("size_bytes") or 0) for row in surviving)}
 
     async def execute(self, sql, params=()):
-        if sql.lstrip().startswith("DELETE FROM download_files"):
-            file_id = int(params[0])
+        normalized = " ".join(sql.split())
+        if normalized.startswith("UPDATE download_files") and "status='duplicate'" in normalized:
+            reason, file_id = params
+            file_id = int(file_id)
             row = next((item for item in self.rows if item["file_id"] == file_id), None)
             if (
                 row
-                and row["status"] == "pending"
+                and row["status"] in {"pending", "queued", "paused"}
+                and row.get("blocked") == 0
                 and not row.get("download_id")
-                and file_id not in self.deleted
             ):
-                self.deleted.append(file_id)
+                row["status"] = "duplicate"
+                row["blocked"] = None
+                row["block_reason"] = str(reason)
+                row["download_url"] = None
+                row["local_path"] = None
+                self.classified.append(file_id)
                 return _Cursor(1)
             return _Cursor(0)
         if "UPDATE torrents" in sql:
@@ -170,10 +207,11 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_collapse_removes_duplicate_before_physical_dispatch(monkeypatch):
+async def test_collapse_preserves_duplicate_rows_and_excludes_them_from_logical_size(monkeypatch):
     rows = [
         _row(1, "1fichier.com", size=777),
         _row(2, "rapidgator.net", size=777),
+        _row(3, "megaup.net", size=777),
     ]
     db = _FakeDb(rows)
 
@@ -183,13 +221,20 @@ async def test_collapse_removes_duplicate_before_physical_dispatch(monkeypatch):
 
     monkeypatch.setattr(dispatch_module, "get_db", _fake_get_db)
 
-    removed = await collapse_direct_link_mirrors()
+    classified = await collapse_direct_link_mirrors()
 
-    assert removed == 1
-    assert db.deleted == [2]
+    assert classified == 2
+    assert db.classified == [2, 3]
+    assert len(db.rows) == 3
+    assert db.rows[1]["status"] == "duplicate"
+    assert db.rows[1]["blocked"] is None
+    assert db.rows[1]["download_url"] is None
+    assert db.rows[1]["local_path"] is None
+    assert "Duplicate mirror of 1fichier.com" in db.rows[1]["block_reason"]
+    assert db.rows[2]["status"] == "duplicate"
     assert db.parent_sizes == [(42, 777)]
     assert len(db.events) == 1
-    assert "Suppressed 1 cross-hoster mirror link" in db.events[0][1]
+    assert "Classified 2 cross-hoster mirror link(s) as duplicates" in db.events[0][1]
     assert db.committed is True
 
 
@@ -217,36 +262,54 @@ class _ManagerStub:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_queue_kicks_cannot_dispatch_between_collapse_passes(monkeypatch):
+async def test_captured_physical_dispatch_is_always_preceded_by_mirror_classification(monkeypatch):
+    coordinator = MirrorAwareTransferControlCoordinator(_ManagerStub())
+    timeline = []
+
+    async def fake_collapse():
+        timeline.append("collapse")
+        return 2
+
+    async def fake_physical(snapshot=None):
+        timeline.append(("dispatch", snapshot))
+        return 1
+
+    monkeypatch.setattr(dispatch_module, "collapse_direct_link_mirrors", fake_collapse)
+    coordinator._physical_dispatch = fake_physical
+
+    result = await coordinator._orig_dispatch(["snapshot"])
+
+    assert result == 1
+    assert timeline == ["collapse", ("dispatch", ["snapshot"])]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_physical_dispatches_cannot_cross_classification_boundary(monkeypatch):
     coordinator = MirrorAwareTransferControlCoordinator(_ManagerStub())
     timeline = []
     first_dispatch_entered = asyncio.Event()
     release_first_dispatch = asyncio.Event()
-    base_calls = 0
+    physical_calls = 0
 
     async def fake_collapse():
         timeline.append("collapse")
         return 0
 
-    async def fake_base_dispatch(_self, _snapshot=None):
-        nonlocal base_calls
-        base_calls += 1
+    async def fake_physical(snapshot=None):
+        nonlocal physical_calls
+        physical_calls += 1
         timeline.append("dispatch")
-        if base_calls == 1:
+        if physical_calls == 1:
             first_dispatch_entered.set()
             await release_first_dispatch.wait()
-        return base_calls
+        return physical_calls
 
     monkeypatch.setattr(dispatch_module, "collapse_direct_link_mirrors", fake_collapse)
-    monkeypatch.setattr(
-        dispatch_module.TransferControlCoordinator,
-        "dispatch_queue",
-        fake_base_dispatch,
-    )
+    coordinator._physical_dispatch = fake_physical
 
-    first = asyncio.create_task(coordinator.dispatch_queue(["first"]))
+    first = asyncio.create_task(coordinator._orig_dispatch(["first"]))
     await first_dispatch_entered.wait()
-    second = asyncio.create_task(coordinator.dispatch_queue(["second"]))
+    second = asyncio.create_task(coordinator._orig_dispatch(["second"]))
     await asyncio.sleep(0)
 
     assert timeline == ["collapse", "dispatch"]
@@ -257,9 +320,37 @@ async def test_concurrent_queue_kicks_cannot_dispatch_between_collapse_passes(mo
     assert timeline == ["collapse", "dispatch", "collapse", "dispatch"]
 
 
+@pytest.mark.asyncio
+async def test_advance_queue_locked_classifies_duplicates_even_before_scheduled_dispatch(monkeypatch):
+    coordinator = MirrorAwareTransferControlCoordinator(_ManagerStub())
+    timeline = []
+
+    async def fake_collapse():
+        timeline.append("collapse")
+        return 2
+
+    async def fake_base_advance(_self):
+        timeline.append("schedule")
+        return 0
+
+    monkeypatch.setattr(dispatch_module, "collapse_direct_link_mirrors", fake_collapse)
+    monkeypatch.setattr(
+        dispatch_module.TransferControlCoordinator,
+        "advance_queue_locked",
+        fake_base_advance,
+    )
+
+    result = await coordinator.advance_queue_locked()
+
+    assert result == 0
+    assert timeline == ["collapse", "schedule"]
+
+
 def test_transfer_control_service_uses_mirror_aware_authoritative_queue():
     root = Path(__file__).resolve().parents[2]
     source = (root / "backend/services/transfer_control_service.py").read_text()
+    control_source = (root / "backend/services/transfer_control.py").read_text()
 
     assert "MirrorAwareTransferControlCoordinator" in source
     assert "self.coordinator = MirrorAwareTransferControlCoordinator(engine)" in source
+    assert "result = await self._orig_dispatch(snapshot)" in control_source
