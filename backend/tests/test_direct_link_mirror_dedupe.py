@@ -1,12 +1,11 @@
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from pathlib import Path
 
 import pytest
 
 import services.dispatch_coordinator as dispatch_module
 from services.dispatch_coordinator import (
-    DispatchCoordinator,
+    collapse_direct_link_mirrors,
     plan_direct_link_mirror_suppression,
 )
 
@@ -169,7 +168,7 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_collapses_mirror_before_delegating_to_aria2(monkeypatch):
+async def test_collapse_removes_duplicate_before_physical_dispatch(monkeypatch):
     rows = [
         _row(1, "1fichier.com", size=777),
         _row(2, "rapidgator.net", size=777),
@@ -182,16 +181,19 @@ async def test_dispatch_collapses_mirror_before_delegating_to_aria2(monkeypatch)
 
     monkeypatch.setattr(dispatch_module, "get_db", _fake_get_db)
 
-    coordinator = SimpleNamespace(dispatch_queue=AsyncMock(return_value="dispatched"))
-    control = SimpleNamespace(coordinator=coordinator)
-    dispatch = DispatchCoordinator(engine=object(), control=control, ownership=object())
+    removed = await collapse_direct_link_mirrors()
 
-    result = await dispatch.dispatch_queue(snapshot=["snapshot"])
-
-    assert result == "dispatched"
+    assert removed == 1
     assert db.deleted == [2]
     assert db.parent_sizes == [(42, 777)]
     assert len(db.events) == 1
     assert "Suppressed 1 cross-hoster mirror link" in db.events[0][1]
     assert db.committed is True
-    coordinator.dispatch_queue.assert_awaited_once_with(["snapshot"])
+
+
+def test_transfer_control_service_uses_mirror_aware_authoritative_queue():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "backend/services/transfer_control_service.py").read_text()
+
+    assert "MirrorAwareTransferControlCoordinator" in source
+    assert "self.coordinator = MirrorAwareTransferControlCoordinator(engine)" in source
