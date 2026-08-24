@@ -23,6 +23,8 @@ _PRIMARY_STATUS_PRIORITY = {
 }
 
 _SUPPRESSIBLE_MIRROR_STATUSES = frozenset({"pending", "queued", "paused"})
+_MAX_MIRROR_SIZE_DELTA_BYTES = 2 * 1024 * 1024
+_MAX_MIRROR_SIZE_DELTA_PER_MILLE = 1  # 0.1%
 
 
 def _source_host(value: object) -> str:
@@ -36,12 +38,13 @@ def _source_host(value: object) -> str:
     return host
 
 
-def _mirror_identity(row: dict) -> tuple[str, int] | None:
-    """Return conservative provider-metadata identity for one resolved file.
+def _mirror_metadata(row: dict) -> tuple[str, int] | None:
+    """Return conservative provider metadata for one resolved file.
 
     AllDebrid direct-link metadata does not provide a content checksum. Mirror
-    collapsing therefore requires both the resolved filename and an exact,
-    non-zero byte size. Unknown-size files are intentionally never deduplicated.
+    collapsing therefore requires a resolved filename and a known, non-zero
+    byte size. Size equivalence is evaluated separately because hosters can
+    report small metadata differences for the same payload.
     """
     filename = str(row.get("filename") or "").strip().casefold()
     try:
@@ -53,50 +56,98 @@ def _mirror_identity(row: dict) -> tuple[str, int] | None:
     return filename, size_bytes
 
 
+def _mirror_sizes_match(left: int, right: int) -> bool:
+    """Return True only for tightly equivalent non-zero provider sizes.
+
+    Real hosters may report slightly different metadata for an identical file.
+    Require both a relative <=0.1% difference and an absolute <=2 MiB
+    difference. This admits the observed 1.53 MB / 0.043% mirror variance while
+    still rejecting materially different same-name payloads and tiny-file
+    mismatches where even a one-byte difference is proportionally significant.
+    """
+    try:
+        left = int(left)
+        right = int(right)
+    except (TypeError, ValueError):
+        return False
+    if left <= 0 or right <= 0:
+        return False
+    delta = abs(left - right)
+    if delta == 0:
+        return True
+    larger = max(left, right)
+    return (
+        delta <= _MAX_MIRROR_SIZE_DELTA_BYTES
+        and delta * 1000 <= larger * _MAX_MIRROR_SIZE_DELTA_PER_MILLE
+    )
+
+
 def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
     """Choose unresolved cross-hoster mirrors that must not become jobs.
 
-    A logical payload is collapsed only when different source hosts resolved to
-    the same filename and exact non-zero byte size. An already-running or
+    A logical payload is collapsed only when different source hosts resolve to
+    the same filename and tightly equivalent known sizes. An already-running or
     completed child is preferred as the primary so this routine never cancels
     work merely to enforce deduplication. Same-hoster URL variants remain
     distinct because provider metadata alone is not strong enough to prove that
     they are mirrors rather than separate objects.
     """
-    grouped: dict[tuple[int, str, int], list[dict]] = defaultdict(list)
+    grouped: dict[tuple[int, str], list[dict]] = defaultdict(list)
     for raw in rows or []:
         row = dict(raw)
-        identity = _mirror_identity(row)
+        metadata = _mirror_metadata(row)
         host = _source_host(row.get("source_url"))
-        if identity is None or not host:
+        if metadata is None or not host:
             continue
         try:
             torrent_id = int(row.get("torrent_id"))
         except (TypeError, ValueError):
             continue
         row["_mirror_host"] = host
-        grouped[(torrent_id, identity[0], identity[1])].append(row)
+        row["_mirror_size"] = int(metadata[1])
+        grouped[(torrent_id, metadata[0])].append(row)
 
     suppress: list[tuple[dict, dict]] = []
     for group in grouped.values():
         if len({row["_mirror_host"] for row in group}) < 2:
             continue
+
         group.sort(
             key=lambda row: (
                 _PRIMARY_STATUS_PRIORITY.get(str(row.get("status") or ""), 99),
                 int(row.get("file_id") or 0),
             )
         )
-        primary = group[0]
-        primary_host = primary["_mirror_host"]
-        for candidate in group[1:]:
-            if candidate["_mirror_host"] == primary_host:
+
+        # Keep separate primaries for materially different same-name payloads.
+        # Every candidate is compared against a primary, never chained through
+        # another duplicate, so tolerance cannot compound across a group.
+        primaries: list[dict] = []
+        for candidate in group:
+            matched_primary = None
+            for primary in primaries:
+                if candidate["_mirror_host"] == primary["_mirror_host"]:
+                    continue
+                if _mirror_sizes_match(
+                    candidate["_mirror_size"],
+                    primary["_mirror_size"],
+                ):
+                    matched_primary = primary
+                    break
+
+            if matched_primary is None:
+                primaries.append(candidate)
                 continue
+
             if str(candidate.get("status") or "") not in _SUPPRESSIBLE_MIRROR_STATUSES:
+                primaries.append(candidate)
                 continue
             if str(candidate.get("download_id") or "").strip():
+                primaries.append(candidate)
                 continue
-            suppress.append((candidate, primary))
+
+            suppress.append((candidate, matched_primary))
+
     return suppress
 
 
@@ -132,9 +183,9 @@ async def collapse_direct_link_mirrors() -> int:
         for duplicate, primary in plan:
             primary_host = str(primary.get("_mirror_host") or "")
             reason = (
-                f"Duplicate mirror of {primary_host}; same resolved filename and size"
+                f"Duplicate mirror of {primary_host}; matching resolved filename and size"
                 if primary_host
-                else "Duplicate cross-hoster mirror; same resolved filename and size"
+                else "Duplicate cross-hoster mirror; matching resolved filename and size"
             )
             cursor = await db.execute(
                 """UPDATE download_files
@@ -159,12 +210,13 @@ async def collapse_direct_link_mirrors() -> int:
             )
             logger.info(
                 "direct-link mirror duplicate: transfer=%s file=%s size=%s "
-                "primary_host=%s alternate_host=%s",
+                "primary_host=%s alternate_host=%s alternate_size=%s",
                 torrent_id,
                 str(primary.get("filename") or "")[:120],
                 int(primary.get("size_bytes") or 0),
                 primary_host,
                 duplicate.get("_mirror_host"),
+                int(duplicate.get("size_bytes") or 0),
             )
 
         for torrent_id, classified in classified_by_parent.items():
@@ -202,10 +254,9 @@ class MirrorAwareTransferControlCoordinator(TransferControlCoordinator):
     def __init__(self, manager) -> None:
         super().__init__(manager)
         self._mirror_dispatch_lock = asyncio.Lock()
-        # TransferControlCoordinator._queue_pass() calls _orig_dispatch directly,
-        # bypassing an overridden dispatch_queue(). Wrap the captured physical
-        # dispatch function itself so scheduler, startup, resume and explicit
-        # queue kicks all cross the same mirror-classification boundary.
+        # Wrap the captured physical dispatch function itself so scheduler,
+        # startup, resume and explicit queue kicks all cross the same
+        # mirror-classification boundary.
         self._physical_dispatch = self._orig_dispatch
         self._orig_dispatch = self._dispatch_after_mirror_classification
 
