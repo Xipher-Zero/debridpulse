@@ -208,6 +208,9 @@ class DirectLinkResultGuardManager(GuardedTransferIntegrityManager):
         if persisted.startswith("source-unlock:"):
             reason = persisted.split(":", 1)[1].strip() or "source unlock failed"
             return True, reason
+        if persisted.startswith("provider-unlock:"):
+            reason = persisted.split(":", 1)[1].strip() or "provider unlock failed"
+            return False, reason
         if persisted.startswith("aria2-dispatch:"):
             reason = persisted.split(":", 1)[1].strip() or "local aria2 dispatch failed"
             return False, reason

@@ -45,6 +45,22 @@ DEFERRED_TORRENT_KIND = "torrent_file"
 MAX_DIRECT_LINKS_PER_BATCH = 100
 
 
+def _direct_link_unlock_failure_prefix(error: Exception) -> str:
+    """Distinguish source-specific failures from provider/systemic failures."""
+    code = str(getattr(error, "code", "") or "").strip().upper()
+    if code.startswith("LINK_"):
+        return "source-unlock"
+    text = str(error or "").casefold()
+    source_markers = (
+        "delayed link generation failed",
+        "returned no download link or delayed generation id",
+        "streaming selection instead of a direct download link",
+    )
+    if any(marker in text for marker in source_markers):
+        return "source-unlock"
+    return "provider-unlock"
+
+
 class TransientAllDebridStateError(Exception):
     """Raised when AllDebrid is temporarily inconsistent but not actually failed."""
 
@@ -515,6 +531,9 @@ class TorrentManager:
             # replaces the prior file at the requested path.
             "allow-overwrite": "true",
             "auto-file-renaming": "false",
+            # The application validates the initial public destination. Do not
+            # let aria2 silently cross that boundary through an HTTP redirect.
+            "max-http-redirection": "0",
             "split": str(max(1, int(getattr(cfg, "aria2_split", 1) or 1))),
             "min-split-size": str(
                 getattr(cfg, "aria2_min_split_size", "10M") or "10M"
@@ -3530,7 +3549,7 @@ class TorrentManager:
                             row["file_id"],
                             "error",
                             row["local_path"],
-                            reason=f"source-unlock: {error_text}",
+                            reason=f"{_direct_link_unlock_failure_prefix(error)}: {error_text}",
                         )
                     elif (
                         provider_code == "LINK_HOST_NOT_SUPPORTED"

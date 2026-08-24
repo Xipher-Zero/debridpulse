@@ -284,7 +284,8 @@ def test_failover_schema_and_dispatch_contract_are_persisted():
     assert '("mirror_state", "TEXT DEFAULT \'\'")' in db_source
     assert "mirror_state='standby'" in dispatch_source
     assert "alternates retained as automatic failover standbys" in dispatch_source
-    assert 'reason=f"source-unlock: {error_text}"' in manager_source
+    assert 'reason=f"{_direct_link_unlock_failure_prefix(error)}: {error_text}"' in manager_source
+    assert 'return "provider-unlock"' in manager_source
     assert "Failover source no longer matches the validated mirror artifact" in manager_source
     assert "_promote_direct_link_mirror_failover" in result_source
     assert "mirror_state='exhausted'" in result_source

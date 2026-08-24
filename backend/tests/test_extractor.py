@@ -27,9 +27,9 @@ from services.extractor import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_zip(path: Path, content: bytes = b"hello") -> None:
+def make_zip(path: Path, content: bytes = b"hello", member: str = "file.txt") -> None:
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("file.txt", content)
+        zf.writestr(member, content)
 
 
 def make_tar_gz(path: Path, content: bytes = b"hello") -> None:
@@ -286,8 +286,8 @@ async def test_extract_single_gz(tmp_path):
 
 @pytest.mark.asyncio
 async def test_extract_folder_multiple(tmp_path):
-    make_zip(tmp_path / "a.zip", b"aaa")
-    make_zip(tmp_path / "b.zip", b"bbb")
+    make_zip(tmp_path / "a.zip", b"aaa", member="a.txt")
+    make_zip(tmp_path / "b.zip", b"bbb", member="b.txt")
     extractor = Extractor(max_concurrent=2)
     results = await extractor.extract_folder(tmp_path, delete_after=True)
     assert len(results) == 2
@@ -295,8 +295,8 @@ async def test_extract_folder_multiple(tmp_path):
     # Both archives deleted
     assert not (tmp_path / "a.zip").exists()
     assert not (tmp_path / "b.zip").exists()
-    # Extracted file present (both wrote file.txt into tmp_path)
-    assert (tmp_path / "file.txt").exists()
+    assert (tmp_path / "a.txt").read_bytes() == b"aaa"
+    assert (tmp_path / "b.txt").read_bytes() == b"bbb"
 
 
 @pytest.mark.asyncio
@@ -315,7 +315,11 @@ async def test_extract_folder_no_archives(tmp_path):
 async def test_concurrency_semaphore_respected(tmp_path):
     """Extractor with max_concurrent=1 extracts all archives (serially limited by sem)."""
     for i in range(3):
-        make_zip(tmp_path / f"archive{i}.zip", f"content{i}".encode())
+        make_zip(
+            tmp_path / f"archive{i}.zip",
+            f"content{i}".encode(),
+            member=f"file{i}.txt",
+        )
     extractor = Extractor(max_concurrent=1)
     results = await extractor.extract_folder(tmp_path, delete_after=True)
     assert len(results) == 3
@@ -326,7 +330,11 @@ async def test_concurrency_semaphore_respected(tmp_path):
 async def test_concurrency_parallel(tmp_path):
     """Tasks are created with asyncio.create_task so they run concurrently."""
     for i in range(3):
-        make_zip(tmp_path / f"p{i}.zip", f"data{i}".encode())
+        make_zip(
+            tmp_path / f"p{i}.zip",
+            f"data{i}".encode(),
+            member=f"parallel{i}.txt",
+        )
 
     extractor = Extractor(max_concurrent=3)
     results = await extractor.extract_folder(tmp_path, delete_after=False)

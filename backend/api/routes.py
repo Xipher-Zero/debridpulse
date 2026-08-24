@@ -793,7 +793,7 @@ async def torrent_files_preview(torrent_id: int):
         # For torrents already processed, return local download_files
         if row["status"] in ("queued", "downloading", "paused", "completed"):
             files = await db.fetchall(
-                "SELECT id, filename, size_bytes, status, blocked, progress "
+                "SELECT id, filename, size_bytes, status, blocked "
                 "FROM download_files WHERE torrent_id=? AND blocked=0 ORDER BY id",
                 (torrent_id,),
             )
@@ -832,17 +832,29 @@ async def block_file(torrent_id: int, file_id: int, blocked: bool = True):
     """
     async with get_db() as db:
         row = await db.fetchone(
-            "SELECT id FROM download_files WHERE id=? AND torrent_id=?",
+            "SELECT id, status, download_id, blocked FROM download_files "
+            "WHERE id=? AND torrent_id=?",
             (file_id, torrent_id),
         )
         if not row:
             raise HTTPException(404, "File not found")
+        requested = bool(blocked)
+        current = bool(row.get("blocked"))
+        if requested == current:
+            return {"ok": True, "file_id": file_id, "blocked": requested}
+        status = str(row.get("status") or "").strip().lower()
+        download_id = str(row.get("download_id") or "").strip()
+        if download_id or status not in {"pending", "paused", "blocked", "unlocking"}:
+            raise HTTPException(
+                409,
+                "File selection can only change before physical aria2 dispatch",
+            )
         await db.execute(
             "UPDATE download_files SET blocked=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (1 if blocked else 0, file_id),
+            (1 if requested else 0, file_id),
         )
         await db.commit()
-    return {"ok": True, "file_id": file_id, "blocked": blocked}
+    return {"ok": True, "file_id": file_id, "blocked": requested}
 
 
 @router.get("/torrents/{torrent_id}")

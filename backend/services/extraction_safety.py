@@ -227,13 +227,20 @@ def _ensure_safe_destination(root: Path, target: Path) -> None:
             raise ValueError(f"Extraction target traverses symlink: {current!s}")
 
 
-def _merge_staged_tree(stage: Path, dest: Path) -> None:
+def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
+    """Commit one validated staged tree without overwriting existing files."""
     dest.mkdir(parents=True, exist_ok=True)
     root = dest.resolve()
     entries = sorted(
         stage.rglob("*"),
         key=lambda p: (len(p.relative_to(stage).parts), 0 if p.is_dir() else 1),
     )
+    directory_targets: list[Path] = []
+    file_moves: list[tuple[Path, Path]] = []
+
+    # Preflight the entire commit before moving a single file. Existing
+    # directories may be shared, but any existing file target is outside this
+    # extraction operation's ownership and therefore makes the commit fail.
     for source in entries:
         relative = source.relative_to(stage)
         target = root.joinpath(*relative.parts)
@@ -241,21 +248,42 @@ def _merge_staged_tree(stage: Path, dest: Path) -> None:
         if source.is_dir():
             if target.is_symlink() or (target.exists() and not target.is_dir()):
                 raise ValueError(f"Extraction directory collides with unsafe target: {target!s}")
-            target.mkdir(parents=True, exist_ok=True)
+            directory_targets.append(target)
             continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _ensure_safe_destination(root, target)
-        if target.is_symlink() or (target.exists() and not target.is_file()):
-            raise ValueError(f"Extraction file collides with unsafe target: {target!s}")
-        os.replace(source, target)
+        if target.exists() or target.is_symlink():
+            raise ValueError(f"Extraction would overwrite existing file: {target!s}")
+        file_moves.append((source, target))
+
+    created_dirs: list[Path] = []
+    committed: list[Path] = []
+    try:
+        for target in directory_targets:
+            if not target.exists():
+                target.mkdir(parents=True, exist_ok=False)
+                created_dirs.append(target)
+        for source, target in file_moves:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _ensure_safe_destination(root, target)
+            os.replace(source, target)
+            committed.append(target)
+    except Exception:
+        for target in reversed(committed):
+            target.unlink(missing_ok=True)
+        for directory in sorted(created_dirs, key=lambda p: len(p.parts), reverse=True):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        raise
+    return committed
 
 
 def staged_external_extract(
     archive: Path,
     dest: Path,
     runner: Callable[[Path], None],
-) -> None:
-    """Run an external extractor in isolated staging, validate, then merge."""
+) -> list[Path]:
+    """Run an extractor in isolated staging, validate, then commit safely."""
     dest = dest.resolve()
     dest.mkdir(parents=True, exist_ok=True)
     stage = Path(
@@ -267,6 +295,6 @@ def staged_external_extract(
     try:
         runner(stage)
         validate_extracted_tree(stage, archive)
-        _merge_staged_tree(stage, dest)
+        return _merge_staged_tree(stage, dest)
     finally:
         shutil.rmtree(stage, ignore_errors=True)
