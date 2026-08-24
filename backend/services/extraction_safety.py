@@ -258,13 +258,27 @@ def _merge_staged_tree(stage: Path, dest: Path) -> list[Path]:
     committed: list[Path] = []
     try:
         for target in directory_targets:
-            if not target.exists():
-                target.mkdir(parents=True, exist_ok=False)
+            if target.exists():
+                continue
+            try:
+                # Directory targets are depth-sorted, so their parent has
+                # already been handled. If another extraction creates the same
+                # benign directory concurrently, accept that race only after
+                # re-validating that it is still a real directory.
+                target.mkdir(exist_ok=False)
                 created_dirs.append(target)
+            except FileExistsError:
+                if target.is_symlink() or not target.is_dir():
+                    raise
         for source, target in file_moves:
-            target.parent.mkdir(parents=True, exist_ok=True)
             _ensure_safe_destination(root, target)
-            os.replace(source, target)
+            # Staging is deliberately created under the destination, so source
+            # and target share a filesystem. link() provides an atomic
+            # no-clobber commit: if another extraction creates target after the
+            # preflight, FileExistsError wins instead of overwriting its data.
+            # The staging hard link is removed by the enclosing rmtree only
+            # after the entire merge has succeeded.
+            os.link(source, target, follow_symlinks=False)
             committed.append(target)
     except Exception:
         for target in reversed(committed):

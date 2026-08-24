@@ -101,7 +101,7 @@ async def sampled_public_artifact_fingerprint(
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(
             validated,
-            headers={"Range": f"bytes=0-{sample_bytes - 1}"},
+            headers={"Range": f"bytes=0-{sample_bytes - 1}", "Accept-Encoding": "identity"},
             allow_redirects=False,
         ) as response:
             if 300 <= response.status < 400:
@@ -137,7 +137,7 @@ async def sampled_public_artifact_fingerprint(
         last_start = max(0, total - sample_bytes)
         async with session.get(
             validated,
-            headers={"Range": f"bytes={last_start}-{total - 1}"},
+            headers={"Range": f"bytes={last_start}-{total - 1}", "Accept-Encoding": "identity"},
             allow_redirects=False,
         ) as response:
             if response.status != 206:

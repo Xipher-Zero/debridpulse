@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import sqlite3
 import zipfile
@@ -214,3 +215,31 @@ def test_current_schema_contract_includes_extraction_and_mirror_columns():
     required_files = {name for name, _ in database._SCHEMA_COLUMNS_FILES}
     assert {"extraction_status", "extraction_error"} <= required_torrent
     assert {"mirror_group_id", "mirror_state"} <= required_files
+
+
+@pytest.mark.asyncio
+async def test_concurrent_extractions_cannot_clobber_same_new_target(tmp_path):
+    dest = tmp_path / "download"
+    dest.mkdir()
+    first = dest / "first.zip"
+    second = dest / "second.zip"
+    with zipfile.ZipFile(first, "w") as zf:
+        zf.writestr("shared/payload.txt", "first")
+    with zipfile.ZipFile(second, "w") as zf:
+        zf.writestr("shared/payload.txt", "second")
+
+    extractor = Extractor(max_concurrent=2)
+    results = await asyncio.gather(
+        extractor.extract_archive(first, dest, delete_after=False),
+        extractor.extract_archive(second, dest, delete_after=False),
+    )
+
+    assert sorted(ok for ok, _message in results) == [False, True]
+    assert (dest / "shared" / "payload.txt").read_text() in {"first", "second"}
+    assert first.exists() and second.exists()
+
+
+def test_sample_fingerprints_request_identity_bytes_and_refuse_redirects():
+    source = (Path(__file__).resolve().parents[1] / "services/network_safety.py").read_text()
+    assert source.count('"Accept-Encoding": "identity"') == 2
+    assert source.count("allow_redirects=False") == 2
