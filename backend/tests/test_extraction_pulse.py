@@ -9,4 +9,4 @@ def test_extracting_status_badge_pulses_and_respects_reduced_motion():
     assert ".badge-extracting { animation: pulse 1s ease-in-out infinite; }" in css
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert ".badge-extracting { animation: none; }" in css
-    assert '/style.css?v=14' in html
+    assert '/style.css?v=15' in html
