@@ -45,6 +45,7 @@ jobs:
       - name: Apply RAR5 parser correction
         run: |
           python tools/tmp_apply_rar5_fix.py
+          python tools/tmp_finalize_rar5_fix.py
           git diff --check
 
       - name: Check undefined Python names
@@ -76,8 +77,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm tools/tmp_apply_rar5_fix.py
-          git add backend/services/extractor.py backend/tests/test_extractor.py
+          git rm tools/tmp_apply_rar5_fix.py tools/tmp_finalize_rar5_fix.py
+          git add \
+            backend/services/extractor.py \
+            backend/tests/test_extractor.py \
+            backend/tests/test_security_hardening_v106.py
           git commit -m "Support validated RAR5 extraction"
           git push origin HEAD:staging/v1.0.6-mirror-hotfix
 
