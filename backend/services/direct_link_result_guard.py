@@ -13,22 +13,125 @@ without hiding source outcomes from the UI.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextvars import ContextVar
 from pathlib import Path
 
 from core.config import get_settings
 from db.database import get_db
 from services.aria2_runtime import is_builtin_mode
-from services.manager_v2 import DIRECT_LINK_SOURCE
+from services.manager_v2 import DIRECT_LINK_SOURCE, safe_name
 from services.transfer_runtime_guard import GuardedTransferIntegrityManager
 
 
 logger = logging.getLogger("debridpulse.direct_link_result_guard")
 _FALSE_ARIA2_FAILURE = "One or more aria2 transfers failed"
+_ACTIVE_DIRECT_LINK_PATHS: ContextVar[frozenset[str]] = ContextVar(
+    "debridpulse_active_direct_link_paths",
+    default=frozenset(),
+)
+_BATCH_DIRECT_LINK_PATHS: ContextVar[set[str] | None] = ContextVar(
+    "debridpulse_batch_direct_link_paths",
+    default=None,
+)
 
 
 class DirectLinkResultGuardManager(GuardedTransferIntegrityManager):
     """Keep provider-source outcomes out of physical aria2 accounting."""
+
+    def __init__(self):
+        super().__init__()
+        # Filename assignment is a very short logical critical section relative
+        # to an entire transfer lifetime, but the inherited preparation routine
+        # unlocks and assigns names in one operation. Serializing direct-link
+        # preparation prevents two simultaneous batches from claiming the same
+        # absent pathname before either has persisted its child rows.
+        self._direct_link_path_planning_lock = asyncio.Lock()
+
+    async def _prepare_direct_link_collection(
+        self, torrent_id: int, links: list[str]
+    ) -> None:
+        """Plan direct-link paths from operational occupancy, never history.
+
+        The legacy materializer seeds its ``reserved`` set from every non-deleted
+        transfer.  Completed/error history is useful to the operator but is not
+        an active filesystem claim.  Snapshot only non-terminal local paths here
+        and give the allocator a separate same-batch reservation set.
+        """
+        torrent_id = int(torrent_id)
+        async with self._direct_link_path_planning_lock:
+            async with get_db() as db:
+                rows = await db.fetchall(
+                    """SELECT DISTINCT f.local_path
+                         FROM download_files f
+                         JOIN torrents t ON t.id=f.torrent_id
+                        WHERE t.status NOT IN ('completed','deleted','error')
+                          AND t.id!=?
+                          AND f.local_path IS NOT NULL
+                          AND f.local_path!=''""",
+                    (torrent_id,),
+                )
+            active_paths = frozenset(
+                str(row.get("local_path") or "").strip().casefold()
+                for row in rows
+                if str(row.get("local_path") or "").strip()
+            )
+            active_token = _ACTIVE_DIRECT_LINK_PATHS.set(active_paths)
+            batch_token = _BATCH_DIRECT_LINK_PATHS.set(set())
+            try:
+                return await super()._prepare_direct_link_collection(
+                    torrent_id, links
+                )
+            finally:
+                _BATCH_DIRECT_LINK_PATHS.reset(batch_token)
+                _ACTIVE_DIRECT_LINK_PATHS.reset(active_token)
+
+    def _unique_direct_link_path(
+        self,
+        root: Path,
+        filename: str,
+        reserved: set[str],
+        *,
+        reuse_existing: bool = False,
+    ) -> Path:
+        """Choose a target from actual disk and live ownership state.
+
+        ``reuse_existing`` is intentionally ignored.  A real file on disk is an
+        occupancy fact and must never be silently overwritten because historical
+        metadata says the source was once deleted.  During authoritative batch
+        planning, completed/error/deleted DB history is ignored; only paths owned
+        by non-terminal transfers and names already assigned in this batch count.
+        Outside that planning context, retain the caller-supplied reservation set
+        for compatibility with focused allocator callers/tests.
+        """
+        del reuse_existing
+        candidate = root / safe_name(filename)
+        stem = candidate.stem or "download"
+        suffix = candidate.suffix
+        counter = 2
+
+        active_paths = _ACTIVE_DIRECT_LINK_PATHS.get()
+        batch_paths = _BATCH_DIRECT_LINK_PATHS.get()
+        effective_reserved = (
+            set(reserved)
+            if batch_paths is None
+            else set(active_paths) | set(batch_paths)
+        )
+
+        while (
+            str(candidate).casefold() in effective_reserved
+            or candidate.exists()
+        ):
+            candidate = root / f"{stem} ({counter}){suffix}"
+            counter += 1
+
+        normalized = str(candidate).casefold()
+        if batch_paths is not None:
+            batch_paths.add(normalized)
+        else:
+            reserved.add(normalized)
+        return candidate
 
     async def _normalize_direct_link_source_outcomes(
         self, torrent_id: int | None = None
