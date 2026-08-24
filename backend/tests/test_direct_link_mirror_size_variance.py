@@ -29,13 +29,15 @@ def test_real_world_megaup_metadata_variance_collapses_with_exact_mirror():
     assert {primary["file_id"] for _duplicate, primary in plan} == {1}
 
 
-def test_size_variance_over_two_mib_is_not_collapsed_even_when_relative_delta_is_small():
+def test_size_variance_over_two_mib_can_collapse_when_relative_delta_is_small():
     rows = [
         _row(1, "1fichier.com", 10_000_000_000),
         _row(2, "rapidgator.net", 10_003_000_000),
     ]
 
-    assert plan_direct_link_mirror_suppression(rows) == []
+    plan = plan_direct_link_mirror_suppression(rows)
+
+    assert [duplicate["file_id"] for duplicate, _primary in plan] == [2]
 
 
 def test_size_variance_over_point_one_percent_is_not_collapsed_even_when_absolute_delta_is_small():
