@@ -135,3 +135,63 @@ def test_extraction_state_is_persisted_and_operator_visible():
     assert "extracting_count" in routes_source
     assert "extracting:'📦 Extracting'" in app_source
     assert "t.extraction_status" in app_source
+
+
+@pytest.mark.asyncio
+async def test_extraction_events_form_durable_operator_audit(tmp_path, monkeypatch):
+    db_path = await _prepare_db(tmp_path, monkeypatch)
+    archive = tmp_path / "payload.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("payload.txt", b"payload")
+    torrent_id = _insert_completed(db_path, archive)
+    monkeypatch.setattr(extraction_service, "get_settings", lambda: _settings())
+    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
+
+    await ExtractionService().extract_completed_transfer(torrent_id)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        events = [
+            row[0]
+            for row in conn.execute(
+                "SELECT message FROM events WHERE torrent_id=? ORDER BY id",
+                (torrent_id,),
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+    assert "Auto-extract: Attempted · 1 archive(s) detected" in events
+    assert "Extraction status: Extracting" in events
+    assert "Extraction status: Completed · 1/1 archive(s) extracted" in events
+
+
+def test_external_extraction_stages_inside_destination(tmp_path, monkeypatch):
+    from services.extraction_safety import staged_external_extract
+
+    archive = tmp_path / "payload.rar"
+    archive.write_bytes(b"archive")
+    dest = tmp_path / "download"
+    dest.mkdir()
+    observed = {}
+
+    def runner(stage):
+        observed["stage"] = Path(stage)
+        (Path(stage) / "payload.txt").write_text("ok")
+
+    monkeypatch.setattr(
+        "services.extraction_safety.validate_extracted_tree",
+        lambda stage, archive: None,
+    )
+    staged_external_extract(archive, dest, runner)
+
+    assert observed["stage"].parent == dest.resolve()
+    assert (dest / "payload.txt").read_text() == "ok"
+
+
+def test_frontend_surfaces_extraction_failure_toast():
+    root = Path(__file__).resolve().parents[2]
+    app_source = (root / "frontend/static/app.js").read_text()
+    assert "patchExtractionTransferEvent" in app_source
+    assert "Extraction failed:" in app_source
+    assert "extraction_error" in app_source

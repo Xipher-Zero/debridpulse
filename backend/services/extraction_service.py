@@ -19,6 +19,7 @@ class ExtractionService:
         torrent_id: int,
         name: str,
         extraction_status: str,
+        extraction_error: str | None = None,
     ) -> None:
         try:
             await publish(
@@ -28,6 +29,7 @@ class ExtractionService:
                     "status": "completed",
                     "name": str(name or ""),
                     "extraction_status": extraction_status,
+                    "extraction_error": extraction_error,
                 },
             )
             await publish("stats_changed", {})
@@ -64,6 +66,19 @@ class ExtractionService:
             [row.get("local_path") for row in rows if row.get("local_path")]
         )
         if not archives:
+            async with get_db() as db:
+                await db.execute(
+                    """UPDATE torrents
+                       SET extraction_status='skipped', extraction_error=NULL,
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND status='completed'""",
+                    (torrent_id,),
+                )
+                await db.execute(
+                    "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
+                    (torrent_id, "Auto-extract: Not attempted · no supported archive detected"),
+                )
+                await db.commit()
             return {"attempted": False, "reason": "no-archives"}
 
         name = str(
@@ -81,7 +96,14 @@ class ExtractionService:
             )
             await db.execute(
                 "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
-                (torrent_id, f"Auto-extract started for {len(archives)} archive(s)"),
+                (
+                    torrent_id,
+                    f"Auto-extract: Attempted · {len(archives)} archive(s) detected",
+                ),
+            )
+            await db.execute(
+                "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
+                (torrent_id, "Extraction status: Extracting"),
             )
             await db.commit()
 
@@ -114,13 +136,15 @@ class ExtractionService:
             final_state = "error"
             event_level = "error"
             event_message = (
-                f"Auto-extract failed for {len(failures)} of {len(archives)} archive(s): {detail}"
+                f"Extraction status: Failed · {len(failures)}/{len(archives)} archive(s) failed · {detail}"
             )[:1200]
         else:
             detail = ""
             final_state = "completed"
             event_level = "info"
-            event_message = f"Auto-extract completed for {len(successes)} archive(s)"
+            event_message = (
+                f"Extraction status: Completed · {len(successes)}/{len(archives)} archive(s) extracted"
+            )
 
         async with get_db() as db:
             await db.execute(
@@ -136,7 +160,12 @@ class ExtractionService:
             )
             await db.commit()
 
-        await self._publish_state(torrent_id, name, final_state)
+        await self._publish_state(
+            torrent_id,
+            name,
+            final_state,
+            detail or None,
+        )
 
         if bool(getattr(cfg, "discord_notify_extract", False)):
             notify = NotificationService(

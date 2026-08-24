@@ -404,6 +404,38 @@ function progress(pct, status) {
           <span class="prog-pct">${label}</span>`;
 }
 
+function patchExtractionTransferEvent(data) {
+  const id = Number(data?.id ?? data?.torrent_id);
+  const extractionStatus = String(data?.extraction_status || '').trim();
+
+  if (!Number.isFinite(id) || !extractionStatus) {
+    return false;
+  }
+
+  let displayStatus = 'completed';
+  if (extractionStatus === 'extracting') {
+    displayStatus = 'extracting';
+  } else if (extractionStatus === 'error') {
+    displayStatus = 'completed_with_errors';
+  }
+
+  document
+    .querySelectorAll(`tr[data-torrent-id="${id}"]`)
+    .forEach(row => {
+      const statusCell = row.querySelector('[data-role="transfer-status"]');
+      if (statusCell) statusCell.innerHTML = badge(displayStatus);
+    });
+
+  if (extractionStatus === 'error') {
+    const reason = sanitizeErrorMsg(
+      data?.extraction_error || 'Archive extraction failed'
+    );
+    toast(`Extraction failed: ${reason}`, 'error');
+  }
+
+  return true;
+}
+
 function patchProgressOnlyTransferEvent(data) {
   const updates = Array.isArray(data?.items) ? data.items : [];
 
@@ -3633,10 +3665,15 @@ async function triggerStatsSnapshot(button) {
               payload = JSON.parse(e.data || '{}');
             } catch (_) {}
 
-            const patchedProgress =
-              patchProgressOnlyTransferEvent(payload);
+            const patchedExtraction =
+              patchExtractionTransferEvent(payload);
 
-            if (!patchedProgress) {
+            const patchedProgress =
+              patchedExtraction
+                ? false
+                : patchProgressOnlyTransferEvent(payload);
+
+            if (!patchedExtraction && !patchedProgress) {
               if (
                 document
                   .getElementById('view-torrents')
@@ -3659,6 +3696,14 @@ async function triggerStatsSnapshot(button) {
                 ()=>{
                   progressStatsTimer = null;
                   loadStats().catch(()=>{});
+                  if (patchedExtraction && payload.extraction_status !== 'extracting') {
+                    if (document.getElementById('view-torrents')?.classList.contains('active')) {
+                      loadTorrents().catch(()=>{});
+                    }
+                    if (document.getElementById('view-dashboard')?.classList.contains('active')) {
+                      loadRecent().catch(()=>{});
+                    }
+                  }
                 },
                 1500
               );

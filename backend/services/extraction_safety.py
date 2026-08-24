@@ -261,7 +261,7 @@ def staged_external_extract(
     stage = Path(
         tempfile.mkdtemp(
             prefix=".debridpulse-extract-",
-            dir=str(dest.parent),
+            dir=str(dest),
         )
     )
     try:
