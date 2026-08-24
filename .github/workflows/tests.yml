@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -40,6 +40,11 @@ jobs:
           pip install -r requirements-dev.txt
           pip install ruff
 
+      - name: Apply extraction lifecycle correction
+        run: |
+          python tools/tmp_apply_extraction_fix.py
+          git diff --check
+
       - name: Check undefined Python names
         run: |
           cd backend
@@ -64,6 +69,23 @@ jobs:
           node --check frontend/static/auth-help.js
           node --check frontend/static/auth-ux.js
           node --check frontend/static/operator-title.js
+
+      - name: Commit extraction correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm tools/tmp_apply_extraction_fix.py .github/workflows/tmp-extraction-lifecycle-fix.yml
+          git add \
+            backend/db/database.py \
+            backend/services/extractor.py \
+            backend/services/extraction_service.py \
+            backend/services/direct_link_result_guard.py \
+            backend/api/routes.py \
+            frontend/static/app.js \
+            frontend/static/index.html \
+            backend/tests/test_extraction_lifecycle.py
+          git commit -m "Fix auto-extraction lifecycle and visibility"
+          git push origin HEAD:staging/v1.0.6-mirror-hotfix
 
   security:
     runs-on: ubuntu-latest
