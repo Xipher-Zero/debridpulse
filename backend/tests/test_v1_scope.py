@@ -413,3 +413,7 @@ def test_inherited_file_preview_and_block_routes_are_hardened():
     assert "download_id" in block_route
     assert "status not in" in block_route
     assert "409" in block_route
+
+
+def test_removed_postgres_migration_documentation_is_not_shipped():
+    assert not (REPO_ROOT / "docs/migration.md").exists()

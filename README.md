@@ -152,7 +152,7 @@ Fork-owned images are published to GHCR.
 Versioned V1 images use the release tag:
 
 ```text
-ghcr.io/xipher-zero/debridpulse:v1.0.6
+ghcr.io/xipher-zero/debridpulse:v1.0.10
 ```
 
 Example:
@@ -170,7 +170,7 @@ docker run -d \
   -v /path/to/debridpulse/config:/app/config \
   -v /path/to/debridpulse/data:/app/data \
   -v /path/to/downloads:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.6
+  ghcr.io/xipher-zero/debridpulse:v1.0.10
 ```
 
 Adjust the paths and UID/GID for your system.
@@ -218,7 +218,7 @@ Configure:
 
 ### Extract
 
-Configure optional archive extraction. DebridPulse enforces per-archive file-count, expanded-size, and compression-ratio limits. External 7z/RAR extraction is performed in an isolated staging directory and validated before files are merged into the download tree.
+Configure optional archive extraction. DebridPulse enforces per-archive file-count, expanded-size, and compression-ratio limits. Every supported archive format is extracted into an isolated staging directory, validated, and committed to the download tree with no-clobber semantics.
 
 ### Notifications
 
