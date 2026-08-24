@@ -6,13 +6,14 @@ on:
       - 'staging/v1.0.6-mirror-hotfix'
     paths:
       - 'tools/tmp_apply_full_audit_remediation.py'
+      - 'tools/tmp_fix_full_audit_helper.py'
       - '.github/workflows/tmp-full-audit-remediation.yml'
   pull_request:
     branches:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   remediate:
@@ -36,7 +37,9 @@ jobs:
             backend/requirements-dev.txt
 
       - name: Apply audited remediation
-        run: python tools/tmp_apply_full_audit_remediation.py
+        run: |
+          python tools/tmp_fix_full_audit_helper.py
+          python tools/tmp_apply_full_audit_remediation.py
 
       - name: Install test dependencies
         run: |
@@ -52,6 +55,10 @@ jobs:
           cd ..
           node --check frontend/static/app.js
           node --check frontend/static/auth.js
+          node --check frontend/static/auth-settings.js
+          node --check frontend/static/auth-help.js
+          node --check frontend/static/auth-ux.js
+          node --check frontend/static/operator-title.js
           git diff --check
 
       - name: Run full regression suite
@@ -61,8 +68,6 @@ jobs:
 
       - name: Commit qualified remediation
         if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
