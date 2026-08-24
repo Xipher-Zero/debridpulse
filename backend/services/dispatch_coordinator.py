@@ -8,7 +8,6 @@ from urllib.parse import urlsplit
 
 from db.database import get_db
 from services.manager_v2 import DIRECT_LINK_SOURCE
-from services.network_safety import sampled_public_artifact_fingerprint
 from services.transfer_control import TransferControlCoordinator
 
 
@@ -71,9 +70,9 @@ def _mirror_sizes_match(left: int, right: int) -> bool:
     """Return True only for tightly equivalent non-zero provider sizes.
 
     Real hosters may report slightly different metadata for an identical file.
-    The relative <=0.1% bound is authoritative and scales with file size. A strict absolute <=512 MiB ceiling prevents the relative tolerance from
-    becoming permissive on very large same-name payloads. Near-size candidates
-    are additionally content-sampled before they can be collapsed.
+    The relative <=0.1% bound is authoritative and scales with file size. A
+    strict absolute <=512 MiB ceiling prevents the relative tolerance from
+    becoming permissive on very large same-name payloads.
     """
     try:
         left = int(left)
@@ -189,57 +188,6 @@ async def collapse_direct_link_mirrors() -> int:
         if not plan:
             return 0
 
-        # Exact byte-size matches retain the established conservative provider
-        # metadata identity. The tolerance path is stronger: small hoster size
-        # variance is accepted only when bounded first+last content samples from
-        # both generated capabilities produce the same fingerprint. If either
-        # source cannot be sampled safely, keep both physical downloads.
-        fingerprint_cache: dict[int, str | None] = {}
-
-        async def _fingerprint(row: dict) -> str | None:
-            file_id = int(row.get("file_id") or 0)
-            if file_id in fingerprint_cache:
-                return fingerprint_cache[file_id]
-            url = str(row.get("download_url") or "").strip()
-            if not url:
-                fingerprint_cache[file_id] = None
-                return None
-            try:
-                value = await sampled_public_artifact_fingerprint(url)
-            except Exception as exc:
-                logger.info(
-                    "near-size mirror verification unavailable for file %s: %s",
-                    file_id,
-                    exc,
-                )
-                value = None
-            fingerprint_cache[file_id] = value
-            return value
-
-        verified_plan: list[tuple[dict, dict]] = []
-        for duplicate, primary in plan:
-            primary_size = int(primary.get("size_bytes") or 0)
-            duplicate_size = int(duplicate.get("size_bytes") or 0)
-            if primary_size == duplicate_size:
-                verified_plan.append((duplicate, primary))
-                continue
-            primary_fp, duplicate_fp = await asyncio.gather(
-                _fingerprint(primary), _fingerprint(duplicate)
-            )
-            if primary_fp and duplicate_fp and primary_fp == duplicate_fp:
-                duplicate["_mirror_sample_verified"] = True
-                verified_plan.append((duplicate, primary))
-            else:
-                logger.info(
-                    "near-size mirror retained independently: transfer=%s primary=%s alternate=%s",
-                    duplicate.get("torrent_id"),
-                    primary.get("file_id"),
-                    duplicate.get("file_id"),
-                )
-        plan = verified_plan
-        if not plan:
-            return 0
-
         classified_by_parent: dict[int, int] = defaultdict(int)
         groups_by_parent: dict[int, set[tuple[str, int]]] = defaultdict(set)
         for duplicate, primary in plan:
@@ -251,9 +199,9 @@ async def collapse_direct_link_mirrors() -> int:
                 duplicate_size,
             )
             evidence = (
-                "sample fingerprint matched"
-                if duplicate.get("_mirror_sample_verified")
-                else "exact provider size matched"
+                "exact provider size matched"
+                if primary_size == duplicate_size
+                else "size tolerance matched"
             )
             reason = (
                 f"Duplicate mirror of {primary_host}; matching resolved filename; "
