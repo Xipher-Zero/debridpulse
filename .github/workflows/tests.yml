@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -43,6 +45,7 @@ jobs:
       - name: Apply extraction lifecycle correction
         run: |
           python tools/tmp_apply_extraction_fix.py
+          python tools/tmp_finalize_extraction_fix.py
           git diff --check
 
       - name: Check undefined Python names
@@ -74,7 +77,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm tools/tmp_apply_extraction_fix.py .github/workflows/tmp-extraction-lifecycle-fix.yml
+          git rm \
+            tools/tmp_apply_extraction_fix.py \
+            tools/tmp_finalize_extraction_fix.py \
+            .github/workflows/tmp-extraction-lifecycle-fix.yml
           git add \
             backend/db/database.py \
             backend/services/extractor.py \
@@ -83,7 +89,10 @@ jobs:
             backend/api/routes.py \
             frontend/static/app.js \
             frontend/static/index.html \
-            backend/tests/test_extraction_lifecycle.py
+            backend/tests/test_extraction_lifecycle.py \
+            backend/tests/test_dashboard_startup_surface.py \
+            backend/tests/test_operator_title_state.py \
+            backend/tests/test_v1_scope.py
           git commit -m "Fix auto-extraction lifecycle and visibility"
           git push origin HEAD:staging/v1.0.6-mirror-hotfix
 
@@ -96,6 +105,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
