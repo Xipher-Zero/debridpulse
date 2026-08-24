@@ -24,6 +24,6 @@ def test_dashboard_startup_debug_surface_is_removed_without_changing_retry_logic
     # The cleanup extension executes immediately after the core deferred script;
     # the async startup initializer yields on its first settings request, while
     # the second deferred script removes the presentation node.
-    assert index.index('<script src="/app.js?v=12" defer></script>') < index.index(
+    assert index.index('<script src="/app.js?v=13" defer></script>') < index.index(
         '<script src="/operator-title.js?v=1" defer></script>'
     )

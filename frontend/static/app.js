@@ -326,7 +326,7 @@ function renderKvMap(arr, formatter) {
   }).join('')}</div>`;
 }
 function badge(s) {
-  const m = {pending:'⏳ Pending',uploading:'⬆ Uploading',processing:'⚙ Processing',
+  const m = {pending:'⏳ Pending',uploading:'⬆ Uploading',processing:'⚙ Processing',extracting:'📦 Extracting',
     queued:'🕓 Queued',paused:'⏸ Paused',downloading:'⬇ Downloading',ready:'✓ Ready',completed:'✅ Done',
     downloading_with_errors:'⬇ Downloading',
     completed_with_errors:'⚠ Completed with errors',
@@ -343,6 +343,16 @@ function badge(s) {
   return `<span class="badge badge-${cls}">${esc(m[key] || key || 'Unknown')}</span>`;
 }
 function transferDisplayStatus(t) {
+  if (t && String(t.extraction_status || '').trim() === 'extracting') {
+    return 'extracting';
+  }
+  if (
+    t &&
+    t.status === 'completed' &&
+    String(t.extraction_status || '').trim() === 'error'
+  ) {
+    return 'completed_with_errors';
+  }
   if (
     t &&
     t.source === 'direct_link' &&
@@ -667,7 +677,7 @@ async function loadStats() {
       const queuePct = pct(completed, total || 0);
       document.getElementById('s-total').textContent = total;
       document.getElementById('s-completed').textContent = completed;
-      document.getElementById('s-active').textContent = s.active_downloads||0;
+      document.getElementById('s-active').textContent = s.active_operations ?? s.active_downloads ?? 0;
       document.getElementById('s-processing').textContent = s.paused ? 'Paused' : (bs.processing||0)+(bs.uploading||0);
       const errCount = s.error_count ?? bs.error ?? 0;
       document.getElementById('s-error').textContent = errCount;
@@ -680,13 +690,13 @@ async function loadStats() {
         healthEl.textContent = `${queuePct}%`;
         healthEl.style.color = queuePct >= 90 ? 'var(--green)' : queuePct >= 70 ? 'var(--accent)' : 'var(--red)';
       }
-      document.getElementById('i-queue-copy').textContent = `${s.active_downloads||0} active / ${s.queued_downloads||0} queued`;
+      document.getElementById('i-queue-copy').textContent = `${s.active_operations ?? s.active_downloads ?? 0} active / ${s.queued_downloads||0} queued`;
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
       document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
       document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
       document.getElementById('i-avg-duration').textContent = fmtDuration(s.avg_download_duration_seconds);
       document.getElementById('i-avg-size').textContent = s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—';
-      const active = s.active_downloads || 0;
+      const active = s.active_operations ?? s.active_downloads ?? 0;
       const nb = document.getElementById('nb-active');
       if (nb) { nb.textContent = active; nb.style.display = active > 0 ? '' : 'none'; }
       // Topbar aria2 badge: active download count (if aria2 badge visible)
@@ -1399,6 +1409,8 @@ async function showDetail(id) {
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
         ${t.error_message?`<div style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
+        ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
+        ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
       ${t.files&&t.files.length?`
         <div class="sec-label">Files (${t.files.length})</div>

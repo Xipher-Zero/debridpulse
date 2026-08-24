@@ -328,6 +328,14 @@ class DirectLinkResultGuardManager(GuardedTransferIntegrityManager):
 
             return True
 
+    async def _extract_torrent(self, torrent_id: int, torrent_dict: dict) -> None:
+        if self._architecture is not None:
+            await self._architecture.extraction.extract_completed_transfer(
+                int(torrent_id), dict(torrent_dict or {})
+            )
+            return
+        await super()._extract_torrent(torrent_id, torrent_dict)
+
     async def _finalize_aria2_torrent(self, torrent_id: int):
         torrent_id = int(torrent_id)
         await self._normalize_direct_link_source_outcomes(torrent_id)

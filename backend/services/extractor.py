@@ -563,23 +563,34 @@ class Extractor:
         unique_archives = archive_paths_from_downloads(archives)
         if not unique_archives:
             return []
-        scheduled = [archive for archive in unique_archives if archive.exists()]
+        scheduled: List[Path] = []
+        results: List[Tuple[Path, bool, str]] = []
+        for archive in unique_archives:
+            if archive.exists():
+                scheduled.append(archive)
+            else:
+                results.append(
+                    (
+                        archive,
+                        False,
+                        f"Archive path is not accessible to DebridPulse: {archive}",
+                    )
+                )
+
         tasks = [
             asyncio.create_task(
                 self.extract_archive(archive, archive.parent, delete_after=delete_after)
             )
             for archive in scheduled
         ]
-        if not tasks:
-            return []
-        results_raw = await asyncio.gather(*tasks, return_exceptions=True)
-        results: List[Tuple[Path, bool, str]] = []
-        for archive, raw in zip(scheduled, results_raw):
-            if isinstance(raw, Exception):
-                results.append((archive, False, f"Extraction failed for {archive.name}: {raw}"))
-            else:
-                ok, msg = raw
-                results.append((archive, ok, msg))
+        if tasks:
+            results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+            for archive, raw in zip(scheduled, results_raw):
+                if isinstance(raw, Exception):
+                    results.append((archive, False, f"Extraction failed for {archive.name}: {raw}"))
+                else:
+                    ok, msg = raw
+                    results.append((archive, ok, msg))
         return results
 
 

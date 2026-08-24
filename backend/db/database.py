@@ -218,6 +218,8 @@ _SCHEMA_COLUMNS_TORRENTS = [
     ("label", "TEXT DEFAULT ''"),
     ("priority", "INTEGER DEFAULT 0"),
     ("upload_retry_count", "INTEGER DEFAULT 0"),
+    ("extraction_status", "TEXT DEFAULT ''"),
+    ("extraction_error", "TEXT"),
 ]
 
 _SCHEMA_COLUMNS_FILES = [
@@ -259,6 +261,8 @@ async def _init_db_sqlite():
                 label TEXT DEFAULT '',
                 priority INTEGER DEFAULT 0,
                 error_message TEXT,
+                extraction_status TEXT DEFAULT '',
+                extraction_error TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 completed_at DATETIME

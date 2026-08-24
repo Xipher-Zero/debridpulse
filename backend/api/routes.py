@@ -1107,6 +1107,8 @@ async def get_stats():
                        AS total_completed_bytes,
                    SUM(CASE WHEN status IN ('downloading','processing','uploading','paused')
                             THEN 1 ELSE 0 END) AS active_downloads,
+                   SUM(CASE WHEN COALESCE(extraction_status,'')='extracting'
+                            THEN 1 ELSE 0 END) AS extracting_count,
                    SUM(CASE WHEN status IN ('ready','queued') THEN 1 ELSE 0 END)
                        AS queued_downloads,
                    SUM(CASE WHEN status='downloading' THEN 1 ELSE 0 END)
@@ -1114,10 +1116,12 @@ async def get_stats():
                    AVG(CASE WHEN status='downloading' THEN COALESCE(progress, 0)
                             ELSE NULL END) AS operator_active_progress_pct,
                    SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) AS error_count,
-                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed_count,
-                   SUM(CASE WHEN completed_at >= {last_24h_expr} THEN 1 ELSE 0 END)
+                   SUM(CASE WHEN status='completed' AND COALESCE(extraction_status,'')!='extracting' THEN 1 ELSE 0 END) AS completed_count,
+                   SUM(CASE WHEN completed_at >= {last_24h_expr}
+                                AND COALESCE(extraction_status,'')!='extracting' THEN 1 ELSE 0 END)
                        AS completed_last_24h,
-                   SUM(CASE WHEN completed_at >= {last_7d_expr} THEN 1 ELSE 0 END)
+                   SUM(CASE WHEN completed_at >= {last_7d_expr}
+                                AND COALESCE(extraction_status,'')!='extracting' THEN 1 ELSE 0 END)
                        AS completed_last_7d,
                    AVG(CASE
                        WHEN completed_at IS NOT NULL AND created_at IS NOT NULL
@@ -1138,6 +1142,8 @@ async def get_stats():
 
     error_count = int(aggregate.get("error_count") or 0)
     completed_count = int(aggregate.get("completed_count") or 0)
+    active_downloads = int(aggregate.get("active_downloads") or 0)
+    extracting_count = int(aggregate.get("extracting_count") or 0)
     terminal = completed_count + error_count
     success_rate = (
         round(completed_count / terminal * 100, 1)
@@ -1153,7 +1159,9 @@ async def get_stats():
         "total_completed_bytes": int(aggregate.get("total_completed_bytes") or 0),
         "db_type": db_type,
         "total_blocked_files": int(aggregate.get("total_blocked_files") or 0),
-        "active_downloads": int(aggregate.get("active_downloads") or 0),
+        "active_downloads": active_downloads,
+        "active_operations": active_downloads + extracting_count,
+        "extracting_count": extracting_count,
         "queued_downloads": int(aggregate.get("queued_downloads") or 0),
         "operator_active_downloads": operator_active,
         "operator_active_progress_pct": operator_progress,
@@ -1191,8 +1199,11 @@ async def get_stats_detail(period: str = "all"):
     cutoff, period_label, date_fmt, _ = entry
     where_ts   = f"WHERE created_at >= {cutoff}"    if cutoff else ""
     where_done = f"WHERE completed_at >= {cutoff}"   if cutoff else ""
-    where_comp = (f"WHERE status='completed' AND completed_at >= {cutoff}"
-                  if cutoff else "WHERE status='completed'")
+    where_comp = (
+        f"WHERE status='completed' AND COALESCE(extraction_status,'')!='extracting' AND completed_at >= {cutoff}"
+        if cutoff
+        else "WHERE status='completed' AND COALESCE(extraction_status,'')!='extracting'"
+    )
 
     async with get_db() as db:
         # ── Totals (period-filtered) ─────────────────────────────────────────
@@ -1217,7 +1228,7 @@ async def get_stats_detail(period: str = "all"):
 
         partial_row = await db.fetchone(
             "SELECT COUNT(*) as c FROM torrents "
-            "WHERE status IN ('processing','downloading','dispatched','partial')"
+            "WHERE (status IN ('processing','downloading','dispatched','partial') OR COALESCE(extraction_status,'')='extracting')"
             + (f" AND created_at >= {cutoff}" if cutoff else ""))
         totals["partial_total"] = partial_row["c"] if partial_row else 0
 
