@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -24,9 +24,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: staging/v1.0.6-mirror-hotfix
-          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -36,9 +33,6 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements-dev.txt
-
-      - name: Apply release-surface freeze correction
-        run: python tools/tmp_release_surface_freeze.py
 
       - name: Install dependencies
         run: |
@@ -70,16 +64,6 @@ jobs:
           node --check frontend/static/auth-help.js
           node --check frontend/static/auth-ux.js
           node --check frontend/static/operator-title.js
-
-      - name: Commit qualified release surfaces
-        if: github.event_name == 'push'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- README.md index.html docker-compose.yml docs/migration.md backend/tests/test_v105_deployment_hardening.py backend/tests/test_v1_scope.py
-          git diff --cached --quiet && exit 0
-          git commit -m 'Align v1.0.10 release and V1 scope surfaces'
-          git push origin HEAD:staging/v1.0.6-mirror-hotfix
 
   security:
     runs-on: ubuntu-latest
