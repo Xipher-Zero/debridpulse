@@ -1121,6 +1121,7 @@ class TorrentManager:
             cfg = get_settings()
             output_root = Path(cfg.download_folder)
             reusable_source_urls: Set[str] = set()
+            protected_live_paths: Set[str] = set()
 
             async with get_db() as db:
                 current = await db.fetchone(
@@ -1128,6 +1129,21 @@ class TorrentManager:
                 )
                 if not current or current["status"] in {"completed", "deleted"}:
                     return
+                live_path_rows = await db.fetchall(
+                    """SELECT DISTINCT f.local_path
+                         FROM download_files f
+                         JOIN torrents t ON t.id=f.torrent_id
+                        WHERE t.status!='deleted'
+                          AND t.id!=?
+                          AND f.local_path IS NOT NULL
+                          AND f.local_path!=''""",
+                    (torrent_id,),
+                )
+                protected_live_paths = {
+                    str(row["local_path"] or "").strip().lower()
+                    for row in live_path_rows
+                    if str(row["local_path"] or "").strip()
+                }
                 if normalized:
                     placeholders = ",".join("?" for _ in normalized)
                     previous_rows = await db.fetchall(
@@ -1242,7 +1258,10 @@ class TorrentManager:
                         }
 
             results = await asyncio.gather(*[_unlock(row) for row in file_rows])
-            reserved_paths: Set[str] = set()
+            # A deleted transfer releases its old filename, but any non-deleted
+            # transfer still owns its persisted local path. This prevents stale
+            # deleted-source history from bypassing a live filename collision.
+            reserved_paths: Set[str] = set(protected_live_paths)
             succeeded = 0
             failed = 0
             missing = 0
