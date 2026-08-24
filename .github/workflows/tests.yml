@@ -49,6 +49,9 @@ jobs:
           else
             echo "Mirror failover patch already committed"
           fi
+          if [ -f tools/tmp_finalize_mirror_failover.py ]; then
+            python tools/tmp_finalize_mirror_failover.py
+          fi
           git diff --check
 
       - name: Check undefined Python names
@@ -85,12 +88,13 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm tools/tmp_apply_mirror_failover.py
+          git rm tools/tmp_apply_mirror_failover.py tools/tmp_finalize_mirror_failover.py
           git add \
             backend/db/database.py \
             backend/services/dispatch_coordinator.py \
             backend/services/manager_v2.py \
             backend/services/direct_link_result_guard.py \
+            backend/tests/test_direct_link_mirror_dedupe.py \
             backend/tests/test_direct_link_mirror_failover.py
           git commit -m "Add automatic mirror source failover"
           git pull --rebase origin staging/v1.0.6-mirror-hotfix
