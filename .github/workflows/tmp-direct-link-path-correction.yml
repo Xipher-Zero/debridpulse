@@ -1,0 +1,220 @@
+name: Temporary direct-link path correction
+
+on:
+  push:
+    branches:
+      - staging/v1.0.6-mirror-hotfix
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
+
+      - name: Apply asserted correction
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          manager_path = Path("backend/services/manager_v2.py")
+          source = manager_path.read_text()
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          old_function = '''    @staticmethod
+              def _unique_direct_link_path(
+                  root: Path,
+                  filename: str,
+                  reserved: Set[str],
+                  *,
+                  reuse_existing: bool = False,
+              ) -> Path:
+                  """Choose a direct-link target without overwriting unrelated content."""
+                  candidate = root / safe_name(filename)
+                  stem = candidate.stem or "download"
+                  suffix = candidate.suffix
+                  counter = 2
+                  while (
+                      str(candidate).lower() in reserved
+                      or (candidate.exists() and not reuse_existing)
+                  ):
+                      candidate = root / f"{stem} ({counter}){suffix}"
+                      counter += 1
+                  reserved.add(str(candidate).lower())
+                  return candidate
+          '''
+          new_function = '''    @staticmethod
+              def _unique_direct_link_path(
+                  root: Path,
+                  filename: str,
+                  reserved: Set[str],
+              ) -> Path:
+                  """Choose a direct-link target without overwriting unrelated content."""
+                  candidate = root / safe_name(filename)
+                  stem = candidate.stem or "download"
+                  suffix = candidate.suffix
+                  counter = 2
+                  while str(candidate).lower() in reserved or candidate.exists():
+                      candidate = root / f"{stem} ({counter}){suffix}"
+                      counter += 1
+                  reserved.add(str(candidate).lower())
+                  return candidate
+          '''
+          # Dedent the triple-quoted literals back to the source indentation.
+          old_function = old_function.replace("          ", "", 1)
+          new_function = new_function.replace("          ", "", 1)
+          source = replace_once(source, old_function, new_function, "allocator function")
+
+          source = replace_once(
+              source,
+              '            reusable_source_urls: Set[str] = set()\n            protected_live_paths: Set[str] = set()\n',
+              '            protected_live_paths: Set[str] = set()\n',
+              "remove deleted-history reuse set",
+          )
+
+          source = replace_once(
+              source,
+              "                        WHERE t.status!='deleted'\n                          AND t.id!=?\n",
+              "                        WHERE t.status NOT IN ('completed','deleted','error')\n                          AND t.id!=?\n",
+              "active path reservation query",
+          )
+
+          deleted_history_block = '''                if normalized:
+                      placeholders = ",".join("?" for _ in normalized)
+                      previous_rows = await db.fetchall(
+                          f"""SELECT DISTINCT f.source_url
+                                FROM download_files f
+                                JOIN torrents t ON t.id=f.torrent_id
+                               WHERE t.source=? AND t.status='deleted'
+                                 AND f.source_url IN ({placeholders})""",
+                          (DIRECT_LINK_SOURCE, *normalized),
+                      )
+                      reusable_source_urls = {
+                          str(row["source_url"] or "").strip()
+                          for row in previous_rows
+                          if str(row["source_url"] or "").strip()
+                      }
+          '''
+          deleted_history_block = deleted_history_block.replace("          ", "", 1)
+          source = replace_once(source, deleted_history_block, "", "remove deleted-history lookup")
+
+          old_call = '''                    local_path = self._unique_direct_link_path(
+                          output_root,
+                          result["filename"],
+                          reserved_paths,
+                          reuse_existing=(
+                              result["source_url"] in reusable_source_urls
+                          ),
+                      )
+          '''
+          new_call = '''                    local_path = self._unique_direct_link_path(
+                          output_root,
+                          result["filename"],
+                          reserved_paths,
+                      )
+          '''
+          old_call = old_call.replace("          ", "", 1)
+          new_call = new_call.replace("          ", "", 1)
+          source = replace_once(source, old_call, new_call, "allocator call")
+
+          manager_path.write_text(source)
+
+          tests_path = Path("backend/tests/test_direct_links.py")
+          tests = tests_path.read_text()
+          pattern = re.compile(
+              r"    def test_removed_source_can_reuse_its_original_target_path\(self\):.*?\n\n\nclass DelayedAllDebridTests",
+              re.S,
+          )
+          replacement = '''    def test_existing_file_always_reserves_target_path(self):
+                  manager = TorrentManager()
+                  with tempfile.TemporaryDirectory() as temp_dir:
+                      root = Path(temp_dir)
+                      existing = root / "archive.zip"
+                      existing.write_bytes(b"existing payload")
+
+                      selected = manager._unique_direct_link_path(
+                          root, "archive.zip", set()
+                      )
+
+                  self.assertEqual(selected.name, "archive (2).zip")
+
+              def test_active_owner_reserves_target_before_file_exists(self):
+                  manager = TorrentManager()
+                  with tempfile.TemporaryDirectory() as temp_dir:
+                      root = Path(temp_dir)
+                      claimed = root / "archive.zip"
+                      selected = manager._unique_direct_link_path(
+                          root,
+                          "archive.zip",
+                          {str(claimed).lower()},
+                      )
+
+                  self.assertEqual(selected.name, "archive (2).zip")
+
+              def test_unclaimed_absent_target_keeps_original_name(self):
+                  manager = TorrentManager()
+                  with tempfile.TemporaryDirectory() as temp_dir:
+                      root = Path(temp_dir)
+                      selected = manager._unique_direct_link_path(
+                          root, "archive.zip", set()
+                      )
+
+                  self.assertEqual(selected.name, "archive.zip")
+
+              def test_direct_link_preparation_reserves_only_nonterminal_paths(self):
+                  repo_backend = Path(__file__).resolve().parents[1]
+                  manager_source = (repo_backend / "services/manager_v2.py").read_text()
+                  self.assertIn("protected_live_paths: Set[str] = set()", manager_source)
+                  self.assertIn(
+                      "WHERE t.status NOT IN ('completed','deleted','error')",
+                      manager_source,
+                  )
+                  self.assertIn("AND t.id!=?", manager_source)
+                  self.assertIn(
+                      "reserved_paths: Set[str] = set(protected_live_paths)",
+                      manager_source,
+                  )
+                  self.assertNotIn("reusable_source_urls", manager_source)
+                  self.assertNotIn("reuse_existing", manager_source)
+
+
+          class DelayedAllDebridTests'''
+          replacement = replacement.replace("          ", "", 1)
+          tests, count = pattern.subn(replacement, tests, count=1)
+          if count != 1:
+              raise SystemExit(f"direct-link allocation tests: expected one block, found {count}")
+          tests_path.write_text(tests)
+
+      - name: Validate syntax and patch shape
+        run: |
+          python -m py_compile backend/services/manager_v2.py backend/tests/test_direct_links.py
+          git diff --check
+          grep -q "WHERE t.status NOT IN ('completed','deleted','error')" backend/services/manager_v2.py
+          ! grep -q "reuse_existing" backend/services/manager_v2.py
+          ! grep -q "reusable_source_urls" backend/services/manager_v2.py
+
+      - name: Commit correction
+        run: |
+          if git diff --quiet; then
+            echo "No correction required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/services/manager_v2.py backend/tests/test_direct_links.py
+          git commit -m "Fix direct-link filename reservation semantics"
+          git push origin HEAD:staging/v1.0.6-mirror-hotfix
