@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import pytest
 
 import services.dispatch_coordinator as dispatch_module
 from services.dispatch_coordinator import (
+    MirrorAwareTransferControlCoordinator,
     collapse_direct_link_mirrors,
     plan_direct_link_mirror_suppression,
 )
@@ -189,6 +191,70 @@ async def test_collapse_removes_duplicate_before_physical_dispatch(monkeypatch):
     assert len(db.events) == 1
     assert "Suppressed 1 cross-hoster mirror link" in db.events[0][1]
     assert db.committed is True
+
+
+class _ManagerStub:
+    async def _engine_dispatch_pending_aria2_queue(self, *_args, **_kwargs):
+        return 0
+
+    def _engine_schedule_ready_parent_download(self, *_args, **_kwargs):
+        return False
+
+    async def _engine_start_download(self, *_args, **_kwargs):
+        return None
+
+    async def _engine_download(self, *_args, **_kwargs):
+        return None
+
+    async def _engine_reset_torrent_for_redownload(self, *_args, **_kwargs):
+        return None
+
+    async def _engine_update_aria2_parent_progress(self, *_args, **_kwargs):
+        return None
+
+    async def _engine_sync_download_clients(self, *_args, **_kwargs):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_queue_kicks_cannot_dispatch_between_collapse_passes(monkeypatch):
+    coordinator = MirrorAwareTransferControlCoordinator(_ManagerStub())
+    timeline = []
+    first_dispatch_entered = asyncio.Event()
+    release_first_dispatch = asyncio.Event()
+    base_calls = 0
+
+    async def fake_collapse():
+        timeline.append("collapse")
+        return 0
+
+    async def fake_base_dispatch(_self, _snapshot=None):
+        nonlocal base_calls
+        base_calls += 1
+        timeline.append("dispatch")
+        if base_calls == 1:
+            first_dispatch_entered.set()
+            await release_first_dispatch.wait()
+        return base_calls
+
+    monkeypatch.setattr(dispatch_module, "collapse_direct_link_mirrors", fake_collapse)
+    monkeypatch.setattr(
+        dispatch_module.TransferControlCoordinator,
+        "dispatch_queue",
+        fake_base_dispatch,
+    )
+
+    first = asyncio.create_task(coordinator.dispatch_queue(["first"]))
+    await first_dispatch_entered.wait()
+    second = asyncio.create_task(coordinator.dispatch_queue(["second"]))
+    await asyncio.sleep(0)
+
+    assert timeline == ["collapse", "dispatch"]
+
+    release_first_dispatch.set()
+    await asyncio.gather(first, second)
+
+    assert timeline == ["collapse", "dispatch", "collapse", "dispatch"]
 
 
 def test_transfer_control_service_uses_mirror_aware_authoritative_queue():
