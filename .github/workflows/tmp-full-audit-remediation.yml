@@ -67,3 +67,5 @@ jobs:
           fi
           git commit -m 'Remediate full promotion audit findings'
           git push origin HEAD:staging/v1.0.6-mirror-hotfix
+
+# retrigger after workflow registration
