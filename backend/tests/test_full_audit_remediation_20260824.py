@@ -6,7 +6,6 @@ import sqlite3
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -152,16 +151,23 @@ class _MirrorDb:
 
 
 @pytest.mark.asyncio
-async def test_near_size_mirror_requires_matching_sample_fingerprint(monkeypatch):
+async def test_real_world_three_hoster_tolerance_collapses_in_full_path(monkeypatch):
     rows = [
-        {"file_id": 1, "torrent_id": 7, "filename": "a.rar", "size_bytes": 1000000,
-         "source_url": "https://one.example/a", "download_url": "https://cap.example/1",
-         "status": "pending", "download_id": None, "blocked": 0, "mirror_group_id": None,
-         "mirror_state": "", "local_path": "/download/a.rar"},
-        {"file_id": 2, "torrent_id": 7, "filename": "a.rar", "size_bytes": 1000500,
-         "source_url": "https://two.example/a", "download_url": "https://cap.example/2",
-         "status": "pending", "download_id": None, "blocked": 0, "mirror_group_id": None,
-         "mirror_state": "", "local_path": "/download/a (2).rar"},
+        {"file_id": 1, "torrent_id": 7, "filename": "GF200826-TMNTSFS-RN.rar",
+         "size_bytes": 3_595_501_360, "source_url": "https://1fichier.com/a",
+         "download_url": "https://cap.example/1", "status": "pending", "download_id": None,
+         "blocked": 0, "mirror_group_id": None, "mirror_state": "",
+         "local_path": "/download/GF200826-TMNTSFS-RN.rar"},
+        {"file_id": 2, "torrent_id": 7, "filename": "GF200826-TMNTSFS-RN.rar",
+         "size_bytes": 3_595_501_360, "source_url": "https://rapidgator.net/a",
+         "download_url": "https://cap.example/2", "status": "pending", "download_id": None,
+         "blocked": 0, "mirror_group_id": None, "mirror_state": "",
+         "local_path": "/download/GF200826-TMNTSFS-RN (2).rar"},
+        {"file_id": 3, "torrent_id": 7, "filename": "GF200826-TMNTSFS-RN.rar",
+         "size_bytes": 3_597_035_110, "source_url": "https://megaup.net/a",
+         "download_url": "https://cap.example/3", "status": "pending", "download_id": None,
+         "blocked": 0, "mirror_group_id": None, "mirror_state": "",
+         "local_path": "/download/GF200826-TMNTSFS-RN (3).rar"},
     ]
     db = _MirrorDb(rows)
 
@@ -170,44 +176,17 @@ async def test_near_size_mirror_requires_matching_sample_fingerprint(monkeypatch
         async def __aexit__(self, *_args): return False
 
     monkeypatch.setattr(dispatch_module, "get_db", lambda: _Ctx())
-    monkeypatch.setattr(
-        dispatch_module,
-        "sampled_public_artifact_fingerprint",
-        AsyncMock(side_effect=["same", "same"]),
-    )
 
-    assert await collapse_direct_link_mirrors() == 1
+    assert await collapse_direct_link_mirrors() == 2
+    assert rows[0]["mirror_state"] == "active"
     assert rows[1]["status"] == "duplicate"
-    assert "sample fingerprint matched" in rows[1]["block_reason"]
-
-
-@pytest.mark.asyncio
-async def test_near_size_mirror_remains_independent_without_matching_sample(monkeypatch):
-    rows = [
-        {"file_id": 1, "torrent_id": 7, "filename": "a.rar", "size_bytes": 1000000,
-         "source_url": "https://one.example/a", "download_url": "https://cap.example/1",
-         "status": "pending", "download_id": None, "blocked": 0, "mirror_group_id": None,
-         "mirror_state": "", "local_path": "/download/a.rar"},
-        {"file_id": 2, "torrent_id": 7, "filename": "a.rar", "size_bytes": 1000500,
-         "source_url": "https://two.example/a", "download_url": "https://cap.example/2",
-         "status": "pending", "download_id": None, "blocked": 0, "mirror_group_id": None,
-         "mirror_state": "", "local_path": "/download/a (2).rar"},
-    ]
-    db = _MirrorDb(rows)
-
-    class _Ctx:
-        async def __aenter__(self): return db
-        async def __aexit__(self, *_args): return False
-
-    monkeypatch.setattr(dispatch_module, "get_db", lambda: _Ctx())
-    monkeypatch.setattr(
-        dispatch_module,
-        "sampled_public_artifact_fingerprint",
-        AsyncMock(side_effect=["first", "different"]),
-    )
-
-    assert await collapse_direct_link_mirrors() == 0
-    assert rows[1]["status"] == "pending"
+    assert rows[1]["mirror_state"] == "standby"
+    assert "exact provider size matched" in rows[1]["block_reason"]
+    assert rows[2]["status"] == "duplicate"
+    assert rows[2]["mirror_state"] == "standby"
+    assert "size tolerance matched" in rows[2]["block_reason"]
+    assert rows[1]["mirror_group_id"] == rows[0]["mirror_group_id"]
+    assert rows[2]["mirror_group_id"] == rows[0]["mirror_group_id"]
 
 
 def test_current_schema_contract_includes_extraction_and_mirror_columns():
