@@ -16,6 +16,15 @@ if old not in text:
     raise RuntimeError("Could not locate mirror evidence helper block")
 text = text.replace(old, new, 1)
 
+# Keep the already validated relative tolerance and 512 MiB catastrophe guard.
+# The audit remediation strengthens the tolerance path with content samples
+# instead of shrinking the candidate window underneath existing behavior.
+text = text.replace(
+    "_MAX_MIRROR_SIZE_DELTA_BYTES = 4 * 1024 * 1024",
+    "_MAX_MIRROR_SIZE_DELTA_BYTES = 512 * 1024 * 1024",
+)
+text = text.replace("4 MiB", "512 MiB")
+
 # Historical upstream tags already occupy v1.0.7-v1.0.9 in this repository.
 # Use the next available patch identity rather than rewriting inherited tags.
 text = text.replace("1.0.7", "1.0.10")
