@@ -13,6 +13,22 @@
   let idleTimer = null;
   let latestLogicalActive = 0;
 
+  function installDuplicateStatusStyle() {
+    if (document.getElementById('debridpulse-duplicate-status-style')) return;
+    const style = document.createElement('style');
+    style.id = 'debridpulse-duplicate-status-style';
+    style.textContent = [
+      '.badge-duplicate {',
+      '  background: rgba(234,179,8,.14);',
+      '  color: var(--yellow);',
+      '  text-transform: capitalize;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  installDuplicateStatusStyle();
+
   function nonNegativeCount(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 0;
