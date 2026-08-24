@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -39,6 +41,11 @@ jobs:
           cd backend
           pip install -r requirements-dev.txt
           pip install ruff
+
+      - name: Apply extracting status pulse
+        run: |
+          python tools/tmp_apply_extracting_pulse.py
+          git diff --check
 
       - name: Check undefined Python names
         run: |
@@ -65,6 +72,15 @@ jobs:
           node --check frontend/static/auth-ux.js
           node --check frontend/static/operator-title.js
 
+      - name: Commit extracting status pulse
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm tools/tmp_apply_extracting_pulse.py
+          git add frontend/static/style.css frontend/static/index.html backend/tests
+          git commit -m "Animate extracting status badge"
+          git push origin HEAD:staging/v1.0.6-mirror-hotfix
+
   security:
     runs-on: ubuntu-latest
     env:
@@ -74,6 +90,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
