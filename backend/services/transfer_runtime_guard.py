@@ -951,49 +951,55 @@ class GuardedTransferIntegrityManager(TransferIntegrityManager):
 
             async with self._provider_state_guard():
                 async with self._lifecycle_lock(torrent_id):
-                    async with self._aria2_state_lock:
-                        async with self._aria2_dispatch_lock:
-                            row = await self._load_transfer_row(torrent_id)
-                            if row is None:
-                                raise ValueError("Torrent not found")
+                    # The dispatch lock is the mutation boundary needed here.
+                    # Do not also acquire _aria2_state_lock: reconciliation owns
+                    # that lock while finalization may enter the lifecycle guard,
+                    # so taking lifecycle -> state here would create an AB/BA
+                    # deadlock.  Holding dispatch prevents a pending child from
+                    # acquiring a new GID while base Delete snapshots/removes all
+                    # currently recorded DebridPulse-owned GIDs.
+                    async with self._aria2_dispatch_lock:
+                        row = await self._load_transfer_row(torrent_id)
+                        if row is None:
+                            raise ValueError("Torrent not found")
 
-                            cleanup_ok = await self._retry_pending_provider_cleanup(
-                                torrent_id
+                        cleanup_ok = await self._retry_pending_provider_cleanup(
+                            torrent_id
+                        )
+                        if delete_from_ad and not cleanup_ok:
+                            raise RuntimeError(
+                                "Provider cleanup created during Delete "
+                                f"was not confirmed for transfer {torrent_id}"
                             )
-                            if delete_from_ad and not cleanup_ok:
-                                raise RuntimeError(
-                                    "Provider cleanup created during Delete "
-                                    f"was not confirmed for transfer {torrent_id}"
-                                )
 
-                            ad_id = str(row["alldebrid_id"] or "").strip()
-                            source = str(row["source"] or "").strip()
-                            status = str(row["status"] or "").strip()
+                        ad_id = str(row["alldebrid_id"] or "").strip()
+                        source = str(row["source"] or "").strip()
+                        status = str(row["status"] or "").strip()
+                        if (
+                            delete_from_ad
+                            and ad_id
+                            and source != DIRECT_LINK_SOURCE
+                        ):
+                            deleted = await self.ad().delete_magnet(ad_id)
+                            already_cleaned_owned_completion = (
+                                status == "completed"
+                                and self._provider_delete_authorized(source)
+                            )
                             if (
-                                delete_from_ad
-                                and ad_id
-                                and source != DIRECT_LINK_SOURCE
+                                not deleted
+                                and not already_cleaned_owned_completion
                             ):
-                                deleted = await self.ad().delete_magnet(ad_id)
-                                already_cleaned_owned_completion = (
-                                    status == "completed"
-                                    and self._provider_delete_authorized(source)
+                                raise RuntimeError(
+                                    "AllDebrid deletion was not confirmed "
+                                    f"for transfer {torrent_id}"
                                 )
-                                if (
-                                    not deleted
-                                    and not already_cleaned_owned_completion
-                                ):
-                                    raise RuntimeError(
-                                        "AllDebrid deletion was not confirmed "
-                                        f"for transfer {torrent_id}"
-                                    )
 
-                            result = await super().delete_torrent(
-                                torrent_id,
-                                delete_from_ad=False,
-                            )
-                            await self._retry_pending_provider_cleanup(torrent_id)
-                            return result
+                        result = await super().delete_torrent(
+                            torrent_id,
+                            delete_from_ad=False,
+                        )
+                        await self._retry_pending_provider_cleanup(torrent_id)
+                        return result
         except BaseException:
             self._clear_delete_intent(torrent_id)
             raise
