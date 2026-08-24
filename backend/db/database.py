@@ -227,6 +227,8 @@ _SCHEMA_COLUMNS_FILES = [
     ("download_id", "TEXT"),
     ("download_client", "TEXT DEFAULT 'aria2'"),
     ("retry_count", "INTEGER DEFAULT 0"),
+    ("mirror_group_id", "INTEGER"),
+    ("mirror_state", "TEXT DEFAULT ''"),
     ("updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
 ]
 
@@ -283,6 +285,8 @@ async def _init_db_sqlite():
                 blocked INTEGER DEFAULT 0,
                 block_reason TEXT,
                 retry_count INTEGER DEFAULT 0,
+                mirror_group_id INTEGER,
+                mirror_state TEXT DEFAULT '',
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (torrent_id) REFERENCES torrents(id)
             )
@@ -341,6 +345,7 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_torrent_status ON download_files (torrent_id, status, blocked)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_queue ON download_files (status, download_client, blocked, torrent_id, id)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_download_id ON download_files (download_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dlfiles_mirror_group ON download_files (torrent_id, mirror_group_id, mirror_state, status)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_alldebrid_id ON torrents (alldebrid_id)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_status ON torrents (status)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_status_alldebrid ON torrents (status, alldebrid_id)",

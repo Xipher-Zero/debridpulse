@@ -173,7 +173,8 @@ async def collapse_direct_link_mirrors() -> int:
     async with get_db() as db:
         rows = await db.fetchall(
             """SELECT f.id AS file_id, f.torrent_id, f.filename,
-                      f.size_bytes, f.source_url, f.status, f.download_id
+                      f.size_bytes, f.source_url, f.status, f.download_id,
+                      f.mirror_group_id, f.mirror_state
                  FROM download_files f
                  JOIN torrents t ON t.id=f.torrent_id
                 WHERE t.source=?
@@ -206,15 +207,28 @@ async def collapse_direct_link_mirrors() -> int:
                     f"size variance {delta_bytes} bytes ({delta_percent:.4f}%)"
                 )
             )
+            group_id = int(primary.get("mirror_group_id") or primary["file_id"])
+            await db.execute(
+                """UPDATE download_files
+                      SET mirror_group_id=?,
+                          mirror_state=CASE
+                              WHEN COALESCE(mirror_state, '') IN ('', 'standby') THEN 'active'
+                              ELSE mirror_state
+                          END,
+                          updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?""",
+                (group_id, int(primary["file_id"])),
+            )
             cursor = await db.execute(
                 """UPDATE download_files
                       SET status='duplicate', blocked=NULL, block_reason=?,
+                          mirror_group_id=?, mirror_state='standby',
                           download_url=NULL, local_path=NULL,
                           updated_at=CURRENT_TIMESTAMP
                     WHERE id=?
                       AND status IN ('pending','queued','paused')
                       AND blocked=0 AND download_id IS NULL""",
-                (reason, int(duplicate["file_id"])),
+                (reason, group_id, int(duplicate["file_id"])),
             )
             if int(getattr(cursor, "rowcount", 0) or 0) <= 0:
                 continue
@@ -263,7 +277,8 @@ async def collapse_direct_link_mirrors() -> int:
                 (
                     torrent_id,
                     f"Classified {classified} cross-hoster mirror link(s) as "
-                    f"duplicates for {logical_files} logical file(s); one copy will be downloaded",
+                    f"duplicates for {logical_files} logical file(s); one copy will be downloaded; "
+                    "alternates retained as automatic failover standbys",
                 ),
             )
         await db.commit()

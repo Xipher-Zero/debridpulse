@@ -3407,7 +3407,8 @@ class TorrentManager:
                 pending_rows = await (
                     await db.execute(
                         """SELECT f.id AS file_id, f.torrent_id, f.filename,
-                                  f.source_url, f.download_url, f.local_path,
+                                  f.size_bytes, f.source_url, f.download_url, f.local_path,
+                                  f.mirror_group_id, f.mirror_state,
                                   t.name AS torrent_name, t.source AS transfer_source
                            FROM download_files f
                            JOIN torrents t ON t.id = f.torrent_id
@@ -3469,6 +3470,36 @@ class TorrentManager:
                         dl_url = result.get("link", "")
                         if not dl_url:
                             raise Exception("Empty download URL from unlock")
+                        if (
+                            row_.get("transfer_source") == DIRECT_LINK_SOURCE
+                            and row_.get("mirror_group_id") is not None
+                            and str(row_.get("mirror_state") or "") == "active"
+                        ):
+                            from services.dispatch_coordinator import _mirror_sizes_match
+
+                            resolved_name = safe_name(str(
+                                result.get("filename")
+                                or result.get("name")
+                                or row_.get("filename")
+                                or ""
+                            ))
+                            resolved_size = int(
+                                result.get("filesize")
+                                or result.get("size")
+                                or row_.get("size_bytes")
+                                or 0
+                            )
+                            if (
+                                resolved_name.casefold()
+                                != str(row_.get("filename") or "").strip().casefold()
+                                or not _mirror_sizes_match(
+                                    resolved_size,
+                                    int(row_.get("size_bytes") or 0),
+                                )
+                            ):
+                                raise Exception(
+                                    "Failover source no longer matches the validated mirror artifact"
+                                )
                         return {**row_, "_dl_url": dl_url, "_err": None}
                     except Exception as exc:
                         return {**row_, "_dl_url": "", "_err": exc}
@@ -3489,7 +3520,19 @@ class TorrentManager:
                     ).strip()
                     error_text = _safe_persisted_error(error, capability)
                     provider_code = str(getattr(error, "code", "") or "")
-                    if (
+                    if row.get("transfer_source") == DIRECT_LINK_SOURCE:
+                        logger.warning(
+                            "direct-link source unlock failed [%s]: %s",
+                            row["filename"],
+                            error_text,
+                        )
+                        await self._update_file_state(
+                            row["file_id"],
+                            "error",
+                            row["local_path"],
+                            reason=f"source-unlock: {error_text}",
+                        )
+                    elif (
                         provider_code == "LINK_HOST_NOT_SUPPORTED"
                         or "LINK_HOST_NOT_SUPPORTED" in error_text
                     ):
@@ -3576,7 +3619,14 @@ class TorrentManager:
                     safe_error = _safe_persisted_error(exc)
                     logger.error("aria2 dispatch failed [%s]: %s", row["filename"], safe_error)
                     await self._update_file_state(
-                        row["file_id"], "error", row["local_path"], reason=safe_error
+                        row["file_id"],
+                        "error",
+                        row["local_path"],
+                        reason=(
+                            f"aria2-dispatch: {safe_error}"
+                            if row.get("transfer_source") == DIRECT_LINK_SOURCE
+                            else safe_error
+                        ),
                     )
                     await self._finalize_aria2_torrent(row["torrent_id"])
 
