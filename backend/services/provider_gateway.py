@@ -110,6 +110,7 @@ class ProviderGateway:
 
     async def full_sync(self):
         async with self._operation():
+            await self._prime_deleted_transfer_tombstones()
             return await self.engine.full_alldebrid_sync()
 
     async def add_magnet(self, magnet: str, source: str = "manual"):
