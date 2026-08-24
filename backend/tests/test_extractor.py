@@ -16,6 +16,8 @@ from services.extractor import (
     find_archives,
     is_archive,
     _suffix,
+    _rar_version,
+    _seven_zip_type_switches,
     _TAR_7Z_EXTS,
     _TAR_EXTS,
 )
@@ -42,6 +44,36 @@ def make_tar_gz(path: Path, content: bytes = b"hello") -> None:
 def make_single_gz(path: Path, content: bytes = b"hello") -> None:
     with gzip.open(path, "wb") as f:
         f.write(content)
+
+
+def make_rar_header(path: Path, version: int) -> None:
+    if version == 5:
+        path.write_bytes(b"Rar!\x1a\x07\x01\x00" + b"payload")
+    elif version == 4:
+        path.write_bytes(b"Rar!\x1a\x07\x00" + b"payload")
+    else:
+        raise ValueError(version)
+
+
+def test_rar5_magic_uses_7zip_autodetect_not_legacy_trar(tmp_path):
+    archive = tmp_path / "payload.rar"
+    make_rar_header(archive, 5)
+    assert _rar_version(archive) == 5
+    assert _seven_zip_type_switches(archive) == []
+
+
+def test_rar4_magic_uses_7zip_autodetect(tmp_path):
+    archive = tmp_path / "payload.rar"
+    make_rar_header(archive, 4)
+    assert _rar_version(archive) == 4
+    assert _seven_zip_type_switches(archive) == []
+
+
+def test_rar_extension_with_invalid_magic_fails_before_parser_selection(tmp_path):
+    archive = tmp_path / "payload.rar"
+    archive.write_bytes(b"not-a-rar")
+    with pytest.raises(ValueError, match="RAR signature mismatch"):
+        _seven_zip_type_switches(archive)
 
 
 # ---------------------------------------------------------------------------

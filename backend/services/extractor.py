@@ -55,6 +55,8 @@ _BZ2_EXTS  = {".bz2"}
 _XZ_EXTS   = {".xz"}
 _7Z_EXTS   = {".7z"}
 _RAR_EXTS  = {".rar", ".r00", ".r01", ".r02"}
+_RAR4_MAGIC = b"Rar!\x1a\x07\x00"
+_RAR5_MAGIC = b"Rar!\x1a\x07\x01\x00"
 
 # Multi-part RAR detection: file.part1.rar, file.part01.rar, file.r00
 _MULTIPART_RAR = re.compile(
@@ -291,6 +293,27 @@ def _get_extraction_passwords() -> list[str]:
         return []
 
 
+def _rar_version(archive: Path) -> int:
+    """Validate RAR content by magic bytes and return major format version.
+
+    7-Zip 25.x distinguishes its forced legacy RAR parser from RAR5.  Forcing
+    ``-trar`` against a valid RAR5 archive makes 7-Zip reject it as "not archive".
+    Validate the content ourselves, then allow 7-Zip to choose the RAR4/RAR5
+    parser from the already-verified bytes.
+    """
+    try:
+        with archive.open("rb") as source:
+            header = source.read(max(len(_RAR4_MAGIC), len(_RAR5_MAGIC)))
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read RAR header for {archive.name}: {exc}") from exc
+
+    if header.startswith(_RAR5_MAGIC):
+        return 5
+    if header.startswith(_RAR4_MAGIC):
+        return 4
+    raise ValueError(f"RAR signature mismatch for {archive.name}")
+
+
 def _seven_zip_type_switches(archive: Path) -> list[str]:
     """Constrain native 7-Zip parser selection for each supported input.
 
@@ -304,7 +327,11 @@ def _seven_zip_type_switches(archive: Path) -> list[str]:
     if suffix in _7Z_EXTS:
         return ["-t7z"]
     if suffix in _RAR_EXTS:
-        return ["-trar"]
+        _rar_version(archive)
+        # Do not force -trar here.  7-Zip 25.x rejects valid RAR5 archives when
+        # forced through that legacy parser, while auto-detection correctly
+        # identifies the already magic-validated input as Rar5.
+        return []
     if suffix in _TAR_7Z_EXTS:
         return ["-t*:r", "-stxxz"]
     raise ValueError(f"Unsupported 7-Zip input format: {archive.name}")
