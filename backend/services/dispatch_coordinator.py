@@ -22,8 +22,11 @@ _PRIMARY_STATUS_PRIORITY = {
     "pending": 4,
 }
 
+_SUPPRESSIBLE_MIRROR_STATUSES = frozenset({"pending", "queued", "paused"})
+
 
 def _source_host(value: object) -> str:
+    """Return a stable host label for mirror comparison without retaining URLs."""
     try:
         host = str(urlsplit(str(value or "")).hostname or "").rstrip(".").casefold()
     except ValueError:
@@ -34,6 +37,12 @@ def _source_host(value: object) -> str:
 
 
 def _mirror_identity(row: dict) -> tuple[str, int] | None:
+    """Return conservative provider-metadata identity for one resolved file.
+
+    AllDebrid direct-link metadata does not provide a content checksum. Mirror
+    collapsing therefore requires both the resolved filename and an exact,
+    non-zero byte size. Unknown-size files are intentionally never deduplicated.
+    """
     filename = str(row.get("filename") or "").strip().casefold()
     try:
         size_bytes = int(row.get("size_bytes") or 0)
@@ -45,6 +54,15 @@ def _mirror_identity(row: dict) -> tuple[str, int] | None:
 
 
 def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
+    """Choose unresolved cross-hoster mirrors that must not become jobs.
+
+    A logical payload is collapsed only when different source hosts resolved to
+    the same filename and exact non-zero byte size. An already-running or
+    completed child is preferred as the primary so this routine never cancels
+    work merely to enforce deduplication. Same-hoster URL variants remain
+    distinct because provider metadata alone is not strong enough to prove that
+    they are mirrors rather than separate objects.
+    """
     grouped: dict[tuple[int, str, int], list[dict]] = defaultdict(list)
     for raw in rows or []:
         row = dict(raw)
@@ -74,7 +92,7 @@ def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
         for candidate in group[1:]:
             if candidate["_mirror_host"] == primary_host:
                 continue
-            if str(candidate.get("status") or "") != "pending":
+            if str(candidate.get("status") or "") not in _SUPPRESSIBLE_MIRROR_STATUSES:
                 continue
             if str(candidate.get("download_id") or "").strip():
                 continue
@@ -83,6 +101,15 @@ def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
 
 
 async def collapse_direct_link_mirrors() -> int:
+    """Classify resolved mirrors before any new aria2 job is created.
+
+    The original submitted source row is retained for operator visibility and
+    retry/history. Duplicate rows become a non-dispatchable ``duplicate`` state
+    instead of being deleted. ``blocked`` is stored as NULL deliberately: all
+    physical-transfer queries require ``blocked=0``, while the UI treats NULL as
+    not user-filter-blocked and therefore does not render a misleading BLOCKED
+    warning beside a mirror that succeeded upstream.
+    """
     async with get_db() as db:
         rows = await db.fetchall(
             """SELECT f.id AS file_id, f.torrent_id, f.filename,
@@ -100,20 +127,30 @@ async def collapse_direct_link_mirrors() -> int:
         if not plan:
             return 0
 
-        removed_by_parent: dict[int, int] = defaultdict(int)
+        classified_by_parent: dict[int, int] = defaultdict(int)
         groups_by_parent: dict[int, set[tuple[str, int]]] = defaultdict(set)
         for duplicate, primary in plan:
+            primary_host = str(primary.get("_mirror_host") or "")
+            reason = (
+                f"Duplicate mirror of {primary_host}; same resolved filename and size"
+                if primary_host
+                else "Duplicate cross-hoster mirror; same resolved filename and size"
+            )
             cursor = await db.execute(
-                """DELETE FROM download_files
-                     WHERE id=? AND status='pending' AND blocked=0
-                       AND download_id IS NULL""",
-                (int(duplicate["file_id"]),),
+                """UPDATE download_files
+                      SET status='duplicate', blocked=NULL, block_reason=?,
+                          download_url=NULL, local_path=NULL,
+                          updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                      AND status IN ('pending','queued','paused')
+                      AND blocked=0 AND download_id IS NULL""",
+                (reason, int(duplicate["file_id"])),
             )
             if int(getattr(cursor, "rowcount", 0) or 0) <= 0:
                 continue
 
             torrent_id = int(duplicate["torrent_id"])
-            removed_by_parent[torrent_id] += 1
+            classified_by_parent[torrent_id] += 1
             groups_by_parent[torrent_id].add(
                 (
                     str(primary.get("filename") or "").casefold(),
@@ -121,16 +158,17 @@ async def collapse_direct_link_mirrors() -> int:
                 )
             )
             logger.info(
-                "direct-link mirror suppressed: transfer=%s file=%s size=%s primary_host=%s alternate_host=%s",
+                "direct-link mirror duplicate: transfer=%s file=%s size=%s "
+                "primary_host=%s alternate_host=%s",
                 torrent_id,
                 str(primary.get("filename") or "")[:120],
                 int(primary.get("size_bytes") or 0),
-                primary.get("_mirror_host"),
+                primary_host,
                 duplicate.get("_mirror_host"),
             )
 
-        for torrent_id, removed in removed_by_parent.items():
-            if removed <= 0:
+        for torrent_id, classified in classified_by_parent.items():
+            if classified <= 0:
                 continue
             size_row = await db.fetchone(
                 """SELECT COALESCE(SUM(size_bytes), 0) AS total
@@ -150,22 +188,39 @@ async def collapse_direct_link_mirrors() -> int:
                 "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
                 (
                     torrent_id,
-                    f"Suppressed {removed} cross-hoster mirror link(s) for {logical_files} logical file(s); one copy will be downloaded",
+                    f"Classified {classified} cross-hoster mirror link(s) as "
+                    f"duplicates for {logical_files} logical file(s); one copy will be downloaded",
                 ),
             )
         await db.commit()
-        return sum(removed_by_parent.values())
+        return sum(classified_by_parent.values())
 
 
 class MirrorAwareTransferControlCoordinator(TransferControlCoordinator):
+    """Make mirror classification part of every authoritative physical dispatch."""
+
     def __init__(self, manager) -> None:
         super().__init__(manager)
         self._mirror_dispatch_lock = asyncio.Lock()
+        # TransferControlCoordinator._queue_pass() calls _orig_dispatch directly,
+        # bypassing an overridden dispatch_queue(). Wrap the captured physical
+        # dispatch function itself so scheduler, startup, resume and explicit
+        # queue kicks all cross the same mirror-classification boundary.
+        self._physical_dispatch = self._orig_dispatch
+        self._orig_dispatch = self._dispatch_after_mirror_classification
 
-    async def dispatch_queue(self, all_downloads=None):
+    async def _dispatch_after_mirror_classification(self, all_downloads=None):
         async with self._mirror_dispatch_lock:
             await collapse_direct_link_mirrors()
-            return await super().dispatch_queue(all_downloads)
+            return await self._physical_dispatch(all_downloads)
+
+    async def advance_queue_locked(self) -> int:
+        # Direct-link preparation calls this even when Pause All is active. Run
+        # classification immediately so duplicates are visible and parent size
+        # is logical before the eventual resume/dispatch pass.
+        async with self._mirror_dispatch_lock:
+            await collapse_direct_link_mirrors()
+        return await super().advance_queue_locked()
 
 
 class DispatchCoordinator:
