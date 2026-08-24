@@ -29,6 +29,7 @@ class _Engine:
             return_value={"imported": 0, "updated": 0, "snapshot_count": 0}
         )
         self.import_existing_magnets = AsyncMock(return_value=[])
+        self.full_alldebrid_sync = AsyncMock(return_value={"ok": True})
 
     def _delete_event(self, transfer_id: int) -> asyncio.Event:
         return self._events.setdefault(int(transfer_id), asyncio.Event())
@@ -60,3 +61,18 @@ async def test_manual_import_primes_persisted_delete_tombstones(monkeypatch):
     assert result == []
     assert engine._deleted_transfer_ids == {31, 32}
     engine.import_existing_magnets.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_full_sync_primes_persisted_delete_tombstones(monkeypatch):
+    engine = _Engine()
+    gateway = ProviderGateway(engine)
+    monkeypatch.setattr(provider_gateway_module, "get_db", _deleted_rows_db)
+
+    result = await gateway.full_sync()
+
+    assert result == {"ok": True}
+    assert engine._deleted_transfer_ids == {31, 32}
+    assert engine._delete_event(31).is_set()
+    assert engine._delete_event(32).is_set()
+    engine.full_alldebrid_sync.assert_awaited_once_with()
