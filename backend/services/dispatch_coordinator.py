@@ -1,4 +1,4 @@
-"""Slot-aware download dispatch coordinator."""
+"""Slot-aware download dispatch coordination and logical mirror collapse."""
 from __future__ import annotations
 
 import logging
@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from db.database import get_db
 from services.manager_v2 import DIRECT_LINK_SOURCE
+from services.transfer_control import TransferControlCoordinator
 
 
 logger = logging.getLogger("debridpulse.dispatch")
@@ -96,97 +97,105 @@ def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
     return suppress
 
 
+async def collapse_direct_link_mirrors() -> int:
+    """Collapse resolved mirror URLs before any new aria2 job is created.
+
+    The parent retains the original submitted URL list, so retry/history still
+    knows every mirror. Duplicate child rows are removed only while they are
+    pending and have no GID. This makes the database model one logical
+    downloadable file rather than one file per working hoster.
+    """
+    async with get_db() as db:
+        rows = await db.fetchall(
+            """SELECT f.id AS file_id, f.torrent_id, f.filename,
+                      f.size_bytes, f.source_url, f.status, f.download_id
+                 FROM download_files f
+                 JOIN torrents t ON t.id=f.torrent_id
+                WHERE t.source=?
+                  AND t.status NOT IN ('completed','deleted','error')
+                  AND f.blocked=0
+                  AND f.status IN ('pending','queued','downloading','paused','completed')
+                ORDER BY f.torrent_id ASC, f.id ASC""",
+            (DIRECT_LINK_SOURCE,),
+        )
+        plan = plan_direct_link_mirror_suppression(rows)
+        if not plan:
+            return 0
+
+        removed_by_parent: dict[int, int] = defaultdict(int)
+        groups_by_parent: dict[int, set[tuple[str, int]]] = defaultdict(set)
+        for duplicate, primary in plan:
+            cursor = await db.execute(
+                """DELETE FROM download_files
+                     WHERE id=? AND status='pending' AND blocked=0
+                       AND download_id IS NULL""",
+                (int(duplicate["file_id"]),),
+            )
+            if int(getattr(cursor, "rowcount", 0) or 0) <= 0:
+                continue
+
+            torrent_id = int(duplicate["torrent_id"])
+            removed_by_parent[torrent_id] += 1
+            groups_by_parent[torrent_id].add(
+                (
+                    str(primary.get("filename") or "").casefold(),
+                    int(primary.get("size_bytes") or 0),
+                )
+            )
+            logger.info(
+                "direct-link mirror suppressed: transfer=%s file=%s size=%s "
+                "primary_host=%s alternate_host=%s",
+                torrent_id,
+                str(primary.get("filename") or "")[:120],
+                int(primary.get("size_bytes") or 0),
+                primary.get("_mirror_host"),
+                duplicate.get("_mirror_host"),
+            )
+
+        for torrent_id, removed in removed_by_parent.items():
+            if removed <= 0:
+                continue
+            size_row = await db.fetchone(
+                """SELECT COALESCE(SUM(size_bytes), 0) AS total
+                     FROM download_files
+                    WHERE torrent_id=? AND blocked=0""",
+                (torrent_id,),
+            )
+            logical_size = int((size_row or {}).get("total") or 0)
+            await db.execute(
+                """UPDATE torrents
+                      SET size_bytes=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND status NOT IN ('completed','deleted','error')""",
+                (logical_size, torrent_id),
+            )
+            logical_files = len(groups_by_parent[torrent_id])
+            await db.execute(
+                "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
+                (
+                    torrent_id,
+                    f"Suppressed {removed} cross-hoster mirror link(s) for "
+                    f"{logical_files} logical file(s); one copy will be downloaded",
+                ),
+            )
+        await db.commit()
+        return sum(removed_by_parent.values())
+
+
+class MirrorAwareTransferControlCoordinator(TransferControlCoordinator):
+    """Authoritative queue coordinator with logical direct-link mirror collapse."""
+
+    async def dispatch_queue(self, all_downloads=None):
+        await collapse_direct_link_mirrors()
+        return await super().dispatch_queue(all_downloads)
+
+
 class DispatchCoordinator:
     def __init__(self, engine, control, ownership):
         self.engine = engine
         self.control = control
         self.ownership = ownership
 
-    async def _collapse_direct_link_mirrors(self) -> int:
-        """Collapse resolved mirror URLs before any new aria2 job is created.
-
-        The parent retains the original submitted URL list, so retry/history
-        still knows every mirror. Duplicate child rows are removed only while
-        they are still pending and have no GID. This makes the database model
-        one logical downloadable file rather than one file per working hoster.
-        """
-        async with get_db() as db:
-            rows = await db.fetchall(
-                """SELECT f.id AS file_id, f.torrent_id, f.filename,
-                          f.size_bytes, f.source_url, f.status, f.download_id
-                     FROM download_files f
-                     JOIN torrents t ON t.id=f.torrent_id
-                    WHERE t.source=?
-                      AND t.status NOT IN ('completed','deleted','error')
-                      AND f.blocked=0
-                      AND f.status IN ('pending','queued','downloading','paused','completed')
-                    ORDER BY f.torrent_id ASC, f.id ASC""",
-                (DIRECT_LINK_SOURCE,),
-            )
-            plan = plan_direct_link_mirror_suppression(rows)
-            if not plan:
-                return 0
-
-            removed_by_parent: dict[int, int] = defaultdict(int)
-            groups_by_parent: dict[int, set[tuple[str, int]]] = defaultdict(set)
-            for duplicate, primary in plan:
-                cursor = await db.execute(
-                    """DELETE FROM download_files
-                         WHERE id=? AND status='pending' AND blocked=0
-                           AND download_id IS NULL""",
-                    (int(duplicate["file_id"]),),
-                )
-                if int(getattr(cursor, "rowcount", 0) or 0) <= 0:
-                    continue
-
-                torrent_id = int(duplicate["torrent_id"])
-                removed_by_parent[torrent_id] += 1
-                groups_by_parent[torrent_id].add(
-                    (
-                        str(primary.get("filename") or "").casefold(),
-                        int(primary.get("size_bytes") or 0),
-                    )
-                )
-                logger.info(
-                    "direct-link mirror suppressed: transfer=%s file=%s size=%s "
-                    "primary_host=%s alternate_host=%s",
-                    torrent_id,
-                    str(primary.get("filename") or "")[:120],
-                    int(primary.get("size_bytes") or 0),
-                    primary.get("_mirror_host"),
-                    duplicate.get("_mirror_host"),
-                )
-
-            for torrent_id, removed in removed_by_parent.items():
-                if removed <= 0:
-                    continue
-                size_row = await db.fetchone(
-                    """SELECT COALESCE(SUM(size_bytes), 0) AS total
-                         FROM download_files
-                        WHERE torrent_id=? AND blocked=0""",
-                    (torrent_id,),
-                )
-                logical_size = int((size_row or {}).get("total") or 0)
-                await db.execute(
-                    """UPDATE torrents
-                          SET size_bytes=?, updated_at=CURRENT_TIMESTAMP
-                        WHERE id=? AND status NOT IN ('completed','deleted','error')""",
-                    (logical_size, torrent_id),
-                )
-                logical_files = len(groups_by_parent[torrent_id])
-                await db.execute(
-                    "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
-                    (
-                        torrent_id,
-                        f"Suppressed {removed} cross-hoster mirror link(s) for "
-                        f"{logical_files} logical file(s); one copy will be downloaded",
-                    ),
-                )
-            await db.commit()
-            return sum(removed_by_parent.values())
-
     async def dispatch_queue(self, snapshot=None):
-        await self._collapse_direct_link_mirrors()
         return await self.control.coordinator.dispatch_queue(snapshot)
 
     async def advance_queue_locked(self, *args, **kwargs):
