@@ -312,3 +312,89 @@ async def test_false_terminal_error_can_be_repaired_from_completed_physical_payl
         "size_bytes": 3_595_501_360,
         "error_message": "8 of 11 links could not be generated",
     }
+
+
+def _planning_tokens(*, active_paths=()):
+    active_token = result_guard._ACTIVE_DIRECT_LINK_PATHS.set(
+        frozenset(str(path).casefold() for path in active_paths)
+    )
+    batch_token = result_guard._BATCH_DIRECT_LINK_PATHS.set(set())
+    return active_token, batch_token
+
+
+def _reset_planning_tokens(active_token, batch_token):
+    result_guard._BATCH_DIRECT_LINK_PATHS.reset(batch_token)
+    result_guard._ACTIVE_DIRECT_LINK_PATHS.reset(active_token)
+
+
+def test_terminal_history_reservation_does_not_force_suffix(tmp_path):
+    manager = DirectLinkResultGuardManager()
+    target = tmp_path / "GF200826-TMNTSFS-RN.rar"
+    active_token, batch_token = _planning_tokens()
+    try:
+        selected = manager._unique_direct_link_path(
+            tmp_path,
+            target.name,
+            {str(target).casefold()},
+            reuse_existing=True,
+        )
+    finally:
+        _reset_planning_tokens(active_token, batch_token)
+
+    assert selected == target
+
+
+def test_active_transfer_path_still_forces_suffix(tmp_path):
+    manager = DirectLinkResultGuardManager()
+    target = tmp_path / "GF200826-TMNTSFS-RN.rar"
+    active_token, batch_token = _planning_tokens(active_paths=(target,))
+    try:
+        selected = manager._unique_direct_link_path(
+            tmp_path,
+            target.name,
+            {str(target).casefold()},
+            reuse_existing=True,
+        )
+    finally:
+        _reset_planning_tokens(active_token, batch_token)
+
+    assert selected.name == "GF200826-TMNTSFS-RN (2).rar"
+
+
+def test_existing_file_always_forces_suffix_even_with_deleted_history(tmp_path):
+    manager = DirectLinkResultGuardManager()
+    target = tmp_path / "GF200826-TMNTSFS-RN.rar"
+    target.write_bytes(b"existing payload")
+    active_token, batch_token = _planning_tokens()
+    try:
+        selected = manager._unique_direct_link_path(
+            tmp_path,
+            target.name,
+            set(),
+            reuse_existing=True,
+        )
+    finally:
+        _reset_planning_tokens(active_token, batch_token)
+
+    assert selected.name == "GF200826-TMNTSFS-RN (2).rar"
+
+
+def test_same_batch_second_physical_name_is_reserved_without_disk_file(tmp_path):
+    manager = DirectLinkResultGuardManager()
+    active_token, batch_token = _planning_tokens()
+    try:
+        first = manager._unique_direct_link_path(
+            tmp_path,
+            "archive.rar",
+            set(),
+        )
+        second = manager._unique_direct_link_path(
+            tmp_path,
+            "archive.rar",
+            set(),
+        )
+    finally:
+        _reset_planning_tokens(active_token, batch_token)
+
+    assert first.name == "archive.rar"
+    assert second.name == "archive (2).rar"
