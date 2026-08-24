@@ -1,0 +1,60 @@
+name: Temporary Release Surface Freeze
+
+on:
+  push:
+    branches:
+      - 'staging/v1.0.6-mirror-hotfix'
+    paths:
+      - 'tools/tmp_release_surface_freeze.py'
+      - '.github/workflows/tmp-release-surface-freeze.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout current staging head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Align release surfaces
+        run: python tools/tmp_release_surface_freeze.py
+
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+          pip install ruff
+
+      - name: Qualify release surface correction
+        run: |
+          cd backend
+          ruff check api auth core db services main.py --select F821,F822,F823
+          python -m compileall -q .
+          python -m pytest tests/ -q --tb=short
+          cd ..
+          git diff --check
+
+      - name: Commit qualified release surfaces
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md docker-compose.yml backend/tests/test_v105_deployment_hardening.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Align v1.0.10 release surfaces'
+          git push origin HEAD:staging/v1.0.6-mirror-hotfix
