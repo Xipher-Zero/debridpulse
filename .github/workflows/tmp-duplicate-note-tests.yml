@@ -1,0 +1,34 @@
+name: Temporary duplicate note test correction
+
+on:
+  push:
+    branches:
+      - staging/v1.0.6-mirror-hotfix
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: staging/v1.0.6-mirror-hotfix
+          fetch-depth: 0
+
+      - name: Update cache-bust assertions
+        run: |
+          python tools/tmp_finalize_duplicate_note_tests.py
+          git diff --check
+
+      - name: Commit clean source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm tools/tmp_finalize_duplicate_note_tests.py .github/workflows/tmp-duplicate-note-tests.yml
+          git add backend/tests/test_extraction_pulse.py backend/tests/test_v1_scope.py
+          git commit -m "Update stylesheet cache-bust assertions"
+          git pull --rebase origin staging/v1.0.6-mirror-hotfix
+          git push origin HEAD:staging/v1.0.6-mirror-hotfix
