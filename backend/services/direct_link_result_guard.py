@@ -235,7 +235,38 @@ class DirectLinkResultGuardManager(GuardedTransferIntegrityManager):
         # remain delegated to the previously audited finalizer.
         if await self._complete_direct_link_result(torrent_id):
             return
-        return await super()._finalize_aria2_torrent(torrent_id)
+
+        async with get_db() as db:
+            before = await db.fetchone(
+                "SELECT status, source FROM torrents WHERE id=?",
+                (torrent_id,),
+            )
+
+        result = await super()._finalize_aria2_torrent(torrent_id)
+
+        # The inherited physical-error finalizer persists status='error' but does
+        # not publish the terminal transition. Without this notification the UI
+        # can remain on its last pushed Downloading state until another operator
+        # action forces a refresh. Direct-link result authority closes that gap.
+        if (
+            before
+            and str(before.get("source") or "") == DIRECT_LINK_SOURCE
+            and str(before.get("status") or "") != "error"
+        ):
+            async with get_db() as db:
+                after = await db.fetchone(
+                    "SELECT name, status, progress FROM torrents WHERE id=?",
+                    (torrent_id,),
+                )
+            if after and str(after.get("status") or "") == "error":
+                await self._broadcast_direct_link_update(
+                    torrent_id,
+                    "error",
+                    str(after.get("name") or "Debrid links"),
+                    float(after.get("progress") or 0.0),
+                )
+
+        return result
 
     async def reconcile_aria2_on_startup(self):
         # Normalize before inherited startup reconciliation, then repair any
