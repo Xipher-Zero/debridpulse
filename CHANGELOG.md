@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.10] — 2026-08-24
+
+### Semantic transfer integrity and audit remediation
+
+- Added cross-hoster mirror normalization with retained automatic failover standbys, logical result authority, source-exhaustion history, and plain-success semantics when an alternate completes the artifact.
+- Added visible post-download extraction lifecycle reporting, RAR5 support, operator-visible extraction failures, and delete/retain archive policy handling.
+- Made extraction transactional across all supported archive formats, rejected collisions with pre-existing regular files, and restricted nested extraction to archives produced by the current extraction operation.
+- Split direct-link unlock failures into source-specific versus provider/systemic classes so an AllDebrid outage or local provider-connectivity problem cannot consume valid mirror standbys.
+- Strengthened near-size mirror identity with bounded first/last content fingerprints while retaining the existing 512 MiB catastrophe guard; unverifiable near-size candidates remain independent downloads.
+- Disabled HTTP redirects for DebridPulse-created aria2 jobs after public-destination validation, preventing a provider capability from silently redirecting aria2 into a different network destination.
+- Made required SQLite migrations fail closed and verify extraction/mirror runtime columns before startup succeeds.
+- Fixed inherited file-preview schema drift and prevented file-selection mutations after physical aria2 dispatch.
+- Preserved the existing external-aria2 ownership boundary, pause/resume semantics, browser capability redaction, and V1 scope while adding regression coverage for the new audit boundaries.
+
 ## [1.0.6] — 2026-08-21
 
 ### Native authentication overhaul

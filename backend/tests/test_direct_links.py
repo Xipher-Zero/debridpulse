@@ -150,6 +150,34 @@ class DirectLinkInputTests(unittest.TestCase):
         self.assertEqual(protected.name, "archive (2).zip")
         self.assertEqual(reusable.name, "archive.zip")
 
+    def test_live_owner_blocks_deleted_history_path_reuse(self):
+        manager = TorrentManager()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            existing = root / "archive.zip"
+            existing.write_bytes(b"current transfer payload")
+            live_paths = {str(existing).lower()}
+
+            selected = manager._unique_direct_link_path(
+                root,
+                "archive.zip",
+                live_paths,
+                reuse_existing=True,
+            )
+
+        self.assertEqual(selected.name, "archive (2).zip")
+
+    def test_direct_link_preparation_seeds_non_deleted_live_paths(self):
+        repo_backend = Path(__file__).resolve().parents[1]
+        manager_source = (repo_backend / "services/manager_v2.py").read_text()
+        self.assertIn("protected_live_paths: Set[str] = set()", manager_source)
+        self.assertIn("WHERE t.status!='deleted'", manager_source)
+        self.assertIn("AND t.id!=?", manager_source)
+        self.assertIn(
+            "reserved_paths: Set[str] = set(protected_live_paths)",
+            manager_source,
+        )
+
 
 class DelayedAllDebridTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_immediate_unlocked_link(self):

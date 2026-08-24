@@ -199,6 +199,7 @@ async def close_db_runtime() -> None:
 
 
 async def _ensure_column(db: aiosqlite.Connection, table: str, column: str, definition: str):
+    """Ensure one required runtime column exists or fail startup explicitly."""
     try:
         cur = await db.execute(f"PRAGMA table_info({table})")
         existing = {row[1] for row in await cur.fetchall()}
@@ -207,7 +208,10 @@ async def _ensure_column(db: aiosqlite.Connection, table: str, column: str, defi
             await db.commit()
             logger.debug("Added column %s.%s (%s)", table, column, definition)
     except Exception as exc:
-        logger.warning("_ensure_column %s.%s failed (ignored): %s", table, column, exc)
+        logger.error("Required schema migration failed for %s.%s: %s", table, column, exc)
+        raise RuntimeError(
+            f"Required schema migration failed for {table}.{column}"
+        ) from exc
 
 
 _SCHEMA_COLUMNS_TORRENTS = [
@@ -218,6 +222,8 @@ _SCHEMA_COLUMNS_TORRENTS = [
     ("label", "TEXT DEFAULT ''"),
     ("priority", "INTEGER DEFAULT 0"),
     ("upload_retry_count", "INTEGER DEFAULT 0"),
+    ("extraction_status", "TEXT DEFAULT ''"),
+    ("extraction_error", "TEXT"),
 ]
 
 _SCHEMA_COLUMNS_FILES = [
@@ -225,6 +231,8 @@ _SCHEMA_COLUMNS_FILES = [
     ("download_id", "TEXT"),
     ("download_client", "TEXT DEFAULT 'aria2'"),
     ("retry_count", "INTEGER DEFAULT 0"),
+    ("mirror_group_id", "INTEGER"),
+    ("mirror_state", "TEXT DEFAULT ''"),
     ("updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
 ]
 
@@ -259,6 +267,8 @@ async def _init_db_sqlite():
                 label TEXT DEFAULT '',
                 priority INTEGER DEFAULT 0,
                 error_message TEXT,
+                extraction_status TEXT DEFAULT '',
+                extraction_error TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 completed_at DATETIME
@@ -279,6 +289,8 @@ async def _init_db_sqlite():
                 blocked INTEGER DEFAULT 0,
                 block_reason TEXT,
                 retry_count INTEGER DEFAULT 0,
+                mirror_group_id INTEGER,
+                mirror_state TEXT DEFAULT '',
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (torrent_id) REFERENCES torrents(id)
             )
@@ -337,6 +349,7 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_torrent_status ON download_files (torrent_id, status, blocked)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_queue ON download_files (status, download_client, blocked, torrent_id, id)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_download_id ON download_files (download_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dlfiles_mirror_group ON download_files (torrent_id, mirror_group_id, mirror_state, status)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_alldebrid_id ON torrents (alldebrid_id)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_status ON torrents (status)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_status_alldebrid ON torrents (status, alldebrid_id)",
@@ -355,14 +368,22 @@ async def _init_db_sqlite():
     logger.debug("SQLite indexes ensured")
 
     async with aiosqlite.connect(DB_PATH) as verify_db:
-        cur = await verify_db.execute("PRAGMA table_info(torrents)")
-        cols = {row[1] for row in await cur.fetchall()}
-        critical = {"priority", "label", "provider_status", "polling_failures"}
-        missing = critical - cols
-        if missing:
-            logger.error("CRITICAL: columns still missing after migration: %s", missing)
-        else:
-            logger.info("SQLite schema verified — all critical columns present")
+        required = {
+            "torrents": {"id", "hash", "status"} | {name for name, _ in _SCHEMA_COLUMNS_TORRENTS},
+            "download_files": {"id", "torrent_id", "status", "blocked"}
+            | {name for name, _ in _SCHEMA_COLUMNS_FILES},
+        }
+        missing_by_table: dict[str, list[str]] = {}
+        for table, expected in required.items():
+            cur = await verify_db.execute(f"PRAGMA table_info({table})")
+            cols = {row[1] for row in await cur.fetchall()}
+            missing = sorted(expected - cols)
+            if missing:
+                missing_by_table[table] = missing
+        if missing_by_table:
+            logger.error("CRITICAL: required schema remains incomplete: %s", missing_by_table)
+            raise RuntimeError(f"Required SQLite schema is incomplete: {missing_by_table}")
+        logger.info("SQLite schema verified — all required runtime columns present")
     logger.info("SQLite database initialised: %s", DB_PATH)
 
     _STATUS_REPR_MAP = {

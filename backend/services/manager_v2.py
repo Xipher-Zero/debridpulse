@@ -45,6 +45,22 @@ DEFERRED_TORRENT_KIND = "torrent_file"
 MAX_DIRECT_LINKS_PER_BATCH = 100
 
 
+def _direct_link_unlock_failure_prefix(error: Exception) -> str:
+    """Distinguish source-specific failures from provider/systemic failures."""
+    code = str(getattr(error, "code", "") or "").strip().upper()
+    if code.startswith("LINK_"):
+        return "source-unlock"
+    text = str(error or "").casefold()
+    source_markers = (
+        "delayed link generation failed",
+        "returned no download link or delayed generation id",
+        "streaming selection instead of a direct download link",
+    )
+    if any(marker in text for marker in source_markers):
+        return "source-unlock"
+    return "provider-unlock"
+
+
 class TransientAllDebridStateError(Exception):
     """Raised when AllDebrid is temporarily inconsistent but not actually failed."""
 
@@ -515,6 +531,9 @@ class TorrentManager:
             # replaces the prior file at the requested path.
             "allow-overwrite": "true",
             "auto-file-renaming": "false",
+            # The application validates the initial public destination. Do not
+            # let aria2 silently cross that boundary through an HTTP redirect.
+            "max-http-redirection": "0",
             "split": str(max(1, int(getattr(cfg, "aria2_split", 1) or 1))),
             "min-split-size": str(
                 getattr(cfg, "aria2_min_split_size", "10M") or "10M"
@@ -1121,6 +1140,7 @@ class TorrentManager:
             cfg = get_settings()
             output_root = Path(cfg.download_folder)
             reusable_source_urls: Set[str] = set()
+            protected_live_paths: Set[str] = set()
 
             async with get_db() as db:
                 current = await db.fetchone(
@@ -1128,6 +1148,21 @@ class TorrentManager:
                 )
                 if not current or current["status"] in {"completed", "deleted"}:
                     return
+                live_path_rows = await db.fetchall(
+                    """SELECT DISTINCT f.local_path
+                         FROM download_files f
+                         JOIN torrents t ON t.id=f.torrent_id
+                        WHERE t.status!='deleted'
+                          AND t.id!=?
+                          AND f.local_path IS NOT NULL
+                          AND f.local_path!=''""",
+                    (torrent_id,),
+                )
+                protected_live_paths = {
+                    str(row["local_path"] or "").strip().lower()
+                    for row in live_path_rows
+                    if str(row["local_path"] or "").strip()
+                }
                 if normalized:
                     placeholders = ",".join("?" for _ in normalized)
                     previous_rows = await db.fetchall(
@@ -1242,7 +1277,10 @@ class TorrentManager:
                         }
 
             results = await asyncio.gather(*[_unlock(row) for row in file_rows])
-            reserved_paths: Set[str] = set()
+            # A deleted transfer releases its old filename, but any non-deleted
+            # transfer still owns its persisted local path. This prevents stale
+            # deleted-source history from bypassing a live filename collision.
+            reserved_paths: Set[str] = set(protected_live_paths)
             succeeded = 0
             failed = 0
             missing = 0
@@ -3388,7 +3426,8 @@ class TorrentManager:
                 pending_rows = await (
                     await db.execute(
                         """SELECT f.id AS file_id, f.torrent_id, f.filename,
-                                  f.source_url, f.download_url, f.local_path,
+                                  f.size_bytes, f.source_url, f.download_url, f.local_path,
+                                  f.mirror_group_id, f.mirror_state,
                                   t.name AS torrent_name, t.source AS transfer_source
                            FROM download_files f
                            JOIN torrents t ON t.id = f.torrent_id
@@ -3450,6 +3489,36 @@ class TorrentManager:
                         dl_url = result.get("link", "")
                         if not dl_url:
                             raise Exception("Empty download URL from unlock")
+                        if (
+                            row_.get("transfer_source") == DIRECT_LINK_SOURCE
+                            and row_.get("mirror_group_id") is not None
+                            and str(row_.get("mirror_state") or "") == "active"
+                        ):
+                            from services.dispatch_coordinator import _mirror_sizes_match
+
+                            resolved_name = safe_name(str(
+                                result.get("filename")
+                                or result.get("name")
+                                or row_.get("filename")
+                                or ""
+                            ))
+                            resolved_size = int(
+                                result.get("filesize")
+                                or result.get("size")
+                                or row_.get("size_bytes")
+                                or 0
+                            )
+                            if (
+                                resolved_name.casefold()
+                                != str(row_.get("filename") or "").strip().casefold()
+                                or not _mirror_sizes_match(
+                                    resolved_size,
+                                    int(row_.get("size_bytes") or 0),
+                                )
+                            ):
+                                raise Exception(
+                                    "Failover source no longer matches the validated mirror artifact"
+                                )
                         return {**row_, "_dl_url": dl_url, "_err": None}
                     except Exception as exc:
                         return {**row_, "_dl_url": "", "_err": exc}
@@ -3470,7 +3539,19 @@ class TorrentManager:
                     ).strip()
                     error_text = _safe_persisted_error(error, capability)
                     provider_code = str(getattr(error, "code", "") or "")
-                    if (
+                    if row.get("transfer_source") == DIRECT_LINK_SOURCE:
+                        logger.warning(
+                            "direct-link source unlock failed [%s]: %s",
+                            row["filename"],
+                            error_text,
+                        )
+                        await self._update_file_state(
+                            row["file_id"],
+                            "error",
+                            row["local_path"],
+                            reason=f"{_direct_link_unlock_failure_prefix(error)}: {error_text}",
+                        )
+                    elif (
                         provider_code == "LINK_HOST_NOT_SUPPORTED"
                         or "LINK_HOST_NOT_SUPPORTED" in error_text
                     ):
@@ -3557,7 +3638,14 @@ class TorrentManager:
                     safe_error = _safe_persisted_error(exc)
                     logger.error("aria2 dispatch failed [%s]: %s", row["filename"], safe_error)
                     await self._update_file_state(
-                        row["file_id"], "error", row["local_path"], reason=safe_error
+                        row["file_id"],
+                        "error",
+                        row["local_path"],
+                        reason=(
+                            f"aria2-dispatch: {safe_error}"
+                            if row.get("transfer_source") == DIRECT_LINK_SOURCE
+                            else safe_error
+                        ),
                     )
                     await self._finalize_aria2_torrent(row["torrent_id"])
 

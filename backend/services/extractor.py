@@ -55,6 +55,8 @@ _BZ2_EXTS  = {".bz2"}
 _XZ_EXTS   = {".xz"}
 _7Z_EXTS   = {".7z"}
 _RAR_EXTS  = {".rar", ".r00", ".r01", ".r02"}
+_RAR4_MAGIC = b"Rar!\x1a\x07\x00"
+_RAR5_MAGIC = b"Rar!\x1a\x07\x01\x00"
 
 # Multi-part RAR detection: file.part1.rar, file.part01.rar, file.r00
 _MULTIPART_RAR = re.compile(
@@ -291,6 +293,27 @@ def _get_extraction_passwords() -> list[str]:
         return []
 
 
+def _rar_version(archive: Path) -> int:
+    """Validate RAR content by magic bytes and return major format version.
+
+    7-Zip 25.x distinguishes its forced legacy RAR parser from RAR5.  Forcing
+    ``-trar`` against a valid RAR5 archive makes 7-Zip reject it as "not archive".
+    Validate the content ourselves, then allow 7-Zip to choose the RAR4/RAR5
+    parser from the already-verified bytes.
+    """
+    try:
+        with archive.open("rb") as source:
+            header = source.read(max(len(_RAR4_MAGIC), len(_RAR5_MAGIC)))
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read RAR header for {archive.name}: {exc}") from exc
+
+    if header.startswith(_RAR5_MAGIC):
+        return 5
+    if header.startswith(_RAR4_MAGIC):
+        return 4
+    raise ValueError(f"RAR signature mismatch for {archive.name}")
+
+
 def _seven_zip_type_switches(archive: Path) -> list[str]:
     """Constrain native 7-Zip parser selection for each supported input.
 
@@ -304,7 +327,11 @@ def _seven_zip_type_switches(archive: Path) -> list[str]:
     if suffix in _7Z_EXTS:
         return ["-t7z"]
     if suffix in _RAR_EXTS:
-        return ["-trar"]
+        _rar_version(archive)
+        # Do not force -trar here.  7-Zip 25.x rejects valid RAR5 archives when
+        # forced through that legacy parser, while auto-detection correctly
+        # identifies the already magic-validated input as Rar5.
+        return []
     if suffix in _TAR_7Z_EXTS:
         return ["-t*:r", "-stxxz"]
     raise ValueError(f"Unsupported 7-Zip input format: {archive.name}")
@@ -388,8 +415,8 @@ def _extract_rar(archive: Path, dest: Path) -> None:
     )
 
 
-def _extract_sync(archive: Path, dest: Path) -> None:
-    """Synchronous extraction dispatcher."""
+def _extract_into_directory(archive: Path, dest: Path) -> None:
+    """Extract into an operation-owned directory."""
     dest.mkdir(parents=True, exist_ok=True)
     s = _suffix(archive)
 
@@ -423,6 +450,15 @@ def _extract_sync(archive: Path, dest: Path) -> None:
         _extract_rar(archive, dest)
     else:
         raise ValueError(f"Unsupported archive format: {archive.name}")
+
+
+def _extract_sync(archive: Path, dest: Path) -> list[Path]:
+    """Transactionally extract every supported format into the live destination."""
+    return staged_external_extract(
+        archive,
+        dest,
+        lambda stage: _extract_into_directory(archive, stage),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -478,17 +514,23 @@ class Extractor:
                     if attempt > 0:
                         logger.info("Retrying extraction of %s (attempt %d)", archive, attempt + 1)
                     logger.info("Extracting %s → %s", archive, dest)
-                    await loop.run_in_executor(self._executor, _extract_sync, archive, dest)
-                    # Nested archive support: scan sub-directories of dest for more archives.
-                    # We only scan SUBDIRECTORIES (not dest itself) to avoid treating
-                    # sibling archives in the same folder as "nested" archives.
+                    created_files = await loop.run_in_executor(
+                        self._executor, _extract_sync, archive, dest
+                    )
+                    # Nested extraction is provenance-bound: inspect only archive
+                    # files committed by this extraction operation. Never walk the
+                    # surrounding download tree where unrelated transfers live.
                     try:
+                        dest_root = dest.resolve()
                         nested_archives = []
-                        for subdir in [d for d in dest.iterdir() if d.is_dir()]:
-                            nested_archives.extend(subdir.rglob("*.rar"))
-                            nested_archives.extend(subdir.rglob("*.zip"))
-                            nested_archives.extend(subdir.rglob("*.7z"))
-                        nested_archives = [a for a in nested_archives if a != archive]
+                        for created in created_files:
+                            candidate = Path(created)
+                            try:
+                                relative = candidate.resolve().relative_to(dest_root)
+                            except (OSError, ValueError):
+                                continue
+                            if len(relative.parts) > 1 and is_archive(candidate):
+                                nested_archives.append(candidate)
                         if nested_archives:
                             logger.info("Found %d nested archive(s) inside %s",
                                         len(nested_archives), archive.name)
@@ -563,23 +605,34 @@ class Extractor:
         unique_archives = archive_paths_from_downloads(archives)
         if not unique_archives:
             return []
-        scheduled = [archive for archive in unique_archives if archive.exists()]
+        scheduled: List[Path] = []
+        results: List[Tuple[Path, bool, str]] = []
+        for archive in unique_archives:
+            if archive.exists():
+                scheduled.append(archive)
+            else:
+                results.append(
+                    (
+                        archive,
+                        False,
+                        f"Archive path is not accessible to DebridPulse: {archive}",
+                    )
+                )
+
         tasks = [
             asyncio.create_task(
                 self.extract_archive(archive, archive.parent, delete_after=delete_after)
             )
             for archive in scheduled
         ]
-        if not tasks:
-            return []
-        results_raw = await asyncio.gather(*tasks, return_exceptions=True)
-        results: List[Tuple[Path, bool, str]] = []
-        for archive, raw in zip(scheduled, results_raw):
-            if isinstance(raw, Exception):
-                results.append((archive, False, f"Extraction failed for {archive.name}: {raw}"))
-            else:
-                ok, msg = raw
-                results.append((archive, ok, msg))
+        if tasks:
+            results_raw = await asyncio.gather(*tasks, return_exceptions=True)
+            for archive, raw in zip(scheduled, results_raw):
+                if isinstance(raw, Exception):
+                    results.append((archive, False, f"Extraction failed for {archive.name}: {raw}"))
+                else:
+                    ok, msg = raw
+                    results.append((archive, ok, msg))
         return results
 
 

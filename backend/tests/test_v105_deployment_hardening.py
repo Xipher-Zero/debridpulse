@@ -9,10 +9,16 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
-def test_compose_tracks_release_and_public_health_endpoint():
+def test_release_install_surfaces_track_current_version_and_public_health_endpoint():
     root = Path(__file__).resolve().parents[2]
+    version = (root / "VERSION").read_text().strip()
+    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"
     compose = (root / "docker-compose.yml").read_text()
-    assert "ghcr.io/xipher-zero/debridpulse:v1.0.6" in compose
+    readme = (root / "README.md").read_text()
+    project_page = (root / "index.html").read_text()
+    assert expected_image in compose
+    assert readme.count(expected_image) >= 2
+    assert expected_image in project_page
     assert "http://localhost:8080/api/health" in compose
     assert "http://localhost:8080/api/stats" not in compose
 

@@ -387,10 +387,13 @@ async def test_live_paused_result_remains_reusable_for_builtin_resume():
 def test_runtime_service_root_uses_guarded_integrity_engine():
     services = Path(__file__).resolve().parents[1] / "services"
     root = (services / "transfer_service.py").read_text()
-    guard = (services / "transfer_runtime_guard.py").read_text()
-    assert "from services.transfer_runtime_guard import manager as engine" in root
+    result_guard = (services / "direct_link_result_guard.py").read_text()
+    lifecycle_guard = (services / "transfer_runtime_guard.py").read_text()
+    assert "from services.direct_link_result_guard import manager as engine" in root
     assert "from services.manager_v2 import manager as engine" not in root
-    assert "class GuardedTransferIntegrityManager(TransferIntegrityManager)" in guard
+    assert "class DirectLinkResultGuardManager(GuardedTransferIntegrityManager)" in result_guard
+    assert "from services.transfer_runtime_guard import GuardedTransferIntegrityManager" in result_guard
+    assert "class GuardedTransferIntegrityManager(TransferIntegrityManager)" in lifecycle_guard
 
 
 def test_integrity_policy_requires_exact_stable_manifest_match():

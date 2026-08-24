@@ -10,7 +10,7 @@ def source(rel):
 
 
 def test_v105_version_and_instrumentation():
-    assert (ROOT / "VERSION").read_text().strip() == "1.0.6"
+    assert (ROOT / "VERSION").read_text().strip() == "1.0.10"
     perf = source("backend/core/performance.py")
     assert "def snapshot()" in perf and "def observe(" in perf
 

@@ -16,19 +16,18 @@ cross-operation authority:
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
-import socket
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path, PurePosixPath
-from typing import Iterable
-from urllib.parse import urlsplit
 
 from core.config import get_settings
 from db.database import get_db
-from services.alldebrid import validate_provider_download_url
 from services.aria2_runtime import effective_rpc_config
+from services.network_safety import (
+    reject_non_public_resolution,
+    validate_resolved_public_destination,
+)
 from services.manager_v2 import (
     DIRECT_LINK_SOURCE,
     READY_CODE,
@@ -50,76 +49,6 @@ _MATERIALIZATION_CONTEXT: ContextVar[tuple[int, str] | None] = ContextVar(
 _PROVIDER_STATE_OWNER: ContextVar[object | None] = ContextVar(
     "debridpulse_provider_state_owner", default=None
 )
-
-
-def _public_ip(address: str) -> bool:
-    """Return True only for globally routable IP literals."""
-    normalized = str(address or "").split("%", 1)[0].strip()
-    try:
-        return bool(normalized) and ipaddress.ip_address(normalized).is_global
-    except ValueError:
-        return False
-
-
-def reject_non_public_resolution(addresses: Iterable[str], *, host: str) -> None:
-    """Fail closed when DNS returns no address or any non-global destination."""
-    normalized = {
-        str(address or "").strip()
-        for address in addresses
-        if str(address or "").strip()
-    }
-    if not normalized:
-        raise ValueError(f"Provider download host {host!r} did not resolve to an address")
-    blocked = sorted(address for address in normalized if not _public_ip(address))
-    if blocked:
-        raise ValueError(
-            f"Provider download host {host!r} resolved to non-public address(es): "
-            + ", ".join(blocked[:4])
-        )
-
-
-async def validate_resolved_public_destination(uri: str) -> str:
-    """Validate provider URL syntax plus the hostname's current DNS answers.
-
-    The provider URL validator already rejects local IP literals and unsafe
-    schemes. This additional check closes split-DNS/private-resolution cases at
-    the last application-controlled boundary before aria2 resolves the host for
-    its own connection.
-    """
-    validated = validate_provider_download_url(uri, context="aria2 download link")
-    parsed = urlsplit(validated)
-    host = str(parsed.hostname or "").rstrip(".").casefold()
-    if not host:
-        raise ValueError("Provider download URL has no hostname")
-
-    try:
-        literal = ipaddress.ip_address(host)
-    except ValueError:
-        literal = None
-
-    if literal is not None:
-        if not literal.is_global:
-            raise ValueError(f"Provider download host {host!r} is not public")
-        return validated
-
-    port = int(parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
-    loop = asyncio.get_running_loop()
-    try:
-        answers = await loop.getaddrinfo(
-            host,
-            port,
-            family=socket.AF_UNSPEC,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
-    except socket.gaierror as exc:
-        raise ValueError(f"Provider download host {host!r} could not be resolved") from exc
-
-    reject_non_public_resolution(
-        (entry[4][0] for entry in answers if entry and len(entry) >= 5 and entry[4]),
-        host=host,
-    )
-    return validated
 
 
 class GuardedTransferIntegrityAria2Service(TransferIntegrityAria2Service):

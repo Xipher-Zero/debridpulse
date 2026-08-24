@@ -13,6 +13,32 @@
   let idleTimer = null;
   let latestLogicalActive = 0;
 
+  function removeLegacyStartupDebugSurface() {
+    // app.js still contains a defensive startup retry/debug helper from the
+    // inherited UI. The helper already no-ops when this node is absent, so
+    // remove only the dashboard presentation while preserving retry behavior,
+    // connection indicators, Event Log reporting and backend diagnostics.
+    const debugStatus = document.getElementById('debug-status');
+    if (debugStatus) debugStatus.remove();
+  }
+
+  function installDuplicateStatusStyle() {
+    if (document.getElementById('debridpulse-duplicate-status-style')) return;
+    const style = document.createElement('style');
+    style.id = 'debridpulse-duplicate-status-style';
+    style.textContent = [
+      '.badge-duplicate {',
+      '  background: rgba(234,179,8,.14);',
+      '  color: var(--yellow);',
+      '  text-transform: capitalize;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  removeLegacyStartupDebugSurface();
+  installDuplicateStatusStyle();
+
   function nonNegativeCount(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return 0;
