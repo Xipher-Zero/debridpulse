@@ -235,18 +235,20 @@ async def test_completed_payload_with_only_duplicate_mirrors_is_plain_success(tm
 
 
 @pytest.mark.asyncio
-async def test_real_physical_aria2_error_remains_failure(tmp_path, monkeypatch):
+async def test_real_physical_aria2_error_remains_failure_and_pushes_terminal_state(tmp_path, monkeypatch):
     db_path = await _prepare_db(tmp_path, monkeypatch)
     torrent_id = await _insert_transfer(
         db_path,
         physical_status="error",
-        physical_reason="3: Resource not found",
+        physical_reason="15: Download aborted.",
+        include_source_failures=False,
     )
     manager = DirectLinkResultGuardManager()
     _disable_completion_side_effects(manager, monkeypatch)
+    manager._broadcast_direct_link_update = AsyncMock()
 
     # The inherited finalizer owns real physical failures. Disable notification
-    # so the test observes only persistence semantics.
+    # so the test observes persistence and operator-state publication semantics.
     monkeypatch.setattr(
         "services.manager_v2.get_settings",
         lambda: SimpleNamespace(
@@ -272,6 +274,12 @@ async def test_real_physical_aria2_error_remains_failure(tmp_path, monkeypatch):
     )
     assert physical["status"] == "error"
     assert physical["blocked"] == 0
+    manager._broadcast_direct_link_update.assert_awaited_once_with(
+        torrent_id,
+        "error",
+        "GF200826-TMNTSFS-RN.rar (3 links)",
+        99.8,
+    )
 
 
 @pytest.mark.asyncio
