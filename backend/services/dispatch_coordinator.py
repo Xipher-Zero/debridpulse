@@ -1,6 +1,7 @@
 """Slot-aware download dispatch coordination and logical mirror collapse."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import defaultdict
 from urllib.parse import urlsplit
@@ -23,7 +24,6 @@ _PRIMARY_STATUS_PRIORITY = {
 
 
 def _source_host(value: object) -> str:
-    """Return a stable host label for mirror comparison without retaining URLs."""
     try:
         host = str(urlsplit(str(value or "")).hostname or "").rstrip(".").casefold()
     except ValueError:
@@ -34,12 +34,6 @@ def _source_host(value: object) -> str:
 
 
 def _mirror_identity(row: dict) -> tuple[str, int] | None:
-    """Return conservative provider-metadata identity for one resolved file.
-
-    AllDebrid direct-link metadata does not provide a content checksum. Mirror
-    collapsing therefore requires both the resolved filename and an exact,
-    non-zero byte size. Unknown-size files are intentionally never deduplicated.
-    """
     filename = str(row.get("filename") or "").strip().casefold()
     try:
         size_bytes = int(row.get("size_bytes") or 0)
@@ -51,15 +45,6 @@ def _mirror_identity(row: dict) -> tuple[str, int] | None:
 
 
 def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
-    """Choose pending cross-hoster mirrors that must not become separate jobs.
-
-    A logical payload is collapsed only when different source hosts resolved to
-    the same filename and exact non-zero byte size. An already-running or
-    completed child is preferred as the primary so this routine never cancels
-    work merely to enforce deduplication. Same-hoster URL variants remain
-    distinct because provider metadata alone is not strong enough to prove that
-    they are mirrors rather than separate objects.
-    """
     grouped: dict[tuple[int, str, int], list[dict]] = defaultdict(list)
     for raw in rows or []:
         row = dict(raw)
@@ -98,13 +83,6 @@ def plan_direct_link_mirror_suppression(rows) -> list[tuple[dict, dict]]:
 
 
 async def collapse_direct_link_mirrors() -> int:
-    """Collapse resolved mirror URLs before any new aria2 job is created.
-
-    The parent retains the original submitted URL list, so retry/history still
-    knows every mirror. Duplicate child rows are removed only while they are
-    pending and have no GID. This makes the database model one logical
-    downloadable file rather than one file per working hoster.
-    """
     async with get_db() as db:
         rows = await db.fetchall(
             """SELECT f.id AS file_id, f.torrent_id, f.filename,
@@ -143,8 +121,7 @@ async def collapse_direct_link_mirrors() -> int:
                 )
             )
             logger.info(
-                "direct-link mirror suppressed: transfer=%s file=%s size=%s "
-                "primary_host=%s alternate_host=%s",
+                "direct-link mirror suppressed: transfer=%s file=%s size=%s primary_host=%s alternate_host=%s",
                 torrent_id,
                 str(primary.get("filename") or "")[:120],
                 int(primary.get("size_bytes") or 0),
@@ -173,8 +150,7 @@ async def collapse_direct_link_mirrors() -> int:
                 "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
                 (
                     torrent_id,
-                    f"Suppressed {removed} cross-hoster mirror link(s) for "
-                    f"{logical_files} logical file(s); one copy will be downloaded",
+                    f"Suppressed {removed} cross-hoster mirror link(s) for {logical_files} logical file(s); one copy will be downloaded",
                 ),
             )
         await db.commit()
@@ -182,11 +158,14 @@ async def collapse_direct_link_mirrors() -> int:
 
 
 class MirrorAwareTransferControlCoordinator(TransferControlCoordinator):
-    """Authoritative queue coordinator with logical direct-link mirror collapse."""
+    def __init__(self, manager) -> None:
+        super().__init__(manager)
+        self._mirror_dispatch_lock = asyncio.Lock()
 
     async def dispatch_queue(self, all_downloads=None):
-        await collapse_direct_link_mirrors()
-        return await super().dispatch_queue(all_downloads)
+        async with self._mirror_dispatch_lock:
+            await collapse_direct_link_mirrors()
+            return await super().dispatch_queue(all_downloads)
 
 
 class DispatchCoordinator:
