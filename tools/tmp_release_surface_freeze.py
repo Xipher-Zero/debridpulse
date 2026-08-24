@@ -38,13 +38,24 @@ if new_extract not in readme:
     raise RuntimeError("README extraction safety description is not current")
 readme_path.write_text(readme)
 
+project_page_path = ROOT / "index.html"
+project_page = project_page_path.read_text()
+if OLD_IMAGE in project_page:
+    project_page = project_page.replace(OLD_IMAGE, NEW_IMAGE)
+if NEW_IMAGE not in project_page:
+    raise RuntimeError("index.html install surface does not track current VERSION")
+project_page_path.write_text(project_page)
+
 test_path = ROOT / "backend/tests/test_v105_deployment_hardening.py"
 test = test_path.read_text()
 old_test = '''def test_compose_tracks_release_and_public_health_endpoint():\n    root = Path(__file__).resolve().parents[2]\n    compose = (root / "docker-compose.yml").read_text()\n    assert "ghcr.io/xipher-zero/debridpulse:v1.0.6" in compose\n    assert "http://localhost:8080/api/health" in compose\n    assert "http://localhost:8080/api/stats" not in compose\n'''
-new_test = '''def test_compose_and_readme_track_current_release_and_public_health_endpoint():\n    root = Path(__file__).resolve().parents[2]\n    version = (root / "VERSION").read_text().strip()\n    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"\n    compose = (root / "docker-compose.yml").read_text()\n    readme = (root / "README.md").read_text()\n    assert expected_image in compose\n    assert readme.count(expected_image) >= 2\n    assert "http://localhost:8080/api/health" in compose\n    assert "http://localhost:8080/api/stats" not in compose\n'''
+intermediate_test = '''def test_compose_and_readme_track_current_release_and_public_health_endpoint():\n    root = Path(__file__).resolve().parents[2]\n    version = (root / "VERSION").read_text().strip()\n    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"\n    compose = (root / "docker-compose.yml").read_text()\n    readme = (root / "README.md").read_text()\n    assert expected_image in compose\n    assert readme.count(expected_image) >= 2\n    assert "http://localhost:8080/api/health" in compose\n    assert "http://localhost:8080/api/stats" not in compose\n'''
+new_test = '''def test_release_install_surfaces_track_current_version_and_public_health_endpoint():\n    root = Path(__file__).resolve().parents[2]\n    version = (root / "VERSION").read_text().strip()\n    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"\n    compose = (root / "docker-compose.yml").read_text()\n    readme = (root / "README.md").read_text()\n    project_page = (root / "index.html").read_text()\n    assert expected_image in compose\n    assert readme.count(expected_image) >= 2\n    assert expected_image in project_page\n    assert "http://localhost:8080/api/health" in compose\n    assert "http://localhost:8080/api/stats" not in compose\n'''
 if old_test in test:
     test = test.replace(old_test, new_test, 1)
-if "def test_compose_and_readme_track_current_release_and_public_health_endpoint():" not in test:
+elif intermediate_test in test:
+    test = test.replace(intermediate_test, new_test, 1)
+if "def test_release_install_surfaces_track_current_version_and_public_health_endpoint():" not in test:
     raise RuntimeError("Deployment release-contract test is not current")
 test_path.write_text(test)
 
