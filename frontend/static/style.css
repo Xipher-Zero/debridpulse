@@ -655,6 +655,7 @@ td { padding: 11px 16px; vertical-align: middle; }
 .badge-pending    { background: rgba(100,116,139,.12); color: var(--text2); }
 .badge-uploading  { background: rgba(59,130,246,.14); color: var(--blue); }
 .badge-processing { background: rgba(168,85,247,.14); color: var(--purple); }
+.badge-extracting { animation: pulse 1s ease-in-out infinite; }
 .badge-queued     { background: rgba(59,130,246,.14); color: var(--blue); }
 .badge-paused     { background: rgba(234,179,8,.14); color: var(--yellow); }
 .badge-downloading{ background: rgba(34,197,94,.12);  color: var(--green); }
@@ -664,6 +665,10 @@ td { padding: 11px 16px; vertical-align: middle; }
 .badge-partial    { background: rgba(234,179,8,.14);  color: var(--yellow); }
 .badge-deleted    { background: rgba(100,116,139,.08);color: var(--text3); }
 .badge-imported   { background: rgba(var(--accent-rgb),.12); color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .badge-extracting { animation: none; }
+}
 
 /* ── Progress ── */
 .prog { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; min-width: 70px; }
