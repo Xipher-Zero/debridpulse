@@ -17,6 +17,12 @@ _TORRENT_PRIVATE_FIELDS = frozenset({"magnet", "download_url"})
 _FILE_PRIVATE_FIELDS = frozenset({"source_url", "download_url"})
 _CAPABILITY_FIELDS = _TORRENT_PRIVATE_FIELDS | _FILE_PRIVATE_FIELDS
 _NAIVE_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$")
+_PRE_MATERIALIZATION_STATUSES = frozenset({
+    "pending",
+    "uploading",
+    "processing",
+    "ready",
+})
 
 
 def _public_timestamp(value: Any) -> Any:
@@ -45,8 +51,20 @@ def _without_fields(value: Mapping[str, Any], private_fields: frozenset[str]) ->
 
 
 def public_torrent(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Serialize a torrent row without provider bearer/capability material."""
-    return _without_fields(value, _TORRENT_PRIVATE_FIELDS)
+    """Serialize a torrent row using browser-facing transfer semantics.
+
+    AllDebrid's ``downloaded / size`` percentage describes provider cache state,
+    not local DebridPulse possession. A cached torrent can therefore report 100%
+    while DebridPulse is still determining which local files already exist and
+    which files must be queued to aria2. Keep that provider progress internally,
+    but present 0% to the browser until local materialization has established a
+    queued/downloading/paused/completed transfer state.
+    """
+    payload = _without_fields(value, _TORRENT_PRIVATE_FIELDS)
+    status = str(payload.get("status") or "").strip().lower()
+    if status in _PRE_MATERIALIZATION_STATUSES:
+        payload["progress"] = 0.0
+    return payload
 
 
 def public_download_file(value: Mapping[str, Any]) -> dict[str, Any]:

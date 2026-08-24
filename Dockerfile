@@ -17,17 +17,25 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # the 7zip-rar notices needed to ship its licensing terms with the image. The
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
 # docker filter configuration.
+#
+# Upgrade the base layer before installing application packages. A pinned Python
+# slim tag can retain Debian packages that already have security fixes available;
+# the runtime vulnerability gate must evaluate the current patched Trixie package
+# set rather than the package snapshot baked into that base layer.
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
       'path-include=/usr/share/doc/7zip-rar/unRarLicense.txt' \
       > /etc/dpkg/dpkg.cfg.d/zz-debridpulse-license-notices && \
     sed -ri 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources && \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     aria2 \
     curl \
     gosu \
     7zip \
-    7zip-rar && rm -rf /var/lib/apt/lists/*
+    7zip-rar && \
+    rm -rf /var/lib/apt/lists/*
 
 # Python deps
 COPY backend/requirements.txt .

@@ -8,11 +8,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from services.aria2 import Aria2DownloadStatus, Aria2RPCError
-from services.manager_v2 import manager
 from services.reconciliation_service import ReconciliationService
 from services.transfer_control import TransferControlCoordinator
 from services.transfer_control_service import TransferControlService
 from services.transfer_service import transfer_service
+
+# Tests must patch the engine the application actually bound, not the legacy
+# compatibility singleton left exported by manager_v2.
+manager = transfer_service._engine
 
 
 def _status(gid: str, status: str) -> Aria2DownloadStatus:
