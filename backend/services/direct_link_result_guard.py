@@ -126,9 +126,10 @@ class DirectLinkResultGuardManager(GuardedTransferIntegrityManager):
             if state is None:
                 return False
             parent, counts = state
-            if not self._successful_physical_completion(counts):
+            parent_status = str(parent.get("status") or "")
+            if parent_status in {"completed", "deleted"}:
                 return False
-            if str(parent.get("status") or "") == "deleted":
+            if not self._successful_physical_completion(counts):
                 return False
 
             completed_count = int(counts.get("completed_count") or 0)
@@ -156,7 +157,7 @@ class DirectLinkResultGuardManager(GuardedTransferIntegrityManager):
                            SET status='completed', completed_at=CURRENT_TIMESTAMP,
                                size_bytes=?, progress=100.0, error_message=?,
                                updated_at=CURRENT_TIMESTAMP
-                         WHERE id=? AND status!='deleted'""",
+                         WHERE id=? AND status NOT IN ('completed','deleted')""",
                     (logical_size, error_message, torrent_id),
                 )
                 if int(getattr(update, "rowcount", 0) or 0) <= 0:
