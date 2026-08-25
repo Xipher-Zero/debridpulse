@@ -211,11 +211,11 @@ body.dp-v11-structural #view-dashboard #dash-error-card .dhs-icon .dp-icon {
     drop-shadow(0 0 12px color-mix(in srgb, var(--c) 32%, transparent)) !important;
 }
 
-/* Keep the glow that made progress easy to scan, but trim only the physical
-   bar girth by about 21% from the 7px live-review treatment. */
+/* Preserve the approved semantic glow and reduce only the physical core line
+   so completed/error-state progress reads lighter without losing scanability. */
 body.dp-v11-structural #dash-tbody .prog,
 body.dp-v11-structural #t-tbody .prog {
-  height: 5.5px !important;
+  height: 4.5px !important;
 }
 
 /* On wide Dashboard layouts, Status had far more horizontal allocation than
