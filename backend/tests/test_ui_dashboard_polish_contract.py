@@ -88,3 +88,59 @@ def test_indeterminate_progress_stripes_survive_semantic_glow() -> None:
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"progress stripe guard is missing: {missing}"
+
+
+def test_final_sidebar_endpoint_is_diffuse_starburst_without_touching_count_badge() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        ".nav-item.active::after",
+        "right: -2px !important",
+        "width: 76px !important",
+        "height: 54px !important",
+        "radial-gradient(circle at 98% 50%",
+        "conic-gradient(from 180deg at 98% 50%",
+        "mask-image: radial-gradient(ellipse 100% 86% at 98% 50%",
+        "border-radius: 0 !important",
+        "box-shadow: none !important",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"final sidebar starburst contract is missing: {missing}"
+    assert "#nb-active" not in css
+
+
+def test_final_provider_baseline_crown_and_metric_icon_lighting() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        ':has(#content.dashboard-active) .sidebar-footer',
+        "bottom: 24px !important",
+        "#premium-row::before",
+        "top: 15px !important",
+        "drop-shadow(0 0 11px rgba(153,65,239,.42))",
+        ".dash-hero-stat .dhs-icon .dp-icon",
+        "color-mix(in srgb, var(--c) 62%, transparent)",
+        "color-mix(in srgb, var(--c) 70%, transparent)",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"final provider/card-light contract is missing: {missing}"
+
+
+def test_final_progress_percentage_restores_original_geometry_and_neutral_emphasis() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        ".prog-pct",
+        "margin-top: 3px !important",
+        "font-family: var(--mono) !important",
+        "font-size: 10px !important",
+        "font-weight: 500 !important",
+        "letter-spacing: normal !important",
+        "color: #3e465f !important",
+        "text-shadow: none !important",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"final progress percentage contract is missing: {missing}"
+
+
+def test_recent_activity_view_all_is_removed_from_dashboard_presentation() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    assert 'button[onclick*="data-view=torrents"]' in css
+    assert "display: none !important" in css
