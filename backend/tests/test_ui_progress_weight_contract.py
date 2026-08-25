@@ -11,14 +11,14 @@ STYLE = STATIC / "style-v11.css"
 PROGRESS = STATIC / "ui-dashboard-progress-weight.css"
 
 
-def test_progress_weight_layer_is_loaded_last_without_cache_generation_bump() -> None:
+def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard-control-polish.css?v=18" in overlay
-    assert "/ui-dashboard-progress-weight.css?v=18" in overlay
-    assert overlay.rfind("/ui-dashboard-progress-weight.css?v=18") > overlay.rfind(
-        "/ui-dashboard-control-polish.css?v=18"
-    )
-    assert "?v=19" not in overlay
+    control = "/ui-dashboard-control-polish.css?v=18"
+    progress = "/ui-dashboard-progress-weight.css?v=18"
+    downloads = "/ui-downloads-page.css?v=19"
+    for layer in (control, progress, downloads):
+        assert layer in overlay
+    assert overlay.index(control) < overlay.index(progress) < overlay.index(downloads)
 
 
 def test_progress_weight_refinement_changes_only_physical_height() -> None:
