@@ -1,0 +1,15 @@
+/* Final cascade guard for the v1.0.11 polish pass.
+   Keep legacy indeterminate/striped progress rendering intact while the new
+   semantic glow applies to ordinary determinate progress bars. */
+body.dp-v11-structural #dash-tbody .prog-fill[style*="repeating-linear-gradient"],
+body.dp-v11-structural #t-tbody .prog-fill[style*="repeating-linear-gradient"] {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0,
+    var(--accent) 8px,
+    transparent 8px,
+    transparent 16px
+  ) !important;
+  box-shadow: none !important;
+  opacity: .35 !important;
+}
