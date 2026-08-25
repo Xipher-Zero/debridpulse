@@ -13,13 +13,16 @@ def test_dashboard_startup_debug_surface_is_removed_without_changing_retry_logic
     assert "const el = document.getElementById('debug-status');" in app
     assert "if (!el) return;" in app
 
-    # v1.0.6 must not present the startup retry/debug stream as dashboard UI.
+    # v1 must not present the startup retry/debug stream as dashboard UI.
     assert "function removeLegacyStartupDebugSurface()" in operator
     assert "const debugStatus = document.getElementById('debug-status');" in operator
     assert "if (debugStatus) debugStatus.remove();" in operator
-    assert operator.index("removeLegacyStartupDebugSurface();") < operator.index(
-        "installDuplicateStatusStyle();"
-    )
+    assert "removeLegacyStartupDebugSurface();" in operator
+
+    # Duplicate-status material is now statically owned by the frontend CSS
+    # contract rather than being installed by the operator-title behavior shim.
+    assert "installDuplicateStatusStyle" not in operator
+    assert "document.createElement('style')" not in operator
 
     # The cleanup extension executes immediately after the core deferred script;
     # the async startup initializer yields on its first settings request, while
