@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <!-- Button body -->
+    <linearGradient id="buttonFill" x1="180" y1="150" x2="860" y2="880" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6D35E8"/>
+      <stop offset="0.34" stop-color="#4420A8"/>
+      <stop offset="0.72" stop-color="#24145E"/>
+      <stop offset="1" stop-color="#35107A"/>
+    </linearGradient>
+
+    <radialGradient id="buttonCenterGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(520 530) rotate(90) scale(420 430)">
+      <stop offset="0" stop-color="#4728AA" stop-opacity=".48"/>
+      <stop offset=".62" stop-color="#2A1767" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#160C3D" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="buttonRim" x1="150" y1="135" x2="875" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B48CFF"/>
+      <stop offset=".18" stop-color="#7346FF"/>
+      <stop offset=".68" stop-color="#6D25FF"/>
+      <stop offset="1" stop-color="#F04CFF"/>
+    </linearGradient>
+
+    <linearGradient id="buttonHighlight" x1="210" y1="155" x2="690" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".48"/>
+      <stop offset=".42" stop-color="#BFAEFF" stop-opacity=".15"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Arrow -->
+    <linearGradient id="arrowFill" x1="470" y1="280" x2="620" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8FF72"/>
+      <stop offset=".28" stop-color="#8BFF42"/>
+      <stop offset=".62" stop-color="#25F12E"/>
+      <stop offset="1" stop-color="#05C73A"/>
+    </linearGradient>
+
+    <linearGradient id="arrowEdge" x1="400" y1="290" x2="660" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FAFFC7"/>
+      <stop offset=".22" stop-color="#D9FF83"/>
+      <stop offset=".65" stop-color="#63FF5B"/>
+      <stop offset="1" stop-color="#1BEF4A"/>
+    </linearGradient>
+
+    <linearGradient id="arrowSheen" x1="410" y1="285" x2="585" y2="650" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".72"/>
+      <stop offset=".32" stop-color="#F4FFD7" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="buttonGlow" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="16" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="0 0 0 0 .38
+                0 0 0 0 .08
+                0 0 0 0 1
+                0 0 0 .55 0" result="g"/>
+      <feMerge>
+        <feMergeNode in="g"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="arrowGlow" x="-55%" y="-55%" width="210%" height="210%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="20" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="0 0 0 0 .18
+                0 0 0 0 1
+                0 0 0 0 .15
+                0 0 0 .68 0" result="g"/>
+      <feMerge>
+        <feMergeNode in="g"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="innerShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="7" result="blur"/>
+      <feOffset dy="8"/>
+      <feComposite operator="out" in2="SourceAlpha"/>
+      <feColorMatrix type="matrix"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 .35 0"/>
+      <feComposite operator="in" in2="SourceAlpha"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <!-- Transparent canvas; only the button is drawn -->
+
+  <!-- Purple rounded-square button -->
+  <g filter="url(#buttonGlow)">
+    <rect x="112" y="110" width="800" height="800" rx="210"
+          fill="url(#buttonFill)"/>
+    <rect x="112" y="110" width="800" height="800" rx="210"
+          fill="url(#buttonCenterGlow)"/>
+    <rect x="121" y="119" width="782" height="782" rx="201"
+          stroke="url(#buttonRim)" stroke-width="12" stroke-opacity=".88"/>
+
+    <!-- glossy upper-left wash -->
+    <path d="M176 285
+             C228 178 340 137 510 137
+             H700
+             C590 170 466 221 371 281
+             C286 334 224 380 176 432
+             Z"
+          fill="url(#buttonHighlight)"/>
+  </g>
+
+  <!-- Green downward arrow -->
+  <g filter="url(#arrowGlow)">
+    <path d="M437 290
+             C437 266 456 247 480 247
+             H544
+             C568 247 587 266 587 290
+             V515
+             H674
+             C695 515 712 527 720 545
+             C728 563 724 584 710 599
+             L551 773
+             C530 796 494 796 473 773
+             L314 599
+             C300 584 296 563 304 545
+             C312 527 329 515 350 515
+             H437
+             V290
+             Z"
+          fill="url(#arrowFill)"
+          stroke="url(#arrowEdge)"
+          stroke-width="12"
+          stroke-linejoin="round"
+          filter="url(#innerShadow)"/>
+
+    <!-- glossy arrow highlight -->
+    <path d="M468 278
+             C468 267 477 258 488 258
+             H533
+             C544 258 553 267 553 278
+             V490
+             C553 507 566 520 583 520
+             H665
+             C678 520 683 535 674 545
+             L642 580
+             C628 594 606 589 600 570
+             C593 549 574 536 552 536
+             H507
+             C493 536 482 525 482 511
+             V315
+             C482 296 476 284 468 278
+             Z"
+          fill="url(#arrowSheen)"/>
+  </g>
+</svg>

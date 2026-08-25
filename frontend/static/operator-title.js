@@ -292,3 +292,15 @@
   script.dataset.dpUiRuntime = '1';
   document.head.appendChild(script);
 })();
+
+/* Downloads uses a separate presentation shim so the stabilized application
+ * loader remains untouched while page-by-page v1.0.11 migration continues. */
+(function () {
+  'use strict';
+  if (document.querySelector('script[data-dp-downloads-runtime]')) return;
+  const script = document.createElement('script');
+  script.src = '/ui-downloads-runtime.js?v=18';
+  script.defer = true;
+  script.dataset.dpDownloadsRuntime = '1';
+  document.head.appendChild(script);
+})();

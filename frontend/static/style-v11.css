@@ -30,3 +30,4 @@
 /* Page migrations consume the approved shared visual language after the
    Dashboard calibration layers. Keep the existing v=18 cache generation. */
 @import url('/ui-downloads-structural.css?v=18');
+@import url('/ui-downloads-polish.css?v=18');
