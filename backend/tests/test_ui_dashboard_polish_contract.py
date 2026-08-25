@@ -167,3 +167,22 @@ def test_live_review_micro_refinements_are_locked() -> None:
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"live-review micro-refinement contract is missing: {missing}"
+
+
+def test_latest_color_spacing_and_sidebar_hover_refinements_are_locked() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        "#dash-error-card",
+        "--c: #ff4854 !important",
+        "saturate(1.28)",
+        "height: 5.5px !important",
+        "@media (min-width: 1440px)",
+        "table-layout: fixed !important",
+        "width: 13% !important",
+        "width: 21% !important",
+        ".nav-item:not(.active):hover",
+        "rgba(136,76,228,.13)",
+        "rgba(143,91,222,.17)",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"latest dashboard balance contract is missing: {missing}"
