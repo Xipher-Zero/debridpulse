@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="32" height="32" viewBox="0 0 32 32"
+     fill="none">
+  <defs>
+    <linearGradient id="boltGradient" x1="9" y1="25" x2="23" y2="7"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7E4DE0"/>
+      <stop offset="0.45" stop-color="#A95BFF"/>
+      <stop offset="0.75" stop-color="#C77BFF"/>
+      <stop offset="1" stop-color="#E0A0FF"/>
+    </linearGradient>
+
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.25" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="0.65 0 0 0 0
+                0 0.35 0 0 0
+                0 0 1 0 0
+                0 0 0 1 0"
+        result="purpleGlow"/>
+      <feMerge>
+        <feMergeNode in="purpleGlow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <path d="M18.7 5.3
+           L8.6 15.0
+           H14.0
+           L11.2 25.8
+           L23.5 13.5
+           H17.8
+           Z"
+        fill="url(#boltGradient)"
+        filter="url(#glow)"
+        stroke="url(#boltGradient)"
+        stroke-width="0.8"
+        stroke-linejoin="round"/>
+</svg>

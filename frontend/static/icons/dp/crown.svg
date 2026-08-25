@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <defs>
+    <linearGradient id="crownTop" x1="24" y1="9" x2="24" y2="33" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C55BFF"/>
+      <stop offset="0.55" stop-color="#A43EF0"/>
+      <stop offset="1" stop-color="#7A2BC7"/>
+    </linearGradient>
+    <linearGradient id="crownBase" x1="24" y1="32" x2="24" y2="39" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B64DFA"/>
+      <stop offset="1" stop-color="#7B2BC9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Crown body. Transparent canvas; no background shape. -->
+  <path
+    d="M13.2 19.2
+       C12.1 18.5 10.9 19.5 11.3 20.8
+       L14.9 31.6
+       C15.2 32.5 16.0 33.0 17.0 33.0
+       H33.1
+       C34.1 33.0 34.9 32.4 35.2 31.5
+       L38.4 18.8
+       C38.7 17.5 37.2 16.7 36.3 17.6
+       L30.6 22.7
+       L26.3 10.7
+       C25.8 9.2 23.7 9.2 23.2 10.7
+       L19.0 22.7
+       Z"
+    fill="url(#crownTop)"
+    stroke="#6B24B4"
+    stroke-width="1.15"
+    stroke-linejoin="round"/>
+
+  <!-- Slight highlight to preserve the luminous look of the source icon. -->
+  <path
+    d="M15.2 22.7 L19.3 25.8 L24.8 13.5 L30.1 25.6 L35.4 20.8"
+    stroke="#D884FF"
+    stroke-width="0.85"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.48"/>
+
+  <!-- Crown band -->
+  <path
+    d="M15.6 32.1 H34.4 L33.9 38.0
+       C33.8 38.8 33.1 39.4 32.2 39.4
+       H17.8
+       C16.9 39.4 16.2 38.8 16.1 38.0
+       Z"
+    fill="url(#crownBase)"
+    stroke="#6421AA"
+    stroke-width="1.1"
+    stroke-linejoin="round"/>
+
+  <path d="M17.0 35.0 H33.0" stroke="#D36CFF" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
+</svg>

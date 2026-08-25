@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="32" height="32" viewBox="0 0 32 32"
+     fill="none">
+  <defs>
+    <linearGradient id="flaskGradient" x1="11" y1="5" x2="22" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD34D"/>
+      <stop offset="0.45" stop-color="#FFB11F"/>
+      <stop offset="1" stop-color="#E88A00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- neck / lip -->
+  <path d="M11.5 5.5h9"
+        stroke="url(#flaskGradient)"
+        stroke-width="2.5"
+        stroke-linecap="round"/>
+
+  <path d="M14 5.5v7.2L8.2 23.1
+           c-.8 1.45.25 3.2 1.9 3.2h11.8
+           c1.65 0 2.7-1.75 1.9-3.2L18 12.7V5.5"
+        stroke="url(#flaskGradient)"
+        stroke-width="2.5"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+        fill="none"/>
+
+  <!-- liquid -->
+  <path d="M11.4 21.2h9.2l2.15 3.85H9.25L11.4 21.2Z"
+        fill="url(#flaskGradient)"/>
+</svg>

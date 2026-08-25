@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="heartGradient" x1="9" y1="8" x2="23" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF7A7A"/>
+      <stop offset="0.45" stop-color="#FF4B55"/>
+      <stop offset="1" stop-color="#E12D3F"/>
+    </linearGradient>
+
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#glow)">
+    <!-- Heart -->
+    <path d="M16 25.6
+             C15.2 25.0 14.2 24.2 13.0 23.3
+             C8.7 19.9 6.7 17.9 6.7 14.4
+             C6.7 11.5 8.9 9.3 11.8 9.3
+             C13.6 9.3 15.0 10.0 16 11.4
+             C17.0 10.0 18.4 9.3 20.2 9.3
+             C23.1 9.3 25.3 11.5 25.3 14.4
+             C25.3 17.9 23.3 19.9 19.0 23.3
+             C17.8 24.2 16.8 25.0 16 25.6Z"
+          fill="url(#heartGradient)"/>
+
+    <!-- Heartbeat line -->
+    <path d="M7.8 16.2
+             H11.2
+             L13.0 18.1
+             L15.2 13.4
+             L17.2 19.1
+             L18.7 16.2
+             H24.2"
+          stroke="#7A0F1F"
+          stroke-width="2.15"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
+</svg>

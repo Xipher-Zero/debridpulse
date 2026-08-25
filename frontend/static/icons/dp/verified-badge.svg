@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="76" height="76" viewBox="0 0 76 76" fill="none">
+  <defs>
+    <linearGradient id="badgeStroke" x1="21" y1="20" x2="55" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8C8FF"/>
+      <stop offset=".48" stop-color="#B99BFF"/>
+      <stop offset="1" stop-color="#9270E7"/>
+    </linearGradient>
+
+    <filter id="badgeGlow" x="10" y="10" width="56" height="56" filterUnits="userSpaceOnUse">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.15" result="blur"/>
+      <feFlood flood-color="#B69CFF" flood-opacity=".45" result="flood"/>
+      <feComposite in="flood" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Transparent background: verification badge only -->
+  <g filter="url(#badgeGlow)"
+     fill="none"
+     stroke="url(#badgeStroke)"
+     stroke-width="3.1"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <!-- Scalloped verification/seal outline -->
+    <path d="M38 19.5
+             L43.0 22.0
+             L48.4 21.7
+             L51.1 26.4
+             L55.7 29.2
+             L55.5 34.6
+             L58.0 39.5
+             L55.5 44.4
+             L55.7 49.8
+             L51.1 52.6
+             L48.4 57.3
+             L43.0 57.0
+             L38 59.5
+             L33.0 57.0
+             L27.6 57.3
+             L24.9 52.6
+             L20.3 49.8
+             L20.5 44.4
+             L18.0 39.5
+             L20.5 34.6
+             L20.3 29.2
+             L24.9 26.4
+             L27.6 21.7
+             L33.0 22.0
+             Z"/>
+
+    <!-- Check mark -->
+    <path d="M30.2 39.8
+             L35.4 45.0
+             L46.4 33.7"/>
+  </g>
+</svg>

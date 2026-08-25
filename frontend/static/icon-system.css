@@ -1,0 +1,47 @@
+/* DebridPulse v1.0.11 icon primitives. See docs/UI_ICON_SYSTEM.md. */
+.dp-icon {
+  display: inline-block;
+  width: var(--dp-icon-size, 20px);
+  height: var(--dp-icon-size, 20px);
+  flex: 0 0 auto;
+  object-fit: contain;
+  vertical-align: middle;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.dp-icon--xs { --dp-icon-size: 14px; }
+.dp-icon--sm { --dp-icon-size: 16px; }
+.dp-icon--md { --dp-icon-size: 20px; }
+.dp-icon--lg { --dp-icon-size: 24px; }
+.dp-icon--xl { --dp-icon-size: 32px; }
+.dp-icon--metric { --dp-icon-size: 48px; }
+.dp-icon--hero { --dp-icon-size: 64px; }
+
+.dp-icon-frame {
+  --dp-icon-frame-size: 40px;
+  --dp-icon-frame-radius: 10px;
+  --dp-icon-frame-fg: #a970ff;
+  --dp-icon-frame-bg: rgba(139, 61, 255, 0.12);
+  --dp-icon-frame-border: rgba(169, 112, 255, 0.18);
+  --dp-icon-frame-glow: rgba(139, 61, 255, 0.14);
+  display: inline-grid;
+  width: var(--dp-icon-frame-size);
+  height: var(--dp-icon-frame-size);
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--dp-icon-frame-border);
+  border-radius: var(--dp-icon-frame-radius);
+  background: var(--dp-icon-frame-bg);
+  box-shadow: 0 0 18px var(--dp-icon-frame-glow);
+  color: var(--dp-icon-frame-fg);
+}
+.dp-icon-frame > .dp-icon { --dp-icon-size: 24px; }
+.dp-icon-frame--purple { --dp-icon-frame-fg:#b06cff; --dp-icon-frame-bg:rgba(139,61,255,.13); --dp-icon-frame-border:rgba(176,108,255,.19); --dp-icon-frame-glow:rgba(139,61,255,.14); }
+.dp-icon-frame--green { --dp-icon-frame-fg:#34e889; --dp-icon-frame-bg:rgba(29,185,108,.12); --dp-icon-frame-border:rgba(52,232,137,.18); --dp-icon-frame-glow:rgba(29,185,108,.13); }
+.dp-icon-frame--blue { --dp-icon-frame-fg:#4d91ff; --dp-icon-frame-bg:rgba(43,112,255,.12); --dp-icon-frame-border:rgba(77,145,255,.18); --dp-icon-frame-glow:rgba(43,112,255,.13); }
+.dp-icon-frame--cyan { --dp-icon-frame-fg:#23d9ff; --dp-icon-frame-bg:rgba(35,217,255,.10); --dp-icon-frame-border:rgba(35,217,255,.17); --dp-icon-frame-glow:rgba(35,217,255,.12); }
+.dp-icon-frame--amber { --dp-icon-frame-fg:#ffbe2e; --dp-icon-frame-bg:rgba(255,174,35,.11); --dp-icon-frame-border:rgba(255,190,46,.18); --dp-icon-frame-glow:rgba(255,174,35,.12); }
+.dp-icon-frame--red { --dp-icon-frame-fg:#ff5364; --dp-icon-frame-bg:rgba(255,66,87,.11); --dp-icon-frame-border:rgba(255,83,100,.18); --dp-icon-frame-glow:rgba(255,66,87,.12); }
+[data-theme="light"] .dp-icon-frame, .theme-light .dp-icon-frame { --dp-icon-frame-bg:color-mix(in srgb,var(--dp-icon-frame-fg) 9%,white); --dp-icon-frame-border:color-mix(in srgb,var(--dp-icon-frame-fg) 18%,transparent); --dp-icon-frame-glow:color-mix(in srgb,var(--dp-icon-frame-fg) 9%,transparent); }
+.lucide,.dp-utility-icon { width:var(--dp-icon-size,20px); height:var(--dp-icon-size,20px); flex:0 0 auto; stroke:currentColor; }
