@@ -22,22 +22,7 @@
     if (debugStatus) debugStatus.remove();
   }
 
-  function installDuplicateStatusStyle() {
-    if (document.getElementById('debridpulse-duplicate-status-style')) return;
-    const style = document.createElement('style');
-    style.id = 'debridpulse-duplicate-status-style';
-    style.textContent = [
-      '.badge-duplicate {',
-      '  background: rgba(234,179,8,.14);',
-      '  color: var(--yellow);',
-      '  text-transform: capitalize;',
-      '}'
-    ].join('\n');
-    document.head.appendChild(style);
-  }
-
   removeLegacyStartupDebugSurface();
-  installDuplicateStatusStyle();
 
   function nonNegativeCount(value) {
     const parsed = Number(value);
