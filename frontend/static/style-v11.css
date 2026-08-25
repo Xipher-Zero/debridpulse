@@ -1,0 +1,8 @@
+/* DebridPulse v1.0.11 visual system overlay.
+   Loaded after the legacy stylesheet during the controlled page migration. */
+@import url('/design-tokens.css?v=11');
+@import url('/ui-foundation.css?v=11');
+@import url('/ui-components.css?v=11');
+@import url('/icon-system.css?v=11');
+@import url('/ui-shell.css?v=11');
+@import url('/ui-dashboard.css?v=11');
