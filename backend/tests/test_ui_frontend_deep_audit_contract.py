@@ -69,21 +69,34 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=21$" in runtime
 
-    # The outer overlay and changed shared layer advance together. Unchanged
-    # established sublayers retain generation 20 so one audit correction does
-    # not invalidate the complete approved visual stack.
+    # Targeted invalidation is explicit: unchanged approved sublayers remain
+    # generation 20, the audited shared contract remains generation 21, and
+    # the two page geometry layers changed by the paint-boundary correction are
+    # generation 22. Do not collapse this into a blanket generation assertion.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
-    shared = "@import url('/ui-shared-contract.css?v=21');"
-    assert shared in imports
-    unchanged = [line for line in imports if line != shared]
+    expected_versions = {
+        "/ui-shared-contract.css": "21",
+        "/ui-downloads-page.css": "22",
+        "/ui-help-page.css": "22",
+    }
+    for path, version in expected_versions.items():
+        assert f"@import url('{path}?v={version}');" in imports
+
+    changed_paths = set(expected_versions)
+    unchanged = [
+        line for line in imports
+        if not any(f"'{path}?" in line for path in changed_paths)
+    ]
     assert unchanged
     assert all("?v=20" in line for line in unchanged)
 
     universal_pos = overlay.index("/ui-universal-language.css?v=20")
     shared_pos = overlay.index("/ui-shared-contract.css?v=21")
     shell_pos = overlay.index("/ui-shell.css?v=20")
-    assert universal_pos < shared_pos < shell_pos
+    downloads_pos = overlay.index("/ui-downloads-page.css?v=22")
+    help_pos = overlay.index("/ui-help-page.css?v=22")
+    assert universal_pos < shared_pos < shell_pos < downloads_pos < help_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:

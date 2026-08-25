@@ -26,13 +26,15 @@ def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=20"
-    for layer in (tokens, universal, dashboard, statistics, downloads):
+    downloads = "/ui-downloads-page.css?v=22"
+    help_page = "/ui-help-page.css?v=22"
+    for layer in (tokens, universal, dashboard, statistics, downloads, help_page):
         assert layer in overlay
     assert overlay.index(tokens) < overlay.index(universal)
     assert overlay.index(universal) < overlay.index(dashboard)
     assert overlay.index(dashboard) < overlay.index(statistics)
     assert overlay.index(statistics) < overlay.index(downloads)
+    assert overlay.index(downloads) < overlay.index(help_page)
     assert "ui-card-shell-final.css" not in overlay
     assert "ui-downloads-structural.css" not in overlay
     assert "ui-downloads-polish.css" not in overlay

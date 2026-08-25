@@ -52,19 +52,29 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-dashboard.css?v=20",
         "/ui-dashboard-structural.css?v=20",
         "/ui-statistics-page.css?v=20",
-        "/ui-downloads-page.css?v=20",
+        "/ui-downloads-page.css?v=22",
+        "/ui-help-page.css?v=22",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # Targeted invalidation: the audited shared layer advances with the v21
-    # outer loader while unchanged approved sublayers retain v20 URLs.
+    # Targeted invalidation: established approved layers retain v20 URLs, the
+    # audited shared contract remains v21, and page geometry changed by the
+    # paint-boundary correction advances only Downloads and Help to v22.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
     assert version_by_path["/ui-shared-contract.css"] == "21"
+    assert version_by_path["/ui-downloads-page.css"] == "22"
+    assert version_by_path["/ui-help-page.css"] == "22"
+
+    changed_paths = {
+        "/ui-shared-contract.css",
+        "/ui-downloads-page.css",
+        "/ui-help-page.css",
+    }
     unchanged_versions = {
-        version for path, version in generations if path != "/ui-shared-contract.css"
+        version for path, version in generations if path not in changed_paths
     }
     assert unchanged_versions == {"20"}
 

@@ -16,10 +16,17 @@ def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> 
     control = "/ui-dashboard-control-polish.css?v=20"
     progress = "/ui-dashboard-progress-weight.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=20"
-    for layer in (control, progress, statistics, downloads):
+    downloads = "/ui-downloads-page.css?v=22"
+    help_page = "/ui-help-page.css?v=22"
+    for layer in (control, progress, statistics, downloads, help_page):
         assert layer in overlay
-    assert overlay.index(control) < overlay.index(progress) < overlay.index(statistics) < overlay.index(downloads)
+    assert (
+        overlay.index(control)
+        < overlay.index(progress)
+        < overlay.index(statistics)
+        < overlay.index(downloads)
+        < overlay.index(help_page)
+    )
 
 
 def test_progress_weight_refinement_changes_only_physical_height() -> None:
