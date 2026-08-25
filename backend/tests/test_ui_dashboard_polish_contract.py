@@ -9,14 +9,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
 POLISH = STATIC / "ui-dashboard-polish.css"
+FINAL = STATIC / "ui-dashboard-polish-final.css"
 
 
-def test_polish_layer_is_last_without_cache_generation_bump() -> None:
+def test_polish_layers_are_last_without_cache_generation_bump() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard-batch5.css?v=18" in overlay
     assert "/ui-dashboard-polish.css?v=18" in overlay
+    assert "/ui-dashboard-polish-final.css?v=18" in overlay
     assert overlay.rfind("/ui-dashboard-polish.css?v=18") > overlay.rfind(
         "/ui-dashboard-batch5.css?v=18"
+    )
+    assert overlay.rfind("/ui-dashboard-polish-final.css?v=18") > overlay.rfind(
+        "/ui-dashboard-polish.css?v=18"
     )
     assert "?v=19" not in overlay
 
@@ -70,3 +75,16 @@ def test_progress_sparkline_add_and_activity_depth_polish() -> None:
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"Dashboard polish contract is missing: {missing}"
+
+
+def test_indeterminate_progress_stripes_survive_semantic_glow() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        '.prog-fill[style*="repeating-linear-gradient"]',
+        "repeating-linear-gradient(",
+        "var(--accent) 8px",
+        "box-shadow: none !important",
+        "opacity: .35 !important",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"progress stripe guard is missing: {missing}"
