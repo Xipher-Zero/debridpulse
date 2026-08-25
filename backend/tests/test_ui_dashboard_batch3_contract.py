@@ -14,7 +14,7 @@ WAVE = STATIC / "icons" / "dp" / "sidebar-wave.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
 
-def test_batch3_is_last_visual_override_layer() -> None:
+def test_batch3_follows_batch2_visual_override_layer() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard-batch3.css?v=17" in overlay
     assert overlay.rfind("/ui-dashboard-batch3.css?v=17") > overlay.rfind(
