@@ -13,3 +13,130 @@ body.dp-v11-structural #t-tbody .prog-fill[style*="repeating-linear-gradient"] {
   box-shadow: none !important;
   opacity: .35 !important;
 }
+
+/* ── Selected sidebar endpoint ────────────────────────────────────────── */
+/* Treat the right-edge accent as a tiny spark throwing diffuse purple light,
+   not a circle/ellipse/pill attached to the selected row. The radial mask
+   guarantees that none of the pseudo-element's rectangular bounds can read. */
+body.dp-v11-structural .nav-item.active::after,
+body.light.dp-v11-structural .nav-item.active::after {
+  right: -2px !important;
+  top: 50% !important;
+  width: 76px !important;
+  height: 54px !important;
+  transform: translateY(-50%) !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  background:
+    radial-gradient(circle at 98% 50%,
+      rgba(255,255,255,.99) 0 1.2px,
+      rgba(244,225,255,.96) 1.3px 2.4px,
+      rgba(205,133,255,.86) 2.5px 3.8px,
+      rgba(173,78,248,.48) 4px 5.2px,
+      transparent 7px),
+    conic-gradient(from 180deg at 98% 50%,
+      transparent 0deg 11deg,
+      rgba(199,126,255,.16) 12deg 15deg,
+      transparent 17deg 37deg,
+      rgba(180,91,249,.11) 39deg 43deg,
+      transparent 45deg 137deg,
+      rgba(190,106,255,.12) 139deg 143deg,
+      transparent 145deg 217deg,
+      rgba(184,95,250,.11) 219deg 223deg,
+      transparent 225deg 317deg,
+      rgba(192,112,255,.13) 319deg 323deg,
+      transparent 325deg 345deg,
+      rgba(205,135,255,.17) 347deg 350deg,
+      transparent 352deg 360deg),
+    radial-gradient(ellipse 100% 68% at 98% 50%,
+      rgba(171,79,245,.42) 0%,
+      rgba(157,69,233,.24) 24%,
+      rgba(145,67,220,.11) 46%,
+      rgba(137,70,207,.035) 66%,
+      transparent 80%) !important;
+  -webkit-mask-image: radial-gradient(ellipse 100% 86% at 98% 50%,
+    #000 0%, #000 24%, rgba(0,0,0,.82) 43%, rgba(0,0,0,.38) 62%, transparent 82%) !important;
+  mask-image: radial-gradient(ellipse 100% 86% at 98% 50%,
+    #000 0%, #000 24%, rgba(0,0,0,.82) 43%, rgba(0,0,0,.38) 62%, transparent 82%) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  pointer-events: none !important;
+}
+body.light.dp-v11-structural .nav-item.active::after {
+  opacity: .92;
+}
+
+/* ── Dashboard bottom datum ───────────────────────────────────────────── */
+/* Sidebar and viewport remain independent components. On the desktop
+   Dashboard only, share the same 24px lower gutter so Provider Status and the
+   fully extended Recent Activity card finish on one visual baseline. */
+@media (min-width: 901px) {
+  body.dp-v11-structural:has(#content.dashboard-active) .sidebar-footer {
+    bottom: 24px !important;
+  }
+}
+
+/* ── Provider crown ───────────────────────────────────────────────────── */
+/* Nudge the statement icon slightly higher again and make it emit the same DP
+   purple energy used elsewhere, without touching the already-approved text. */
+body.dp-v11-structural #premium-row::before {
+  top: 15px !important;
+  filter:
+    drop-shadow(0 0 4px rgba(183,83,255,.76))
+    drop-shadow(0 0 11px rgba(153,65,239,.42)) !important;
+}
+body.light.dp-v11-structural #premium-row::before {
+  filter:
+    drop-shadow(0 0 4px rgba(171,67,244,.72))
+    drop-shadow(0 0 12px rgba(145,58,226,.38)) !important;
+}
+
+/* ── Metric icon light sources ────────────────────────────────────────── */
+/* Each semantic icon is now the perceived source of the card's directional
+   illumination. Keep the glow omnidirectional; light mode can carry a broader
+   bloom while dark mode stays tighter. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon .dp-icon {
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--c) 62%, transparent))
+    drop-shadow(0 0 11px color-mix(in srgb, var(--c) 27%, transparent)) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon .dp-icon {
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--c) 70%, transparent))
+    drop-shadow(0 0 15px color-mix(in srgb, var(--c) 32%, transparent)) !important;
+}
+
+/* ── Progress percentage restraint ────────────────────────────────────── */
+/* The bar owns semantic color/glow. The percentage returns to its original
+   geometry and mono type, gaining emphasis only through darker neutral text. */
+body.dp-v11-structural #dash-tbody .prog-pct,
+body.dp-v11-structural #t-tbody .prog-pct,
+body.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-pct,
+body.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-pct {
+  display: block !important;
+  margin-top: 3px !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  line-height: normal !important;
+  font-weight: 500 !important;
+  letter-spacing: normal !important;
+  color: #c8ccdc !important;
+  text-shadow: none !important;
+}
+body.light.dp-v11-structural #dash-tbody .prog-pct,
+body.light.dp-v11-structural #t-tbody .prog-pct,
+body.light.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-pct,
+body.light.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-pct {
+  color: #3e465f !important;
+  text-shadow: none !important;
+}
+
+/* ── Recent Activity header simplification ────────────────────────────── */
+/* Downloads already owns full-list navigation in the sidebar. Remove the
+   redundant/vague View All shortcut and let the Activity header breathe. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header
+  button[onclick*="data-view=torrents"] {
+  display: none !important;
+}
