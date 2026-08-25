@@ -34,7 +34,7 @@ def test_batch4_captures_reviewed_dashboard_refinements() -> None:
         "sidebar-wave.svg?v=18",
         "height: 470px !important",
         "width: 36px !important",
-        "width: 205px !important",
+        "width: 145px !important",
         "#81788f",
         "#f2eff8",
         "card-download.svg?v=11",
