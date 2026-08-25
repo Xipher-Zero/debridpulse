@@ -1,4 +1,4 @@
-"""Contracts for the v1.0.11 Downloads live-review polish and shell-sync passes."""
+"""Contracts for the v1.0.11 Downloads polish and universal card-shell system."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
 POLISH = STATIC / "ui-downloads-polish.css"
-CONSISTENCY = STATIC / "ui-downloads-consistency.css"
+STRUCTURAL = STATIC / "ui-downloads-structural.css"
 SHELL_SYNC = STATIC / "ui-downloads-shell-sync.css"
+CARD_SHELL = STATIC / "ui-card-shell-final.css"
 RUNTIME = STATIC / "ui-downloads-runtime.js"
 OPERATOR = STATIC / "operator-title.js"
 ICON = STATIC / "icons" / "dp" / "card-document-stack.svg"
@@ -20,18 +21,51 @@ REMOVED_ICON = STATIC / "icons" / "dp" / "green-download-button.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
 
-def test_downloads_layers_are_ordered_without_cache_generation_bump() -> None:
+def test_universal_card_shell_is_authoritative_last_layer_without_cache_bump() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     structural = "/ui-downloads-structural.css?v=18"
     polish = "/ui-downloads-polish.css?v=18"
-    consistency = "/ui-downloads-consistency.css?v=18"
     shell_sync = "/ui-downloads-shell-sync.css?v=18"
-    for layer in (structural, polish, consistency, shell_sync):
+    card_shell = "/ui-card-shell-final.css?v=18"
+    for layer in (structural, polish, shell_sync, card_shell):
         assert layer in overlay
-    assert overlay.rfind(polish) > overlay.rfind(structural)
-    assert overlay.rfind(consistency) > overlay.rfind(polish)
-    assert overlay.rfind(shell_sync) > overlay.rfind(consistency)
+    assert overlay.rfind(card_shell) > overlay.rfind(shell_sync)
+    assert overlay.rstrip().endswith("@import url('/ui-card-shell-final.css?v=18');")
     assert "?v=19" not in overlay
+
+
+def test_universal_card_shell_owns_material_frame_shadow_and_header() -> None:
+    css = CARD_SHELL.read_text(encoding="utf-8")
+    required = (
+        "#content .view .card",
+        "background: linear-gradient(180deg, #ffffff, #f8f9fd) !important",
+        "-6px 8px 14px -8px rgba(35, 41, 66, .40)",
+        "#content .view .card::after",
+        "border-bottom: 0 !important",
+        "rgba(0,0,0,.18) 93%",
+        "transparent 98%",
+        "#content .view .card > .card-header",
+        "rgba(142, 92, 225, .14) 0%",
+        "border-bottom-color: rgba(159, 168, 201, .34) !important",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"Universal card-shell contract is missing: {missing}"
+    assert "#view-dashboard" not in css
+    assert "#view-torrents" not in css
+
+
+def test_downloads_layers_no_longer_own_standard_card_shell() -> None:
+    structural = STRUCTURAL.read_text(encoding="utf-8")
+    shell_sync = SHELL_SYNC.read_text(encoding="utf-8")
+    forbidden = (
+        "#view-torrents > .card::after",
+        "background: linear-gradient(180deg, #ffffff, #f8f9fd) !important",
+        "-6px 8px 14px -8px rgba(35, 41, 66, .40)",
+        "rgba(0,0,0,.18) 93%",
+    )
+    for fragment in forbidden:
+        assert fragment not in structural
+        assert fragment not in shell_sync
 
 
 def test_downloads_polish_captures_reviewed_workspace_and_controls() -> None:
@@ -59,20 +93,14 @@ def test_downloads_polish_captures_reviewed_workspace_and_controls() -> None:
     assert not missing, f"Downloads polish contract is missing: {missing}"
 
 
-def test_downloads_shell_sync_matches_final_dashboard_section_card_contract() -> None:
+def test_downloads_page_specific_sync_keeps_only_layout_and_empty_state_rules() -> None:
     css = SHELL_SYNC.read_text(encoding="utf-8")
     required = (
-        "background: linear-gradient(180deg, #ffffff, #f8f9fd) !important",
-        "-6px 8px 14px -8px rgba(35, 41, 66, .40)",
-        "border-bottom: 0 !important",
-        "rgba(0,0,0,.18) 93%",
-        "transparent 98%",
         "min-height: 70px !important",
         "width: 51px !important",
         "font-size: 10.5px !important",
         "#torrent-pagination",
         "border-top: 0 !important",
-        "background: transparent !important",
         "#t-tbody tr:not([data-torrent-id]):hover",
         "width: 76px !important",
         "height: 76px !important",
@@ -81,7 +109,7 @@ def test_downloads_shell_sync_matches_final_dashboard_section_card_contract() ->
         "text-align: center !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Downloads final shell-sync contract is missing: {missing}"
+    assert not missing, f"Downloads page-specific contract is missing: {missing}"
 
 
 def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> None:

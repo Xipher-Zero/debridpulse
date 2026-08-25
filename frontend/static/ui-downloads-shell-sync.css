@@ -1,81 +1,10 @@
-/* DebridPulse v1.0.11 Downloads final shell synchronization.
-   Reuses the final Dashboard section-card presentation contract rather than
-   approximating it with page-local material/shadow variants. */
+/* DebridPulse v1.0.11 Downloads page-specific final refinements.
+   Standard card material/frame/header styling is universal and intentionally
+   absent from this file. */
 
-/* ── Exact Dashboard section-card shell ──────────────────────────────── */
-body.dp-v11-structural #view-torrents > .card {
-  position: relative !important;
-  overflow: hidden !important;
-  border-color: transparent !important;
-  border-radius: var(--dp-radius-lg) !important;
-  background: linear-gradient(180deg, rgba(14, 19, 44, .94), rgba(8, 13, 31, .98)) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.024),
-    -6px 8px 14px -8px rgba(0,0,0,.66),
-    0 5px 11px -8px rgba(0,0,0,.46) !important;
-}
-body.light.dp-v11-structural #view-torrents > .card {
-  background: linear-gradient(180deg, #ffffff, #f8f9fd) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.78),
-    -6px 8px 14px -8px rgba(35, 41, 66, .40),
-    0 5px 11px -8px rgba(41, 47, 72, .25) !important;
-}
-
-/* Same final painted-outline fade used by Quick Add and Recent Activity:
-   a defined upper frame, gradual side fade, and no painted bottom edge. */
-body.dp-v11-structural #view-torrents > .card::after {
-  content: '' !important;
-  position: absolute !important;
-  z-index: 5 !important;
-  inset: 0 !important;
-  border: 1px solid rgba(111, 125, 184, .26) !important;
-  border-bottom: 0 !important;
-  border-radius: inherit !important;
-  -webkit-mask-image: linear-gradient(180deg,
-    #000 0%,
-    #000 42%,
-    rgba(0,0,0,.94) 53%,
-    rgba(0,0,0,.80) 65%,
-    rgba(0,0,0,.61) 76%,
-    rgba(0,0,0,.39) 85%,
-    rgba(0,0,0,.18) 93%,
-    transparent 98%) !important;
-  mask-image: linear-gradient(180deg,
-    #000 0%,
-    #000 42%,
-    rgba(0,0,0,.94) 53%,
-    rgba(0,0,0,.80) 65%,
-    rgba(0,0,0,.61) 76%,
-    rgba(0,0,0,.39) 85%,
-    rgba(0,0,0,.18) 93%,
-    transparent 98%) !important;
-  pointer-events: none !important;
-}
-body.light.dp-v11-structural #view-torrents > .card::after {
-  border-color: rgba(161, 170, 203, .42) !important;
-}
-
-/* ── Match final Recent Activity header geometry exactly ─────────────── */
+/* Match Recent Activity heading geometry without owning the shared card shell. */
 body.dp-v11-structural #view-torrents > .card > .card-header {
   min-height: 70px !important;
-  padding: 0 17px !important;
-  border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0 !important;
-  background: linear-gradient(90deg,
-    rgba(95, 48, 174, .26) 0%,
-    rgba(78, 43, 143, .15) 24%,
-    rgba(56, 39, 103, .065) 48%,
-    rgba(14, 19, 44, 0) 76%) !important;
-  border-bottom-color: rgba(113, 126, 184, .18) !important;
-  background-clip: padding-box !important;
-}
-body.light.dp-v11-structural #view-torrents > .card > .card-header {
-  background: linear-gradient(90deg,
-    rgba(142, 92, 225, .14) 0%,
-    rgba(154, 112, 224, .085) 25%,
-    rgba(170, 143, 222, .038) 48%,
-    rgba(255,255,255,0) 76%) !important;
-  border-bottom-color: rgba(159, 168, 201, .34) !important;
 }
 body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
   width: 51px !important;
@@ -93,21 +22,21 @@ body.light.dp-v11-structural #view-torrents .dp-downloads-subtitle {
   color: #777e98 !important;
 }
 
-/* ── Footer is content, not a second card surface ────────────────────── */
+/* Footer is content, not a second card surface. */
 body.dp-v11-structural #view-torrents #torrent-pagination,
 body.light.dp-v11-structural #view-torrents #torrent-pagination {
   border-top: 0 !important;
   background: transparent !important;
 }
 
-/* Keep the data region on the card's neutral body surface. */
+/* Keep the data region on the universal card body surface. */
 body.dp-v11-structural #view-torrents .dp-downloads-table-wrap,
 body.dp-v11-structural #view-torrents .t-table,
 body.dp-v11-structural #view-torrents #t-tbody {
   background: transparent !important;
 }
 
-/* ── Empty-state parity with Recent Activity ─────────────────────────── */
+/* Empty-state parity with Recent Activity. */
 body.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon,
 body.dp-v11-structural #view-torrents .empty-icon {
   width: 76px !important;
@@ -137,10 +66,7 @@ body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]) .empty 
   background: transparent !important;
 }
 
-/* ── Shared desktop bottom datum ─────────────────────────────────────── */
-/* The prior pass over-corrected by consuming the entire post-topbar height.
-   Pull Downloads up 14px while leaving Provider Status on its established
-   24px sidebar datum. */
+/* Shared desktop bottom datum. */
 @media (min-width: 901px) {
   body.dp-v11-structural #view-torrents.active {
     height: calc(100vh - var(--dp-shell-header) - 14px) !important;
@@ -150,7 +76,7 @@ body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]) .empty 
   }
 }
 
-/* Provider Status is a self-contained sidebar panel; center only its heading. */
+/* Provider Status is a self-contained sidebar panel. */
 body.dp-v11-structural .sidebar-footer::before {
   text-align: center !important;
 }

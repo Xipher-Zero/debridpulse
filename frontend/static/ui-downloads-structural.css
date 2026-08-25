@@ -1,95 +1,6 @@
 /* DebridPulse v1.0.11 Downloads structural migration.
-   Carries the approved Dashboard section-card material/frame language onto the
-   Downloads transfer table without changing transfer behavior or backend state. */
-
-/* ── Downloads primary card shell ───────────────────────────────────────── */
-body.dp-v11-structural #view-torrents > .card {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border: 1px solid transparent !important;
-  border-radius: var(--dp-radius-lg) !important;
-  background: linear-gradient(180deg, var(--dp-surface-2), var(--dp-surface-1)) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.024),
-    -6px 8px 14px -8px rgba(0,0,0,.66),
-    0 5px 11px -8px rgba(0,0,0,.46) !important;
-}
-body.light.dp-v11-structural #view-torrents > .card {
-  background: linear-gradient(180deg, #ffffff 0%, #fafafe 54%, var(--dp-surface-2) 100%) !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.78),
-    -6px 8px 14px -8px rgba(35,41,66,.40),
-    0 5px 11px -8px rgba(41,47,72,.25) !important;
-}
-
-/* Same painted-frame contract as Dashboard: top remains defined, side paint
-   fades gradually down the card, and the bottom edge is intentionally absent. */
-body.dp-v11-structural #view-torrents > .card::after {
-  content: '';
-  position: absolute;
-  z-index: 5;
-  inset: 0;
-  border: 1px solid rgba(111,125,184,.26);
-  border-bottom: 0;
-  border-radius: inherit;
-  -webkit-mask-image: linear-gradient(180deg,
-    #000 0%,
-    #000 42%,
-    rgba(0,0,0,.94) 53%,
-    rgba(0,0,0,.80) 65%,
-    rgba(0,0,0,.61) 76%,
-    rgba(0,0,0,.39) 85%,
-    rgba(0,0,0,.18) 93%,
-    transparent 98%);
-  mask-image: linear-gradient(180deg,
-    #000 0%,
-    #000 42%,
-    rgba(0,0,0,.94) 53%,
-    rgba(0,0,0,.80) 65%,
-    rgba(0,0,0,.61) 76%,
-    rgba(0,0,0,.39) 85%,
-    rgba(0,0,0,.18) 93%,
-    transparent 98%);
-  pointer-events: none;
-}
-body.light.dp-v11-structural #view-torrents > .card::after {
-  border-color: rgba(161,170,203,.42);
-}
-
-/* ── Card head ─────────────────────────────────────────────────────────── */
-body.dp-v11-structural #view-torrents > .card > .card-header {
-  position: relative;
-  z-index: 1;
-  min-height: 58px;
-  padding: 0 17px !important;
-  border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0 !important;
-  border-bottom: 1px solid rgba(113,126,184,.18) !important;
-  background: linear-gradient(90deg,
-    rgba(95,48,174,.26) 0%,
-    rgba(78,43,143,.15) 24%,
-    rgba(56,39,103,.065) 48%,
-    rgba(14,19,44,0) 76%) !important;
-  background-clip: padding-box !important;
-}
-body.light.dp-v11-structural #view-torrents > .card > .card-header {
-  border-bottom-color: rgba(159,168,201,.34) !important;
-  background: linear-gradient(90deg,
-    rgba(142,92,225,.14) 0%,
-    rgba(154,112,224,.085) 25%,
-    rgba(170,143,222,.038) 48%,
-    rgba(255,255,255,0) 76%) !important;
-}
-body.dp-v11-structural #view-torrents #torrent-card-title {
-  font-size: 16px !important;
-  line-height: 1.2;
-  font-weight: 600 !important;
-  letter-spacing: -.01em;
-  color: #f4f2ff !important;
-}
-body.light.dp-v11-structural #view-torrents #torrent-card-title {
-  color: #191c30 !important;
-}
+   Page-specific internals only. Standard card material/frame/header styling is
+   owned by ui-card-shell-final.css and must not be redefined here. */
 
 /* ── Search band ───────────────────────────────────────────────────────── */
 body.dp-v11-structural #view-torrents > .card > div:has(#torrent-search) {
@@ -148,21 +59,15 @@ body.light.dp-v11-structural #view-torrents .t-table tbody tr:hover {
   background: rgba(124,58,237,.028);
 }
 
-/* ── Pagination/footer band ────────────────────────────────────────────── */
+/* Footer geometry belongs to Downloads, but not its card material. */
 body.dp-v11-structural #view-torrents #torrent-pagination {
   position: relative;
   z-index: 1;
   padding: 12px 16px 13px !important;
-  border-top: 1px solid rgba(113,126,184,.15) !important;
-  background: linear-gradient(180deg, rgba(47,35,76,.075), rgba(14,19,44,.015) 78%);
-}
-body.light.dp-v11-structural #view-torrents #torrent-pagination {
-  border-top-color: rgba(166,171,195,.30) !important;
-  background: linear-gradient(180deg, rgba(147,112,199,.045), rgba(255,255,255,.34) 78%);
 }
 
 /* Keep horizontal scrolling inside the table viewport rather than forcing the
-   upgraded outer shell to lose its rounded clipping/frame treatment. */
+   outer shared shell to lose its rounded clipping/frame treatment. */
 body.dp-v11-structural #view-torrents > .card > div[style*="overflow-x:auto"] {
   position: relative;
   z-index: 1;
