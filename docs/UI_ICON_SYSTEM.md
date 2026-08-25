@@ -69,6 +69,7 @@ Transparent-background custom assets used for DP-specific or highly branded sema
 - `trash.svg`
 - `verified-badge.svg`
 - `rocket.svg`
+- `shell-pulse.svg` — decorative shell/page-heading waveform, true vector artwork
 
 Where the mockup places one of these inside a colored rounded-square surface, the **UI supplies the surface** using `.dp-icon-frame`; the SVG remains transparent.
 
@@ -107,7 +108,7 @@ Lucide is the canonical utility/navigation family. Use it for ordinary interface
 
 Lucide utility glyphs should use `currentColor` so navigation, hover, active, disabled, light-theme, and dark-theme states remain CSS-driven.
 
-DebridPulse is a self-contained server UI; when Lucide assets are introduced, vendor the required distribution/assets locally rather than depending on a runtime CDN. Record the MIT license/attribution in the existing dependency-license surfaces at the same time.
+DebridPulse is a self-contained server UI. Vendor only the required Lucide glyph geometry locally rather than depending on a runtime CDN. The v1.0.11 shell subset is pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`. Lucide's current upstream license is ISC, while its Feather-derived icon subset retains the upstream Feather MIT notice; both are bundled in `licenses/Lucide-ISC-MIT.txt` and recorded in `docs/DEPENDENCY_LICENSES.md`.
 
 ## Semantic color language
 
@@ -166,6 +167,7 @@ Do not use red merely because an operational event is unusual; routine duplicate
 - Link/source → `chain.svg`
 - Delete → `trash.svg`
 - Help / Quick Start branded rocket → `rocket.svg`
+- Page-heading waveform accent → `shell-pulse.svg`
 
 Everything else should default to Lucide unless a later approved mockup establishes a new DP-specific semantic treatment.
 

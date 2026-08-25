@@ -112,6 +112,13 @@ A dependency update is incomplete until all of the following agree:
 | Resource | Version/source | License |
 |---|---|---|
 | Chart.js | 4.5.1, vendored at `frontend/static/vendor/chart.umd.min.js` | MIT ([bundled notice](../licenses/Chart.js-MIT.txt)) |
+| Lucide Icons UI subset | Source geometry pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`; only the shell/navigation glyphs required by DebridPulse are embedded locally in `frontend/static/operator-title.js` | ISC; Feather-derived icons retain MIT terms ([bundled notice](../licenses/Lucide-ISC-MIT.txt)) |
+
+The Lucide subset is intentionally local: DebridPulse does not load Lucide from
+a runtime CDN. The bundled subset currently covers the application shell and
+may be extended with additional upstream glyph geometry as later v1.0.11 pages
+are migrated. Any added Lucide glyph remains subject to the same bundled
+upstream notices.
 
 ## Browser-loaded resources
 
