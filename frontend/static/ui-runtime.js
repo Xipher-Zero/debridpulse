@@ -5,6 +5,17 @@
   'use strict';
 
   const DP_ICON_BASE = '/icons/dp/';
+  const METRIC_HISTORY_KEY = 'debridpulse.dashboard.metric-history.v1';
+  const METRIC_HISTORY_LIMIT = 30;
+  const METRIC_SAMPLE_INTERVAL_MS = 15000;
+  const HERO_METRICS = {
+    's-total':      {key: 'total',      label: 'Total downloads'},
+    's-completed':  {key: 'completed',  label: 'Completed'},
+    's-active':     {key: 'active',     label: 'Active now'},
+    's-processing': {key: 'processing', label: 'Processing'},
+    's-error':      {key: 'errors',     label: 'Errors'},
+    's-size':       {key: 'downloaded', label: 'Total downloaded'}
+  };
   const SUBTITLES = {
     Dashboard: 'Overview of your download activities and system status.',
     Downloads: 'Inspect, filter, and control queued and active transfers.',
@@ -22,7 +33,7 @@
       link.dataset.dpV11Styles = '1';
       document.head.appendChild(link);
     }
-    if (!/style-v11\.css\?v=12$/.test(link.href)) link.href = '/style-v11.css?v=12';
+    if (!/style-v11\.css\?v=14$/.test(link.href)) link.href = '/style-v11.css?v=14';
   }
 
   function dpImg(filename, className) {
@@ -68,23 +79,152 @@
     }
   }
 
+  function numeric(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  }
+
+  function dashboardMetricSnapshot(stats) {
+    const byStatus = stats && stats.by_status && typeof stats.by_status === 'object'
+      ? stats.by_status
+      : {};
+    const total = Object.values(byStatus).reduce(function (sum, value) {
+      return sum + numeric(value);
+    }, 0);
+    return {
+      ts: Date.now(),
+      total: total,
+      completed: numeric(stats && (stats.completed_count ?? byStatus.completed)),
+      active: numeric(stats && (stats.active_operations ?? stats.active_downloads)),
+      processing: numeric(byStatus.processing) + numeric(byStatus.uploading),
+      errors: numeric(stats && (stats.error_count ?? byStatus.error)),
+      downloaded: numeric(stats && stats.total_completed_bytes)
+    };
+  }
+
+  function readMetricHistory() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(METRIC_HISTORY_KEY) || '[]');
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(function (sample) {
+        return sample && Number.isFinite(Number(sample.ts));
+      }).slice(-METRIC_HISTORY_LIMIT);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeMetricHistory(samples) {
+    try {
+      localStorage.setItem(METRIC_HISTORY_KEY, JSON.stringify(samples.slice(-METRIC_HISTORY_LIMIT)));
+    } catch (_) {
+      /* Storage can be unavailable in hardened/private browser contexts. */
+    }
+  }
+
   function makeSparkline(card, index) {
     if (!card || card.querySelector('.dp-card-spark')) return;
-    const variants = [
-      '0,18 7,17 14,19 21,14 28,16 35,10 42,19 49,15 56,7 63,18 70,12 77,16 84,9 91,18 100,13',
-      '0,18 7,15 14,17 21,12 28,18 35,10 42,15 49,16 56,19 63,12 70,17 77,14 84,5 91,11 100,8',
-      '0,20 8,17 16,18 24,14 32,17 40,8 48,18 56,19 64,16 72,17 80,11 88,6 96,13 100,11',
-      '0,18 8,11 16,19 24,16 32,19 40,18 48,12 56,18 64,19 72,8 80,18 88,16 96,17 100,14',
-      '0,19 7,10 14,18 21,14 28,19 35,18 42,20 49,15 56,17 63,11 70,18 77,12 84,16 91,6 100,19',
-      '0,17 7,18 14,14 21,17 28,18 35,11 42,19 49,16 56,10 63,17 70,15 77,8 84,19 91,12 100,16'
-    ];
+    const gradientId = 'dp-card-spark-fill-' + index;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'dp-card-spark');
     svg.setAttribute('viewBox', '0 0 100 24');
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML = '<polyline class="dp-card-spark-line" points="' + variants[index % variants.length] + '"/>';
+    svg.innerHTML =
+      '<defs><linearGradient id="' + gradientId + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="currentColor" stop-opacity=".34"/>' +
+        '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/>' +
+      '</linearGradient></defs>' +
+      '<polygon class="dp-card-spark-fill" fill="url(#' + gradientId + ')" points=""/>' +
+      '<polyline class="dp-card-spark-line" points=""/>' +
+      '<circle class="dp-card-spark-point" cx="50" cy="12" r="1.45" opacity="0"/>';
     card.appendChild(svg);
+  }
+
+  function sparklinePoints(values) {
+    if (!Array.isArray(values) || values.length < 2) return '';
+    const clean = values.map(numeric);
+    const min = Math.min.apply(null, clean);
+    const max = Math.max.apply(null, clean);
+    const span = max - min;
+    return clean.map(function (value, index) {
+      const x = clean.length === 1 ? 50 : (index / (clean.length - 1)) * 100;
+      const y = span === 0 ? 12 : 20 - ((value - min) / span) * 16;
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    }).join(' ');
+  }
+
+  function renderDashboardMetricHistory(samples) {
+    Object.entries(HERO_METRICS).forEach(function ([valueId, metric]) {
+      const value = document.getElementById(valueId);
+      const card = value && value.closest('.dash-hero-stat');
+      const svg = card && card.querySelector('.dp-card-spark');
+      if (!card || !svg) return;
+
+      const values = samples.map(function (sample) {
+        return numeric(sample[metric.key]);
+      });
+      const line = svg.querySelector('.dp-card-spark-line');
+      const fill = svg.querySelector('.dp-card-spark-fill');
+      const point = svg.querySelector('.dp-card-spark-point');
+      const points = sparklinePoints(values);
+
+      card.dataset.dpMetric = metric.key;
+      card.title = metric.label + ' — sparkline shows recent live samples of this exact card metric.';
+
+      if (values.length >= 2 && points) {
+        line.setAttribute('points', points);
+        fill.setAttribute('points', '0,24 ' + points + ' 100,24');
+        point.setAttribute('opacity', '0');
+      } else if (values.length === 1) {
+        line.setAttribute('points', '');
+        fill.setAttribute('points', '');
+        point.setAttribute('cx', '50');
+        point.setAttribute('cy', '12');
+        point.setAttribute('opacity', '1');
+      } else {
+        line.setAttribute('points', '');
+        fill.setAttribute('points', '');
+        point.setAttribute('opacity', '0');
+      }
+    });
+  }
+
+  function recordDashboardMetricHistory(stats) {
+    if (!stats || typeof stats !== 'object') return;
+    const snapshot = dashboardMetricSnapshot(stats);
+    const samples = readMetricHistory();
+    const last = samples[samples.length - 1];
+    const metricKeys = Object.values(HERO_METRICS).map(function (metric) { return metric.key; });
+    const changed = !last || metricKeys.some(function (key) {
+      return numeric(last[key]) !== numeric(snapshot[key]);
+    });
+    const due = !last || snapshot.ts - numeric(last.ts) >= METRIC_SAMPLE_INTERVAL_MS;
+
+    if (changed || due) {
+      samples.push(snapshot);
+      while (samples.length > METRIC_HISTORY_LIMIT) samples.shift();
+      writeMetricHistory(samples);
+    }
+    renderDashboardMetricHistory(samples);
+  }
+
+  function installMetricHistoryHook() {
+    const previous = window.updateOperatorTitle;
+    if (typeof previous !== 'function' || previous.dpDashboardMetricHook === '1') return;
+    const wrapped = function (stats) {
+      recordDashboardMetricHistory(stats);
+      return previous.apply(this, arguments);
+    };
+    wrapped.dpDashboardMetricHook = '1';
+    window.updateOperatorTitle = wrapped;
+
+    if (document.documentElement.dataset.dpDashboardMetricSeeded !== '1') {
+      document.documentElement.dataset.dpDashboardMetricSeeded = '1';
+      setTimeout(function () {
+        if (typeof window.loadStats === 'function') window.loadStats();
+      }, 0);
+    }
   }
 
   function decorateDashboardHero() {
@@ -107,6 +247,14 @@
       }
       makeSparkline(card, index);
     });
+    renderDashboardMetricHistory(readMetricHistory());
+  }
+
+  function normalizeSpeedCapArrow() {
+    const arrow = document.querySelector('#aria2-cap-toggle span[aria-hidden="true"]');
+    if (!arrow) return;
+    arrow.textContent = '▼';
+    arrow.classList.add('dp-speedcap-arrow');
   }
 
   function buttonLabel(button) {
@@ -264,6 +412,8 @@
     document.documentElement.dataset.dpUi = 'v1.0.11-structural';
     ensurePageHeading();
     decorateDashboardHero();
+    normalizeSpeedCapArrow();
+    installMetricHistoryHook();
     decorateQuickAdd();
     decorateRecentActivity();
     moveDashboardKpisToStatistics();
