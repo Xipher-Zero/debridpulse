@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
+INDEX = STATIC / "index.html"
 STYLE_ENTRY = STATIC / "style.css"
 LEGACY_STYLE = STATIC / "style-legacy.css"
 V11_STYLE = STATIC / "style-v11.css"
@@ -62,9 +63,20 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     ):
         assert retired_import not in overlay
 
-    assert "/style-v11.css?v=14" in runtime
+    assert "/style-v11.css?v=19" in runtime
     assert "data-dp-v11-styles" in runtime
     assert "dp-v11-structural" in runtime
+
+
+def test_v11_bootstrap_cache_generation_is_coherent() -> None:
+    index = INDEX.read_text(encoding="utf-8")
+    operator = SHELL_RUNTIME.read_text(encoding="utf-8")
+    runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
+
+    assert '/operator-title.js?v=19' in index
+    assert '/ui-runtime.js?v=19' in operator
+    assert '/ui-downloads-runtime.js?v=19' in operator
+    assert '/style-v11.css?v=19' in runtime
 
 
 def test_shell_matches_required_mockup_structure() -> None:
