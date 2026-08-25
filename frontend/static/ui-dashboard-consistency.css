@@ -1,7 +1,7 @@
 /* DebridPulse v1.0.11 Dashboard consistency repair.
  *
- * These rules remove two stale Dashboard calibration divergences from the
- * universal language without changing Dashboard-specific geometry.
+ * These rules remove stale Dashboard calibration divergences from the shared
+ * language while retaining only genuine Dashboard-specific geometry here.
  */
 
 /* Recent Activity and Downloads use the same 76px empty-download artwork.
@@ -33,4 +33,18 @@ body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:focus {
   border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong)) !important;
   background: var(--dp-field-surface) !important;
   box-shadow: var(--dp-focus-ring) !important;
+}
+
+/* Recent Activity alone had its trailing Action column pushed against the
+   right edge by the wide-table calibration. Reclaim only unused Added-column
+   width: the first four columns and the Added start position remain untouched. */
+@media (min-width: 1440px) {
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+    width: 8% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+    width: 9% !important;
+  }
 }
