@@ -14,12 +14,13 @@ DOWNLOADS = STATIC / "ui-downloads-page.css"
 
 def test_universal_language_loads_before_reference_and_page_layers() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    universal = "/ui-universal-language.css?v=19"
-    dashboard = "/ui-dashboard.css?v=11"
-    downloads = "/ui-downloads-page.css?v=19"
-    for layer in (universal, dashboard, downloads):
+    universal = "/ui-universal-language.css?v=20"
+    dashboard = "/ui-dashboard.css?v=20"
+    statistics = "/ui-statistics-page.css?v=20"
+    downloads = "/ui-downloads-page.css?v=20"
+    for layer in (universal, dashboard, statistics, downloads):
         assert layer in overlay
-    assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(downloads)
+    assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(statistics) < overlay.index(downloads)
 
 
 def test_downloads_uses_shared_card_field_table_and_tab_material() -> None:
