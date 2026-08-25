@@ -7,6 +7,15 @@
 
   const DP_ICON_BASE = '/icons/dp/';
 
+  function loadV11Styles() {
+    if (document.querySelector('link[data-dp-v11-styles]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/style-v11.css?v=11';
+    link.dataset.dpV11Styles = '1';
+    document.head.appendChild(link);
+  }
+
   function dpImg(filename, className) {
     const img = document.createElement('img');
     img.src = DP_ICON_BASE + filename;
@@ -129,6 +138,7 @@
   }
 
   function initialize() {
+    loadV11Styles();
     decorateDashboard();
   }
 
