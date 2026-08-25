@@ -1,0 +1,70 @@
+/* DebridPulse v1.0.11 Help & License page layer.
+ *
+ * Help uses the universal card material unchanged. This layer owns only the
+ * page's fixed-tab / scroll geometry and, critically, keeps the card-bearing
+ * ancestors paint-visible so the universal frame/contact shadow is not clipped.
+ */
+
+body.dp-v11-structural #view-help.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-help .view-header,
+body.dp-v11-structural #view-help #help-tabs {
+  flex: 0 0 auto;
+}
+
+/* The legacy layout made this wrapper the scrollport. Because every Help card
+   starts flush against the wrapper's top/side edges, that clipped the exact
+   external paint that gives standard DP cards their frame/depth. The wrapper
+   now carries geometry only; scrolling moves inside the card body. */
+body.dp-v11-structural #view-help .help-panels-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-help .help-panels-wrap .help-panel {
+  min-height: 0;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active {
+  display: block;
+  max-height: 100%;
+}
+
+body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  min-height: 0;
+}
+
+/* Preserve the existing fixed Help tabs for long documents without making the
+   card itself a clipping ancestor. The card body is the content scrollport. */
+body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card > .card-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 700px) {
+  /* Mobile already uses normal document scrolling; avoid a nested body
+     scrollport when vertical space is constrained. */
+  body.dp-v11-structural #view-help.active {
+    height: auto;
+  }
+
+  body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card {
+    max-height: none;
+  }
+
+  body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card > .card-body {
+    overflow-y: visible;
+  }
+}

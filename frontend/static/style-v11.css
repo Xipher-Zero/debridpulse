@@ -39,4 +39,5 @@
 
 /* Page layers contain only page-specific geometry/behavior/content details. */
 @import url('/ui-statistics-page.css?v=20');
-@import url('/ui-downloads-page.css?v=20');
+@import url('/ui-downloads-page.css?v=22');
+@import url('/ui-help-page.css?v=22');

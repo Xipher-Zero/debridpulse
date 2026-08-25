@@ -13,7 +13,10 @@
     flex-direction: column;
     height: calc(100vh - var(--dp-shell-header) - 14px);
     min-height: 0;
-    overflow: hidden;
+    /* The standard card's contact shadow paints outside its own box. Keep the
+       page boundary paint-visible; scrolling is confined to the table viewport
+       below, so this does not permit transfer rows to escape the workspace. */
+    overflow: visible;
   }
 
   body.dp-v11-structural #view-torrents > .card {
