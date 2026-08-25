@@ -1,6 +1,6 @@
 /* DebridPulse v1.0.11 Downloads presentation runtime.
  * Keeps the legacy transfer loader/backend behavior intact while normalizing
- * the Downloads card header, filter controls, and pagination language.
+ * the Downloads card header, filter controls, pagination language, and empty states.
  */
 (function () {
   'use strict';
@@ -8,6 +8,8 @@
   let lastTrackedTotal = 0;
   let titleObserver = null;
   let statsObserver = null;
+  let downloadsEmptyObserver = null;
+  let recentEmptyObserver = null;
 
   function utilitySvg(name) {
     const paths = {
@@ -65,6 +67,10 @@
 
     if (title.querySelector('.dp-downloads-heading') && existingSubtitle) {
       if (existingSubtitle.textContent !== copy) existingSubtitle.textContent = copy;
+      const icon = title.querySelector('.dp-downloads-title-icon');
+      if (icon && !/card-document-stack\.svg/.test(icon.getAttribute('src') || '')) {
+        icon.setAttribute('src', '/icons/dp/card-document-stack.svg?v=18');
+      }
       title.setAttribute('aria-label', 'All Downloads. ' + copy + '.');
       return;
     }
@@ -72,11 +78,40 @@
     title.classList.add('dp-downloads-card-title');
     title.setAttribute('aria-label', 'All Downloads. ' + copy + '.');
     title.innerHTML =
-      '<img class="dp-icon dp-downloads-title-icon" src="/icons/dp/green-download-button.svg?v=18" alt="" aria-hidden="true">' +
+      '<img class="dp-icon dp-icon--lg dp-downloads-title-icon" src="/icons/dp/card-document-stack.svg?v=18" alt="" aria-hidden="true">' +
       '<span class="dp-downloads-heading-copy">' +
         '<span class="dp-downloads-heading">All Downloads</span>' +
         '<span class="dp-downloads-subtitle">' + copy + '</span>' +
       '</span>';
+  }
+
+  function downloadsEmptyMessage() {
+    const search = document.getElementById('torrent-search');
+    if (search && search.value.trim()) return 'No downloads match your search.';
+
+    const active = document.querySelector('#view-torrents .filter-tabs .ftab.active');
+    const filtered = !!active && active.textContent.trim().toLowerCase() !== 'all';
+    if (filtered) return 'No downloads match your current filters.';
+
+    return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
+  }
+
+  function normalizeEmptyState(host, copy) {
+    if (!host) return;
+    const empty = host.querySelector('.empty');
+    if (!empty) return;
+    if (empty.dataset.dpEmptyCopy === copy) return;
+
+    empty.innerHTML = '<div class="empty-icon" aria-hidden="true"></div>' + copy;
+    empty.dataset.dpEmptyCopy = copy;
+  }
+
+  function decorateEmptyStates() {
+    normalizeEmptyState(document.getElementById('t-tbody'), downloadsEmptyMessage());
+    normalizeEmptyState(
+      document.getElementById('dash-tbody'),
+      'No downloads yet. Add a link, magnet, or torrent file to get started.'
+    );
   }
 
   function decorateDownloadsStructure() {
@@ -92,6 +127,9 @@
       if (wrapper && wrapper.parentElement?.id === 'torrent-pagination') wrapper.remove();
       else pageSize.remove();
     }
+
+    const search = document.getElementById('torrent-search');
+    if (search && search.placeholder !== 'Search downloads…') search.placeholder = 'Search downloads…';
 
     const refresh = card.querySelector('.card-header button[onclick*="loadTorrents"]');
     if (refresh) {
@@ -218,13 +256,29 @@
     }
   }
 
+  function observeEmptyStates() {
+    const downloadsBody = document.getElementById('t-tbody');
+    if (downloadsBody && !downloadsEmptyObserver) {
+      downloadsEmptyObserver = new MutationObserver(decorateEmptyStates);
+      downloadsEmptyObserver.observe(downloadsBody, {childList: true, subtree: true});
+    }
+
+    const recentBody = document.getElementById('dash-tbody');
+    if (recentBody && !recentEmptyObserver) {
+      recentEmptyObserver = new MutationObserver(decorateEmptyStates);
+      recentEmptyObserver.observe(recentBody, {childList: true, subtree: true});
+    }
+  }
+
   function initializeDownloadsPresentation() {
     installPaginationRenderer();
     installFilterWrapper();
     decorateDownloadsStructure();
     decorateDownloadsHeader();
+    decorateEmptyStates();
     syncFilterState();
     observeDynamicCounts();
+    observeEmptyStates();
   }
 
   initializeDownloadsPresentation();
