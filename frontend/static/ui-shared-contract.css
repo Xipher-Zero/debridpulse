@@ -13,12 +13,6 @@ body.dp-v11-structural .badge-duplicate {
   text-transform: capitalize;
 }
 
-/* Provider Status is a shell component. Its heading alignment must not depend
-   on whether the Downloads page stylesheet happens to be loaded. */
-body.dp-v11-structural .sidebar-footer::before {
-  text-align: center !important;
-}
-
 /* Legacy interactive surfaces that are progressively normalized by the
    accessibility runtime need the same visible keyboard focus as DP-native
    controls. Outline is used so existing selected/semantic box-shadows remain
@@ -38,12 +32,4 @@ body.light.dp-v11-structural .stab[role="tab"]:focus-visible,
 body.light.dp-v11-structural .modal-close[role="button"]:focus-visible,
 body.light.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
   outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  body.dp-v11-structural .nav-item[role="button"],
-  body.dp-v11-structural .ftab[role="button"],
-  body.dp-v11-structural .stab[role="tab"] {
-    scroll-behavior: auto;
-  }
 }
