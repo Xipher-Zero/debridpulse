@@ -26,3 +26,7 @@
 @import url('/ui-dashboard-polish-final.css?v=18');
 @import url('/ui-dashboard-control-polish.css?v=18');
 @import url('/ui-dashboard-progress-weight.css?v=18');
+
+/* Page migrations consume the approved shared visual language after the
+   Dashboard calibration layers. Keep the existing v=18 cache generation. */
+@import url('/ui-downloads-structural.css?v=18');
