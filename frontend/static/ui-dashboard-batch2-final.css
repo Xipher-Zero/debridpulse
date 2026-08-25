@@ -1,0 +1,55 @@
+/* Final cascade corrections for Dashboard review batch 2.
+   These selectors deliberately outrank the inherited topbar !important rules. */
+
+body.dp-v11-structural #topbar-actions #btn-pause-all.btn {
+  background: linear-gradient(135deg,
+    rgba(132, 42, 58, .86) 0%,
+    rgba(92, 31, 48, .90) 48%,
+    rgba(53, 23, 39, .94) 100%) !important;
+  border-color: rgba(255, 100, 119, .48) !important;
+  color: #ffb3bf !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.055),
+    0 6px 18px rgba(87, 25, 43, .18) !important;
+}
+body.dp-v11-structural #topbar-actions #btn-resume-all.btn,
+body.dp-v11-structural #topbar-actions #btn-resume-paused.btn {
+  background: linear-gradient(135deg,
+    rgba(25, 117, 78, .84) 0%,
+    rgba(20, 86, 66, .91) 50%,
+    rgba(16, 54, 49, .95) 100%) !important;
+  border-color: rgba(73, 224, 145, .42) !important;
+  color: #9af0bf !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.05),
+    0 6px 18px rgba(16, 78, 53, .16) !important;
+}
+body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn {
+  background: linear-gradient(135deg,
+    #ffe8eb 0%,
+    #ffd4da 52%,
+    #f7c1ca 100%) !important;
+  border-color: #ef9cab !important;
+  color: #9f2f42 !important;
+  box-shadow: 0 5px 16px rgba(149, 55, 72, .11) !important;
+}
+body.light.dp-v11-structural #topbar-actions #btn-resume-all.btn,
+body.light.dp-v11-structural #topbar-actions #btn-resume-paused.btn {
+  background: linear-gradient(135deg,
+    #e4faec 0%,
+    #c9f2da 52%,
+    #afe7c7 100%) !important;
+  border-color: #83d3aa !important;
+  color: #176d46 !important;
+  box-shadow: 0 5px 16px rgba(30, 121, 78, .10) !important;
+}
+
+/* Batch 1 used a full-width semantic border. Reduce the physical card border
+   back to one neutral pixel so batch 2's tapered pseudo-element is the only
+   colored top accent and cannot wrap the upper-right corner. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  border-top: 1px solid rgba(105, 119, 181, .23) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat {
+  border-top-color: #dce1ef !important;
+}
