@@ -14,8 +14,8 @@ RUNTIME = STATIC / "ui-runtime.js"
 
 def test_review_batch_is_loaded_after_regression_layer() -> None:
     entry = ENTRY.read_text(encoding="utf-8")
-    regression = entry.index("/ui-regression-fixes.css?v=13")
-    batch = entry.index("/ui-dashboard-batch1.css?v=14")
+    regression = entry.index("/ui-regression-fixes.css?v=20")
+    batch = entry.index("/ui-dashboard-batch1.css?v=20")
     assert batch > regression
 
 
