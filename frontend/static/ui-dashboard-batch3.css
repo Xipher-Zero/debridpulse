@@ -1,0 +1,325 @@
+/* DebridPulse v1.0.11 Dashboard live-review batch 3.
+   Refines card framing/depth, sidebar composition, provider status, light canvas,
+   and user-facing Activity Log naming without changing backend behavior. */
+
+/* Main viewport: cleaner neutral canvas with restrained ambient DP color. */
+body.dp-v11-structural {
+  background:
+    radial-gradient(920px 540px at 36% 4%, rgba(110, 68, 220, .065), transparent 68%),
+    radial-gradient(860px 520px at 88% 72%, rgba(55, 103, 225, .045), transparent 72%),
+    #050817 !important;
+}
+body.light.dp-v11-structural {
+  background:
+    radial-gradient(980px 560px at 38% 2%, rgba(117, 78, 224, .060), transparent 68%),
+    radial-gradient(920px 580px at 88% 76%, rgba(72, 111, 225, .040), transparent 72%),
+    #f7f7fb !important;
+}
+body.dp-v11-structural #main,
+body.dp-v11-structural #content { background: transparent !important; }
+
+/* Sidebar decorative field: replace the centered orbital doodle with a flowing
+   asymmetric wave that stays below the navigation and fades before the footer. */
+body.dp-v11-structural #sidebar::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  bottom: 118px;
+  height: 330px;
+  opacity: .90;
+  background: url('/icons/dp/sidebar-wave.svg?v=17') center bottom / 100% 100% no-repeat !important;
+  transform: none !important;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 17%, #000 82%, transparent 100%) !important;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 17%, #000 82%, transparent 100%) !important;
+  pointer-events: none;
+}
+body.light.dp-v11-structural #sidebar::before { opacity: .56; }
+
+/* Sidebar depth: a darker, shorter-falloff contact shadow makes the navigation
+   rail visibly sit above the canvas. */
+body.dp-v11-structural #sidebar {
+  box-shadow: 8px 0 15px -8px rgba(0, 0, 0, .72) !important;
+}
+body.light.dp-v11-structural #sidebar {
+  box-shadow: 8px 0 15px -8px rgba(30, 35, 56, .48) !important;
+}
+
+/* Selected navigation state: restore a substantial left rail and replace the
+   previous pill-like endpoint with a compact circular light source + spark. */
+body.dp-v11-structural .nav-item.active::before {
+  width: 6px !important;
+  background: linear-gradient(180deg, #d49dff 0%, #ad48ff 48%, #7b35f3 100%) !important;
+  box-shadow: 0 0 6px rgba(205, 139, 255, .92), 0 0 12px rgba(153, 66, 255, .48) !important;
+}
+body.dp-v11-structural .nav-item.active::after {
+  right: -12px !important;
+  top: 50% !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 50% !important;
+  transform: translateY(-50%) !important;
+  background: radial-gradient(circle at 50% 50%,
+    #ffffff 0 1px,
+    #f2dcff 1.15px 2px,
+    #c36aff 2.2px 3.7px,
+    rgba(165, 72, 255, .88) 4px 6px,
+    rgba(129, 58, 238, .42) 6.5px 9px,
+    rgba(118, 61, 226, .12) 9.5px 11px,
+    transparent 12px) !important;
+  box-shadow: 0 0 8px 1px rgba(172, 78, 255, .30) !important;
+}
+body.light.dp-v11-structural .nav-item.active::after {
+  background: radial-gradient(circle at 50% 50%,
+    #ffffff 0 1px,
+    #f1dcff 1.15px 2px,
+    #b958ff 2.2px 3.8px,
+    rgba(153, 62, 239, .78) 4px 6px,
+    rgba(126, 59, 220, .34) 6.5px 9px,
+    rgba(119, 68, 209, .10) 9.5px 11px,
+    transparent 12px) !important;
+  box-shadow: 0 0 7px 1px rgba(145, 63, 229, .24) !important;
+}
+
+/* Activity Log user-facing naming. Keep internal view/event identifiers intact. */
+body.dp-v11-structural .nav-item[data-view="events"] .nav-label {
+  font-size: 0 !important;
+}
+body.dp-v11-structural .nav-item[data-view="events"] .nav-label::after {
+  content: 'Activity Log';
+  font-size: 13px;
+  color: inherit;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title {
+  font-size: 0 !important;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::before {
+  content: 'Activity Log';
+  font-size: 28px;
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  color: inherit;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle {
+  font-size: 0 !important;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle::before {
+  content: 'Recent transfer activity, decisions, warnings, and errors.';
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: inherit;
+}
+
+/* Metric card semantic top accent: retain the delicate upper-left turnover but
+   end the right side as a horizontal fade before the corner begins. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat::before {
+  display: block !important;
+  content: '';
+  position: absolute !important;
+  z-index: 6 !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: calc(100% - 24px) !important;
+  height: 10px !important;
+  border: 0 !important;
+  border-radius: 12px 0 0 0 !important;
+  background:
+    linear-gradient(90deg,
+      var(--c) 0%,
+      var(--c) 82%,
+      color-mix(in srgb, var(--c) 78%, transparent) 90%,
+      color-mix(in srgb, var(--c) 34%, transparent) 96%,
+      transparent 100%) top left / 100% 3px no-repeat,
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--c) 74%, transparent) 0%,
+      color-mix(in srgb, var(--c) 28%, transparent) 48%,
+      transparent 100%) top left / 2px 9px no-repeat !important;
+  box-shadow: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  pointer-events: none;
+}
+
+/* Painted card outline only: defined upper frame, side edges fading out by 80%,
+   no painted bottom edge. Lower separation comes from the contact shadow. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  position: relative;
+  border-color: transparent !important;
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 1px solid rgba(111, 125, 184, .26);
+  border-bottom: 0;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
+  pointer-events: none;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  border-color: rgba(161, 170, 203, .42);
+}
+
+/* Stronger short-falloff card contact shadows; retain southwest bias. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.024),
+    -6px 8px 14px -8px rgba(0,0,0,.66),
+    0 5px 11px -8px rgba(0,0,0,.46) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.78),
+    -6px 8px 14px -8px rgba(35, 41, 66, .40),
+    0 5px 11px -8px rgba(41, 47, 72, .25) !important;
+}
+
+/* Section headers: structural DP-purple wash at the title side, fading into the
+   normal surface before the action buttons. Bodies stay neutral. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  background: linear-gradient(90deg,
+    rgba(95, 48, 174, .26) 0%,
+    rgba(78, 43, 143, .15) 24%,
+    rgba(56, 39, 103, .065) 48%,
+    rgba(14, 19, 44, .00) 76%) !important;
+  border-bottom-color: rgba(113, 126, 184, .18) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  background: linear-gradient(90deg,
+    rgba(142, 92, 225, .14) 0%,
+    rgba(154, 112, 224, .085) 25%,
+    rgba(170, 143, 222, .038) 48%,
+    rgba(255,255,255,0) 76%) !important;
+  border-bottom-color: rgba(159, 168, 201, .34) !important;
+}
+
+/* Secondary action controls: keep the improved slate language, just lift the
+   slate values slightly. Recover All retains its yellow semantic tint. */
+body.dp-v11-structural #view-dashboard #btn-import-existing,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header .btn {
+  background: linear-gradient(135deg, #687292 0%, #56617f 52%, #47516d 100%) !important;
+  border-color: rgba(140, 153, 207, .58) !important;
+}
+body.dp-v11-structural #view-dashboard #btn-recover-all {
+  background: linear-gradient(135deg, #75632f 0%, #5c5133 50%, #45434a 100%) !important;
+  border-color: rgba(255, 198, 61, .64) !important;
+  color: #ffd24f !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-import-existing,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header .btn {
+  background: linear-gradient(135deg, #7d88aa 0%, #687394 52%, #58637f 100%) !important;
+  border-color: #8d98ba !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+  background: linear-gradient(135deg, #79662f 0%, #625534 52%, #4d4a4f 100%) !important;
+  border-color: #dfaF3f !important;
+  color: #ffd24f !important;
+}
+
+/* Internal table/header band: distinct from both canvas and white body. */
+body.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #191f3d 0%, #151b36 100%) !important;
+  border-bottom-color: rgba(111, 125, 184, .25) !important;
+}
+body.light.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #eef0f8 0%, #e8ebf5 100%) !important;
+  border-bottom-color: #d7dceb !important;
+}
+
+/* Empty Recent Activity is one continuous quiet surface: no fake hover affordance
+   and no separator line through an otherwise empty body. */
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]),
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]):hover {
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) td {
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) .empty {
+  background: transparent !important;
+}
+
+/* Provider status panel: scope the premium line to AllDebrid, restore the custom
+   crown, normalize healthy provider language, and hide healthy internal plumbing. */
+body.dp-v11-structural .sidebar-footer::before {
+  content: 'Provider Status';
+  display: block;
+  margin: 0 0 9px;
+  color: #9da3bf;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .085em;
+  text-transform: uppercase;
+}
+body.light.dp-v11-structural .sidebar-footer::before { color: #777e99; }
+
+body.dp-v11-structural #premium-row {
+  position: relative;
+  gap: 7px;
+}
+body.dp-v11-structural #premium-row::before {
+  content: '';
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  background: url('/icons/dp/crown.svg?v=11') center / contain no-repeat;
+  filter: drop-shadow(0 0 5px rgba(159, 75, 255, .28));
+}
+body.dp-v11-structural #lbl-premium::before { content: 'AllDebrid '; }
+
+body.dp-v11-structural #dot-api.ok + #lbl-api {
+  font-size: 0;
+}
+body.dp-v11-structural #dot-api.ok + #lbl-api::after {
+  content: 'AllDebrid: Connected';
+  font-size: 11px;
+  color: inherit;
+}
+
+/* aria2/DB are exception-only in Provider Status. Healthy/checking states stay
+   out of the normal panel; warnings/errors surface below a faint separator. */
+body.dp-v11-structural .sidebar-footer .conn-row:has(#dot-aria2),
+body.dp-v11-structural .sidebar-footer .conn-row:has(#dot-db) {
+  display: none !important;
+}
+body.dp-v11-structural .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.dp-v11-structural .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.dp-v11-structural .sidebar-footer .conn-row:has(#dot-db.warn),
+body.dp-v11-structural .sidebar-footer .conn-row:has(#dot-db.error) {
+  display: flex !important;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(118, 131, 185, .15);
+}
+body.light.dp-v11-structural .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.light.dp-v11-structural .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.light.dp-v11-structural .sidebar-footer .conn-row:has(#dot-db.warn),
+body.light.dp-v11-structural .sidebar-footer .conn-row:has(#dot-db.error) {
+  border-top-color: rgba(120, 131, 171, .18);
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::before {
+    font-size: 23px;
+  }
+  body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle::before {
+    font-size: 11.5px;
+  }
+}
