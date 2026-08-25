@@ -52,8 +52,8 @@ def test_parser_deferred_presentation_runtimes_have_one_normal_order() -> None:
     positions = [html.index(script) for script in scripts]
     assert positions == sorted(positions)
 
-    # Compatibility injectors are permitted only because the static path carries
-    # the exact markers that make them no-ops during normal application boot.
+    # Compatibility script injectors are permitted only because the static path
+    # carries the exact markers that make them no-ops during normal app boot.
     operator = OPERATOR_RUNTIME.read_text(encoding="utf-8")
     assert "script[data-dp-ui-runtime]" in operator
     assert "script[data-dp-downloads-runtime]" in operator
@@ -87,18 +87,19 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
-    html = INDEX.read_text(encoding="utf-8")
     css = SHARED.read_text(encoding="utf-8")
     operator = OPERATOR_RUNTIME.read_text(encoding="utf-8")
 
-    # The compatibility ID makes the inherited operator-title fallback a no-op
-    # on the normal static bootstrap path. The actual material is owned by CSS.
-    assert 'id="debridpulse-duplicate-status-style"' in html
     assert ".badge-duplicate" in css
     assert "var(--dp-state-caution-bg)" in css
     assert ":focus-visible" in css
     assert ".sidebar-footer" not in css
-    assert "document.getElementById('debridpulse-duplicate-status-style')" in operator
+
+    # Runtime-created presentation rules are prohibited. Compatibility script
+    # loading is separate and remains guarded/no-op on the static normal path.
+    assert "installDuplicateStatusStyle" not in operator
+    assert "document.createElement('style')" not in operator
+    assert "debridpulse-duplicate-status-style" not in operator
 
 
 def test_page_layers_do_not_own_shell_contract() -> None:
