@@ -143,7 +143,7 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
 
 def test_downloads_runtime_remains_a_presentation_shim() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
-    assert "/ui-downloads-runtime.js?v=18" in operator
+    assert "/ui-downloads-runtime.js?v=19" in operator
     assert "data-dp-downloads-runtime" in operator
 
 
