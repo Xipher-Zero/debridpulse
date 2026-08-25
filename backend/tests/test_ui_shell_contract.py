@@ -139,7 +139,7 @@ def test_shell_pulse_is_registered_true_vector_art() -> None:
     assert manifest["icons"]["shellPulse"] == "shell-pulse.svg"
 
 
-def test_temporary_stylesheet_staging_files_are_not_shipped() -> None:
+def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
     junk = (
         "style-next.css",
         "style-v11-loader.css",
@@ -148,6 +148,11 @@ def test_temporary_stylesheet_staging_files_are_not_shipped() -> None:
         "DO_NOT_USE.txt",
         "ZZZ",
         "placeholder-cleanup-anchor",
+        "ui-card-shell-final.css",
+        "ui-downloads-structural.css",
+        "ui-downloads-polish.css",
+        "ui-downloads-consistency.css",
+        "ui-downloads-shell-sync.css",
     )
     present = [name for name in junk if (STATIC / name).exists()]
-    assert not present, f"temporary migration files leaked into final tree: {present}"
+    assert not present, f"temporary/retired migration files leaked into final tree: {present}"
