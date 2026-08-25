@@ -1,4 +1,4 @@
-"""Contracts for the v1.0.11 Downloads structural card migration."""
+"""Contracts for the v1.0.11 Downloads page after universal-language consolidation."""
 
 from __future__ import annotations
 
@@ -8,53 +8,78 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
-DOWNLOADS = STATIC / "ui-downloads-structural.css"
+UNIVERSAL = STATIC / "ui-universal-language.css"
+DOWNLOADS = STATIC / "ui-downloads-page.css"
 
 
-def test_downloads_structural_layer_is_loaded_after_dashboard_review_layers() -> None:
+def test_universal_language_loads_before_reference_and_page_layers() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    assert "/ui-downloads-structural.css?v=18" in overlay
-    assert overlay.rfind("/ui-downloads-structural.css?v=18") > overlay.rfind(
-        "/ui-dashboard-progress-weight.css?v=18"
+    universal = "/ui-universal-language.css?v=19"
+    dashboard = "/ui-dashboard.css?v=11"
+    downloads = "/ui-downloads-page.css?v=19"
+    for layer in (universal, dashboard, downloads):
+        assert layer in overlay
+    assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(downloads)
+
+
+def test_downloads_uses_shared_card_field_table_and_tab_material() -> None:
+    universal = UNIVERSAL.read_text(encoding="utf-8")
+    required = (
+        ".dp-card, .card, .scard, .list-card",
+        "--dp-panel-surface",
+        ".dp-field, .input",
+        "--dp-field-surface",
+        ".dp-tabs, .filter-tabs, .stabs",
+        "--dp-segment-active-surface",
+        ".dp-table, .t-table",
+        "--dp-table-head-surface",
+        ".dp-btn, .btn",
+        "--dp-primary-surface",
     )
-    assert "?v=19" not in overlay
+    missing = [fragment for fragment in required if fragment not in universal]
+    assert not missing, f"Universal component language is missing: {missing}"
+    assert "#view-torrents" not in universal
+    assert "#view-dashboard" not in universal
 
 
-def test_downloads_uses_dashboard_card_frame_and_material_contract() -> None:
+def test_downloads_page_layer_owns_geometry_not_copied_material() -> None:
     css = DOWNLOADS.read_text(encoding="utf-8")
     required = (
-        "#view-torrents > .card",
-        "border: 1px solid transparent !important",
-        "-6px 8px 14px -8px",
-        "#view-torrents > .card::after",
-        "border-bottom: 0",
-        "transparent 98%",
-        "#view-torrents > .card > .card-header",
-        "min-height: 58px",
-        "padding: 0 17px !important",
-        "rgba(142,92,225,.14)",
+        "#view-torrents.active",
+        ".dp-downloads-table-wrap",
+        "position: sticky",
+        "min-height: 70px",
+        "width: 51px",
         "div:has(#torrent-search)",
-        "padding: 13px 16px 14px !important",
-        "#view-torrents .t-table thead th",
-        "#f2eff8",
-        "#ebe8f3",
-        "#torrent-pagination",
-        "padding: 12px 16px 13px !important",
+        "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)",
+        "height: calc(100vh - var(--dp-shell-header) - 14px)",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Downloads structural contract is missing: {missing}"
+    assert not missing, f"Downloads page geometry contract is missing: {missing}"
+
+    copied_material = (
+        "#7440bb",
+        "#6336a9",
+        "#553291",
+        "#f2eff8",
+        "#ebe8f3",
+        "rgba(14, 19, 44, .94)",
+        "-6px 8px 14px -8px rgba(0,0,0,.66)",
+        "border: 1px solid transparent",
+        "#view-torrents > .card::after",
+    )
+    present = [fragment for fragment in copied_material if fragment in css]
+    assert not present, f"Downloads page copied universal material: {present}"
 
 
 def test_downloads_migration_is_presentation_only() -> None:
     css = DOWNLOADS.read_text(encoding="utf-8")
     forbidden = (
-        "display: none",
-        "pointer-events: none !important",
         "content: 'All Downloads'",
         "data-status=",
+        "onclick=",
+        "fetch(",
+        "api(",
     )
-    # The frame pseudo-element is intentionally click-through, but the page's
-    # actual controls and content must not be hidden or behaviourally rewritten.
-    body_without_frame_pointer_rule = css.replace("pointer-events: none;", "")
-    missing = [fragment for fragment in forbidden if fragment in body_without_frame_pointer_rule]
-    assert not missing, f"Downloads migration contains behavioural overrides: {missing}"
+    present = [fragment for fragment in forbidden if fragment in css]
+    assert not present, f"Downloads page CSS contains behavioral overrides: {present}"
