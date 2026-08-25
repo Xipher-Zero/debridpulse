@@ -29,10 +29,6 @@
     overflow: auto !important;
     -webkit-overflow-scrolling: touch;
   }
-
-  body.dp-v11-structural:has(#view-torrents.active) .sidebar-footer {
-    bottom: 24px !important;
-  }
 }
 
 body.dp-v11-structural #view-torrents > .card > .card-header,
@@ -229,11 +225,6 @@ body.dp-v11-structural #view-torrents .dp-pager-ellipsis {
   padding: 0 4px;
   color: var(--dp-text-muted);
   font-size: 12px;
-}
-
-/* Provider Status is a self-contained sidebar panel. */
-body.dp-v11-structural .sidebar-footer::before {
-  text-align: center !important;
 }
 
 /* ── Responsive geometry ─────────────────────────────────────────────── */
