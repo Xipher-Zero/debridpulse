@@ -192,3 +192,78 @@ body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-partial::b
 body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-completed::before {
   transform: translateY(1px) !important;
 }
+
+/* ── Dark-card red + progress/table/sidebar balance refinements ───────── */
+/* Errors needs to read as a real failure state in the dark theme rather than
+   receding into burgundy/pink. One semantic source drives the card wash,
+   top edge, sparkline, and icon glow. */
+body.dp-v11-structural #view-dashboard #dash-error-card {
+  --c: #ff4854 !important;
+}
+body.light.dp-v11-structural #view-dashboard #dash-error-card {
+  --c: #e93f4d !important;
+}
+body.dp-v11-structural #view-dashboard #dash-error-card .dhs-icon .dp-icon {
+  filter:
+    saturate(1.28)
+    brightness(1.10)
+    drop-shadow(0 0 5px color-mix(in srgb, var(--c) 68%, transparent))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--c) 32%, transparent)) !important;
+}
+
+/* Keep the glow that made progress easy to scan, but trim only the physical
+   bar girth by about 21% from the 7px live-review treatment. */
+body.dp-v11-structural #dash-tbody .prog,
+body.dp-v11-structural #t-tbody .prog {
+  height: 5.5px !important;
+}
+
+/* On wide Dashboard layouts, Status had far more horizontal allocation than
+   its content needed. Reclaim that slack for Progress while keeping Name and
+   the trailing metadata/action columns balanced. */
+@media (min-width: 1440px) {
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table {
+    table-layout: fixed !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
+    width: 40% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
+    width: 13% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
+    width: 21% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
+    width: 9% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+    width: 12% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+    width: 5% !important;
+  }
+}
+
+/* Sidebar hover now uses the same directional material language as the rest
+   of the shell. It remains intentionally much quieter than the active row. */
+body.dp-v11-structural .nav-item:not(.active):hover {
+  background: linear-gradient(90deg,
+    rgba(136,76,228,.13) 0%,
+    rgba(132,79,218,.075) 42%,
+    rgba(128,86,205,.025) 76%,
+    transparent 100%) !important;
+}
+body.light.dp-v11-structural .nav-item:not(.active):hover {
+  background: linear-gradient(90deg,
+    rgba(143,91,222,.17) 0%,
+    rgba(157,119,224,.095) 43%,
+    rgba(174,151,226,.035) 77%,
+    transparent 100%) !important;
+}
