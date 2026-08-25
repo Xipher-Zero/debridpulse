@@ -1,4 +1,4 @@
-"""Contracts for the v1.0.11 Downloads live-review polish and consistency passes."""
+"""Contracts for the v1.0.11 Downloads live-review polish and shell-sync passes."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
 POLISH = STATIC / "ui-downloads-polish.css"
 CONSISTENCY = STATIC / "ui-downloads-consistency.css"
+SHELL_SYNC = STATIC / "ui-downloads-shell-sync.css"
 RUNTIME = STATIC / "ui-downloads-runtime.js"
 OPERATOR = STATIC / "operator-title.js"
 ICON = STATIC / "icons" / "dp" / "card-document-stack.svg"
@@ -24,11 +25,12 @@ def test_downloads_layers_are_ordered_without_cache_generation_bump() -> None:
     structural = "/ui-downloads-structural.css?v=18"
     polish = "/ui-downloads-polish.css?v=18"
     consistency = "/ui-downloads-consistency.css?v=18"
-    assert structural in overlay
-    assert polish in overlay
-    assert consistency in overlay
+    shell_sync = "/ui-downloads-shell-sync.css?v=18"
+    for layer in (structural, polish, consistency, shell_sync):
+        assert layer in overlay
     assert overlay.rfind(polish) > overlay.rfind(structural)
     assert overlay.rfind(consistency) > overlay.rfind(polish)
+    assert overlay.rfind(shell_sync) > overlay.rfind(consistency)
     assert "?v=19" not in overlay
 
 
@@ -40,12 +42,8 @@ def test_downloads_polish_captures_reviewed_workspace_and_controls() -> None:
         "bottom: 24px !important",
         ".dp-downloads-table-wrap",
         "position: sticky",
-        ".dp-downloads-title-icon",
-        "width: 38px",
         ".dp-downloads-heading",
         "font-size: 16px",
-        ".dp-downloads-subtitle",
-        "font-size: 11.5px",
         ".filter-tabs",
         ".ftab.active",
         "#7440bb",
@@ -61,19 +59,29 @@ def test_downloads_polish_captures_reviewed_workspace_and_controls() -> None:
     assert not missing, f"Downloads polish contract is missing: {missing}"
 
 
-def test_downloads_consistency_fixes_bottom_datum_and_empty_icon() -> None:
-    css = CONSISTENCY.read_text(encoding="utf-8")
+def test_downloads_shell_sync_matches_final_dashboard_section_card_contract() -> None:
+    css = SHELL_SYNC.read_text(encoding="utf-8")
     required = (
-        "height: calc(100vh - var(--dp-shell-header)) !important",
-        ":has(#view-torrents.active) .sidebar-footer",
-        "bottom: 24px !important",
-        ".dp-downloads-title-icon",
-        "width: 38px !important",
-        "#view-torrents .empty-icon",
-        "card-download.svg?v=11",
+        "background: linear-gradient(180deg, #ffffff, #f8f9fd) !important",
+        "-6px 8px 14px -8px rgba(35, 41, 66, .40)",
+        "border-bottom: 0 !important",
+        "rgba(0,0,0,.18) 93%",
+        "transparent 98%",
+        "min-height: 70px !important",
+        "width: 51px !important",
+        "font-size: 10.5px !important",
+        "#torrent-pagination",
+        "border-top: 0 !important",
+        "background: transparent !important",
+        "#t-tbody tr:not([data-torrent-id]):hover",
+        "width: 76px !important",
+        "height: 76px !important",
+        "height: calc(100vh - var(--dp-shell-header) - 14px) !important",
+        ".sidebar-footer::before",
+        "text-align: center !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Downloads consistency contract is missing: {missing}"
+    assert not missing, f"Downloads final shell-sync contract is missing: {missing}"
 
 
 def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> None:
