@@ -33,12 +33,12 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
 
     # Existing functional/inherited selectors continue to treat style.css as
     # the monolithic v1 compatibility stylesheet. v1.0.11 is a second visual
-    # layer loaded after it by the presentation runtime.
+    # layer statically loaded after it, with a guarded runtime fallback.
     assert legacy_entry == preserved
 
     # The v1.0.11 cascade is architectural: semantic/design primitives first,
-    # then the Dashboard-derived universal component defaults, shared shell,
-    # reference-page calibration, and finally page-specific exceptions.
+    # then the Dashboard-derived universal component defaults, shared audited
+    # corrections, shell, reference-page calibration, and page exceptions.
     imports = [
         "/design-tokens.css?v=20",
         "/ui-language-tokens.css?v=20",
@@ -46,6 +46,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-components.css?v=20",
         "/icon-system.css?v=20",
         "/ui-universal-language.css?v=20",
+        "/ui-shared-contract.css?v=21",
         "/ui-shell.css?v=20",
         "/ui-shell-structural.css?v=20",
         "/ui-dashboard.css?v=20",
@@ -56,11 +57,16 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # One candidate must resolve to one cache generation. Do not allow stale
-    # sublayers to survive beneath a freshly versioned outer loader.
-    generations = re.findall(r"@import url\('[^']+\?v=(\d+)'\);", overlay)
+    # Targeted invalidation: the audited shared layer advances with the v21
+    # outer loader while unchanged approved sublayers retain v20 URLs.
+    generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
-    assert set(generations) == {"20"}, f"mixed v1.0.11 cache generations: {sorted(set(generations))}"
+    version_by_path = {path: version for path, version in generations}
+    assert version_by_path["/ui-shared-contract.css"] == "21"
+    unchanged_versions = {
+        version for path, version in generations if path != "/ui-shared-contract.css"
+    }
+    assert unchanged_versions == {"20"}
 
     # Old page-local material copies and the universal-last card guard must not
     # return to the active cascade.
@@ -73,7 +79,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     ):
         assert retired_import not in overlay
 
-    assert "/style-v11.css?v=20" in runtime
+    assert "/style-v11.css?v=21" in runtime
     assert "data-dp-v11-styles" in runtime
     assert "dp-v11-structural" in runtime
 
@@ -103,10 +109,11 @@ def test_v11_bootstrap_cache_generation_is_coherent() -> None:
     operator = SHELL_RUNTIME.read_text(encoding="utf-8")
     runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
 
+    assert '/style-v11.css?v=21' in index
     assert '/operator-title.js?v=20' in index
     assert '/ui-runtime.js?v=20' in operator
     assert '/ui-downloads-runtime.js?v=20' in operator
-    assert '/style-v11.css?v=20' in runtime
+    assert '/style-v11.css?v=21' in runtime
 
 
 def test_shell_matches_required_mockup_structure() -> None:
