@@ -6,3 +6,9 @@
 @import url('/icon-system.css?v=11');
 @import url('/ui-shell.css?v=11');
 @import url('/ui-dashboard.css?v=11');
+
+/* Structural calibration layers intentionally come last. They rebuild the
+   composition to match the approved mockup language rather than merely tinting
+   the inherited v1 UI. */
+@import url('/ui-shell-structural.css?v=12');
+@import url('/ui-dashboard-structural.css?v=12');
