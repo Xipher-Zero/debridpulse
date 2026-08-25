@@ -19,7 +19,8 @@
   const SUBTITLES = {
     Dashboard: 'Overview of your download activities and system status.',
     Downloads: 'Inspect, filter, and control queued and active transfers.',
-    'Event Log': 'Operational history, decisions, warnings, and errors.',
+    'Event Log': 'Recent transfer activity, decisions, warnings, and errors.',
+    'Activity Log': 'Recent transfer activity, decisions, warnings, and errors.',
     Statistics: 'Historical transfer performance and completion metrics.',
     Settings: 'Configure providers, downloads, notifications, and system behavior.',
     'Help & License': 'Usage guidance, project information, and licensing.'
@@ -33,7 +34,7 @@
       link.dataset.dpV11Styles = '1';
       document.head.appendChild(link);
     }
-    if (!/style-v11\.css\?v=20$/.test(link.href)) link.href = '/style-v11.css?v=20';
+    if (!/style-v11\.css\?v=21$/.test(link.href)) link.href = '/style-v11.css?v=21';
   }
 
   function dpImg(filename, className) {
