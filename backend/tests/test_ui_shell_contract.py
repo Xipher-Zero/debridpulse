@@ -21,29 +21,47 @@ DEPENDENCIES = REPO_ROOT / "docs" / "DEPENDENCY_LICENSES.md"
 LUCIDE_LICENSE = REPO_ROOT / "licenses" / "Lucide-ISC-MIT.txt"
 
 
-def test_v11_stylesheet_stack_preserves_legacy_contract_and_layers_after_it() -> None:
+def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base() -> None:
     legacy_entry = STYLE_ENTRY.read_text(encoding="utf-8")
     preserved = LEGACY_STYLE.read_text(encoding="utf-8")
     overlay = V11_STYLE.read_text(encoding="utf-8")
     runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
 
-    # Existing contract tests and inherited selectors continue to treat
-    # style.css as the monolithic v1 stylesheet. The v1.0.11 visual layer is a
-    # second stylesheet loaded after it by the presentation runtime.
+    # Existing functional/inherited selectors continue to treat style.css as
+    # the monolithic v1 compatibility stylesheet. v1.0.11 is a second visual
+    # layer loaded after it by the presentation runtime.
     assert legacy_entry == preserved
 
+    # The v1.0.11 cascade is architectural: semantic/design primitives first,
+    # then the Dashboard-derived universal component defaults, shared shell,
+    # reference-page calibration, and finally page-specific exceptions.
     imports = [
         "/design-tokens.css?v=11",
+        "/ui-language-tokens.css?v=19",
         "/ui-foundation.css?v=11",
         "/ui-components.css?v=11",
         "/icon-system.css?v=11",
+        "/ui-universal-language.css?v=19",
         "/ui-shell.css?v=11",
-        "/ui-dashboard.css?v=11",
         "/ui-shell-structural.css?v=12",
+        "/ui-dashboard.css?v=11",
         "/ui-dashboard-structural.css?v=12",
+        "/ui-downloads-page.css?v=19",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
+
+    # Old page-local material copies and the universal-last card guard must not
+    # return to the active cascade.
+    for retired_import in (
+        "ui-card-shell-final.css",
+        "ui-downloads-structural.css",
+        "ui-downloads-polish.css",
+        "ui-downloads-consistency.css",
+        "ui-downloads-shell-sync.css",
+    ):
+        assert retired_import not in overlay
+
     assert "/style-v11.css?v=14" in runtime
     assert "data-dp-v11-styles" in runtime
     assert "dp-v11-structural" in runtime
