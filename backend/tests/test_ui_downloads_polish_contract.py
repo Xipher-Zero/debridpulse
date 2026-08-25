@@ -1,4 +1,4 @@
-"""Contracts for the v1.0.11 Downloads polish and universal card-shell system."""
+"""Contracts for v1.0.11 universal frontend language and Downloads integration."""
 
 from __future__ import annotations
 
@@ -10,10 +10,9 @@ import xml.etree.ElementTree as ET
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
-POLISH = STATIC / "ui-downloads-polish.css"
-STRUCTURAL = STATIC / "ui-downloads-structural.css"
-SHELL_SYNC = STATIC / "ui-downloads-shell-sync.css"
-CARD_SHELL = STATIC / "ui-card-shell-final.css"
+TOKENS = STATIC / "ui-language-tokens.css"
+UNIVERSAL = STATIC / "ui-universal-language.css"
+DOWNLOADS = STATIC / "ui-downloads-page.css"
 RUNTIME = STATIC / "ui-downloads-runtime.js"
 OPERATOR = STATIC / "operator-title.js"
 ICON = STATIC / "icons" / "dp" / "card-document-stack.svg"
@@ -21,95 +20,96 @@ REMOVED_ICON = STATIC / "icons" / "dp" / "green-download-button.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
 
-def test_universal_card_shell_is_authoritative_last_layer_without_cache_bump() -> None:
+def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    structural = "/ui-downloads-structural.css?v=18"
-    polish = "/ui-downloads-polish.css?v=18"
-    shell_sync = "/ui-downloads-shell-sync.css?v=18"
-    card_shell = "/ui-card-shell-final.css?v=18"
-    for layer in (structural, polish, shell_sync, card_shell):
+    tokens = "/ui-language-tokens.css?v=19"
+    universal = "/ui-universal-language.css?v=19"
+    dashboard = "/ui-dashboard.css?v=11"
+    downloads = "/ui-downloads-page.css?v=19"
+    for layer in (tokens, universal, dashboard, downloads):
         assert layer in overlay
-    assert overlay.rfind(card_shell) > overlay.rfind(shell_sync)
-    assert overlay.rstrip().endswith("@import url('/ui-card-shell-final.css?v=18');")
-    assert "?v=19" not in overlay
+    assert overlay.index(tokens) < overlay.index(universal)
+    assert overlay.index(universal) < overlay.index(dashboard)
+    assert overlay.index(dashboard) < overlay.index(downloads)
+    assert "ui-card-shell-final.css" not in overlay
+    assert "ui-downloads-structural.css" not in overlay
+    assert "ui-downloads-polish.css" not in overlay
+    assert "ui-downloads-consistency.css" not in overlay
+    assert "ui-downloads-shell-sync.css" not in overlay
 
 
-def test_universal_card_shell_owns_material_frame_shadow_and_header() -> None:
-    css = CARD_SHELL.read_text(encoding="utf-8")
+def test_material_tokens_capture_approved_dashboard_surface_language() -> None:
+    css = TOKENS.read_text(encoding="utf-8")
     required = (
-        "#content .view .card",
-        "background: linear-gradient(180deg, #ffffff, #f8f9fd) !important",
-        "-6px 8px 14px -8px rgba(35, 41, 66, .40)",
-        "#content .view .card::after",
-        "border-bottom: 0 !important",
-        "rgba(0,0,0,.18) 93%",
-        "transparent 98%",
-        "#content .view .card > .card-header",
-        "rgba(142, 92, 225, .14) 0%",
-        "border-bottom-color: rgba(159, 168, 201, .34) !important",
+        "--dp-panel-surface",
+        "rgba(14, 19, 44, .94)",
+        "--dp-panel-header-surface",
+        "rgba(95, 48, 174, .26)",
+        "--dp-panel-shadow",
+        "-6px 8px 14px -8px rgba(0,0,0,.66)",
+        "--dp-field-surface",
+        "--dp-table-head-surface",
+        "#1d1930",
+        "#f2eff8",
+        "--dp-segment-active-surface",
+        "#7440bb",
+        "--dp-primary-surface",
+        "#8d48db",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Universal card-shell contract is missing: {missing}"
+    assert not missing, f"Dashboard-derived material tokens are missing: {missing}"
+
+
+def test_universal_language_bridges_all_major_legacy_component_families() -> None:
+    css = UNIVERSAL.read_text(encoding="utf-8")
+    required = (
+        ".dp-card, .card, .scard, .list-card",
+        ".dp-metric-card, .metric-card, .stat-card, .dash-hero-stat",
+        ".dp-field, .input",
+        ".dp-tabs, .filter-tabs, .stabs",
+        ".dp-tab, .ftab, .stab",
+        ".dp-btn, .btn",
+        ".dp-table, .t-table",
+        ".badge",
+        ".prog",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"Universal legacy bridge is missing: {missing}"
     assert "#view-dashboard" not in css
     assert "#view-torrents" not in css
+    assert "#view-settings" not in css
+    assert "#view-stats" not in css
 
 
-def test_downloads_layers_no_longer_own_standard_card_shell() -> None:
-    structural = STRUCTURAL.read_text(encoding="utf-8")
-    shell_sync = SHELL_SYNC.read_text(encoding="utf-8")
-    forbidden = (
-        "#view-torrents > .card::after",
-        "background: linear-gradient(180deg, #ffffff, #f8f9fd) !important",
-        "-6px 8px 14px -8px rgba(35, 41, 66, .40)",
-        "rgba(0,0,0,.18) 93%",
-    )
-    for fragment in forbidden:
-        assert fragment not in structural
-        assert fragment not in shell_sync
-
-
-def test_downloads_polish_captures_reviewed_workspace_and_controls() -> None:
-    css = POLISH.read_text(encoding="utf-8")
+def test_downloads_page_layer_is_page_specific_only() -> None:
+    css = DOWNLOADS.read_text(encoding="utf-8")
     required = (
         "#view-torrents.active",
-        ":has(#view-torrents.active) .sidebar-footer",
-        "bottom: 24px !important",
-        ".dp-downloads-table-wrap",
-        "position: sticky",
         ".dp-downloads-heading",
-        "font-size: 16px",
         ".filter-tabs",
-        ".ftab.active",
-        "#7440bb",
         ".dp-downloads-refresh",
+        ".dp-downloads-table-wrap",
         "#torrent-pagination",
-        "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)",
-        ".dp-pager-current",
-        "#8d55c1",
+        ".dp-pager-btn",
         "#torrent-page-info",
-        "font-size: 13px !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Downloads polish contract is missing: {missing}"
+    assert not missing, f"Downloads page contract is missing: {missing}"
 
-
-def test_downloads_page_specific_sync_keeps_only_layout_and_empty_state_rules() -> None:
-    css = SHELL_SYNC.read_text(encoding="utf-8")
-    required = (
-        "min-height: 70px !important",
-        "width: 51px !important",
-        "font-size: 10.5px !important",
-        "#torrent-pagination",
-        "border-top: 0 !important",
-        "#t-tbody tr:not([data-torrent-id]):hover",
-        "width: 76px !important",
-        "height: 76px !important",
-        "height: calc(100vh - var(--dp-shell-header) - 14px) !important",
-        ".sidebar-footer::before",
-        "text-align: center !important",
+    # These literals identify the old copied Dashboard material and must remain
+    # centralized in the shared token/language layers.
+    forbidden = (
+        "#7440bb",
+        "#6336a9",
+        "#553291",
+        "#f2eff8",
+        "#ebe8f3",
+        "rgba(14, 19, 44, .94)",
+        "rgba(142, 92, 225, .14)",
+        "#view-torrents > .card::after",
     )
-    missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Downloads page-specific contract is missing: {missing}"
+    present = [fragment for fragment in forbidden if fragment in css]
+    assert not present, f"Downloads page reintroduced copied base material: {present}"
 
 
 def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> None:
@@ -141,11 +141,10 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
     assert "api('DELETE'" not in runtime
 
 
-def test_downloads_runtime_is_loaded_without_touching_application_cache_generation() -> None:
+def test_downloads_runtime_remains_a_presentation_shim() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
     assert "/ui-downloads-runtime.js?v=18" in operator
     assert "data-dp-downloads-runtime" in operator
-    assert "?v=19" not in operator
 
 
 def test_downloads_header_reuses_registered_recent_activity_true_vector() -> None:
