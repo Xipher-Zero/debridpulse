@@ -1,0 +1,49 @@
+/* DebridPulse v1.0.11 shared frontend contract corrections.
+ *
+ * This layer owns cross-cutting presentation that must not be created from
+ * JavaScript or owned by a page-specific stylesheet. It is intentionally
+ * small: broadly reusable component material remains in
+ * ui-universal-language.css and shell geometry remains in the shell layers.
+ */
+
+/* Duplicate is a caution/status presentation, not runtime-generated CSS. */
+body.dp-v11-structural .badge-duplicate {
+  background: var(--dp-state-caution-bg);
+  color: var(--dp-state-caution);
+  text-transform: capitalize;
+}
+
+/* Provider Status is a shell component. Its heading alignment must not depend
+   on whether the Downloads page stylesheet happens to be loaded. */
+body.dp-v11-structural .sidebar-footer::before {
+  text-align: center !important;
+}
+
+/* Legacy interactive surfaces that are progressively normalized by the
+   accessibility runtime need the same visible keyboard focus as DP-native
+   controls. Outline is used so existing selected/semantic box-shadows remain
+   untouched. */
+body.dp-v11-structural .nav-item[role="button"]:focus-visible,
+body.dp-v11-structural .ftab[role="button"]:focus-visible,
+body.dp-v11-structural .stab[role="tab"]:focus-visible,
+body.dp-v11-structural .modal-close[role="button"]:focus-visible,
+body.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dp-accent-purple-bright) 82%, white 18%);
+  outline-offset: 2px;
+}
+
+body.light.dp-v11-structural .nav-item[role="button"]:focus-visible,
+body.light.dp-v11-structural .ftab[role="button"]:focus-visible,
+body.light.dp-v11-structural .stab[role="tab"]:focus-visible,
+body.light.dp-v11-structural .modal-close[role="button"]:focus-visible,
+body.light.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
+  outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.dp-v11-structural .nav-item[role="button"],
+  body.dp-v11-structural .ftab[role="button"],
+  body.dp-v11-structural .stab[role="tab"] {
+    scroll-behavior: auto;
+  }
+}
