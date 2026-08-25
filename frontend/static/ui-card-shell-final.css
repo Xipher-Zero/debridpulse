@@ -58,13 +58,13 @@ body.light.dp-v11-structural #content .view .card::after {
   border-color: rgba(161, 170, 203, .42) !important;
 }
 
-/* Standard section header material. Page layout may still choose a taller
-   header, but its paint, padding, radius, divider, and typography are shared. */
+/* Standard section-header material. Geometry such as min-height remains owned
+   by the card/page because Quick Add, Recent Activity, and workspace cards have
+   intentionally different approved proportions. */
 body.dp-v11-structural #content .view .card > .card-header {
   position: relative;
   z-index: 1;
-  min-height: 70px;
-  padding: 0 17px !important;
+  padding-inline: 17px !important;
   border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0 !important;
   border-bottom: 1px solid rgba(113, 126, 184, .18) !important;
   background: linear-gradient(90deg,
