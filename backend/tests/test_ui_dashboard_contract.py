@@ -9,26 +9,29 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 V11_STYLE = STATIC / "style-v11.css"
 DASHBOARD_CSS = STATIC / "ui-dashboard.css"
+STATISTICS_CSS = STATIC / "ui-statistics-page.css"
 RUNTIME = STATIC / "ui-runtime.js"
 
 
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard.css?v=11" in entry
-    assert "/ui-shell.css?v=11" in entry
+    assert "/ui-dashboard.css?v=20" in entry
+    assert "/ui-shell.css?v=20" in entry
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:
-    css = DASHBOARD_CSS.read_text(encoding="utf-8")
+    dashboard = DASHBOARD_CSS.read_text(encoding="utf-8")
+    statistics = STATISTICS_CSS.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
 
-    assert "grid-template-columns: repeat(6" in css
-    assert "#view-dashboard .dash-kpi-strip--dashboard" in css
-    assert "display: none !important" in css
+    assert "grid-template-columns: repeat(6" in dashboard
+    assert "#view-dashboard .dash-kpi-strip--dashboard" in dashboard
+    assert "display: none !important" in dashboard
+    assert "#view-stats .dp-stats-history-grid" not in dashboard
+    assert "#view-stats .dp-stats-history-grid" in statistics
     assert "moveDashboardKpisToStatistics" in runtime
     assert "statsCards.insertAdjacentElement('afterend', strip)" in runtime
     assert "dp-stats-history-grid" in runtime
-    assert "#view-stats .dp-stats-history-grid" in css
 
 
 def test_dashboard_uses_canonical_custom_semantic_assets() -> None:
