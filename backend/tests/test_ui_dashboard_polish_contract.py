@@ -15,11 +15,11 @@ CONTROL_POLISH = STATIC / "ui-dashboard-control-polish.css"
 
 def test_polish_layers_finish_dashboard_after_universal_base() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    universal = "/ui-universal-language.css?v=19"
-    batch5 = "/ui-dashboard-batch5.css?v=18"
-    polish = "/ui-dashboard-polish.css?v=18"
-    final = "/ui-dashboard-polish-final.css?v=18"
-    control = "/ui-dashboard-control-polish.css?v=18"
+    universal = "/ui-universal-language.css?v=20"
+    batch5 = "/ui-dashboard-batch5.css?v=20"
+    polish = "/ui-dashboard-polish.css?v=20"
+    final = "/ui-dashboard-polish-final.css?v=20"
+    control = "/ui-dashboard-control-polish.css?v=20"
     for layer in (universal, batch5, polish, final, control):
         assert layer in overlay
     assert overlay.index(universal) < overlay.index(batch5)
