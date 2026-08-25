@@ -7,33 +7,34 @@
  * Universal defaults must load before pages. Pages may override genuine
  * geometry/behavior requirements, but must not own copied base material.
  */
-@import url('/design-tokens.css?v=11');
-@import url('/ui-language-tokens.css?v=19');
-@import url('/ui-foundation.css?v=11');
-@import url('/ui-components.css?v=11');
-@import url('/icon-system.css?v=11');
-@import url('/ui-universal-language.css?v=19');
+@import url('/design-tokens.css?v=20');
+@import url('/ui-language-tokens.css?v=20');
+@import url('/ui-foundation.css?v=20');
+@import url('/ui-components.css?v=20');
+@import url('/icon-system.css?v=20');
+@import url('/ui-universal-language.css?v=20');
 
 /* Shared application shell. */
-@import url('/ui-shell.css?v=11');
-@import url('/ui-shell-structural.css?v=12');
+@import url('/ui-shell.css?v=20');
+@import url('/ui-shell-structural.css?v=20');
 
 /* Dashboard remains the visual reference/calibration page. These layers are
    intentionally page-specific where they tune Dashboard composition itself;
    generic material extracted from them now lives above. */
-@import url('/ui-dashboard.css?v=11');
-@import url('/ui-dashboard-structural.css?v=12');
-@import url('/ui-regression-fixes.css?v=13');
-@import url('/ui-dashboard-batch1.css?v=14');
-@import url('/ui-dashboard-batch2.css?v=15');
-@import url('/ui-dashboard-batch2-final.css?v=16');
-@import url('/ui-dashboard-batch3.css?v=17');
-@import url('/ui-dashboard-batch4.css?v=18');
-@import url('/ui-dashboard-batch5.css?v=18');
-@import url('/ui-dashboard-polish.css?v=18');
-@import url('/ui-dashboard-polish-final.css?v=18');
-@import url('/ui-dashboard-control-polish.css?v=18');
-@import url('/ui-dashboard-progress-weight.css?v=18');
+@import url('/ui-dashboard.css?v=20');
+@import url('/ui-dashboard-structural.css?v=20');
+@import url('/ui-regression-fixes.css?v=20');
+@import url('/ui-dashboard-batch1.css?v=20');
+@import url('/ui-dashboard-batch2.css?v=20');
+@import url('/ui-dashboard-batch2-final.css?v=20');
+@import url('/ui-dashboard-batch3.css?v=20');
+@import url('/ui-dashboard-batch4.css?v=20');
+@import url('/ui-dashboard-batch5.css?v=20');
+@import url('/ui-dashboard-polish.css?v=20');
+@import url('/ui-dashboard-polish-final.css?v=20');
+@import url('/ui-dashboard-control-polish.css?v=20');
+@import url('/ui-dashboard-progress-weight.css?v=20');
 
 /* Page layers contain only page-specific geometry/behavior/content details. */
-@import url('/ui-downloads-page.css?v=19');
+@import url('/ui-statistics-page.css?v=20');
+@import url('/ui-downloads-page.css?v=20');
