@@ -175,7 +175,7 @@ def test_latest_color_spacing_and_sidebar_hover_refinements_are_locked() -> None
         "#dash-error-card",
         "--c: #ff4854 !important",
         "saturate(1.28)",
-        "height: 5.5px !important",
+        "height: 4.5px !important",
         "@media (min-width: 1440px)",
         "table-layout: fixed !important",
         "width: 13% !important",
