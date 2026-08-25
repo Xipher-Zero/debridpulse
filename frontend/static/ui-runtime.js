@@ -37,7 +37,6 @@
   function utilitySvg(kind) {
     const paths = {
       upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
-      recover: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>',
       arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>'
     };
     return '<svg class="dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[kind] || '') + '</svg>';
@@ -110,16 +109,34 @@
     });
   }
 
-  function normalizeButton(button, iconKind) {
-    if (!button || button.dataset.dpStructuralButton === '1') return;
-    const label = (button.dataset.defaultLabel || button.textContent || '').replace(/^[^A-Za-z0-9]+/, '').trim();
-    button.textContent = '';
-    button.insertAdjacentHTML('beforeend', utilitySvg(iconKind));
+  function buttonLabel(button) {
+    return (button.dataset.defaultLabel || button.textContent || '')
+      .replace(/^[^A-Za-z0-9]+/, '')
+      .trim();
+  }
+
+  function appendButtonLabel(button, label) {
     const span = document.createElement('span');
     span.textContent = label;
     button.appendChild(span);
     button.dataset.defaultLabel = label;
     button.dataset.dpStructuralButton = '1';
+  }
+
+  function normalizeUtilityButton(button, iconKind) {
+    if (!button || button.dataset.dpStructuralButton === '1') return;
+    const label = buttonLabel(button);
+    button.textContent = '';
+    button.insertAdjacentHTML('beforeend', utilitySvg(iconKind));
+    appendButtonLabel(button, label);
+  }
+
+  function normalizeDpButton(button, filename) {
+    if (!button || button.dataset.dpStructuralButton === '1') return;
+    const label = buttonLabel(button);
+    button.textContent = '';
+    button.appendChild(dpImg(filename, 'dp-icon--sm'));
+    appendButtonLabel(button, label);
   }
 
   function decorateQuickAdd() {
@@ -147,8 +164,8 @@
       const actionWrap = importButton && importButton.parentElement;
       if (actionWrap) actionWrap.classList.add('dp-card-header-actions');
     }
-    normalizeButton(document.getElementById('btn-import-existing'), 'upload');
-    normalizeButton(document.getElementById('btn-recover-all'), 'recover');
+    normalizeUtilityButton(document.getElementById('btn-import-existing'), 'upload');
+    normalizeDpButton(document.getElementById('btn-recover-all'), 'retry-borderless.svg');
   }
 
   function updateRecentCount() {
