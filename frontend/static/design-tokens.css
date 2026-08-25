@@ -1,0 +1,202 @@
+/* DebridPulse v1.0.11 design tokens.
+   Visual target: approved dark/light mockups. These are semantic tokens, not page-local colors. */
+
+:root {
+  color-scheme: dark;
+
+  /* Application and surface hierarchy */
+  --dp-bg-app: #050814;
+  --dp-bg-app-alt: #080d1c;
+  --dp-bg-sidebar: #050918;
+  --dp-surface-1: #0b1224;
+  --dp-surface-2: #10182c;
+  --dp-surface-3: #151f36;
+  --dp-surface-input: #0d1427;
+  --dp-surface-overlay: rgba(8, 13, 28, .96);
+
+  /* Text */
+  --dp-text-primary: #f7f8ff;
+  --dp-text-secondary: #b3bcda;
+  --dp-text-muted: #7c87aa;
+  --dp-text-disabled: #596480;
+  --dp-text-inverse: #ffffff;
+
+  /* Borders and separators */
+  --dp-border-subtle: #19233a;
+  --dp-border-default: #26324d;
+  --dp-border-strong: #3a496a;
+  --dp-divider: rgba(128, 148, 190, .15);
+
+  /* Brand / interaction */
+  --dp-accent-purple: #9b45ff;
+  --dp-accent-purple-bright: #b45cff;
+  --dp-accent-blue: #257cff;
+  --dp-accent-blue-bright: #3d94ff;
+  --dp-accent-cyan: #17d8ff;
+  --dp-accent-rgb: 155, 69, 255;
+  --dp-accent-contrast: #ffffff;
+
+  /* Semantic state colors */
+  --dp-state-success: #2bd67b;
+  --dp-state-active: #3b89ff;
+  --dp-state-processing: #ffb52b;
+  --dp-state-caution: #ffc13d;
+  --dp-state-error: #ff5264;
+  --dp-state-connectivity: #16d6ff;
+  --dp-state-paused: #a66cff;
+  --dp-state-ready: #6f8dba;
+  --dp-state-recoverable: #ffb52b;
+
+  /* Semantic tinted surfaces */
+  --dp-state-success-bg: color-mix(in srgb, var(--dp-state-success) 11%, transparent);
+  --dp-state-active-bg: color-mix(in srgb, var(--dp-state-active) 11%, transparent);
+  --dp-state-processing-bg: color-mix(in srgb, var(--dp-state-processing) 11%, transparent);
+  --dp-state-caution-bg: color-mix(in srgb, var(--dp-state-caution) 11%, transparent);
+  --dp-state-error-bg: color-mix(in srgb, var(--dp-state-error) 11%, transparent);
+  --dp-state-connectivity-bg: color-mix(in srgb, var(--dp-state-connectivity) 10%, transparent);
+
+  /* Navigation */
+  --dp-nav-hover: rgba(155, 69, 255, .08);
+  --dp-nav-active: linear-gradient(90deg, rgba(155, 69, 255, .25), rgba(37, 124, 255, .09));
+  --dp-nav-active-rail: #a44cff;
+  --dp-nav-active-text: #c995ff;
+
+  /* Focus / selection */
+  --dp-focus-ring: 0 0 0 3px rgba(155, 69, 255, .28);
+  --dp-selection-bg: rgba(155, 69, 255, .18);
+
+  /* Gradients deliberately limited to branded/primary emphasis. */
+  --dp-gradient-primary: linear-gradient(100deg, #8c22ed 0%, #6c37f5 48%, #1688ff 100%);
+  --dp-gradient-primary-hover: linear-gradient(100deg, #a038ff 0%, #764cff 48%, #2497ff 100%);
+  --dp-gradient-brand: linear-gradient(90deg, #a941ff 0%, #7c42ff 48%, #2388ff 100%);
+  --dp-gradient-page: radial-gradient(circle at 17% 10%, rgba(139, 61, 255, .13), transparent 28%), radial-gradient(circle at 88% 12%, rgba(23, 126, 255, .10), transparent 25%), linear-gradient(180deg, #070b18 0%, #030711 100%);
+
+  /* Elevation: dark theme relies more on border/surface changes than heavy shadow. */
+  --dp-shadow-card: 0 12px 30px rgba(0, 0, 8, .24);
+  --dp-shadow-raised: 0 18px 46px rgba(0, 0, 10, .36);
+  --dp-shadow-control: 0 5px 16px rgba(0, 0, 8, .22);
+  --dp-glow-accent: 0 0 22px rgba(155, 69, 255, .18);
+  --dp-glow-success: 0 0 16px rgba(43, 214, 123, .13);
+  --dp-glow-active: 0 0 16px rgba(59, 137, 255, .13);
+  --dp-glow-caution: 0 0 16px rgba(255, 193, 61, .12);
+  --dp-glow-error: 0 0 16px rgba(255, 82, 100, .12);
+
+  /* Progress */
+  --dp-progress-track: #17213a;
+  --dp-progress-active: var(--dp-state-active);
+  --dp-progress-complete: var(--dp-state-success);
+  --dp-progress-paused: var(--dp-state-paused);
+  --dp-progress-processing: var(--dp-state-processing);
+  --dp-progress-error: var(--dp-state-error);
+
+  /* Legacy aliases while the existing UI is migrated page-by-page. */
+  --bg: var(--dp-bg-app);
+  --bg2: var(--dp-bg-app-alt);
+  --surface: var(--dp-surface-1);
+  --surface2: var(--dp-surface-2);
+  --surface3: var(--dp-surface-3);
+  --border: var(--dp-border-default);
+  --border2: var(--dp-border-strong);
+  --accent: var(--dp-accent-purple-bright);
+  --accent2: var(--dp-accent-blue-bright);
+  --accent-rgb: var(--dp-accent-rgb);
+  --accent-contrast: var(--dp-accent-contrast);
+  --primary-gradient: var(--dp-gradient-primary);
+  --primary-gradient-hover: var(--dp-gradient-primary-hover);
+  --focus-ring: rgba(155, 69, 255, .28);
+  --text: var(--dp-text-primary);
+  --text2: var(--dp-text-secondary);
+  --text3: var(--dp-text-muted);
+  --nav-hover: var(--dp-nav-hover);
+  --nav-active: rgba(155, 69, 255, .18);
+  --panel-a: rgba(16, 24, 44, .97);
+  --panel-b: rgba(5, 8, 20, .96);
+  --panel-glow: rgba(155, 69, 255, .18);
+  --shadow-soft: var(--dp-shadow-card);
+  --status-total: var(--dp-accent-purple-bright);
+  --status-completed: var(--dp-state-success);
+  --status-active: var(--dp-state-active);
+  --status-processing: var(--dp-state-processing);
+  --status-error: var(--dp-state-error);
+  --status-downloaded: var(--dp-accent-blue-bright);
+  --blue: var(--dp-state-active);
+  --green: var(--dp-state-success);
+  --yellow: var(--dp-state-caution);
+  --red: var(--dp-state-error);
+  --purple: var(--dp-accent-purple-bright);
+}
+
+body.light,
+[data-theme="light"],
+.theme-light {
+  color-scheme: light;
+
+  /* Light theme is a complementary palette, not an inversion. */
+  --dp-bg-app: #f4f7fc;
+  --dp-bg-app-alt: #fbfcff;
+  --dp-bg-sidebar: #fbfcff;
+  --dp-surface-1: #ffffff;
+  --dp-surface-2: #f8faff;
+  --dp-surface-3: #f0f4fb;
+  --dp-surface-input: #fbfcff;
+  --dp-surface-overlay: rgba(255, 255, 255, .97);
+
+  --dp-text-primary: #111a34;
+  --dp-text-secondary: #526184;
+  --dp-text-muted: #7b88a8;
+  --dp-text-disabled: #a4adc2;
+  --dp-text-inverse: #ffffff;
+
+  --dp-border-subtle: #edf1f8;
+  --dp-border-default: #dce4f1;
+  --dp-border-strong: #c4cee0;
+  --dp-divider: rgba(77, 96, 137, .13);
+
+  --dp-accent-purple: #8428ed;
+  --dp-accent-purple-bright: #9637f5;
+  --dp-accent-blue: #2377f4;
+  --dp-accent-blue-bright: #2f86ff;
+  --dp-accent-cyan: #009dcb;
+  --dp-accent-rgb: 132, 40, 237;
+
+  --dp-state-success: #0fb866;
+  --dp-state-active: #2779ee;
+  --dp-state-processing: #e89a0c;
+  --dp-state-caution: #d98a00;
+  --dp-state-error: #e64255;
+  --dp-state-connectivity: #008fbd;
+  --dp-state-paused: #7c3dd5;
+  --dp-state-ready: #607397;
+  --dp-state-recoverable: #d98a00;
+
+  --dp-nav-hover: rgba(132, 40, 237, .055);
+  --dp-nav-active: linear-gradient(90deg, rgba(132, 40, 237, .14), rgba(35, 119, 244, .055));
+  --dp-nav-active-rail: #8c31ed;
+  --dp-nav-active-text: #6920bd;
+
+  --dp-focus-ring: 0 0 0 3px rgba(132, 40, 237, .19);
+  --dp-selection-bg: rgba(132, 40, 237, .12);
+
+  --dp-gradient-primary: linear-gradient(100deg, #8f25ee 0%, #6d42f4 48%, #1688ff 100%);
+  --dp-gradient-primary-hover: linear-gradient(100deg, #7d1ed6 0%, #5d36df 48%, #0875e9 100%);
+  --dp-gradient-brand: linear-gradient(90deg, #902cf0 0%, #7140ee 48%, #2682f4 100%);
+  --dp-gradient-page: radial-gradient(circle at 17% 9%, rgba(161, 76, 255, .085), transparent 30%), radial-gradient(circle at 87% 14%, rgba(53, 137, 255, .07), transparent 28%), linear-gradient(180deg, #ffffff 0%, #f4f7fc 100%);
+
+  /* Slightly stronger than the rendered mockup bloom so white surfaces remain legible on real displays. */
+  --dp-shadow-card: 0 6px 18px rgba(45, 61, 96, .075);
+  --dp-shadow-raised: 0 14px 34px rgba(45, 61, 96, .12);
+  --dp-shadow-control: 0 3px 10px rgba(45, 61, 96, .075);
+  --dp-glow-accent: 0 0 18px rgba(132, 40, 237, .08);
+  --dp-glow-success: 0 0 13px rgba(15, 184, 102, .07);
+  --dp-glow-active: 0 0 13px rgba(39, 121, 238, .07);
+  --dp-glow-caution: 0 0 13px rgba(217, 138, 0, .07);
+  --dp-glow-error: 0 0 13px rgba(230, 66, 85, .07);
+
+  --dp-progress-track: #e7edf7;
+
+  /* Legacy compatibility values inherit the semantic theme above. */
+  --panel-a: rgba(255, 255, 255, .98);
+  --panel-b: rgba(248, 250, 255, .97);
+  --panel-glow: rgba(132, 40, 237, .07);
+  --focus-ring: rgba(132, 40, 237, .19);
+}
