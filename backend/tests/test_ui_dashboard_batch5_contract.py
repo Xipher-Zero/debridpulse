@@ -11,14 +11,14 @@ STYLE = STATIC / "style-v11.css"
 BATCH = STATIC / "ui-dashboard-batch5.css"
 
 
-def test_batch5_is_last_visual_override_without_cache_generation_bump() -> None:
+def test_batch5_remains_after_batch4_with_universal_base_preceding_dashboard() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard-batch4.css?v=18" in overlay
-    assert "/ui-dashboard-batch5.css?v=18" in overlay
-    assert overlay.rfind("/ui-dashboard-batch5.css?v=18") > overlay.rfind(
-        "/ui-dashboard-batch4.css?v=18"
-    )
-    assert "?v=19" not in overlay
+    universal = "/ui-universal-language.css?v=19"
+    batch4 = "/ui-dashboard-batch4.css?v=18"
+    batch5 = "/ui-dashboard-batch5.css?v=18"
+    for layer in (universal, batch4, batch5):
+        assert layer in overlay
+    assert overlay.index(universal) < overlay.index(batch4) < overlay.index(batch5)
 
 
 def test_batch5_provider_and_spotlight_contracts() -> None:
