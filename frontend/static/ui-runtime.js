@@ -33,7 +33,7 @@
       link.dataset.dpV11Styles = '1';
       document.head.appendChild(link);
     }
-    if (!/style-v11\.css\?v=19$/.test(link.href)) link.href = '/style-v11.css?v=19';
+    if (!/style-v11\.css\?v=20$/.test(link.href)) link.href = '/style-v11.css?v=20';
   }
 
   function dpImg(filename, className) {
