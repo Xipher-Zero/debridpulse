@@ -1,0 +1,215 @@
+/* DebridPulse v1.0.11 typography + global geometry foundation.
+   Visual target: approved desktop mockups, with conservative responsive extensions. */
+
+:root {
+  /* Typography families */
+  --dp-font-sans: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --dp-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Typography weights */
+  --dp-weight-regular: 400;
+  --dp-weight-medium: 500;
+  --dp-weight-semibold: 600;
+  --dp-weight-bold: 700;
+  --dp-weight-extrabold: 800;
+
+  /* Typography roles */
+  --dp-type-page-title-size: 30px;
+  --dp-type-page-title-line: 1.12;
+  --dp-type-page-title-weight: 700;
+  --dp-type-page-title-tracking: -0.025em;
+
+  --dp-type-page-subtitle-size: 13px;
+  --dp-type-page-subtitle-line: 1.45;
+  --dp-type-page-subtitle-weight: 400;
+
+  --dp-type-section-title-size: 18px;
+  --dp-type-section-title-line: 1.25;
+  --dp-type-section-title-weight: 600;
+  --dp-type-section-title-tracking: -0.015em;
+
+  --dp-type-card-title-size: 14px;
+  --dp-type-card-title-line: 1.35;
+  --dp-type-card-title-weight: 600;
+
+  --dp-type-body-size: 14px;
+  --dp-type-body-line: 1.5;
+  --dp-type-body-weight: 400;
+  --dp-type-body-sm-size: 13px;
+  --dp-type-body-xs-size: 12px;
+  --dp-type-caption-size: 11px;
+
+  --dp-type-control-size: 13px;
+  --dp-type-control-line: 1.2;
+  --dp-type-control-weight: 600;
+
+  --dp-type-nav-size: 14px;
+  --dp-type-nav-line: 1.2;
+  --dp-type-nav-weight: 500;
+  --dp-type-nav-active-weight: 600;
+  --dp-type-nav-group-size: 10px;
+  --dp-type-nav-group-weight: 700;
+  --dp-type-nav-group-tracking: 0.14em;
+
+  --dp-type-table-head-size: 11px;
+  --dp-type-table-head-weight: 700;
+  --dp-type-table-head-tracking: 0.06em;
+  --dp-type-table-body-size: 13px;
+  --dp-type-table-body-line: 1.35;
+
+  --dp-type-metric-value-size: 28px;
+  --dp-type-metric-value-line: 1;
+  --dp-type-metric-value-weight: 800;
+  --dp-type-metric-label-size: 10px;
+  --dp-type-metric-label-line: 1.2;
+  --dp-type-metric-label-weight: 700;
+  --dp-type-metric-label-tracking: 0.08em;
+  --dp-type-kpi-value-size: 18px;
+  --dp-type-kpi-value-weight: 800;
+
+  --dp-type-badge-size: 10px;
+  --dp-type-badge-weight: 700;
+  --dp-type-badge-tracking: 0.04em;
+
+  --dp-type-mono-size: 12px;
+  --dp-type-mono-line: 1.35;
+  --dp-type-mono-weight: 500;
+  --dp-type-version-size: 10px;
+  --dp-type-version-line: 1.2;
+
+  /* Spacing scale: intentionally compact; mockups are dense but not cramped. */
+  --dp-space-1: 4px;
+  --dp-space-2: 6px;
+  --dp-space-3: 8px;
+  --dp-space-4: 10px;
+  --dp-space-5: 12px;
+  --dp-space-6: 14px;
+  --dp-space-7: 16px;
+  --dp-space-8: 20px;
+  --dp-space-9: 24px;
+  --dp-space-10: 28px;
+  --dp-space-11: 32px;
+  --dp-space-12: 40px;
+  --dp-space-13: 48px;
+
+  /* Global shell */
+  --dp-sidebar-width: 252px;
+  --dp-sidebar-collapsed-width: 76px;
+  --dp-sidebar-brand-height: 78px;
+  --dp-topbar-height: 64px;
+  --dp-page-gutter-x: 28px;
+  --dp-page-gutter-y: 24px;
+  --dp-content-max-width: 1760px;
+
+  /* Repeated layout rhythm */
+  --dp-section-gap: 18px;
+  --dp-card-gap: 14px;
+  --dp-card-padding: 18px;
+  --dp-card-padding-lg: 20px;
+  --dp-card-padding-compact: 14px;
+
+  /* Shape language */
+  --dp-radius-xs: 6px;
+  --dp-radius-sm: 8px;
+  --dp-radius-md: 10px;
+  --dp-radius-lg: 12px;
+  --dp-radius-xl: 16px;
+  --dp-radius-pill: 999px;
+
+  /* Controls */
+  --dp-control-height-sm: 30px;
+  --dp-control-height-md: 36px;
+  --dp-control-height-lg: 42px;
+  --dp-input-height: 42px;
+  --dp-textarea-min-height: 42px;
+  --dp-tab-height: 38px;
+
+  /* Data presentation */
+  --dp-table-head-height: 38px;
+  --dp-table-row-height: 52px;
+  --dp-metric-card-min-height: 96px;
+  --dp-kpi-strip-min-height: 62px;
+  --dp-progress-height: 6px;
+  --dp-progress-height-compact: 3px;
+
+  /* Overlay geometry */
+  --dp-modal-width-sm: 420px;
+  --dp-modal-width-md: 620px;
+  --dp-modal-width-lg: 860px;
+  --dp-drawer-width: 520px;
+
+  /* Legacy aliases during page-by-page migration. */
+  --font: var(--dp-font-sans);
+  --mono: var(--dp-font-mono);
+  --radius: var(--dp-radius-lg);
+  --radius-sm: var(--dp-radius-sm);
+  --sidebar: var(--dp-sidebar-width);
+  --chrome-header-height: var(--dp-topbar-height);
+}
+
+/* Canonical type-role helpers for rebuilt v1.0.11 components. */
+.dp-type-page-title {
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-page-title-size);
+  line-height: var(--dp-type-page-title-line);
+  font-weight: var(--dp-type-page-title-weight);
+  letter-spacing: var(--dp-type-page-title-tracking);
+}
+
+.dp-type-page-subtitle {
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-page-subtitle-size);
+  line-height: var(--dp-type-page-subtitle-line);
+  font-weight: var(--dp-type-page-subtitle-weight);
+}
+
+.dp-type-section-title {
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-section-title-size);
+  line-height: var(--dp-type-section-title-line);
+  font-weight: var(--dp-type-section-title-weight);
+  letter-spacing: var(--dp-type-section-title-tracking);
+}
+
+.dp-type-card-title {
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-card-title-size);
+  line-height: var(--dp-type-card-title-line);
+  font-weight: var(--dp-type-card-title-weight);
+}
+
+.dp-type-metric-value {
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-metric-value-size);
+  line-height: var(--dp-type-metric-value-line);
+  font-weight: var(--dp-type-metric-value-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+.dp-type-metric-label,
+.dp-type-table-head,
+.dp-type-nav-group {
+  text-transform: uppercase;
+}
+
+.dp-type-metric-label {
+  font-size: var(--dp-type-metric-label-size);
+  line-height: var(--dp-type-metric-label-line);
+  font-weight: var(--dp-type-metric-label-weight);
+  letter-spacing: var(--dp-type-metric-label-tracking);
+}
+
+.dp-type-mono {
+  font-family: var(--dp-font-mono);
+  font-size: var(--dp-type-mono-size);
+  line-height: var(--dp-type-mono-line);
+  font-weight: var(--dp-type-mono-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+.dp-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
