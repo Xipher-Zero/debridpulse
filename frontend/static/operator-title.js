@@ -287,7 +287,7 @@
   'use strict';
   if (document.querySelector('script[data-dp-ui-runtime]')) return;
   const script = document.createElement('script');
-  script.src = '/ui-runtime.js?v=13';
+  script.src = '/ui-runtime.js?v=14';
   script.defer = true;
   script.dataset.dpUiRuntime = '1';
   document.head.appendChild(script);
