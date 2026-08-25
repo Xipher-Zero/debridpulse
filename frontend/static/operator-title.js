@@ -229,11 +229,27 @@
     };
   }
 
+  function bindThemeToggle() {
+    const button = document.getElementById('theme-toggle');
+    if (!button || button.dataset.dpThemeBound === '1') return;
+
+    /* Inline handlers became unreliable after the control was promoted out of
+       the sidebar visually. Bind the real button explicitly and remove the
+       inline handler so one click always produces exactly one theme change. */
+    button.removeAttribute('onclick');
+    button.addEventListener('click', function (event) {
+      event.preventDefault();
+      if (typeof window.toggleTheme === 'function') window.toggleTheme();
+    });
+    button.dataset.dpThemeBound = '1';
+  }
+
   function initializeShellPresentation() {
     decorateNavigation();
     decorateMobileMenu();
     renderThemeGlyph(document.body.classList.contains('light'));
     decorateTopbarActions();
+    bindThemeToggle();
 
     const actionHost = document.getElementById('topbar-actions');
     if (actionHost && !actionHost.dataset.dpShellObserved) {
@@ -254,7 +270,7 @@
   'use strict';
   if (document.querySelector('script[data-dp-ui-runtime]')) return;
   const script = document.createElement('script');
-  script.src = '/ui-runtime.js?v=11';
+  script.src = '/ui-runtime.js?v=12';
   script.defer = true;
   script.dataset.dpUiRuntime = '1';
   document.head.appendChild(script);
