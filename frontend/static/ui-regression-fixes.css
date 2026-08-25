@@ -1,0 +1,36 @@
+/* DebridPulse v1.0.11 visual regression corrections.
+   Final override layer for issues found during live mockup comparison. */
+
+/* The body is already a flex row containing #sidebar and #main. Applying the
+   sidebar width again as margin-left on #main duplicated the sidebar offset on
+   every view, producing the large empty gutter between navigation and content. */
+body.dp-v11-structural #main {
+  margin-left: 0 !important;
+}
+
+/* Align the theme control with the 37px topbar controls. The wrapper remains
+   fixed for now so the existing DOM/behavior contract is untouched, but it
+   must itself accept pointer events: relying on a child to opt back in under a
+   pointer-events:none ancestor made the control unreliable in the live build. */
+body.dp-v11-structural .sidebar-theme-control {
+  top: 33px !important;
+  right: 18px !important;
+  width: 37px !important;
+  height: 37px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  pointer-events: auto !important;
+}
+
+body.dp-v11-structural .theme-toggle {
+  width: 37px !important;
+  height: 37px !important;
+  pointer-events: auto !important;
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural .sidebar-theme-control {
+    top: 18px !important;
+    right: 14px !important;
+  }
+}
