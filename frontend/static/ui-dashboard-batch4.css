@@ -113,78 +113,101 @@ body.light.dp-v11-structural .nav-item.active .icon svg {
   filter: drop-shadow(0 0 3px rgba(142, 63, 224, .28));
 }
 
-/* Right-edge selected-state energy is a single spotlight/bloom with a white-hot
-   spark, not a sequence of concentric circles. Center the source on the edge. */
+/* Right-edge selected-state energy stays the same size and position, but its
+   white-hot spark is now a separate tiny layer above a truly transparent purple
+   bloom. This prevents the light theme from reading the fade as a white ring. */
 body.dp-v11-structural .nav-item.active::after {
   right: -17px !important;
   top: 50% !important;
   width: 34px !important;
   height: 34px !important;
+  border: 0 !important;
+  outline: 0 !important;
   border-radius: 50% !important;
   transform: translateY(-50%) !important;
-  background: radial-gradient(circle at 50% 50%,
-    rgba(255,255,255,1) 0%,
-    rgba(236,205,255,.95) 3%,
-    rgba(184,91,255,.79) 13%,
-    rgba(147,67,241,.51) 34%,
-    rgba(128,62,224,.24) 55%,
-    rgba(119,61,212,.08) 69%,
-    transparent 79%) !important;
+  background-color: transparent !important;
+  background:
+    radial-gradient(circle at 50% 50%,
+      rgba(255,255,255,.99) 0 1px,
+      rgba(236,205,255,.86) 1.2px 1.8px,
+      transparent 2.8px),
+    radial-gradient(circle at 50% 50%,
+      rgba(184,91,255,.80) 0%,
+      rgba(165,76,251,.68) 18%,
+      rgba(147,67,241,.50) 36%,
+      rgba(128,62,224,.24) 55%,
+      rgba(119,61,212,.08) 69%,
+      transparent 79%) !important;
   box-shadow: 0 0 11px 2px rgba(149, 69, 242, .24) !important;
   pointer-events: none;
 }
 body.light.dp-v11-structural .nav-item.active::after {
-  background: radial-gradient(circle at 50% 50%,
-    rgba(255,255,255,1) 0%,
-    rgba(239,213,255,.97) 3%,
-    rgba(174,76,246,.72) 14%,
-    rgba(143,62,226,.43) 35%,
-    rgba(127,64,211,.20) 55%,
-    rgba(120,70,198,.06) 69%,
-    transparent 79%) !important;
+  background-color: transparent !important;
+  background:
+    radial-gradient(circle at 50% 50%,
+      rgba(255,255,255,.99) 0 1px,
+      rgba(239,213,255,.82) 1.2px 1.8px,
+      transparent 2.8px),
+    radial-gradient(circle at 50% 50%,
+      rgba(174,76,246,.74) 0%,
+      rgba(158,68,237,.61) 18%,
+      rgba(143,62,226,.43) 36%,
+      rgba(127,64,211,.20) 55%,
+      rgba(120,70,198,.06) 69%,
+      transparent 79%) !important;
   box-shadow: 0 0 10px 2px rgba(139, 63, 224, .18) !important;
 }
 
-/* The sidebar decoration is a field rather than a narrow ribbon: occupy a
-   taller band while remaining quiet around navigation and Provider Status. */
+/* The sidebar decoration remains one restrained field. Move it upward and give
+   the existing traces a little more vertical spread instead of adding clutter. */
 body.dp-v11-structural #sidebar::before {
-  bottom: 94px !important;
-  height: 470px !important;
-  opacity: .86 !important;
-  background: url('/icons/dp/sidebar-wave.svg?v=18') center bottom / 108% 100% no-repeat !important;
+  bottom: 146px !important;
+  height: 500px !important;
+  opacity: .84 !important;
+  background: url('/icons/dp/sidebar-wave.svg?v=18') center center / 110% 106% no-repeat !important;
   -webkit-mask-image: linear-gradient(180deg,
-    transparent 0%, #000 10%, #000 88%, transparent 100%) !important;
+    transparent 0%, #000 12%, #000 88%, transparent 100%) !important;
   mask-image: linear-gradient(180deg,
-    transparent 0%, #000 10%, #000 88%, transparent 100%) !important;
+    transparent 0%, #000 12%, #000 88%, transparent 100%) !important;
 }
-body.light.dp-v11-structural #sidebar::before { opacity: .52 !important; }
+body.light.dp-v11-structural #sidebar::before { opacity: .50 !important; }
 
-/* Provider premium state: the crown is an actual visual anchor, and a width
-   constraint intentionally wraps the days-remaining phrase to a centered line. */
+/* Provider premium state uses the same 8px left anchor as the healthy status
+   dot below. The oversized crown overflows that anchor symmetrically, while the
+   text receives the rest of the row so the date can stay on line one. */
 body.dp-v11-structural #premium-row {
+  display: grid !important;
+  grid-template-columns: 8px minmax(0, 1fr) !important;
+  column-gap: 6px !important;
   align-items: center !important;
-  justify-content: center !important;
-  gap: 10px !important;
+  justify-content: stretch !important;
 }
 body.dp-v11-structural #premium-row::before {
+  grid-column: 1 !important;
+  justify-self: center !important;
   width: 36px !important;
   min-width: 36px !important;
   height: 36px !important;
+  margin: 0 !important;
   background-size: 36px 36px !important;
   filter: drop-shadow(0 0 7px rgba(159, 75, 255, .34)) !important;
 }
 body.dp-v11-structural #lbl-premium {
+  grid-column: 2 !important;
   display: block !important;
-  width: 145px !important;
-  max-width: 145px !important;
+  width: auto !important;
+  max-width: none !important;
+  margin-right: -4px !important;
   white-space: normal !important;
   text-align: center !important;
-  font-size: 11px !important;
-  line-height: 1.5 !important;
+  font-size: 10.5px !important;
+  line-height: 1.45 !important;
+  letter-spacing: -.012em !important;
 }
 
 /* The evolved light theme is neutral + lavender, not steel blue. Secondary
-   controls use a restrained violet-gray family; Recover All keeps gold meaning. */
+   controls use a restrained violet-gray family. Recover All now shares that
+   neutral surface and carries recovery semantics only in gold details. */
 body.dp-v11-structural #view-dashboard #btn-import-existing,
 body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header .btn {
   background: linear-gradient(135deg, #625a75 0%, #504a63 52%, #423d55 100%) !important;
@@ -198,12 +221,20 @@ body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header
   color: #ffffff !important;
 }
 body.dp-v11-structural #view-dashboard #btn-recover-all {
-  background: linear-gradient(135deg, #78642f 0%, #62533b 52%, #4c4852 100%) !important;
+  background:
+    linear-gradient(135deg, rgba(255,199,61,.10), rgba(255,199,61,.025) 46%, transparent 74%),
+    linear-gradient(135deg, #625a75 0%, #504a63 52%, #423d55 100%) !important;
+  border-color: rgba(242, 185, 57, .70) !important;
   color: #ffd24f !important;
+  text-shadow: 0 0 8px rgba(255, 202, 68, .18);
 }
 body.light.dp-v11-structural #view-dashboard #btn-recover-all {
-  background: linear-gradient(135deg, #7e6830 0%, #68583c 52%, #544f58 100%) !important;
+  background:
+    linear-gradient(135deg, rgba(255,199,61,.08), rgba(255,199,61,.018) 46%, transparent 74%),
+    linear-gradient(135deg, #81788f 0%, #716a83 52%, #625d74 100%) !important;
+  border-color: rgba(211, 158, 45, .82) !important;
   color: #ffd24f !important;
+  text-shadow: 0 0 7px rgba(255, 202, 68, .14);
 }
 
 /* Internal table band follows the same lavender-neutral structure in both
@@ -233,3 +264,67 @@ body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon 
   opacity: .72;
   filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
 }
+
+/* The brand art itself remains unchanged. Give the masthead the same ambient
+   depth the rest of v1.0.11 has acquired: localized lavender/blue energy near
+   the icon, restrained Pulse bloom, and a quiet separator that fades right. */
+body.dp-v11-structural .logo {
+  position: relative !important;
+  isolation: isolate;
+  border-bottom-color: transparent !important;
+  background:
+    linear-gradient(90deg,
+      rgba(151,81,244,.24) 0%,
+      rgba(120,78,221,.10) 42%,
+      transparent 84%) bottom / 100% 1px no-repeat,
+    radial-gradient(ellipse 130% 110% at 12% 18%,
+      rgba(131,72,236,.15) 0%,
+      rgba(108,72,222,.07) 35%,
+      transparent 66%),
+    radial-gradient(ellipse 88% 92% at 48% 22%,
+      rgba(66,122,255,.075) 0%,
+      transparent 66%),
+    linear-gradient(180deg, rgba(12,15,36,.96), rgba(7,10,27,.94)) !important;
+}
+body.light.dp-v11-structural .logo {
+  background:
+    linear-gradient(90deg,
+      rgba(139,74,232,.20) 0%,
+      rgba(115,76,214,.075) 42%,
+      transparent 84%) bottom / 100% 1px no-repeat,
+    radial-gradient(ellipse 130% 110% at 12% 18%,
+      rgba(127,77,225,.115) 0%,
+      rgba(116,83,220,.052) 35%,
+      transparent 66%),
+    radial-gradient(ellipse 88% 92% at 48% 22%,
+      rgba(65,114,226,.055) 0%,
+      transparent 66%),
+    linear-gradient(180deg, #ffffff 0%, #fbfaff 100%) !important;
+}
+body.dp-v11-structural .logo-icon {
+  box-shadow:
+    0 5px 12px rgba(0,0,0,.18),
+    0 0 27px rgba(117,72,255,.25) !important;
+}
+body.light.dp-v11-structural .logo-icon {
+  box-shadow:
+    0 5px 12px rgba(47,42,70,.16),
+    0 0 25px rgba(117,72,255,.19) !important;
+}
+body.dp-v11-structural .logo-name {
+  text-shadow: 0 1px 1px rgba(0,0,0,.20);
+}
+body.light.dp-v11-structural .logo-name {
+  text-shadow: 0 1px 1px rgba(37,30,58,.10);
+}
+body.dp-v11-structural .logo-name span {
+  text-shadow:
+    0 1px 1px rgba(0,0,0,.16),
+    0 0 11px rgba(164,92,255,.27);
+}
+body.light.dp-v11-structural .logo-name span {
+  text-shadow:
+    0 1px 1px rgba(48,35,73,.08),
+    0 0 10px rgba(124,58,237,.18);
+}
+body.dp-v11-structural .logo-ver { opacity: .78; }
