@@ -1,20 +1,28 @@
 /* DebridPulse v1.0.11 visual system overlay.
-   Loaded after the legacy stylesheet during the controlled page migration. */
+ *
+ * Cascade contract:
+ *   tokens -> foundation/components -> Dashboard-derived universal language
+ *   -> shell -> reference-page calibration -> page-specific exceptions.
+ *
+ * Universal defaults must load before pages. Pages may override genuine
+ * geometry/behavior requirements, but must not own copied base material.
+ */
 @import url('/design-tokens.css?v=11');
+@import url('/ui-language-tokens.css?v=19');
 @import url('/ui-foundation.css?v=11');
 @import url('/ui-components.css?v=11');
 @import url('/icon-system.css?v=11');
+@import url('/ui-universal-language.css?v=19');
+
+/* Shared application shell. */
 @import url('/ui-shell.css?v=11');
-@import url('/ui-dashboard.css?v=11');
-
-/* Structural calibration layers intentionally come last. They rebuild the
-   composition to match the approved mockup language rather than merely tinting
-   the inherited v1 UI. */
 @import url('/ui-shell-structural.css?v=12');
-@import url('/ui-dashboard-structural.css?v=12');
 
-/* Live visual-regression corrections are intentionally last so test-build
-   findings can be fixed without weakening the base component contracts. */
+/* Dashboard remains the visual reference/calibration page. These layers are
+   intentionally page-specific where they tune Dashboard composition itself;
+   generic material extracted from them now lives above. */
+@import url('/ui-dashboard.css?v=11');
+@import url('/ui-dashboard-structural.css?v=12');
 @import url('/ui-regression-fixes.css?v=13');
 @import url('/ui-dashboard-batch1.css?v=14');
 @import url('/ui-dashboard-batch2.css?v=15');
@@ -27,12 +35,5 @@
 @import url('/ui-dashboard-control-polish.css?v=18');
 @import url('/ui-dashboard-progress-weight.css?v=18');
 
-/* Page migrations contain page-specific internals only. */
-@import url('/ui-downloads-structural.css?v=18');
-@import url('/ui-downloads-polish.css?v=18');
-@import url('/ui-downloads-consistency.css?v=18');
-@import url('/ui-downloads-shell-sync.css?v=18');
-
-/* Authoritative standard-card contract. This is deliberately last so page
-   migrations cannot redefine framing/material and silently drift from Dashboard. */
-@import url('/ui-card-shell-final.css?v=18');
+/* Page layers contain only page-specific geometry/behavior/content details. */
+@import url('/ui-downloads-page.css?v=19');
