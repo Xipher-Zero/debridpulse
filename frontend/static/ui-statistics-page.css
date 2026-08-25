@@ -1,0 +1,104 @@
+/* DebridPulse v1.0.11 Statistics page layer.
+ *
+ * Owns Statistics-only layout and semantic metric assignments. Metric/card
+ * material is inherited from ui-universal-language.css.
+ */
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid {
+  width: 100%;
+  margin: 0 0 var(--dp-section-gap);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--dp-card-gap);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-sep {
+  display: none;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi {
+  min-width: 0;
+  min-height: 92px;
+  padding: 13px 14px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: 10px;
+  align-items: center;
+  text-align: left;
+}
+
+/* Semantic assignments are page content, not material definitions. The strip
+   alternates KPI nodes and separator nodes, hence the odd child positions. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(1) { --c: var(--dp-accent-purple-bright); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(3) { --c: var(--dp-state-active); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(5) { --c: var(--dp-accent-purple-bright); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(7) { --c: var(--dp-state-success); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(9) { --c: var(--dp-state-caution); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(11) { --c: var(--dp-state-active); }
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon {
+  --dp-icon-frame-size: 38px;
+  --dp-icon-frame-radius: var(--dp-radius-md);
+  grid-column: 1;
+  grid-row: 1 / span 3;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
+  width: 22px;
+  height: 22px;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-val {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--dp-text-primary);
+  font-size: 18px;
+  line-height: 1.05;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-lbl {
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 3px;
+  color: var(--dp-text-secondary);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-sub {
+  grid-column: 2;
+  grid-row: 3;
+  margin-top: 2px;
+  color: var(--dp-text-muted);
+  font-size: 9.5px;
+  line-height: 1.2;
+}
+
+@media (max-width: 1439px) {
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 899px) {
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    grid-template-columns: 1fr;
+  }
+}
