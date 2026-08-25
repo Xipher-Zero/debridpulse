@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" fill="none" role="img" aria-label="DebridPulse sidebar wave field">
+  <defs>
+    <linearGradient id="waveA" x1="0" y1="214" x2="240" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6D4BFF" stop-opacity="0.08"/>
+      <stop offset="0.42" stop-color="#8B5CF6" stop-opacity="0.58"/>
+      <stop offset="0.72" stop-color="#7C3AED" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#4F7DFF" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="waveB" x1="0" y1="232" x2="240" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B7CFF" stop-opacity="0.06"/>
+      <stop offset="0.48" stop-color="#7C3AED" stop-opacity="0.34"/>
+      <stop offset="0.76" stop-color="#A855F7" stop-opacity="0.54"/>
+      <stop offset="1" stop-color="#4F7DFF" stop-opacity="0.10"/>
+    </linearGradient>
+    <radialGradient id="node" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) scale(5)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.24" stop-color="#D8B4FE" stop-opacity="0.92"/>
+      <stop offset="0.58" stop-color="#A855F7" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#7C3AED" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <g stroke-linecap="round">
+    <path d="M-20 228C27 183 61 243 111 219C159 196 176 120 260 133" stroke="url(#waveA)" stroke-width="1.6"/>
+    <path d="M-24 239C25 193 67 251 116 225C164 199 184 126 258 141" stroke="url(#waveA)" stroke-width="1.1" opacity="0.74"/>
+    <path d="M-18 216C31 174 70 230 119 207C166 184 184 111 258 125" stroke="url(#waveA)" stroke-width="0.9" opacity="0.64"/>
+    <path d="M-24 252C24 210 72 262 122 236C170 211 191 142 258 153" stroke="url(#waveB)" stroke-width="0.9" opacity="0.62"/>
+    <path d="M-16 204C34 164 72 218 121 195C166 174 188 102 255 114" stroke="url(#waveB)" stroke-width="0.72" opacity="0.56"/>
+    <path d="M-10 265C38 226 79 272 130 247C177 224 198 160 254 166" stroke="url(#waveB)" stroke-width="0.62" opacity="0.42"/>
+  </g>
+
+  <g fill="#9A63FF">
+    <circle cx="37" cy="213" r="1.1" opacity="0.34"/>
+    <circle cx="53" cy="226" r="0.8" opacity="0.24"/>
+    <circle cx="74" cy="220" r="1" opacity="0.44"/>
+    <circle cx="92" cy="231" r="0.7" opacity="0.25"/>
+    <circle cx="111" cy="211" r="1.2" opacity="0.52"/>
+    <circle cx="129" cy="204" r="0.8" opacity="0.30"/>
+    <circle cx="145" cy="185" r="1.1" opacity="0.46"/>
+    <circle cx="158" cy="167" r="0.7" opacity="0.30"/>
+    <circle cx="172" cy="150" r="1.15" opacity="0.56"/>
+    <circle cx="187" cy="139" r="0.8" opacity="0.38"/>
+    <circle cx="201" cy="134" r="1" opacity="0.48"/>
+    <circle cx="217" cy="136" r="0.7" opacity="0.28"/>
+    <circle cx="232" cy="142" r="0.9" opacity="0.34"/>
+  </g>
+
+  <g opacity="0.82">
+    <circle cx="167" cy="160" r="5" fill="url(#node)"/>
+    <circle cx="167" cy="160" r="1" fill="#F7EDFF"/>
+    <circle cx="196" cy="136" r="3.7" fill="url(#node)" opacity="0.62"/>
+  </g>
+</svg>
