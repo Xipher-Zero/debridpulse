@@ -46,30 +46,36 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-components.css?v=20",
         "/icon-system.css?v=20",
         "/ui-universal-language.css?v=20",
-        "/ui-shared-contract.css?v=21",
+        "/ui-shared-contract.css?v=23",
         "/ui-shell.css?v=20",
         "/ui-shell-structural.css?v=20",
+        "/ui-shell-provider-status.css?v=23",
         "/ui-dashboard.css?v=20",
         "/ui-dashboard-structural.css?v=20",
+        "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
-        "/ui-downloads-page.css?v=22",
+        "/ui-downloads-page.css?v=23",
         "/ui-help-page.css?v=22",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # Targeted invalidation: established approved layers retain v20 URLs, the
-    # audited shared contract remains v21, and page geometry changed by the
-    # paint-boundary correction advances only Downloads and Help to v22.
+    # Targeted invalidation: established approved layers retain v20 URLs, Help
+    # remains on its paint-boundary generation 22, and the current shared/shell/
+    # Dashboard/Downloads consistency corrections advance to generation 23.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
-    assert version_by_path["/ui-shared-contract.css"] == "21"
-    assert version_by_path["/ui-downloads-page.css"] == "22"
+    assert version_by_path["/ui-shared-contract.css"] == "23"
+    assert version_by_path["/ui-shell-provider-status.css"] == "23"
+    assert version_by_path["/ui-dashboard-consistency.css"] == "23"
+    assert version_by_path["/ui-downloads-page.css"] == "23"
     assert version_by_path["/ui-help-page.css"] == "22"
 
     changed_paths = {
         "/ui-shared-contract.css",
+        "/ui-shell-provider-status.css",
+        "/ui-dashboard-consistency.css",
         "/ui-downloads-page.css",
         "/ui-help-page.css",
     }

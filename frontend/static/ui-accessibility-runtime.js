@@ -2,8 +2,9 @@
  *
  * Presentation/interaction semantics only. This module does not call the API,
  * alter transfer state, or replace established app.js behavior; it makes the
- * inherited clickable-div surfaces keyboard-operable and keeps ARIA state in
- * sync with the existing active-class contract.
+ * inherited clickable-div surfaces keyboard-operable, keeps ARIA state in
+ * sync with the existing active-class contract, and normalizes a small number
+ * of legacy presentation-only DOM details that cannot live in CSS alone.
  */
 (function () {
   'use strict';
@@ -197,6 +198,48 @@
     bindKeyboardActivation(close);
   }
 
+  function normalizeDownloadsLegacyPresentation() {
+    const pagination = document.getElementById('torrent-pagination');
+    if (!pagination) return;
+    /* The old static markup painted a divider inline. The Downloads page now
+       owns footer geometry and intentionally has no separator, so remove the
+       legacy inline source instead of fighting it with a CSS !important. */
+    pagination.style.removeProperty('border-top');
+  }
+
+  function normalizeProviderPremiumLabel() {
+    const label = document.getElementById('lbl-premium');
+    if (!label || label.querySelector('.dp-provider-premium-until')) return;
+
+    const raw = (label.textContent || '').replace(/\s+/g, ' ').trim();
+    const match = raw.match(/^Premium until (\d{2}\.\d{2}\.\d{4}) \((\d+) days(?: remaining)?\)$/i);
+    if (!match) return;
+
+    const until = document.createElement('span');
+    until.className = 'dp-provider-premium-until';
+    until.textContent = 'AllDebrid Premium until ' + match[1];
+
+    const remaining = document.createElement('span');
+    remaining.className = 'dp-provider-premium-days';
+    remaining.textContent = '(' + match[2] + ' days remaining)';
+
+    label.replaceChildren(until, remaining);
+  }
+
+  function installProviderStatusPresentation() {
+    const label = document.getElementById('lbl-premium');
+    if (!label) return;
+    normalizeProviderPremiumLabel();
+
+    if (label.dataset.dpProviderObserved === '1') return;
+    label.dataset.dpProviderObserved = '1';
+    new MutationObserver(normalizeProviderPremiumLabel).observe(label, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  }
+
   function initializeAccessibilityContract() {
     installNavigationSemantics();
     installNavigationNamingHook();
@@ -205,6 +248,8 @@
     installTabSemantics();
     installDashboardErrorCardSemantics();
     installModalCloseSemantics();
+    normalizeDownloadsLegacyPresentation();
+    installProviderStatusPresentation();
   }
 
   initializeAccessibilityContract();

@@ -11,7 +11,7 @@
   body.dp-v11-structural #view-torrents.active {
     display: flex !important;
     flex-direction: column;
-    height: calc(100vh - var(--dp-shell-header) - 14px);
+    height: calc(100vh - var(--dp-shell-header) - 24px);
     min-height: 0;
     /* The standard card's contact shadow paints outside its own box. Keep the
        page boundary paint-visible; scrolling is confined to the table viewport

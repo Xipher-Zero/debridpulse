@@ -37,7 +37,7 @@ def test_normal_ui_bootstrap_is_static_and_deterministic() -> None:
 
     assert html.index(legacy) < html.index(overlay)
     assert html.index(body) < html.index(theme) < html.index(sidebar)
-    assert '/ui-shared-contract.css?v=21' not in html
+    assert '/ui-shared-contract.css?v=23' not in html
 
 
 def test_parser_deferred_presentation_runtimes_have_one_normal_order() -> None:
@@ -69,15 +69,16 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=21$" in runtime
 
-    # Targeted invalidation is explicit: unchanged approved sublayers remain
-    # generation 20, the audited shared contract remains generation 21, and
-    # the two page geometry layers changed by the paint-boundary correction are
-    # generation 22. Do not collapse this into a blanket generation assertion.
+    # Targeted invalidation stays explicit. Unchanged approved layers remain on
+    # their existing generations while the current consistency corrections use
+    # generation 23.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
-        "/ui-shared-contract.css": "21",
-        "/ui-downloads-page.css": "22",
+        "/ui-shared-contract.css": "23",
+        "/ui-shell-provider-status.css": "23",
+        "/ui-dashboard-consistency.css": "23",
+        "/ui-downloads-page.css": "23",
         "/ui-help-page.css": "22",
     }
     for path, version in expected_versions.items():
@@ -92,11 +93,15 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert all("?v=20" in line for line in unchanged)
 
     universal_pos = overlay.index("/ui-universal-language.css?v=20")
-    shared_pos = overlay.index("/ui-shared-contract.css?v=21")
+    shared_pos = overlay.index("/ui-shared-contract.css?v=23")
     shell_pos = overlay.index("/ui-shell.css?v=20")
-    downloads_pos = overlay.index("/ui-downloads-page.css?v=22")
+    provider_pos = overlay.index("/ui-shell-provider-status.css?v=23")
+    dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
+    dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
+    downloads_pos = overlay.index("/ui-downloads-page.css?v=23")
     help_pos = overlay.index("/ui-help-page.css?v=22")
-    assert universal_pos < shared_pos < shell_pos < downloads_pos < help_pos
+    assert universal_pos < shared_pos < shell_pos < provider_pos < dashboard_pos
+    assert dashboard_pos < dashboard_consistency_pos < downloads_pos < help_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
@@ -106,6 +111,7 @@ def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None
     assert ".badge-duplicate" in css
     assert "var(--dp-state-caution-bg)" in css
     assert ":focus-visible" in css
+    assert ".dp-pager-btn" in css
     assert ".sidebar-footer" not in css
 
     # Runtime-created presentation rules are prohibited. Compatibility script
@@ -140,6 +146,9 @@ def test_cross_cutting_accessibility_runtime_is_semantic_and_presentation_only()
         "View downloads with errors",
         "Close details",
         "Activity Log",
+        "normalizeProviderPremiumLabel",
+        "days remaining",
+        "removeProperty('border-top')",
     )
     missing = [fragment for fragment in required if fragment not in js]
     assert not missing, f"accessibility contract is missing: {missing}"

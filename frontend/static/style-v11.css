@@ -14,11 +14,12 @@
 @import url('/ui-components.css?v=20');
 @import url('/icon-system.css?v=20');
 @import url('/ui-universal-language.css?v=20');
-@import url('/ui-shared-contract.css?v=21');
+@import url('/ui-shared-contract.css?v=23');
 
 /* Shared application shell. */
 @import url('/ui-shell.css?v=20');
 @import url('/ui-shell-structural.css?v=20');
+@import url('/ui-shell-provider-status.css?v=23');
 
 /* Dashboard remains the visual reference/calibration page. These layers are
    intentionally page-specific where they tune Dashboard composition itself;
@@ -36,8 +37,9 @@
 @import url('/ui-dashboard-polish-final.css?v=20');
 @import url('/ui-dashboard-control-polish.css?v=20');
 @import url('/ui-dashboard-progress-weight.css?v=20');
+@import url('/ui-dashboard-consistency.css?v=23');
 
 /* Page layers contain only page-specific geometry/behavior/content details. */
 @import url('/ui-statistics-page.css?v=20');
-@import url('/ui-downloads-page.css?v=22');
+@import url('/ui-downloads-page.css?v=23');
 @import url('/ui-help-page.css?v=22');
