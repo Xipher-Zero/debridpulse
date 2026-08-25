@@ -22,9 +22,7 @@
       link.dataset.dpV11Styles = '1';
       document.head.appendChild(link);
     }
-    if (!/style-v11\.css\?v=12$/.test(link.href)) {
-      link.href = '/style-v11.css?v=12';
-    }
+    if (!/style-v11\.css\?v=12$/.test(link.href)) link.href = '/style-v11.css?v=12';
   }
 
   function dpImg(filename, className) {
@@ -49,7 +47,6 @@
     const title = document.getElementById('page-title');
     const topbar = document.getElementById('topbar');
     if (!title || !topbar) return;
-
     let wrap = title.closest('.dp-page-heading');
     if (!wrap) {
       wrap = document.createElement('div');
@@ -61,7 +58,6 @@
       subtitle.className = 'dp-page-subtitle';
       wrap.appendChild(subtitle);
     }
-
     const subtitle = document.getElementById('page-subtitle');
     const sync = function () {
       if (subtitle) subtitle.textContent = SUBTITLES[title.textContent.trim()] || '';
@@ -83,13 +79,12 @@
       '0,19 7,10 14,18 21,14 28,19 35,18 42,20 49,15 56,17 63,11 70,18 77,12 84,16 91,6 100,19',
       '0,17 7,18 14,14 21,17 28,18 35,11 42,19 49,16 56,10 63,17 70,15 77,8 84,19 91,12 100,16'
     ];
-    const points = variants[index % variants.length];
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'dp-card-spark');
     svg.setAttribute('viewBox', '0 0 100 24');
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML = '<polyline class="dp-card-spark-line" points="' + points + '"/>';
+    svg.innerHTML = '<polyline class="dp-card-spark-line" points="' + variants[index % variants.length] + '"/>';
     card.appendChild(svg);
   }
 
@@ -102,7 +97,6 @@
       's-error': 'card-error.svg',
       's-size': 'card-disk.svg'
     };
-
     Object.entries(heroIcons).forEach(function ([valueId, filename], index) {
       const value = document.getElementById(valueId);
       const card = value && value.closest('.dash-hero-stat');
@@ -133,7 +127,6 @@
     const card = input && input.closest('.card');
     if (!card) return;
     card.classList.add('dp-dashboard-quick-add');
-
     const header = card.querySelector('.card-header');
     const title = card.querySelector('.card-title');
     if (title && title.dataset.dpStructuralTitle !== '1') {
@@ -145,7 +138,6 @@
       title.appendChild(copy);
       title.dataset.dpStructuralTitle = '1';
     }
-
     if (header) {
       const legacyCopy = Array.from(header.querySelectorAll('span')).find(function (el) {
         return el !== title && /One item per line/.test(el.textContent || '');
@@ -155,7 +147,6 @@
       const actionWrap = importButton && importButton.parentElement;
       if (actionWrap) actionWrap.classList.add('dp-card-header-actions');
     }
-
     normalizeButton(document.getElementById('btn-import-existing'), 'upload');
     normalizeButton(document.getElementById('btn-recover-all'), 'recover');
   }
@@ -172,9 +163,11 @@
 
   function normalizeDashboardBadges() {
     document.querySelectorAll('#dash-tbody .badge').forEach(function (badge) {
+      if (badge.dataset.dpPresentationNormalized === '1') return;
       const text = (badge.textContent || '').replace(/^[^A-Za-z0-9]+/, '').trim();
-      if (badge.classList.contains('badge-completed')) badge.textContent = 'Done';
-      else if (text) badge.textContent = text;
+      const desired = badge.classList.contains('badge-completed') ? 'Done' : text;
+      if (desired && badge.textContent !== desired) badge.textContent = desired;
+      badge.dataset.dpPresentationNormalized = '1';
     });
   }
 
@@ -194,21 +187,19 @@
       title.appendChild(copy);
       title.dataset.dpStructuralTitle = '1';
     }
-
     const viewAll = card.querySelector('.card-header .btn');
     if (viewAll && viewAll.dataset.dpStructuralButton !== '1') {
       viewAll.textContent = 'View All';
       viewAll.insertAdjacentHTML('beforeend', utilitySvg('arrowRight'));
       viewAll.dataset.dpStructuralButton = '1';
     }
-
     const tbody = document.getElementById('dash-tbody');
     if (tbody && !tbody.dataset.dpStructuralObserved) {
       tbody.dataset.dpStructuralObserved = '1';
       new MutationObserver(function () {
         updateRecentCount();
         normalizeDashboardBadges();
-      }).observe(tbody, {childList: true, subtree: true, characterData: true});
+      }).observe(tbody, {childList: true, subtree: true});
     }
     updateRecentCount();
     normalizeDashboardBadges();
