@@ -22,15 +22,17 @@ MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
 def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    tokens = "/ui-language-tokens.css?v=19"
-    universal = "/ui-universal-language.css?v=19"
-    dashboard = "/ui-dashboard.css?v=11"
-    downloads = "/ui-downloads-page.css?v=19"
-    for layer in (tokens, universal, dashboard, downloads):
+    tokens = "/ui-language-tokens.css?v=20"
+    universal = "/ui-universal-language.css?v=20"
+    dashboard = "/ui-dashboard.css?v=20"
+    statistics = "/ui-statistics-page.css?v=20"
+    downloads = "/ui-downloads-page.css?v=20"
+    for layer in (tokens, universal, dashboard, statistics, downloads):
         assert layer in overlay
     assert overlay.index(tokens) < overlay.index(universal)
     assert overlay.index(universal) < overlay.index(dashboard)
-    assert overlay.index(dashboard) < overlay.index(downloads)
+    assert overlay.index(dashboard) < overlay.index(statistics)
+    assert overlay.index(statistics) < overlay.index(downloads)
     assert "ui-card-shell-final.css" not in overlay
     assert "ui-downloads-structural.css" not in overlay
     assert "ui-downloads-polish.css" not in overlay
@@ -64,7 +66,7 @@ def test_universal_language_bridges_all_major_legacy_component_families() -> Non
     css = UNIVERSAL.read_text(encoding="utf-8")
     required = (
         ".dp-card, .card, .scard, .list-card",
-        ".dp-metric-card, .metric-card, .stat-card, .dash-hero-stat",
+        ".dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi",
         ".dp-field, .input",
         ".dp-tabs, .filter-tabs, .stabs",
         ".dp-tab, .ftab, .stab",
@@ -143,7 +145,7 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
 
 def test_downloads_runtime_remains_a_presentation_shim() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
-    assert "/ui-downloads-runtime.js?v=19" in operator
+    assert "/ui-downloads-runtime.js?v=20" in operator
     assert "data-dp-downloads-runtime" in operator
 
 
