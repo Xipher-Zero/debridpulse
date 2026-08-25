@@ -15,8 +15,8 @@ DOWNLOAD_ICON = (STATIC / "icons" / "dp" / "card-download.svg").read_text(encodi
 
 
 def test_second_review_batch_is_loaded_after_first_review_batch() -> None:
-    first = STYLE.index("/ui-dashboard-batch1.css?v=14")
-    second = STYLE.index("/ui-dashboard-batch2.css?v=15")
+    first = STYLE.index("/ui-dashboard-batch1.css?v=20")
+    second = STYLE.index("/ui-dashboard-batch2.css?v=20")
     assert first < second
 
 
