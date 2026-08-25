@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import re
 import xml.etree.ElementTree as ET
 
 
@@ -13,6 +14,8 @@ INDEX = STATIC / "index.html"
 STYLE_ENTRY = STATIC / "style.css"
 LEGACY_STYLE = STATIC / "style-legacy.css"
 V11_STYLE = STATIC / "style-v11.css"
+DASHBOARD_STYLE = STATIC / "ui-dashboard.css"
+STATISTICS_STYLE = STATIC / "ui-statistics-page.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
@@ -37,20 +40,27 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     # then the Dashboard-derived universal component defaults, shared shell,
     # reference-page calibration, and finally page-specific exceptions.
     imports = [
-        "/design-tokens.css?v=11",
-        "/ui-language-tokens.css?v=19",
-        "/ui-foundation.css?v=11",
-        "/ui-components.css?v=11",
-        "/icon-system.css?v=11",
-        "/ui-universal-language.css?v=19",
-        "/ui-shell.css?v=11",
-        "/ui-shell-structural.css?v=12",
-        "/ui-dashboard.css?v=11",
-        "/ui-dashboard-structural.css?v=12",
-        "/ui-downloads-page.css?v=19",
+        "/design-tokens.css?v=20",
+        "/ui-language-tokens.css?v=20",
+        "/ui-foundation.css?v=20",
+        "/ui-components.css?v=20",
+        "/icon-system.css?v=20",
+        "/ui-universal-language.css?v=20",
+        "/ui-shell.css?v=20",
+        "/ui-shell-structural.css?v=20",
+        "/ui-dashboard.css?v=20",
+        "/ui-dashboard-structural.css?v=20",
+        "/ui-statistics-page.css?v=20",
+        "/ui-downloads-page.css?v=20",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
+
+    # One candidate must resolve to one cache generation. Do not allow stale
+    # sublayers to survive beneath a freshly versioned outer loader.
+    generations = re.findall(r"@import url\('[^']+\?v=(\d+)'\);", overlay)
+    assert generations
+    assert set(generations) == {"20"}, f"mixed v1.0.11 cache generations: {sorted(set(generations))}"
 
     # Old page-local material copies and the universal-last card guard must not
     # return to the active cascade.
@@ -63,9 +73,29 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     ):
         assert retired_import not in overlay
 
-    assert "/style-v11.css?v=19" in runtime
+    assert "/style-v11.css?v=20" in runtime
     assert "data-dp-v11-styles" in runtime
     assert "dp-v11-structural" in runtime
+
+
+def test_statistics_owns_geometry_not_dashboard_material() -> None:
+    dashboard = DASHBOARD_STYLE.read_text(encoding="utf-8")
+    statistics = STATISTICS_STYLE.read_text(encoding="utf-8")
+
+    # Once the historical KPI strip moves to Statistics, Dashboard must no
+    # longer style that page. The universal metric bridge owns card material.
+    assert "#view-stats" not in dashboard
+    assert ".dp-stats-history-grid" in statistics
+    assert ".dash-kpi" in statistics
+    assert "grid-template-columns" in statistics
+
+    forbidden_material = (
+        "background: linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1))",
+        "box-shadow: var(--dp-shadow-card)",
+        "border: 1px solid var(--dp-border-default)",
+    )
+    present = [fragment for fragment in forbidden_material if fragment in statistics]
+    assert not present, f"Statistics page reintroduced base material ownership: {present}"
 
 
 def test_v11_bootstrap_cache_generation_is_coherent() -> None:
@@ -73,10 +103,10 @@ def test_v11_bootstrap_cache_generation_is_coherent() -> None:
     operator = SHELL_RUNTIME.read_text(encoding="utf-8")
     runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
 
-    assert '/operator-title.js?v=19' in index
-    assert '/ui-runtime.js?v=19' in operator
-    assert '/ui-downloads-runtime.js?v=19' in operator
-    assert '/style-v11.css?v=19' in runtime
+    assert '/operator-title.js?v=20' in index
+    assert '/ui-runtime.js?v=20' in operator
+    assert '/ui-downloads-runtime.js?v=20' in operator
+    assert '/style-v11.css?v=20' in runtime
 
 
 def test_shell_matches_required_mockup_structure() -> None:
