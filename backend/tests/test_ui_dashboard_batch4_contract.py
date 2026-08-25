@@ -13,12 +13,13 @@ BATCH = STATIC / "ui-dashboard-batch4.css"
 WAVE = STATIC / "icons" / "dp" / "sidebar-wave.svg"
 
 
-def test_batch4_is_last_visual_override_layer() -> None:
+def test_batch4_is_last_visual_override_layer_without_advancing_asset_version() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard-batch4.css?v=18" in overlay
     assert overlay.rfind("/ui-dashboard-batch4.css?v=18") > overlay.rfind(
         "/ui-dashboard-batch3.css?v=17"
     )
+    assert "/ui-dashboard-batch4.css?v=19" not in overlay
 
 
 def test_batch4_captures_reviewed_dashboard_refinements() -> None:
@@ -31,13 +32,21 @@ def test_batch4_captures_reviewed_dashboard_refinements() -> None:
         "transparent 98%",
         "stroke-width: 2.25 !important",
         "right: -17px !important",
+        "background-color: transparent !important",
+        "rgba(255,255,255,.99) 0 1px",
         "sidebar-wave.svg?v=18",
-        "height: 470px !important",
+        "bottom: 146px !important",
+        "height: 500px !important",
+        "grid-template-columns: 8px minmax(0, 1fr) !important",
+        "justify-self: center !important",
         "width: 36px !important",
-        "width: 145px !important",
+        "font-size: 10.5px !important",
+        "rgba(255,199,61,.08)",
         "#81788f",
         "#f2eff8",
         "card-download.svg?v=11",
+        "radial-gradient(ellipse 130% 110% at 12% 18%",
+        "0 0 10px rgba(124,58,237,.18)",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"batch 4 contract is missing: {missing}"
