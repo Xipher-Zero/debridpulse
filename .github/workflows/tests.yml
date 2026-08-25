@@ -64,6 +64,7 @@ jobs:
           node --check frontend/static/auth-help.js
           node --check frontend/static/auth-ux.js
           node --check frontend/static/operator-title.js
+          node --check frontend/static/ui-runtime.js
 
   security:
     runs-on: ubuntu-latest
