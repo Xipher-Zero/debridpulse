@@ -11,11 +11,12 @@
   body.dp-v11-structural #view-torrents.active {
     display: flex !important;
     flex-direction: column;
-    height: calc(100vh - var(--dp-shell-header) - 24px);
+    /* #content already owns the remaining shell height and 24px bottom gutter.
+       Fill that authoritative content box instead of recomputing 100vh here. */
+    height: 100% !important;
     min-height: 0;
     /* The standard card's contact shadow paints outside its own box. Keep the
-       page boundary paint-visible; scrolling is confined to the table viewport
-       below, so this does not permit transfer rows to escape the workspace. */
+       page boundary paint-visible; scrolling is confined to the table viewport. */
     overflow: visible;
   }
 
@@ -24,6 +25,9 @@
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
+    /* Full-height workspaces are not stacked legacy cards. The inherited 18px
+       card margin was shortening the visible card relative to Provider Status. */
+    margin-bottom: 0 !important;
   }
 
   body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
@@ -148,6 +152,10 @@ body.dp-v11-structural #view-torrents .dp-downloads-table-wrap .t-table thead th
 body.dp-v11-structural #view-torrents .t-table,
 body.dp-v11-structural #view-torrents #t-tbody {
   background: transparent;
+}
+
+body.dp-v11-structural #view-torrents #t-tbody tr.dp-downloads-detail-row {
+  cursor: pointer;
 }
 
 /* Empty Downloads uses the same content-specific download art as Recent

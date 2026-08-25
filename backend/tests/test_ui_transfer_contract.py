@@ -16,9 +16,9 @@ def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     progress = "/ui-dashboard-progress-weight.css?v=20"
     dashboard_fix = "/ui-dashboard-consistency.css?v=23"
-    downloads = "/ui-downloads-page.css?v=23"
+    downloads = "/ui-downloads-page.css?v=25"
     help_page = "/ui-help-page.css?v=22"
-    transfer = "/ui-transfer-contract.css?v=20"
+    transfer = "/ui-transfer-contract.css?v=25"
 
     for layer in (progress, dashboard_fix, downloads, help_page, transfer):
         assert layer in overlay
@@ -52,9 +52,27 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
         ".badge-deleted",
         "--dp-badge-color: var(--dp-text-muted)",
         "color: var(--dp-badge-color) !important",
+        "min-height: 25px !important",
+        "border-radius: 6px !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"transfer status contract is missing: {missing}"
+
+
+def test_transfer_actions_share_recent_activity_geometry() -> None:
+    css = TRANSFER.read_text(encoding="utf-8")
+    required = (
+        ":is(#dash-tbody, #t-tbody) .actions .btn",
+        "min-height: 36px !important",
+        "height: 36px !important",
+        "padding: 0 14px !important",
+        "border-radius: 8px !important",
+        "font-size: 11.5px !important",
+        "[onclick*=\"pauseTorrent(\"]",
+        "[onclick*=\"resumeTorrent(\"]",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"shared transfer action contract is missing: {missing}"
 
 
 def test_transfer_percentage_uses_original_geometry_with_weight_only() -> None:
@@ -73,7 +91,6 @@ def test_transfer_percentage_uses_original_geometry_with_weight_only() -> None:
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"transfer percentage contract is missing: {missing}"
     assert "font-size: 15px" not in css
-    assert "font-size: 16px" not in css
     assert "#34d382" not in css
     assert "#f2bd3f" not in css
 

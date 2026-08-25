@@ -1,16 +1,37 @@
 /* DebridPulse v1.0.11 shared transfer-row contract.
  *
  * This is the effective application default for reusable transfer status,
- * progress geometry and progress text. It is intentionally loaded after the
- * migration-era Dashboard calibration layers so temporary experiments cannot
- * override the universal transfer language on Dashboard or Downloads.
+ * row actions, progress geometry and progress text. It is intentionally loaded
+ * after the migration-era Dashboard calibration layers so temporary experiments
+ * cannot override the universal transfer language on Dashboard or Downloads.
  */
 
-/* ── Status pills ─────────────────────────────────────────────────────── */
+/* ── Status tags ─────────────────────────────────────────────────────── */
 body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-height: 25px !important;
+  padding: 0 9px !important;
+  border-radius: 6px !important;
+  font-size: 10.5px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
   border-color: color-mix(in srgb, var(--dp-badge-color) 22%, transparent) !important;
   background: color-mix(in srgb, var(--dp-badge-color) 9%, transparent) !important;
   color: var(--dp-badge-color) !important;
+}
+
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge::before {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  min-width: 15px;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 800;
+  text-shadow: 0 0 7px currentColor;
 }
 
 body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-downloading {
@@ -42,21 +63,68 @@ body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-deleted {
   --dp-badge-color: var(--dp-text-muted);
 }
 
-/* Dashboard status glyphs inherit the same theme-aware semantic source as the
-   pill instead of retaining hard-coded colors from the calibration pass. */
-body.dp-v11-structural #dash-tbody tr[data-status="downloading"] .badge-downloading::before {
-  color: var(--dp-state-success) !important;
+/* The list views share one deliberate monochrome status-glyph language. The
+   runtimes strip inherited emoji/text symbols before these glyphs are added. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="downloading"] .badge-downloading::before,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="downloading"] .badge-partial::before {
+  content: '↓';
 }
-body.dp-v11-structural #dash-tbody tr[data-status="downloading"] .badge-partial::before,
-body.dp-v11-structural #dash-tbody tr[data-status="paused"] .badge-paused::before,
-body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-partial::before {
-  color: var(--dp-state-caution) !important;
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="paused"] .badge-paused::before {
+  content: 'Ⅱ';
+  font-size: 14px;
+  letter-spacing: -2px;
 }
-body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-completed::before {
-  color: var(--dp-state-success) !important;
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="completed"] .badge-completed::before,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="completed"] .badge-partial::before {
+  content: '✓';
 }
-body.dp-v11-structural #dash-tbody tr[data-status="error"] .badge-error::before {
-  color: var(--dp-state-error) !important;
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="error"] .badge-error::before {
+  content: '×';
+  font-size: 18px;
+}
+
+/* ── Row action language ─────────────────────────────────────────────── */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .actions .btn {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
+  font-size: 11.5px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+
+/* Pause/Resume material is shared by both list implementations. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]) {
+  background: linear-gradient(135deg,
+    rgba(125, 91, 30, .91) 0%,
+    rgba(90, 69, 31, .94) 52%,
+    rgba(57, 49, 39, .97) 100%) !important;
+  border-color: rgba(242, 189, 63, .64) !important;
+  color: #ffd35b !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.06), 0 5px 15px rgba(113, 79, 20, .15) !important;
+}
+body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]) {
+  background: linear-gradient(135deg, #fff3cf 0%, #f8dfa2 52%, #edca76 100%) !important;
+  border-color: #d5a63e !important;
+  color: #8b620b !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 14px rgba(154, 111, 24, .13) !important;
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]) {
+  background: linear-gradient(135deg,
+    rgba(25, 117, 78, .84) 0%,
+    rgba(20, 86, 66, .91) 50%,
+    rgba(16, 54, 49, .95) 100%) !important;
+  border-color: rgba(73, 224, 145, .42) !important;
+  color: #9af0bf !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.05), 0 6px 18px rgba(16, 78, 53, .16) !important;
+}
+body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]) {
+  background: linear-gradient(135deg, #e4faec 0%, #c9f2da 52%, #afe7c7 100%) !important;
+  border-color: #83d3aa !important;
+  color: #176d46 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 16px rgba(30, 121, 78, .10) !important;
 }
 
 /* ── Progress geometry ───────────────────────────────────────────────── */

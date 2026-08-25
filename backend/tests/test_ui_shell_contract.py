@@ -56,16 +56,18 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-dashboard-structural.css?v=20",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
-        "/ui-downloads-page.css?v=23",
-        "/ui-downloads-desktop.css?v=24",
+        "/ui-downloads-page.css?v=25",
+        "/ui-downloads-desktop.css?v=25",
         "/ui-help-page.css?v=22",
+        "/ui-transfer-contract.css?v=25",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
     # Targeted invalidation: established approved layers retain v20 URLs, Help
     # remains generation 22, prior consistency corrections remain generation 23,
-    # and the current desktop/modal/provider composition is generation 24.
+    # desktop/modal/provider composition remains v24, and only the final
+    # Downloads/transfer corrections advance to generation 25.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
@@ -75,9 +77,10 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "24",
         "/ui-dashboard-consistency.css": "23",
-        "/ui-downloads-page.css": "23",
-        "/ui-downloads-desktop.css": "24",
+        "/ui-downloads-page.css": "25",
+        "/ui-downloads-desktop.css": "25",
         "/ui-help-page.css": "22",
+        "/ui-transfer-contract.css": "25",
     }
     for path, version in expected_changed_versions.items():
         assert version_by_path[path] == version

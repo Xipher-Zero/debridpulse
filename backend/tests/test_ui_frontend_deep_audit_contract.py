@@ -70,8 +70,8 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "style-v11\\.css\\?v=21$" in runtime
 
     # Targeted invalidation stays explicit. Pre-existing approved layers keep
-    # their established cache generations; only files changed by a reviewed UI
-    # correction advance. New desktop/modal/provider composition layers are v24.
+    # their established cache generations; only files changed by reviewed UI
+    # corrections advance. Final Downloads/transfer consistency is generation 25.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
@@ -80,9 +80,10 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "24",
         "/ui-dashboard-consistency.css": "23",
-        "/ui-downloads-page.css": "23",
-        "/ui-downloads-desktop.css": "24",
+        "/ui-downloads-page.css": "25",
+        "/ui-downloads-desktop.css": "25",
         "/ui-help-page.css": "22",
+        "/ui-transfer-contract.css": "25",
     }
     for path, version in expected_versions.items():
         assert f"@import url('{path}?v={version}');" in imports
@@ -103,12 +104,13 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=24")
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
-    downloads_pos = overlay.index("/ui-downloads-page.css?v=23")
-    downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=24")
+    downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
+    downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=25")
     help_pos = overlay.index("/ui-help-page.css?v=22")
+    transfer_pos = overlay.index("/ui-transfer-contract.css?v=25")
     assert universal_pos < shared_pos < modal_pos < shell_pos
     assert shell_pos < provider_pos < provider_v2_pos < dashboard_pos
-    assert dashboard_pos < dashboard_consistency_pos < downloads_pos < downloads_desktop_pos < help_pos
+    assert dashboard_pos < dashboard_consistency_pos < downloads_pos < downloads_desktop_pos < help_pos < transfer_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:

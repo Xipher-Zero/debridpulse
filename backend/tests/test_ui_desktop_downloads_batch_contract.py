@@ -27,9 +27,10 @@ def test_downloads_desktop_filter_contract_and_details_removal():
 
 def test_downloads_desktop_column_rebalance_expands_progress():
     css = read("ui-downloads-desktop.css")
-    assert "nth-child(5) { width: 24%; }" in css
-    assert "nth-child(7) { width: 7%; }" in css
-    assert "nth-child(8) { width: 112px; }" in css
+    assert "nth-child(2) { width: 25%; }" in css
+    assert "nth-child(5) { width: 25%; }" in css
+    assert "nth-child(7) { width: 8%; }" in css
+    assert "nth-child(8) { width: 190px; }" in css
     assert "table-layout: fixed" in css
 
 
@@ -60,9 +61,9 @@ def test_new_contract_layers_live_in_correct_cascade_sections():
     shell = style.index("ui-shell.css?v=20")
     provider_base = style.index("ui-shell-provider-status.css?v=23")
     provider_v2 = style.index("ui-shell-provider-status-v2.css?v=24")
-    downloads_base = style.index("ui-downloads-page.css?v=23")
-    downloads_desktop = style.index("ui-downloads-desktop.css?v=24")
-    transfer = style.index("ui-transfer-contract.css?v=20")
+    downloads_base = style.index("ui-downloads-page.css?v=25")
+    downloads_desktop = style.index("ui-downloads-desktop.css?v=25")
+    transfer = style.index("ui-transfer-contract.css?v=25")
 
     assert modal < shell
     assert provider_base < provider_v2

@@ -3,26 +3,26 @@
  */
 
 @media (min-width: 901px) {
-  /* Rebalance dead space into Progress. The Dashboard Recent Activity progress
-     length is the visual target; Details is removed from Actions by the page
-     runtime so the trailing action column no longer needs legacy width. */
+  /* Reclaim Name/Source slack for the canonical rectangular row actions while
+     preserving a Dashboard-scale progress track. */
   body.dp-v11-structural #view-torrents .t-table {
     width: 100%;
     table-layout: fixed;
   }
 
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(1) { width: 36px; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(2) { width: 30%; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(3) { width: 13%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(3) { width: 11%; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(4) { width: 10%; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(5) { width: 24%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(5) { width: 25%; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(6) { width: 6%; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(7) { width: 7%; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(8) { width: 112px; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(7) { width: 8%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(8) { width: 190px; }
 
   body.dp-v11-structural #view-torrents .t-table td:nth-child(8) .actions {
     justify-content: flex-start;
-    gap: 6px;
+    gap: 7px;
+    white-space: nowrap;
   }
 
   /* Desktop is the current viewport contract. Do not compress the seven-state

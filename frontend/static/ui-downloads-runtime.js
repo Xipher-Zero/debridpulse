@@ -1,7 +1,7 @@
 /* DebridPulse v1.0.11 Downloads presentation runtime.
  * Keeps the legacy transfer loader/backend behavior intact while normalizing
  * the Downloads card header, filter controls, pagination language, row actions,
- * and empty states.
+ * row detail behavior and empty states.
  */
 (function () {
   'use strict';
@@ -25,7 +25,7 @@
   function utilitySvg(name) {
     const paths = {
       chevronLeft: '<path d="m15 18-6-6 6-6"/>',
-      chevronRight: '<path d="m9 18 6-6-6-6"/>',
+      chevronRight: '<path d="m9 18 6 6-6-6"/>',
       refresh: '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>'
     };
     const geometry = paths[name];
@@ -113,8 +113,8 @@
     if (title.querySelector('.dp-downloads-heading') && existingSubtitle) {
       if (existingSubtitle.textContent !== copy) existingSubtitle.textContent = copy;
       const icon = title.querySelector('.dp-downloads-title-icon');
-      if (icon && !/card-document-stack\.svg/.test(icon.getAttribute('src') || '')) {
-        icon.setAttribute('src', '/icons/dp/card-document-stack.svg?v=18');
+      if (icon && !/card-download\.svg/.test(icon.getAttribute('src') || '')) {
+        icon.setAttribute('src', '/icons/dp/card-download.svg?v=11');
       }
       title.setAttribute('aria-label', 'All Downloads. ' + copy + '.');
       return;
@@ -123,7 +123,7 @@
     title.classList.add('dp-downloads-card-title');
     title.setAttribute('aria-label', 'All Downloads. ' + copy + '.');
     title.innerHTML =
-      '<img class="dp-icon dp-icon--lg dp-downloads-title-icon" src="/icons/dp/card-document-stack.svg?v=18" alt="" aria-hidden="true">' +
+      '<img class="dp-icon dp-icon--lg dp-downloads-title-icon" src="/icons/dp/card-download.svg?v=11" alt="" aria-hidden="true">' +
       '<span class="dp-downloads-heading-copy">' +
         '<span class="dp-downloads-heading">All Downloads</span>' +
         '<span class="dp-downloads-subtitle">' + copy + '</span>' +
@@ -159,11 +159,75 @@
     );
   }
 
-  function normalizeDownloadRowActions() {
-    document.querySelectorAll('#t-tbody tr[data-torrent-id] .actions button').forEach(function (button) {
-      const onclick = (button.getAttribute('onclick') || '').trim();
-      if (onclick.startsWith('showDetail(')) button.remove();
+  function normalizeDownloadBadge(row) {
+    const badge = row && row.querySelector('.badge');
+    if (!badge) return;
+    const text = (badge.textContent || '').replace(/^[^A-Za-z0-9]+/, '').trim();
+    const desired = badge.classList.contains('badge-completed') ? 'Done' : text;
+    if (desired && badge.textContent !== desired) badge.textContent = desired;
+    badge.dataset.dpPresentationNormalized = '1';
+  }
+
+  function normalizeDownloadActionButton(button) {
+    const onclick = (button.getAttribute('onclick') || '').trim();
+    if (onclick.startsWith('showDetail(')) {
+      button.remove();
+      return;
+    }
+
+    let label = '';
+    if (onclick.startsWith('pauseTorrent(')) label = '⏸ Pause';
+    else if (onclick.startsWith('resumeTorrent(')) label = '▶ Resume';
+    else if (onclick.startsWith('retryTorrent(')) label = '↻ Retry';
+    else if (onclick.startsWith('deleteTorrent(')) label = '✕ Remove';
+    else if (onclick.startsWith('downloadNow(')) label = '⬇ Now';
+
+    if (label && button.textContent !== label) button.textContent = label;
+  }
+
+  function rowTargetIsInteractive(row, target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('button, input, a, select, textarea, label, [role="button"]')) return true;
+    const cell = target.closest('td');
+    return !!cell && row.cells && cell === row.cells[0];
+  }
+
+  function normalizeDownloadRow(row) {
+    if (!row || !row.matches('tr[data-torrent-id]')) return;
+
+    normalizeDownloadBadge(row);
+    row.querySelectorAll('.actions button').forEach(normalizeDownloadActionButton);
+
+    /* Details is a row-level action. Remove inherited name-only activation and
+       retire drag/reorder semantics so the row behaves like Recent Activity. */
+    row.querySelectorAll('[onclick*="showDetail("]').forEach(function (target) {
+      target.removeAttribute('onclick');
     });
+    ['draggable', 'ondragstart', 'ondragover', 'ondragleave', 'ondrop'].forEach(function (attribute) {
+      row.removeAttribute(attribute);
+    });
+    row.classList.add('dp-downloads-detail-row');
+
+    if (row.dataset.dpDetailRowBound === '1') return;
+    row.dataset.dpDetailRowBound = '1';
+    row.tabIndex = 0;
+
+    row.addEventListener('click', function (event) {
+      if (rowTargetIsInteractive(row, event.target)) return;
+      const id = row.dataset.torrentId;
+      if (id && typeof window.showDetail === 'function') window.showDetail(id);
+    });
+
+    row.addEventListener('keydown', function (event) {
+      if (event.target !== row || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      const id = row.dataset.torrentId;
+      if (id && typeof window.showDetail === 'function') window.showDetail(id);
+    });
+  }
+
+  function normalizeDownloadRowActions() {
+    document.querySelectorAll('#t-tbody tr[data-torrent-id]').forEach(normalizeDownloadRow);
   }
 
   function decorateDownloadsStructure() {
