@@ -11,9 +11,9 @@ STYLE = (STATIC / "style-v11.css").read_text(encoding="utf-8")
 FINAL = (STATIC / "ui-dashboard-batch2-final.css").read_text(encoding="utf-8")
 
 
-def test_batch2_final_cascade_loads_last() -> None:
-    batch2 = STYLE.index("/ui-dashboard-batch2.css?v=15")
-    final = STYLE.index("/ui-dashboard-batch2-final.css?v=16")
+def test_batch2_final_cascade_loads_after_batch2() -> None:
+    batch2 = STYLE.index("/ui-dashboard-batch2.css?v=20")
+    final = STYLE.index("/ui-dashboard-batch2-final.css?v=20")
     assert batch2 < final
 
 
