@@ -186,3 +186,23 @@ def test_latest_color_spacing_and_sidebar_hover_refinements_are_locked() -> None
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"latest dashboard balance contract is missing: {missing}"
+
+
+def test_quick_add_secondary_utilities_use_surface_material_hierarchy() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        "#btn-import-existing",
+        "#btn-recover-all",
+        "height: 32px !important",
+        "min-height: 32px !important",
+        "#fcfbff",
+        "#cec5da",
+        "#bb9ad4",
+        "#744993",
+        "hue-rotate(215deg)",
+        ".dp-utility-icon",
+        "filter: brightness(1.025) !important",
+        "transform: translateY(-1px) !important",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"secondary utility-control contract is missing: {missing}"
