@@ -17,7 +17,7 @@ def test_universal_language_loads_before_reference_and_page_layers() -> None:
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=23"
+    downloads = "/ui-downloads-page.css?v=25"
     for layer in (universal, dashboard, statistics, downloads):
         assert layer in overlay
     assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(statistics) < overlay.index(downloads)
@@ -53,10 +53,12 @@ def test_downloads_page_layer_owns_geometry_not_copied_material() -> None:
         "width: 51px",
         "div:has(#torrent-search)",
         "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)",
-        "height: calc(100vh - var(--dp-shell-header) - 24px)",
+        "height: 100% !important",
+        "margin-bottom: 0 !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"Downloads page geometry contract is missing: {missing}"
+    assert "calc(100vh - var(--dp-shell-header)" not in css
 
     copied_material = (
         "#7440bb",

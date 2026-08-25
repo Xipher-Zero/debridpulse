@@ -29,7 +29,9 @@ def test_downloads_footer_has_no_separator_and_uses_shared_bottom_datum() -> Non
     downloads = read_static("ui-downloads-page.css")
     runtime = read_static("ui-accessibility-runtime.js")
 
-    assert "height: calc(100vh - var(--dp-shell-header) - 24px)" in downloads
+    assert "height: 100% !important" in downloads
+    assert "margin-bottom: 0 !important" in downloads
+    assert "calc(100vh - var(--dp-shell-header)" not in downloads
     assert "#torrent-pagination" in downloads
     assert "border-top: 0;" in downloads
     assert "removeProperty('border-top')" in runtime
@@ -78,7 +80,7 @@ def test_consistency_layers_remain_in_correct_ownership_order() -> None:
     provider = overlay.index("/ui-shell-provider-status.css?v=23")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     dashboard_fix = overlay.index("/ui-dashboard-consistency.css?v=23")
-    downloads = overlay.index("/ui-downloads-page.css?v=23")
-    transfer = overlay.index("/ui-transfer-contract.css?v=20")
+    downloads = overlay.index("/ui-downloads-page.css?v=25")
+    transfer = overlay.index("/ui-transfer-contract.css?v=25")
 
     assert shared < shell < provider < dashboard < dashboard_fix < downloads < transfer

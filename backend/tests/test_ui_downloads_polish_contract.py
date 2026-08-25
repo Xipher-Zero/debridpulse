@@ -15,7 +15,7 @@ UNIVERSAL = STATIC / "ui-universal-language.css"
 DOWNLOADS = STATIC / "ui-downloads-page.css"
 RUNTIME = STATIC / "ui-downloads-runtime.js"
 OPERATOR = STATIC / "operator-title.js"
-ICON = STATIC / "icons" / "dp" / "card-document-stack.svg"
+ICON = STATIC / "icons" / "dp" / "card-download.svg"
 REMOVED_ICON = STATIC / "icons" / "dp" / "green-download-button.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
@@ -26,7 +26,7 @@ def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=23"
+    downloads = "/ui-downloads-page.css?v=25"
     help_page = "/ui-help-page.css?v=22"
     for layer in (tokens, universal, dashboard, statistics, downloads, help_page):
         assert layer in overlay
@@ -100,8 +100,6 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"Downloads page contract is missing: {missing}"
 
-    # These literals identify the old copied Dashboard material and must remain
-    # centralized in the shared token/language layers.
     forbidden = (
         "#7440bb",
         "#6336a9",
@@ -119,7 +117,7 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
 def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> None:
     runtime = RUNTIME.read_text(encoding="utf-8")
     required = (
-        "card-document-stack.svg?v=18",
+        "card-download.svg?v=11",
         "All Downloads",
         "download tracked",
         "downloads tracked",
@@ -140,6 +138,7 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
     )
     missing = [fragment for fragment in required if fragment not in runtime]
     assert not missing, f"Downloads runtime contract is missing: {missing}"
+    assert "card-document-stack.svg" not in runtime
     assert "green-download-button.svg" not in runtime
     assert "api('POST'" not in runtime
     assert "api('DELETE'" not in runtime
@@ -151,7 +150,7 @@ def test_downloads_runtime_remains_a_presentation_shim() -> None:
     assert "data-dp-downloads-runtime" in operator
 
 
-def test_downloads_header_reuses_registered_recent_activity_true_vector() -> None:
+def test_downloads_header_uses_registered_download_true_vector() -> None:
     text = ICON.read_text(encoding="utf-8")
     root = ET.fromstring(text)
     assert root.tag.endswith("svg")
@@ -159,6 +158,6 @@ def test_downloads_header_reuses_registered_recent_activity_true_vector() -> Non
     assert "data:image" not in text.lower()
 
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    assert manifest["icons"]["cardDocumentStack"] == "card-document-stack.svg"
+    assert manifest["icons"]["cardDownload"] == "card-download.svg"
     assert "greenDownloadButton" not in manifest["icons"]
     assert not REMOVED_ICON.exists()
