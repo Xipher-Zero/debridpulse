@@ -140,3 +140,55 @@ body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header
   button[onclick*="data-view=torrents"] {
   display: none !important;
 }
+
+/* ── Live review micro-refinements ────────────────────────────────────── */
+/* Keep the selected-row starburst, but bound its vertical footprint inside
+   the selection so the rays never cross the row's top/bottom edges. */
+body.dp-v11-structural .nav-item.active::after,
+body.light.dp-v11-structural .nav-item.active::after {
+  height: calc(100% - 12px) !important;
+  max-height: 38px !important;
+  -webkit-mask-image: radial-gradient(ellipse 100% 74% at 98% 50%,
+    #000 0%, #000 22%, rgba(0,0,0,.80) 41%, rgba(0,0,0,.34) 61%, transparent 80%) !important;
+  mask-image: radial-gradient(ellipse 100% 74% at 98% 50%,
+    #000 0%, #000 22%, rgba(0,0,0,.80) 41%, rgba(0,0,0,.34) 61%, transparent 80%) !important;
+}
+
+/* The live speed remains semantically green, but light-mode contrast needs to
+   be substantially stronger than the generic success green on white. */
+body.light.dp-v11-structural #aria2-badge-speed {
+  color: #087a46 !important;
+  font-weight: 700 !important;
+}
+
+/* Metric cards are information surfaces, not buttons. Remove the hover motion
+   that implied a press/click affordance while preserving their static lighting. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dash-hero-stat:hover {
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Reduce the primary CTA's visual mass by about five percent and center it
+   against the textarea instead of stretching with it as the input expands. */
+body.dp-v11-structural #view-dashboard #btn-add-transfer {
+  align-self: center !important;
+  min-width: 91px !important;
+  width: auto !important;
+  min-height: 56px !important;
+  height: 56px !important;
+}
+
+/* Dashboard badge normalization strips the leading legacy emoji. Restore the
+   deliberate amber caution glyph for completed-with-errors, and optically
+   center the Done checkmark by nudging its visual mass down one pixel. */
+body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-partial::before {
+  content: '⚠' !important;
+  color: #f2bd3f !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  transform: translateY(1px) !important;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-completed::before {
+  transform: translateY(1px) !important;
+}
