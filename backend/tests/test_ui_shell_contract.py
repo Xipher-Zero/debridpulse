@@ -11,28 +11,39 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE_ENTRY = STATIC / "style.css"
 LEGACY_STYLE = STATIC / "style-legacy.css"
+V11_STYLE = STATIC / "style-v11.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
 SHELL_RUNTIME = STATIC / "operator-title.js"
+PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
 PULSE = STATIC / "icons" / "dp" / "shell-pulse.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 DEPENDENCIES = REPO_ROOT / "docs" / "DEPENDENCY_LICENSES.md"
 LUCIDE_LICENSE = REPO_ROOT / "licenses" / "Lucide-ISC-MIT.txt"
 
 
-def test_v11_stylesheet_stack_is_layered_after_legacy_css() -> None:
-    css = STYLE_ENTRY.read_text(encoding="utf-8")
+def test_v11_stylesheet_stack_preserves_legacy_contract_and_layers_after_it() -> None:
+    legacy_entry = STYLE_ENTRY.read_text(encoding="utf-8")
+    preserved = LEGACY_STYLE.read_text(encoding="utf-8")
+    overlay = V11_STYLE.read_text(encoding="utf-8")
+    runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
+
+    # Existing contract tests and inherited selectors continue to treat
+    # style.css as the monolithic v1 stylesheet. The v1.0.11 visual layer is a
+    # second stylesheet loaded after it by the presentation runtime.
+    assert legacy_entry == preserved
+
     imports = [
-        "/style-legacy.css?v=15",
         "/design-tokens.css?v=11",
         "/ui-foundation.css?v=11",
         "/ui-components.css?v=11",
         "/icon-system.css?v=11",
         "/ui-shell.css?v=11",
+        "/ui-dashboard.css?v=11",
     ]
-
-    positions = [css.index(value) for value in imports]
+    positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
-    assert LEGACY_STYLE.stat().st_size > STYLE_ENTRY.stat().st_size * 20
+    assert "/style-v11.css?v=11" in runtime
+    assert "data-dp-v11-styles" in runtime
 
 
 def test_shell_matches_required_mockup_structure() -> None:
