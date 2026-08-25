@@ -144,3 +144,26 @@ def test_recent_activity_view_all_is_removed_from_dashboard_presentation() -> No
     css = FINAL.read_text(encoding="utf-8")
     assert 'button[onclick*="data-view=torrents"]' in css
     assert "display: none !important" in css
+
+
+def test_live_review_micro_refinements_are_locked() -> None:
+    css = FINAL.read_text(encoding="utf-8")
+    required = (
+        "height: calc(100% - 12px) !important",
+        "max-height: 38px !important",
+        "ellipse 100% 74% at 98% 50%",
+        "#aria2-badge-speed",
+        "color: #087a46 !important",
+        ".dash-hero-stat:hover",
+        "transform: none !important",
+        "transition: none !important",
+        "min-width: 91px !important",
+        "min-height: 56px !important",
+        "height: 56px !important",
+        '.badge-partial::before',
+        "content: '⚠' !important",
+        '.badge-completed::before',
+        "transform: translateY(1px) !important",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"live-review micro-refinement contract is missing: {missing}"
