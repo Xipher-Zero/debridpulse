@@ -9,7 +9,7 @@ def test_operator_title_extension_loads_after_core_app():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
 
     core = '<script src="/app.js?v=14" defer></script>'
-    operator = '<script src="/operator-title.js?v=1" defer></script>'
+    operator = '<script src="/operator-title.js?v=20" defer></script>'
 
     assert core in html
     assert operator in html
