@@ -13,12 +13,13 @@ PROGRESS = STATIC / "ui-dashboard-progress-weight.css"
 
 def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    control = "/ui-dashboard-control-polish.css?v=18"
-    progress = "/ui-dashboard-progress-weight.css?v=18"
-    downloads = "/ui-downloads-page.css?v=19"
-    for layer in (control, progress, downloads):
+    control = "/ui-dashboard-control-polish.css?v=20"
+    progress = "/ui-dashboard-progress-weight.css?v=20"
+    statistics = "/ui-statistics-page.css?v=20"
+    downloads = "/ui-downloads-page.css?v=20"
+    for layer in (control, progress, statistics, downloads):
         assert layer in overlay
-    assert overlay.index(control) < overlay.index(progress) < overlay.index(downloads)
+    assert overlay.index(control) < overlay.index(progress) < overlay.index(statistics) < overlay.index(downloads)
 
 
 def test_progress_weight_refinement_changes_only_physical_height() -> None:
