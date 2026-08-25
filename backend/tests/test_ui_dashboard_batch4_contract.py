@@ -13,13 +13,12 @@ BATCH = STATIC / "ui-dashboard-batch4.css"
 WAVE = STATIC / "icons" / "dp" / "sidebar-wave.svg"
 
 
-def test_batch4_is_last_visual_override_layer_without_advancing_asset_version() -> None:
+def test_batch4_follows_batch3_in_current_cache_generation() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard-batch4.css?v=18" in overlay
-    assert overlay.rfind("/ui-dashboard-batch4.css?v=18") > overlay.rfind(
-        "/ui-dashboard-batch3.css?v=17"
+    assert "/ui-dashboard-batch4.css?v=20" in overlay
+    assert overlay.rfind("/ui-dashboard-batch4.css?v=20") > overlay.rfind(
+        "/ui-dashboard-batch3.css?v=20"
     )
-    assert "/ui-dashboard-batch4.css?v=19" not in overlay
 
 
 def test_batch4_captures_reviewed_dashboard_refinements() -> None:
