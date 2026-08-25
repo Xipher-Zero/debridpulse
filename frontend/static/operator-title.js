@@ -231,16 +231,33 @@
 
   function bindThemeToggle() {
     const button = document.getElementById('theme-toggle');
-    if (!button || button.dataset.dpThemeBound === '1') return;
+    const control = button && button.closest('.sidebar-theme-control');
+    const topbar = document.getElementById('topbar');
+    if (!button || !control || !topbar) return;
 
-    /* Inline handlers became unreliable after the control was promoted out of
-       the sidebar visually. Bind the real button explicitly and remove the
-       inline handler so one click always produces exactly one theme change. */
+    /* Put the control in the topbar in the DOM as well as visually. The prior
+       fixed-position descendant of the scrolling sidebar/nav could render in
+       the right place while still having an unreliable pointer hit target. */
+    control.classList.add('topbar-theme-control');
+    if (control.parentElement !== topbar) topbar.appendChild(control);
+
+    if (button.dataset.dpThemeBound === '1') return;
+
+    /* Own exactly one click path. Bypass any inherited inline/global toggle
+       indirection, then call the established update routine so chart colors,
+       labels, accessibility text, and the Lucide glyph all stay synchronized. */
     button.removeAttribute('onclick');
-    button.addEventListener('click', function (event) {
+    button.onclick = function (event) {
       event.preventDefault();
-      if (typeof window.toggleTheme === 'function') window.toggleTheme();
-    });
+      event.stopPropagation();
+      const isLight = document.body.classList.toggle('light');
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+      if (typeof window.updateThemeToggle === 'function') {
+        window.updateThemeToggle(isLight);
+      } else {
+        renderThemeGlyph(isLight);
+      }
+    };
     button.dataset.dpThemeBound = '1';
   }
 
@@ -270,7 +287,7 @@
   'use strict';
   if (document.querySelector('script[data-dp-ui-runtime]')) return;
   const script = document.createElement('script');
-  script.src = '/ui-runtime.js?v=12';
+  script.src = '/ui-runtime.js?v=13';
   script.defer = true;
   script.dataset.dpUiRuntime = '1';
   document.head.appendChild(script);
