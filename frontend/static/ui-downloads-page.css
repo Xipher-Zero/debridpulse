@@ -1,0 +1,281 @@
+/* DebridPulse v1.0.11 Downloads page layer.
+ *
+ * This file intentionally owns Downloads-only geometry, viewport behavior and
+ * content-specific details. Standard card material, fields, tables, tabs,
+ * buttons, status pills and progress styling come from
+ * ui-universal-language.css and must not be redefined here.
+ */
+
+/* ── Full-height desktop workspace ───────────────────────────────────── */
+@media (min-width: 901px) {
+  body.dp-v11-structural #view-torrents.active {
+    display: flex !important;
+    flex-direction: column;
+    height: calc(100vh - var(--dp-shell-header) - 14px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.dp-v11-structural #view-torrents > .card {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.dp-v11-structural:has(#view-torrents.active) .sidebar-footer {
+    bottom: 24px !important;
+  }
+}
+
+body.dp-v11-structural #view-torrents > .card > .card-header,
+body.dp-v11-structural #view-torrents > .card > div:has(#torrent-search),
+body.dp-v11-structural #view-torrents #torrent-pagination {
+  flex: 0 0 auto;
+}
+
+/* ── Card heading geometry ───────────────────────────────────────────── */
+body.dp-v11-structural #view-torrents > .card > .card-header {
+  min-height: 70px;
+}
+
+body.dp-v11-structural #view-torrents #torrent-card-title.dp-downloads-card-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+  width: 51px;
+  min-width: 51px;
+  height: 51px;
+  flex: 0 0 51px;
+  object-fit: contain;
+  padding: 1px;
+}
+
+body.dp-v11-structural #view-torrents .dp-downloads-heading-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-torrents .dp-downloads-heading {
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+body.dp-v11-structural #view-torrents .dp-downloads-subtitle {
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+/* ── Header control placement ────────────────────────────────────────── */
+body.dp-v11-structural #view-torrents .filter-tabs {
+  margin-left: auto;
+  flex: 0 1 auto;
+}
+
+body.dp-v11-structural #view-torrents .filter-tabs .ftab {
+  min-width: 64px;
+}
+
+/* Refresh is an icon-only header action. Material remains universal. */
+body.dp-v11-structural #view-torrents .dp-downloads-refresh {
+  display: inline-grid !important;
+  place-items: center;
+  width: 38px;
+  min-width: 38px;
+  height: 34px;
+  min-height: 34px;
+  margin-left: 8px !important;
+  padding: 0 !important;
+}
+
+body.dp-v11-structural #view-torrents .dp-downloads-refresh svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+/* ── Search band ─────────────────────────────────────────────────────── */
+/* This is page-specific composition around the universal field itself. */
+body.dp-v11-structural #view-torrents > .card > div:has(#torrent-search) {
+  position: relative;
+  z-index: 1;
+  padding: 13px 16px 14px !important;
+  border-bottom: 1px solid var(--dp-divider);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--dp-accent-purple) 5.5%, transparent),
+    transparent 76%);
+}
+
+body.light.dp-v11-structural #view-torrents > .card > div:has(#torrent-search) {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--dp-accent-purple) 4.5%, transparent),
+    transparent 78%);
+}
+
+/* ── Data viewport ───────────────────────────────────────────────────── */
+body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
+  position: relative;
+  z-index: 1;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  background: transparent;
+}
+
+body.dp-v11-structural #view-torrents .dp-downloads-table-wrap .t-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+body.dp-v11-structural #view-torrents .t-table,
+body.dp-v11-structural #view-torrents #t-tbody {
+  background: transparent;
+}
+
+/* Empty Downloads uses the same content-specific download art as Recent
+   Activity; the surrounding empty-state typography/material is universal. */
+body.dp-v11-structural #view-torrents .empty-icon {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 12px;
+  font-size: 0;
+  line-height: 0;
+  background: url('/icons/dp/card-download.svg?v=11') center / contain no-repeat;
+  opacity: .78;
+  filter: saturate(.92) drop-shadow(0 3px 7px rgba(116, 56, 196, .18));
+}
+body.light.dp-v11-structural #view-torrents .empty-icon {
+  opacity: .72;
+  filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
+}
+body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]),
+body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]):hover {
+  background: transparent;
+  border-bottom: 0;
+}
+body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]) td,
+body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]) .empty {
+  border-bottom: 0;
+  background: transparent;
+}
+
+/* ── Footer / pagination layout ──────────────────────────────────────── */
+body.dp-v11-structural #view-torrents #torrent-pagination {
+  position: relative;
+  z-index: 1;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px !important;
+  margin-top: auto;
+  padding: 12px 16px 13px !important;
+  border-top: 0;
+  background: transparent;
+}
+
+body.dp-v11-structural #view-torrents #torrent-page-btns {
+  grid-column: 2;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 4px !important;
+}
+
+body.dp-v11-structural #view-torrents #torrent-page-info {
+  grid-column: 3;
+  justify-self: end;
+  color: var(--dp-text-secondary) !important;
+  font-size: 13px !important;
+  line-height: 1.2;
+  font-weight: 550 !important;
+  letter-spacing: -.005em;
+  white-space: nowrap;
+}
+
+/* Pager buttons intentionally keep the Downloads-reviewed hit target while
+   consuming the universal pagination material. */
+body.dp-v11-structural #view-torrents .dp-pager-btn {
+  width: 36px;
+  min-width: 36px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+body.dp-v11-structural #view-torrents .dp-pager-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.25;
+}
+body.dp-v11-structural #view-torrents .dp-pager-ellipsis {
+  padding: 0 4px;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+}
+
+/* Provider Status is a self-contained sidebar panel. */
+body.dp-v11-structural .sidebar-footer::before {
+  text-align: center !important;
+}
+
+/* ── Responsive geometry ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-torrents.active {
+    height: auto;
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
+    max-height: 62vh;
+  }
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural #view-torrents > .card > .card-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  body.dp-v11-structural #view-torrents .filter-tabs {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  body.dp-v11-structural #view-torrents .filter-tabs .ftab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 7px;
+  }
+
+  body.dp-v11-structural #view-torrents #torrent-pagination {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  body.dp-v11-structural #view-torrents #torrent-page-btns,
+  body.dp-v11-structural #view-torrents #torrent-page-info {
+    grid-column: 1;
+    justify-self: center;
+  }
+}
