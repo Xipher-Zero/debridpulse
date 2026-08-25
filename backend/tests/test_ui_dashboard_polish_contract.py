@@ -13,22 +13,17 @@ FINAL = STATIC / "ui-dashboard-polish-final.css"
 CONTROL_POLISH = STATIC / "ui-dashboard-control-polish.css"
 
 
-def test_polish_layers_are_last_without_cache_generation_bump() -> None:
+def test_polish_layers_finish_dashboard_after_universal_base() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard-batch5.css?v=18" in overlay
-    assert "/ui-dashboard-polish.css?v=18" in overlay
-    assert "/ui-dashboard-polish-final.css?v=18" in overlay
-    assert "/ui-dashboard-control-polish.css?v=18" in overlay
-    assert overlay.rfind("/ui-dashboard-polish.css?v=18") > overlay.rfind(
-        "/ui-dashboard-batch5.css?v=18"
-    )
-    assert overlay.rfind("/ui-dashboard-polish-final.css?v=18") > overlay.rfind(
-        "/ui-dashboard-polish.css?v=18"
-    )
-    assert overlay.rfind("/ui-dashboard-control-polish.css?v=18") > overlay.rfind(
-        "/ui-dashboard-polish-final.css?v=18"
-    )
-    assert "?v=19" not in overlay
+    universal = "/ui-universal-language.css?v=19"
+    batch5 = "/ui-dashboard-batch5.css?v=18"
+    polish = "/ui-dashboard-polish.css?v=18"
+    final = "/ui-dashboard-polish-final.css?v=18"
+    control = "/ui-dashboard-control-polish.css?v=18"
+    for layer in (universal, batch5, polish, final, control):
+        assert layer in overlay
+    assert overlay.index(universal) < overlay.index(batch5)
+    assert overlay.index(batch5) < overlay.index(polish) < overlay.index(final) < overlay.index(control)
 
 
 def test_topbar_pause_and_speedcap_semantics() -> None:
