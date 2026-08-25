@@ -175,8 +175,8 @@ body.dp-v11-structural #premium-row::before {
 }
 body.dp-v11-structural #lbl-premium {
   display: block !important;
-  width: 205px !important;
-  max-width: 205px !important;
+  width: 145px !important;
+  max-width: 145px !important;
   white-space: normal !important;
   text-align: center !important;
   font-size: 11px !important;
