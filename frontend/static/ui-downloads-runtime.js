@@ -1,9 +1,20 @@
 /* DebridPulse v1.0.11 Downloads presentation runtime.
  * Keeps the legacy transfer loader/backend behavior intact while normalizing
- * the Downloads card header, filter controls, pagination language, and empty states.
+ * the Downloads card header, filter controls, pagination language, row actions,
+ * and empty states.
  */
 (function () {
   'use strict';
+
+  const DOWNLOAD_FILTERS = [
+    {status: '', label: 'All'},
+    {status: 'downloading', label: 'Downloading'},
+    {status: 'paused', label: 'Paused'},
+    {status: 'processing', label: 'Processing'},
+    {status: 'ready', label: 'Ready'},
+    {status: 'completed', label: 'Done'},
+    {status: 'error', label: 'Error'}
+  ];
 
   let lastTrackedTotal = 0;
   let titleObserver = null;
@@ -22,10 +33,44 @@
     return '<svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + geometry + '</svg>';
   }
 
+  function filterStatusFromTab(tab) {
+    if (!tab) return '';
+    if (tab.dataset && typeof tab.dataset.dpStatus === 'string') return tab.dataset.dpStatus;
+    const onclick = tab.getAttribute('onclick') || '';
+    const match = onclick.match(/setFilter\(this,'([^']*)'\)/);
+    return match ? match[1] : '';
+  }
+
+  function ensureDownloadFilters() {
+    const rail = document.querySelector('#view-torrents .filter-tabs');
+    if (!rail) return;
+
+    const existingActive = rail.querySelector('.ftab.active');
+    const activeStatus = filterStatusFromTab(existingActive);
+    const alreadyCurrent = rail.dataset.dpFilterContract === 'desktop-v24';
+
+    if (!alreadyCurrent) {
+      rail.innerHTML = DOWNLOAD_FILTERS.map(function (filter) {
+        const active = filter.status === activeStatus;
+        return '<div class="ftab' + (active ? ' active' : '') + '"' +
+          ' data-dp-status="' + filter.status + '"' +
+          ' onclick="setFilter(this,\'' + filter.status + '\')">' + filter.label + '</div>';
+      }).join('');
+      rail.dataset.dpFilterContract = 'desktop-v24';
+    }
+
+    rail.setAttribute('role', 'tablist');
+    rail.setAttribute('aria-label', 'Download status filter');
+    rail.querySelectorAll('.ftab').forEach(function (tab) {
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+    });
+  }
+
   function activeFilterOrSearch() {
     const active = document.querySelector('#view-torrents .filter-tabs .ftab.active');
     const search = document.getElementById('torrent-search');
-    const filtered = !!active && active.textContent.trim().toLowerCase() !== 'all';
+    const filtered = !!active && filterStatusFromTab(active) !== '';
     return filtered || !!(search && search.value.trim());
   }
 
@@ -90,7 +135,7 @@
     if (search && search.value.trim()) return 'No downloads match your search.';
 
     const active = document.querySelector('#view-torrents .filter-tabs .ftab.active');
-    const filtered = !!active && active.textContent.trim().toLowerCase() !== 'all';
+    const filtered = !!active && filterStatusFromTab(active) !== '';
     if (filtered) return 'No downloads match your current filters.';
 
     return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
@@ -112,6 +157,13 @@
       document.getElementById('dash-tbody'),
       'No downloads yet. Add a link, magnet, or torrent file to get started.'
     );
+  }
+
+  function normalizeDownloadRowActions() {
+    document.querySelectorAll('#t-tbody tr[data-torrent-id] .actions button').forEach(function (button) {
+      const onclick = (button.getAttribute('onclick') || '').trim();
+      if (onclick.startsWith('showDetail(')) button.remove();
+    });
   }
 
   function decorateDownloadsStructure() {
@@ -139,15 +191,8 @@
       refresh.innerHTML = utilitySvg('refresh');
     }
 
-    const filterRail = card.querySelector('.filter-tabs');
-    if (filterRail) {
-      filterRail.setAttribute('role', 'tablist');
-      filterRail.setAttribute('aria-label', 'Download status filter');
-      filterRail.querySelectorAll('.ftab').forEach(function (tab) {
-        tab.setAttribute('role', 'tab');
-        tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
-      });
-    }
+    ensureDownloadFilters();
+    normalizeDownloadRowActions();
   }
 
   function syncFilterState() {
@@ -259,7 +304,10 @@
   function observeEmptyStates() {
     const downloadsBody = document.getElementById('t-tbody');
     if (downloadsBody && !downloadsEmptyObserver) {
-      downloadsEmptyObserver = new MutationObserver(decorateEmptyStates);
+      downloadsEmptyObserver = new MutationObserver(function () {
+        decorateEmptyStates();
+        normalizeDownloadRowActions();
+      });
       downloadsEmptyObserver.observe(downloadsBody, {childList: true, subtree: true});
     }
 
@@ -273,9 +321,11 @@
   function initializeDownloadsPresentation() {
     installPaginationRenderer();
     installFilterWrapper();
+    ensureDownloadFilters();
     decorateDownloadsStructure();
     decorateDownloadsHeader();
     decorateEmptyStates();
+    normalizeDownloadRowActions();
     syncFilterState();
     observeDynamicCounts();
     observeEmptyStates();

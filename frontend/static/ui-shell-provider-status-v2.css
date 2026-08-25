@@ -1,0 +1,57 @@
+/* DebridPulse v1.0.11 Provider Status centered subscription composition.
+ * The crown and two-line subscription copy are one centered visual unit.
+ */
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display:none"],
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display: none"] {
+  display: none !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row:not([style*="display:none"]):not([style*="display: none"]) {
+  display: grid !important;
+  grid-template-columns: 36px max-content !important;
+  align-items: center !important;
+  justify-content: center !important;
+  column-gap: 10px !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin: 0 auto 6px !important;
+  padding: 0 0 9px !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  grid-column: 1 !important;
+  justify-self: center !important;
+  align-self: center !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  background-size: 36px 36px !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium {
+  grid-column: 2 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content !important;
+  max-width: none !important;
+  margin: 0 !important;
+  text-align: center !important;
+  white-space: normal !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-until,
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-days {
+  display: block !important;
+  white-space: nowrap !important;
+}

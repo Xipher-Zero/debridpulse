@@ -1,0 +1,58 @@
+/* DebridPulse v1.0.11 shared detail-modal scroll contract.
+ * The outer modal owns the rounded frame; only the body scrolls.
+ */
+
+body.dp-v11-structural #modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+
+body.dp-v11-structural #modal .modal-hdr {
+  flex: 0 0 auto;
+}
+
+body.dp-v11-structural #modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color:
+    color-mix(in srgb, var(--dp-text-muted) 58%, var(--dp-accent-purple) 42%)
+    color-mix(in srgb, var(--dp-surface-3) 82%, transparent);
+}
+
+/* Desktop pointer target: deliberately thicker than the browser's compact
+   scrollbar so it is easy to acquire with a mouse. The modal frame clips the
+   track inside its lower radius rather than allowing it to escape the panel. */
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dp-surface-3) 82%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--dp-border-subtle) 72%, transparent);
+}
+
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--dp-text-muted) 58%, var(--dp-accent-purple) 42%),
+      color-mix(in srgb, var(--dp-text-muted) 58%, var(--dp-accent-purple) 42%)
+    ) padding-box;
+}
+
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--dp-text-secondary) 54%, var(--dp-accent-purple-bright) 46%),
+      color-mix(in srgb, var(--dp-text-secondary) 54%, var(--dp-accent-purple-bright) 46%)
+    ) padding-box;
+}
