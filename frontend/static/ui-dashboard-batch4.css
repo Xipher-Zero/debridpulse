@@ -1,0 +1,235 @@
+/* DebridPulse v1.0.11 Dashboard live-review batch 4.
+   Fine calibration of semantic card accents, selected navigation energy,
+   sidebar decoration, provider status, and light-theme structural neutrals. */
+
+/* Metric-card accent: restore the clean batch-2 left turnover, then begin the
+   right fade earlier but let it decay gently until immediately before the
+   upper-right radius. Never wrap the right corner. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat::before {
+  display: block !important;
+  content: '';
+  position: absolute !important;
+  z-index: 6 !important;
+  left: -1px !important;
+  top: -1px !important;
+  width: calc(100% - 13px) !important;
+  height: 10px !important;
+  border: 0 !important;
+  border-top: 3px solid var(--c) !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--c) 72%, transparent) !important;
+  border-top-left-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: 0 -1px 8px color-mix(in srgb, var(--c) 24%, transparent) !important;
+  -webkit-mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%) !important;
+  mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%) !important;
+  pointer-events: none;
+}
+
+/* Semantic color inside each metric card should be visible, directional, and
+   distinct from the contact shadow: upper-left origin with a medium roll-off. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--c) 19%, transparent) 0%,
+      color-mix(in srgb, var(--c) 13%, transparent) 24%,
+      color-mix(in srgb, var(--c) 7%, transparent) 46%,
+      color-mix(in srgb, var(--c) 2.5%, transparent) 64%,
+      transparent 76%),
+    linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1)) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--c) 15%, transparent) 0%,
+      color-mix(in srgb, var(--c) 10%, transparent) 25%,
+      color-mix(in srgb, var(--c) 5.5%, transparent) 48%,
+      color-mix(in srgb, var(--c) 2%, transparent) 65%,
+      transparent 77%),
+    linear-gradient(180deg, #ffffff, var(--dp-surface-2)) !important;
+}
+
+/* Purple section-header paint must be bounded by the actual card geometry. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  overflow: hidden !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0 !important;
+  background-clip: padding-box !important;
+}
+
+/* Keep the fading painted-outline idea, but begin the fade a little higher and
+   let it dissolve gradually until it is almost at the card bottom. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  -webkit-mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%) !important;
+  mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%) !important;
+}
+
+/* Selected navigation: give the utility icon enough definition to remain
+   distinct from the selected-row gradient. */
+body.dp-v11-structural .nav-item.active .icon,
+body.dp-v11-structural .nav-item.active .icon svg {
+  color: #d7adff !important;
+  opacity: 1 !important;
+  stroke-width: 2.25 !important;
+  filter: drop-shadow(0 0 4px rgba(190, 105, 255, .45));
+}
+body.light.dp-v11-structural .nav-item.active .icon,
+body.light.dp-v11-structural .nav-item.active .icon svg {
+  color: #9d4ce8 !important;
+  filter: drop-shadow(0 0 3px rgba(142, 63, 224, .28));
+}
+
+/* Right-edge selected-state energy is a single spotlight/bloom with a white-hot
+   spark, not a sequence of concentric circles. Center the source on the edge. */
+body.dp-v11-structural .nav-item.active::after {
+  right: -17px !important;
+  top: 50% !important;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+  transform: translateY(-50%) !important;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255,255,255,1) 0%,
+    rgba(236,205,255,.95) 3%,
+    rgba(184,91,255,.79) 13%,
+    rgba(147,67,241,.51) 34%,
+    rgba(128,62,224,.24) 55%,
+    rgba(119,61,212,.08) 69%,
+    transparent 79%) !important;
+  box-shadow: 0 0 11px 2px rgba(149, 69, 242, .24) !important;
+  pointer-events: none;
+}
+body.light.dp-v11-structural .nav-item.active::after {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255,255,255,1) 0%,
+    rgba(239,213,255,.97) 3%,
+    rgba(174,76,246,.72) 14%,
+    rgba(143,62,226,.43) 35%,
+    rgba(127,64,211,.20) 55%,
+    rgba(120,70,198,.06) 69%,
+    transparent 79%) !important;
+  box-shadow: 0 0 10px 2px rgba(139, 63, 224, .18) !important;
+}
+
+/* The sidebar decoration is a field rather than a narrow ribbon: occupy a
+   taller band while remaining quiet around navigation and Provider Status. */
+body.dp-v11-structural #sidebar::before {
+  bottom: 94px !important;
+  height: 470px !important;
+  opacity: .86 !important;
+  background: url('/icons/dp/sidebar-wave.svg?v=18') center bottom / 108% 100% no-repeat !important;
+  -webkit-mask-image: linear-gradient(180deg,
+    transparent 0%, #000 10%, #000 88%, transparent 100%) !important;
+  mask-image: linear-gradient(180deg,
+    transparent 0%, #000 10%, #000 88%, transparent 100%) !important;
+}
+body.light.dp-v11-structural #sidebar::before { opacity: .52 !important; }
+
+/* Provider premium state: the crown is an actual visual anchor, and a width
+   constraint intentionally wraps the days-remaining phrase to a centered line. */
+body.dp-v11-structural #premium-row {
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+}
+body.dp-v11-structural #premium-row::before {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  background-size: 36px 36px !important;
+  filter: drop-shadow(0 0 7px rgba(159, 75, 255, .34)) !important;
+}
+body.dp-v11-structural #lbl-premium {
+  display: block !important;
+  width: 205px !important;
+  max-width: 205px !important;
+  white-space: normal !important;
+  text-align: center !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+/* The evolved light theme is neutral + lavender, not steel blue. Secondary
+   controls use a restrained violet-gray family; Recover All keeps gold meaning. */
+body.dp-v11-structural #view-dashboard #btn-import-existing,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header .btn {
+  background: linear-gradient(135deg, #625a75 0%, #504a63 52%, #423d55 100%) !important;
+  border-color: rgba(151, 137, 181, .58) !important;
+  color: #fbf9ff !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-import-existing,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header .btn {
+  background: linear-gradient(135deg, #81788f 0%, #716a83 52%, #625d74 100%) !important;
+  border-color: #9b91ad !important;
+  color: #ffffff !important;
+}
+body.dp-v11-structural #view-dashboard #btn-recover-all {
+  background: linear-gradient(135deg, #78642f 0%, #62533b 52%, #4c4852 100%) !important;
+  color: #ffd24f !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+  background: linear-gradient(135deg, #7e6830 0%, #68583c 52%, #544f58 100%) !important;
+  color: #ffd24f !important;
+}
+
+/* Internal table band follows the same lavender-neutral structure in both
+   themes rather than importing a blue-slate surface from the previous palette. */
+body.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #1d1930 0%, #171528 100%) !important;
+  border-bottom-color: rgba(137, 119, 174, .26) !important;
+}
+body.light.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%) !important;
+  border-bottom-color: #dcd6e8 !important;
+}
+
+/* Empty Recent Activity uses the DP purple icon family instead of the inherited
+   cyan emoji tile. Keep it deliberately quieter than a primary card icon. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon {
+  width: 38px !important;
+  height: 38px !important;
+  margin: 0 auto 8px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background: url('/icons/dp/card-download.svg?v=11') center / contain no-repeat !important;
+  opacity: .78;
+  filter: saturate(.92) drop-shadow(0 3px 7px rgba(116, 56, 196, .18));
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon {
+  opacity: .72;
+  filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
+}
