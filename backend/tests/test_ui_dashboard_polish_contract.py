@@ -10,6 +10,7 @@ STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
 POLISH = STATIC / "ui-dashboard-polish.css"
 FINAL = STATIC / "ui-dashboard-polish-final.css"
+CONTROL_POLISH = STATIC / "ui-dashboard-control-polish.css"
 
 
 def test_polish_layers_are_last_without_cache_generation_bump() -> None:
@@ -17,11 +18,15 @@ def test_polish_layers_are_last_without_cache_generation_bump() -> None:
     assert "/ui-dashboard-batch5.css?v=18" in overlay
     assert "/ui-dashboard-polish.css?v=18" in overlay
     assert "/ui-dashboard-polish-final.css?v=18" in overlay
+    assert "/ui-dashboard-control-polish.css?v=18" in overlay
     assert overlay.rfind("/ui-dashboard-polish.css?v=18") > overlay.rfind(
         "/ui-dashboard-batch5.css?v=18"
     )
     assert overlay.rfind("/ui-dashboard-polish-final.css?v=18") > overlay.rfind(
         "/ui-dashboard-polish.css?v=18"
+    )
+    assert overlay.rfind("/ui-dashboard-control-polish.css?v=18") > overlay.rfind(
+        "/ui-dashboard-polish-final.css?v=18"
     )
     assert "?v=19" not in overlay
 
@@ -188,21 +193,38 @@ def test_latest_color_spacing_and_sidebar_hover_refinements_are_locked() -> None
     assert not missing, f"latest dashboard balance contract is missing: {missing}"
 
 
-def test_quick_add_secondary_utilities_use_surface_material_hierarchy() -> None:
-    css = FINAL.read_text(encoding="utf-8")
+def test_quick_add_secondary_utilities_use_integrated_outline_hierarchy() -> None:
+    css = CONTROL_POLISH.read_text(encoding="utf-8")
     required = (
         "#btn-import-existing",
         "#btn-recover-all",
-        "height: 32px !important",
-        "min-height: 32px !important",
-        "#fcfbff",
-        "#cec5da",
-        "#bb9ad4",
-        "#744993",
+        "height: 36px !important",
+        "min-height: 36px !important",
+        "box-shadow: none !important",
+        "rgba(255,255,255,.018)",
+        "#d3cedd",
+        "rgba(157,91,213,.028)",
+        "#c5a3dc",
+        "#714790",
         "hue-rotate(215deg)",
         ".dp-utility-icon",
-        "filter: brightness(1.025) !important",
-        "transform: translateY(-1px) !important",
+        "filter: none !important",
+        "transform: none !important",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"secondary utility-control contract is missing: {missing}"
+    assert not missing, f"integrated secondary utility-control contract is missing: {missing}"
+
+
+def test_light_pause_all_uses_integrated_amber_tint_not_heavy_slab() -> None:
+    css = CONTROL_POLISH.read_text(encoding="utf-8")
+    required = (
+        "body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn",
+        "rgba(255,251,236,.82)",
+        "rgba(250,234,186,.42)",
+        "rgba(207,158,55,.72)",
+        "color: #76560d !important",
+        "text-shadow: none !important",
+        "0 3px 8px -6px rgba(137,99,24,.28)",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"light Pause All integration contract is missing: {missing}"
