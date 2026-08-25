@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 Dashboard + migrated historical KPI presentation. */
+/* DebridPulse v1.0.11 Dashboard presentation. */
 
 #content.dashboard-active {
   overflow-y: hidden;
@@ -243,79 +243,10 @@
 }
 #view-dashboard .t-table tbody tr:last-child { border-bottom: 0; }
 
-/* ── Historical KPI row moved to Statistics ───────────────────────────── */
-#view-stats .dp-stats-history-grid {
-  width: 100%;
-  margin: 0 0 var(--dp-section-gap);
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--dp-card-gap);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-}
-#view-stats .dp-stats-history-grid .dash-kpi-sep { display: none; }
-#view-stats .dp-stats-history-grid .dash-kpi {
-  min-width: 0;
-  min-height: 92px;
-  padding: 13px 14px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-  column-gap: 10px;
-  align-items: center;
-  text-align: left;
-  border: 1px solid var(--dp-border-default);
-  border-radius: var(--dp-radius-lg);
-  background: linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1));
-  box-shadow: var(--dp-shadow-card);
-}
-#view-stats .dp-stats-history-grid .dp-kpi-icon {
-  --dp-icon-frame-size: 38px;
-  --dp-icon-frame-radius: var(--dp-radius-md);
-  grid-column: 1;
-  grid-row: 1 / span 3;
-}
-#view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
-  width: 22px;
-  height: 22px;
-}
-#view-stats .dp-stats-history-grid .dash-kpi-val {
-  grid-column: 2;
-  grid-row: 1;
-  color: var(--dp-text-primary);
-  font-size: 18px;
-  line-height: 1.05;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-#view-stats .dp-stats-history-grid .dash-kpi-lbl {
-  grid-column: 2;
-  grid-row: 2;
-  margin-top: 3px;
-  color: var(--dp-text-secondary);
-  font-size: 10px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-#view-stats .dp-stats-history-grid .dash-kpi-sub {
-  grid-column: 2;
-  grid-row: 3;
-  margin-top: 2px;
-  color: var(--dp-text-muted);
-  font-size: 9.5px;
-  line-height: 1.2;
-}
-
 /* ── Light-theme adjustments ───────────────────────────────────────────── */
 body.light #view-dashboard .dash-hero-stat,
 body.light #view-dashboard .dp-dashboard-quick-add,
-body.light #view-dashboard .dp-dashboard-activity,
-body.light #view-stats .dp-stats-history-grid .dash-kpi {
+body.light #view-dashboard .dp-dashboard-activity {
   background: linear-gradient(180deg, #ffffff, var(--dp-surface-2));
   box-shadow: var(--dp-shadow-card);
 }
@@ -330,7 +261,6 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   #view-dashboard .dhs-icon .dp-icon { width: 42px; min-width: 42px; height: 42px; }
   #view-dashboard .dhs-val { font-size: 24px; }
   #view-dashboard .dhs-val--sm { font-size: 17px; }
-  #view-stats .dp-stats-history-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1179px) {
@@ -342,14 +272,12 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 
 @media (max-width: 899px) {
   #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #view-stats .dp-stats-history-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
   #view-dashboard .dash-hero { grid-template-columns: 1fr; }
   #view-dashboard .direct-link-entry { align-items: stretch; flex-direction: column; }
   #view-dashboard #btn-add-transfer { width: 100%; }
-  #view-stats .dp-stats-history-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
