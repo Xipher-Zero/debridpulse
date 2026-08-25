@@ -44,7 +44,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_layers_after_it() ->
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
-    assert "/style-v11.css?v=12" in runtime
+    assert "/style-v11.css?v=14" in runtime
     assert "data-dp-v11-styles" in runtime
     assert "dp-v11-structural" in runtime
 
