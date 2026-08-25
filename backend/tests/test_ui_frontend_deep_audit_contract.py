@@ -10,6 +10,8 @@ STATIC = REPO_ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
 STYLE = STATIC / "style-v11.css"
 SHARED = STATIC / "ui-shared-contract.css"
+SHELL_STYLE = STATIC / "ui-shell-structural.css"
+DOWNLOADS_STYLE = STATIC / "ui-downloads-page.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 UI_RUNTIME = STATIC / "ui-runtime.js"
 DOWNLOADS_RUNTIME = STATIC / "ui-downloads-runtime.js"
@@ -22,17 +24,20 @@ def test_normal_ui_bootstrap_is_static_and_deterministic() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
     legacy = '<link rel="stylesheet" href="/style.css?v=15">'
-    overlay = '<link rel="stylesheet" href="/style-v11.css?v=20" data-dp-v11-styles="1">'
-    shared = '<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/ui-shared-contract.css?v=21">'
+    overlay = (
+        '<link id="debridpulse-duplicate-status-style" rel="stylesheet" '
+        'href="/style-v11.css?v=21" data-dp-v11-styles="1">'
+    )
     body = '<body class="dp-v11-structural">'
     theme = '<script src="/ui-theme-bootstrap.js?v=21"></script>'
     sidebar = '<aside id="sidebar">'
 
-    for fragment in (legacy, overlay, shared, body, theme, sidebar):
+    for fragment in (legacy, overlay, body, theme, sidebar):
         assert fragment in html
 
-    assert html.index(legacy) < html.index(overlay) < html.index(shared)
+    assert html.index(legacy) < html.index(overlay)
     assert html.index(body) < html.index(theme) < html.index(sidebar)
+    assert '/ui-shared-contract.css?v=21' not in html
 
 
 def test_parser_deferred_presentation_runtimes_have_one_normal_order() -> None:
@@ -60,14 +65,25 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
 
     assert 'data-dp-v11-styles="1"' in html
-    assert "/style-v11.css?v=20" in html
+    assert "/style-v11.css?v=21" in html
     assert "link[data-dp-v11-styles]" in runtime
-    assert "style-v11\\.css\\?v=20$" in runtime
+    assert "style-v11\\.css\\?v=21$" in runtime
 
-    # The established overlay remains one coherent generation internally.
+    # The outer overlay and changed shared layer advance together. Unchanged
+    # established sublayers retain generation 20 so one audit correction does
+    # not invalidate the complete approved visual stack.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
-    assert all("?v=20" in line for line in imports)
+    shared = "@import url('/ui-shared-contract.css?v=21');"
+    assert shared in imports
+    unchanged = [line for line in imports if line != shared]
+    assert unchanged
+    assert all("?v=20" in line for line in unchanged)
+
+    universal_pos = overlay.index("/ui-universal-language.css?v=20")
+    shared_pos = overlay.index("/ui-shared-contract.css?v=21")
+    shell_pos = overlay.index("/ui-shell.css?v=20")
+    assert universal_pos < shared_pos < shell_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
@@ -75,15 +91,24 @@ def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None
     css = SHARED.read_text(encoding="utf-8")
     operator = OPERATOR_RUNTIME.read_text(encoding="utf-8")
 
+    # The compatibility ID makes the inherited operator-title fallback a no-op
+    # on the normal static bootstrap path. The actual material is owned by CSS.
     assert 'id="debridpulse-duplicate-status-style"' in html
     assert ".badge-duplicate" in css
     assert "var(--dp-state-caution-bg)" in css
-    assert ".sidebar-footer::before" in css
     assert ":focus-visible" in css
-
-    # The inherited operator shim may retain its guarded compatibility fallback,
-    # but the static CSS element must shadow it on the normal path.
+    assert ".sidebar-footer" not in css
     assert "document.getElementById('debridpulse-duplicate-status-style')" in operator
+
+
+def test_page_layers_do_not_own_shell_contract() -> None:
+    downloads = DOWNLOADS_STYLE.read_text(encoding="utf-8")
+    shell = SHELL_STYLE.read_text(encoding="utf-8")
+
+    assert ".sidebar-footer" not in downloads
+    assert ".sidebar-footer::before" in shell
+    assert ":has(#view-torrents.active) .sidebar-footer" in shell
+    assert "bottom: 24px !important" in shell
 
 
 def test_cross_cutting_accessibility_runtime_is_semantic_and_presentation_only() -> None:
