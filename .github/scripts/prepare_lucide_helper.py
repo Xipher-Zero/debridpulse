@@ -71,6 +71,18 @@ replace_exact(
         self.assertNotIn("completed_with_errors:'⚠ Completed with errors'", js)
 ''',
 )
+replace_exact(
+    direct_links_test,
+    '''        for glyph in ("&#x25EB;&#xFE0E;", "&#x25BD;&#xFE0E;", "&#x2263;&#xFE0E;",
+                      "&#x2206;&#xFE0E;", "&#x2699;&#xFE0E;", "&#x003F;&#xFE0E;"):
+            self.assertIn(glyph, html)
+''',
+    '''        for retired_glyph in ("&#x25EB;&#xFE0E;", "&#x25BD;&#xFE0E;", "&#x2263;&#xFE0E;",
+                              "&#x2206;&#xFE0E;", "&#x2699;&#xFE0E;", "&#x003F;&#xFE0E;"):
+            self.assertNotIn(retired_glyph, html)
+        self.assertIn("/ui-lucide-runtime.js", html)
+''',
+)
 
 # New contract tests focus on the architectural invariant rather than snapshots.
 test = '''""",
