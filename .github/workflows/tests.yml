@@ -1,4 +1,5 @@
 # PR regression and security validation.
+# Temporary staging-namespace trigger; application tree is the b61bebc candidate.
 name: Tests
 
 on:
