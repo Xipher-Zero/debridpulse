@@ -1,29 +1,31 @@
-# PR regression and security validation.
+# One-shot exact-head qualification helper for Activity tall-panel candidate.
 name: Tests
 
 on:
   push:
     branches:
-      - main
-      - 'staging/**'
-  pull_request:
-    branches:
-      - main
-      - 'staging/**'
-  workflow_dispatch:
+      - 'ci-ops/activity-b61bebc'
 
 permissions:
   contents: read
 
+env:
+  TARGET_SHA: b61bebc2813a0baacad6f4e1919f7775f1810059
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout
+      - name: Checkout exact staging candidate
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Verify exact checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -71,13 +73,17 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     needs: test
 
     steps:
-      - name: Checkout
+      - name: Checkout exact staging candidate
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Verify exact checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
