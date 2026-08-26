@@ -13,10 +13,10 @@ PROGRESS = STATIC / "ui-dashboard-progress-weight.css"
 
 def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    control = "/ui-dashboard-control-polish.css?v=22"
+    control = "/ui-dashboard-control-polish.css?v=23"
     progress = "/ui-dashboard-progress-weight.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=25"
+    downloads = "/ui-downloads-page.css?v=26"
     help_page = "/ui-help-page.css?v=22"
     for layer in (control, progress, statistics, downloads, help_page):
         assert layer in overlay

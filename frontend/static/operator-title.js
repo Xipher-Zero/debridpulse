@@ -272,7 +272,7 @@
   'use strict';
   if (document.querySelector('script[data-dp-ui-runtime]')) return;
   const script = document.createElement('script');
-  script.src = '/ui-runtime.js?v=22';
+  script.src = '/ui-runtime.js?v=23';
   script.defer = true;
   script.dataset.dpUiRuntime = '1';
   document.head.appendChild(script);
@@ -284,7 +284,7 @@
   'use strict';
   if (document.querySelector('script[data-dp-downloads-runtime]')) return;
   const script = document.createElement('script');
-  script.src = '/ui-downloads-runtime.js?v=20';
+  script.src = '/ui-downloads-runtime.js?v=21';
   script.defer = true;
   script.dataset.dpDownloadsRuntime = '1';
   document.head.appendChild(script);

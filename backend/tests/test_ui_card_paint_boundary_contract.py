@@ -49,7 +49,7 @@ def test_card_paint_boundary_page_layers_are_loaded_after_universal_language():
     overlay = read_static("style-v11.css")
 
     universal = overlay.index("/ui-universal-language.css?v=20")
-    downloads = overlay.index("/ui-downloads-page.css?v=25")
+    downloads = overlay.index("/ui-downloads-page.css?v=26")
     help_page = overlay.index("/ui-help-page.css?v=22")
 
     assert universal < downloads < help_page

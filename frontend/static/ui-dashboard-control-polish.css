@@ -7,7 +7,8 @@
    same recovery/refresh semantic reads identically across pages. */
 body.dp-v11-structural #view-dashboard #btn-import-existing,
 body.dp-v11-structural #view-dashboard #btn-recover-all,
-body.dp-v11-structural #view-events .dp-activity-refresh {
+body.dp-v11-structural #view-events .dp-activity-refresh,
+body.dp-v11-structural #view-torrents .dp-downloads-refresh {
   height: 36px !important;
   min-height: 36px !important;
   padding: 0 14px !important;
@@ -41,7 +42,8 @@ body.light.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-ic
 /* Recover / Refresh share the same violet recovery/application accent. Amber
    remains reserved for pause/caution semantics. */
 body.dp-v11-structural #view-dashboard #btn-recover-all,
-body.dp-v11-structural #view-events .dp-activity-refresh {
+body.dp-v11-structural #view-events .dp-activity-refresh,
+body.dp-v11-structural #view-torrents .dp-downloads-refresh {
   background: rgba(157,91,213,.028) !important;
   border-color: rgba(183,116,228,.50) !important;
   color: #dcbcf2 !important;
@@ -53,7 +55,8 @@ body.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
     brightness(1.08)
     drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
-body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
+body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
   width: 18px !important;
   height: 18px !important;
   stroke-width: 2 !important;
@@ -61,7 +64,8 @@ body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
 body.light.dp-v11-structural #view-dashboard #btn-recover-all,
-body.light.dp-v11-structural #view-events .dp-activity-refresh {
+body.light.dp-v11-structural #view-events .dp-activity-refresh,
+body.light.dp-v11-structural #view-torrents .dp-downloads-refresh {
   background: rgba(151,87,203,.018) !important;
   border-color: #c5a3dc !important;
   color: #714790 !important;
@@ -73,7 +77,8 @@ body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
     brightness(.91)
     drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }
-body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
+body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }
 
@@ -86,7 +91,8 @@ body.dp-v11-structural #view-dashboard #btn-import-existing:hover {
   transform: none !important;
 }
 body.dp-v11-structural #view-dashboard #btn-recover-all:hover,
-body.dp-v11-structural #view-events .dp-activity-refresh:hover {
+body.dp-v11-structural #view-events .dp-activity-refresh:hover,
+body.dp-v11-structural #view-torrents .dp-downloads-refresh:hover {
   background: rgba(157,91,213,.055) !important;
   border-color: rgba(190,125,234,.68) !important;
   filter: none !important;
@@ -97,7 +103,8 @@ body.light.dp-v11-structural #view-dashboard #btn-import-existing:hover {
   border-color: #c5bfd2 !important;
 }
 body.light.dp-v11-structural #view-dashboard #btn-recover-all:hover,
-body.light.dp-v11-structural #view-events .dp-activity-refresh:hover {
+body.light.dp-v11-structural #view-events .dp-activity-refresh:hover,
+body.light.dp-v11-structural #view-torrents .dp-downloads-refresh:hover {
   background: rgba(154,91,207,.055) !important;
   border-color: #b98dd5 !important;
 }
@@ -131,7 +138,8 @@ body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn:hover {
 /* Both controls now render the same utilitySvg('refresh') geometry. Keep the
    icon dimensions, stroke, inherited violet color and glow identical. */
 body.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,
-body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
+body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
   width: 18px !important;
   height: 18px !important;
   stroke-width: 2 !important;
@@ -139,6 +147,7 @@ body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
 body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,
-body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
+body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }

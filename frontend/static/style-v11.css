@@ -39,18 +39,18 @@
 @import url('/ui-dashboard-batch5.css?v=20');
 @import url('/ui-dashboard-polish.css?v=20');
 @import url('/ui-dashboard-polish-final.css?v=20');
-@import url('/ui-dashboard-control-polish.css?v=22');
+@import url('/ui-dashboard-control-polish.css?v=23');
 @import url('/ui-dashboard-progress-weight.css?v=20');
 @import url('/ui-dashboard-consistency.css?v=23');
 
 /* Page layers contain only page-specific geometry/behavior/content details. */
 @import url('/ui-statistics-page.css?v=20');
 @import url('/ui-activity-log-page.css?v=28');
-@import url('/ui-downloads-page.css?v=25');
+@import url('/ui-downloads-page.css?v=26');
 @import url('/ui-downloads-desktop.css?v=28');
 @import url('/ui-help-page.css?v=22');
-@import url('/ui-feature-icon-contract.css?v=1');
+@import url('/ui-feature-icon-contract.css?v=2');
 
 /* Final shared transfer-row semantics. This deliberately outranks the old
    Dashboard calibration experiments and is not a page-specific exception. */
-@import url('/ui-transfer-contract.css?v=30');
+@import url('/ui-transfer-contract.css?v=31');

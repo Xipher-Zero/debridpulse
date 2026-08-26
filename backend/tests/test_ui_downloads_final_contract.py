@@ -146,8 +146,8 @@ def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> N
 
 def test_final_downloads_corrections_use_targeted_cache_generations() -> None:
     overlay = read("style-v11.css")
-    downloads = overlay.index("/ui-downloads-page.css?v=25")
+    downloads = overlay.index("/ui-downloads-page.css?v=26")
     desktop = overlay.index("/ui-downloads-desktop.css?v=28")
     help_page = overlay.index("/ui-help-page.css?v=22")
-    transfer = overlay.index("/ui-transfer-contract.css?v=30")
+    transfer = overlay.index("/ui-transfer-contract.css?v=31")
     assert downloads < desktop < help_page < transfer

@@ -19,7 +19,7 @@ def test_polish_layers_finish_dashboard_after_universal_base() -> None:
     batch5 = "/ui-dashboard-batch5.css?v=20"
     polish = "/ui-dashboard-polish.css?v=20"
     final = "/ui-dashboard-polish-final.css?v=20"
-    control = "/ui-dashboard-control-polish.css?v=22"
+    control = "/ui-dashboard-control-polish.css?v=23"
     for layer in (universal, batch5, polish, final, control):
         assert layer in overlay
     assert overlay.index(universal) < overlay.index(batch5)

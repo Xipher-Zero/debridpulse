@@ -26,11 +26,80 @@
     const paths = {
       chevronLeft: '<path d="m15 18-6-6 6-6"/>',
       chevronRight: '<path d="m9 18 6-6-6-6"/>',
-      refresh: '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>'
+      refresh: '<path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/>',
+      pause: '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
+      play: '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
+      trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
+      x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
     };
     const geometry = paths[name];
     if (!geometry) return '';
     return '<svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + geometry + '</svg>';
+  }
+
+  function setBulkButtonPresentation(button, label, iconName, semanticClass) {
+    if (!button || button.dataset.pending === '1' || button.getAttribute('aria-busy') === 'true') return;
+    button.removeAttribute('style');
+    button.classList.remove('btn-sm', 'btn-blue', 'btn-ghost', 'btn-danger');
+    button.classList.add('btn', 'dp-downloads-bulk-action', semanticClass);
+    if (semanticClass === 'dp-downloads-bulk-action--delete') button.classList.add('btn-danger');
+    button.dataset.defaultLabel = label;
+    const expectedIcon = button.querySelector('[data-dp-bulk-icon="' + iconName + '"]');
+    const expectedLabel = button.querySelector('[data-dp-bulk-label]');
+    if (expectedIcon && expectedLabel && expectedLabel.textContent === label) return;
+    button.innerHTML = utilitySvg(iconName).replace('class="lucide dp-utility-icon"', 'class="lucide dp-utility-icon" data-dp-bulk-icon="' + iconName + '"');
+    const span = document.createElement('span');
+    span.dataset.dpBulkLabel = '1';
+    span.textContent = label;
+    button.appendChild(span);
+  }
+
+  function syncBulkButtonPresentation(bar) {
+    if (!bar) return;
+    const buttons = Array.from(bar.querySelectorAll('button'));
+    const find = needle => buttons.find(button => (button.getAttribute('onclick') || '').includes(needle));
+    setBulkButtonPresentation(find("bulkAction('pause'"), 'Pause', 'pause', 'dp-downloads-bulk-action--pause');
+    setBulkButtonPresentation(find("bulkAction('resume'"), 'Resume', 'play', 'dp-downloads-bulk-action--resume');
+    setBulkButtonPresentation(find("bulkAction('reset'"), 'Reset', 'refresh', 'dp-downloads-bulk-action--reset');
+    setBulkButtonPresentation(find("bulkAction('delete'"), 'Delete', 'trash', 'dp-downloads-bulk-action--delete');
+    setBulkButtonPresentation(find('clearSelection()'), 'Clear selection', 'x', 'dp-downloads-bulk-action--clear');
+  }
+
+  function decorateBulkSelectionToolbar() {
+    const bar = document.getElementById('bulk-bar');
+    const count = document.getElementById('bulk-count');
+    if (!bar || !count) return;
+    if (bar.dataset.dpDownloadsBulk === '1') {
+      syncBulkButtonPresentation(bar);
+      return;
+    }
+    const buttons = Array.from(bar.querySelectorAll('button'));
+    const find = needle => buttons.find(button => (button.getAttribute('onclick') || '').includes(needle));
+    const pause = find("bulkAction('pause'");
+    const resume = find("bulkAction('resume'");
+    const reset = find("bulkAction('reset'");
+    const remove = find("bulkAction('delete'");
+    const clear = find('clearSelection()');
+    if (![pause, resume, reset, remove, clear].every(Boolean)) return;
+    bar.classList.add('dp-card', 'dp-downloads-bulk-card');
+    const header = document.createElement('div');
+    header.className = 'dp-card__header dp-downloads-bulk-toolbar';
+    const actions = document.createElement('div');
+    actions.className = 'dp-downloads-bulk-actions';
+    const separator = document.createElement('span');
+    separator.className = 'dp-downloads-bulk-separator';
+    separator.setAttribute('aria-hidden', 'true');
+    const status = document.createElement('div');
+    status.className = 'dp-downloads-bulk-status';
+    count.classList.add('dp-downloads-bulk-count');
+    actions.append(pause, resume, reset, separator, remove, clear);
+    status.appendChild(count);
+    header.append(actions, status);
+    bar.replaceChildren(header);
+    bar.dataset.dpDownloadsBulk = '1';
+    syncBulkButtonPresentation(bar);
+    new MutationObserver(function () { syncBulkButtonPresentation(bar); })
+      .observe(header, {childList: true, subtree: true, characterData: true});
   }
 
   function filterStatusFromTab(tab) {
@@ -262,7 +331,8 @@
       refresh.classList.add('dp-downloads-refresh');
       refresh.setAttribute('aria-label', 'Refresh downloads');
       refresh.setAttribute('title', 'Refresh downloads');
-      refresh.innerHTML = utilitySvg('refresh');
+      refresh.dataset.defaultLabel = 'Refresh';
+      refresh.innerHTML = utilitySvg('refresh') + '<span>Refresh</span>';
     }
 
     ensureDownloadFilters();
@@ -340,38 +410,24 @@
       const to = Math.min(normalizedOffset + normalizedLimit, normalizedTotal);
       info.textContent = paginationSummary(normalizedTotal, from, to);
 
-      const pages = [];
-      if (totalPages <= 7) {
-        for (let i = 1; i <= totalPages; i += 1) pages.push(i);
-      } else {
-        pages.push(1);
-        const start = Math.max(2, cur - 2);
-        const end = Math.min(totalPages - 1, cur + 2);
-        if (start > 2) pages.push('...');
-        for (let i = start; i <= end; i += 1) pages.push(i);
-        if (end < totalPages - 1) pages.push('...');
-        pages.push(totalPages);
+      const controls = [];
+      if (cur > 1) {
+        controls.push(
+          '<button type="button" class="dp-pager-btn" aria-label="Previous page"' +
+          ' onclick="goToTorrentPage(' + (cur - 1) + ')">' + utilitySvg('chevronLeft') + '</button>'
+        );
       }
-
-      const previous =
-        '<button type="button" class="dp-pager-btn" aria-label="Previous page"' +
-        (cur <= 1 ? ' disabled' : '') +
-        ' onclick="goToTorrentPage(' + (cur - 1) + ')">' + utilitySvg('chevronLeft') + '</button>';
-
-      const numbered = pages.map(function (page) {
-        if (page === '...') return '<span class="dp-pager-ellipsis" aria-hidden="true">…</span>';
-        const current = page === cur;
-        return '<button type="button" class="dp-pager-btn' + (current ? ' dp-pager-current' : '') + '"' +
-          (current ? ' aria-current="page"' : '') +
-          ' aria-label="Page ' + page + '" onclick="goToTorrentPage(' + page + ')">' + page + '</button>';
-      }).join('');
-
-      const next =
-        '<button type="button" class="dp-pager-btn" aria-label="Next page"' +
-        (cur >= totalPages ? ' disabled' : '') +
-        ' onclick="goToTorrentPage(' + (cur + 1) + ')">' + utilitySvg('chevronRight') + '</button>';
-
-      btns.innerHTML = previous + numbered + next;
+      controls.push(
+        '<button type="button" class="dp-pager-btn dp-pager-current" aria-current="page"' +
+        ' aria-label="Page ' + cur + ', current page">' + cur + '</button>'
+      );
+      if (cur < totalPages) {
+        controls.push(
+          '<button type="button" class="dp-pager-btn" aria-label="Next page"' +
+          ' onclick="goToTorrentPage(' + (cur + 1) + ')">' + utilitySvg('chevronRight') + '</button>'
+        );
+      }
+      btns.innerHTML = controls.join('');
     };
 
     window.renderTorrentPagination.dpDownloadsV11 = true;
@@ -427,6 +483,7 @@
     installPaginationRenderer();
     installFilterWrapper();
     ensureDownloadFilters();
+    decorateBulkSelectionToolbar();
     decorateDownloadsStructure();
     decorateDownloadsHeader();
     decorateEmptyStates();
