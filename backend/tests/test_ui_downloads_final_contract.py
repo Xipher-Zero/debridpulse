@@ -58,8 +58,10 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
     assert "font-size: 0 !important" not in desktop
     assert "content: 'Retry'" not in desktop
     assert '[onclick*="retryT("]' in transfer
-    assert '#edf5ff' in transfer
-    assert '#245f9e' in transfer
+    assert "background: var(--dp-state-active-bg) !important" in transfer
+    assert "border-color: color-mix(in srgb, var(--dp-state-active) 34%, transparent) !important" in transfer
+    assert "color: var(--dp-state-active) !important" in transfer
+    assert "box-shadow: none !important" in transfer
 
     assert "replace(/^[^A-Za-z0-9]+/" in runtime
     assert "badge.classList.contains('badge-completed') ? 'Done'" in runtime
@@ -145,5 +147,5 @@ def test_final_downloads_corrections_use_targeted_cache_generations() -> None:
     downloads = overlay.index("/ui-downloads-page.css?v=25")
     desktop = overlay.index("/ui-downloads-desktop.css?v=28")
     help_page = overlay.index("/ui-help-page.css?v=22")
-    transfer = overlay.index("/ui-transfer-contract.css?v=28")
+    transfer = overlay.index("/ui-transfer-contract.css?v=29")
     assert downloads < desktop < help_page < transfer
