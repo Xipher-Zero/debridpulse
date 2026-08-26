@@ -1,4 +1,4 @@
-"""Activity Log tall-panel material-ownership regression contracts."""
+"""Activity Log material-ownership regression contracts."""
 
 from pathlib import Path
 
