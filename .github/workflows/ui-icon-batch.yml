@@ -52,7 +52,7 @@ jobs:
 
           test "$(tr -d '\r\n' < VERSION)" = "1.0.10"
           git diff --check
-          python -m pytest -q
+          (cd backend && python -m pytest tests/ -q)
           node --check frontend/static/ui-runtime.js
           node --check frontend/static/operator-title.js
 
