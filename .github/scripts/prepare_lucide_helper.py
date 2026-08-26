@@ -38,12 +38,22 @@ replace_once(
 )
 replace_once(
     "# New contract tests focus on the architectural invariant rather than snapshots.\ntest = '''",
-    """# Keep the startup-order regression guard focused on behavior rather than cache-bust versions.
+    """# Keep startup-order regression guards focused on behavior rather than cache-bust versions.
 startup_test = TESTS / "test_dashboard_startup_surface.py"
 replace_exact(
     startup_test,
     "    assert index.index('<script src=\\\"/app.js?v=15\\\" defer></script>') < index.index(\\n        '<script src=\\\"/operator-title.js?v=23\\\" defer></script>'\\n    )\\n",
     "    assert index.index('src=\\\"/app.js?') < index.index(\\n        'src=\\\"/operator-title.js?'\\n    )\\n",
+)
+operator_test = TESTS / "test_operator_title_state.py"
+replace_exact(
+    operator_test,
+    '''    core = '<script src="/app.js?v=15" defer></script>'
+    operator = '<script src="/operator-title.js?v=23" defer></script>'
+''',
+    '''    core = 'src="/app.js?'
+    operator = 'src="/operator-title.js?'
+''',
 )
 
 # Existing unified-transfer tests must assert the new Lucide vocabulary, not retired emoji.
