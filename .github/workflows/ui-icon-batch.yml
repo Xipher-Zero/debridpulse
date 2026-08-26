@@ -48,7 +48,9 @@ jobs:
 
           git checkout --detach "$EXPECTED_BASE"
           git show "ci-ops/icon-batch-ccee540:.github/scripts/ui_icon_batch.py" > /tmp/ui_icon_batch.py
+          git show "ci-ops/icon-batch-ccee540:.github/scripts/ui_icon_batch_contracts.py" > /tmp/ui_icon_batch_contracts.py
           python3 /tmp/ui_icon_batch.py
+          python3 /tmp/ui_icon_batch_contracts.py
 
           test "$(tr -d '\r\n' < VERSION)" = "1.0.10"
           git diff --check
@@ -68,7 +70,13 @@ jobs:
                   backend/tests/test_ui_shell_contract.py \
                   backend/tests/test_ui_frontend_deep_audit_contract.py \
                   backend/tests/test_ui_activity_log_page_contract.py \
-                  backend/tests/test_ui_feature_icon_contract.py
+                  backend/tests/test_ui_feature_icon_contract.py \
+                  backend/tests/test_dashboard_startup_surface.py \
+                  backend/tests/test_operator_title_state.py \
+                  backend/tests/test_ui_dashboard_contract.py \
+                  backend/tests/test_ui_dashboard_polish_contract.py \
+                  backend/tests/test_ui_desktop_downloads_batch_contract.py \
+                  backend/tests/test_ui_progress_weight_contract.py
           git diff --cached --check
           git commit -m "Normalize shared icon presentation"
 
