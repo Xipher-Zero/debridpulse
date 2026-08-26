@@ -15,13 +15,14 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     shared = read("ui-shared-contract.css")
     activity = read("ui-activity-log-page.css")
     tokens = read("ui-language-tokens.css")
+    design = read("design-tokens.css")
 
     required = (
         "#view-events > .card > .card-header + div",
         "background: var(--dp-table-head-surface);",
         "border-bottom: 1px solid var(--dp-table-head-border);",
         "#view-events #event-list",
-        "background: transparent;",
+        "background: var(--dp-surface-1);",
         "#event-list > .event-item",
         "color-mix(in srgb, var(--dp-table-row-border) 78%, transparent)",
         "var(--dp-table-row-hover)",
@@ -36,6 +37,12 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     assert "--dp-table-head-surface:" in tokens
     assert "linear-gradient(180deg, #1d1930 0%, #171528 100%)" in tokens
     assert "linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%)" in tokens
+
+    # The event body terminates the tall card gradient using the existing solid
+    # neutral theme surface. Light mode is body-scoped, so resolve that token on
+    # the Activity descendant rather than through a root-scoped derived alias.
+    assert "--dp-surface-1: #0b1224;" in design
+    assert "--dp-surface-1: #ffffff;" in design
 
     # The old cross-cutting Activity bridge was the ownership error. Shared CSS
     # must no longer target Activity IDs or the globally reused .event-item.
@@ -52,7 +59,6 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     # Do not reintroduce any of the failed surface strategies.
     assert "--dp-operational-surface" not in activity
     assert "--dp-operational-toolbar-surface" not in activity
-    assert "background: var(--dp-surface-1)" not in activity
     assert "radial-gradient" not in activity
 
 

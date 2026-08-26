@@ -70,9 +70,10 @@ body.dp-v11-structural #view-events > .card > .card-header + div {
   background: var(--dp-table-head-surface);
 }
 
-/* The event stream is the neutral card body. It must remain transparent so the
-   universal raised-card material is visible underneath; only the fixed
-   search/filter band above it receives the structural lavender/slate surface. */
+/* Activity is a tall bounded workspace, so its event body must not expose the
+   outer card's height-relative gradient. Terminate that gradient with the
+   existing solid neutral theme surface; individual rows remain transparent
+   over this body. Resolve the theme token here on the body-scoped descendant. */
 body.dp-v11-structural #view-events #event-list {
   position: relative;
   z-index: 1;
@@ -82,7 +83,7 @@ body.dp-v11-structural #view-events #event-list {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  background: transparent;
+  background: var(--dp-surface-1);
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
 }
