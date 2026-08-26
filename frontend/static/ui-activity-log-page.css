@@ -1,7 +1,10 @@
 /* DebridPulse v1.0.11 Activity Log page contract.
  *
- * Activity Log owns only page geometry and header composition. Shared card
- * material and the desktop lower shell datum remain universal concerns.
+ * Activity Log owns its page geometry, header composition, and the composition
+ * of its unique search/event-stream interior. Reusable card material, palette
+ * tokens, row semantics, and the desktop lower shell datum remain shared
+ * concerns; this layer consumes those shared primitives rather than inventing
+ * page-local colors.
  */
 
 body.dp-v11-structural #view-events > .card {
@@ -55,18 +58,54 @@ body.light.dp-v11-structural #view-events > .card .card-title::after {
   color: #777e98;
 }
 
-/* Search/level controls are fixed card chrome. Only the event stream scrolls. */
+/* Activity has no table heading in its legacy markup. Its search/filter chrome
+   is therefore the page's internal structural band: use the same shared
+   lavender/slate table-head material already approved on Recent Activity,
+   rather than painting the event stream itself. */
 body.dp-v11-structural #view-events > .card > .card-header + div {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
+  border-bottom: 1px solid var(--dp-table-head-border);
+  background: var(--dp-table-head-surface);
 }
 
+/* The event stream is the neutral card body. It must remain transparent so the
+   universal raised-card material is visible underneath; only the fixed
+   search/filter band above it receives the structural lavender/slate surface. */
 body.dp-v11-structural #view-events #event-list {
+  position: relative;
+  z-index: 1;
   flex: 1 1 auto;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  background: transparent;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+}
+
+/* Scope the operational-row bridge to the Activity stream. app.js also emits
+   .event-item inside transfer Details; those modal rows are not Activity rows
+   and must not inherit this page's composition. */
+body.dp-v11-structural #view-events #event-list > .event-item {
+  border-bottom: 1px solid color-mix(in srgb, var(--dp-table-row-border) 78%, transparent);
+  background: transparent;
+  transition: background-color .12s ease, background .12s ease;
+}
+body.dp-v11-structural #view-events #event-list > .event-item:hover {
+  background: var(--dp-table-row-hover);
+}
+body.dp-v11-structural #view-events #event-list > .event-item:last-child {
+  border-bottom: 0;
+}
+body.dp-v11-structural #view-events #event-list > .event-item .emsg {
+  color: var(--dp-text-primary);
+}
+body.dp-v11-structural #view-events #event-list > .event-item :is(.ename, .etime) {
+  color: var(--dp-text-muted);
 }
 
 /* Desktop pages share the shell content box. Do not derive another viewport

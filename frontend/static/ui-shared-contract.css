@@ -60,45 +60,6 @@ body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
   transform: translateY(1px) scale(.985);
 }
 
-/* Canonical operational-list bridge. Activity Log still emits legacy
-   .event-item markup. The universal card owns the raised outer material, but
-   the toolbar and scrolling data body must terminate that card gradient with a
-   solid resting surface. Resolve the existing theme token directly on these
-   descendants: light mode is body-scoped, so root-scoped derived aliases would
-   compute against the dark :root token before body.light can override it. */
-body.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
-  position: relative;
-  z-index: 1;
-  border-bottom: 1px solid var(--dp-divider);
-  background: var(--dp-surface-1) !important;
-}
-
-body.dp-v11-structural :is(.dp-operational-list, #event-list) {
-  position: relative;
-  z-index: 1;
-  background: var(--dp-surface-1) !important;
-  color: var(--dp-text-primary);
-  font-family: var(--dp-font-sans);
-}
-
-body.dp-v11-structural :is(.dp-operational-row, .event-item) {
-  border-bottom: 1px solid color-mix(in srgb, var(--dp-table-row-border) 78%, transparent) !important;
-  background: transparent !important;
-  transition: background-color .12s ease, background .12s ease;
-}
-body.dp-v11-structural :is(.dp-operational-row, .event-item):hover {
-  background: var(--dp-table-row-hover) !important;
-}
-body.dp-v11-structural :is(.dp-operational-row, .event-item):last-child {
-  border-bottom: 0 !important;
-}
-body.dp-v11-structural .event-item .emsg {
-  color: var(--dp-text-primary);
-}
-body.dp-v11-structural .event-item :is(.ename, .etime) {
-  color: var(--dp-text-muted);
-}
-
 /* Legacy interactive surfaces that are progressively normalized by the
    accessibility runtime need the same visible keyboard focus as DP-native
    controls. Outline is used so existing selected/semantic box-shadows remain
