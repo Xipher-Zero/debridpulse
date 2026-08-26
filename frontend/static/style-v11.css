@@ -16,7 +16,7 @@
 @import url('/ui-components.css?v=20');
 @import url('/icon-system.css?v=20');
 @import url('/ui-universal-language.css?v=20');
-@import url('/ui-shared-contract.css?v=28');
+@import url('/ui-shared-contract.css?v=29');
 @import url('/ui-modal-contract.css?v=24');
 
 /* Shared application shell. */
@@ -52,4 +52,4 @@
 
 /* Final shared transfer-row semantics. This deliberately outranks the old
    Dashboard calibration experiments and is not a page-specific exception. */
-@import url('/ui-transfer-contract.css?v=28');
+@import url('/ui-transfer-contract.css?v=29');

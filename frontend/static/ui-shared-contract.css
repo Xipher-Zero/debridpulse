@@ -61,50 +61,22 @@ body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
 }
 
 /* Canonical operational-list bridge. Activity Log still emits legacy
-   .event-item markup, but its visible material belongs to the same shared
-   language as the table/list surfaces elsewhere in the application. Keep one
-   continuous themed panel underneath the rows; resetting a nearly transparent
-   gradient on every event made the material technically active but visually
-   indistinguishable from the legacy flat list. */
+   .event-item markup, but the card itself already owns the approved universal
+   panel material. Its toolbar and event stream therefore stay transparent and
+   expose that parent material rather than painting Activity-specific washes. */
 body.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
   position: relative;
   z-index: 1;
   border-bottom: 1px solid var(--dp-divider);
-  background:
-    linear-gradient(90deg,
-      color-mix(in srgb, var(--dp-accent-purple) 8%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple) 3%, transparent) 34%,
-      transparent 66%),
-    var(--dp-panel-surface) !important;
-}
-body.light.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
-  background:
-    linear-gradient(90deg,
-      color-mix(in srgb, var(--dp-accent-purple) 6%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple) 2.4%, transparent) 36%,
-      transparent 68%),
-    var(--dp-panel-surface) !important;
+  background: transparent !important;
 }
 
 body.dp-v11-structural :is(.dp-operational-list, #event-list) {
   position: relative;
   z-index: 1;
-  background:
-    radial-gradient(ellipse 92% 120% at 0% 0%,
-      color-mix(in srgb, var(--dp-accent-purple) 8%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 38%,
-      transparent 70%),
-    var(--dp-panel-surface) !important;
+  background: transparent !important;
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
-}
-body.light.dp-v11-structural :is(.dp-operational-list, #event-list) {
-  background:
-    radial-gradient(ellipse 92% 120% at 0% 0%,
-      color-mix(in srgb, var(--dp-accent-purple) 6%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple) 2.8%, transparent) 40%,
-      transparent 72%),
-    var(--dp-panel-surface) !important;
 }
 
 body.dp-v11-structural :is(.dp-operational-row, .event-item) {
