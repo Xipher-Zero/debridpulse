@@ -89,6 +89,14 @@ replace_exact(
     '        self.assertNotIn("font-variant-emoji:text", css)\\n',
 )
 
+# Extraction lifecycle remains behaviorally identical; only its operator glyph source changes.
+extraction_test = TESTS / "test_extraction_lifecycle.py"
+replace_exact(
+    extraction_test,
+    '    assert "extracting:\'📦 Extracting\'" in app_source\\n',
+    '    assert "window.dpLucideStatusDefinition" in app_source\\n',
+)
+
 # New contract tests focus on the architectural invariant rather than snapshots.
 test = '''""",
     "existing UI regression contracts",
