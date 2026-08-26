@@ -46,7 +46,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-components.css?v=20",
         "/icon-system.css?v=20",
         "/ui-universal-language.css?v=20",
-        "/ui-shared-contract.css?v=29",
+        "/ui-shared-contract.css?v=30",
         "/ui-modal-contract.css?v=24",
         "/ui-shell.css?v=20",
         "/ui-shell-structural.css?v=26",
@@ -66,13 +66,14 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
     # Targeted invalidation: established approved layers retain their reviewed
-    # generations. This correction advances only shared Activity inheritance
-    # and final transfer semantics to generation 29; Downloads desktop stays 28.
+    # generations. This correction advances only the shared operational
+    # material to generation 30; final transfer remains 29 and Downloads
+    # desktop remains 28.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
     expected_changed_versions = {
-        "/ui-shared-contract.css": "29",
+        "/ui-shared-contract.css": "30",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
