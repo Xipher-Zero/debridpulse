@@ -11,6 +11,7 @@ INDEX = STATIC / "index.html"
 STYLE = STATIC / "style-v11.css"
 SHARED = STATIC / "ui-shared-contract.css"
 SHELL_STYLE = STATIC / "ui-shell-structural.css"
+ACTIVITY_STYLE = STATIC / "ui-activity-log-page.css"
 DOWNLOADS_STYLE = STATIC / "ui-downloads-page.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 UI_RUNTIME = STATIC / "ui-runtime.js"
@@ -71,15 +72,17 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
 
     # Targeted invalidation stays explicit. Pre-existing approved layers keep
     # their established cache generations; only files changed by reviewed UI
-    # corrections advance. Final Downloads/transfer consistency is generation 25.
+    # corrections advance. Activity/shell geometry is generation 26.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
         "/ui-shared-contract.css": "23",
         "/ui-modal-contract.css": "24",
+        "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "24",
         "/ui-dashboard-consistency.css": "23",
+        "/ui-activity-log-page.css": "26",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "25",
         "/ui-help-page.css": "22",
@@ -100,17 +103,20 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     shared_pos = overlay.index("/ui-shared-contract.css?v=23")
     modal_pos = overlay.index("/ui-modal-contract.css?v=24")
     shell_pos = overlay.index("/ui-shell.css?v=20")
+    shell_structural_pos = overlay.index("/ui-shell-structural.css?v=26")
     provider_pos = overlay.index("/ui-shell-provider-status.css?v=23")
     provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=24")
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
+    activity_pos = overlay.index("/ui-activity-log-page.css?v=26")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=25")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     transfer_pos = overlay.index("/ui-transfer-contract.css?v=25")
-    assert universal_pos < shared_pos < modal_pos < shell_pos
-    assert shell_pos < provider_pos < provider_v2_pos < dashboard_pos
-    assert dashboard_pos < dashboard_consistency_pos < downloads_pos < downloads_desktop_pos < help_pos < transfer_pos
+    assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
+    assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
+    assert dashboard_pos < dashboard_consistency_pos < activity_pos < downloads_pos
+    assert downloads_pos < downloads_desktop_pos < help_pos < transfer_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
@@ -131,13 +137,16 @@ def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None
 
 
 def test_page_layers_do_not_own_shell_contract() -> None:
+    activity = ACTIVITY_STYLE.read_text(encoding="utf-8")
     downloads = DOWNLOADS_STYLE.read_text(encoding="utf-8")
     shell = SHELL_STYLE.read_text(encoding="utf-8")
 
+    assert ".sidebar-footer" not in activity
     assert ".sidebar-footer" not in downloads
     assert ".sidebar-footer::before" in shell
-    assert ":has(#view-torrents.active) .sidebar-footer" in shell
+    assert "body.dp-v11-structural .sidebar-footer" in shell
     assert "bottom: 24px !important" in shell
+    assert ":has(#view-torrents.active) .sidebar-footer" not in shell
 
 
 def test_cross_cutting_accessibility_runtime_is_semantic_and_presentation_only() -> None:
