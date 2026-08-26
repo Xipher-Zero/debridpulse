@@ -62,6 +62,6 @@ def test_activity_log_layer_is_page_specific_generation_26() -> None:
     stats = overlay.index("/ui-statistics-page.css?v=20")
     activity = overlay.index("/ui-activity-log-page.css?v=26")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
-    transfer = overlay.index("/ui-transfer-contract.css?v=25")
+    transfer = overlay.index("/ui-transfer-contract.css?v=28")
 
     assert shell < dashboard < stats < activity < downloads < transfer
