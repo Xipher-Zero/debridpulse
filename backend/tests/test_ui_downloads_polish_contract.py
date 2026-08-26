@@ -26,7 +26,7 @@ def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=26"
+    downloads = "/ui-downloads-page.css?v=27"
     help_page = "/ui-help-page.css?v=22"
     for layer in (tokens, universal, dashboard, statistics, downloads, help_page):
         assert layer in overlay
@@ -146,7 +146,7 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
 
 def test_downloads_runtime_remains_a_presentation_shim() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
-    assert "/ui-downloads-runtime.js?v=21" in operator
+    assert "/ui-downloads-runtime.js?v=22" in operator
     assert "data-dp-downloads-runtime" in operator
 
 

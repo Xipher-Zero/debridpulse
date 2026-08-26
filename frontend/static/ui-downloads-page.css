@@ -158,6 +158,9 @@ body.dp-v11-structural #view-torrents .dp-downloads-bulk-action--clear {
   color: var(--dp-text-secondary);
 }
 body.dp-v11-structural #view-torrents .dp-downloads-bulk-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
   padding-left: 12px;
   color: var(--dp-text-muted);

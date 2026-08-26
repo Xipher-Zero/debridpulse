@@ -56,3 +56,157 @@ body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-thumb:hover {
       color-mix(in srgb, var(--dp-text-secondary) 54%, var(--dp-accent-purple-bright) 46%)
     ) padding-box;
 }
+
+/* ── Canonical Details card material / composition ───────────────────── */
+/* The Details overlay is a modal presentation of the same card language used
+   by Dashboard, Downloads and Activity. The universal dp-card primitives own
+   the material; this layer supplies only dialog geometry and scoped composition. */
+body.dp-v11-structural #overlay {
+  padding: 24px;
+  background: rgba(5, 8, 20, .74);
+  backdrop-filter: blur(8px) saturate(.92);
+}
+body.light.dp-v11-structural #overlay {
+  background: rgba(42, 34, 60, .28);
+  backdrop-filter: blur(8px) saturate(.88);
+}
+
+body.dp-v11-structural #modal.dp-detail-modal {
+  width: 90%;
+  max-width: 620px;
+  max-height: 82vh;
+  margin: 0;
+  border: 1px solid transparent !important;
+  border-radius: var(--dp-radius-lg) !important;
+  background: var(--dp-panel-surface) !important;
+  box-shadow:
+    var(--dp-panel-shadow),
+    0 24px 70px rgba(0, 0, 12, .42) !important;
+}
+body.light.dp-v11-structural #modal.dp-detail-modal {
+  box-shadow:
+    var(--dp-panel-shadow),
+    0 22px 58px rgba(45, 39, 68, .18) !important;
+}
+
+body.dp-v11-structural #modal .modal-hdr.dp-card__header {
+  min-height: 58px;
+  padding: 0 17px;
+  border-bottom-color: var(--dp-panel-header-border);
+  background: var(--dp-panel-header-surface);
+}
+body.dp-v11-structural #modal .modal-title.dp-card__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.dp-v11-structural #modal .dp-detail-close.btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--dp-text-secondary);
+}
+body.dp-v11-structural #modal .dp-detail-close .dp-utility-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+body.dp-v11-structural #modal .dp-detail-close:hover {
+  color: var(--dp-text-primary);
+}
+
+body.dp-v11-structural #modal .modal-body.dp-card__body {
+  padding: var(--dp-card-padding);
+  background: transparent;
+}
+body.dp-v11-structural #modal .detail-grid {
+  gap: 14px 22px;
+  margin-bottom: 18px;
+}
+body.dp-v11-structural #modal .dk {
+  margin-bottom: 4px;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .09em;
+}
+body.dp-v11-structural #modal .dv {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+body.dp-v11-structural #modal .dp-detail-section-card {
+  margin: 0 0 14px;
+}
+body.dp-v11-structural #modal .dp-detail-section-card:last-child {
+  margin-bottom: 0;
+}
+body.dp-v11-structural #modal .dp-detail-section-card > .card-header {
+  min-height: 44px;
+}
+body.dp-v11-structural #modal .dp-detail-section-card > .card-header .card-title {
+  font-size: 13px;
+  letter-spacing: .02em;
+}
+
+body.dp-v11-structural #modal .dp-detail-table-wrap {
+  overflow-x: auto;
+  background: transparent;
+}
+body.dp-v11-structural #modal .dp-detail-files-card .t-table {
+  background: transparent;
+}
+body.dp-v11-structural #modal .dp-detail-files-card .dp-detail-filename {
+  font-family: var(--dp-font-mono);
+  font-size: 11px;
+}
+
+body.dp-v11-structural #modal .dp-detail-events-list {
+  background: transparent;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .event-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  margin: 0;
+  padding: 9px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--dp-table-row-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dp-text-primary);
+  box-shadow: none;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .event-item:last-child {
+  border-bottom: 0;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .event-item:hover {
+  background: var(--dp-table-row-hover);
+}
+body.dp-v11-structural #modal .dp-detail-events-list .emsg {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .etime {
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural #overlay { padding: 12px; }
+  body.dp-v11-structural #modal.dp-detail-modal { width: 100%; max-height: 90vh; }
+  body.dp-v11-structural #modal .detail-grid { grid-template-columns: 1fr; }
+}

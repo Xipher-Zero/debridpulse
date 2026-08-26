@@ -27,7 +27,7 @@ def test_normal_ui_bootstrap_is_static_and_deterministic() -> None:
     legacy = '<link rel="stylesheet" href="/style.css?v=15">'
     overlay = (
         '<link id="debridpulse-duplicate-status-style" rel="stylesheet" '
-        'href="/style-v11.css?v=23" data-dp-v11-styles="1">'
+        'href="/style-v11.css?v=24" data-dp-v11-styles="1">'
     )
     body = '<body class="dp-v11-structural">'
     theme = '<script src="/ui-theme-bootstrap.js?v=21"></script>'
@@ -44,10 +44,10 @@ def test_normal_ui_bootstrap_is_static_and_deterministic() -> None:
 def test_parser_deferred_presentation_runtimes_have_one_normal_order() -> None:
     html = INDEX.read_text(encoding="utf-8")
     scripts = (
-        '<script src="/app.js?v=14" defer></script>',
-        '<script src="/operator-title.js?v=22" defer></script>',
-        '<script src="/ui-runtime.js?v=23" defer data-dp-ui-runtime="1"></script>',
-        '<script src="/ui-downloads-runtime.js?v=21" defer data-dp-downloads-runtime="1"></script>',
+        '<script src="/app.js?v=15" defer></script>',
+        '<script src="/operator-title.js?v=23" defer></script>',
+        '<script src="/ui-runtime.js?v=24" defer data-dp-ui-runtime="1"></script>',
+        '<script src="/ui-downloads-runtime.js?v=22" defer data-dp-downloads-runtime="1"></script>',
         '<script src="/ui-accessibility-runtime.js?v=21" defer></script>',
     )
     positions = [html.index(script) for script in scripts]
@@ -66,9 +66,9 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
 
     assert 'data-dp-v11-styles="1"' in html
-    assert "/style-v11.css?v=23" in html
+    assert "/style-v11.css?v=24" in html
     assert "link[data-dp-v11-styles]" in runtime
-    assert "style-v11\\.css\\?v=23$" in runtime
+    assert "style-v11\\.css\\?v=24$" in runtime
 
     # Targeted invalidation stays explicit. Only layers changed by reviewed work
     # advance; established approved layers retain their reviewed generations.
@@ -77,14 +77,14 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     expected_versions = {
         "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
-        "/ui-modal-contract.css": "24",
+        "/ui-modal-contract.css": "25",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "28",
-        "/ui-downloads-page.css": "26",
+        "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "2",
@@ -103,7 +103,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
 
     universal_pos = overlay.index("/ui-universal-language.css?v=20")
     shared_pos = overlay.index("/ui-shared-contract.css?v=31")
-    modal_pos = overlay.index("/ui-modal-contract.css?v=24")
+    modal_pos = overlay.index("/ui-modal-contract.css?v=25")
     shell_pos = overlay.index("/ui-shell.css?v=20")
     shell_structural_pos = overlay.index("/ui-shell-structural.css?v=26")
     provider_pos = overlay.index("/ui-shell-provider-status.css?v=23")
@@ -112,7 +112,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     dashboard_control_pos = overlay.index("/ui-dashboard-control-polish.css?v=23")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
     activity_pos = overlay.index("/ui-activity-log-page.css?v=28")
-    downloads_pos = overlay.index("/ui-downloads-page.css?v=26")
+    downloads_pos = overlay.index("/ui-downloads-page.css?v=27")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=2")

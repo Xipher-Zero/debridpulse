@@ -16,7 +16,7 @@ def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     progress = "/ui-dashboard-progress-weight.css?v=20"
     dashboard_fix = "/ui-dashboard-consistency.css?v=23"
-    downloads = "/ui-downloads-page.css?v=26"
+    downloads = "/ui-downloads-page.css?v=27"
     help_page = "/ui-help-page.css?v=22"
     transfer = "/ui-transfer-contract.css?v=31"
 

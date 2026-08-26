@@ -47,7 +47,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/icon-system.css?v=20",
         "/ui-universal-language.css?v=20",
         "/ui-shared-contract.css?v=31",
-        "/ui-modal-contract.css?v=24",
+        "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=20",
         "/ui-shell-structural.css?v=26",
         "/ui-shell-provider-status.css?v=23",
@@ -58,7 +58,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
         "/ui-activity-log-page.css?v=28",
-        "/ui-downloads-page.css?v=26",
+        "/ui-downloads-page.css?v=27",
         "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
         "/ui-feature-icon-contract.css?v=2",
@@ -75,14 +75,14 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     expected_changed_versions = {
         "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
-        "/ui-modal-contract.css": "24",
+        "/ui-modal-contract.css": "25",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "28",
-        "/ui-downloads-page.css": "26",
+        "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "2",
@@ -108,7 +108,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     ):
         assert retired_import not in overlay
 
-    assert "/style-v11.css?v=23" in runtime
+    assert "/style-v11.css?v=24" in runtime
     assert "data-dp-v11-styles" in runtime
     assert "dp-v11-structural" in runtime
 
@@ -138,12 +138,12 @@ def test_v11_bootstrap_cache_generation_is_coherent() -> None:
     operator = SHELL_RUNTIME.read_text(encoding="utf-8")
     runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
 
-    assert '/style-v11.css?v=23' in index
-    assert '/operator-title.js?v=22' in index
-    assert '/ui-runtime.js?v=23' in index
-    assert '/ui-runtime.js?v=23' in operator
-    assert '/ui-downloads-runtime.js?v=21' in operator
-    assert '/style-v11.css?v=23' in runtime
+    assert '/style-v11.css?v=24' in index
+    assert '/operator-title.js?v=23' in index
+    assert '/ui-runtime.js?v=24' in index
+    assert '/ui-runtime.js?v=24' in operator
+    assert '/ui-downloads-runtime.js?v=22' in operator
+    assert '/style-v11.css?v=24' in runtime
 
 
 def test_shell_matches_required_mockup_structure() -> None:

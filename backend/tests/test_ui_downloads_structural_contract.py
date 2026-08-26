@@ -17,7 +17,7 @@ def test_universal_language_loads_before_reference_and_page_layers() -> None:
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
-    downloads = "/ui-downloads-page.css?v=26"
+    downloads = "/ui-downloads-page.css?v=27"
     for layer in (universal, dashboard, statistics, downloads):
         assert layer in overlay
     assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(statistics) < overlay.index(downloads)

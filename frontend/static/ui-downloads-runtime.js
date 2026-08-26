@@ -62,7 +62,7 @@
     setBulkButtonPresentation(find("bulkAction('resume'"), 'Resume', 'play', 'dp-downloads-bulk-action--resume');
     setBulkButtonPresentation(find("bulkAction('reset'"), 'Reset', 'refresh', 'dp-downloads-bulk-action--reset');
     setBulkButtonPresentation(find("bulkAction('delete'"), 'Delete', 'trash', 'dp-downloads-bulk-action--delete');
-    setBulkButtonPresentation(find('clearSelection()'), 'Clear selection', 'x', 'dp-downloads-bulk-action--clear');
+    setBulkButtonPresentation(find('clearSelection()'), 'Clear Selections', 'x', 'dp-downloads-bulk-action--clear');
   }
 
   function decorateBulkSelectionToolbar() {
@@ -92,8 +92,8 @@
     const status = document.createElement('div');
     status.className = 'dp-downloads-bulk-status';
     count.classList.add('dp-downloads-bulk-count');
-    actions.append(pause, resume, reset, separator, remove, clear);
-    status.appendChild(count);
+    actions.append(pause, resume, reset, separator, remove);
+    status.append(count, clear);
     header.append(actions, status);
     bar.replaceChildren(header);
     bar.dataset.dpDownloadsBulk = '1';

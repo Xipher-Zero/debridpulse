@@ -38,8 +38,8 @@ def test_bulk_selection_is_header_only_card_with_reviewed_action_order() -> None
     transfer = read("ui-transfer-contract.css")
     assert "bar.classList.add('dp-card', 'dp-downloads-bulk-card')" in runtime
     assert "header.className = 'dp-card__header dp-downloads-bulk-toolbar'" in runtime
-    assert "actions.append(pause, resume, reset, separator, remove, clear);" in runtime
-    assert "status.appendChild(count);" in runtime
+    assert "actions.append(pause, resume, reset, separator, remove);" in runtime
+    assert "status.append(count, clear);" in runtime
     for icon_name in ("pause:", "play:", "trash:", "x:"):
         assert icon_name in runtime
     for cls in (
@@ -73,11 +73,11 @@ def test_batch_cache_generations_are_explicit() -> None:
     style = read("style-v11.css")
     operator = read("operator-title.js")
     index = read("index.html")
-    assert "/style-v11.css?v=23" in index
-    assert "/ui-runtime.js?v=23" in operator
+    assert "/style-v11.css?v=24" in index
+    assert "/ui-runtime.js?v=24" in operator
     assert "/ui-dashboard-control-polish.css?v=23" in style
-    assert "/ui-downloads-page.css?v=26" in style
+    assert "/ui-downloads-page.css?v=27" in style
     assert "/ui-feature-icon-contract.css?v=2" in style
     assert "/ui-transfer-contract.css?v=31" in style
-    assert "/ui-downloads-runtime.js?v=21" in operator
-    assert "/operator-title.js?v=22" in index
+    assert "/ui-downloads-runtime.js?v=22" in operator
+    assert "/operator-title.js?v=23" in index
