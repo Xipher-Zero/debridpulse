@@ -26,5 +26,15 @@ replace_once(
     "      .replace(/^[^A-Za-z0-9]+/, '')\n",
     "Unicode prefix scrubber",
 )
+replace_once(
+    '    "chevron-down", "chevron-left", "chevron-right", "circle-check", "circle-help",\n',
+    '    "chevron-down", "chevron-left", "chevron-right", "circle-check", "circle-question-mark",\n',
+    "pinned Lucide help icon name",
+)
+replace_once(
+    "    help: 'circle-help',\n",
+    "    help: 'circle-question-mark',\n",
+    "help alias",
+)
 
 path.write_text(text, encoding="utf-8")
