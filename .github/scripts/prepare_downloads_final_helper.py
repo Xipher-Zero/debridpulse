@@ -80,9 +80,17 @@ replace_exact(
     '',
 )
 
+# Page layers may compose universal cards but must not repaint their base material.
+# Leaving the property absent allows the canonical dp-card rule to defeat the old
+# legacy bulk-bar accent background naturally in the later v1.0.11 cascade.
+replace_exact(
+    '    "  background: var(--dp-panel-surface) !important;\\n"\n',
+    '',
+)
+
 # A changed style-v11 import table needs a new outer style-v11 generation. The
-# ui-runtime fallback embeds that URL, so it must advance too; operator-title is
-# already being advanced because it embeds both presentation-runtime URLs.
+# ui-runtime fallback embeds that URL, so it must advance too; operator-title and
+# the parser-deferred direct script tags both embed the presentation runtimes.
 replace_exact(
     'operator = STATIC / "operator-title.js"\n'
     'replace_exact(operator, "/ui-downloads-runtime.js?v=20", "/ui-downloads-runtime.js?v=21")\n'
@@ -99,7 +107,9 @@ replace_exact(
     ')\n'
     'index = STATIC / "index.html"\n'
     'replace_exact(index, "/style-v11.css?v=22", "/style-v11.css?v=23")\n'
-    'replace_exact(index, "/operator-title.js?v=21", "/operator-title.js?v=22")\n',
+    'replace_exact(index, "/operator-title.js?v=21", "/operator-title.js?v=22")\n'
+    'replace_exact(index, "/ui-runtime.js?v=22", "/ui-runtime.js?v=23")\n'
+    'replace_exact(index, "/ui-downloads-runtime.js?v=20", "/ui-downloads-runtime.js?v=21")\n',
 )
 
 replace_exact(
@@ -107,8 +117,10 @@ replace_exact(
     '    ("/ui-dashboard-control-polish.css?v=22", "/ui-dashboard-control-polish.css?v=23"),\n',
     'version_replacements = (\n'
     '    ("/style-v11.css?v=22", "/style-v11.css?v=23"),\n'
+    '    ("style-v11\\\\.css\\\\?v=22$", "style-v11\\\\.css\\\\?v=23$"),\n'
     '    ("/ui-runtime.js?v=22", "/ui-runtime.js?v=23"),\n'
-    '    ("/ui-dashboard-control-polish.css?v=22", "/ui-dashboard-control-polish.css?v=23"),\n',
+    '    ("/ui-dashboard-control-polish.css?v=22", "/ui-dashboard-control-polish.css?v=23"),\n'
+    '    ("ui-downloads-page.css?v=25", "ui-downloads-page.css?v=26"),\n',
 )
 
 # Explicit new-batch cache assertions need to include the outer chain as well.
@@ -128,6 +140,15 @@ replace_exact(
     '        assert f"data-dp-bulk-icon=\\\\\\\"\' + icon" not in runtime  # dynamic marker remains generic\\n',
     '    for icon_name in ("pause:", "play:", "trash:", "x:"):\\n'
     '        assert icon_name in runtime\\n',
+)
+
+# The removed 34px height belonged to Refresh, but pagination intentionally keeps
+# its reviewed 34px hit target. Assert the scoped Refresh rules disappeared rather
+# than banning that dimension from the whole page stylesheet.
+replace_exact(
+    '    assert "height: 34px" not in page\\n',
+    '    assert "display: inline-grid !important" not in page\\n'
+    '    assert ".dp-downloads-refresh svg {" not in page\\n',
 )
 
 path.write_text(text, encoding="utf-8")
