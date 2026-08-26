@@ -42,6 +42,9 @@ jobs:
           set -euo pipefail
 
           git show "origin/$HELPER_BRANCH:.github/scripts/apply_detail_canonical_cleanup.py" > /tmp/apply_detail_canonical_cleanup.py
+          git show "origin/$HELPER_BRANCH:.github/scripts/prepare_detail_canonical_helper.py" > /tmp/prepare_detail_canonical_helper.py
+          python -m py_compile /tmp/apply_detail_canonical_cleanup.py /tmp/prepare_detail_canonical_helper.py
+          python /tmp/prepare_detail_canonical_helper.py /tmp/apply_detail_canonical_cleanup.py
           python -m py_compile /tmp/apply_detail_canonical_cleanup.py
 
           git fetch origin "$TARGET_BRANCH"
