@@ -22,7 +22,7 @@ def test_downloads_desktop_filter_contract_and_details_removal():
     for fragment in expected:
         assert fragment in runtime
     assert "normalizeDownloadRowActions" in runtime
-    assert "onclick.startsWith('showDetail(')" in runtime
+    assert "onclick.includes('showDetail(')" in runtime
 
 
 def test_downloads_desktop_column_rebalance_expands_progress():
