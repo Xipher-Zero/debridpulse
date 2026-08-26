@@ -145,8 +145,10 @@ body.dp-v11-structural .sidebar-footer {
 body.dp-v11-structural .sidebar-footer::before {
   text-align: center !important;
 }
+/* Desktop shell owns one lower datum for every page. The compact/mobile
+   sidebar retains the inherited 12px inset below 901px. */
 @media (min-width: 901px) {
-  body.dp-v11-structural:has(#view-torrents.active) .sidebar-footer {
+  body.dp-v11-structural .sidebar-footer {
     bottom: 24px !important;
   }
 }

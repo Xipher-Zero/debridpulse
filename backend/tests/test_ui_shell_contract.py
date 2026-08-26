@@ -49,13 +49,14 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css?v=23",
         "/ui-modal-contract.css?v=24",
         "/ui-shell.css?v=20",
-        "/ui-shell-structural.css?v=20",
+        "/ui-shell-structural.css?v=26",
         "/ui-shell-provider-status.css?v=23",
         "/ui-shell-provider-status-v2.css?v=24",
         "/ui-dashboard.css?v=20",
         "/ui-dashboard-structural.css?v=20",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
+        "/ui-activity-log-page.css?v=26",
         "/ui-downloads-page.css?v=25",
         "/ui-downloads-desktop.css?v=25",
         "/ui-help-page.css?v=22",
@@ -66,17 +67,19 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
 
     # Targeted invalidation: established approved layers retain v20 URLs, Help
     # remains generation 22, prior consistency corrections remain generation 23,
-    # desktop/modal/provider composition remains v24, and only the final
-    # Downloads/transfer corrections advance to generation 25.
+    # desktop/modal/provider composition remains v24, Downloads/transfer remain
+    # generation 25, and the Activity/shell geometry correction is generation 26.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
     expected_changed_versions = {
         "/ui-shared-contract.css": "23",
         "/ui-modal-contract.css": "24",
+        "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "24",
         "/ui-dashboard-consistency.css": "23",
+        "/ui-activity-log-page.css": "26",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "25",
         "/ui-help-page.css": "22",

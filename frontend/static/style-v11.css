@@ -21,7 +21,7 @@
 
 /* Shared application shell. */
 @import url('/ui-shell.css?v=20');
-@import url('/ui-shell-structural.css?v=20');
+@import url('/ui-shell-structural.css?v=26');
 @import url('/ui-shell-provider-status.css?v=23');
 @import url('/ui-shell-provider-status-v2.css?v=24');
 
@@ -45,6 +45,7 @@
 
 /* Page layers contain only page-specific geometry/behavior/content details. */
 @import url('/ui-statistics-page.css?v=20');
+@import url('/ui-activity-log-page.css?v=26');
 @import url('/ui-downloads-page.css?v=25');
 @import url('/ui-downloads-desktop.css?v=25');
 @import url('/ui-help-page.css?v=22');
