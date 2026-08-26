@@ -71,9 +71,11 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
         "padding: 0 9px !important",
         "border-radius: 6px !important",
         "font-size: 10.5px !important",
+        "width: 72px !important",
+        "min-width: 72px !important",
         "min-height: 36px !important",
         "height: 36px !important",
-        "padding: 0 14px !important",
+        "padding: 0 8px !important",
         "border-radius: 8px !important",
         "font-size: 11.5px !important",
     )
@@ -147,5 +149,5 @@ def test_final_downloads_corrections_use_targeted_cache_generations() -> None:
     downloads = overlay.index("/ui-downloads-page.css?v=25")
     desktop = overlay.index("/ui-downloads-desktop.css?v=28")
     help_page = overlay.index("/ui-help-page.css?v=22")
-    transfer = overlay.index("/ui-transfer-contract.css?v=29")
+    transfer = overlay.index("/ui-transfer-contract.css?v=30")
     assert downloads < desktop < help_page < transfer

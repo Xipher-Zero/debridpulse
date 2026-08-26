@@ -81,6 +81,6 @@ def test_consistency_layers_remain_in_correct_ownership_order() -> None:
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     dashboard_fix = overlay.index("/ui-dashboard-consistency.css?v=23")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
-    transfer = overlay.index("/ui-transfer-contract.css?v=29")
+    transfer = overlay.index("/ui-transfer-contract.css?v=30")
 
     assert shared < shell < provider < dashboard < dashboard_fix < downloads < transfer

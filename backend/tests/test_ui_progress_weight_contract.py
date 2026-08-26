@@ -13,7 +13,7 @@ PROGRESS = STATIC / "ui-dashboard-progress-weight.css"
 
 def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    control = "/ui-dashboard-control-polish.css?v=20"
+    control = "/ui-dashboard-control-polish.css?v=21"
     progress = "/ui-dashboard-progress-weight.css?v=20"
     statistics = "/ui-statistics-page.css?v=20"
     downloads = "/ui-downloads-page.css?v=25"

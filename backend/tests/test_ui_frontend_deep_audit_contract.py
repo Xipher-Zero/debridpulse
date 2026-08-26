@@ -70,8 +70,8 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=21$" in runtime
 
-    # Targeted invalidation stays explicit. The Activity rebuild changes only
-    # its page layer; established approved layers retain reviewed generations.
+    # Targeted invalidation stays explicit. Only layers changed by reviewed work
+    # advance; established approved layers retain their reviewed generations.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
@@ -81,12 +81,13 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "27",
+        "/ui-dashboard-control-polish.css": "21",
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
-        "/ui-transfer-contract.css": "29",
+        "/ui-transfer-contract.css": "30",
     }
     for path, version in expected_versions.items():
         assert f"@import url('{path}?v={version}');" in imports
@@ -107,15 +108,16 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     provider_pos = overlay.index("/ui-shell-provider-status.css?v=23")
     provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=27")
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
+    dashboard_control_pos = overlay.index("/ui-dashboard-control-polish.css?v=21")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
     activity_pos = overlay.index("/ui-activity-log-page.css?v=28")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
-    transfer_pos = overlay.index("/ui-transfer-contract.css?v=29")
+    transfer_pos = overlay.index("/ui-transfer-contract.css?v=30")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
-    assert dashboard_pos < dashboard_consistency_pos < activity_pos < downloads_pos
+    assert dashboard_pos < dashboard_control_pos < dashboard_consistency_pos < activity_pos < downloads_pos
     assert downloads_pos < downloads_desktop_pos < help_pos < transfer_pos
 
 
@@ -129,8 +131,6 @@ def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None
     assert ".dp-pager-btn" in css
     assert ".sidebar-footer" not in css
 
-    # Runtime-created presentation rules are prohibited. Compatibility script
-    # loading is separate and remains guarded/no-op on the static normal path.
     assert "installDuplicateStatusStyle" not in operator
     assert "document.createElement('style')" not in operator
     assert "debridpulse-duplicate-status-style" not in operator

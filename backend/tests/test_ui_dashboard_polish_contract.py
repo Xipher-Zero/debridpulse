@@ -19,7 +19,7 @@ def test_polish_layers_finish_dashboard_after_universal_base() -> None:
     batch5 = "/ui-dashboard-batch5.css?v=20"
     polish = "/ui-dashboard-polish.css?v=20"
     final = "/ui-dashboard-polish-final.css?v=20"
-    control = "/ui-dashboard-control-polish.css?v=20"
+    control = "/ui-dashboard-control-polish.css?v=21"
     for layer in (universal, batch5, polish, final, control):
         assert layer in overlay
     assert overlay.index(universal) < overlay.index(batch5)
@@ -214,12 +214,12 @@ def test_light_pause_all_uses_integrated_amber_tint_not_heavy_slab() -> None:
     css = CONTROL_POLISH.read_text(encoding="utf-8")
     required = (
         "body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn",
-        "rgba(255,251,236,.82)",
-        "rgba(250,234,186,.42)",
-        "rgba(207,158,55,.72)",
+        "rgba(255,251,236,.54)",
+        "rgba(250,234,186,.22)",
+        "rgba(207,158,55,.62)",
         "color: #76560d !important",
         "text-shadow: none !important",
-        "0 3px 8px -6px rgba(137,99,24,.28)",
+        "0 3px 8px -6px rgba(137,99,24,.18)",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"light Pause All integration contract is missing: {missing}"

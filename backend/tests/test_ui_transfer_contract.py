@@ -18,7 +18,7 @@ def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     dashboard_fix = "/ui-dashboard-consistency.css?v=23"
     downloads = "/ui-downloads-page.css?v=25"
     help_page = "/ui-help-page.css?v=22"
-    transfer = "/ui-transfer-contract.css?v=29"
+    transfer = "/ui-transfer-contract.css?v=30"
 
     for layer in (progress, dashboard_fix, downloads, help_page, transfer):
         assert layer in overlay
@@ -63,9 +63,11 @@ def test_transfer_actions_share_recent_activity_geometry() -> None:
     css = TRANSFER.read_text(encoding="utf-8")
     required = (
         ":is(#dash-tbody, #t-tbody) .actions .btn",
+        "width: 72px !important",
+        "min-width: 72px !important",
         "min-height: 36px !important",
         "height: 36px !important",
-        "padding: 0 14px !important",
+        "padding: 0 8px !important",
         "border-radius: 8px !important",
         "font-size: 11.5px !important",
         "[onclick*=\"pauseTorrent(\"]",
