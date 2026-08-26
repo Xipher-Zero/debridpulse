@@ -43,8 +43,10 @@ jobs:
 
           git show "origin/$HELPER_BRANCH:.github/scripts/apply_downloads_final_batch.py" > /tmp/apply_downloads_final_batch.py
           git show "origin/$HELPER_BRANCH:.github/scripts/prepare_downloads_final_helper.py" > /tmp/prepare_downloads_final_helper.py
-          python -m py_compile /tmp/apply_downloads_final_batch.py /tmp/prepare_downloads_final_helper.py
+          git show "origin/$HELPER_BRANCH:.github/scripts/prepare_downloads_final_stale.py" > /tmp/prepare_downloads_final_stale.py
+          python -m py_compile /tmp/apply_downloads_final_batch.py /tmp/prepare_downloads_final_helper.py /tmp/prepare_downloads_final_stale.py
           python /tmp/prepare_downloads_final_helper.py /tmp/apply_downloads_final_batch.py
+          python /tmp/prepare_downloads_final_stale.py /tmp/apply_downloads_final_batch.py
           python -m py_compile /tmp/apply_downloads_final_batch.py
 
           git fetch origin "$TARGET_BRANCH"
