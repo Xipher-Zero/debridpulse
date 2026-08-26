@@ -11,7 +11,7 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_activity_composition_uses_existing_shared_material_tokens() -> None:
+def test_activity_composition_uses_shared_tall_panel_material() -> None:
     shared = read("ui-shared-contract.css")
     activity = read("ui-activity-log-page.css")
     tokens = read("ui-language-tokens.css")
@@ -29,6 +29,9 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
         "var(--dp-table-row-hover)",
         "var(--dp-text-primary)",
         "var(--dp-text-muted)",
+        "@media (min-width: 901px)",
+        "#view-events.active > .card",
+        "background: var(--dp-panel-surface-tall);",
     )
     missing = [fragment for fragment in required if fragment not in activity]
     assert not missing, f"Activity composition contract is missing: {missing}"
@@ -39,19 +42,34 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     assert "linear-gradient(180deg, #1d1930 0%, #171528 100%)" in tokens
     assert "linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%)" in tokens
 
-    # Normal cards own the semantic panel gradient. Activity is intentionally a
-    # transparent data viewport over that same universal material, just like the
-    # accepted Downloads table. Page CSS must not rescale or replace the card.
+    # Normal cards keep the same shared semantic gradient. Tall workspaces use
+    # the same start/end primitives, reach the exact normal endpoint at 320px,
+    # and then hold that exact endpoint instead of stretching it to viewport
+    # height. Downloads must remain on the normal card material.
     assert "background: var(--dp-panel-surface);" in universal
-    assert "--dp-panel-surface:" in tokens
-    assert "background: transparent;" in downloads
-    for forbidden in (
-        "background-size:",
-        "background-repeat:",
-        "background-color: var(--dp-bg-app-alt);",
-        "background-color: var(--dp-surface-2);",
+    for token in (
+        "--dp-panel-start:",
+        "--dp-panel-end:",
+        "--dp-panel-surface:",
+        "--dp-panel-surface-tall:",
     ):
-        assert forbidden not in activity
+        assert token in tokens
+    assert "var(--dp-panel-end) 320px" in tokens
+    assert "var(--dp-panel-end) 100%" in tokens
+    assert tokens.count("--dp-panel-surface-tall:") == 2
+    assert "--dp-panel-surface-tall" not in downloads
+    assert "background: transparent;" in downloads
+
+    # Light endpoints and both derived surfaces are redeclared in the light
+    # scope. This guards the exact root-derived alias bug that previously made a
+    # light Activity page consume the dark panel surface.
+    light = tokens.split(".theme-light {", 1)[1]
+    assert "--dp-panel-start: #ffffff;" in light
+    assert "--dp-panel-end: #f8f9fd;" in light
+    assert "--dp-panel-surface: linear-gradient(180deg, var(--dp-panel-start), var(--dp-panel-end));" in light
+    assert "--dp-panel-surface-tall: linear-gradient(180deg," in light
+    assert "var(--dp-panel-end) 320px" in light
+    assert "var(--dp-panel-end) 100%" in light
 
     # The old cross-cutting Activity bridge was the ownership error. Shared CSS
     # must no longer target Activity IDs or the globally reused .event-item.
@@ -65,12 +83,20 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     ):
         assert forbidden not in shared
 
-    # Do not reintroduce any of the disproven surface strategies.
-    assert "--dp-operational-surface" not in activity
-    assert "--dp-operational-toolbar-surface" not in activity
-    assert "background: var(--dp-surface-1)" not in activity
-    assert "linear-gradient(" not in activity
-    assert "radial-gradient" not in activity
+    # Do not reintroduce any disproven page-local paint strategies. Activity may
+    # select a shared material token, but it may not define/rescale gradients.
+    for forbidden in (
+        "background-size:",
+        "background-repeat:",
+        "background-color: var(--dp-bg-app-alt);",
+        "background-color: var(--dp-surface-2);",
+        "--dp-operational-surface",
+        "--dp-operational-toolbar-surface",
+        "background: var(--dp-surface-1)",
+        "linear-gradient(",
+        "radial-gradient",
+    ):
+        assert forbidden not in activity
 
 
 def test_activity_row_material_is_scoped_away_from_details_events() -> None:
@@ -89,6 +115,7 @@ def test_activity_row_material_is_scoped_away_from_details_events() -> None:
 
 def test_activity_material_composition_is_owned_after_shared_defaults() -> None:
     overlay = read("style-v11.css")
+    tokens = overlay.index("/ui-language-tokens.css?v=21")
     shared = overlay.index("/ui-shared-contract.css?v=31")
-    activity = overlay.index("/ui-activity-log-page.css?v=26")
-    assert shared < activity
+    activity = overlay.index("/ui-activity-log-page.css?v=27")
+    assert tokens < shared < activity

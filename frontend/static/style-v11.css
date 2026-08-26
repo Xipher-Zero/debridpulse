@@ -11,7 +11,7 @@
  * into the effective application contract.
  */
 @import url('/design-tokens.css?v=20');
-@import url('/ui-language-tokens.css?v=20');
+@import url('/ui-language-tokens.css?v=21');
 @import url('/ui-foundation.css?v=20');
 @import url('/ui-components.css?v=20');
 @import url('/icon-system.css?v=20');
@@ -45,7 +45,7 @@
 
 /* Page layers contain only page-specific geometry/behavior/content details. */
 @import url('/ui-statistics-page.css?v=20');
-@import url('/ui-activity-log-page.css?v=26');
+@import url('/ui-activity-log-page.css?v=27');
 @import url('/ui-downloads-page.css?v=25');
 @import url('/ui-downloads-desktop.css?v=28');
 @import url('/ui-help-page.css?v=22');

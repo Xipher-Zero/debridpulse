@@ -54,13 +54,13 @@ def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
     assert ".sidebar-footer" not in activity
 
 
-def test_activity_log_layer_is_page_specific_generation_26() -> None:
+def test_activity_log_layer_is_page_specific_generation_27() -> None:
     overlay = read("style-v11.css")
 
     shell = overlay.index("/ui-shell-structural.css?v=26")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     stats = overlay.index("/ui-statistics-page.css?v=20")
-    activity = overlay.index("/ui-activity-log-page.css?v=26")
+    activity = overlay.index("/ui-activity-log-page.css?v=27")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
     transfer = overlay.index("/ui-transfer-contract.css?v=29")
 

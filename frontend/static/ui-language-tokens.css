@@ -6,8 +6,16 @@
  */
 
 :root {
-  /* Raised section/card material. */
-  --dp-panel-surface: linear-gradient(180deg, rgba(14, 19, 44, .94), rgba(8, 13, 31, .98));
+  /* Raised section/card material. Keep normal and tall panels anchored to the
+     same exact endpoints; tall workspaces reach the normal endpoint at a fixed
+     physical depth and then hold it instead of stretching the color field. */
+  --dp-panel-start: rgba(14, 19, 44, .94);
+  --dp-panel-end: rgba(8, 13, 31, .98);
+  --dp-panel-surface: linear-gradient(180deg, var(--dp-panel-start), var(--dp-panel-end));
+  --dp-panel-surface-tall: linear-gradient(180deg,
+    var(--dp-panel-start) 0%,
+    var(--dp-panel-end) 320px,
+    var(--dp-panel-end) 100%);
   --dp-panel-frame: rgba(111, 125, 184, .26);
   --dp-panel-header-border: rgba(113, 126, 184, .18);
   --dp-panel-header-surface: linear-gradient(90deg,
@@ -79,7 +87,16 @@
 body.light,
 [data-theme="light"],
 .theme-light {
-  --dp-panel-surface: linear-gradient(180deg, #ffffff, #f8f9fd);
+  /* Redeclare the endpoint-derived surfaces in the light scope itself. This is
+     intentional: a root-derived alias would otherwise freeze the dark values
+     before body.light overrides become applicable. */
+  --dp-panel-start: #ffffff;
+  --dp-panel-end: #f8f9fd;
+  --dp-panel-surface: linear-gradient(180deg, var(--dp-panel-start), var(--dp-panel-end));
+  --dp-panel-surface-tall: linear-gradient(180deg,
+    var(--dp-panel-start) 0%,
+    var(--dp-panel-end) 320px,
+    var(--dp-panel-end) 100%);
   --dp-panel-frame: rgba(161, 170, 203, .42);
   --dp-panel-header-border: rgba(159, 168, 201, .34);
   --dp-panel-header-surface: linear-gradient(90deg,

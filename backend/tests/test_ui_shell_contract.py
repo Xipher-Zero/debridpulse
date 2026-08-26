@@ -41,7 +41,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     # corrections, shell, reference-page calibration, and page exceptions.
     imports = [
         "/design-tokens.css?v=20",
-        "/ui-language-tokens.css?v=20",
+        "/ui-language-tokens.css?v=21",
         "/ui-foundation.css?v=20",
         "/ui-components.css?v=20",
         "/icon-system.css?v=20",
@@ -56,7 +56,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-dashboard-structural.css?v=20",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
-        "/ui-activity-log-page.css?v=26",
+        "/ui-activity-log-page.css?v=27",
         "/ui-downloads-page.css?v=25",
         "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
@@ -65,21 +65,21 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # Targeted invalidation: established approved layers retain their reviewed
-    # generations. This correction advances only the shared Activity material
-    # to generation 31; final transfer remains 29 and Downloads desktop remains
-    # 28.
+    # Targeted invalidation: only the shared material-token layer and Activity
+    # page advance for the tall-panel correction; established approved layers
+    # retain their reviewed generations.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
     expected_changed_versions = {
+        "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "27",
         "/ui-dashboard-consistency.css": "23",
-        "/ui-activity-log-page.css": "26",
+        "/ui-activity-log-page.css": "27",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",

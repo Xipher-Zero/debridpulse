@@ -71,8 +71,7 @@ body.dp-v11-structural #view-events > .card > .card-header + div {
 }
 
 /* Match the accepted Downloads/table construction: the data viewport is
-   transparent and the universal card owns the material beneath it. Do not
-   scale, replace, or terminate that shared panel material from this page. */
+   transparent and the card owns the material beneath it. */
 body.dp-v11-structural #view-events #event-list {
   position: relative;
   z-index: 1;
@@ -110,7 +109,9 @@ body.dp-v11-structural #view-events #event-list > .event-item :is(.ename, .etime
 
 /* Desktop pages share the shell content box. Do not derive another viewport
    height here: the content flex item already terminates at the shell's 24px
-   lower gutter, matching Provider Status. */
+   lower gutter, matching Provider Status. Activity's full-height card is the
+   one composition that consumes the shared tall-panel material so the normal
+   card gradient does not stretch across the entire workspace. */
 @media (min-width: 901px) {
   body.dp-v11-structural #content:has(#view-events.active) {
     overflow-y: hidden;
@@ -128,5 +129,6 @@ body.dp-v11-structural #view-events #event-list > .event-item :is(.ename, .etime
     flex: 1 1 auto;
     height: 100%;
     min-height: 0;
+    background: var(--dp-panel-surface-tall);
   }
 }

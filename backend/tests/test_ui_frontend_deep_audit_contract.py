@@ -70,19 +70,20 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=21$" in runtime
 
-    # Targeted invalidation stays explicit. Established layers keep their
-    # reviewed generations; the Activity operational-surface correction moves
-    # only the shared contract to generation 31.
+    # Targeted invalidation stays explicit. The tall-panel correction changes
+    # the shared material-token layer and Activity page layer only; established
+    # approved layers retain their reviewed generations.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
+        "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "27",
         "/ui-dashboard-consistency.css": "23",
-        "/ui-activity-log-page.css": "26",
+        "/ui-activity-log-page.css": "27",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
@@ -108,7 +109,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=27")
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
-    activity_pos = overlay.index("/ui-activity-log-page.css?v=26")
+    activity_pos = overlay.index("/ui-activity-log-page.css?v=27")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
