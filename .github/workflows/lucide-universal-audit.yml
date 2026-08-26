@@ -45,6 +45,18 @@ jobs:
                   if ('<button' in line or 'button.innerhtml' in line.lower() or 'button.textcontent' in line.lower()) and has_non_ascii(line):
                       print(f'{path}:{no}: {line.strip()}')
 
+          print('\n=== SIMPLE BUTTON INVENTORY ===')
+          button_re = re.compile(r'<button\b([^>]*)>(.*?)</button>', re.I | re.S)
+          for path in sorted([*Path('frontend/static').glob('*.html'), *Path('frontend/static').glob('*.js')]):
+              text = path.read_text(encoding='utf-8')
+              for match in button_re.finditer(text):
+                  attrs = ' '.join(match.group(1).split())
+                  body = re.sub(r'<[^>]+>', '', match.group(2))
+                  body = ' '.join(body.split())
+                  if len(body) > 100:
+                      body = body[:97] + '...'
+                  print(f'{path}: attrs=[{attrs}] text=[{body}]')
+
           print('\n=== LEGACY FONT / PSEUDO-GLYPH REFERENCES ===')
           needles = ('Segoe UI Symbol', 'Noto Sans Symbols', 'font-variant-emoji', "content: '", 'content: "')
           for path in sorted(files):
