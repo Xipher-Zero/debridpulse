@@ -56,7 +56,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-dashboard-structural.css?v=20",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
-        "/ui-activity-log-page.css?v=27",
+        "/ui-activity-log-page.css?v=28",
         "/ui-downloads-page.css?v=25",
         "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
@@ -65,9 +65,8 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # Targeted invalidation: only the shared material-token layer and Activity
-    # page advance for the tall-panel correction; established approved layers
-    # retain their reviewed generations.
+    # Targeted invalidation: the Activity rebuild advances only its page layer;
+    # established approved layers retain their reviewed generations.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
@@ -79,7 +78,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "27",
         "/ui-dashboard-consistency.css": "23",
-        "/ui-activity-log-page.css": "27",
+        "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
