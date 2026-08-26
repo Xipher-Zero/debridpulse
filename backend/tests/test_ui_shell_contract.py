@@ -136,7 +136,7 @@ def test_v11_bootstrap_cache_generation_is_coherent() -> None:
 
     assert '/style-v11.css?v=21' in index
     assert '/operator-title.js?v=20' in index
-    assert '/ui-runtime.js?v=20' in operator
+    assert '/ui-runtime.js?v=21' in operator
     assert '/ui-downloads-runtime.js?v=20' in operator
     assert '/style-v11.css?v=21' in runtime
 
