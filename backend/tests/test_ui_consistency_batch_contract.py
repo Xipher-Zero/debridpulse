@@ -75,7 +75,7 @@ def test_quick_add_focus_resets_to_universal_field_language() -> None:
 def test_consistency_layers_remain_in_correct_ownership_order() -> None:
     overlay = read_static("style-v11.css")
 
-    shared = overlay.index("/ui-shared-contract.css?v=29")
+    shared = overlay.index("/ui-shared-contract.css?v=30")
     shell = overlay.index("/ui-shell.css?v=20")
     provider = overlay.index("/ui-shell-provider-status.css?v=23")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
