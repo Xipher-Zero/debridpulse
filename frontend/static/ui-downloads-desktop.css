@@ -25,21 +25,6 @@
     white-space: nowrap;
   }
 
-  /* Legacy retryT still emits a glyph-only label. Present it as the same
-     rectangular text action used by the other Downloads row controls without
-     interfering with the live "Retrying…" pending state. */
-  body.dp-v11-structural #view-torrents .actions button[onclick*="retryT("]:not([aria-busy="true"]) {
-    font-size: 0 !important;
-  }
-
-  body.dp-v11-structural #view-torrents .actions button[onclick*="retryT("]:not([aria-busy="true"])::after {
-    content: 'Retry';
-    font-family: var(--dp-font-sans);
-    font-size: 11.5px;
-    line-height: 1;
-    font-weight: 600;
-  }
-
   /* Desktop is the current viewport contract. Do not compress the seven-state
      filter rail to accommodate tablet/mobile; those contexts will be designed
      separately. */

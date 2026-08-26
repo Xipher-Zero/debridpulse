@@ -18,7 +18,7 @@ def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     dashboard_fix = "/ui-dashboard-consistency.css?v=23"
     downloads = "/ui-downloads-page.css?v=25"
     help_page = "/ui-help-page.css?v=22"
-    transfer = "/ui-transfer-contract.css?v=25"
+    transfer = "/ui-transfer-contract.css?v=28"
 
     for layer in (progress, dashboard_fix, downloads, help_page, transfer):
         assert layer in overlay
@@ -70,6 +70,10 @@ def test_transfer_actions_share_recent_activity_geometry() -> None:
         "font-size: 11.5px !important",
         "[onclick*=\"pauseTorrent(\"]",
         "[onclick*=\"resumeTorrent(\"]",
+        "[onclick*=\"retryT(\"]",
+        "[onclick*=\"retryTorrent(\"]",
+        "#edf5ff",
+        "#245f9e",
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"shared transfer action contract is missing: {missing}"

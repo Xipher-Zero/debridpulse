@@ -38,20 +38,28 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
         "onclick.includes('pauseT(')",
         "onclick.includes('resumeT(')",
         "onclick.includes('deleteT(')",
+        "onclick.includes('retryT(')",
         "label = 'Pause'",
         "label = 'Resume'",
         "label = 'Remove'",
+        "label = 'Retry'",
+        "button.dataset.defaultLabel = label",
+        "button.dataset.pending === '1'",
+        "button.getAttribute('aria-busy') === 'true'",
     ):
         assert fragment in runtime
-    for obsolete in ("label = '⏸ Pause'", "label = '▶ Resume'", "label = '✕ Remove'"):
+    for obsolete in ("label = '⏸ Pause'", "label = '▶ Resume'", "label = '✕ Remove'", "label = '↻ Retry'"):
         assert obsolete not in runtime
 
-    # retryT is still emitted by the legacy renderer. Desktop presentation
-    # replaces only the idle glyph with the canonical text label; the selector
-    # explicitly excludes the aria-busy pending state so its live label survives.
-    assert 'button[onclick*="retryT("]:not([aria-busy="true"])' in desktop
-    assert "content: 'Retry'" in desktop
-    assert ':not([aria-busy="true"])::after' in desktop
+    # Retry is a real runtime text action. The desktop geometry layer must not
+    # hide the glyph and synthesize a pseudo-label; semantic blue material lives
+    # in the final shared transfer contract and pending feedback remains runtime-owned.
+    assert 'button[onclick*="retryT("]' not in desktop
+    assert "font-size: 0 !important" not in desktop
+    assert "content: 'Retry'" not in desktop
+    assert '[onclick*="retryT("]' in transfer
+    assert '#edf5ff' in transfer
+    assert '#245f9e' in transfer
 
     assert "replace(/^[^A-Za-z0-9]+/" in runtime
     assert "badge.classList.contains('badge-completed') ? 'Done'" in runtime
@@ -135,7 +143,7 @@ def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> N
 def test_final_downloads_corrections_use_targeted_cache_generations() -> None:
     overlay = read("style-v11.css")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
-    desktop = overlay.index("/ui-downloads-desktop.css?v=27")
+    desktop = overlay.index("/ui-downloads-desktop.css?v=28")
     help_page = overlay.index("/ui-help-page.css?v=22")
-    transfer = overlay.index("/ui-transfer-contract.css?v=25")
+    transfer = overlay.index("/ui-transfer-contract.css?v=28")
     assert downloads < desktop < help_page < transfer

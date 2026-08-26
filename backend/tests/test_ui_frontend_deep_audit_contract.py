@@ -70,13 +70,13 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=21$" in runtime
 
-    # Targeted invalidation stays explicit. Pre-existing approved layers keep
-    # their established cache generations; only files changed by reviewed UI
-    # corrections advance. Activity material/Downloads refinement is v27.
+    # Targeted invalidation stays explicit. Established layers keep their
+    # reviewed generations; the shared Activity material, Downloads desktop
+    # correction, and transfer action contract advance together to generation 28.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
-        "/ui-shared-contract.css": "27",
+        "/ui-shared-contract.css": "28",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
@@ -84,9 +84,9 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "26",
         "/ui-downloads-page.css": "25",
-        "/ui-downloads-desktop.css": "27",
+        "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
-        "/ui-transfer-contract.css": "25",
+        "/ui-transfer-contract.css": "28",
     }
     for path, version in expected_versions.items():
         assert f"@import url('{path}?v={version}');" in imports
@@ -100,7 +100,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert all("?v=20" in line for line in unchanged)
 
     universal_pos = overlay.index("/ui-universal-language.css?v=20")
-    shared_pos = overlay.index("/ui-shared-contract.css?v=27")
+    shared_pos = overlay.index("/ui-shared-contract.css?v=28")
     modal_pos = overlay.index("/ui-modal-contract.css?v=24")
     shell_pos = overlay.index("/ui-shell.css?v=20")
     shell_structural_pos = overlay.index("/ui-shell-structural.css?v=26")
@@ -110,9 +110,9 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
     activity_pos = overlay.index("/ui-activity-log-page.css?v=26")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
-    downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=27")
+    downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
-    transfer_pos = overlay.index("/ui-transfer-contract.css?v=25")
+    transfer_pos = overlay.index("/ui-transfer-contract.css?v=28")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
     assert dashboard_pos < dashboard_consistency_pos < activity_pos < downloads_pos

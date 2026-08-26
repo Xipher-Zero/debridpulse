@@ -62,43 +62,58 @@ body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
 
 /* Canonical operational-list bridge. Activity Log still emits legacy
    .event-item markup, but its visible material belongs to the same shared
-   language as the table/list surfaces elsewhere in the application. */
+   language as the table/list surfaces elsewhere in the application. Keep one
+   continuous themed panel underneath the rows; resetting a nearly transparent
+   gradient on every event made the material technically active but visually
+   indistinguishable from the legacy flat list. */
 body.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
   position: relative;
   z-index: 1;
   border-bottom: 1px solid var(--dp-divider);
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--dp-accent-purple) 5.5%, transparent),
-    transparent 76%);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--dp-accent-purple) 8%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 3%, transparent) 34%,
+      transparent 66%),
+    var(--dp-panel-surface) !important;
 }
 body.light.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--dp-accent-purple) 4.5%, transparent),
-    transparent 78%);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--dp-accent-purple) 6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 2.4%, transparent) 36%,
+      transparent 68%),
+    var(--dp-panel-surface) !important;
 }
 
 body.dp-v11-structural :is(.dp-operational-list, #event-list) {
   position: relative;
   z-index: 1;
-  background: transparent;
+  background:
+    radial-gradient(ellipse 92% 120% at 0% 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 8%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 38%,
+      transparent 70%),
+    var(--dp-panel-surface) !important;
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
 }
+body.light.dp-v11-structural :is(.dp-operational-list, #event-list) {
+  background:
+    radial-gradient(ellipse 92% 120% at 0% 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 2.8%, transparent) 40%,
+      transparent 72%),
+    var(--dp-panel-surface) !important;
+}
 
 body.dp-v11-structural :is(.dp-operational-row, .event-item) {
-  border-bottom: 1px solid var(--dp-table-row-border) !important;
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--dp-accent-purple) 2.2%, transparent),
-    transparent 48%);
+  border-bottom: 1px solid color-mix(in srgb, var(--dp-table-row-border) 78%, transparent) !important;
+  background: transparent !important;
   transition: background-color .12s ease, background .12s ease;
 }
-body.light.dp-v11-structural :is(.dp-operational-row, .event-item) {
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--dp-accent-purple) 1.8%, transparent),
-    transparent 48%);
-}
 body.dp-v11-structural :is(.dp-operational-row, .event-item):hover {
-  background: var(--dp-table-row-hover);
+  background: var(--dp-table-row-hover) !important;
 }
 body.dp-v11-structural :is(.dp-operational-row, .event-item):last-child {
   border-bottom: 0 !important;

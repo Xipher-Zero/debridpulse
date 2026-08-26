@@ -127,6 +127,25 @@ body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="res
   box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 16px rgba(30, 121, 78, .10) !important;
 }
 
+/* Retry is an information/recovery action. It uses the same physical action
+   geometry as Pause/Resume/Remove, with a blue semantic material rather than
+   falling back to the generic outline utility style. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]) {
+  background: linear-gradient(135deg,
+    rgba(35, 93, 157, .88) 0%,
+    rgba(28, 73, 128, .93) 52%,
+    rgba(22, 49, 86, .97) 100%) !important;
+  border-color: rgba(96, 164, 255, .48) !important;
+  color: #9cc8ff !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.06), 0 6px 17px rgba(28, 78, 137, .15) !important;
+}
+body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]) {
+  background: linear-gradient(135deg, #edf5ff 0%, #d8e9ff 52%, #c3dcfb 100%) !important;
+  border-color: #8db7e9 !important;
+  color: #245f9e !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.84), 0 5px 15px rgba(49, 103, 165, .11) !important;
+}
+
 /* ── Progress geometry ───────────────────────────────────────────────── */
 /* The track and active fill are one component and therefore one thickness.
    Seven pixels is the approved active-transfer weight; the unfilled track

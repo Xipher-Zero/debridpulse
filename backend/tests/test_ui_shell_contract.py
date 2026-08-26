@@ -46,7 +46,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-components.css?v=20",
         "/icon-system.css?v=20",
         "/ui-universal-language.css?v=20",
-        "/ui-shared-contract.css?v=27",
+        "/ui-shared-contract.css?v=28",
         "/ui-modal-contract.css?v=24",
         "/ui-shell.css?v=20",
         "/ui-shell-structural.css?v=26",
@@ -58,21 +58,22 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-statistics-page.css?v=20",
         "/ui-activity-log-page.css?v=26",
         "/ui-downloads-page.css?v=25",
-        "/ui-downloads-desktop.css?v=27",
+        "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
-        "/ui-transfer-contract.css?v=25",
+        "/ui-transfer-contract.css?v=28",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # Targeted invalidation: established approved layers retain their existing
-    # generations. Shared Activity material, Provider grouping and the desktop
-    # Downloads refinement are generation 27.
+    # Targeted invalidation: established approved layers retain v20 URLs, Help
+    # remains generation 22, prior corrections remain at their existing
+    # generations, and this material/action correction advances only the shared,
+    # Downloads-desktop, and transfer layers to generation 28.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
     expected_changed_versions = {
-        "/ui-shared-contract.css": "27",
+        "/ui-shared-contract.css": "28",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
@@ -80,9 +81,9 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "26",
         "/ui-downloads-page.css": "25",
-        "/ui-downloads-desktop.css": "27",
+        "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
-        "/ui-transfer-contract.css": "25",
+        "/ui-transfer-contract.css": "28",
     }
     for path, version in expected_changed_versions.items():
         assert version_by_path[path] == version

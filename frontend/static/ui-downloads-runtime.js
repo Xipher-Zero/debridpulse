@@ -178,14 +178,21 @@
       return;
     }
 
+    /* Do not overwrite live async feedback such as Retrying… / Pausing… while
+       the legacy handler owns the button's pending state. */
+    if (button.dataset.pending === '1' || button.getAttribute('aria-busy') === 'true') return;
+
     let label = '';
     if (onclick.includes('pauseT(') || onclick.includes('pauseTorrent(')) label = 'Pause';
     else if (onclick.includes('resumeT(') || onclick.includes('resumeTorrent(')) label = 'Resume';
     else if (onclick.includes('deleteT(') || onclick.includes('deleteTorrent(')) label = 'Remove';
-    else if (onclick.includes('retryTorrent(')) label = '↻ Retry';
+    else if (onclick.includes('retryT(') || onclick.includes('retryTorrent(')) label = 'Retry';
     else if (onclick.includes('downloadNow(')) label = '⬇ Now';
 
-    if (label && button.textContent !== label) button.textContent = label;
+    if (label) {
+      button.dataset.defaultLabel = label;
+      if (button.textContent !== label) button.textContent = label;
+    }
   }
 
   function rowTargetIsInteractive(row, target) {
