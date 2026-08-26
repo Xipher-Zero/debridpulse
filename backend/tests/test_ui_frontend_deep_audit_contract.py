@@ -72,19 +72,19 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
 
     # Targeted invalidation stays explicit. Pre-existing approved layers keep
     # their established cache generations; only files changed by reviewed UI
-    # corrections advance. Activity/shell geometry is generation 26.
+    # corrections advance. Activity material/Downloads refinement is v27.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
-        "/ui-shared-contract.css": "23",
+        "/ui-shared-contract.css": "27",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
-        "/ui-shell-provider-status-v2.css": "24",
+        "/ui-shell-provider-status-v2.css": "27",
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "26",
         "/ui-downloads-page.css": "25",
-        "/ui-downloads-desktop.css": "25",
+        "/ui-downloads-desktop.css": "27",
         "/ui-help-page.css": "22",
         "/ui-transfer-contract.css": "25",
     }
@@ -100,17 +100,17 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert all("?v=20" in line for line in unchanged)
 
     universal_pos = overlay.index("/ui-universal-language.css?v=20")
-    shared_pos = overlay.index("/ui-shared-contract.css?v=23")
+    shared_pos = overlay.index("/ui-shared-contract.css?v=27")
     modal_pos = overlay.index("/ui-modal-contract.css?v=24")
     shell_pos = overlay.index("/ui-shell.css?v=20")
     shell_structural_pos = overlay.index("/ui-shell-structural.css?v=26")
     provider_pos = overlay.index("/ui-shell-provider-status.css?v=23")
-    provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=24")
+    provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=27")
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
     activity_pos = overlay.index("/ui-activity-log-page.css?v=26")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
-    downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=25")
+    downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=27")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     transfer_pos = overlay.index("/ui-transfer-contract.css?v=25")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos

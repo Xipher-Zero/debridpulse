@@ -16,14 +16,14 @@
 @import url('/ui-components.css?v=20');
 @import url('/icon-system.css?v=20');
 @import url('/ui-universal-language.css?v=20');
-@import url('/ui-shared-contract.css?v=23');
+@import url('/ui-shared-contract.css?v=27');
 @import url('/ui-modal-contract.css?v=24');
 
 /* Shared application shell. */
 @import url('/ui-shell.css?v=20');
 @import url('/ui-shell-structural.css?v=26');
 @import url('/ui-shell-provider-status.css?v=23');
-@import url('/ui-shell-provider-status-v2.css?v=24');
+@import url('/ui-shell-provider-status-v2.css?v=27');
 
 /* Dashboard remains the visual reference/calibration page. These layers are
    intentionally page-specific where they tune Dashboard composition itself;
@@ -47,7 +47,7 @@
 @import url('/ui-statistics-page.css?v=20');
 @import url('/ui-activity-log-page.css?v=26');
 @import url('/ui-downloads-page.css?v=25');
-@import url('/ui-downloads-desktop.css?v=25');
+@import url('/ui-downloads-desktop.css?v=27');
 @import url('/ui-help-page.css?v=22');
 
 /* Final shared transfer-row semantics. This deliberately outranks the old

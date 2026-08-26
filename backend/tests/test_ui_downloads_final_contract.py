@@ -31,6 +31,7 @@ def test_downloads_rows_use_row_level_details_and_retire_drag_semantics() -> Non
 def test_downloads_rows_normalize_status_and_action_language() -> None:
     runtime = read("ui-downloads-runtime.js")
     transfer = read("ui-transfer-contract.css")
+    desktop = read("ui-downloads-desktop.css")
 
     # Downloads uses the same explicit text action language as Recent Activity.
     for fragment in (
@@ -44,6 +45,13 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
         assert fragment in runtime
     for obsolete in ("label = '⏸ Pause'", "label = '▶ Resume'", "label = '✕ Remove'"):
         assert obsolete not in runtime
+
+    # retryT is still emitted by the legacy renderer. Desktop presentation
+    # replaces only the idle glyph with the canonical text label and leaves the
+    # live Retrying… pending state untouched.
+    assert 'button[onclick*="retryT("]:not([aria-busy="true"])' in desktop
+    assert "content: 'Retry'" in desktop
+    assert "Retrying…" not in desktop
 
     assert "replace(/^[^A-Za-z0-9]+/" in runtime
     assert "badge.classList.contains('badge-completed') ? 'Done'" in runtime
@@ -101,12 +109,12 @@ def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
     assert "card-document-stack.svg" not in runtime
 
 
-def test_downloads_desktop_columns_make_room_for_rectangular_actions() -> None:
+def test_downloads_desktop_columns_make_room_for_status_and_rectangular_actions() -> None:
     css = read("ui-downloads-desktop.css")
     expected = (
         "nth-child(2) { width: 25%; }",
-        "nth-child(3) { width: 11%; }",
-        "nth-child(4) { width: 10%; }",
+        "nth-child(3) { width: 8%; }",
+        "nth-child(4) { width: 13%; }",
         "nth-child(5) { width: 25%; }",
         "nth-child(6) { width: 6%; }",
         "nth-child(7) { width: 8%; }",
@@ -124,10 +132,10 @@ def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> N
     assert "calc(100vh - var(--dp-shell-header)" not in css
 
 
-def test_final_downloads_corrections_are_targeted_generation_25() -> None:
+def test_final_downloads_corrections_use_targeted_cache_generations() -> None:
     overlay = read("style-v11.css")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
-    desktop = overlay.index("/ui-downloads-desktop.css?v=25")
+    desktop = overlay.index("/ui-downloads-desktop.css?v=27")
     help_page = overlay.index("/ui-help-page.css?v=22")
     transfer = overlay.index("/ui-transfer-contract.css?v=25")
     assert downloads < desktop < help_page < transfer

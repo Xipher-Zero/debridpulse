@@ -60,6 +60,56 @@ body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
   transform: translateY(1px) scale(.985);
 }
 
+/* Canonical operational-list bridge. Activity Log still emits legacy
+   .event-item markup, but its visible material belongs to the same shared
+   language as the table/list surfaces elsewhere in the application. */
+body.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
+  position: relative;
+  z-index: 1;
+  border-bottom: 1px solid var(--dp-divider);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--dp-accent-purple) 5.5%, transparent),
+    transparent 76%);
+}
+body.light.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--dp-accent-purple) 4.5%, transparent),
+    transparent 78%);
+}
+
+body.dp-v11-structural :is(.dp-operational-list, #event-list) {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+}
+
+body.dp-v11-structural :is(.dp-operational-row, .event-item) {
+  border-bottom: 1px solid var(--dp-table-row-border) !important;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--dp-accent-purple) 2.2%, transparent),
+    transparent 48%);
+  transition: background-color .12s ease, background .12s ease;
+}
+body.light.dp-v11-structural :is(.dp-operational-row, .event-item) {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--dp-accent-purple) 1.8%, transparent),
+    transparent 48%);
+}
+body.dp-v11-structural :is(.dp-operational-row, .event-item):hover {
+  background: var(--dp-table-row-hover);
+}
+body.dp-v11-structural :is(.dp-operational-row, .event-item):last-child {
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural .event-item .emsg {
+  color: var(--dp-text-primary);
+}
+body.dp-v11-structural .event-item :is(.ename, .etime) {
+  color: var(--dp-text-muted);
+}
+
 /* Legacy interactive surfaces that are progressively normalized by the
    accessibility runtime need the same visible keyboard focus as DP-native
    controls. Outline is used so existing selected/semantic box-shadows remain

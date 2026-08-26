@@ -12,7 +12,7 @@ body.dp-v11-structural #sidebar .sidebar-footer #premium-row:not([style*="displa
   grid-template-columns: 36px max-content !important;
   align-items: center !important;
   justify-content: center !important;
-  column-gap: 10px !important;
+  column-gap: 3px !important;
   width: max-content !important;
   max-width: 100% !important;
   margin: 0 auto 6px !important;

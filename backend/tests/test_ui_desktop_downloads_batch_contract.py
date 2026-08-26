@@ -28,6 +28,8 @@ def test_downloads_desktop_filter_contract_and_details_removal():
 def test_downloads_desktop_column_rebalance_expands_progress():
     css = read("ui-downloads-desktop.css")
     assert "nth-child(2) { width: 25%; }" in css
+    assert "nth-child(3) { width: 8%; }" in css
+    assert "nth-child(4) { width: 13%; }" in css
     assert "nth-child(5) { width: 25%; }" in css
     assert "nth-child(7) { width: 8%; }" in css
     assert "nth-child(8) { width: 190px; }" in css
@@ -38,6 +40,7 @@ def test_provider_subscription_is_one_centered_crown_and_copy_unit():
     css = read("ui-shell-provider-status-v2.css")
     assert "grid-template-columns: 36px max-content" in css
     assert "justify-content: center !important" in css
+    assert "column-gap: 3px !important" in css
     assert "width: max-content !important" in css
     assert "transform: none !important" in css
     assert ".dp-provider-premium-days" in css
@@ -60,9 +63,9 @@ def test_new_contract_layers_live_in_correct_cascade_sections():
     modal = style.index("ui-modal-contract.css?v=24")
     shell = style.index("ui-shell.css?v=20")
     provider_base = style.index("ui-shell-provider-status.css?v=23")
-    provider_v2 = style.index("ui-shell-provider-status-v2.css?v=24")
+    provider_v2 = style.index("ui-shell-provider-status-v2.css?v=27")
     downloads_base = style.index("ui-downloads-page.css?v=25")
-    downloads_desktop = style.index("ui-downloads-desktop.css?v=25")
+    downloads_desktop = style.index("ui-downloads-desktop.css?v=27")
     transfer = style.index("ui-transfer-contract.css?v=25")
 
     assert modal < shell
