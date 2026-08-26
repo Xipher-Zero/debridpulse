@@ -36,20 +36,31 @@ jobs:
           cd backend
           python -m pip install -r requirements-dev.txt
 
-      - name: Prepare and apply migration on locked base
+      - name: Extract helper scripts
+        run: |
+          git show "origin/$HELPER_BRANCH:.github/scripts/apply_lucide_universal.py" > /tmp/apply_lucide_universal.py
+          git show "origin/$HELPER_BRANCH:.github/scripts/prepare_lucide_helper.py" > /tmp/prepare_lucide_helper.py
+
+      - name: Compile helper preparer
+        run: python -m py_compile /tmp/prepare_lucide_helper.py
+
+      - name: Patch migration helper
+        run: python /tmp/prepare_lucide_helper.py /tmp/apply_lucide_universal.py
+
+      - name: Compile patched migration helper
+        run: python -m py_compile /tmp/apply_lucide_universal.py
+
+      - name: Lock and checkout target base
         shell: bash
         run: |
           set -euo pipefail
-          git show "origin/$HELPER_BRANCH:.github/scripts/apply_lucide_universal.py" > /tmp/apply_lucide_universal.py
-          git show "origin/$HELPER_BRANCH:.github/scripts/prepare_lucide_helper.py" > /tmp/prepare_lucide_helper.py
-          python -m py_compile /tmp/prepare_lucide_helper.py
-          python /tmp/prepare_lucide_helper.py /tmp/apply_lucide_universal.py
-          python -m py_compile /tmp/apply_lucide_universal.py
           git fetch origin "$TARGET_BRANCH"
           actual_base="$(git rev-parse "origin/$TARGET_BRANCH")"
           test "$actual_base" = "$EXPECTED_BASE"
           git checkout --detach "$EXPECTED_BASE"
-          python /tmp/apply_lucide_universal.py
+
+      - name: Execute migration on locked base
+        run: python /tmp/apply_lucide_universal.py
 
       - name: Verify backend version remains 1.0.10
         run: test "$(tr -d '\r\n' < VERSION)" = "1.0.10"
