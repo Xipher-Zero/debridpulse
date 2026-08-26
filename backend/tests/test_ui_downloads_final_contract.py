@@ -47,11 +47,11 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
         assert obsolete not in runtime
 
     # retryT is still emitted by the legacy renderer. Desktop presentation
-    # replaces only the idle glyph with the canonical text label and leaves the
-    # live Retrying… pending state untouched.
+    # replaces only the idle glyph with the canonical text label; the selector
+    # explicitly excludes the aria-busy pending state so its live label survives.
     assert 'button[onclick*="retryT("]:not([aria-busy="true"])' in desktop
     assert "content: 'Retry'" in desktop
-    assert "Retrying…" not in desktop
+    assert ':not([aria-busy="true"])::after' in desktop
 
     assert "replace(/^[^A-Za-z0-9]+/" in runtime
     assert "badge.classList.contains('badge-completed') ? 'Done'" in runtime
