@@ -23,6 +23,63 @@ replace_exact(
     'ROOT = Path.cwd().resolve()\n',
 )
 
+# Activity Refresh has both the older local icon rule and the later exact-parity
+# rule. Migrate both occurrences in one guarded call, then remove the redundant
+# later combined-selector migration that would otherwise see an already-updated
+# source block.
+replace_exact(
+    'replace_exact(\n'
+    '    controls,\n'
+    '    "body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {\\n",\n'
+    '    "body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,\\n"\n'
+    '    "body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {\\n",\n'
+    ')\n',
+    'replace_exact(\n'
+    '    controls,\n'
+    '    "body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {\\n",\n'
+    '    "body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,\\n"\n'
+    '    "body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {\\n",\n'
+    '    expected=2,\n'
+    ')\n',
+)
+replace_exact(
+    'replace_exact(\n'
+    '    controls,\n'
+    '    "body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {\\n",\n'
+    '    "body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,\\n"\n'
+    '    "body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {\\n",\n'
+    ')\n',
+    'replace_exact(\n'
+    '    controls,\n'
+    '    "body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {\\n",\n'
+    '    "body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,\\n"\n'
+    '    "body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {\\n",\n'
+    '    expected=2,\n'
+    ')\n',
+)
+replace_exact(
+    'replace_exact(\n'
+    '    controls,\n'
+    '    "body.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,\\n"\n'
+    '    "body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {\\n",\n'
+    '    "body.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,\\n"\n'
+    '    "body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,\\n"\n'
+    '    "body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {\\n",\n'
+    ')\n',
+    '',
+)
+replace_exact(
+    'replace_exact(\n'
+    '    controls,\n'
+    '    "body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,\\n"\n'
+    '    "body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {\\n",\n'
+    '    "body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,\\n"\n'
+    '    "body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,\\n"\n'
+    '    "body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {\\n",\n'
+    ')\n',
+    '',
+)
+
 # A changed style-v11 import table needs a new outer style-v11 generation. The
 # ui-runtime fallback embeds that URL, so it must advance too; operator-title is
 # already being advanced because it embeds both presentation-runtime URLs.
