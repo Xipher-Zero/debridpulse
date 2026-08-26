@@ -16,13 +16,21 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     activity = read("ui-activity-log-page.css")
     tokens = read("ui-language-tokens.css")
     design = read("design-tokens.css")
+    universal = read("ui-universal-language.css")
+    downloads = read("ui-downloads-page.css")
 
     required = (
         "#view-events > .card > .card-header + div",
         "background: var(--dp-table-head-surface);",
         "border-bottom: 1px solid var(--dp-table-head-border);",
+        "#view-events > .card",
+        "background-color: var(--dp-bg-app-alt);",
+        "background-size: 100% 320px;",
+        "background-repeat: no-repeat;",
+        "body.light.dp-v11-structural #view-events > .card",
+        "background-color: var(--dp-surface-2);",
         "#view-events #event-list",
-        "background: var(--dp-surface-1);",
+        "background: transparent;",
         "#event-list > .event-item",
         "color-mix(in srgb, var(--dp-table-row-border) 78%, transparent)",
         "var(--dp-table-row-hover)",
@@ -38,11 +46,15 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     assert "linear-gradient(180deg, #1d1930 0%, #171528 100%)" in tokens
     assert "linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%)" in tokens
 
-    # The event body terminates the tall card gradient using the existing solid
-    # neutral theme surface. Light mode is body-scoped, so resolve that token on
-    # the Activity descendant rather than through a root-scoped derived alias.
-    assert "--dp-surface-1: #0b1224;" in design
-    assert "--dp-surface-1: #ffffff;" in design
+    # Normal cards still own the semantic panel gradient. Activity must preserve
+    # that material rather than replacing it with a page-local gradient or solid
+    # event surface; it only constrains the image depth because the card is a
+    # full-height workspace.
+    assert "background: var(--dp-panel-surface);" in universal
+    assert "--dp-panel-surface:" in tokens
+    assert "--dp-bg-app-alt: #080d1c;" in design
+    assert "--dp-surface-2: #f8faff;" in design
+    assert "background: transparent;" in downloads
 
     # The old cross-cutting Activity bridge was the ownership error. Shared CSS
     # must no longer target Activity IDs or the globally reused .event-item.
@@ -56,9 +68,11 @@ def test_activity_composition_uses_existing_shared_material_tokens() -> None:
     ):
         assert forbidden not in shared
 
-    # Do not reintroduce any of the failed surface strategies.
+    # Do not reintroduce any of the disproven surface strategies.
     assert "--dp-operational-surface" not in activity
     assert "--dp-operational-toolbar-surface" not in activity
+    assert "background: var(--dp-surface-1)" not in activity
+    assert "linear-gradient(" not in activity
     assert "radial-gradient" not in activity
 
 

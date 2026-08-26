@@ -13,6 +13,21 @@ body.dp-v11-structural #view-events > .card {
   min-height: 0;
   margin-bottom: 0 !important;
   overflow: hidden;
+
+  /* The universal card material is a percentage-based gradient designed for
+     normal card depth. Activity is a full-height workspace, so allowing that
+     image to scale across the entire card turns the subtle material into a
+     viewport-sized color field. Preserve the universal gradient itself, but
+     bound its paint depth and continue with the matching neutral tail. */
+  background-color: var(--dp-bg-app-alt);
+  background-size: 100% 320px;
+  background-repeat: no-repeat;
+}
+
+/* The light panel gradient terminates near surface-2; use that existing shared
+   surface as the continuation rather than returning to flat white. */
+body.light.dp-v11-structural #view-events > .card {
+  background-color: var(--dp-surface-2);
 }
 
 body.dp-v11-structural #view-events > .card > .card-header {
@@ -70,10 +85,9 @@ body.dp-v11-structural #view-events > .card > .card-header + div {
   background: var(--dp-table-head-surface);
 }
 
-/* Activity is a tall bounded workspace, so its event body must not expose the
-   outer card's height-relative gradient. Terminate that gradient with the
-   existing solid neutral theme surface; individual rows remain transparent
-   over this body. Resolve the theme token here on the body-scoped descendant. */
+/* Match the accepted Downloads/table construction: the data viewport itself is
+   transparent and the card owns the material beneath it. Activity differs only
+   in constraining the full-height card's gradient depth above. */
 body.dp-v11-structural #view-events #event-list {
   position: relative;
   z-index: 1;
@@ -83,7 +97,7 @@ body.dp-v11-structural #view-events #event-list {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  background: var(--dp-surface-1);
+  background: transparent;
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
 }
