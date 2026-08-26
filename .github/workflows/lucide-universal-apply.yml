@@ -42,6 +42,9 @@ jobs:
           set -euo pipefail
 
           git show "origin/$HELPER_BRANCH:.github/scripts/apply_lucide_universal.py" > /tmp/apply_lucide_universal.py
+          git show "origin/$HELPER_BRANCH:.github/scripts/prepare_lucide_helper.py" > /tmp/prepare_lucide_helper.py
+          python -m py_compile /tmp/prepare_lucide_helper.py
+          python /tmp/prepare_lucide_helper.py /tmp/apply_lucide_universal.py
           python -m py_compile /tmp/apply_lucide_universal.py
 
           git fetch origin "$TARGET_BRANCH"
