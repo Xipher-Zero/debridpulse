@@ -39,16 +39,42 @@ replace_once(
 replace_once(
     "# New contract tests focus on the architectural invariant rather than snapshots.\ntest = '''",
     """# Keep the startup-order regression guard focused on behavior rather than cache-bust versions.
-startup_test = TESTS / \"test_dashboard_startup_surface.py\"
+startup_test = TESTS / "test_dashboard_startup_surface.py"
 replace_exact(
     startup_test,
-    \"    assert index.index('<script src=\\\"/app.js?v=15\\\" defer></script>') < index.index(\\n        '<script src=\\\"/operator-title.js?v=23\\\" defer></script>'\\n    )\\n\",
-    \"    assert index.index('src=\\\"/app.js?') < index.index(\\n        'src=\\\"/operator-title.js?'\\n    )\\n\",
+    "    assert index.index('<script src=\\\"/app.js?v=15\\\" defer></script>') < index.index(\\n        '<script src=\\\"/operator-title.js?v=23\\\" defer></script>'\\n    )\\n",
+    "    assert index.index('src=\\\"/app.js?') < index.index(\\n        'src=\\\"/operator-title.js?'\\n    )\\n",
+)
+
+# Existing unified-transfer tests must assert the new Lucide vocabulary, not retired emoji.
+direct_links_test = TESTS / "test_direct_links.py"
+replace_exact(
+    direct_links_test,
+    '        unified_heading = "⬇️ Add Links, Magnets, or Torrent File"\\n',
+    '        unified_heading = "Add Links, Magnets, or Torrent File"\\n',
+)
+replace_exact(
+    direct_links_test,
+    '        self.assertIn("🔗 Direct link", js)\\n',
+    '        self.assertIn("window.dpLucideSvg(\'link\',\'dp-icon--xs\')", js)\\n',
+)
+replace_exact(
+    direct_links_test,
+    '''        self.assertIn("missing:'❌ Missing file'", js)
+        self.assertIn("downloading_with_errors:'⬇ Downloading'", js)
+        self.assertIn("completed_with_errors:'⚠ Completed with errors'", js)
+''',
+    '''        self.assertIn("window.dpLucideStatusDefinition", js)
+        self.assertIn("window.dpLucideStatusIcon", js)
+        self.assertNotIn("missing:'❌ Missing file'", js)
+        self.assertNotIn("downloading_with_errors:'⬇ Downloading'", js)
+        self.assertNotIn("completed_with_errors:'⚠ Completed with errors'", js)
+''',
 )
 
 # New contract tests focus on the architectural invariant rather than snapshots.
 test = '''""",
-    "dashboard startup ordering test",
+    "existing UI regression contracts",
 )
 
 path.write_text(text, encoding="utf-8")
