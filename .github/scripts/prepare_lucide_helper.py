@@ -83,6 +83,11 @@ replace_exact(
         self.assertIn("/ui-lucide-runtime.js", html)
 ''',
 )
+replace_exact(
+    direct_links_test,
+    '        self.assertIn("font-variant-emoji:text", css)\\n',
+    '        self.assertNotIn("font-variant-emoji:text", css)\\n',
+)
 
 # New contract tests focus on the architectural invariant rather than snapshots.
 test = '''""",
