@@ -107,6 +107,21 @@ replace_exact(
     "window.dpLucideStatusDefinition",
 )
 
+# Activity Log keeps its exact cascade-generation contract and now includes the final Lucide layer.
+activity_test = TESTS / "test_ui_activity_log_page_contract.py"
+replace_exact(
+    activity_test,
+    '''    transfer = overlay.index("/ui-transfer-contract.css?v=31")
+
+    assert shell < dashboard < controls < stats < activity < downloads < transfer
+''',
+    '''    transfer = overlay.index("/ui-transfer-contract.css?v=32")
+    lucide = overlay.index("/ui-lucide-iconography.css?v=1")
+
+    assert shell < dashboard < controls < stats < activity < downloads < transfer < lucide
+''',
+)
+
 # New contract tests focus on the architectural invariant rather than snapshots.
 test = '''""",
     "existing UI regression contracts",
