@@ -1,13 +1,13 @@
 /* DebridPulse v1.0.11 control-integration polish.
-   Presentation-only refinement. Keep the application version and the existing
-   v=18 cache generation unchanged. */
+   Presentation-only refinement. Keep the application version unchanged. */
 
-/* ── Quick Add header utilities ───────────────────────────────────────── */
-/* Import and Recover All belong to the card header, not on top of it. Give
-   them a comfortable hit area while removing the independent raised-card
-   material that made the controls feel detached from Quick Add. */
+/* ── Quick Add header utilities / shared recovery utility ────────────── */
+/* Import and Recover All belong to the card header, not on top of it. Activity
+   Refresh deliberately consumes the exact Recover All control recipe so the
+   same recovery/refresh semantic reads identically across pages. */
 body.dp-v11-structural #view-dashboard #btn-import-existing,
-body.dp-v11-structural #view-dashboard #btn-recover-all {
+body.dp-v11-structural #view-dashboard #btn-recover-all,
+body.dp-v11-structural #view-events .dp-activity-refresh {
   height: 36px !important;
   min-height: 36px !important;
   padding: 0 14px !important;
@@ -38,9 +38,10 @@ body.light.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-ic
   color: #776d84 !important;
 }
 
-/* Recover is the same control family with a violet recovery/application
-   accent. Amber remains reserved for pause/caution semantics. */
-body.dp-v11-structural #view-dashboard #btn-recover-all {
+/* Recover / Refresh share the same violet recovery/application accent. Amber
+   remains reserved for pause/caution semantics. */
+body.dp-v11-structural #view-dashboard #btn-recover-all,
+body.dp-v11-structural #view-events .dp-activity-refresh {
   background: rgba(157,91,213,.028) !important;
   border-color: rgba(183,116,228,.50) !important;
   color: #dcbcf2 !important;
@@ -52,7 +53,15 @@ body.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
     brightness(1.08)
     drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+  width: 18px !important;
+  height: 18px !important;
+  stroke-width: 2 !important;
+  color: inherit !important;
+  filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-recover-all,
+body.light.dp-v11-structural #view-events .dp-activity-refresh {
   background: rgba(151,87,203,.018) !important;
   border-color: #c5a3dc !important;
   color: #714790 !important;
@@ -64,6 +73,9 @@ body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
     brightness(.91)
     drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }
+body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+  filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
+}
 
 /* Hover adds only a trace of local tint. These controls should never acquire
    the lift or heavy fill used by a primary CTA. */
@@ -73,7 +85,8 @@ body.dp-v11-structural #view-dashboard #btn-import-existing:hover {
   filter: none !important;
   transform: none !important;
 }
-body.dp-v11-structural #view-dashboard #btn-recover-all:hover {
+body.dp-v11-structural #view-dashboard #btn-recover-all:hover,
+body.dp-v11-structural #view-events .dp-activity-refresh:hover {
   background: rgba(157,91,213,.055) !important;
   border-color: rgba(190,125,234,.68) !important;
   filter: none !important;
@@ -83,32 +96,32 @@ body.light.dp-v11-structural #view-dashboard #btn-import-existing:hover {
   background: rgba(246,243,250,.70) !important;
   border-color: #c5bfd2 !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-recover-all:hover {
+body.light.dp-v11-structural #view-dashboard #btn-recover-all:hover,
+body.light.dp-v11-structural #view-events .dp-activity-refresh:hover {
   background: rgba(154,91,207,.055) !important;
   border-color: #b98dd5 !important;
 }
 
 /* ── Light-theme Pause All integration ───────────────────────────────── */
-/* Pause remains the strongest secondary operational action, but the light
-   theme no longer renders it as a separate gold slab floating beside the
-   status controls. Keep the amber semantic in the outline/text and use only a
-   pale translucent warm wash behind it. */
+/* Pause remains a caution action, but should read like the other translucent
+   secondary controls rather than an opaque gold slab. The row-level pause
+   contract uses these exact light-theme values as well. */
 body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn {
   background:
-    linear-gradient(180deg, rgba(255,251,236,.82) 0%, rgba(250,234,186,.42) 100%) !important;
-  border-color: rgba(207,158,55,.72) !important;
+    linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%) !important;
+  border-color: rgba(207,158,55,.62) !important;
   color: #76560d !important;
   text-shadow: none !important;
   box-shadow:
-    inset 0 1px rgba(255,255,255,.82),
-    0 3px 8px -6px rgba(137,99,24,.28) !important;
+    inset 0 1px rgba(255,255,255,.72),
+    0 3px 8px -6px rgba(137,99,24,.18) !important;
 }
 body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn:hover {
   background:
-    linear-gradient(180deg, rgba(255,249,226,.92) 0%, rgba(249,229,168,.52) 100%) !important;
-  border-color: rgba(196,142,40,.82) !important;
+    linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%) !important;
+  border-color: rgba(196,142,40,.72) !important;
   color: #6d4e09 !important;
   box-shadow:
-    inset 0 1px rgba(255,255,255,.88),
-    0 3px 8px -6px rgba(137,99,24,.32) !important;
+    inset 0 1px rgba(255,255,255,.80),
+    0 3px 8px -6px rgba(137,99,24,.22) !important;
 }

@@ -54,19 +54,20 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shell-provider-status-v2.css?v=27",
         "/ui-dashboard.css?v=20",
         "/ui-dashboard-structural.css?v=20",
+        "/ui-dashboard-control-polish.css?v=21",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=20",
         "/ui-activity-log-page.css?v=28",
         "/ui-downloads-page.css?v=25",
         "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
-        "/ui-transfer-contract.css?v=29",
+        "/ui-transfer-contract.css?v=30",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
 
-    # Targeted invalidation: the Activity rebuild advances only its page layer;
-    # established approved layers retain their reviewed generations.
+    # Targeted invalidation: only layers changed by reviewed work advance their
+    # cache generations; established approved layers retain their generations.
     generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
     assert generations
     version_by_path = {path: version for path, version in generations}
@@ -77,12 +78,13 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "27",
+        "/ui-dashboard-control-polish.css": "21",
         "/ui-dashboard-consistency.css": "23",
         "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
-        "/ui-transfer-contract.css": "29",
+        "/ui-transfer-contract.css": "30",
     }
     for path, version in expected_changed_versions.items():
         assert version_by_path[path] == version

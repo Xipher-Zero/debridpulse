@@ -72,6 +72,34 @@ def test_activity_rebuild_uses_downloads_search_band_recipe() -> None:
         assert fragment in downloads
 
 
+def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:
+    controls = read("ui-dashboard-control-polish.css")
+
+    assert "#view-dashboard #btn-recover-all," in controls
+    assert "#view-events .dp-activity-refresh" in controls
+    assert "height: 36px !important;" in controls
+    assert "border-radius: 9px !important;" in controls
+    assert "background: rgba(151,87,203,.018) !important;" in controls
+    assert "border-color: #c5a3dc !important;" in controls
+    assert "color: #714790 !important;" in controls
+    assert ".dp-activity-refresh:hover" in controls
+
+
+def test_transfer_row_actions_have_equal_footprint_and_shared_pause_material() -> None:
+    transfer = read("ui-transfer-contract.css")
+    controls = read("ui-dashboard-control-polish.css")
+
+    assert "width: 72px !important;" in transfer
+    assert "min-width: 72px !important;" in transfer
+    assert "height: 36px !important;" in transfer
+    shared_pause = "linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%)"
+    shared_pause_hover = "linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%)"
+    assert shared_pause in transfer
+    assert shared_pause in controls
+    assert shared_pause_hover in transfer
+    assert shared_pause_hover in controls
+
+
 def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
     shell = read("ui-shell-structural.css")
     activity = read("ui-activity-log-page.css")
@@ -88,9 +116,10 @@ def test_activity_log_rebuild_layer_is_generation_28() -> None:
 
     shell = overlay.index("/ui-shell-structural.css?v=26")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
+    controls = overlay.index("/ui-dashboard-control-polish.css?v=21")
     stats = overlay.index("/ui-statistics-page.css?v=20")
     activity = overlay.index("/ui-activity-log-page.css?v=28")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
-    transfer = overlay.index("/ui-transfer-contract.css?v=29")
+    transfer = overlay.index("/ui-transfer-contract.css?v=30")
 
-    assert shell < dashboard < stats < activity < downloads < transfer
+    assert shell < dashboard < controls < stats < activity < downloads < transfer

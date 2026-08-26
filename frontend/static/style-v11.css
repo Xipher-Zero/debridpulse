@@ -39,7 +39,7 @@
 @import url('/ui-dashboard-batch5.css?v=20');
 @import url('/ui-dashboard-polish.css?v=20');
 @import url('/ui-dashboard-polish-final.css?v=20');
-@import url('/ui-dashboard-control-polish.css?v=20');
+@import url('/ui-dashboard-control-polish.css?v=21');
 @import url('/ui-dashboard-progress-weight.css?v=20');
 @import url('/ui-dashboard-consistency.css?v=23');
 
@@ -52,4 +52,4 @@
 
 /* Final shared transfer-row semantics. This deliberately outranks the old
    Dashboard calibration experiments and is not a page-specific exception. */
-@import url('/ui-transfer-contract.css?v=29');
+@import url('/ui-transfer-contract.css?v=30');
