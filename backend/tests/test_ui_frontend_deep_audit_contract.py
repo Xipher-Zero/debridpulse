@@ -71,12 +71,12 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "style-v11\\.css\\?v=21$" in runtime
 
     # Targeted invalidation stays explicit. Established layers keep their
-    # reviewed generations; Activity material inheritance and the translucent
-    # Retry action advance the shared and transfer contracts to generation 29.
+    # reviewed generations; the Activity operational-surface correction moves
+    # only the shared contract to generation 30.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
-        "/ui-shared-contract.css": "29",
+        "/ui-shared-contract.css": "30",
         "/ui-modal-contract.css": "24",
         "/ui-shell-structural.css": "26",
         "/ui-shell-provider-status.css": "23",
@@ -100,7 +100,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert all("?v=20" in line for line in unchanged)
 
     universal_pos = overlay.index("/ui-universal-language.css?v=20")
-    shared_pos = overlay.index("/ui-shared-contract.css?v=29")
+    shared_pos = overlay.index("/ui-shared-contract.css?v=30")
     modal_pos = overlay.index("/ui-modal-contract.css?v=24")
     shell_pos = overlay.index("/ui-shell.css?v=20")
     shell_structural_pos = overlay.index("/ui-shell-structural.css?v=26")
