@@ -49,7 +49,8 @@
   function utilitySvg(kind) {
     const paths = {
       upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
-      arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>'
+      arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+      refresh: '<path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/>'
     };
     return '<svg class="dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[kind] || '') + '</svg>';
   }
@@ -371,6 +372,77 @@
     normalizeDashboardBadges();
   }
 
+  function normalizeActivityRows() {
+    const list = document.getElementById('event-list');
+    if (!list) return;
+    Array.from(list.children).forEach(function (row) {
+      if (!row.classList || (!row.classList.contains('event-item') && !row.classList.contains('dp-activity-row'))) return;
+      row.classList.add('dp-activity-row');
+      row.classList.remove('event-item');
+
+      const level = row.querySelector('.elevel');
+      if (level) level.classList.add('dp-activity-level');
+      const message = row.querySelector('.emsg');
+      if (message) message.classList.add('dp-activity-message');
+      const transfer = row.querySelector('.ename');
+      if (transfer) transfer.classList.add('dp-activity-transfer');
+      const time = row.querySelector('.etime');
+      if (time) time.classList.add('dp-activity-time');
+
+      if (level && level.nextElementSibling && level.nextElementSibling !== time) {
+        level.nextElementSibling.classList.add('dp-activity-copy');
+      }
+    });
+  }
+
+  function decorateActivityLog() {
+    const card = document.querySelector('#view-events > .card');
+    if (!card) return;
+    card.classList.add('dp-activity-card');
+
+    const title = card.querySelector('.card-title');
+    if (title && title.dataset.dpStructuralTitle !== '1') {
+      title.textContent = '';
+      title.classList.add('dp-activity-card-title');
+      title.appendChild(dpImg('document.svg', 'dp-activity-title-icon'));
+      const copy = document.createElement('span');
+      copy.className = 'dp-activity-heading-copy';
+      copy.innerHTML = '<span class="dp-activity-heading">Activity Log</span><span class="dp-activity-subtitle">Recent transfer activity, decisions, warnings, and errors.</span>';
+      title.appendChild(copy);
+      title.dataset.dpStructuralTitle = '1';
+    }
+
+    const refresh = card.querySelector('.card-header button[onclick*="loadEvents"]');
+    if (refresh) {
+      refresh.classList.add('dp-activity-refresh');
+      refresh.setAttribute('aria-label', 'Refresh activity log');
+      refresh.title = 'Refresh activity log';
+      normalizeUtilityButton(refresh, 'refresh');
+    }
+
+    const search = document.getElementById('ev-search');
+    const searchRow = search && search.closest('.ev-search-row');
+    const searchBand = searchRow && searchRow.parentElement;
+    if (searchRow) searchRow.classList.add('dp-activity-search-row');
+    if (searchBand && searchBand.parentElement === card) {
+      searchBand.classList.add('dp-activity-search-band');
+      searchBand.removeAttribute('style');
+    }
+
+    const levelFilter = document.getElementById('ev-level');
+    if (levelFilter) levelFilter.removeAttribute('style');
+
+    const list = document.getElementById('event-list');
+    if (list) {
+      list.classList.add('dp-activity-list');
+      if (!list.dataset.dpActivityObserved) {
+        list.dataset.dpActivityObserved = '1';
+        new MutationObserver(normalizeActivityRows).observe(list, {childList: true, subtree: true});
+      }
+    }
+    normalizeActivityRows();
+  }
+
   function makeKpiIcon(filename, tone) {
     const frame = document.createElement('span');
     frame.className = 'dp-icon-frame dp-icon-frame--' + tone + ' dp-kpi-icon';
@@ -417,6 +489,7 @@
     installMetricHistoryHook();
     decorateQuickAdd();
     decorateRecentActivity();
+    decorateActivityLog();
     moveDashboardKpisToStatistics();
   }
 

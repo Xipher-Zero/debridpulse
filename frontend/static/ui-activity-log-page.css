@@ -1,78 +1,111 @@
 /* DebridPulse v1.0.11 Activity Log page contract.
  *
- * Activity Log owns its page geometry, header composition, and the composition
- * of its unique search/event-stream interior. Reusable card material, palette
- * tokens, row semantics, and the desktop lower shell datum remain shared
- * concerns; this layer consumes those shared primitives rather than inventing
- * page-local colors.
+ * Activity Log is a full-height operational page built from the same proven
+ * composition used by Downloads: shared card -> header -> search/filter band
+ * -> bounded transparent data viewport -> page-specific rows. The page owns
+ * only its content geometry and event-row semantics; reusable card material,
+ * controls, palette and shell depth remain shared concerns.
  */
 
-body.dp-v11-structural #view-events > .card {
+body.dp-v11-structural #view-events > .dp-activity-card {
   display: flex;
   flex-direction: column;
   min-height: 0;
   margin-bottom: 0 !important;
-  overflow: hidden;
 }
 
-body.dp-v11-structural #view-events > .card > .card-header {
+/* ── Header ───────────────────────────────────────────────────────────── */
+body.dp-v11-structural #view-events > .dp-activity-card > .card-header {
   flex: 0 0 auto;
-  min-height: 58px;
+  min-height: 70px;
 }
 
-/* The accessibility presentation layer already normalizes Event Log to
-   Activity Log. Decorate that existing semantic title rather than duplicating
-   or replacing application markup. */
-body.dp-v11-structural #view-events > .card .card-title {
-  position: relative;
+body.dp-v11-structural #view-events .dp-activity-card-title {
   display: flex;
-  min-height: 38px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-events .dp-activity-title-icon {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  object-fit: contain;
+}
+
+body.dp-v11-structural #view-events .dp-activity-heading-copy {
+  display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 3px;
-  padding-left: 50px;
+  min-width: 0;
 }
 
-body.dp-v11-structural #view-events > .card .card-title::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 38px;
-  height: 38px;
-  transform: translateY(-50%);
-  background: url('/icons/dp/document.svg') center / contain no-repeat;
-  pointer-events: none;
+body.dp-v11-structural #view-events .dp-activity-heading {
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
 }
 
-body.dp-v11-structural #view-events > .card .card-title::after {
-  content: 'Recent transfer activity, decisions, warnings, and errors.';
-  display: block;
-  color: #9ea4c2;
-  font-size: 11.5px;
+body.dp-v11-structural #view-events .dp-activity-subtitle {
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
   line-height: 1.25;
   font-weight: 400;
 }
 
-body.light.dp-v11-structural #view-events > .card .card-title::after {
-  color: #777e98;
+body.dp-v11-structural #view-events .dp-activity-refresh {
+  margin-left: auto;
 }
 
-/* Activity has no table heading in its legacy markup. Its search/filter chrome
-   is therefore the page's internal structural band: use the same shared
-   lavender/slate table-head material already approved on Recent Activity,
-   rather than painting the event stream itself. */
-body.dp-v11-structural #view-events > .card > .card-header + div {
+body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Search / filter band ─────────────────────────────────────────────── */
+/* Mirror the accepted Downloads search-band composition around the shared
+   field controls. This is structural page chrome, not the list-body material. */
+body.dp-v11-structural #view-events .dp-activity-search-band {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--dp-table-head-border);
-  background: var(--dp-table-head-surface);
+  padding: 13px 16px 14px !important;
+  border-bottom: 1px solid var(--dp-divider);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--dp-accent-purple) 5.5%, transparent),
+    transparent 76%);
 }
 
-/* Match the accepted Downloads/table construction: the data viewport is
-   transparent and the card owns the material beneath it. */
-body.dp-v11-structural #view-events #event-list {
+body.light.dp-v11-structural #view-events .dp-activity-search-band {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--dp-accent-purple) 4.5%, transparent),
+    transparent 78%);
+}
+
+body.dp-v11-structural #view-events .dp-activity-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.dp-v11-structural #view-events #ev-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-events #ev-level {
+  width: 160px;
+  max-width: 160px;
+  flex: 0 0 160px;
+}
+
+/* ── Event viewport ───────────────────────────────────────────────────── */
+body.dp-v11-structural #view-events .dp-activity-list {
   position: relative;
   z-index: 1;
   flex: 1 1 auto;
@@ -86,32 +119,69 @@ body.dp-v11-structural #view-events #event-list {
   font-family: var(--dp-font-sans);
 }
 
-/* Scope the operational-row bridge to the Activity stream. app.js also emits
-   .event-item inside transfer Details; those modal rows are not Activity rows
-   and must not inherit this page's composition. */
-body.dp-v11-structural #view-events #event-list > .event-item {
-  border-bottom: 1px solid color-mix(in srgb, var(--dp-table-row-border) 78%, transparent);
+/* Main-page events receive Activity-specific classes at the presentation
+   boundary. Transfer Details keeps the legacy .event-item implementation and
+   is therefore insulated from this page contract. */
+body.dp-v11-structural #view-events .dp-activity-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 12px;
+  min-width: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dp-table-row-border);
   background: transparent;
-  transition: background-color .12s ease, background .12s ease;
-}
-body.dp-v11-structural #view-events #event-list > .event-item:hover {
-  background: var(--dp-table-row-hover);
-}
-body.dp-v11-structural #view-events #event-list > .event-item:last-child {
-  border-bottom: 0;
-}
-body.dp-v11-structural #view-events #event-list > .event-item .emsg {
-  color: var(--dp-text-primary);
-}
-body.dp-v11-structural #view-events #event-list > .event-item :is(.ename, .etime) {
-  color: var(--dp-text-muted);
+  font-size: 12px;
+  transition: background-color .12s ease;
 }
 
-/* Desktop pages share the shell content box. Do not derive another viewport
-   height here: the content flex item already terminates at the shell's 24px
-   lower gutter, matching Provider Status. Activity's full-height card is the
-   one composition that consumes the shared tall-panel material so the normal
-   card gradient does not stretch across the entire workspace. */
+body.dp-v11-structural #view-events .dp-activity-row:hover {
+  background: var(--dp-table-row-hover);
+}
+
+body.dp-v11-structural #view-events .dp-activity-row:last-child {
+  border-bottom: 0;
+}
+
+body.dp-v11-structural #view-events .dp-activity-level {
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  flex: 0 0 8px;
+}
+
+body.dp-v11-structural #view-events .dp-activity-copy {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-events .dp-activity-message {
+  color: var(--dp-text-primary);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+body.dp-v11-structural #view-events .dp-activity-transfer {
+  margin-top: 2px;
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+body.dp-v11-structural #view-events .dp-activity-time {
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 10px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-events .dp-activity-list > .empty {
+  background: transparent;
+}
+
+/* ── Full-height desktop workspace ───────────────────────────────────── */
 @media (min-width: 901px) {
   body.dp-v11-structural #content:has(#view-events.active) {
     overflow-y: hidden;
@@ -120,15 +190,24 @@ body.dp-v11-structural #view-events #event-list > .event-item :is(.ename, .etime
   body.dp-v11-structural #view-events.active {
     display: flex !important;
     flex-direction: column;
-    height: 100%;
+    height: 100% !important;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
   }
 
-  body.dp-v11-structural #view-events.active > .card {
+  body.dp-v11-structural #view-events.active > .dp-activity-card {
     flex: 1 1 auto;
-    height: 100%;
     min-height: 0;
-    background: var(--dp-panel-surface-tall);
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-events.active {
+    height: auto;
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-events .dp-activity-list {
+    max-height: 62vh;
   }
 }

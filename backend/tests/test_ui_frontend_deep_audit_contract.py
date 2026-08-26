@@ -70,9 +70,8 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=21$" in runtime
 
-    # Targeted invalidation stays explicit. The tall-panel correction changes
-    # the shared material-token layer and Activity page layer only; established
-    # approved layers retain their reviewed generations.
+    # Targeted invalidation stays explicit. The Activity rebuild changes only
+    # its page layer; established approved layers retain reviewed generations.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
@@ -83,7 +82,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "27",
         "/ui-dashboard-consistency.css": "23",
-        "/ui-activity-log-page.css": "27",
+        "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "25",
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
@@ -109,7 +108,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     provider_v2_pos = overlay.index("/ui-shell-provider-status-v2.css?v=27")
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
-    activity_pos = overlay.index("/ui-activity-log-page.css?v=27")
+    activity_pos = overlay.index("/ui-activity-log-page.css?v=28")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=25")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
@@ -148,6 +147,24 @@ def test_page_layers_do_not_own_shell_contract() -> None:
     assert "body.dp-v11-structural .sidebar-footer" in shell
     assert "bottom: 24px !important" in shell
     assert ":has(#view-torrents.active) .sidebar-footer" not in shell
+
+
+def test_activity_rebuild_runtime_is_presentation_only() -> None:
+    js = UI_RUNTIME.read_text(encoding="utf-8")
+    required = (
+        "decorateActivityLog",
+        "normalizeActivityRows",
+        "dp-activity-card",
+        "dp-activity-search-band",
+        "dp-activity-list",
+        "dp-activity-row",
+        "row.classList.remove('event-item')",
+    )
+    missing = [fragment for fragment in required if fragment not in js]
+    assert not missing, f"Activity presentation rebuild is missing: {missing}"
+
+    for forbidden in ("fetch(", "/api/", "XMLHttpRequest", "EventSource"):
+        assert forbidden not in js
 
 
 def test_cross_cutting_accessibility_runtime_is_semantic_and_presentation_only() -> None:
