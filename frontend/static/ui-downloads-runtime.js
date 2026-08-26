@@ -41,6 +41,11 @@
     return match ? match[1] : '';
   }
 
+  function activeFilterStatus() {
+    const active = document.querySelector('#view-torrents .filter-tabs .ftab.active');
+    return filterStatusFromTab(active);
+  }
+
   function ensureDownloadFilters() {
     const rail = document.querySelector('#view-torrents .filter-tabs');
     if (!rail) return;
@@ -68,10 +73,8 @@
   }
 
   function activeFilterOrSearch() {
-    const active = document.querySelector('#view-torrents .filter-tabs .ftab.active');
     const search = document.getElementById('torrent-search');
-    const filtered = !!active && filterStatusFromTab(active) !== '';
-    return filtered || !!(search && search.value.trim());
+    return activeFilterStatus() !== '' || !!(search && search.value.trim());
   }
 
   function parseCount(value) {
@@ -170,17 +173,17 @@
 
   function normalizeDownloadActionButton(button) {
     const onclick = (button.getAttribute('onclick') || '').trim();
-    if (onclick.startsWith('showDetail(')) {
+    if (onclick.includes('showDetail(')) {
       button.remove();
       return;
     }
 
     let label = '';
-    if (onclick.startsWith('pauseTorrent(')) label = '⏸ Pause';
-    else if (onclick.startsWith('resumeTorrent(')) label = '▶ Resume';
-    else if (onclick.startsWith('retryTorrent(')) label = '↻ Retry';
-    else if (onclick.startsWith('deleteTorrent(')) label = '✕ Remove';
-    else if (onclick.startsWith('downloadNow(')) label = '⬇ Now';
+    if (onclick.includes('pauseT(') || onclick.includes('pauseTorrent(')) label = 'Pause';
+    else if (onclick.includes('resumeT(') || onclick.includes('resumeTorrent(')) label = 'Resume';
+    else if (onclick.includes('deleteT(') || onclick.includes('deleteTorrent(')) label = 'Remove';
+    else if (onclick.includes('retryTorrent(')) label = '↻ Retry';
+    else if (onclick.includes('downloadNow(')) label = '⬇ Now';
 
     if (label && button.textContent !== label) button.textContent = label;
   }
@@ -265,18 +268,49 @@
     });
   }
 
+  function searchPaginationSummary(total, from, to) {
+    if (total <= 0) return 'No downloads match your search';
+    if (total === 1 && from === 1 && to === 1) return 'Showing 1 matching download';
+    if (from === 1 && to === total) return 'Showing all ' + total + ' matching downloads';
+    return 'Showing ' + from + '–' + to + ' of ' + total + ' matching downloads';
+  }
+
+  function filterPaginationSummary(status, total) {
+    if (status === '') {
+      if (total <= 0) return 'No Items Added Yet';
+      return total === 1 ? 'Showing 1 Added Item' : 'Showing ' + total + ' Added Items';
+    }
+    if (status === 'downloading') {
+      if (total <= 0) return 'No Active Downloads';
+      return total === 1 ? '1 Active Download' : total + ' Active Downloads';
+    }
+    if (status === 'paused') {
+      if (total <= 0) return 'No Paused Downloads';
+      return total === 1 ? '1 Paused Download' : total + ' Paused Downloads';
+    }
+    if (status === 'processing') {
+      if (total <= 0) return 'No Downloads Currently Processing';
+      return total === 1 ? '1 Download Currently Processing' : total + ' Downloads Currently Processing';
+    }
+    if (status === 'ready') {
+      if (total <= 0) return 'No Downloads in Ready State';
+      return total === 1 ? '1 Download in Ready State' : total + ' Downloads in Ready State';
+    }
+    if (status === 'completed') {
+      if (total <= 0) return 'No Downloads Completed Yet';
+      return total === 1 ? '1 Download Completed' : total + ' Downloads Completed';
+    }
+    if (status === 'error') {
+      if (total <= 0) return 'No Downloads Have Errors';
+      return total === 1 ? '1 Download Has Errors' : total + ' Downloads Have Errors';
+    }
+    return total === 1 ? '1 Download' : total + ' Downloads';
+  }
+
   function paginationSummary(total, from, to) {
-    const matching = activeFilterOrSearch();
-    if (total <= 0) return matching ? 'No matching downloads' : 'No downloads tracked';
-    if (total === 1 && from === 1 && to === 1) {
-      return matching ? 'Showing 1 matching download' : 'Showing 1 download';
-    }
-    if (from === 1 && to === total) {
-      return matching
-        ? 'Showing all ' + total + ' matching downloads'
-        : 'Showing all ' + total + ' downloads';
-    }
-    return 'Showing ' + from + '–' + to + ' of ' + total + (matching ? ' matching downloads' : ' downloads');
+    const search = document.getElementById('torrent-search');
+    if (search && search.value.trim()) return searchPaginationSummary(total, from, to);
+    return filterPaginationSummary(activeFilterStatus(), total);
   }
 
   function installPaginationRenderer() {

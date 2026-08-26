@@ -32,8 +32,19 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
     runtime = read("ui-downloads-runtime.js")
     transfer = read("ui-transfer-contract.css")
 
-    for label in ("⏸ Pause", "▶ Resume", "↻ Retry", "✕ Remove", "⬇ Now"):
-        assert label in runtime
+    # Downloads uses the same explicit text action language as Recent Activity.
+    for fragment in (
+        "onclick.includes('pauseT(')",
+        "onclick.includes('resumeT(')",
+        "onclick.includes('deleteT(')",
+        "label = 'Pause'",
+        "label = 'Resume'",
+        "label = 'Remove'",
+    ):
+        assert fragment in runtime
+    for obsolete in ("label = '⏸ Pause'", "label = '▶ Resume'", "label = '✕ Remove'"):
+        assert obsolete not in runtime
+
     assert "replace(/^[^A-Za-z0-9]+/" in runtime
     assert "badge.classList.contains('badge-completed') ? 'Done'" in runtime
 
@@ -50,8 +61,38 @@ def test_downloads_rows_normalize_status_and_action_language() -> None:
     )
     missing = [fragment for fragment in required_geometry if fragment not in transfer]
     assert not missing, f"shared row language is missing: {missing}"
-    assert "[onclick*=\"pauseTorrent(\"]" in transfer
-    assert "[onclick*=\"resumeTorrent(\"]" in transfer
+    assert '[onclick*="pauseT("]' in transfer
+    assert '[onclick*="resumeT("]' in transfer
+
+
+def test_downloads_footer_language_tracks_selected_filter() -> None:
+    runtime = read("ui-downloads-runtime.js")
+    matrix = (
+        "No Items Added Yet",
+        "Showing 1 Added Item",
+        "Showing ' + total + ' Added Items",
+        "No Active Downloads",
+        "1 Active Download",
+        "Active Downloads",
+        "No Paused Downloads",
+        "1 Paused Download",
+        "Paused Downloads",
+        "No Downloads Currently Processing",
+        "1 Download Currently Processing",
+        "Downloads Currently Processing",
+        "No Downloads in Ready State",
+        "1 Download in Ready State",
+        "Downloads in Ready State",
+        "No Downloads Completed Yet",
+        "1 Download Completed",
+        "Downloads Completed",
+        "No Downloads Have Errors",
+        "1 Download Has Errors",
+        "Downloads Have Errors",
+    )
+    missing = [fragment for fragment in matrix if fragment not in runtime]
+    assert not missing, f"filter footer language is missing: {missing}"
+    assert "filterPaginationSummary(activeFilterStatus(), total)" in runtime
 
 
 def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
@@ -70,6 +111,7 @@ def test_downloads_desktop_columns_make_room_for_rectangular_actions() -> None:
         "nth-child(6) { width: 6%; }",
         "nth-child(7) { width: 8%; }",
         "nth-child(8) { width: 190px; }",
+        "gap: 7px;",
     )
     for fragment in expected:
         assert fragment in css
