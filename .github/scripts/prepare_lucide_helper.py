@@ -36,5 +36,19 @@ replace_once(
     "    help: 'circle-question-mark',\n",
     "help alias",
 )
+replace_once(
+    "# New contract tests focus on the architectural invariant rather than snapshots.\ntest = '''",
+    """# Keep the startup-order regression guard focused on behavior rather than cache-bust versions.
+startup_test = TESTS / \"test_dashboard_startup_surface.py\"
+replace_exact(
+    startup_test,
+    \"    assert index.index('<script src=\\\"/app.js?v=15\\\" defer></script>') < index.index(\\n        '<script src=\\\"/operator-title.js?v=23\\\" defer></script>'\\n    )\\n\",
+    \"    assert index.index('src=\\\"/app.js?') < index.index(\\n        'src=\\\"/operator-title.js?'\\n    )\\n\",
+)
+
+# New contract tests focus on the architectural invariant rather than snapshots.
+test = '''""",
+    "dashboard startup ordering test",
+)
 
 path.write_text(text, encoding="utf-8")
