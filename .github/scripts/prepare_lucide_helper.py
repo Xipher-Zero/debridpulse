@@ -93,8 +93,8 @@ replace_exact(
 extraction_test = TESTS / "test_extraction_lifecycle.py"
 replace_exact(
     extraction_test,
-    '    assert "extracting:\'📦 Extracting\'" in app_source\\n',
-    '    assert "window.dpLucideStatusDefinition" in app_source\\n',
+    "extracting:'📦 Extracting'",
+    "window.dpLucideStatusDefinition",
 )
 
 # New contract tests focus on the architectural invariant rather than snapshots.
