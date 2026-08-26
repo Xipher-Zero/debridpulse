@@ -22,22 +22,24 @@ replace_once(
     'modal.write_text(modal_text.rstrip() + modal_append.rstrip() + "\\n", encoding="utf-8")\n',
 )
 
-# One older cascade-order contract stores the imported filename without a
-# leading slash. Migrate that literal as well as the canonical slash-prefixed
-# cache reference already handled by the cleanup helper.
+# Older cascade-order contracts store these imported filenames without a
+# leading slash. Migrate those literals as well as the canonical slash-prefixed
+# cache references already handled by the cleanup helper.
 replace_once(
     '    ("/ui-modal-contract.css?v=24", "/ui-modal-contract.css?v=25"),\n'
     '    ("/ui-downloads-page.css?v=26", "/ui-downloads-page.css?v=27"),\n',
     '    ("/ui-modal-contract.css?v=24", "/ui-modal-contract.css?v=25"),\n'
     '    ("ui-modal-contract.css?v=24", "ui-modal-contract.css?v=25"),\n'
-    '    ("/ui-downloads-page.css?v=26", "/ui-downloads-page.css?v=27"),\n',
+    '    ("/ui-downloads-page.css?v=26", "/ui-downloads-page.css?v=27"),\n'
+    '    ("ui-downloads-page.css?v=26", "ui-downloads-page.css?v=27"),\n',
 )
 
 # The prior correction-batch contract encoded the old temporary composition
-# with Clear Selection in the left action cluster. Replace only that exact
-# assertion with the now-reviewed left-actions/right-status invariant.
+# with Clear Selection in the left action cluster and a separate count-only
+# status append. Replace only those exact assertions with the now-reviewed
+# left-actions/right-status invariant.
 anchor = 'contract = TESTS / "test_ui_detail_overlay_cleanup_contract.py"\n'
-replacement = '''stale_bulk_contract = TESTS / "test_ui_downloads_correction_batch_contract.py"\nreplace_exact(\n    stale_bulk_contract,\n    '    assert "actions.append(pause, resume, reset, separator, remove, clear);" in runtime\\n',\n    '    assert "actions.append(pause, resume, reset, separator, remove);" in runtime\\n'\n    '    assert "status.append(count, clear);" in runtime\\n',\n)\n\n''' + anchor
+replacement = '''stale_bulk_contract = TESTS / "test_ui_downloads_correction_batch_contract.py"\nreplace_exact(\n    stale_bulk_contract,\n    '    assert "actions.append(pause, resume, reset, separator, remove, clear);" in runtime\\n',\n    '    assert "actions.append(pause, resume, reset, separator, remove);" in runtime\\n'\n    '    assert "status.append(count, clear);" in runtime\\n',\n)\nreplace_exact(\n    stale_bulk_contract,\n    '    assert "status.appendChild(count);" in runtime\\n',\n    '',\n)\n\n''' + anchor
 replace_once(anchor, replacement)
 
 path.write_text(text, encoding="utf-8")
