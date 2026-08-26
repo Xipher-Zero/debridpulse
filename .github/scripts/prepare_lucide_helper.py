@@ -17,9 +17,9 @@ def replace_once(old: str, new: str, description: str) -> None:
 
 
 replace_once(
-    "ROOT = Path(__file__).resolve().parents[2]\n",
-    "ROOT = Path.cwd()\n",
-    "repo root",
+    'ROOT = Path(__file__).resolve().parents[2]\nSTATIC = ROOT / "frontend" / "static"\nTESTS = ROOT / "backend" / "tests"\nPIN = "23f9abc4ed0146cffededd3d7f94c1018bfdf693"\n',
+    'ROOT = Path.cwd()\nSTATIC = ROOT / "frontend" / "static"\nTESTS = ROOT / "backend" / "tests"\nPIN = "23f9abc4ed0146cffededd3d7f94c1018bfdf693"\n',
+    "top-level repo root",
 )
 replace_once(
     "      .replace(/^[\\\\s\\\\u2000-\\\\u2BFF\\\\u{1F000}-\\\\u{1FAFF}]+/u, '')\n",
