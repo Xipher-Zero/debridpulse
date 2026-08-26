@@ -71,11 +71,11 @@ for path in (
 ):
     replace_exact(
         path,
-        '            "/ui-shell-provider-status-v2.css": "27",',
-        '            "/ui-shell-provider-status-v2.css": "28",',
+        '        "/ui-shell-provider-status-v2.css": "27",',
+        '        "/ui-shell-provider-status-v2.css": "28",',
     )
     replace_exact(
         path,
-        '            "/ui-dashboard-control-polish.css": "21",',
-        '            "/ui-dashboard-control-polish.css": "22",',
+        '        "/ui-dashboard-control-polish.css": "21",',
+        '        "/ui-dashboard-control-polish.css": "22",',
     )
