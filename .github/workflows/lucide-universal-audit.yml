@@ -1,0 +1,61 @@
+name: Lucide Universal Audit
+
+on:
+  push:
+    branches:
+      - ci-ops/lucide-universal-232e562
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit legacy UI glyphs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          roots = [Path('frontend/static')]
+          files = []
+          for root in roots:
+              files.extend(root.glob('*.html'))
+              files.extend(root.glob('*.js'))
+              files.extend(root.glob('*.css'))
+
+          def has_non_ascii(text):
+              return any(ord(ch) > 127 for ch in text)
+
+          print('=== NON-ASCII UI LINES ===')
+          for path in sorted(files):
+              for no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  if not has_non_ascii(line):
+                      continue
+                  low = line.lower()
+                  if any(k in low for k in ('button', 'badge', 'toast', 'icon', 'theme', 'nav-item', 'aria2', 'empty', 'title', 'label')):
+                      print(f'{path}:{no}: {line.strip()}')
+
+          print('\n=== BUTTON LINES WITH NON-ASCII ===')
+          for path in sorted(files):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              for no, line in enumerate(lines, 1):
+                  if ('<button' in line or 'button.innerhtml' in line.lower() or 'button.textcontent' in line.lower()) and has_non_ascii(line):
+                      print(f'{path}:{no}: {line.strip()}')
+
+          print('\n=== LEGACY FONT / PSEUDO-GLYPH REFERENCES ===')
+          needles = ('Segoe UI Symbol', 'Noto Sans Symbols', 'font-variant-emoji', "content: '", 'content: "')
+          for path in sorted(files):
+              for no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  if any(n in line for n in needles):
+                      print(f'{path}:{no}: {line.strip()}')
+
+          print('\n=== TOAST / BADGE DEFINITIONS ===')
+          for path in sorted(files):
+              for no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  low = line.lower()
+                  if ('function toast' in low or 'const icons =' in low or 'function badge' in low or 'normalize' in low and 'badge' in low):
+                      print(f'{path}:{no}: {line.strip()}')
+          PY
