@@ -41,7 +41,9 @@ def test_provider_subscription_is_one_centered_crown_and_copy_unit():
     assert "display: flex !important" in css
     assert "justify-content: center !important" in css
     assert "gap: 5px !important" in css
-    assert "flex: 0 0 20px !important" in css
+    assert "flex: 0 0 36px !important" in css
+    assert "width: 36px !important" in css
+    assert "margin: 0 -8px !important" in css
     assert "background-size: 36px 36px !important" in css
     assert "width: max-content !important" in css
     assert "transform: none !important" in css

@@ -52,7 +52,9 @@ def test_provider_premium_group_centers_visible_crown_and_copy_as_one_block() ->
     assert "display: flex !important" in css
     assert "width: max-content !important" in css
     assert "margin: 0 auto 6px !important" in css
-    assert "flex: 0 0 20px !important" in css
+    assert "flex: 0 0 36px !important" in css
+    assert "width: 36px !important" in css
+    assert "margin: 0 -8px !important" in css
     assert "background-size: 36px 36px !important" in css
     assert "flex: 0 0 auto !important" in css
     assert "translateX" not in css
