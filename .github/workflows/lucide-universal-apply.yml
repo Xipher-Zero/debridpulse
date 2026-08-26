@@ -110,22 +110,21 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          (cd backend && python -m pytest tests/ -q --maxfail=1 --tb=short) > /tmp/pytest.out 2>&1
+          (cd backend && python -m pytest tests/ -q --tb=no) > /tmp/pytest.out 2>&1
           rc=$?
           set -e
           if [ "$rc" -ne 0 ]; then
-            failed="$(grep -E '^(FAILED|ERROR) ' /tmp/pytest.out | head -n 1 || true)"
-            if [ -z "$failed" ]; then
-              failed="$(tail -n 1 /tmp/pytest.out)"
+            failures="$(grep -E '^(FAILED|ERROR) ' /tmp/pytest.out | sed -E 's/ - .*$//' | head -n 12 | paste -sd ';' - || true)"
+            if [ -z "$failures" ]; then
+              failures="$(tail -n 1 /tmp/pytest.out | tr '\n\r' '  ' | cut -c1-500)"
             fi
-            failed="$(printf '%s' "$failed" | tr '\n\r' '  ' | cut -c1-190)"
             git reset --hard "$EXPECTED_BASE"
             git clean -fd
             git checkout "$HELPER_BRANCH"
             git pull --ff-only origin "$HELPER_BRANCH"
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit --allow-empty -m "Lucide pytest diagnostic: ${failed} [skip ci]"
+            git commit --allow-empty -m "Lucide pytest diagnostic [skip ci]" -m "$failures"
             git push origin HEAD:"refs/heads/$HELPER_BRANCH"
             exit 1
           fi
