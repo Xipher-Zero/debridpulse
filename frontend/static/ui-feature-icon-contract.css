@@ -1,0 +1,58 @@
+/* DebridPulse v1.0.11 shared feature-icon contract.
+ * One visual footprint across KPI and isolated card/page feature icons.
+ */
+
+:root {
+  --dp-feature-icon-size: 51px;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon {
+  width: var(--dp-feature-icon-size) !important;
+  min-width: var(--dp-feature-icon-size) !important;
+  height: var(--dp-feature-icon-size) !important;
+  flex: 0 0 var(--dp-feature-icon-size) !important;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon,
+body.dp-v11-structural #view-events .dp-activity-title-icon,
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+  width: var(--dp-feature-icon-size) !important;
+  min-width: var(--dp-feature-icon-size) !important;
+  height: var(--dp-feature-icon-size) !important;
+  flex: 0 0 var(--dp-feature-icon-size) !important;
+  object-fit: contain !important;
+}
+
+/* Dominant SVG colors, taken from the actual custom artwork. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon {
+  --dp-feature-icon-glow: #8a5ad6;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  --dp-feature-icon-glow: #8b3fff;
+}
+body.dp-v11-structural #view-events .dp-activity-title-icon {
+  --dp-feature-icon-glow: #4c8fff;
+}
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+  --dp-feature-icon-glow: #b866f5;
+}
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon,
+body.dp-v11-structural #view-events .dp-activity-title-icon,
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-feature-icon-glow) 62%, transparent))
+    drop-shadow(0 0 11px color-mix(in srgb, var(--dp-feature-icon-glow) 27%, transparent)) !important;
+}
+
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon,
+body.light.dp-v11-structural #view-events .dp-activity-title-icon,
+body.light.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--dp-feature-icon-glow) 70%, transparent))
+    drop-shadow(0 0 15px color-mix(in srgb, var(--dp-feature-icon-glow) 32%, transparent)) !important;
+}

@@ -45,7 +45,6 @@ def test_dashboard_uses_canonical_custom_semantic_assets() -> None:
         "card-disk.svg",
         "card-link.svg",
         "card-document-stack.svg",
-        "retry-borderless.svg",
         "heartbeat-outline.svg",
         "calendar-24.svg",
         "calendar-7.svg",

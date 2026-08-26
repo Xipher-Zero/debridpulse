@@ -125,3 +125,20 @@ body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn:hover {
     inset 0 1px rgba(255,255,255,.80),
     0 3px 8px -6px rgba(137,99,24,.22) !important;
 }
+
+
+/* ── Recover All / Activity Refresh exact icon parity ───────────────── */
+/* Both controls now render the same utilitySvg('refresh') geometry. Keep the
+   icon dimensions, stroke, inherited violet color and glow identical. */
+body.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,
+body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+  width: 18px !important;
+  height: 18px !important;
+  stroke-width: 2 !important;
+  color: inherit !important;
+  filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,
+body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+  filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
+}

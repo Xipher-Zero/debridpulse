@@ -28,5 +28,5 @@ def test_dashboard_startup_debug_surface_is_removed_without_changing_retry_logic
     # the async startup initializer yields on its first settings request, while
     # the second deferred script removes the presentation node.
     assert index.index('<script src="/app.js?v=14" defer></script>') < index.index(
-        '<script src="/operator-title.js?v=20" defer></script>'
+        '<script src="/operator-title.js?v=21" defer></script>'
     )

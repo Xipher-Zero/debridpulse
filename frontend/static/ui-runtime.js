@@ -34,7 +34,7 @@
       link.dataset.dpV11Styles = '1';
       document.head.appendChild(link);
     }
-    if (!/style-v11\.css\?v=21$/.test(link.href)) link.href = '/style-v11.css?v=21';
+    if (!/style-v11\.css\?v=22$/.test(link.href)) link.href = '/style-v11.css?v=22';
   }
 
   function dpImg(filename, className) {
@@ -315,7 +315,7 @@
       if (actionWrap) actionWrap.classList.add('dp-card-header-actions');
     }
     normalizeUtilityButton(document.getElementById('btn-import-existing'), 'upload');
-    normalizeDpButton(document.getElementById('btn-recover-all'), 'retry-borderless.svg');
+    normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh');
   }
 
   function updateRecentCount() {

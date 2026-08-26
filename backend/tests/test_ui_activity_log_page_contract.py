@@ -116,7 +116,7 @@ def test_activity_log_rebuild_layer_is_generation_28() -> None:
 
     shell = overlay.index("/ui-shell-structural.css?v=26")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
-    controls = overlay.index("/ui-dashboard-control-polish.css?v=21")
+    controls = overlay.index("/ui-dashboard-control-polish.css?v=22")
     stats = overlay.index("/ui-statistics-page.css?v=20")
     activity = overlay.index("/ui-activity-log-page.css?v=28")
     downloads = overlay.index("/ui-downloads-page.css?v=25")
