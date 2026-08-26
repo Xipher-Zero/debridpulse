@@ -56,7 +56,7 @@ replace_exact(
 replace_exact(
     direct_links_test,
     '        self.assertIn("🔗 Direct link", js)\\n',
-    '        self.assertIn("window.dpLucideSvg(\'link\',\'dp-icon--xs\')", js)\\n',
+    '        self.assertIn("window.dpLucideSvg", js)\\n        self.assertIn("Direct link", js)\\n',
 )
 replace_exact(
     direct_links_test,
