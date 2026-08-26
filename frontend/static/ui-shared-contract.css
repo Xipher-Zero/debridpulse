@@ -60,31 +60,23 @@ body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
   transform: translateY(1px) scale(.985);
 }
 
-/* Operational/table/list interiors need an opaque resting surface separate
-   from the raised outer-card material. The parent card is intentionally a
-   gradient; keeping data surfaces solid prevents that large gradient from
-   bleeding through tall operational views such as Activity Log. These tokens
-   stay theme-aware by resolving through the solid surface hierarchy. */
-:root {
-  --dp-operational-surface: var(--dp-surface-1);
-  --dp-operational-toolbar-surface: var(--dp-surface-1);
-}
-
 /* Canonical operational-list bridge. Activity Log still emits legacy
-   .event-item markup, so bridge it to the shared data-surface contract rather
-   than painting Activity-specific gradients. The toolbar/list establish the
-   opaque boundary; individual rows remain transparent above that surface. */
+   .event-item markup. The universal card owns the raised outer material, but
+   the toolbar and scrolling data body must terminate that card gradient with a
+   solid resting surface. Resolve the existing theme token directly on these
+   descendants: light mode is body-scoped, so root-scoped derived aliases would
+   compute against the dark :root token before body.light can override it. */
 body.dp-v11-structural :is(.dp-card-toolbar, #view-events > .card > .card-header + div) {
   position: relative;
   z-index: 1;
   border-bottom: 1px solid var(--dp-divider);
-  background: var(--dp-operational-toolbar-surface) !important;
+  background: var(--dp-surface-1) !important;
 }
 
 body.dp-v11-structural :is(.dp-operational-list, #event-list) {
   position: relative;
   z-index: 1;
-  background: var(--dp-operational-surface) !important;
+  background: var(--dp-surface-1) !important;
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
 }
