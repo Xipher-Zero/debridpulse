@@ -1,4 +1,4 @@
-"""Regression contract for the reviewed v1.0.11 Login Batch 1/2 surface."""
+"""Regression contract for the reviewed v1.0.11 Login surface."""
 
 from __future__ import annotations
 
@@ -40,21 +40,29 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'Password-only LAN deployments may operate over HTTP.' in source
     assert 'OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.' in source
 
-    # Batch 2 keeps application geometry while restoring the reviewed Login
-    # glass material, purple/blue depth, and richer background composition.
-    assert '--card:rgba(15,22,41,.76);--card2:rgba(7,12,27,.68);' in source
-    assert '--field:rgba(10,17,33,.76);--border:#26324d;--border-strong:#3a496a;' in source
-    assert '--card:rgba(255,255,255,.78);--card2:rgba(248,250,255,.68);' in source
-    assert '--field:rgba(255,255,255,.76);--border:#dce4f1;--border-strong:#c4cee0;' in source
+    # The auth surface keeps application geometry while intentionally using a
+    # more translucent glass material and stronger purple/blue depth in both
+    # themes, matching the reviewed login mockup direction.
+    assert '--card:rgba(10,16,33,.55);--card2:rgba(7,12,27,.40);' in source
+    assert '--field:rgba(7,13,29,.52);--border:rgba(125,145,195,.24);--border-strong:rgba(151,172,226,.38);' in source
+    assert '--card:rgba(255,255,255,.55);--card2:rgba(249,251,255,.35);' in source
+    assert '--field:rgba(255,255,255,.50);--border:rgba(111,132,183,.24);--border-strong:rgba(103,132,203,.38);' in source
+    assert '--glass-top:rgba(255,255,255,.13);--glass-line:rgba(255,255,255,.075);' in source
+    assert '--glass-purple:rgba(180,92,255,.18);--glass-blue:rgba(42,148,255,.15);' in source
+    assert '--glass-top:rgba(255,255,255,.88);--glass-line:rgba(255,255,255,.66);' in source
+    assert '--glass-purple:rgba(161,91,255,.13);--glass-blue:rgba(66,150,255,.14);' in source
     assert 'border-radius:12px' in source
-    assert '-webkit-backdrop-filter:blur(22px) saturate(132%)' in source
-    assert 'backdrop-filter:blur(22px) saturate(132%)' in source
-    assert '--icon-accent:#a99cff;--icon-accent-strong:#83b4ff;' in source
-    assert '--icon-accent:#806de8;--icon-accent-strong:#4b8ff5;' in source
+    assert '-webkit-backdrop-filter:blur(30px) saturate(165%)' in source
+    assert 'backdrop-filter:blur(30px) saturate(165%)' in source
+    assert '--icon-accent:#b0a3ff;--icon-accent-strong:#8bbcff;' in source
+    assert '--icon-accent:#7868e4;--icon-accent-strong:#3f88f5;' in source
     assert 'body::before {' in source
     assert 'body::after {' in source
     assert source.count('class="wave micro"') >= 4
     assert source.count('class="wave strong"') >= 4
+    assert source.count('class="wave filament"') >= 6
+    assert 'class="particle twinkle"' in source
+    assert source.count('<circle ') >= 60
 
     # The security note is a centered card unit rather than a left-gutter row.
     assert 'flex-direction:column;align-items:center;justify-content:center' in source
