@@ -66,6 +66,11 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     assert "--c: var(--dp-state-caution) !important" in css
     assert "--c: var(--dp-state-active) !important" in css
 
+    value_selector = ".dp-stats-history-grid .dash-kpi-val"
+    assert value_selector in css
+    value_segment = css[css.index(value_selector):].split('}', 1)[0]
+    assert "color: var(--c) !important" in value_segment
+
 
 def test_success_rate_copy_distinguishes_period_and_life_time_scopes() -> None:
     runtime = read(BATCH_RUNTIME)
