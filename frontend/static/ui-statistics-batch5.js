@@ -27,6 +27,14 @@
     '1y': 'Completed downloads in the last year.',
     'all': 'Completed downloads across all recorded history.',
   });
+  const SUCCESS_FLAVOR = Object.freeze({
+    '1h': 'Share of finished downloads completed successfully during the last hour.',
+    '24h': 'Share of finished downloads completed successfully during the last 24 hours.',
+    '7d': 'Share of finished downloads completed successfully during the last 7 days.',
+    '30d': 'Share of finished downloads completed successfully during the last 30 days.',
+    '1y': 'Share of finished downloads completed successfully during the last year.',
+    'all': 'Share of finished downloads completed successfully across all recorded history.',
+  });
 
   function selectedPeriod(explicit) {
     if (explicit) return explicit;
@@ -92,6 +100,25 @@
     return HISTORY_ORDER.every(function (valueId) { return !!historicalCard(valueId); });
   }
 
+  function normalizeSuccessRateCopy(period) {
+    const resolved = selectedPeriod(period);
+    const host = document.getElementById('detail-stat-cards');
+    const primary = host && host.querySelector(':scope > [data-dp-stats-metric="success"]');
+    const primarySub = primary && primary.querySelector('.metric-sub, .stat-sub');
+    if (primarySub) {
+      primarySub.textContent = SUCCESS_FLAVOR[resolved] ||
+        'Share of finished downloads completed successfully during the selected period.';
+    }
+
+    const historical = historicalCard('i-success-rate');
+    const label = historical && historical.querySelector('.dash-kpi-lbl');
+    const sub = historical && historical.querySelector('.dash-kpi-sub');
+    if (label) label.textContent = 'LIFE-TIME SUCCESS RATE';
+    if (sub) sub.textContent = 'Share of all recorded finished downloads completed successfully.';
+
+    return Boolean(primarySub && label && sub);
+  }
+
   function decorateChartHeader(period) {
     const canvas = document.getElementById('daily-chart');
     const card = canvas && canvas.closest('.dp-stats-chart');
@@ -143,6 +170,7 @@
     normalizeShellBranding();
     normalizePrimaryOrder();
     normalizeHistoricalOrder();
+    normalizeSuccessRateCopy(period);
     decorateChartHeader(period);
     applySharedSurfaceClass();
   }
@@ -181,9 +209,10 @@
       const brandingReady = normalizeShellBranding();
       const primaryReady = normalizePrimaryOrder();
       const historyReady = normalizeHistoricalOrder();
+      const successReady = normalizeSuccessRateCopy();
       const chartReady = decorateChartHeader();
       applySharedSurfaceClass();
-      if ((!brandingReady || !primaryReady || !historyReady || !chartReady) && attempts < 160) {
+      if ((!brandingReady || !primaryReady || !historyReady || !successReady || !chartReady) && attempts < 160) {
         setTimeout(settle, 50);
       }
     };
