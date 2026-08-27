@@ -55,12 +55,17 @@ from core.config import get_settings
 router = APIRouter()
 
 
+_AUTH_MARK_SVG = """<svg class="brand-mark" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
+<defs><linearGradient id="auth-outline" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a62cff"/><stop offset="1" stop-color="#208cff"/></linearGradient><linearGradient id="auth-arrow" x1="64" y1="24" x2="64" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b532ff"/><stop offset=".48" stop-color="#7855ff"/><stop offset="1" stop-color="#08a8ff"/></linearGradient><linearGradient id="auth-tray" x1="28" y1="86" x2="101" y2="98" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9b32ff"/><stop offset="1" stop-color="#149fff"/></linearGradient><filter id="auth-glow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect x="14" y="13" width="100" height="102" rx="23" fill="#080b18" stroke="url(#auth-outline)" stroke-width="2.5"/><path d="M55 30c0-2.8 2.2-5 5-5h8c2.8 0 5 2.2 5 5v27h10.2c3.8 0 5.8 4.5 3.2 7.2L67.2 84.8a4.4 4.4 0 0 1-6.4 0L41.6 64.2c-2.6-2.7-.6-7.2 3.2-7.2H55V30z" fill="url(#auth-arrow)" filter="url(#auth-glow)"/><path d="M28 79v12.5c0 5 4 9 9 9h54c5 0 9-4 9-9V79" fill="none" stroke="url(#auth-tray)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#auth-glow)"/></svg>"""
+
+
 _AUTH_PAGE_STYLE = """
 :root { --bg:#090812;--bg2:#100e1c;--surface:#171526;--surface2:#211e34;--border:#302c49;--border2:#484268;--text:#f4f1ff;--text2:#c2bdd6;--text3:#89839f;--accent:#a67cff;--accent2:#66a8ff;--accent-rgb:166,124,255;--accent-contrast:#120d1d;--danger:#ff6b6b;--primary-gradient:linear-gradient(135deg,#a67cff,#4f8cff);--primary-gradient-hover:linear-gradient(135deg,#b991ff,#66a8ff); }
 * { box-sizing:border-box; }
 body { margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 16% 12%,rgba(var(--accent-rgb),.13),transparent 25%),radial-gradient(circle at 88% 8%,rgba(99,164,255,.10),transparent 20%),linear-gradient(180deg,var(--bg2),var(--bg));color:var(--text);font-family:Outfit,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-.card { width:min(420px,100%);padding:30px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(160deg,rgba(33,30,52,.97),rgba(15,13,27,.94));box-shadow:0 18px 40px rgba(0,0,8,.34); }
-.brand { font-size:28px;font-weight:800;letter-spacing:-.7px;margin-bottom:6px; }.brand span { color:var(--accent); }h1 { font-size:17px;margin:0 0 24px;color:var(--text2);font-weight:500; }
+.card { width:min(460px,100%);padding:30px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(160deg,rgba(33,30,52,.97),rgba(15,13,27,.94));box-shadow:0 18px 40px rgba(0,0,8,.34); }
+.brand-lockup { display:flex;align-items:center;gap:14px;margin-bottom:18px; }.brand-mark { width:62px;height:62px;flex:0 0 62px;display:block; }.brand { font-size:28px;font-weight:800;letter-spacing:-.7px;line-height:1;margin:0 0 5px; }.brand span { color:var(--accent); }.brand-sub { color:var(--text3);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600; }h1 { font-size:17px;margin:0 0 24px;color:var(--text2);font-weight:500; }
 label { display:block;font-size:12px;font-weight:700;color:var(--text2);margin:14px 0 7px; }input { width:100%;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:11px 12px;font:inherit;outline:none; }input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.24); }
 .auth-action { width:100%;margin-top:20px;border-radius:8px;padding:11px 14px;font-weight:800;font-size:14px;cursor:pointer;text-align:center;text-decoration:none;display:block; }button.auth-action { font-family:inherit; }.auth-action:hover { filter:brightness(1.06); }.primary { border:0;background:var(--primary-gradient);color:var(--accent-contrast); }.primary:hover { background:var(--primary-gradient-hover); }.secondary { background:var(--surface2);color:var(--text);border:1px solid var(--border); }
 .divider { display:flex;align-items:center;gap:12px;color:var(--text3);font-size:11px;margin:22px 0 0; }.divider:before,.divider:after { content:"";height:1px;background:var(--border);flex:1; }.error { border:1px solid rgba(255,107,107,.4);background:rgba(255,107,107,.08);color:#ffc0c0;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.45;margin:0 0 15px; }.muted { color:var(--text3);font-size:13px;line-height:1.55; }.foot { margin-top:22px;padding-top:16px;border-top:1px solid var(--border);color:var(--text3);font-size:11px;line-height:1.5; }
@@ -180,7 +185,7 @@ def _login_page(
 </head>
 <body>
 <main class="card">
-  <div class="brand">Debrid<span>Pulse</span></div>
+  <div class="brand-lockup">{_AUTH_MARK_SVG}<div><div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Secure access</div></div></div>
   <h1>Sign in to continue</h1>
   {error_html}
   {interactive_controls}
@@ -207,7 +212,7 @@ def _state_free_auth_page(
     body = f"""<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · DebridPulse</title><style>{_AUTH_PAGE_STYLE}</style></head>
-<body><main class="card"><div class="brand">Debrid<span>Pulse</span></div><h1>Sign in unavailable</h1><div class="error" role="alert">{html.escape(message)}</div><a class="auth-action secondary" href="/login">Return to sign in</a></main></body>
+<body><main class="card"><div class="brand-lockup">{_AUTH_MARK_SVG}<div><div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Secure access</div></div></div><h1>Sign in unavailable</h1><div class="error" role="alert">{html.escape(message)}</div><a class="auth-action secondary" href="/login">Return to sign in</a></main></body>
 </html>"""
     response = HTMLResponse(content=body, status_code=status_code)
     response.headers["Cache-Control"] = "no-store"
@@ -477,9 +482,6 @@ async def oidc_callback(
         _clear_oidc_correlation_cookie(response)
         return response
 
-    # A transaction is authorized against the exact OIDC snapshot captured at
-    # login start. Serialize the final check with auth-config writes and refuse
-    # to relabel an old proof as valid under newer issuer/client/policy state.
     async with authentication_configuration_lock:
         cfg = get_settings()
         current_version = oidc_configuration_version(cfg)

@@ -52,12 +52,17 @@
     button.dataset.dpActionSemantics = '1';
     syncThemeActionIcon();
 
-    const observer = new MutationObserver(syncThemeActionIcon);
+    const observer = new MutationObserver(function () {
+      syncThemeActionIcon();
+      applyStatisticsChartPalette();
+    });
     observer.observe(document.body, {
       attributes: true,
       attributeFilter: ['class'],
     });
-    observer.observe(button, {
+
+    const buttonObserver = new MutationObserver(syncThemeActionIcon);
+    buttonObserver.observe(button, {
       childList: true,
       characterData: true,
       subtree: true,
@@ -233,12 +238,22 @@
   }
 
   function statisticsPurpleGradient(chart) {
-    if (!chart || !chart.ctx || !chart.chartArea) return '#45207f';
+    const isLight = document.body.classList.contains('light');
+    if (!chart || !chart.ctx || !chart.chartArea) {
+      return isLight ? 'rgba(139, 91, 203, .46)' : 'rgba(100, 39, 165, .64)';
+    }
+
     const area = chart.chartArea;
     const gradient = chart.ctx.createLinearGradient(0, area.bottom, 0, area.top);
-    gradient.addColorStop(0, '#211044');
-    gradient.addColorStop(0.52, '#3a176e');
-    gradient.addColorStop(1, '#6427a5');
+    if (isLight) {
+      gradient.addColorStop(0, 'rgba(210, 195, 239, .28)');
+      gradient.addColorStop(0.52, 'rgba(171, 137, 221, .42)');
+      gradient.addColorStop(1, 'rgba(139, 91, 203, .58)');
+    } else {
+      gradient.addColorStop(0, 'rgba(45, 19, 84, .46)');
+      gradient.addColorStop(0.52, 'rgba(91, 38, 151, .60)');
+      gradient.addColorStop(1, 'rgba(166, 70, 244, .72)');
+    }
     return gradient;
   }
 
@@ -248,10 +263,13 @@
     const dataset = chart && chart.data && chart.data.datasets && chart.data.datasets[0];
     if (!dataset) return;
 
+    const isLight = document.body.classList.contains('light');
     dataset.backgroundColor = function (context) {
       return statisticsPurpleGradient(context.chart);
     };
-    dataset.borderColor = '#7b39c9';
+    dataset.borderColor = isLight
+      ? 'rgba(126, 75, 187, .72)'
+      : 'rgba(166, 70, 244, .84)';
     dataset.borderWidth = 1;
     if (typeof chart.update === 'function') chart.update('none');
   }
@@ -287,6 +305,7 @@
     ensureStatisticsArchitecture();
     setStatisticsSevenDayDefault();
     installStatisticsDetailedStatsGuard();
+    applyStatisticsChartPalette();
   }
 
   function initialize() {
