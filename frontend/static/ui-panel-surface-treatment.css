@@ -21,18 +21,22 @@ body.dp-v11-structural :is(
   #modal .dp-detail-section-card
 ) {
   background:
-    radial-gradient(ellipse 92% 70% at 88% 86%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 6.6%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 3.2%, transparent) 34%,
+    radial-gradient(ellipse 96% 74% at 88% 86%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 10.5%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 5.2%, transparent) 34%,
       transparent 70%),
-    radial-gradient(ellipse 72% 58% at 7% 70%,
-      color-mix(in srgb, var(--dp-state-active) 4.4%, transparent) 0%,
-      color-mix(in srgb, var(--dp-state-active) 2.0%, transparent) 40%,
+    radial-gradient(ellipse 76% 62% at 7% 70%,
+      color-mix(in srgb, var(--dp-state-active) 6.8%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 3.0%, transparent) 40%,
       transparent 72%),
+    radial-gradient(ellipse 64% 48% at 54% 18%,
+      color-mix(in srgb, var(--dp-accent-purple) 5.8%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 2.4%, transparent) 42%,
+      transparent 76%),
     linear-gradient(145deg,
-      rgba(255,255,255,.014) 0%,
-      transparent 38%,
-      color-mix(in srgb, var(--dp-accent-purple) 2.8%, transparent) 70%,
+      rgba(255,255,255,.020) 0%,
+      transparent 34%,
+      color-mix(in srgb, var(--dp-accent-purple) 4.2%, transparent) 68%,
       transparent 100%),
     var(--dp-panel-surface) !important;
 }
@@ -51,43 +55,52 @@ body.light.dp-v11-structural :is(
   #modal .dp-detail-section-card
 ) {
   background:
-    radial-gradient(ellipse 94% 72% at 88% 86%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 4.8%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 2.2%, transparent) 36%,
+    radial-gradient(ellipse 98% 76% at 88% 86%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 7.0%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 3.3%, transparent) 36%,
       transparent 72%),
-    radial-gradient(ellipse 74% 60% at 7% 70%,
-      color-mix(in srgb, var(--dp-state-active) 2.8%, transparent) 0%,
-      color-mix(in srgb, var(--dp-state-active) 1.2%, transparent) 42%,
+    radial-gradient(ellipse 78% 64% at 7% 70%,
+      color-mix(in srgb, var(--dp-state-active) 4.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 1.8%, transparent) 42%,
       transparent 74%),
+    radial-gradient(ellipse 66% 50% at 54% 18%,
+      color-mix(in srgb, var(--dp-accent-purple) 3.5%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 1.4%, transparent) 44%,
+      transparent 78%),
     linear-gradient(145deg,
-      rgba(255,255,255,.52) 0%,
-      transparent 40%,
-      rgba(105, 90, 145, .024) 72%,
+      rgba(255,255,255,.56) 0%,
+      transparent 38%,
+      rgba(105, 90, 145, .035) 70%,
       transparent 100%),
     var(--dp-panel-surface) !important;
 }
 
 /* List/table workspaces have the largest uninterrupted empty fields. Give only
-   those surfaces a slightly stronger broad cloud; headers, rows and controls
-   retain their existing material because their own backgrounds sit above this. */
+   those surfaces a stronger and less symmetrical cloud mix; headers, rows and
+   controls retain their existing material because their own backgrounds sit
+   above this shared surface. */
 body.dp-v11-structural :is(
   #view-dashboard .dp-dashboard-activity,
   #view-torrents > .card,
   #view-events > .dp-activity-card
 ) {
   background:
-    radial-gradient(ellipse 108% 82% at 88% 90%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 8.2%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 4.0%, transparent) 35%,
+    radial-gradient(ellipse 112% 86% at 90% 92%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 13.5%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 6.5%, transparent) 35%,
       transparent 72%),
-    radial-gradient(ellipse 78% 64% at 5% 72%,
-      color-mix(in srgb, var(--dp-state-active) 5.2%, transparent) 0%,
-      color-mix(in srgb, var(--dp-state-active) 2.2%, transparent) 42%,
+    radial-gradient(ellipse 82% 68% at 4% 74%,
+      color-mix(in srgb, var(--dp-state-active) 8.3%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 3.6%, transparent) 42%,
       transparent 74%),
+    radial-gradient(ellipse 70% 52% at 56% 14%,
+      color-mix(in srgb, var(--dp-accent-purple) 7.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 3.0%, transparent) 43%,
+      transparent 77%),
     linear-gradient(150deg,
-      rgba(255,255,255,.016) 0%,
-      transparent 38%,
-      color-mix(in srgb, var(--dp-accent-purple) 3.2%, transparent) 72%,
+      rgba(255,255,255,.022) 0%,
+      transparent 34%,
+      color-mix(in srgb, var(--dp-accent-purple) 4.8%, transparent) 70%,
       transparent 100%),
     var(--dp-panel-surface) !important;
 }
@@ -98,18 +111,22 @@ body.light.dp-v11-structural :is(
   #view-events > .dp-activity-card
 ) {
   background:
-    radial-gradient(ellipse 108% 82% at 88% 90%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 6.0%, transparent) 0%,
-      color-mix(in srgb, var(--dp-accent-purple-bright) 2.8%, transparent) 36%,
+    radial-gradient(ellipse 112% 86% at 90% 92%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 8.5%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 4.0%, transparent) 36%,
       transparent 73%),
-    radial-gradient(ellipse 80% 66% at 5% 72%,
-      color-mix(in srgb, var(--dp-state-active) 3.4%, transparent) 0%,
-      color-mix(in srgb, var(--dp-state-active) 1.4%, transparent) 43%,
+    radial-gradient(ellipse 84% 70% at 4% 74%,
+      color-mix(in srgb, var(--dp-state-active) 5.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 2.2%, transparent) 43%,
       transparent 75%),
+    radial-gradient(ellipse 72% 54% at 56% 14%,
+      color-mix(in srgb, var(--dp-accent-purple) 4.6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple) 1.8%, transparent) 44%,
+      transparent 78%),
     linear-gradient(150deg,
-      rgba(255,255,255,.58) 0%,
-      transparent 40%,
-      rgba(105, 90, 145, .028) 73%,
+      rgba(255,255,255,.62) 0%,
+      transparent 38%,
+      rgba(105, 90, 145, .040) 72%,
       transparent 100%),
     var(--dp-panel-surface) !important;
 }
