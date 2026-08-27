@@ -77,14 +77,24 @@
     document.head.appendChild(script);
   }
 
-  /* Statistics Batch 4 is the final adaptive presentation layer: it preserves
-     Batch 3 semantics while normalizing optical icon scale, centering the
-     historical KPI band and bounding lower-card list growth. */
+  /* Statistics Batch 4 owns adaptive lower-card presentation and optical
+     normalization while preserving Batch 3's semantic copy. */
   if (!document.querySelector('script[data-dp-statistics-batch4]')) {
     const script = document.createElement('script');
     script.src = '/ui-statistics-batch4.js?v=1';
     script.defer = true;
     script.dataset.dpStatisticsBatch4 = '1';
+    document.head.appendChild(script);
+  }
+
+  /* Statistics Batch 5 is the final reviewed presentation layer. It loads after
+     Batch 4 and owns only ordering, semantic color, chart-header composition,
+     shared surface opt-in and shell-brand presentation. */
+  if (!document.querySelector('script[data-dp-statistics-batch5]')) {
+    const script = document.createElement('script');
+    script.src = '/ui-statistics-batch5.js?v=1';
+    script.defer = true;
+    script.dataset.dpStatisticsBatch5 = '1';
     document.head.appendChild(script);
   }
 
