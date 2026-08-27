@@ -41,6 +41,12 @@ body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-val {
   color: var(--c) !important;
 }
 
+/* The icon frame/glow follows the card semantic accent. This prevents an
+   individual icon's default frame color from diverging from the card color. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi .dp-kpi-icon {
+  --dp-icon-frame-fg: var(--c) !important;
+}
+
 /* Batch 4 established the correct painted glyph sizes. Keep those dimensions,
    but center the oversized artwork inside the fixed 38px chip rather than
    allowing each SVG's intrinsic canvas to bias its position. */
