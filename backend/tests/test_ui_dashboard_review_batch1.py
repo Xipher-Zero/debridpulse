@@ -10,6 +10,7 @@ STATIC = REPO_ROOT / "frontend" / "static"
 ENTRY = STATIC / "style-v11.css"
 BATCH = STATIC / "ui-dashboard-batch1.css"
 RUNTIME = STATIC / "ui-runtime.js"
+SHELL_RUNTIME = STATIC / "operator-title.js"
 
 
 def test_review_batch_is_loaded_after_regression_layer() -> None:
@@ -22,12 +23,15 @@ def test_review_batch_is_loaded_after_regression_layer() -> None:
 def test_speed_cap_hover_keeps_surface_and_reuses_green_arrow() -> None:
     css = BATCH.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
+    shell = SHELL_RUNTIME.read_text(encoding="utf-8")
 
     assert ".aria2-cap-options button:hover" in css
     assert "background: var(--surface2) !important" in css
     assert "dp-speedcap-arrow" in css
     assert "color: var(--green)" in css
-    assert "arrow.textContent = '▼'" in runtime
+    assert "arrow.innerHTML = utilitySvg('chevronDown')" in runtime
+    assert "chevronDown:" in shell
+    assert "arrow.textContent = '▼'" not in runtime
 
 
 def test_title_spacing_and_selected_navigation_match_review() -> None:

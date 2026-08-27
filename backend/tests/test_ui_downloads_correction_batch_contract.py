@@ -22,11 +22,20 @@ def test_downloads_refresh_uses_shared_recovery_control_and_exact_glyph() -> Non
     page = read("ui-downloads-page.css")
     downloads = read("ui-downloads-runtime.js")
     runtime = read("ui-runtime.js")
+    icons = read("operator-title.js")
     geometry = 'M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5'
-    assert geometry in runtime
-    assert geometry in downloads
-    assert "#view-torrents .dp-downloads-refresh" in controls
+
+    # Exact geometry lives once in the canonical Lucide runtime. Page runtimes
+    # consume that authority instead of carrying their own duplicate SVG paths.
+    assert geometry in icons
+    assert "window.DPIcons" in runtime
+    assert "window.DPIcons" in downloads
+    assert "const paths =" not in runtime
+    assert "const paths =" not in downloads
+    assert "normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh')" in runtime
+    assert "normalizeUtilityButton(refresh, 'refresh')" in runtime
     assert "refresh.innerHTML = utilitySvg('refresh') + '<span>Refresh</span>';" in downloads
+    assert "#view-torrents .dp-downloads-refresh" in controls
     assert "width: 38px" not in page
     assert "display: inline-grid !important" not in page
     assert ".dp-downloads-refresh svg {" not in page
@@ -34,14 +43,28 @@ def test_downloads_refresh_uses_shared_recovery_control_and_exact_glyph() -> Non
 
 def test_bulk_selection_is_header_only_card_with_reviewed_action_order() -> None:
     runtime = read("ui-downloads-runtime.js")
+    icons = read("operator-title.js")
     page = read("ui-downloads-page.css")
     transfer = read("ui-transfer-contract.css")
     assert "bar.classList.add('dp-card', 'dp-downloads-bulk-card')" in runtime
     assert "header.className = 'dp-card__header dp-downloads-bulk-toolbar'" in runtime
     assert "actions.append(pause, resume, reset, separator, remove);" in runtime
     assert "status.append(count, clear);" in runtime
-    for icon_name in ("pause:", "play:", "trash:", "x:"):
-        assert icon_name in runtime
+
+    # Bulk controls consume the shared Lucide registry rather than defining a
+    # second private icon map in the Downloads presentation shim.
+    for icon_name in ("pause:", "play:", "refresh:", "trash2:", "x:"):
+        assert icon_name in icons
+    for usage in (
+        "'Pause', 'pause'",
+        "'Resume', 'play'",
+        "'Reset', 'refresh'",
+        "'Delete', 'trash2'",
+        "'Clear Selections', 'x'",
+    ):
+        assert usage in runtime
+    assert "const paths =" not in runtime
+
     for cls in (
         "dp-downloads-bulk-action--pause",
         "dp-downloads-bulk-action--resume",

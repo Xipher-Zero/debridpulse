@@ -68,7 +68,9 @@ def test_page_runtimes_consume_canonical_icons_without_private_svg_maps() -> Non
         assert "data-dp-lucide" in runtime
 
     assert "arrow.innerHTML = utilitySvg('chevronDown')" in dashboard
-    assert "utilitySvg('refresh')" in dashboard
+    assert "normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh')" in dashboard
+    assert "normalizeUtilityButton(refresh, 'refresh')" in dashboard
+    assert "utilitySvg('refresh')" in downloads
     assert "utilitySvg('chevronLeft')" in downloads
     assert "utilitySvg('chevronRight')" in downloads
     assert "'Delete', 'trash2'" in downloads
