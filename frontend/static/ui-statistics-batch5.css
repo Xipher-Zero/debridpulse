@@ -204,3 +204,71 @@ body.light.dp-v11-structural #sidebar .logo-icon {
     font-size: 8px;
   }
 }
+
+/* ── Shared KPI vertical anchors ──────────────────────────────────────── */
+/* Both Statistics KPI tiers use one information hierarchy: title, value,
+   flavor text. Fixed row anchors replace per-card vertical centering so every
+   card in a tier lands its information on the same Y positions regardless of
+   copy length. Flavor text alone is allowed to consume extra height downward. */
+body.dp-v11-structural #view-stats #detail-stat-cards :is(.metric-card, .stat-card) {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 18px 48px minmax(28px, auto) !important;
+  align-content: start !important;
+  align-items: start !important;
+  justify-items: center !important;
+  padding: 20px 16px 14px !important;
+}
+
+body.dp-v11-structural #view-stats #detail-stat-cards :is(.metric-label, .stat-label) {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  align-self: start !important;
+  margin: 0 !important;
+}
+
+body.dp-v11-structural #view-stats #detail-stat-cards :is(.metric-value, .stat-value) {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  margin: 6px 0 0 !important;
+}
+
+body.dp-v11-structural #view-stats #detail-stat-cards :is(.metric-sub, .stat-sub) {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  align-self: start !important;
+  margin: 5px 0 0 !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 18px 28px minmax(24px, auto) !important;
+  align-content: start !important;
+  align-items: start !important;
+  justify-items: center !important;
+  padding: 14px 14px 12px !important;
+  text-align: center !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-lbl {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  align-self: start !important;
+  margin: 0 !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-val {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  margin: 3px 0 0 !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-sub {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  align-self: start !important;
+  margin: 2px 0 0 !important;
+}
