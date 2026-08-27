@@ -25,12 +25,13 @@ def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> No
     runtime = read(BATCH_RUNTIME)
 
     assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert "/ui-statistics-batch5.js?v=1" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=1")
+    assert "/ui-statistics-batch5.js?v=2" in bootstrap
+    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=2")
     assert "data-dp-statistics-batch5" in bootstrap
     assert "previous.dpStatisticsBatch4 !== '1'" in runtime
     assert "wrapped.dpStatisticsBatch5 = '1'" in runtime
     assert "window.loadDetailedStats = wrapped" in runtime
+    assert "'/ui-statistics-batch5.css?v=2'" in runtime
     for forbidden in ("fetch(", "api(", "/stats/detail", "XMLHttpRequest", "EventSource"):
         assert forbidden not in runtime
 
@@ -122,19 +123,36 @@ def test_breakdowns_reuse_shared_list_surface_and_five_row_cadence() -> None:
     assert "/ui-panel-surface-treatment.css?v=22" in overlay
 
 
-def test_sidebar_branding_rebalances_wordmark_version_and_light_logo_frame() -> None:
+def test_shell_branding_uses_fixed_global_version_datum_and_unframed_light_logo() -> None:
+    runtime = read(BATCH_RUNTIME)
     css = read(BATCH_CSS)
 
-    assert "#sidebar .logo-ver" in css
-    assert "right: 22px" in css
-    assert "bottom: 9px" in css
-    assert "font-size: 9px" in css
+    assert "function normalizeShellBranding()" in runtime
+    assert "'/logo.svg?v=7'" in runtime
+    assert "version.classList.add('dp-app-version')" in runtime
+    assert "document.body.appendChild(version)" in runtime
+
+    selector = "body.dp-v11-structural > #sidebar-version.dp-app-version"
+    assert selector in css
+    segment = css[css.index(selector):].split('}', 1)[0]
+    assert "position: fixed !important" in segment
+    assert "right: max(" in segment
+    assert "var(--dp-shell-x)" in segment
+    assert "var(--dp-shell-sidebar)" in segment
+    assert "var(--dp-content-max-width)" in segment
+    assert "bottom: 7px !important" in segment
+    assert "text-align: right" in segment
+    assert "font-size: 9px" in segment
+
     assert "#sidebar .logo-name" in css
     assert "font-size: 20px" in css
-    assert "body.light.dp-v11-structural #sidebar .logo-ver" in css
     assert "body.light.dp-v11-structural #sidebar .logo-icon" in css
-    assert "border: 0 !important" in css
-    assert "background: transparent !important" in css
+    light_logo = css[css.index("body.light.dp-v11-structural #sidebar .logo-icon"):].split('}', 1)[0]
+    assert "border: 0 !important" in light_logo
+    assert "outline: 0 !important" in light_logo
+    assert "background: transparent !important" in light_logo
+    assert "box-shadow: none !important" in light_logo
+    assert "drop-shadow" in light_logo
 
 
 def test_ci_syntax_checks_batch5_runtime_and_version_stays_frozen() -> None:
