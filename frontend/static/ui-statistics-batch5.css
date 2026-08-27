@@ -34,6 +34,13 @@ body.dp-v11-structural #view-stats .dp-stats-kpi-size {
   --c: var(--dp-state-active) !important;
 }
 
+/* Historical values carry the same semantic accent as their card/icon. Keep
+   this explicit so generic KPI typography cannot silently flatten the values
+   back to the primary text color when labels or runtime ordering change. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-val {
+  color: var(--c) !important;
+}
+
 /* Batch 4 established the correct painted glyph sizes. Keep those dimensions,
    but center the oversized artwork inside the fixed 38px chip rather than
    allowing each SVG's intrinsic canvas to bias its position. */
