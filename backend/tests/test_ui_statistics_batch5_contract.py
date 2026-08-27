@@ -25,8 +25,8 @@ def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> No
     runtime = read(BATCH_RUNTIME)
 
     assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert "/ui-statistics-batch5.js?v=2" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=2")
+    assert "/ui-statistics-batch5.js?v=3" in bootstrap
+    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=3")
     assert "data-dp-statistics-batch5" in bootstrap
     assert "previous.dpStatisticsBatch4 !== '1'" in runtime
     assert "wrapped.dpStatisticsBatch5 = '1'" in runtime
@@ -65,6 +65,24 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     assert "--c: var(--dp-state-success) !important" in css
     assert "--c: var(--dp-state-caution) !important" in css
     assert "--c: var(--dp-state-active) !important" in css
+
+
+def test_success_rate_copy_distinguishes_period_and_life_time_scopes() -> None:
+    runtime = read(BATCH_RUNTIME)
+
+    for flavor in (
+        "Share of finished downloads completed successfully during the last hour.",
+        "Share of finished downloads completed successfully during the last 24 hours.",
+        "Share of finished downloads completed successfully during the last 7 days.",
+        "Share of finished downloads completed successfully during the last 30 days.",
+        "Share of finished downloads completed successfully during the last year.",
+        "Share of finished downloads completed successfully across all recorded history.",
+    ):
+        assert flavor in runtime
+
+    assert "LIFE-TIME SUCCESS RATE" in runtime
+    assert "Share of all recorded finished downloads completed successfully." in runtime
+    assert "normalizeSuccessRateCopy(period)" in runtime
 
 
 def test_secondary_kpi_glyphs_are_centered_without_resizing_the_chip() -> None:
