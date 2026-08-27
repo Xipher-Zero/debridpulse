@@ -138,7 +138,15 @@
     if (label) label.textContent = 'LIFE-TIME SUCCESS RATE';
     if (sub) sub.textContent = 'Share of all recorded finished downloads completed successfully.';
 
-    return Boolean(primarySub && label && sub);
+    const averageDuration = historicalCard('i-avg-duration');
+    const averageDurationLabel = averageDuration && averageDuration.querySelector('.dash-kpi-lbl');
+    if (averageDurationLabel) averageDurationLabel.textContent = 'AVERAGE DOWNLOAD TIME';
+
+    const averageSize = historicalCard('i-avg-size');
+    const averageSizeLabel = averageSize && averageSize.querySelector('.dash-kpi-lbl');
+    if (averageSizeLabel) averageSizeLabel.textContent = 'AVERAGE DOWNLOAD SIZE';
+
+    return Boolean(primarySub && label && sub && averageDurationLabel && averageSizeLabel);
   }
 
   function decorateChartHeader(period) {
