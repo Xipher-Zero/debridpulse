@@ -42,10 +42,13 @@ def test_activity_points_use_semantic_glow() -> None:
 def test_dark_elevation_uses_purple_lavender_without_changing_light_theme() -> None:
     css = read("ui-live-review-batch.css")
     assert "body.dp-v11-structural:not(.light)" in css
+    assert "--dp-dark-surface-shadow:" in css
     assert "--dp-panel-shadow:" in css
-    assert "rgba(105,58,176,.36)" in css
-    assert "rgba(205,169,255,.12)" in css
+    assert "rgba(84, 38, 131, .18)" in css
+    assert "rgba(167, 139, 250, .06)" in css
+    assert "#view-dashboard .dash-hero-stat" in css
+    assert "#view-dashboard .dp-dashboard-quick-add" in css
+    assert "#view-dashboard .dp-dashboard-activity" in css
     assert "body.dp-v11-structural:not(.light) #sidebar" in css
-    assert "rgba(207,172,255,.22)" in css
     assert "body.dp-v11-structural:not(.light) .sidebar-footer" in css
     assert "body.light.dp-v11-structural" not in css
