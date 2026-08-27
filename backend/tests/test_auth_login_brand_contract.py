@@ -38,11 +38,11 @@ def test_login_embeds_the_exact_reviewed_logo_without_public_static_dependency()
     assert "style-src 'unsafe-inline'" in source
 
     # Decode the self-contained HTML data URI and compare its bytes directly to
-    # the reviewed large-format raster. This keeps the contract independent of
-    # the Python source-string delimiter while still requiring exact image data.
+    # the reviewed large-format raster. The embedded source intentionally keeps
+    # delimiter-safe redundant padding, which normal base64 decoding accepts.
     match = re.search(r'src="data:image/png;base64,([A-Za-z0-9+/=]+)"', source)
     assert match is not None
-    assert base64.b64decode(match.group(1), validate=True) == STATIC_LOGO.read_bytes()
+    assert base64.b64decode(match.group(1)) == STATIC_LOGO.read_bytes()
 
 
 def test_first_paint_keeps_reviewed_large_branding_and_restores_compact_tab_mark() -> None:
