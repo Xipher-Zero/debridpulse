@@ -27,6 +27,28 @@ def test_status_badges_are_lucide_only_and_glow_like_progress() -> None:
     assert "0 0 13px" in css
 
 
+def test_terminal_error_rail_is_truthful_rounded_and_high_salience() -> None:
+    css = read("ui-live-review-batch.css")
+    assert ".prog.dp-terminal-error-rail" in css
+    assert "border-radius: 999px !important" in css
+    assert "width: 16px" in css
+    assert "height: 9px" in css
+    assert "transform: translateY(-50%)" in css
+    assert "var(--dp-state-error) 88%" in css
+    assert ".prog-fill.dp-terminal-error-progress" in css
+
+
+def test_details_scrollbar_suppresses_native_increment_buttons() -> None:
+    css = read("ui-live-review-batch.css")
+    assert "@supports selector(::-webkit-scrollbar)" in css
+    assert "scrollbar-color: auto" in css
+    assert "::-webkit-scrollbar-button:vertical:decrement" in css
+    assert "::-webkit-scrollbar-button:vertical:increment" in css
+    assert "-webkit-appearance: none !important" in css
+    assert "display: none !important" in css
+    assert "min-height: 0 !important" in css
+
+
 def test_activity_points_use_stronger_theme_aware_semantic_glow() -> None:
     css = read("ui-live-review-batch.css")
     assert ".dp-activity-level.info" in css
@@ -58,5 +80,6 @@ def test_dark_elevation_stays_subdued_and_provider_card_has_light_parity() -> No
     assert "body.dp-v11-structural:not(.light) #sidebar" in css
     assert "body.dp-v11-structural:not(.light) #sidebar .sidebar-footer" in css
     assert "body.light.dp-v11-structural #sidebar .sidebar-footer" in css
-    assert "rgba(132, 40, 237, .18)" in css
-    assert "rgba(45, 61, 96, .14)" in css
+    assert "var(--dp-shadow-raised)" in css
+    assert "rgba(45, 61, 96, .08)" in css
+    assert "rgba(132, 40, 237, .18)" not in css
