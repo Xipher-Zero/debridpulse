@@ -15,7 +15,7 @@ def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> 
     overlay = STYLE.read_text(encoding="utf-8")
     control = "/ui-dashboard-control-polish.css?v=23"
     progress = "/ui-dashboard-progress-weight.css?v=20"
-    statistics = "/ui-statistics-page.css?v=20"
+    statistics = "/ui-statistics-page.css?v=21"
     downloads = "/ui-downloads-page.css?v=27"
     help_page = "/ui-help-page.css?v=22"
     for layer in (control, progress, statistics, downloads, help_page):
