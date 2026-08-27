@@ -21,7 +21,13 @@ def read(path: Path) -> str:
 def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> None:
     source = read(AUTH_ROUTES)
 
-    assert 'width:min(760px,calc(100vw - 48px))' in source
+    # Final review narrows the desktop card by ~26% while preserving full-width
+    # fields. The password Sign In action alone is 30% narrower and centered;
+    # OIDC keeps the full card width, and very small screens restore full width.
+    assert 'width:min(560px,calc(100vw - 48px))' in source
+    assert '.auth-action.primary[type="submit"] { width:70%;margin-left:auto;margin-right:auto; }' in source
+    assert '@media (max-width:460px)' in source
+    assert '.auth-action.primary[type="submit"] { width:100%; }' in source
     assert 'class="auth-backdrop"' in source
     assert 'class="brand-pulse"' in source
     assert 'class="version"' in source
