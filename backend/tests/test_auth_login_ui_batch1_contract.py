@@ -28,11 +28,23 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert "read_version()" in source
     assert 'placeholder="Enter your username"' in source
     assert 'placeholder="Enter your password"' in source
-    assert 'data-password-toggle' in source
+    assert 'data-password-reveal' in source
     assert 'or continue with single sign-on' in source
     assert 'authentik-oidc.svg' in source
     assert 'Password-only LAN deployments may operate over HTTP.' in source
     assert 'OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.' in source
+
+    # The login card deliberately uses the same surface/border/radius/shadow
+    # language as the v1.0.11 application card primitive rather than a separate
+    # glassmorphic auth-panel treatment.
+    assert '--card:#10182c;--card2:#0b1224;' in source
+    assert '--field:#0d1427;--border:#26324d;--border-strong:#3a496a;' in source
+    assert '--shadow:0 12px 30px rgba(0,0,8,.24)' in source
+    assert '--card:#f8faff;--card2:#ffffff;' in source
+    assert '--field:#fbfcff;--border:#dce4f1;--border-strong:#c4cee0;' in source
+    assert '--shadow:0 6px 18px rgba(45,61,96,.075)' in source
+    assert 'border:1px solid var(--border);border-radius:12px;background:linear-gradient(160deg,var(--card),var(--card2));' in source
+    assert 'backdrop-filter:blur(18px)' not in source
 
     # Hybrid mode is deliberately local credentials first, SSO second.
     assert source.index('<form method="post" action="/login"') < source.index(
@@ -53,10 +65,25 @@ def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
     assert "img-src data:" in csp
     assert "form-action 'self'" in csp
 
-    # The only state it reads is the existing local theme preference. It must
-    # never become an authentication/network helper merely for an eye toggle.
+    # Password reveal is momentary: closed eye at rest, open eye only while the
+    # user is actively holding mouse/touch/pen or Space/Enter. There is no
+    # persistent click toggle, and hidden SVGs must remain genuinely hidden.
     assert 'localStorage.getItem("theme")' in script
-    assert 'data-password-toggle' in script
+    assert 'data-password-reveal' in script
+    assert 'pointerdown' in script
+    assert 'pointerup' in script
+    assert 'pointercancel' in script
+    assert 'keydown' in script
+    assert 'keyup' in script
+    assert 'window.addEventListener("blur"' in script
+    assert 'addEventListener("click"' not in script
+    assert 'class="eye" hidden' in source
+    assert 'class="eye-off" viewBox' in source
+    assert '.password-reveal svg[hidden] { display:none; }' in source
+    assert 'aria-label="Hold to show password"' in source
+
+    # The only state it reads is the existing local theme preference. It must
+    # never become an authentication/network helper merely for password reveal.
     for forbidden in (
         "fetch(",
         "XMLHttpRequest",
