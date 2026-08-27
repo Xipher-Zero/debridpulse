@@ -25,8 +25,8 @@ def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> No
     runtime = read(BATCH_RUNTIME)
 
     assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert "/ui-statistics-batch5.js?v=3" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=3")
+    assert "/ui-statistics-batch5.js?v=4" in bootstrap
+    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=4")
     assert "data-dp-statistics-batch5" in bootstrap
     assert "previous.dpStatisticsBatch4 !== '1'" in runtime
     assert "wrapped.dpStatisticsBatch5 = '1'" in runtime
@@ -88,6 +88,19 @@ def test_success_rate_copy_distinguishes_period_and_life_time_scopes() -> None:
     assert "LIFE-TIME SUCCESS RATE" in runtime
     assert "Share of all recorded finished downloads completed successfully." in runtime
     assert "normalizeSuccessRateCopy(period)" in runtime
+
+
+def test_average_duration_uses_compact_uppercase_day_hour_minute_units() -> None:
+    runtime = read(BATCH_RUNTIME)
+
+    assert "function formatCompactDuration(seconds)" in runtime
+    assert "Math.max(1, Math.round(value / 60))" in runtime
+    assert "parts.push(days + 'D')" in runtime
+    assert "parts.push(hours + 'H')" in runtime
+    assert "parts.push(minutes + 'M')" in runtime
+    assert "return parts.join(' ')" in runtime
+    assert "window.fmtDuration = formatCompactDuration" in runtime
+    assert "installCompactDurationFormatter();" in runtime
 
 
 def test_secondary_kpi_glyphs_are_centered_without_resizing_the_chip() -> None:
