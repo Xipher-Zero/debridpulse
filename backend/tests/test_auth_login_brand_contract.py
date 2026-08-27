@@ -7,6 +7,8 @@ import hashlib
 import re
 from pathlib import Path
 
+from api import auth_routes
+
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTH_ROUTES = ROOT / "backend" / "api" / "auth_routes.py"
@@ -32,17 +34,21 @@ def test_login_embeds_the_exact_reviewed_logo_without_public_static_dependency()
     assert 'class="brand-mark"' in source
     assert "Debrid<span>Pulse</span>" in source
     assert "Secure access" in source
-    assert "data:image/png;base64," in source
+    assert "base64.b64encode" in source
+    assert '_static_asset("logo-128.png").read_bytes()' in source
     assert "default-src 'none'" in source
     assert "img-src data:" in source
     assert "style-src 'unsafe-inline'" in source
 
-    # Decode the self-contained HTML data URI and compare its bytes directly to
-    # the reviewed large-format raster. The embedded source intentionally keeps
-    # delimiter-safe redundant padding, which normal base64 decoding accepts.
-    match = re.search(r'src="data:image/png;base64,([A-Za-z0-9+/=]+)"', source)
+    # The authentication HTML remains self-contained, but its embedded mark is
+    # generated from the exact reviewed large-format asset rather than carrying
+    # a second manually copied raster payload that can drift from that asset.
+    match = re.search(
+        r'src="data:image/png;base64,([A-Za-z0-9+/=]+)"',
+        auth_routes._AUTH_MARK_HTML,
+    )
     assert match is not None
-    assert base64.b64decode(match.group(1)) == STATIC_LOGO.read_bytes()
+    assert base64.b64decode(match.group(1), validate=True) == STATIC_LOGO.read_bytes()
 
 
 def test_first_paint_keeps_reviewed_large_branding_and_restores_compact_tab_mark() -> None:
