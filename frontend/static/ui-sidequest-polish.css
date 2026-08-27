@@ -28,14 +28,15 @@ body.light.dp-v11-structural > #sidebar-version.dp-app-version {
 /* ── Sidebar signal field ─────────────────────────────────────────────── */
 /* One authored signal field with mixed amplitudes/frequencies, crossing paths,
    sparse bright nodes and an intentional lower-left to upper-right envelope.
-   Both themes share the same geometry; only visual emphasis changes. */
+   The paths remain vertically separated rather than collapsing into a single
+   fibre bundle. Both themes share the same geometry; only emphasis changes. */
 body.dp-v11-structural #sidebar::before {
   left: -28px !important;
   right: -20px !important;
   bottom: 205px !important;
   height: 300px !important;
   opacity: .72 !important;
-  background: url('/icons/dp/sidebar-wave-accent.svg?v=2') center / 100% 100% no-repeat !important;
+  background: url('/icons/dp/sidebar-wave-accent.svg?v=3') center / 100% 100% no-repeat !important;
   transform: none !important;
   mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
