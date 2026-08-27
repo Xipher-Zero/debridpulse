@@ -36,6 +36,28 @@
     'all': 'Share of finished downloads completed successfully across all recorded history.',
   });
 
+  function formatCompactDuration(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return '—';
+
+    const totalMinutes = Math.max(1, Math.round(value / 60));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+
+    if (days) parts.push(days + 'D');
+    if (hours) parts.push(hours + 'H');
+    if (minutes) parts.push(minutes + 'M');
+
+    return parts.join(' ');
+  }
+
+  function installCompactDurationFormatter() {
+    window.fmtDuration = formatCompactDuration;
+    return window.fmtDuration === formatCompactDuration;
+  }
+
   function selectedPeriod(explicit) {
     if (explicit) return explicit;
     const active = document.querySelector('#stats-period-tabs .ftab.active');
@@ -167,6 +189,7 @@
   }
 
   function applyBatch5(period) {
+    installCompactDurationFormatter();
     normalizeShellBranding();
     normalizePrimaryOrder();
     normalizeHistoricalOrder();
@@ -200,19 +223,21 @@
 
   function initialize() {
     loadBatchStyles();
+    installCompactDurationFormatter();
     normalizeShellBranding();
     installDetailedStatsGuard();
 
     let attempts = 0;
     const settle = function () {
       attempts += 1;
+      const durationReady = installCompactDurationFormatter();
       const brandingReady = normalizeShellBranding();
       const primaryReady = normalizePrimaryOrder();
       const historyReady = normalizeHistoricalOrder();
       const successReady = normalizeSuccessRateCopy();
       const chartReady = decorateChartHeader();
       applySharedSurfaceClass();
-      if ((!brandingReady || !primaryReady || !historyReady || !successReady || !chartReady) && attempts < 160) {
+      if ((!durationReady || !brandingReady || !primaryReady || !historyReady || !successReady || !chartReady) && attempts < 160) {
         setTimeout(settle, 50);
       }
     };
