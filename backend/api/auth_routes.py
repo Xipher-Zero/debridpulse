@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import os
 import secrets
@@ -51,21 +52,159 @@ from auth.sessions import (
 from auth.throttle import login_challenge_rate_limiter, oidc_start_rate_limiter
 from auth.transitions import authentication_configuration_lock
 from core.config import get_settings
+from core.version import read_version
 
 
 router = APIRouter()
 
 
+# The login page remains server-rendered and self-contained. The only executable
+# code is this tiny hash-pinned interaction shim: it restores the user's stored
+# palette and toggles visibility of the password field. It performs no network,
+# cookie, authentication-state, or token operations.
+_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";try{const t=localStorage.getItem(\"theme\");if(t===\"light\"||t===\"dark\")document.documentElement.dataset.theme=t}catch(_){}document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-toggle]\"),p=document.getElementById(\"password\");if(!b||!p)return;b.addEventListener(\"click\",()=>{const show=p.type===\"password\";p.type=show?\"text\":\"password\";b.setAttribute(\"aria-pressed\",String(show));b.setAttribute(\"aria-label\",show?\"Hide password\":\"Show password\");b.querySelector(\".eye\").hidden=show;b.querySelector(\".eye-off\").hidden=!show})})})();"""
+_AUTH_PAGE_SCRIPT_HASH = base64.b64encode(
+    hashlib.sha256(_AUTH_PAGE_SCRIPT.encode("utf-8")).digest()
+).decode("ascii")
+
+
 _AUTH_PAGE_STYLE = """
-:root { --bg:#090812;--bg2:#100e1c;--surface:#171526;--surface2:#211e34;--border:#302c49;--border2:#484268;--text:#f4f1ff;--text2:#c2bdd6;--text3:#89839f;--accent:#a67cff;--accent2:#66a8ff;--accent-rgb:166,124,255;--accent-contrast:#120d1d;--danger:#ff6b6b;--primary-gradient:linear-gradient(135deg,#a67cff,#4f8cff);--primary-gradient-hover:linear-gradient(135deg,#b991ff,#66a8ff); }
+:root {
+  color-scheme: dark;
+  --bg:#070b16;--bg2:#0a1021;--card:rgba(12,17,31,.90);--card2:rgba(17,22,39,.80);
+  --field:rgba(10,14,27,.72);--border:rgba(126,139,181,.28);--border-strong:rgba(135,108,218,.45);
+  --text:#f7f7fb;--text2:#c5c9df;--text3:#8f96b5;--accent:#9d22f4;--accent2:#1887ff;
+  --accent-rgb:157,34,244;--blue-rgb:24,135,255;--danger:#ff6b76;
+  --primary-gradient:linear-gradient(100deg,#aa08eb 0%,#6d27f4 46%,#087df5 100%);
+  --primary-gradient-hover:linear-gradient(100deg,#b91bf2 0%,#7b39ff 46%,#198eff 100%);
+  --wave-purple:#a52bfa;--wave-blue:#168cff;--particle:rgba(117,126,255,.86);
+  --shadow:0 34px 90px rgba(0,0,12,.48);--input-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:#f9f9ff;--bg2:#f3f7ff;--card:rgba(255,255,255,.88);--card2:rgba(255,255,255,.78);
+  --field:rgba(255,255,255,.74);--border:rgba(96,111,168,.23);--border-strong:rgba(127,92,221,.30);
+  --text:#10152a;--text2:#4f5f9b;--text3:#7482b7;--accent:#8f1de9;--accent2:#197fff;
+  --wave-purple:#b858ff;--wave-blue:#5c98ff;--particle:rgba(116,120,226,.62);
+  --shadow:0 30px 90px rgba(85,91,137,.17);--input-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg:#f9f9ff;--bg2:#f3f7ff;--card:rgba(255,255,255,.88);--card2:rgba(255,255,255,.78);
+    --field:rgba(255,255,255,.74);--border:rgba(96,111,168,.23);--border-strong:rgba(127,92,221,.30);
+    --text:#10152a;--text2:#4f5f9b;--text3:#7482b7;--accent:#8f1de9;--accent2:#197fff;
+    --wave-purple:#b858ff;--wave-blue:#5c98ff;--particle:rgba(116,120,226,.62);
+    --shadow:0 30px 90px rgba(85,91,137,.17);--input-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+  }
+}
 * { box-sizing:border-box; }
-body { margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 16% 12%,rgba(var(--accent-rgb),.13),transparent 25%),radial-gradient(circle at 88% 8%,rgba(99,164,255,.10),transparent 20%),linear-gradient(180deg,var(--bg2),var(--bg));color:var(--text);font-family:Outfit,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-.card { width:min(460px,100%);padding:30px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(160deg,rgba(33,30,52,.97),rgba(15,13,27,.94));box-shadow:0 18px 40px rgba(0,0,8,.34); }
-.brand-lockup { display:flex;align-items:center;gap:14px;margin-bottom:18px; }.brand-mark { width:62px;height:62px;flex:0 0 62px;display:block;object-fit:contain; }.brand { font-size:28px;font-weight:800;letter-spacing:-.7px;line-height:1;margin:0 0 5px; }.brand span { color:var(--accent); }.brand-sub { color:var(--text3);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600; }h1 { font-size:17px;margin:0 0 24px;color:var(--text2);font-weight:500; }
-label { display:block;font-size:12px;font-weight:700;color:var(--text2);margin:14px 0 7px; }input { width:100%;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:11px 12px;font:inherit;outline:none; }input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.24); }
-.auth-action { width:100%;margin-top:20px;border-radius:8px;padding:11px 14px;font-weight:800;font-size:14px;cursor:pointer;text-align:center;text-decoration:none;display:block; }button.auth-action { font-family:inherit; }.auth-action:hover { filter:brightness(1.06); }.primary { border:0;background:var(--primary-gradient);color:var(--accent-contrast); }.primary:hover { background:var(--primary-gradient-hover); }.secondary { background:var(--surface2);color:var(--text);border:1px solid var(--border); }
-.divider { display:flex;align-items:center;gap:12px;color:var(--text3);font-size:11px;margin:22px 0 0; }.divider:before,.divider:after { content:"";height:1px;background:var(--border);flex:1; }.error { border:1px solid rgba(255,107,107,.4);background:rgba(255,107,107,.08);color:#ffc0c0;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.45;margin:0 0 15px; }.muted { color:var(--text3);font-size:13px;line-height:1.55; }.foot { margin-top:22px;padding-top:16px;border-top:1px solid var(--border);color:var(--text3);font-size:11px;line-height:1.5; }
+html,body { min-height:100%; }
+body {
+  margin:0;min-height:100vh;overflow-x:hidden;position:relative;padding:58px 24px 42px;
+  display:grid;place-items:center;color:var(--text);
+  font-family:Outfit,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(circle at 12% 46%,rgba(var(--accent-rgb),.18),transparent 31%),
+    radial-gradient(circle at 89% 44%,rgba(var(--blue-rgb),.15),transparent 31%),
+    linear-gradient(145deg,var(--bg2),var(--bg) 58%,var(--bg2));
+}
+.version { position:fixed;z-index:4;top:28px;left:34px;color:var(--text3);font-size:12px;font-weight:600;letter-spacing:.015em; }
+.auth-backdrop { position:fixed;z-index:0;inset:0;width:100%;height:100%;pointer-events:none;opacity:.86; }
+.auth-backdrop .wave { fill:none;stroke-linecap:round;stroke-width:1.1; }
+.auth-backdrop .wave-purple { stroke:var(--wave-purple); }
+.auth-backdrop .wave-blue { stroke:var(--wave-blue); }
+.auth-backdrop .soft { opacity:.22; }.auth-backdrop .mid { opacity:.36; }.auth-backdrop .strong { opacity:.60; }
+.auth-backdrop .particle { fill:var(--particle); }.auth-backdrop .spark { filter:drop-shadow(0 0 5px currentColor); }
+.card {
+  position:relative;z-index:2;width:min(760px,calc(100vw - 48px));padding:48px 54px 30px;overflow:hidden;
+  border:1px solid var(--border-strong);border-radius:22px;background:linear-gradient(165deg,var(--card),var(--card2));
+  box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+}
+.brand-lockup { position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 0 22px; }
+.brand-pulse { position:absolute;z-index:0;top:9px;left:50%;transform:translateX(-50%);width:min(590px,88%);height:106px;opacity:.64; }
+.brand-pulse .grid { stroke:var(--border);stroke-width:.7;opacity:.28; }.brand-pulse .pulse-left { stroke:var(--wave-purple); }.brand-pulse .pulse-right { stroke:var(--wave-blue); }
+.brand-pulse .pulse-left,.brand-pulse .pulse-right { fill:none;stroke-width:2;filter:drop-shadow(0 0 5px currentColor); }
+.brand-mark { position:relative;z-index:1;width:110px;height:110px;display:block;object-fit:contain;filter:drop-shadow(0 9px 18px rgba(var(--accent-rgb),.18)); }
+.brand { position:relative;z-index:1;margin-top:14px;font-size:46px;font-weight:800;letter-spacing:-1.7px;line-height:1;color:var(--text); }
+.brand span { color:var(--accent); }.brand-sub { margin-top:13px;color:var(--text2);font-size:19px;font-weight:500; }.sr-only { position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important; }
+.error { border:1px solid rgba(255,107,118,.45);background:rgba(255,107,118,.09);color:var(--danger);padding:11px 13px;border-radius:10px;font-size:13px;line-height:1.45;margin:0 0 18px; }
+form { margin:0; }
+label { display:block;font-size:14px;font-weight:650;color:var(--text2);margin:18px 0 8px; }
+.field { position:relative;display:flex;align-items:center; }
+.field-icon { position:absolute;z-index:2;left:17px;width:20px;height:20px;color:var(--text3);pointer-events:none; }
+.field-icon svg,.password-toggle svg,.action-arrow svg,.foot-icon svg { display:block;width:100%;height:100%; }
+input {
+  width:100%;height:58px;border:1px solid var(--border);background:var(--field);color:var(--text);border-radius:10px;
+  padding:0 50px 0 52px;font:inherit;font-size:15px;outline:none;box-shadow:var(--input-shadow);transition:border-color .15s,box-shadow .15s,background .15s;
+}
+input::placeholder { color:var(--text3);opacity:.86; }
+input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.13),var(--input-shadow); }
+.password-toggle { position:absolute;z-index:3;right:8px;display:grid;place-items:center;width:42px;height:42px;padding:10px;border:0;border-radius:8px;background:transparent;color:var(--text3);cursor:pointer; }
+.password-toggle:hover,.password-toggle:focus-visible { color:var(--text2);background:rgba(var(--accent-rgb),.08);outline:none; }
+.auth-action {
+  position:relative;width:100%;min-height:60px;margin-top:24px;border-radius:10px;padding:0 58px;font-weight:700;font-size:16px;cursor:pointer;text-align:center;text-decoration:none;
+  display:flex;align-items:center;justify-content:center;gap:14px;font-family:inherit;transition:filter .15s,transform .15s,border-color .15s,background .15s;
+}
+.auth-action:hover { filter:brightness(1.07); }.auth-action:active { transform:translateY(1px); }
+.primary { border:0;background:var(--primary-gradient);color:#fff;box-shadow:0 9px 24px rgba(65,72,255,.18); }.primary:hover { background:var(--primary-gradient-hover); }
+.secondary { background:var(--field);color:var(--text);border:1px solid var(--border);box-shadow:var(--input-shadow); }.secondary:hover { border-color:var(--border-strong); }
+.action-arrow { position:absolute;right:20px;width:21px;height:21px;color:currentColor;opacity:.86; }
+.oidc-mark { position:absolute;left:18px;width:38px;height:38px;object-fit:contain; }
+.oidc.secondary .oidc-separator { position:absolute;left:66px;top:10px;bottom:10px;width:1px;background:var(--border); }
+.divider { display:flex;align-items:center;gap:18px;color:var(--text3);font-size:13px;margin:27px 0 0;white-space:nowrap; }.divider:before,.divider:after { content:"";height:1px;background:var(--border);flex:1; }
+.muted { color:var(--text3);font-size:13px;line-height:1.55; }
+.foot { margin-top:21px;padding:19px 5px 0;border-top:1px solid var(--border);display:flex;align-items:flex-start;gap:13px;color:var(--text3);font-size:12px;line-height:1.65; }
+.foot-icon { flex:0 0 20px;width:20px;height:20px;margin-top:1px;color:var(--text3); }.foot .https { color:var(--accent);font-weight:700; }
+.auth-only-message { text-align:center;margin:8px 0 0; }
+@media (max-width:700px) {
+  body { padding:48px 14px 24px;align-items:start; }.version { top:17px;left:18px;font-size:11px; }
+  .card { width:100%;padding:34px 24px 24px;border-radius:17px; }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
+  .brand-pulse { width:98%;top:2px; }.auth-action { min-height:56px; }.oidc-mark { width:34px;height:34px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
+}
+@media (max-width:460px) {
+  .card { padding-left:17px;padding-right:17px; }.brand { font-size:32px; }.divider { gap:10px;font-size:11px; }.auth-action { font-size:14px;padding-left:52px;padding-right:48px; }
+  .foot { font-size:11px; }.auth-backdrop { opacity:.52; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto!important;transition:none!important; } }
 """
+
+
+_LUCIDE_USER = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>"""
+_LUCIDE_LOCK = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>"""
+_LUCIDE_EYE = """<svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>"""
+_LUCIDE_EYE_OFF = """<svg class="eye-off" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 2 20 20"/><path d="M6.71 6.71C4.69 8.1 3.25 9.85 2.55 11.3a1.6 1.6 0 0 0 0 1.4C4.28 16.27 7.64 19 12 19c1.48 0 2.83-.32 4.03-.87"/><path d="M10.73 5.08A8.7 8.7 0 0 1 12 5c4.36 0 7.72 2.73 9.45 6.3a1.6 1.6 0 0 1 0 1.4 12 12 0 0 1-1.18 1.92"/><path d="M14.12 14.12A3 3 0 0 1 9.88 9.88"/></svg>"""
+_LUCIDE_ARROW = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>"""
+_LUCIDE_SHIELD = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z"/><path d="m9 12 2 2 4-4"/></svg>"""
+
+_AUTH_BACKDROP_HTML = """<svg class="auth-backdrop" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <g class="wave-purple">
+    <path class="wave soft" d="M-80 528 C70 405 160 650 306 497 S506 355 660 515"/>
+    <path class="wave soft" d="M-80 548 C76 430 168 668 312 520 S502 382 660 534"/>
+    <path class="wave mid" d="M-80 570 C84 455 178 685 320 544 S500 414 660 554"/>
+    <path class="wave mid" d="M-80 594 C92 480 190 704 330 568 S504 445 660 575"/>
+    <path class="wave strong" d="M-80 618 C105 501 205 720 345 594 S517 474 660 596"/>
+    <path class="wave soft" d="M-80 644 C120 525 220 738 360 620 S532 506 660 618"/>
+  </g>
+  <g class="wave-blue">
+    <path class="wave soft" d="M940 520 C1080 395 1165 645 1308 505 S1505 375 1685 515"/>
+    <path class="wave soft" d="M940 542 C1085 420 1170 664 1315 528 S1510 400 1685 537"/>
+    <path class="wave mid" d="M940 566 C1090 448 1177 681 1324 552 S1515 428 1685 558"/>
+    <path class="wave mid" d="M940 590 C1097 472 1185 700 1334 575 S1522 458 1685 579"/>
+    <path class="wave strong" d="M940 616 C1105 498 1196 719 1345 600 S1530 487 1685 601"/>
+    <path class="wave soft" d="M940 642 C1114 524 1208 738 1358 625 S1540 515 1685 623"/>
+  </g>
+  <g class="particle">
+    <circle cx="55" cy="185" r="1.5"/><circle cx="128" cy="310" r="2"/><circle cx="211" cy="392" r="3"/><circle cx="319" cy="344" r="2"/><circle cx="375" cy="488" r="3.5"/><circle cx="485" cy="260" r="1.5"/><circle cx="585" cy="410" r="2"/>
+    <circle cx="1018" cy="250" r="2"/><circle cx="1102" cy="365" r="3"/><circle cx="1195" cy="478" r="2"/><circle cx="1310" cy="345" r="2.5"/><circle cx="1428" cy="430" r="3.5"/><circle cx="1510" cy="265" r="1.5"/><circle cx="1570" cy="520" r="2"/>
+  </g>
+</svg>"""
+
+_BRAND_PULSE_HTML = """<svg class="brand-pulse" viewBox="0 0 600 110" aria-hidden="true">
+  <g class="grid"><path d="M0 55h600"/><path d="M60 18v74M120 18v74M180 18v74M240 18v74M300 18v74M360 18v74M420 18v74M480 18v74M540 18v74"/></g>
+  <path class="pulse-left" d="M12 55h120l12 9 13-14 14 12 13-14 16 12 13-11 11 5 8-28 9 60 12-45 11 22 19-8h27"/>
+  <path class="pulse-right" d="M300 55h34l13-8 9 18 12-44 10 69 13-41 11 21 15-12 18 9 16-15 17 11 16-10 18 2h106"/>
+</svg>"""
 
 
 def _session_lifetime_seconds(cfg) -> int:
@@ -111,6 +250,14 @@ def _static_asset(name: str) -> Path:
     return asset
 
 
+def _data_image_html(name: str, mime: str, class_name: str) -> str:
+    encoded = base64.b64encode(_static_asset(name).read_bytes()).decode("ascii")
+    return (
+        f'<img class="{class_name}" alt="" aria-hidden="true" '
+        f'src="data:{mime};base64,{encoded}"/>'
+    )
+
+
 def _auth_mark_html() -> str:
     """Build the self-contained login mark from the reviewed large-format asset."""
     encoded = base64.b64encode(_static_asset("logo-128.png").read_bytes()).decode("ascii")
@@ -120,7 +267,53 @@ def _auth_mark_html() -> str:
     )
 
 
+def _auth_oidc_mark_html() -> str:
+    """Embed the reviewed Authentik/OIDC artwork without opening public image access."""
+    return _data_image_html("authentik-oidc.svg", "image/svg+xml", "oidc-mark")
+
+
+def _auth_favicon_html() -> str:
+    encoded = base64.b64encode(_static_asset("favicon.svg").read_bytes()).decode("ascii")
+    return f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{encoded}">'
+
+
 _AUTH_MARK_HTML = _auth_mark_html()
+_AUTH_OIDC_MARK_HTML = _auth_oidc_mark_html()
+_AUTH_FAVICON_HTML = _auth_favicon_html()
+
+
+def _auth_csp(*, allow_form: bool) -> str:
+    directives = [
+        "default-src 'none'",
+        "img-src data:",
+        "style-src 'unsafe-inline'",
+        f"script-src 'sha256-{_AUTH_PAGE_SCRIPT_HASH}'",
+    ]
+    if allow_form:
+        directives.append("form-action 'self'")
+    directives.extend(("base-uri 'none'", "frame-ancestors 'none'"))
+    return "; ".join(directives)
+
+
+def _login_shell(inner: str, *, title: str = "Sign in · DebridPulse") -> str:
+    version = html.escape(read_version())
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>{html.escape(title)}</title>
+{_AUTH_FAVICON_HTML}
+<style>{_AUTH_PAGE_STYLE}</style>
+<script>{_AUTH_PAGE_SCRIPT}</script>
+</head>
+<body>
+<div class="version">v{version}</div>
+{_AUTH_BACKDROP_HTML}
+{inner}
+</body>
+</html>"""
 
 
 def _login_page(
@@ -145,31 +338,17 @@ def _login_page(
     )
 
     controls: list[str] = []
-    if oidc_enabled and oidc_ready:
-        controls.append(
-            f'<a class="auth-action primary oidc" href="/auth/oidc/start?next={quote(return_to, safe="")}">'
-            f"Continue with {provider_name}</a>"
-        )
-    elif oidc_enabled:
-        controls.append(
-            '<div class="error" role="alert">OpenID Connect is enabled but its local '
-            "configuration is incomplete or invalid.</div>"
-        )
-
     if password_enabled and password_ready:
-        if oidc_ready:
-            controls.append('<div class="divider"><span>or use local password</span></div>')
-        password_button_class = "secondary" if oidc_ready else "primary"
         controls.append(
             f"""
             <form method="post" action="/login" autocomplete="on">
               <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">
               <input type="hidden" name="next" value="{html.escape(return_to, quote=True)}">
               <label for="username">Username</label>
-              <input id="username" name="username" type="text" maxlength="256" autocomplete="username" required>
+              <div class="field"><span class="field-icon">{_LUCIDE_USER}</span><input id="username" name="username" type="text" maxlength="256" autocomplete="username" placeholder="Enter your username" required></div>
               <label for="password">Password</label>
-              <input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" required>
-              <button class="auth-action {password_button_class}" type="submit">Sign In</button>
+              <div class="field"><span class="field-icon">{_LUCIDE_LOCK}</span><input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" placeholder="Enter your password" required><button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">{_LUCIDE_EYE}{_LUCIDE_EYE_OFF}</button></div>
+              <button class="auth-action primary" type="submit"><span>Sign In</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
             </form>
             """
         )
@@ -179,34 +358,34 @@ def _login_page(
             "but is not fully configured. That mechanism is unavailable.</div>"
         )
 
+    if oidc_enabled and oidc_ready:
+        if password_ready:
+            controls.append('<div class="divider"><span>or continue with single sign-on</span></div>')
+        oidc_class = "secondary" if password_ready else "primary"
+        separator = '<span class="oidc-separator" aria-hidden="true"></span>' if password_ready else ""
+        controls.append(
+            f'<a class="auth-action oidc {oidc_class}" href="/auth/oidc/start?next={quote(return_to, safe="")}">'
+            f'{_AUTH_OIDC_MARK_HTML}{separator}<span>Continue with {provider_name}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>'
+        )
+    elif oidc_enabled:
+        controls.append(
+            '<div class="error" role="alert">OpenID Connect is enabled but its local '
+            "configuration is incomplete or invalid.</div>"
+        )
+
     if not password_enabled and not oidc_enabled:
-        controls.append('<p class="muted">Authentication is not currently required.</p>')
+        controls.append('<p class="muted auth-only-message">Authentication is not currently required.</p>')
 
     interactive_controls = "\n".join(controls)
-    body = f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in · DebridPulse</title>
-<style>{_AUTH_PAGE_STYLE}</style>
-</head>
-<body>
-<main class="card">
-  <div class="brand-lockup">{_AUTH_MARK_HTML}<div><div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Secure access</div></div></div>
-  <h1>Sign in to continue</h1>
+    card = f"""<main class="card">
+  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in to continue</div><span class="sr-only">Secure access</span></div>
   {error_html}
   {interactive_controls}
-  <div class="foot">Password-only LAN deployments may operate over HTTP. OpenID Connect requires a canonical HTTPS external URL.</div>
-</main>
-</body>
-</html>"""
-    response = HTMLResponse(content=body, status_code=status_code)
+  <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>Password-only LAN deployments may operate over HTTP.<br>OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.</div></div>
+</main>"""
+    response = HTMLResponse(content=_login_shell(card), status_code=status_code)
     response.headers["Cache-Control"] = "no-store"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; form-action 'self'; "
-        "base-uri 'none'; frame-ancestors 'none'"
-    )
+    response.headers["Content-Security-Policy"] = _auth_csp(allow_form=True)
     return response
 
 
@@ -217,14 +396,17 @@ def _state_free_auth_page(
     retry_after: int | None = None,
 ) -> HTMLResponse:
     """Render an authentication error without allocating browser challenge state."""
-    body = f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · DebridPulse</title><style>{_AUTH_PAGE_STYLE}</style></head>
-<body><main class="card"><div class="brand-lockup">{_AUTH_MARK_HTML}<div><div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Secure access</div></div></div><h1>Sign in unavailable</h1><div class="error" role="alert">{html.escape(message)}</div><a class="auth-action secondary" href="/login">Return to sign in</a></main></body>
-</html>"""
-    response = HTMLResponse(content=body, status_code=status_code)
+    card = f"""<main class="card">
+  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">Sign in unavailable</div><span class="sr-only">Secure access</span></div>
+  <div class="error" role="alert">{html.escape(message)}</div>
+  <a class="auth-action secondary" href="/login"><span>Return to sign in</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>
+</main>"""
+    response = HTMLResponse(
+        content=_login_shell(card, title="Sign in unavailable · DebridPulse"),
+        status_code=status_code,
+    )
     response.headers["Cache-Control"] = "no-store"
-    response.headers["Content-Security-Policy"] = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"] = _auth_csp(allow_form=False)
     if retry_after is not None:
         response.headers["Retry-After"] = str(max(1, int(retry_after)))
     return response
