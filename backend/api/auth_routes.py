@@ -60,9 +60,9 @@ router = APIRouter()
 
 # The login page remains server-rendered and self-contained. The only executable
 # code is this tiny hash-pinned interaction shim: it restores the user's stored
-# palette and toggles visibility of the password field. It performs no network,
+# palette and provides press-and-hold password reveal. It performs no network,
 # cookie, authentication-state, or token operations.
-_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";try{const t=localStorage.getItem(\"theme\");if(t===\"light\"||t===\"dark\")document.documentElement.dataset.theme=t}catch(_){}document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-toggle]\"),p=document.getElementById(\"password\");if(!b||!p)return;b.addEventListener(\"click\",()=>{const show=p.type===\"password\";p.type=show?\"text\":\"password\";b.setAttribute(\"aria-pressed\",String(show));b.setAttribute(\"aria-label\",show?\"Hide password\":\"Show password\");b.querySelector(\".eye\").hidden=show;b.querySelector(\".eye-off\").hidden=!show})})})();"""
+_AUTH_PAGE_SCRIPT = """(()=>{\"use strict\";try{const t=localStorage.getItem(\"theme\");if(t===\"light\"||t===\"dark\")document.documentElement.dataset.theme=t}catch(_){}document.addEventListener(\"DOMContentLoaded\",()=>{const b=document.querySelector(\"[data-password-reveal]\"),p=document.getElementById(\"password\");if(!b||!p)return;const e=b.querySelector(\".eye\"),o=b.querySelector(\".eye-off\"),s=v=>{p.type=v?\"text\":\"password\";b.setAttribute(\"aria-pressed\",String(v));b.setAttribute(\"aria-label\",v?\"Release to hide password\":\"Hold to show password\");e.hidden=!v;o.hidden=v},h=()=>s(false);b.addEventListener(\"pointerdown\",a=>{if(a.pointerType===\"mouse\"&&a.button!==0)return;a.preventDefault();s(true)});window.addEventListener(\"pointerup\",h);window.addEventListener(\"pointercancel\",h);b.addEventListener(\"keydown\",a=>{if((a.key===\" \"||a.key===\"Enter\")&&!a.repeat){a.preventDefault();s(true)}});b.addEventListener(\"keyup\",a=>{if(a.key===\" \"||a.key===\"Enter\"){a.preventDefault();h()}});b.addEventListener(\"blur\",h);window.addEventListener(\"blur\",h)})})();"""
 _AUTH_PAGE_SCRIPT_HASH = base64.b64encode(
     hashlib.sha256(_AUTH_PAGE_SCRIPT.encode("utf-8")).digest()
 ).decode("ascii")
@@ -71,31 +71,37 @@ _AUTH_PAGE_SCRIPT_HASH = base64.b64encode(
 _AUTH_PAGE_STYLE = """
 :root {
   color-scheme: dark;
-  --bg:#070b16;--bg2:#0a1021;--card:rgba(12,17,31,.90);--card2:rgba(17,22,39,.80);
-  --field:rgba(10,14,27,.72);--border:rgba(126,139,181,.28);--border-strong:rgba(135,108,218,.45);
-  --text:#f7f7fb;--text2:#c5c9df;--text3:#8f96b5;--accent:#9d22f4;--accent2:#1887ff;
-  --accent-rgb:157,34,244;--blue-rgb:24,135,255;--danger:#ff6b76;
-  --primary-gradient:linear-gradient(100deg,#aa08eb 0%,#6d27f4 46%,#087df5 100%);
-  --primary-gradient-hover:linear-gradient(100deg,#b91bf2 0%,#7b39ff 46%,#198eff 100%);
+  --bg:#050814;--bg2:#080d1c;--card:#10182c;--card2:#0b1224;
+  --field:#0d1427;--border:#26324d;--border-strong:#3a496a;
+  --text:#f7f8ff;--text2:#b3bcda;--text3:#7c87aa;--accent:#b45cff;--accent2:#3d94ff;
+  --accent-rgb:155,69,255;--blue-rgb:61,148,255;--danger:#ff5264;
+  --primary-gradient:linear-gradient(100deg,#8c22ed 0%,#6c37f5 48%,#1688ff 100%);
+  --primary-gradient-hover:linear-gradient(100deg,#a038ff 0%,#764cff 48%,#2497ff 100%);
   --wave-purple:#a52bfa;--wave-blue:#168cff;--particle:rgba(117,126,255,.86);
-  --shadow:0 34px 90px rgba(0,0,12,.48);--input-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+  --shadow:0 12px 30px rgba(0,0,8,.24);--input-shadow:inset 0 1px 0 rgba(255,255,255,.025);
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg:#f9f9ff;--bg2:#f3f7ff;--card:rgba(255,255,255,.88);--card2:rgba(255,255,255,.78);
-  --field:rgba(255,255,255,.74);--border:rgba(96,111,168,.23);--border-strong:rgba(127,92,221,.30);
-  --text:#10152a;--text2:#4f5f9b;--text3:#7482b7;--accent:#8f1de9;--accent2:#197fff;
+  --bg:#f4f7fc;--bg2:#fbfcff;--card:#f8faff;--card2:#ffffff;
+  --field:#fbfcff;--border:#dce4f1;--border-strong:#c4cee0;
+  --text:#111a34;--text2:#526184;--text3:#7b88a8;--accent:#9637f5;--accent2:#2f86ff;
+  --accent-rgb:132,40,237;--blue-rgb:47,134,255;--danger:#e64255;
+  --primary-gradient:linear-gradient(100deg,#8f25ee 0%,#6d42f4 48%,#1688ff 100%);
+  --primary-gradient-hover:linear-gradient(100deg,#7d1ed6 0%,#5d36df 48%,#0875e9 100%);
   --wave-purple:#b858ff;--wave-blue:#5c98ff;--particle:rgba(116,120,226,.62);
-  --shadow:0 30px 90px rgba(85,91,137,.17);--input-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+  --shadow:0 6px 18px rgba(45,61,96,.075);--input-shadow:inset 0 1px 0 rgba(255,255,255,.75);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg:#f9f9ff;--bg2:#f3f7ff;--card:rgba(255,255,255,.88);--card2:rgba(255,255,255,.78);
-    --field:rgba(255,255,255,.74);--border:rgba(96,111,168,.23);--border-strong:rgba(127,92,221,.30);
-    --text:#10152a;--text2:#4f5f9b;--text3:#7482b7;--accent:#8f1de9;--accent2:#197fff;
+    --bg:#f4f7fc;--bg2:#fbfcff;--card:#f8faff;--card2:#ffffff;
+    --field:#fbfcff;--border:#dce4f1;--border-strong:#c4cee0;
+    --text:#111a34;--text2:#526184;--text3:#7b88a8;--accent:#9637f5;--accent2:#2f86ff;
+    --accent-rgb:132,40,237;--blue-rgb:47,134,255;--danger:#e64255;
+    --primary-gradient:linear-gradient(100deg,#8f25ee 0%,#6d42f4 48%,#1688ff 100%);
+    --primary-gradient-hover:linear-gradient(100deg,#7d1ed6 0%,#5d36df 48%,#0875e9 100%);
     --wave-purple:#b858ff;--wave-blue:#5c98ff;--particle:rgba(116,120,226,.62);
-    --shadow:0 30px 90px rgba(85,91,137,.17);--input-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+    --shadow:0 6px 18px rgba(45,61,96,.075);--input-shadow:inset 0 1px 0 rgba(255,255,255,.75);
   }
 }
 * { box-sizing:border-box; }
@@ -118,8 +124,8 @@ body {
 .auth-backdrop .particle { fill:var(--particle); }.auth-backdrop .spark { filter:drop-shadow(0 0 5px currentColor); }
 .card {
   position:relative;z-index:2;width:min(760px,calc(100vw - 48px));padding:48px 54px 30px;overflow:hidden;
-  border:1px solid var(--border-strong);border-radius:22px;background:linear-gradient(165deg,var(--card),var(--card2));
-  box-shadow:var(--shadow);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--border);border-radius:12px;background:linear-gradient(160deg,var(--card),var(--card2));
+  box-shadow:var(--shadow);
 }
 .brand-lockup { position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 0 22px; }
 .brand-pulse { position:absolute;z-index:0;top:9px;left:50%;transform:translateX(-50%);width:min(590px,88%);height:106px;opacity:.64; }
@@ -133,15 +139,16 @@ form { margin:0; }
 label { display:block;font-size:14px;font-weight:650;color:var(--text2);margin:18px 0 8px; }
 .field { position:relative;display:flex;align-items:center; }
 .field-icon { position:absolute;z-index:2;left:17px;width:20px;height:20px;color:var(--text3);pointer-events:none; }
-.field-icon svg,.password-toggle svg,.action-arrow svg,.foot-icon svg { display:block;width:100%;height:100%; }
+.field-icon svg,.password-reveal svg,.action-arrow svg,.foot-icon svg { display:block;width:100%;height:100%; }
+.password-reveal svg[hidden] { display:none; }
 input {
   width:100%;height:58px;border:1px solid var(--border);background:var(--field);color:var(--text);border-radius:10px;
   padding:0 50px 0 52px;font:inherit;font-size:15px;outline:none;box-shadow:var(--input-shadow);transition:border-color .15s,box-shadow .15s,background .15s;
 }
 input::placeholder { color:var(--text3);opacity:.86; }
 input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.13),var(--input-shadow); }
-.password-toggle { position:absolute;z-index:3;right:8px;display:grid;place-items:center;width:42px;height:42px;padding:10px;border:0;border-radius:8px;background:transparent;color:var(--text3);cursor:pointer; }
-.password-toggle:hover,.password-toggle:focus-visible { color:var(--text2);background:rgba(var(--accent-rgb),.08);outline:none; }
+.password-reveal { position:absolute;z-index:3;right:8px;display:grid;place-items:center;width:42px;height:42px;padding:10px;border:0;border-radius:8px;background:transparent;color:var(--text3);cursor:pointer;touch-action:none; }
+.password-reveal:hover,.password-reveal:focus-visible { color:var(--text2);background:rgba(var(--accent-rgb),.08);outline:none; }
 .auth-action {
   position:relative;width:100%;min-height:60px;margin-top:24px;border-radius:10px;padding:0 58px;font-weight:700;font-size:16px;cursor:pointer;text-align:center;text-decoration:none;
   display:flex;align-items:center;justify-content:center;gap:14px;font-family:inherit;transition:filter .15s,transform .15s,border-color .15s,background .15s;
@@ -159,7 +166,7 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 .auth-only-message { text-align:center;margin:8px 0 0; }
 @media (max-width:700px) {
   body { padding:48px 14px 24px;align-items:start; }.version { top:17px;left:18px;font-size:11px; }
-  .card { width:100%;padding:34px 24px 24px;border-radius:17px; }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
+  .card { width:100%;padding:34px 24px 24px;border-radius:12px; }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
   .brand-pulse { width:98%;top:2px; }.auth-action { min-height:56px; }.oidc-mark { width:34px;height:34px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
 }
 @media (max-width:460px) {
@@ -172,8 +179,8 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 
 _LUCIDE_USER = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>"""
 _LUCIDE_LOCK = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>"""
-_LUCIDE_EYE = """<svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>"""
-_LUCIDE_EYE_OFF = """<svg class="eye-off" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 2 20 20"/><path d="M6.71 6.71C4.69 8.1 3.25 9.85 2.55 11.3a1.6 1.6 0 0 0 0 1.4C4.28 16.27 7.64 19 12 19c1.48 0 2.83-.32 4.03-.87"/><path d="M10.73 5.08A8.7 8.7 0 0 1 12 5c4.36 0 7.72 2.73 9.45 6.3a1.6 1.6 0 0 1 0 1.4 12 12 0 0 1-1.18 1.92"/><path d="M14.12 14.12A3 3 0 0 1 9.88 9.88"/></svg>"""
+_LUCIDE_EYE = """<svg class="eye" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>"""
+_LUCIDE_EYE_OFF = """<svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 2 20 20"/><path d="M6.71 6.71C4.69 8.1 3.25 9.85 2.55 11.3a1.6 1.6 0 0 0 0 1.4C4.28 16.27 7.64 19 12 19c1.48 0 2.83-.32 4.03-.87"/><path d="M10.73 5.08A8.7 8.7 0 0 1 12 5c4.36 0 7.72 2.73 9.45 6.3a1.6 1.6 0 0 1 0 1.4 12 12 0 0 1-1.18 1.92"/><path d="M14.12 14.12A3 3 0 0 1 9.88 9.88"/></svg>"""
 _LUCIDE_ARROW = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>"""
 _LUCIDE_SHIELD = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z"/><path d="m9 12 2 2 4-4"/></svg>"""
 
@@ -347,7 +354,7 @@ def _login_page(
               <label for="username">Username</label>
               <div class="field"><span class="field-icon">{_LUCIDE_USER}</span><input id="username" name="username" type="text" maxlength="256" autocomplete="username" placeholder="Enter your username" required></div>
               <label for="password">Password</label>
-              <div class="field"><span class="field-icon">{_LUCIDE_LOCK}</span><input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" placeholder="Enter your password" required><button class="password-toggle" type="button" data-password-toggle aria-label="Show password" aria-pressed="false">{_LUCIDE_EYE}{_LUCIDE_EYE_OFF}</button></div>
+              <div class="field"><span class="field-icon">{_LUCIDE_LOCK}</span><input id="password" name="password" type="password" maxlength="4096" autocomplete="current-password" placeholder="Enter your password" required><button class="password-reveal" type="button" data-password-reveal aria-label="Hold to show password" aria-pressed="false">{_LUCIDE_EYE}{_LUCIDE_EYE_OFF}</button></div>
               <button class="auth-action primary" type="submit"><span>Sign In</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
             </form>
             """
