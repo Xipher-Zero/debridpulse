@@ -142,7 +142,7 @@ body::after {
 .auth-backdrop .soft { opacity:.17; }.auth-backdrop .mid { opacity:.31; }.auth-backdrop .strong { opacity:.66; }
 .auth-backdrop .micro { opacity:.10;stroke-width:.72; }.auth-backdrop .particle { fill:var(--particle); }.auth-backdrop .spark { filter:drop-shadow(0 0 6px currentColor); }
 .card {
-  position:relative;z-index:2;width:min(760px,calc(100vw - 48px));padding:48px 54px 30px;overflow:hidden;isolation:isolate;
+  position:relative;z-index:2;width:min(560px,calc(100vw - 48px));padding:48px 54px 30px;overflow:hidden;isolation:isolate;
   border:1px solid var(--card-edge);border-radius:12px;
   background:linear-gradient(150deg,var(--card),var(--card2));
   -webkit-backdrop-filter:blur(22px) saturate(132%);backdrop-filter:blur(22px) saturate(132%);
@@ -185,6 +185,7 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 }
 .auth-action:hover { filter:brightness(1.07); }.auth-action:active { transform:translateY(1px); }
 .primary { border:0;background:var(--primary-gradient);color:#fff;box-shadow:0 11px 28px rgba(65,72,255,.23); }.primary:hover { background:var(--primary-gradient-hover); }
+.auth-action.primary[type="submit"] { width:70%;margin-left:auto;margin-right:auto; }
 .secondary { background:rgba(8,15,31,.42);color:var(--text);border:1px solid var(--border);box-shadow:var(--input-shadow); }.secondary:hover { border-color:var(--border-strong); }
 :root[data-theme="light"] .secondary { background:rgba(255,255,255,.56); }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .secondary { background:rgba(255,255,255,.56); } }
@@ -203,6 +204,7 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 }
 @media (max-width:460px) {
   .card { padding-left:17px;padding-right:17px; }.brand { font-size:32px; }.divider { gap:10px;font-size:11px; }.auth-action { font-size:14px;padding-left:52px;padding-right:48px; }
+  .auth-action.primary[type="submit"] { width:100%; }
   .foot { font-size:11px; }.auth-backdrop { opacity:.68; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto!important;transition:none!important; } }
