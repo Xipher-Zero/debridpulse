@@ -64,6 +64,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-feature-icon-contract.css?v=2",
         "/ui-panel-surface-treatment.css?v=21",
         "/ui-transfer-contract.css?v=31",
+        "/ui-live-review-batch.css?v=21",
     ]
     positions = [overlay.index(value) for value in imports]
     assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
@@ -89,6 +90,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-feature-icon-contract.css": "2",
         "/ui-panel-surface-treatment.css": "21",
         "/ui-transfer-contract.css": "31",
+        "/ui-live-review-batch.css": "21",
     }
     for path, version in expected_changed_versions.items():
         assert version_by_path[path] == version

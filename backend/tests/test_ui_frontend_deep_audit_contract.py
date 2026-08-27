@@ -90,6 +90,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-feature-icon-contract.css": "2",
         "/ui-panel-surface-treatment.css": "21",
         "/ui-transfer-contract.css": "31",
+        "/ui-live-review-batch.css": "21",
     }
     for path, version in expected_versions.items():
         assert f"@import url('{path}?v={version}');" in imports
