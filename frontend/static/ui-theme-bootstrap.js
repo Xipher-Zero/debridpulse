@@ -77,6 +77,17 @@
     document.head.appendChild(script);
   }
 
+  /* Statistics Batch 4 is the final adaptive presentation layer: it preserves
+     Batch 3 semantics while normalizing optical icon scale, centering the
+     historical KPI band and bounding lower-card list growth. */
+  if (!document.querySelector('script[data-dp-statistics-batch4]')) {
+    const script = document.createElement('script');
+    script.src = '/ui-statistics-batch4.js?v=1';
+    script.defer = true;
+    script.dataset.dpStatisticsBatch4 = '1';
+    document.head.appendChild(script);
+  }
+
   /* Failure presentation is intentionally a separate late runtime. It waits
      until DOMContentLoaded so app.js and the canonical Lucide layer already own
      the legacy rendering functions before it installs presentation overrides. */
