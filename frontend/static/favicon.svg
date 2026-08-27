@@ -1,24 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="DebridPulse logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DebridPulse logo">
   <defs>
-    <linearGradient id="dp-outline" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#a62cff"/>
-      <stop offset="1" stop-color="#208cff"/>
-    </linearGradient>
-    <linearGradient id="dp-arrow" x1="64" y1="24" x2="64" y2="86" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#b532ff"/>
-      <stop offset=".48" stop-color="#7855ff"/>
-      <stop offset="1" stop-color="#08a8ff"/>
-    </linearGradient>
-    <linearGradient id="dp-tray" x1="28" y1="86" x2="101" y2="98" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#9b32ff"/>
-      <stop offset="1" stop-color="#149fff"/>
-    </linearGradient>
-    <filter id="dp-glow" x="-35%" y="-35%" width="170%" height="170%">
-      <feGaussianBlur stdDeviation="2.4" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <linearGradient id="dp-outline" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a62cff"/><stop offset="1" stop-color="#208cff"/></linearGradient>
+    <linearGradient id="dp-arrow" x1="64" y1="24" x2="64" y2="86" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b532ff"/><stop offset=".48" stop-color="#7855ff"/><stop offset="1" stop-color="#08a8ff"/></linearGradient>
+    <linearGradient id="dp-tray" x1="28" y1="86" x2="101" y2="98" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9b32ff"/><stop offset="1" stop-color="#149fff"/></linearGradient>
   </defs>
-  <rect x="14" y="13" width="100" height="102" rx="23" fill="#080b18" stroke="url(#dp-outline)" stroke-width="2.5"/>
-  <path d="M55 30c0-2.8 2.2-5 5-5h8c2.8 0 5 2.2 5 5v27h10.2c3.8 0 5.8 4.5 3.2 7.2L67.2 84.8a4.4 4.4 0 0 1-6.4 0L41.6 64.2c-2.6-2.7-.6-7.2 3.2-7.2H55V30z" fill="url(#dp-arrow)" filter="url(#dp-glow)"/>
-  <path d="M28 79v12.5c0 5 4 9 9 9h54c5 0 9-4 9-9V79" fill="none" stroke="url(#dp-tray)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#dp-glow)"/>
+  <g transform="scale(.5)">
+    <rect x="14" y="13" width="100" height="102" rx="23" fill="#080b18" stroke="url(#dp-outline)" stroke-width="2.5"/>
+    <path d="M55 30c0-2.8 2.2-5 5-5h8c2.8 0 5 2.2 5 5v27h10.2c3.8 0 5.8 4.5 3.2 7.2L67.2 84.8a4.4 4.4 0 0 1-6.4 0L41.6 64.2c-2.6-2.7-.6-7.2 3.2-7.2H55V30z" fill="url(#dp-arrow)"/>
+    <path d="M28 79v12.5c0 5 4 9 9 9h54c5 0 9-4 9-9V79" fill="none" stroke="url(#dp-tray)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>
