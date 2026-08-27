@@ -38,9 +38,29 @@
     document.getElementById('aria2ng-row')?.remove();
 
     let row = document.getElementById('sidebar-auth-row');
+    let stack = document.getElementById('sidebar-bottom-stack');
     if (!data?.authenticated) {
       row?.remove();
+      if (stack) {
+        if (footer.parentElement === stack) {
+          stack.insertAdjacentElement('beforebegin', footer);
+        }
+        stack.remove();
+      }
       return;
+    }
+
+    // Provider status and session action share one bottom-anchored flow. The
+    // logout row owns the former provider-status bottom datum; the provider
+    // panel simply moves upward by the row height plus the normal stack gap.
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'sidebar-bottom-stack';
+      stack.className = 'sidebar-bottom-stack';
+      footer.insertAdjacentElement('beforebegin', stack);
+      stack.appendChild(footer);
+    } else if (footer.parentElement !== stack) {
+      stack.prepend(footer);
     }
 
     if (!row) {
@@ -81,12 +101,9 @@
         event.preventDefault();
         activate();
       });
-
-      // Keep the action full-width and visually identical to Dashboard,
-      // Settings, and the other primary sidebar choices while retaining the
-      // connection-status footer above it.
-      footer.insertAdjacentElement('afterend', row);
     }
+
+    if (row.parentElement !== stack) stack.appendChild(row);
   }
 
   async function refreshSession({force = false} = {}) {

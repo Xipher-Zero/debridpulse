@@ -140,11 +140,11 @@
 
     const averageDuration = historicalCard('i-avg-duration');
     const averageDurationLabel = averageDuration && averageDuration.querySelector('.dash-kpi-lbl');
-    if (averageDurationLabel) averageDurationLabel.textContent = 'AVERAGE DOWNLOAD TIME';
+    if (averageDurationLabel) averageDurationLabel.textContent = 'MEAN DOWNLOAD TIME';
 
     const averageSize = historicalCard('i-avg-size');
     const averageSizeLabel = averageSize && averageSize.querySelector('.dash-kpi-lbl');
-    if (averageSizeLabel) averageSizeLabel.textContent = 'AVERAGE DOWNLOAD SIZE';
+    if (averageSizeLabel) averageSizeLabel.textContent = 'MEAN DOWNLOAD SIZE';
 
     return Boolean(primarySub && label && sub && averageDurationLabel && averageSizeLabel);
   }

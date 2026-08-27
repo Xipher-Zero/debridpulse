@@ -1,5 +1,38 @@
 /* DebridPulse 1.0.6 authentication/settings UX normalization. */
 
+/* Authenticated sidebar bottom stack. Provider Status and Log Out occupy one
+   bottom-anchored flow so they cannot overlap as independent positioned items. */
+body.dp-v11-structural #sidebar .sidebar-bottom-stack {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+body.dp-v11-structural #sidebar .sidebar-bottom-stack .sidebar-footer {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: 100%;
+  flex: 0 0 auto;
+}
+body.dp-v11-structural #sidebar .sidebar-bottom-stack #sidebar-auth-row {
+  position: static !important;
+  width: 100%;
+  min-height: 46px;
+  flex: 0 0 auto;
+}
+@media (min-width: 901px) {
+  body.dp-v11-structural #sidebar .sidebar-bottom-stack {
+    bottom: 24px;
+  }
+}
+
 /* The inherited ADC settings renderer artificially capped every settings panel
    at 1180px while the rest of DebridPulse uses the available workspace. */
 #settings-form .stab-panel.active {
