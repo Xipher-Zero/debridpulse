@@ -83,6 +83,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
+        "/ui-statistics-page.css": "21",
         "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
@@ -113,6 +114,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     dashboard_pos = overlay.index("/ui-dashboard.css?v=20")
     dashboard_control_pos = overlay.index("/ui-dashboard-control-polish.css?v=23")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
+    statistics_pos = overlay.index("/ui-statistics-page.css?v=21")
     activity_pos = overlay.index("/ui-activity-log-page.css?v=28")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=27")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
@@ -122,7 +124,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     transfer_pos = overlay.index("/ui-transfer-contract.css?v=31")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
-    assert dashboard_pos < dashboard_control_pos < dashboard_consistency_pos < activity_pos < downloads_pos
+    assert dashboard_pos < dashboard_control_pos < dashboard_consistency_pos < statistics_pos < activity_pos < downloads_pos
     assert downloads_pos < downloads_desktop_pos < help_pos < feature_icon_pos < treatment_pos < transfer_pos
 
 
