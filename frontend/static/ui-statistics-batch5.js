@@ -108,6 +108,20 @@
     return value && value.closest('.dash-kpi');
   }
 
+  function suppressQueueHealth() {
+    const queue = historicalCard('i-queue-health');
+    if (!queue) return true;
+
+    /* Queue Health was retired from the reviewed Statistics surface. Keep the
+       legacy node available for older update code, but make the final layer the
+       authoritative display owner so later grid rules cannot resurrect it. */
+    queue.classList.add('dp-stats-history-compat');
+    queue.hidden = true;
+    queue.setAttribute('aria-hidden', 'true');
+    queue.style.setProperty('display', 'none', 'important');
+    return true;
+  }
+
   function normalizeHistoricalOrder() {
     const strip = document.querySelector('#view-stats .dp-stats-history-grid');
     if (!strip) return false;
@@ -117,8 +131,7 @@
       if (card) strip.appendChild(card);
     });
 
-    const queue = historicalCard('i-queue-health');
-    if (queue) strip.appendChild(queue);
+    suppressQueueHealth();
     return HISTORY_ORDER.every(function (valueId) { return !!historicalCard(valueId); });
   }
 
