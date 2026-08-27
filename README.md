@@ -8,9 +8,6 @@
   [![Image](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/fork-image.yml?style=flat-square&label=image)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/fork-image.yml)
 </div>
 
-> [!IMPORTANT]
-> **License and attribution:** DebridPulse modifications are Copyright © 2026 Chris Moore and are licensed under **GPL-2.0-or-later**. DebridPulse is derived from [`kroeberd/alldebrid-client` v1.9.9](https://github.com/kroeberd/alldebrid-client/tree/c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c), Copyright © 2026 kroeberd, originally licensed under MIT. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [LICENSES/MIT.txt](LICENSES/MIT.txt).
-
 ---
 
 ## What is DebridPulse?
@@ -318,7 +315,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 
 ## V1 scope boundary
 
-DebridPulse began as a fork of `kroeberd/alldebrid-client` v1.9.9. V1 removes the inherited media-automation and indexer surface, including:
+V1 removes the inherited media-automation and indexer surface, including:
 
 - qBittorrent API emulation;
 - Sonarr/Radarr integration;
@@ -327,22 +324,6 @@ DebridPulse began as a fork of `kroeberd/alldebrid-client` v1.9.9. V1 removes th
 - saved-search and automation systems.
 
 Their routes, services, scheduler jobs, configuration, UI, database tables, and dependencies are not part of the V1 application. DebridPulse is a **debrid download manager**, not an all-in-one media automation suite.
-
----
-
-## Upstream provenance
-
-DebridPulse is derived from upstream [`kroeberd/alldebrid-client`](https://github.com/kroeberd/alldebrid-client) release **v1.9.9**, commit:
-
-```text
-c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c
-```
-
-The fork initially preserved production corrections around AllDebrid processing and shared external aria2 operation, then added tracked direct-link downloading and began simplifying the user interface around the actual AllDebrid download workflow.
-
-See [`INTERNAL_FORK.md`](INTERNAL_FORK.md) for historical notes about the initial divergence and [`NOTICE`](NOTICE) for the retained upstream attribution.
-
-See [`CHANGELOG.md`](CHANGELOG.md) for current DebridPulse changes.
 
 ---
 
@@ -419,6 +400,22 @@ DebridPulse favors a focused responsibility:
 Features that improve that workflow belong naturally in DebridPulse. Provider-specific integrations belong behind the DebridPulse provider layer; V1 uses AllDebrid as its provider backend.
 
 Recreating an entire media-management or indexer ecosystem inside the download client does not.
+
+---
+
+## Upstream provenance
+
+DebridPulse originated as a fork of [`kroeberd/alldebrid-client`](https://github.com/kroeberd/alldebrid-client) release **v1.9.9**, commit:
+
+```text
+c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c
+```
+
+Since that fork point, DebridPulse has substantially diverged in application architecture, transfer lifecycle and control, safety and recovery semantics, authentication, persistence behavior, and user interface. Portions of the original codebase remain and retain their original MIT attribution.
+
+Copyright © 2026 kroeberd applies to the retained upstream work. The original MIT copyright and permission notice are preserved in [`NOTICE`](NOTICE) and [`LICENSES/MIT.txt`](LICENSES/MIT.txt).
+
+See [`INTERNAL_FORK.md`](INTERNAL_FORK.md) for historical notes about the original fork point and [`CHANGELOG.md`](CHANGELOG.md) for current DebridPulse changes.
 
 ---
 
