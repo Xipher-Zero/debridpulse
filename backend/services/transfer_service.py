@@ -6,7 +6,7 @@ operation is explicit: there is no transparent fallback into the legacy engine.
 """
 from __future__ import annotations
 
-from services.direct_link_result_guard import manager as engine
+from services.direct_link_retry_guard import manager as engine
 from services.provider_gateway import ProviderGateway
 from services.transfer_repository import TransferRepository
 from services.aria2_gateway import Aria2Gateway
