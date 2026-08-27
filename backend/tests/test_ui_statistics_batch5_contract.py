@@ -25,8 +25,8 @@ def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> No
     runtime = read(BATCH_RUNTIME)
 
     assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert "/ui-statistics-batch5.js?v=4" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=4")
+    assert "/ui-statistics-batch5.js?v=5" in bootstrap
+    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=5")
     assert "data-dp-statistics-batch5" in bootstrap
     assert "previous.dpStatisticsBatch4 !== '1'" in runtime
     assert "wrapped.dpStatisticsBatch5 = '1'" in runtime
@@ -70,6 +70,18 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     assert value_selector in css
     value_segment = css[css.index(value_selector):].split('}', 1)[0]
     assert "color: var(--c) !important" in value_segment
+
+
+def test_queue_health_cannot_resurface_in_final_statistics_layer() -> None:
+    runtime = read(BATCH_RUNTIME)
+
+    assert "function suppressQueueHealth()" in runtime
+    assert "historicalCard('i-queue-health')" in runtime
+    assert "queue.hidden = true" in runtime
+    assert "queue.setAttribute('aria-hidden', 'true')" in runtime
+    assert "queue.style.setProperty('display', 'none', 'important')" in runtime
+    assert "suppressQueueHealth();" in runtime
+    assert "if (queue) strip.appendChild(queue)" not in runtime
 
 
 def test_statistics_kpi_rows_share_title_value_flavor_vertical_anchors() -> None:
