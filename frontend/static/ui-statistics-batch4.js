@@ -121,32 +121,46 @@
     });
   }
 
-  function configureOverflow(card, title, entries, body) {
+  function clearOverflow(card) {
+    if (!card) return;
+    card.classList.remove('dp-stats-overflow-card');
+    card.removeAttribute('role');
+    card.removeAttribute('tabindex');
+    card.removeAttribute('aria-label');
+    card.querySelectorAll('.dp-stats-more').forEach(function (node) { node.remove(); });
+    card._dpStatsOverflowEntries = [];
+    delete card.dataset.dpStatsOverflowTitle;
+  }
+
+  function configureOverflow(card, title, entries) {
+    clearOverflow(card);
     const overflow = entries.length > MAX_VISIBLE;
     card._dpStatsOverflowEntries = entries.map(function (entry) { return Object.assign({}, entry); });
     card.dataset.dpStatsOverflowTitle = title;
     bindOverflowCard(card);
 
-    card.classList.toggle('dp-stats-overflow-card', overflow);
-    if (overflow) {
-      const more = entries.length - MAX_VISIBLE;
-      card.setAttribute('role', 'button');
-      card.tabIndex = 0;
-      card.setAttribute('aria-label', title + '. Showing top 10. View ' + more + ' more.');
-      const indicator = document.createElement('div');
-      indicator.className = 'dp-stats-more';
-      indicator.textContent = '+ ' + more + ' more';
-      body.appendChild(indicator);
-    } else {
-      card.removeAttribute('role');
-      card.removeAttribute('tabindex');
-      card.removeAttribute('aria-label');
-    }
+    if (!overflow) return;
+
+    const more = entries.length - MAX_VISIBLE;
+    card.classList.add('dp-stats-overflow-card');
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    card.setAttribute('aria-label', title + '. Showing top 10. View ' + more + ' more.');
+
+    const indicator = document.createElement('span');
+    indicator.className = 'dp-stats-more';
+    indicator.textContent = '+ ' + more + ' more';
+    indicator.setAttribute('aria-hidden', 'true');
+    const header = card.querySelector(':scope > .card-header');
+    (header || card).appendChild(indicator);
   }
 
   function applyAdaptiveBreakdown(definition) {
     const body = document.getElementById(definition.id);
     if (!body) return false;
+
+    const card = body.closest('.list-card');
+    if (!card) return false;
 
     /* A marker means this exact DOM generation is already normalized. Legacy
        loadDetailedStats replaces the body contents on the next refresh, which
@@ -154,13 +168,13 @@
     if (body.querySelector(':scope > .dp-stats-adaptive-list')) return true;
 
     const entries = captureEntries(body);
-    if (!entries.length) return false;
-
-    const card = body.closest('.list-card');
-    if (!card) return false;
+    if (!entries.length) {
+      clearOverflow(card);
+      return false;
+    }
 
     body.replaceChildren(buildVisibleList(entries));
-    configureOverflow(card, definition.title, entries, body);
+    configureOverflow(card, definition.title, entries);
     return true;
   }
 
