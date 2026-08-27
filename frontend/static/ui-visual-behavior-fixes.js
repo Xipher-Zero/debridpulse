@@ -5,12 +5,22 @@
  *      neutral values, then hydrate it asynchronously once settings/runtime are
  *      available.
  *   2. Make the theme icon describe the action/destination: sun while dark,
- *      moon while light.
+ *      moon while light, while remaining compatible with the canonical Lucide
+ *      decorator in operator-title.js.
  *
  * Core transfer behavior and aria2 ownership remain in app.js/backend code.
  */
 (function () {
   'use strict';
+
+  const THEME_GLYPHS = Object.freeze({
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+    moon: '<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>'
+  });
+
+  function themeSvg(name) {
+    return '<svg class="lucide dp-utility-icon" data-dp-lucide="' + name + '" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + THEME_GLYPHS[name] + '</svg>';
+  }
 
   function syncThemeActionIcon() {
     const button = document.getElementById('theme-toggle');
@@ -18,9 +28,11 @@
 
     const isLight = document.body.classList.contains('light');
     const action = isLight ? 'Switch to dark mode' : 'Switch to light mode';
-    const icon = isLight ? '☾' : '☀︎';
+    const iconName = isLight ? 'moon' : 'sun';
 
-    if (button.textContent !== icon) button.textContent = icon;
+    if (!button.querySelector('[data-dp-lucide="' + iconName + '"]')) {
+      button.innerHTML = themeSvg(iconName);
+    }
     if (button.title !== action) button.title = action;
     if (button.getAttribute('aria-label') !== action) {
       button.setAttribute('aria-label', action);
@@ -98,7 +110,11 @@
       }
 
       if (typeof window.loadAria2Runtime === 'function') {
-        Promise.resolve(window.loadAria2Runtime()).catch(function () {});
+        Promise.resolve(window.loadAria2Runtime())
+          .catch(function () {})
+          .finally(function () {
+            document.body.classList.add('dp-aria2-hydrated');
+          });
       }
     };
 

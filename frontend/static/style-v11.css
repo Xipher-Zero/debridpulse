@@ -24,6 +24,7 @@
 @import url('/ui-shell-structural.css?v=26');
 @import url('/ui-shell-provider-status.css?v=23');
 @import url('/ui-shell-provider-status-v2.css?v=28');
+@import url('/ui-topbar-first-paint.css?v=20');
 
 /* Dashboard remains the visual reference/calibration page. These layers are
    intentionally page-specific where they tune Dashboard composition itself;
