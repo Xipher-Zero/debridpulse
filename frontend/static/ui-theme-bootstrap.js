@@ -93,7 +93,7 @@
      chart-header composition, shared surface opt-in and shell-brand presentation. */
   if (!document.querySelector('script[data-dp-statistics-batch5]')) {
     const script = document.createElement('script');
-    script.src = '/ui-statistics-batch5.js?v=3';
+    script.src = '/ui-statistics-batch5.js?v=4';
     script.defer = true;
     script.dataset.dpStatisticsBatch5 = '1';
     document.head.appendChild(script);
