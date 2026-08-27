@@ -38,9 +38,27 @@
     if (document.querySelector('link[data-dp-statistics-batch5]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/ui-statistics-batch5.css?v=1';
+    link.href = '/ui-statistics-batch5.css?v=2';
     link.dataset.dpStatisticsBatch5 = '1';
     document.head.appendChild(link);
+  }
+
+  function normalizeShellBranding() {
+    const logo = document.querySelector('#sidebar .logo-icon');
+    if (logo && logo.getAttribute('src') !== '/logo.svg?v=7') {
+      logo.setAttribute('src', '/logo.svg?v=7');
+    }
+
+    const version = document.getElementById('sidebar-version');
+    if (version) {
+      version.classList.add('dp-app-version');
+      version.setAttribute('aria-label', 'DebridPulse version');
+      if (version.parentElement !== document.body) {
+        document.body.appendChild(version);
+      }
+    }
+
+    return Boolean(logo && version);
   }
 
   function normalizePrimaryOrder() {
@@ -122,6 +140,7 @@
   }
 
   function applyBatch5(period) {
+    normalizeShellBranding();
     normalizePrimaryOrder();
     normalizeHistoricalOrder();
     decorateChartHeader(period);
@@ -153,16 +172,18 @@
 
   function initialize() {
     loadBatchStyles();
+    normalizeShellBranding();
     installDetailedStatsGuard();
 
     let attempts = 0;
     const settle = function () {
       attempts += 1;
+      const brandingReady = normalizeShellBranding();
       const primaryReady = normalizePrimaryOrder();
       const historyReady = normalizeHistoricalOrder();
       const chartReady = decorateChartHeader();
       applySharedSurfaceClass();
-      if ((!primaryReady || !historyReady || !chartReady) && attempts < 160) {
+      if ((!brandingReady || !primaryReady || !historyReady || !chartReady) && attempts < 160) {
         setTimeout(settle, 50);
       }
     };
