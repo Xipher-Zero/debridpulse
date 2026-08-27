@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -10,6 +11,7 @@ STATIC = ROOT / "frontend" / "static"
 STATS_CSS = STATIC / "ui-statistics-page.css"
 VISUAL_RUNTIME = STATIC / "ui-visual-behavior-fixes.js"
 STATS_ICON = STATIC / "icons" / "dp" / "statistics.svg"
+ICON_MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
 
 def read(path: Path) -> str:
@@ -85,12 +87,14 @@ def test_statistics_kpi_icon_chips_are_dark_and_omnidirectionally_glowing() -> N
     assert "0 0 24px color-mix" in css
 
 
-def test_statistics_supplied_feature_art_is_true_vector() -> None:
+def test_statistics_supplied_feature_art_is_true_vector_and_registered() -> None:
     raw = read(STATS_ICON)
     lowered = raw.lower()
+    manifest = json.loads(read(ICON_MANIFEST))
 
     assert "<svg" in lowered
     assert "viewbox=" in lowered
     assert "<path" in lowered
     assert "<image" not in lowered
     assert "data:image" not in lowered
+    assert manifest["icons"]["statistics"] == "statistics.svg"
