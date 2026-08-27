@@ -1,0 +1,175 @@
+/* DebridPulse v1.0.11 Statistics Batch 5 presentation contract.
+ * Final review corrections: semantic KPI ordering/color, optical icon centering,
+ * standard chart header composition, five-row breakdown cadence, and sidebar
+ * branding hierarchy. Data/API ownership remains unchanged.
+ */
+
+/* ── Primary KPI semantic color map ───────────────────────────────────── */
+body.dp-v11-structural #view-stats #detail-stat-cards [data-dp-stats-metric="downloads"] {
+  --c: var(--dp-accent-purple-bright);
+}
+body.dp-v11-structural #view-stats #detail-stat-cards [data-dp-stats-metric="completed"] {
+  --c: var(--dp-state-success);
+}
+body.dp-v11-structural #view-stats #detail-stat-cards [data-dp-stats-metric="progress"] {
+  --c: var(--dp-state-active);
+}
+body.dp-v11-structural #view-stats #detail-stat-cards [data-dp-stats-metric="success"] {
+  --c: var(--dp-state-success);
+}
+body.dp-v11-structural #view-stats #detail-stat-cards [data-dp-stats-metric="data"] {
+  --c: var(--dp-state-active);
+}
+
+/* ── Historical KPI semantic color + icon centering ──────────────────── */
+body.dp-v11-structural #view-stats .dp-stats-kpi-day,
+body.dp-v11-structural #view-stats .dp-stats-kpi-week,
+body.dp-v11-structural #view-stats .dp-stats-kpi-success {
+  --c: var(--dp-state-success) !important;
+}
+body.dp-v11-structural #view-stats .dp-stats-kpi-duration {
+  --c: var(--dp-state-caution) !important;
+}
+body.dp-v11-structural #view-stats .dp-stats-kpi-size {
+  --c: var(--dp-state-active) !important;
+}
+
+/* Batch 4 established the correct painted glyph sizes. Keep those dimensions,
+   but center the oversized artwork inside the fixed 38px chip rather than
+   allowing each SVG's intrinsic canvas to bias its position. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon {
+  display: grid !important;
+  place-items: center !important;
+}
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  margin: 0 !important;
+  max-width: none !important;
+  transform: translate(-50%, -50%) !important;
+  transform-origin: center !important;
+}
+
+/* ── Completions chart standard feature header ───────────────────────── */
+body.dp-v11-structural #view-stats .dp-stats-chart .scard-header {
+  min-height: 72px !important;
+  padding: 9px 16px !important;
+  gap: 12px !important;
+  font-size: inherit !important;
+}
+
+/* Retire the old 28px pseudo-icon; Batch 5 installs the same 51px custom
+   artwork footprint used by the approved Dashboard/section feature icons. */
+body.dp-v11-structural #view-stats .dp-stats-chart .scard-header::before {
+  content: none !important;
+  display: none !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart-title-icon {
+  width: var(--dp-feature-icon-size, 51px) !important;
+  min-width: var(--dp-feature-icon-size, 51px) !important;
+  height: var(--dp-feature-icon-size, 51px) !important;
+  flex: 0 0 var(--dp-feature-icon-size, 51px) !important;
+  object-fit: contain !important;
+  box-sizing: border-box !important;
+  --dp-feature-icon-glow: #a646f4;
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-feature-icon-glow) 62%, transparent))
+    drop-shadow(0 0 11px color-mix(in srgb, var(--dp-feature-icon-glow) 27%, transparent)) !important;
+}
+body.light.dp-v11-structural #view-stats .dp-stats-chart-title-icon {
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--dp-feature-icon-glow) 70%, transparent))
+    drop-shadow(0 0 15px color-mix(in srgb, var(--dp-feature-icon-glow) 32%, transparent)) !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart-heading-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+body.dp-v11-structural #view-stats .dp-stats-chart-heading {
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+body.dp-v11-structural #view-stats .dp-stats-chart #chart-title.dp-stats-chart-subtitle {
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+/* ── Five-row analytical cadence ──────────────────────────────────────── */
+/* The fixed lower-card body has room for five rows. Use that same cadence in
+   single-column and two-column modes so 6-10 items remain five rows per side. */
+body.dp-v11-structural #view-stats .dp-stats-breakdown-grid .dp-stats-adaptive-list .kv-row {
+  min-height: 20px !important;
+  line-height: 20px !important;
+}
+
+/* ── Sidebar brand hierarchy (application-wide, both palettes) ───────── */
+body.dp-v11-structural #sidebar .logo {
+  position: relative;
+}
+body.dp-v11-structural #sidebar .logo-text {
+  min-width: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+}
+body.dp-v11-structural #sidebar .logo-name {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+}
+body.dp-v11-structural #sidebar .logo-ver {
+  position: absolute;
+  right: 22px;
+  bottom: 9px;
+  margin: 0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(9, 13, 32, .48);
+  color: #9da4c2;
+  font-size: 9px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, .34);
+}
+body.light.dp-v11-structural #sidebar .logo-ver {
+  background: rgba(255, 255, 255, .68);
+  color: #68708f;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, .9);
+}
+
+/* The reviewed large-format logo already paints its own border. Do not wrap it
+   in an additional light-theme ring. Keep only a restrained brand glow. */
+body.light.dp-v11-structural #sidebar .logo-icon {
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: 0 0 18px rgba(124, 58, 237, .14) !important;
+}
+
+@media (max-width: 1179px) {
+  /* The canonical collapsed-sidebar contract hides .logo-text. The version is
+     inside that node, so no additional compact-shell branding is introduced. */
+  body.dp-v11-structural #sidebar .logo-name {
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 899px) {
+  body.dp-v11-structural #sidebar .logo-text {
+    display: flex;
+  }
+}
