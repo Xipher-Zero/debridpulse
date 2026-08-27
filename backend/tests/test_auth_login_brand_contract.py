@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 AUTH_ROUTES = ROOT / "backend" / "api" / "auth_routes.py"
 THEME_BOOTSTRAP = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
 STATIC_LOGO = ROOT / "frontend" / "static" / "logo-128.png"
+SHELL_LOGO = ROOT / "frontend" / "static" / "logo.svg"
 FAVICON = ROOT / "frontend" / "static" / "favicon.svg"
 
 
@@ -51,19 +52,23 @@ def test_login_embeds_the_exact_reviewed_logo_without_public_static_dependency()
     assert base64.b64decode(match.group(1), validate=True) == STATIC_LOGO.read_bytes()
 
 
-def test_first_paint_keeps_reviewed_large_branding_and_restores_compact_tab_mark() -> None:
+def test_first_paint_uses_vector_shell_mark_and_restores_compact_tab_mark() -> None:
     bootstrap = read(THEME_BOOTSTRAP)
+    shell_logo = read(SHELL_LOGO)
     favicon = read(FAVICON)
 
-    assert "/logo-128.png?v=5" in bootstrap
+    assert "/logo.svg?v=7" in bootstrap
+    assert "/logo-128.png?v=5" not in bootstrap
     assert "/apple-touch-icon.png?v=5" in bootstrap
     assert "vectorIcon.href = '/favicon.svg?v=6'" in bootstrap
     assert "icon32.remove()" in bootstrap
     assert "installReviewedBrandAssets" in bootstrap
     assert "#sidebar .logo-icon" in bootstrap
 
-    # Large-format branding remains pinned to the reviewed Batch 2 raster while
-    # the browser tab intentionally uses the restored compact original vector.
+    # Authentication remains pinned to the reviewed raster while the shell uses
+    # the equivalent vector artwork so its integrated outline is the only frame.
     assert sha256(STATIC_LOGO) == "e2141f5a2354ec7b24ca5a564896cc08aa2b7071521c43083c670e2da34ca63e"
+    assert 'viewBox="0 0 512 512"' in shell_logo
+    assert 'stroke="url(#dp-outline)"' in shell_logo
     assert 'viewBox="0 0 64 64"' in favicon
     assert 'transform="scale(.125)"' in favicon
