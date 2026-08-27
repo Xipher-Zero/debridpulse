@@ -51,6 +51,10 @@
 @import url('/ui-help-page.css?v=22');
 @import url('/ui-feature-icon-contract.css?v=2');
 
+/* Shared large-panel interior richness. Loaded after page geometry so the same
+   luminance-cloud language applies consistently without changing layout. */
+@import url('/ui-panel-surface-treatment.css?v=20');
+
 /* Final shared transfer-row semantics. This deliberately outranks the old
    Dashboard calibration experiments and is not a page-specific exception. */
 @import url('/ui-transfer-contract.css?v=31');
