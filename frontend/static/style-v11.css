@@ -50,7 +50,7 @@
 @import url('/ui-downloads-page.css?v=27');
 @import url('/ui-downloads-desktop.css?v=28');
 @import url('/ui-help-page.css?v=22');
-@import url('/ui-feature-icon-contract.css?v=2');
+@import url('/ui-feature-icon-contract.css?v=3');
 
 /* Shared large-panel interior richness. Loaded after page geometry so the same
    luminance-cloud language applies consistently without changing layout. */
