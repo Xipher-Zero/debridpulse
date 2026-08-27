@@ -1,6 +1,6 @@
 /* DebridPulse v1.0.11 Statistics Batch 5 presentation contract.
  * Final review corrections: semantic KPI ordering/color, optical icon centering,
- * standard chart header composition, five-row breakdown cadence, and sidebar
+ * standard chart header composition, five-row breakdown cadence, and shell
  * branding hierarchy. Data/API ownership remains unchanged.
  */
 
@@ -113,10 +113,7 @@ body.dp-v11-structural #view-stats .dp-stats-breakdown-grid .dp-stats-adaptive-l
   line-height: 20px !important;
 }
 
-/* ── Sidebar brand hierarchy (application-wide, both palettes) ───────── */
-body.dp-v11-structural #sidebar .logo {
-  position: relative;
-}
+/* ── Shell brand hierarchy (application-wide, both palettes) ─────────── */
 body.dp-v11-structural #sidebar .logo-text {
   min-width: 0;
   height: 48px;
@@ -130,46 +127,73 @@ body.dp-v11-structural #sidebar .logo-name {
   font-weight: 700;
   white-space: nowrap;
 }
-body.dp-v11-structural #sidebar .logo-ver {
-  position: absolute;
-  right: 22px;
-  bottom: 9px;
-  margin: 0;
-  padding: 2px 5px;
+
+/* The version is deliberately detached from sidebar layout by the Batch 5
+   runtime. Keep it fixed to the viewport while aligning its right edge with the
+   universal content-card datum. On ultra-wide displays the max-width content
+   frame remains centered, so the right inset grows with that centered frame. */
+body.dp-v11-structural > #sidebar-version.dp-app-version {
+  position: fixed !important;
+  right: max(
+    var(--dp-shell-x),
+    calc((100vw - var(--dp-shell-sidebar) - var(--dp-content-max-width)) / 2)
+  ) !important;
+  bottom: 7px !important;
+  z-index: 520;
+  margin: 0 !important;
+  padding: 2px 6px;
+  border: 1px solid rgba(121, 132, 181, .20);
   border-radius: 4px;
-  background: rgba(9, 13, 32, .48);
-  color: #9da4c2;
+  background: rgba(9, 13, 32, .64);
+  color: #aeb5d1;
+  font-family: var(--dp-font-mono);
   font-size: 9px;
   line-height: 1.1;
   font-weight: 600;
   letter-spacing: .02em;
+  text-align: right;
+  white-space: nowrap;
   text-shadow: 0 1px 5px rgba(0, 0, 0, .34);
+  box-shadow: 0 2px 8px rgba(0, 0, 12, .12);
+  pointer-events: none;
 }
-body.light.dp-v11-structural #sidebar .logo-ver {
-  background: rgba(255, 255, 255, .68);
-  color: #68708f;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, .9);
+body.light.dp-v11-structural > #sidebar-version.dp-app-version {
+  border-color: rgba(113, 124, 166, .18);
+  background: rgba(255, 255, 255, .78);
+  color: #66708e;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, .94);
+  box-shadow: 0 2px 8px rgba(45, 61, 96, .08);
 }
 
-/* The reviewed large-format logo already paints its own border. Do not wrap it
-   in an additional light-theme ring. Keep only a restrained brand glow. */
+/* The shell now uses the vector logo directly. Its SVG already paints the
+   rounded gradient outline, so light mode must not add a second rectangular
+   frame. A true alpha-following drop shadow preserves restrained brand depth. */
 body.light.dp-v11-structural #sidebar .logo-icon {
   border: 0 !important;
   outline: 0 !important;
   background: transparent !important;
-  box-shadow: 0 0 18px rgba(124, 58, 237, .14) !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 0 8px rgba(124, 58, 237, .16)) !important;
 }
 
 @media (max-width: 1179px) {
-  /* The canonical collapsed-sidebar contract hides .logo-text. The version is
-     inside that node, so no additional compact-shell branding is introduced. */
   body.dp-v11-structural #sidebar .logo-name {
     font-size: 19px;
+  }
+
+  body.dp-v11-structural > #sidebar-version.dp-app-version {
+    right: var(--dp-shell-x) !important;
   }
 }
 
 @media (max-width: 899px) {
   body.dp-v11-structural #sidebar .logo-text {
     display: flex;
+  }
+
+  body.dp-v11-structural > #sidebar-version.dp-app-version {
+    right: 14px !important;
+    bottom: 5px !important;
+    font-size: 8px;
   }
 }
