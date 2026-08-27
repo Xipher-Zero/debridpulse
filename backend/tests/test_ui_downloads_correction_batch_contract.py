@@ -100,7 +100,7 @@ def test_batch_cache_generations_are_explicit() -> None:
     assert "/ui-runtime.js?v=24" in operator
     assert "/ui-dashboard-control-polish.css?v=23" in style
     assert "/ui-downloads-page.css?v=27" in style
-    assert "/ui-feature-icon-contract.css?v=2" in style
+    assert "/ui-feature-icon-contract.css?v=3" in style
     assert "/ui-transfer-contract.css?v=31" in style
     assert "/ui-downloads-runtime.js?v=22" in operator
     assert "/operator-title.js?v=23" in index
