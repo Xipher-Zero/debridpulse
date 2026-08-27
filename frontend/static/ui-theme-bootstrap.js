@@ -13,9 +13,10 @@
     /* Storage can be unavailable in hardened/private browser contexts. */
   }
 
-  /* Large-format shell branding uses the reviewed raster derivative. The
-     browser tab intentionally keeps the original compact DebridPulse mark: it
-     remains more legible at favicon scale than the larger-format replacement. */
+  /* Authentication and touch surfaces keep the reviewed raster derivative.
+     The application shell uses the vector mark directly so its integrated
+     outline remains the only frame in both themes. The browser tab separately
+     keeps the compact favicon mark because it remains more legible at tab size. */
   function installReviewedBrandAssets() {
     const vectorIcon = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
     if (vectorIcon) {
@@ -35,8 +36,8 @@
     const installSidebarLogo = function () {
       const logo = document.querySelector('#sidebar .logo-icon');
       if (!logo) return false;
-      if (logo.getAttribute('src') !== '/logo-128.png?v=5') {
-        logo.setAttribute('src', '/logo-128.png?v=5');
+      if (logo.getAttribute('src') !== '/logo.svg?v=7') {
+        logo.setAttribute('src', '/logo.svg?v=7');
       }
       return true;
     };
@@ -92,7 +93,7 @@
      shared surface opt-in and shell-brand presentation. */
   if (!document.querySelector('script[data-dp-statistics-batch5]')) {
     const script = document.createElement('script');
-    script.src = '/ui-statistics-batch5.js?v=1';
+    script.src = '/ui-statistics-batch5.js?v=2';
     script.defer = true;
     script.dataset.dpStatisticsBatch5 = '1';
     document.head.appendChild(script);
