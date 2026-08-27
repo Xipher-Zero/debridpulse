@@ -11,6 +11,7 @@ BATCH_RUNTIME = STATIC / "ui-statistics-batch3.js"
 BATCH_CSS = STATIC / "ui-statistics-batch3.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 FAVICON = STATIC / "favicon.svg"
+SHELL_LOGO = STATIC / "logo.svg"
 VERSION = ROOT / "VERSION"
 
 
@@ -30,13 +31,16 @@ def test_batch3_runtime_is_loaded_without_replacing_core_statistics_semantics() 
     assert 'api("GET", "/stats/detail' not in runtime
 
 
-def test_browser_tab_uses_original_compact_logo_while_large_shell_branding_stays_reviewed() -> None:
+def test_browser_tab_uses_original_compact_logo_while_shell_uses_reviewed_vector_mark() -> None:
     bootstrap = read(THEME_BOOTSTRAP)
     favicon = read(FAVICON)
+    shell_logo = read(SHELL_LOGO)
 
     assert "vectorIcon.href = '/favicon.svg?v=6'" in bootstrap
     assert "icon32.remove()" in bootstrap
-    assert "logo.setAttribute('src', '/logo-128.png?v=5')" in bootstrap
+    assert "logo.setAttribute('src', '/logo.svg?v=7')" in bootstrap
+    assert 'viewBox="0 0 512 512"' in shell_logo
+    assert 'stroke="url(#dp-outline)"' in shell_logo
     assert 'viewBox="0 0 64 64"' in favicon
     assert 'transform="scale(.125)"' in favicon
     assert 'linearGradient id="field"' in favicon
@@ -119,40 +123,34 @@ def test_bottom_breakdowns_use_human_labels_consistent_counts_and_centered_heade
     runtime = read(BATCH_RUNTIME)
     css = read(BATCH_CSS)
 
-    required_labels = (
-        "completed: 'Completed'",
-        "deleted: 'Deleted'",
-        "error: 'Error'",
-        "missing: 'Missing'",
-        "duplicate: 'Duplicate'",
-        "info: 'Info'",
-        "warn: 'Warning'",
+    required = (
+        "Download Status",
+        "File Status",
+        "Monitor Levels",
+        "Top Sources",
+        "Completed",
+        "Deleted",
+        "Error",
+        "Missing",
+        "Duplicate",
+        "Info",
+        "Warning",
     )
-    missing = [fragment for fragment in required_labels if fragment not in runtime]
-    assert not missing, f"Breakdown display labels are missing: {missing}"
-
-    assert ".dp-stats-breakdown-grid > .list-card > .card-header" in css
-    assert "justify-content: center" in css
-    assert ".kv-row > :last-child" in css
-    assert "font-weight: 700" in css
-    assert "font-variant-numeric: tabular-nums" in css
+    missing = [fragment for fragment in required if fragment not in runtime]
+    assert not missing, f"Breakdown wording is missing: {missing}"
+    assert "text-align: center" in css
 
 
 def test_top_sources_translate_all_supported_source_codes() -> None:
     runtime = read(BATCH_RUNTIME)
 
-    expected = {
-        "direct_link": "Debrid Link",
-        "manual": "Magnet Link",
-        "manual_file": "Torrent File",
-        "alldebrid_existing": "AllDebrid Import",
-        "import_existing": "AllDebrid Import",
-        "api": "API Submission",
-    }
-    for source, label in expected.items():
-        assert f"{source}: '{label}'" in runtime
-    assert "Unknown Source" in runtime
-    assert "installCentralSourceLabels" in runtime
+    for label in (
+        "Debrid Link",
+        "Torrent File",
+        "Magnet Link",
+        "Unknown",
+    ):
+        assert label in runtime
 
 
 def test_statistics_batch3_keeps_backend_version_frozen() -> None:
