@@ -13,20 +13,21 @@
     /* Storage can be unavailable in hardened/private browser contexts. */
   }
 
-  /* The reviewed brand artwork is shipped as exact raster derivatives of the
-     supplied logo. Repoint the legacy shell/favicon markup before first paint so
-     stale compatibility SVGs cannot surface while the v1.0.11 HTML is still
-     being migrated. */
+  /* Large-format shell branding uses the reviewed raster derivative. The
+     browser tab intentionally keeps the original compact DebridPulse mark: it
+     remains more legible at favicon scale than the larger-format replacement. */
   function installReviewedBrandAssets() {
     const vectorIcon = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
     if (vectorIcon) {
-      vectorIcon.type = 'image/png';
-      vectorIcon.setAttribute('sizes', '128x128');
-      vectorIcon.href = '/logo-128.png?v=5';
+      vectorIcon.type = 'image/svg+xml';
+      vectorIcon.removeAttribute('sizes');
+      vectorIcon.href = '/favicon.svg?v=6';
     }
 
+    /* Do not allow the newer 32px raster fallback to win favicon selection over
+       the restored original vector mark. Modern supported browsers use SVG. */
     const icon32 = document.querySelector('link[rel="icon"][sizes="32x32"]');
-    if (icon32) icon32.href = '/favicon-32.png?v=5';
+    if (icon32) icon32.remove();
 
     const apple = document.querySelector('link[rel="apple-touch-icon"]');
     if (apple) apple.href = '/apple-touch-icon.png?v=5';
@@ -62,6 +63,17 @@
     script.src = '/ui-visual-behavior-fixes.js?v=22';
     script.defer = true;
     script.dataset.dpVisualBehaviorFixes = '1';
+    document.head.appendChild(script);
+  }
+
+  /* Statistics Batch 3 is presentation-only. Keep it isolated from app.js so
+     the existing statistics API, Chart.js lifecycle and transfer semantics stay
+     authoritative while the reviewed wording/layout is applied after render. */
+  if (!document.querySelector('script[data-dp-statistics-batch3]')) {
+    const script = document.createElement('script');
+    script.src = '/ui-statistics-batch3.js?v=1';
+    script.defer = true;
+    script.dataset.dpStatisticsBatch3 = '1';
     document.head.appendChild(script);
   }
 
