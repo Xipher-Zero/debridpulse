@@ -1,0 +1,67 @@
+/* DebridPulse v1.0.11 sidequest polish.
+ * Two presentation-only corrections from local review:
+ *  - the global version datum is text-only, never a chip/card surface;
+ *  - the sidebar signal accent uses a richer asymmetric wave field.
+ */
+
+/* ── Global version datum: value only ────────────────────────────────── */
+body.dp-v11-structural > #sidebar-version.dp-app-version {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  line-height: 1 !important;
+}
+
+body.dp-v11-structural:not(.light) > #sidebar-version.dp-app-version {
+  color: #aeb5d1;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, .42), 0 0 8px rgba(124, 92, 246, .10);
+}
+
+body.light.dp-v11-structural > #sidebar-version.dp-app-version {
+  color: #697491;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, .95), 0 0 5px rgba(66, 78, 120, .08);
+}
+
+/* ── Sidebar signal field ─────────────────────────────────────────────── */
+/* Replace the old synchronized ellipse bundle with one authored signal field:
+   mixed amplitudes/frequencies, crossing paths, sparse bright nodes and a much
+   less regular particle distribution. The same geometry is shared by both
+   themes; only its visual emphasis changes. */
+body.dp-v11-structural #sidebar::before {
+  left: -28px !important;
+  right: -20px !important;
+  bottom: 205px !important;
+  height: 300px !important;
+  opacity: .72 !important;
+  background: url('/icons/dp/sidebar-wave-accent.svg?v=1') center / 100% 100% no-repeat !important;
+  transform: none !important;
+  mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 11%, #000 90%, transparent 100%) !important;
+  filter: saturate(1.10) drop-shadow(0 0 10px rgba(124, 58, 237, .12));
+}
+
+body.light.dp-v11-structural #sidebar::before {
+  opacity: .34 !important;
+  filter: saturate(.92) drop-shadow(0 0 8px rgba(124, 58, 237, .055));
+}
+
+@media (max-width: 1179px) {
+  body.dp-v11-structural #sidebar::before {
+    left: -38px !important;
+    right: -30px !important;
+  }
+}
+
+@media (max-width: 899px) {
+  body.dp-v11-structural #sidebar::before {
+    bottom: 190px !important;
+    height: 280px !important;
+    opacity: .60 !important;
+  }
+  body.light.dp-v11-structural #sidebar::before {
+    opacity: .28 !important;
+  }
+}
