@@ -60,9 +60,7 @@
       attributes: true,
       attributeFilter: ['class'],
     });
-
-    const buttonObserver = new MutationObserver(syncThemeActionIcon);
-    buttonObserver.observe(button, {
+    observer.observe(button, {
       childList: true,
       characterData: true,
       subtree: true,
