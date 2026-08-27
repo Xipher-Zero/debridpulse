@@ -13,7 +13,7 @@ def read(name: str) -> str:
 def test_panel_surface_treatment_loads_after_page_geometry() -> None:
     entry = read("style-v11.css")
     downloads = entry.index("/ui-downloads-desktop.css?v=28")
-    treatment = entry.index("/ui-panel-surface-treatment.css?v=21")
+    treatment = entry.index("/ui-panel-surface-treatment.css?v=22")
     transfer = entry.index("/ui-transfer-contract.css?v=31")
     assert downloads < treatment < transfer
 
