@@ -20,7 +20,7 @@ def read(path: Path) -> str:
 def test_sidequest_layer_loads_after_live_review_accents() -> None:
     overlay = read(OVERLAY)
     live = "@import url('/ui-live-review-batch.css?v=21');"
-    sidequest = "@import url('/ui-sidequest-polish.css?v=21');"
+    sidequest = "@import url('/ui-sidequest-polish.css?v=20');"
 
     assert live in overlay
     assert sidequest in overlay
