@@ -10,6 +10,7 @@ STATIC = ROOT / "frontend" / "static"
 BATCH_RUNTIME = STATIC / "ui-statistics-batch3.js"
 BATCH_CSS = STATIC / "ui-statistics-batch3.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
+INDEX = STATIC / "index.html"
 FAVICON = STATIC / "favicon.svg"
 SHELL_LOGO = STATIC / "logo.svg"
 VERSION = ROOT / "VERSION"
@@ -122,12 +123,20 @@ def test_secondary_kpi_icons_are_large_and_upper_left_while_text_remains_centere
 def test_bottom_breakdowns_use_human_labels_consistent_counts_and_centered_headers() -> None:
     runtime = read(BATCH_RUNTIME)
     css = read(BATCH_CSS)
+    index = read(INDEX)
 
-    required = (
+    # The four card headings are structural markup owned by index.html. Batch 3
+    # owns only the humanized row-label translations applied after app.js renders
+    # the authoritative statistics data into those bodies.
+    for heading in (
         "Download Status",
         "File Status",
         "Monitor Levels",
         "Top Sources",
+    ):
+        assert heading in index
+
+    row_labels = (
         "Completed",
         "Deleted",
         "Error",
@@ -136,8 +145,8 @@ def test_bottom_breakdowns_use_human_labels_consistent_counts_and_centered_heade
         "Info",
         "Warning",
     )
-    missing = [fragment for fragment in required if fragment not in runtime]
-    assert not missing, f"Breakdown wording is missing: {missing}"
+    missing = [fragment for fragment in row_labels if fragment not in runtime]
+    assert not missing, f"Breakdown row wording is missing: {missing}"
     assert "text-align: center" in css
 
 
