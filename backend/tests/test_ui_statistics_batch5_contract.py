@@ -72,6 +72,30 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     assert "color: var(--c) !important" in value_segment
 
 
+def test_statistics_kpi_rows_share_title_value_flavor_vertical_anchors() -> None:
+    css = read(BATCH_CSS)
+    marker = "/* ── Shared KPI vertical anchors"
+    assert marker in css
+    alignment = css.split(marker, 1)[1]
+
+    assert "grid-template-rows: 18px 48px minmax(28px, auto) !important;" in alignment
+    assert "padding: 20px 16px 14px !important;" in alignment
+    assert "#detail-stat-cards :is(.metric-label, .stat-label)" in alignment
+    assert "#detail-stat-cards :is(.metric-value, .stat-value)" in alignment
+    assert "#detail-stat-cards :is(.metric-sub, .stat-sub)" in alignment
+
+    assert "grid-template-rows: 18px 28px minmax(24px, auto) !important;" in alignment
+    assert "padding: 14px 14px 12px !important;" in alignment
+
+    label = alignment[alignment.index(".dp-stats-history-grid .dash-kpi-lbl"):].split("}", 1)[0]
+    value = alignment[alignment.index(".dp-stats-history-grid .dash-kpi-val"):].split("}", 1)[0]
+    sub = alignment[alignment.index(".dp-stats-history-grid .dash-kpi-sub"):].split("}", 1)[0]
+    assert "grid-row: 1 !important;" in label
+    assert "grid-row: 2 !important;" in value
+    assert "grid-row: 3 !important;" in sub
+    assert "align-content: start !important;" in alignment
+
+
 def test_success_rate_copy_distinguishes_period_and_life_time_scopes() -> None:
     runtime = read(BATCH_RUNTIME)
 
