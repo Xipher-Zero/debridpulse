@@ -103,27 +103,30 @@ def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monke
 
 
 def test_auth_pages_use_reviewed_debridpulse_login_palettes():
-    # Login Batch 1 remains its own composition, but its card, field, border,
-    # typography, and accent materials now consume the canonical application
-    # dark/light language instead of a parallel auth-only palette.
-    assert "--bg:#050814" in _AUTH_PAGE_STYLE
-    assert "--bg2:#080d1c" in _AUTH_PAGE_STYLE
-    assert "--card:#10182c" in _AUTH_PAGE_STYLE
-    assert "--card2:#0b1224" in _AUTH_PAGE_STYLE
-    assert "--field:#0d1427" in _AUTH_PAGE_STYLE
+    # Login Batch 2 keeps the application's typography, border, radius and brand
+    # language while using a deliberately richer translucent auth composition.
+    assert "--bg:#040711" in _AUTH_PAGE_STYLE
+    assert "--bg2:#070c1a" in _AUTH_PAGE_STYLE
+    assert "--card:rgba(15,22,41,.76)" in _AUTH_PAGE_STYLE
+    assert "--card2:rgba(7,12,27,.68)" in _AUTH_PAGE_STYLE
+    assert "--field:rgba(10,17,33,.76)" in _AUTH_PAGE_STYLE
     assert "--border:#26324d" in _AUTH_PAGE_STYLE
     assert "--text:#f7f8ff" in _AUTH_PAGE_STYLE
     assert "--accent:#b45cff" in _AUTH_PAGE_STYLE
     assert "--accent2:#3d94ff" in _AUTH_PAGE_STYLE
+    assert "--icon-accent:#a99cff" in _AUTH_PAGE_STYLE
     assert ':root[data-theme="light"]' in _AUTH_PAGE_STYLE
-    assert "--bg:#f4f7fc" in _AUTH_PAGE_STYLE
-    assert "--card:#f8faff" in _AUTH_PAGE_STYLE
-    assert "--card2:#ffffff" in _AUTH_PAGE_STYLE
-    assert "--field:#fbfcff" in _AUTH_PAGE_STYLE
+    assert "--bg:#f7f8fd" in _AUTH_PAGE_STYLE
+    assert "--card:rgba(255,255,255,.78)" in _AUTH_PAGE_STYLE
+    assert "--card2:rgba(248,250,255,.68)" in _AUTH_PAGE_STYLE
+    assert "--field:rgba(255,255,255,.76)" in _AUTH_PAGE_STYLE
     assert "--border:#dce4f1" in _AUTH_PAGE_STYLE
     assert "--text:#111a34" in _AUTH_PAGE_STYLE
     assert "--accent:#9637f5" in _AUTH_PAGE_STYLE
     assert "--accent2:#2f86ff" in _AUTH_PAGE_STYLE
+    assert "--icon-accent:#806de8" in _AUTH_PAGE_STYLE
+    assert "backdrop-filter:blur(22px) saturate(132%)" in _AUTH_PAGE_STYLE
+    assert "border-radius:12px" in _AUTH_PAGE_STYLE
     assert "#f08a24" not in _AUTH_PAGE_STYLE
     response = _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
     assert 'class="card"' in response.body.decode()
