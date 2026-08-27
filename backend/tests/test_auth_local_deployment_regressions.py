@@ -103,30 +103,37 @@ def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monke
 
 
 def test_auth_pages_use_reviewed_debridpulse_login_palettes():
-    # Login Batch 2 keeps the application's typography, border, radius and brand
-    # language while using a deliberately richer translucent auth composition.
-    assert "--bg:#040711" in _AUTH_PAGE_STYLE
-    assert "--bg2:#070c1a" in _AUTH_PAGE_STYLE
-    assert "--card:rgba(15,22,41,.76)" in _AUTH_PAGE_STYLE
-    assert "--card2:rgba(7,12,27,.68)" in _AUTH_PAGE_STYLE
-    assert "--field:rgba(10,17,33,.76)" in _AUTH_PAGE_STYLE
-    assert "--border:#26324d" in _AUTH_PAGE_STYLE
+    # The Login surface keeps the application's geometry and typography while
+    # using a richer translucent auth-specific material and mockup-like field.
+    assert "--bg:#030612" in _AUTH_PAGE_STYLE
+    assert "--bg2:#081126" in _AUTH_PAGE_STYLE
+    assert "--card:rgba(10,16,33,.55)" in _AUTH_PAGE_STYLE
+    assert "--card2:rgba(7,12,27,.40)" in _AUTH_PAGE_STYLE
+    assert "--field:rgba(7,13,29,.52)" in _AUTH_PAGE_STYLE
     assert "--text:#f7f8ff" in _AUTH_PAGE_STYLE
     assert "--accent:#b45cff" in _AUTH_PAGE_STYLE
     assert "--accent2:#3d94ff" in _AUTH_PAGE_STYLE
-    assert "--icon-accent:#a99cff" in _AUTH_PAGE_STYLE
+    assert "--icon-accent:#b0a3ff" in _AUTH_PAGE_STYLE
+    assert "--glass-top:rgba(255,255,255,.13)" in _AUTH_PAGE_STYLE
+    assert "--glass-purple:rgba(180,92,255,.18)" in _AUTH_PAGE_STYLE
+    assert "--glass-blue:rgba(42,148,255,.15)" in _AUTH_PAGE_STYLE
     assert ':root[data-theme="light"]' in _AUTH_PAGE_STYLE
-    assert "--bg:#f7f8fd" in _AUTH_PAGE_STYLE
-    assert "--card:rgba(255,255,255,.78)" in _AUTH_PAGE_STYLE
-    assert "--card2:rgba(248,250,255,.68)" in _AUTH_PAGE_STYLE
-    assert "--field:rgba(255,255,255,.76)" in _AUTH_PAGE_STYLE
-    assert "--border:#dce4f1" in _AUTH_PAGE_STYLE
+    assert "--bg:#f8f9ff" in _AUTH_PAGE_STYLE
+    assert "--bg2:#eef4ff" in _AUTH_PAGE_STYLE
+    assert "--card:rgba(255,255,255,.55)" in _AUTH_PAGE_STYLE
+    assert "--card2:rgba(249,251,255,.35)" in _AUTH_PAGE_STYLE
+    assert "--field:rgba(255,255,255,.50)" in _AUTH_PAGE_STYLE
     assert "--text:#111a34" in _AUTH_PAGE_STYLE
     assert "--accent:#9637f5" in _AUTH_PAGE_STYLE
     assert "--accent2:#2f86ff" in _AUTH_PAGE_STYLE
-    assert "--icon-accent:#806de8" in _AUTH_PAGE_STYLE
-    assert "backdrop-filter:blur(22px) saturate(132%)" in _AUTH_PAGE_STYLE
+    assert "--icon-accent:#7868e4" in _AUTH_PAGE_STYLE
+    assert "--glass-top:rgba(255,255,255,.88)" in _AUTH_PAGE_STYLE
+    assert "--glass-purple:rgba(161,91,255,.13)" in _AUTH_PAGE_STYLE
+    assert "--glass-blue:rgba(66,150,255,.14)" in _AUTH_PAGE_STYLE
+    assert "backdrop-filter:blur(30px) saturate(165%)" in _AUTH_PAGE_STYLE
     assert "border-radius:12px" in _AUTH_PAGE_STYLE
+    assert "body::before" in _AUTH_PAGE_STYLE
+    assert "body::after" in _AUTH_PAGE_STYLE
     assert "#f08a24" not in _AUTH_PAGE_STYLE
     response = _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
     assert 'class="card"' in response.body.decode()
