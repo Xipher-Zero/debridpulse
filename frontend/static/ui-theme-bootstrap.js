@@ -14,10 +14,11 @@
   }
 
   /* Visual-review behavior corrections are deliberately isolated from app.js.
-     They own only first-paint shell hydration and action-icon semantics. */
+     They own only first-paint shell hydration, action-icon semantics and
+     presentation-only Statistics composition. */
   if (!document.querySelector('script[data-dp-visual-behavior-fixes]')) {
     const script = document.createElement('script');
-    script.src = '/ui-visual-behavior-fixes.js?v=21';
+    script.src = '/ui-visual-behavior-fixes.js?v=22';
     script.defer = true;
     script.dataset.dpVisualBehaviorFixes = '1';
     document.head.appendChild(script);
