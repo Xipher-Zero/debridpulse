@@ -13,7 +13,7 @@ def read(name: str) -> str:
 def test_live_review_overlay_loads_after_transfer_contract() -> None:
     entry = read("style-v11.css")
     transfer = entry.index("/ui-transfer-contract.css?v=31")
-    review = entry.index("/ui-live-review-batch.css?v=1")
+    review = entry.index("/ui-live-review-batch.css?v=20")
     assert review > transfer
 
 
