@@ -62,3 +62,6 @@
 
 /* Final live-review visual accents only; semantics/geometry remain owned above. */
 @import url('/ui-live-review-batch.css?v=21');
+
+/* Final sidequest polish: text-only version datum + richer sidebar signal field. */
+@import url('/ui-sidequest-polish.css?v=1');
