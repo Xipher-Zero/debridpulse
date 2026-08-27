@@ -47,12 +47,9 @@
   }
 
   function utilitySvg(kind) {
-    const paths = {
-      upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',
-      arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
-      refresh: '<path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/>'
-    };
-    return '<svg class="dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[kind] || '') + '</svg>';
+    return window.DPIcons && typeof window.DPIcons.svg === 'function'
+      ? window.DPIcons.svg(kind)
+      : '';
   }
 
   function ensurePageHeading() {
@@ -254,8 +251,8 @@
 
   function normalizeSpeedCapArrow() {
     const arrow = document.querySelector('#aria2-cap-toggle span[aria-hidden="true"]');
-    if (!arrow) return;
-    arrow.textContent = '▼';
+    if (!arrow || arrow.querySelector('[data-dp-lucide="chevronDown"]')) return;
+    arrow.innerHTML = utilitySvg('chevronDown');
     arrow.classList.add('dp-speedcap-arrow');
   }
 
@@ -330,6 +327,10 @@
 
   function normalizeDashboardBadges() {
     document.querySelectorAll('#dash-tbody .badge').forEach(function (badge) {
+      if (badge.querySelector('.dp-status-icon')) {
+        badge.dataset.dpPresentationNormalized = '1';
+        return;
+      }
       if (badge.dataset.dpPresentationNormalized === '1') return;
       const text = (badge.textContent || '').replace(/^[^A-Za-z0-9]+/, '').trim();
       const desired = badge.classList.contains('badge-completed') ? 'Done' : text;

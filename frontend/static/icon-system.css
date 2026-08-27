@@ -59,3 +59,29 @@ body.light .dp-icon-frame,
   flex: 0 0 auto;
   stroke: currentColor;
 }
+
+/* Canonical semantic glyph sizes. Feature artwork remains in .dp-icon; these
+   classes apply only to locally vendored Lucide geometry. */
+.dp-status-icon {
+  --dp-icon-size: 15px;
+  width: var(--dp-icon-size);
+  height: var(--dp-icon-size);
+  min-width: var(--dp-icon-size);
+  flex: 0 0 var(--dp-icon-size);
+  stroke-width: 2.15;
+}
+
+.dp-toast-icon {
+  --dp-icon-size: 18px;
+  width: var(--dp-icon-size);
+  height: var(--dp-icon-size);
+  min-width: var(--dp-icon-size);
+  flex: 0 0 var(--dp-icon-size);
+  stroke-width: 2.1;
+}
+
+.toast.success .dp-toast-icon { color: var(--dp-state-success, #2bd67b); }
+.toast.warn .dp-toast-icon { color: var(--dp-state-caution, #ffc13d); }
+.toast.error .dp-toast-icon { color: var(--dp-state-error, #ff5264); }
+.toast.info .dp-toast-icon { color: var(--dp-state-active, #3b89ff); }
+.dp-toast-copy { min-width: 0; }

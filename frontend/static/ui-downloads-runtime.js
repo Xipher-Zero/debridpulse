@@ -23,18 +23,9 @@
   let recentEmptyObserver = null;
 
   function utilitySvg(name) {
-    const paths = {
-      chevronLeft: '<path d="m15 18-6-6 6-6"/>',
-      chevronRight: '<path d="m9 18 6-6-6-6"/>',
-      refresh: '<path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/>',
-      pause: '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
-      play: '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
-      trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
-      x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
-    };
-    const geometry = paths[name];
-    if (!geometry) return '';
-    return '<svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + geometry + '</svg>';
+    return window.DPIcons && typeof window.DPIcons.svg === 'function'
+      ? window.DPIcons.svg(name)
+      : '';
   }
 
   function setBulkButtonPresentation(button, label, iconName, semanticClass) {
@@ -61,7 +52,7 @@
     setBulkButtonPresentation(find("bulkAction('pause'"), 'Pause', 'pause', 'dp-downloads-bulk-action--pause');
     setBulkButtonPresentation(find("bulkAction('resume'"), 'Resume', 'play', 'dp-downloads-bulk-action--resume');
     setBulkButtonPresentation(find("bulkAction('reset'"), 'Reset', 'refresh', 'dp-downloads-bulk-action--reset');
-    setBulkButtonPresentation(find("bulkAction('delete'"), 'Delete', 'trash', 'dp-downloads-bulk-action--delete');
+    setBulkButtonPresentation(find("bulkAction('delete'"), 'Delete', 'trash2', 'dp-downloads-bulk-action--delete');
     setBulkButtonPresentation(find('clearSelection()'), 'Clear Selections', 'x', 'dp-downloads-bulk-action--clear');
   }
 
@@ -234,6 +225,10 @@
   function normalizeDownloadBadge(row) {
     const badge = row && row.querySelector('.badge');
     if (!badge) return;
+    if (badge.querySelector('.dp-status-icon')) {
+      badge.dataset.dpPresentationNormalized = '1';
+      return;
+    }
     const text = (badge.textContent || '').replace(/^[^A-Za-z0-9]+/, '').trim();
     const desired = badge.classList.contains('badge-completed') ? 'Done' : text;
     if (desired && badge.textContent !== desired) badge.textContent = desired;
@@ -252,15 +247,28 @@
     if (button.dataset.pending === '1' || button.getAttribute('aria-busy') === 'true') return;
 
     let label = '';
+    let iconName = '';
     if (onclick.includes('pauseT(') || onclick.includes('pauseTorrent(')) label = 'Pause';
     else if (onclick.includes('resumeT(') || onclick.includes('resumeTorrent(')) label = 'Resume';
     else if (onclick.includes('deleteT(') || onclick.includes('deleteTorrent(')) label = 'Remove';
     else if (onclick.includes('retryT(') || onclick.includes('retryTorrent(')) label = 'Retry';
-    else if (onclick.includes('downloadNow(')) label = '⬇ Now';
+    else if (onclick.includes('downloadNow(')) { label = 'Now'; iconName = 'download'; }
 
     if (label) {
       button.dataset.defaultLabel = label;
-      if (button.textContent !== label) button.textContent = label;
+      if (iconName) {
+        const existingIcon = button.querySelector('[data-dp-lucide="' + iconName + '"]');
+        const existingLabel = button.querySelector('[data-dp-row-action-label]');
+        if (!existingIcon || !existingLabel || existingLabel.textContent !== label) {
+          button.innerHTML = utilitySvg(iconName);
+          const span = document.createElement('span');
+          span.dataset.dpRowActionLabel = '1';
+          span.textContent = label;
+          button.appendChild(span);
+        }
+      } else if (button.textContent !== label) {
+        button.textContent = label;
+      }
     }
   }
 

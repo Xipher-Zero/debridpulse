@@ -7,7 +7,10 @@
  */
 
 /* ── Status tags ─────────────────────────────────────────────────────── */
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge {
+/* Dashboard, Downloads and Details consume one rectangular semantic badge
+   contract. The inline glyph itself is supplied by the canonical Lucide runtime;
+   CSS owns only geometry/material/color and never injects symbol-font content. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
@@ -22,65 +25,42 @@ body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge {
   color: var(--dp-badge-color) !important;
 }
 
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge::before {
-  display: inline-grid;
-  place-items: center;
-  width: 15px;
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge .dp-status-icon {
+  width: 15px !important;
+  height: 15px !important;
   min-width: 15px;
-  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
-  font-size: 16px;
-  line-height: 1;
-  font-weight: 800;
-  text-shadow: 0 0 7px currentColor;
+  flex: 0 0 15px;
+  stroke-width: 2.15;
 }
 
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-downloading {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-downloading {
   --dp-badge-color: var(--dp-state-success);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-uploading,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-queued {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-uploading,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-queued {
   --dp-badge-color: var(--dp-state-active);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-processing,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-extracting {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-processing,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-extracting,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-imported {
   --dp-badge-color: var(--dp-accent-purple-bright);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-paused,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-ready,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-partial {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-paused,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-ready,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-partial {
   --dp-badge-color: var(--dp-state-caution);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-completed {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-completed {
   --dp-badge-color: var(--dp-state-success);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-error {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-error {
   --dp-badge-color: var(--dp-state-error);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-pending {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-pending {
   --dp-badge-color: var(--dp-state-ready);
 }
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) .badge-deleted {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-deleted {
   --dp-badge-color: var(--dp-text-muted);
-}
-
-/* The list views share one deliberate monochrome status-glyph language. The
-   runtimes strip inherited emoji/text symbols before these glyphs are added. */
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="downloading"] .badge-downloading::before,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="downloading"] .badge-partial::before {
-  content: '↓';
-}
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="paused"] .badge-paused::before {
-  content: 'Ⅱ';
-  font-size: 14px;
-  letter-spacing: -2px;
-}
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="completed"] .badge-completed::before,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="completed"] .badge-partial::before {
-  content: '✓';
-}
-body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status="error"] .badge-error::before {
-  content: '×';
-  font-size: 18px;
 }
 
 /* ── Row action language ─────────────────────────────────────────────── */
