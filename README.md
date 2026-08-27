@@ -315,7 +315,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 
 ## V1 scope boundary
 
-V1 removes the inherited media-automation and indexer surface, including:
+V1 intentionally excludes the media-automation and indexer surface inherited from the original codebase, including:
 
 - qBittorrent API emulation;
 - Sonarr/Radarr integration;
