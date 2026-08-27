@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import re
 from pathlib import Path
 
 
@@ -37,9 +36,12 @@ def test_login_embeds_the_exact_reviewed_logo_without_public_static_dependency()
     assert "img-src data:" in source
     assert "style-src 'unsafe-inline'" in source
 
-    encoded = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", source)
-    assert encoded is not None
-    assert base64.b64decode(encoded.group(1), validate=True) == STATIC_LOGO.read_bytes()
+    # Compare the encoded payload directly against the reviewed raster. This
+    # avoids making the source-code quote delimiter part of a decoder-oriented
+    # regex while still requiring the data URI to terminate immediately after
+    # the exact canonical base64 payload.
+    expected = base64.b64encode(STATIC_LOGO.read_bytes()).decode("ascii")
+    assert f'data:image/png;base64,{expected}"' in source
 
 
 def test_first_paint_shell_and_browser_tab_use_reviewed_brand_assets() -> None:
