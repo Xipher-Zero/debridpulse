@@ -140,13 +140,21 @@
 
     const averageDuration = historicalCard('i-avg-duration');
     const averageDurationLabel = averageDuration && averageDuration.querySelector('.dash-kpi-lbl');
+    const averageDurationSub = averageDuration && averageDuration.querySelector('.dash-kpi-sub');
     if (averageDurationLabel) averageDurationLabel.textContent = 'MEAN DOWNLOAD TIME';
+    if (averageDurationSub) averageDurationSub.textContent = 'Average completion time for downloads to finish.';
 
     const averageSize = historicalCard('i-avg-size');
     const averageSizeLabel = averageSize && averageSize.querySelector('.dash-kpi-lbl');
+    const averageSizeSub = averageSize && averageSize.querySelector('.dash-kpi-sub');
     if (averageSizeLabel) averageSizeLabel.textContent = 'MEAN DOWNLOAD SIZE';
+    if (averageSizeSub) averageSizeSub.textContent = 'Average size of completed downloads.';
 
-    return Boolean(primarySub && label && sub && averageDurationLabel && averageSizeLabel);
+    return Boolean(
+      primarySub && label && sub &&
+      averageDurationLabel && averageDurationSub &&
+      averageSizeLabel && averageSizeSub
+    );
   }
 
   function decorateChartHeader(period) {
