@@ -88,6 +88,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "2",
+        "/ui-panel-surface-treatment.css": "21",
         "/ui-transfer-contract.css": "31",
     }
     for path, version in expected_versions.items():
@@ -116,11 +117,12 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=2")
+    treatment_pos = overlay.index("/ui-panel-surface-treatment.css?v=21")
     transfer_pos = overlay.index("/ui-transfer-contract.css?v=31")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
     assert dashboard_pos < dashboard_control_pos < dashboard_consistency_pos < activity_pos < downloads_pos
-    assert downloads_pos < downloads_desktop_pos < help_pos < feature_icon_pos < transfer_pos
+    assert downloads_pos < downloads_desktop_pos < help_pos < feature_icon_pos < treatment_pos < transfer_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
@@ -226,6 +228,7 @@ def test_ci_syntax_checks_every_first_party_browser_runtime() -> None:
         "ui-downloads-runtime.js",
         "ui-accessibility-runtime.js",
         "ui-theme-bootstrap.js",
+        "ui-visual-behavior-fixes.js",
     )
     missing = [
         filename

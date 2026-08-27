@@ -62,6 +62,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
         "/ui-feature-icon-contract.css?v=2",
+        "/ui-panel-surface-treatment.css?v=21",
         "/ui-transfer-contract.css?v=31",
     ]
     positions = [overlay.index(value) for value in imports]
@@ -86,6 +87,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "2",
+        "/ui-panel-surface-treatment.css": "21",
         "/ui-transfer-contract.css": "31",
     }
     for path, version in expected_changed_versions.items():
