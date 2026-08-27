@@ -13,6 +13,47 @@
     /* Storage can be unavailable in hardened/private browser contexts. */
   }
 
+  /* The reviewed brand artwork is shipped as exact raster derivatives of the
+     supplied logo. Repoint the legacy shell/favicon markup before first paint so
+     stale compatibility SVGs cannot surface while the v1.0.11 HTML is still
+     being migrated. */
+  function installReviewedBrandAssets() {
+    const vectorIcon = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
+    if (vectorIcon) {
+      vectorIcon.type = 'image/png';
+      vectorIcon.setAttribute('sizes', '128x128');
+      vectorIcon.href = '/logo-128.png?v=5';
+    }
+
+    const icon32 = document.querySelector('link[rel="icon"][sizes="32x32"]');
+    if (icon32) icon32.href = '/favicon-32.png?v=5';
+
+    const apple = document.querySelector('link[rel="apple-touch-icon"]');
+    if (apple) apple.href = '/apple-touch-icon.png?v=5';
+
+    const installSidebarLogo = function () {
+      const logo = document.querySelector('#sidebar .logo-icon');
+      if (!logo) return false;
+      if (logo.getAttribute('src') !== '/logo-128.png?v=5') {
+        logo.setAttribute('src', '/logo-128.png?v=5');
+      }
+      return true;
+    };
+
+    if (!installSidebarLogo()) {
+      const observer = new MutationObserver(function () {
+        if (installSidebarLogo()) observer.disconnect();
+      });
+      observer.observe(document.body, {childList: true, subtree: true});
+      document.addEventListener('DOMContentLoaded', function () {
+        installSidebarLogo();
+        observer.disconnect();
+      }, {once: true});
+    }
+  }
+
+  installReviewedBrandAssets();
+
   /* Visual-review behavior corrections are deliberately isolated from app.js.
      They own only first-paint shell hydration, action-icon semantics and
      presentation-only Statistics composition. */
