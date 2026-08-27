@@ -78,11 +78,13 @@ body.light.dp-v11-structural :is(
 /* List/table workspaces have the largest uninterrupted empty fields. Give only
    those surfaces a stronger and less symmetrical cloud mix; headers, rows and
    controls retain their existing material because their own backgrounds sit
-   above this shared surface. */
+   above this shared surface. dp-list-workspace-surface is the reusable opt-in
+   for equivalent analytical/list cards outside the original page selectors. */
 body.dp-v11-structural :is(
   #view-dashboard .dp-dashboard-activity,
   #view-torrents > .card,
-  #view-events > .dp-activity-card
+  #view-events > .dp-activity-card,
+  .dp-list-workspace-surface
 ) {
   background:
     radial-gradient(ellipse 112% 86% at 90% 92%,
@@ -108,7 +110,8 @@ body.dp-v11-structural :is(
 body.light.dp-v11-structural :is(
   #view-dashboard .dp-dashboard-activity,
   #view-torrents > .card,
-  #view-events > .dp-activity-card
+  #view-events > .dp-activity-card,
+  .dp-list-workspace-surface
 ) {
   background:
     radial-gradient(ellipse 112% 86% at 90% 92%,
