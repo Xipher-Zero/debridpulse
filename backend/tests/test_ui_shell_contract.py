@@ -62,7 +62,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-downloads-desktop.css?v=28",
         "/ui-help-page.css?v=22",
         "/ui-feature-icon-contract.css?v=3",
-        "/ui-panel-surface-treatment.css?v=21",
+        "/ui-panel-surface-treatment.css?v=22",
         "/ui-transfer-contract.css?v=31",
         "/ui-live-review-batch.css?v=21",
     ]
@@ -89,7 +89,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "3",
-        "/ui-panel-surface-treatment.css": "21",
+        "/ui-panel-surface-treatment.css": "22",
         "/ui-transfer-contract.css": "31",
         "/ui-live-review-batch.css": "21",
     }
