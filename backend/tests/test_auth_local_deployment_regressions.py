@@ -102,9 +102,15 @@ def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monke
     assert request_is_secure(request) is False
 
 
-def test_auth_pages_use_debridpulse_dark_theme_palette():
-    assert "--bg:#090812" in _AUTH_PAGE_STYLE
-    assert "--accent:#a67cff" in _AUTH_PAGE_STYLE
+def test_auth_pages_use_reviewed_debridpulse_login_palettes():
+    # Login Batch 1 deliberately replaced the inherited auth palette with the
+    # reviewed complementary dark/light mockup treatment. Keep both palettes
+    # under contract rather than retaining the obsolete pre-overhaul literals.
+    assert "--bg:#070b16" in _AUTH_PAGE_STYLE
+    assert "--accent:#9d22f4" in _AUTH_PAGE_STYLE
+    assert ':root[data-theme="light"]' in _AUTH_PAGE_STYLE
+    assert "--bg:#f9f9ff" in _AUTH_PAGE_STYLE
+    assert "--accent:#8f1de9" in _AUTH_PAGE_STYLE
     assert "#f08a24" not in _AUTH_PAGE_STYLE
     response = _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
     assert 'class="card"' in response.body.decode()
