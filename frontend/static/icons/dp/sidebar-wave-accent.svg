@@ -2,24 +2,24 @@
   <defs>
     <linearGradient id="purple" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#8b5cf6" stop-opacity="0"/>
-      <stop offset="0.14" stop-color="#8b5cf6" stop-opacity="0.62"/>
-      <stop offset="0.52" stop-color="#a855f7" stop-opacity="0.95"/>
-      <stop offset="0.84" stop-color="#7c3aed" stop-opacity="0.54"/>
+      <stop offset="0.12" stop-color="#8b5cf6" stop-opacity="0.58"/>
+      <stop offset="0.50" stop-color="#a855f7" stop-opacity="0.94"/>
+      <stop offset="0.86" stop-color="#7c3aed" stop-opacity="0.56"/>
       <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#2563eb" stop-opacity="0"/>
-      <stop offset="0.16" stop-color="#3b82f6" stop-opacity="0.52"/>
-      <stop offset="0.58" stop-color="#4f8cff" stop-opacity="0.86"/>
-      <stop offset="0.88" stop-color="#2563eb" stop-opacity="0.46"/>
+      <stop offset="0.14" stop-color="#3b82f6" stop-opacity="0.50"/>
+      <stop offset="0.56" stop-color="#4f8cff" stop-opacity="0.86"/>
+      <stop offset="0.88" stop-color="#2563eb" stop-opacity="0.48"/>
       <stop offset="1" stop-color="#2563eb" stop-opacity="0"/>
     </linearGradient>
     <radialGradient id="hazePurple">
-      <stop offset="0" stop-color="#a855f7" stop-opacity="0.20"/>
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.18"/>
       <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="hazeBlue">
-      <stop offset="0" stop-color="#3b82f6" stop-opacity="0.15"/>
+      <stop offset="0" stop-color="#3b82f6" stop-opacity="0.14"/>
       <stop offset="1" stop-color="#3b82f6" stop-opacity="0"/>
     </radialGradient>
     <filter id="nodeGlow" x="-300%" y="-300%" width="700%" height="700%">
@@ -28,53 +28,60 @@
     </filter>
   </defs>
 
-  <ellipse cx="170" cy="170" rx="138" ry="105" fill="url(#hazePurple)"/>
-  <ellipse cx="245" cy="120" rx="102" ry="88" fill="url(#hazeBlue)"/>
+  <ellipse cx="154" cy="205" rx="150" ry="105" fill="url(#hazePurple)"/>
+  <ellipse cx="250" cy="112" rx="112" ry="96" fill="url(#hazeBlue)"/>
 
   <g fill="none" stroke-linecap="round">
-    <path d="M-20 236 C35 168 74 264 128 197 S224 130 340 72" stroke="url(#purple)" stroke-width="1.45"/>
-    <path d="M-20 260 C42 193 88 278 151 213 S255 147 340 92" stroke="url(#blue)" stroke-width="1.2"/>
-    <path d="M-20 210 C38 136 95 230 153 165 S260 108 340 54" stroke="url(#purple)" stroke-width="0.95" opacity="0.92"/>
-    <path d="M-20 278 C58 216 110 273 181 203 S275 122 340 84" stroke="url(#purple)" stroke-width="0.78" opacity="0.78"/>
-    <path d="M-20 244 C50 176 105 247 184 179 S281 104 340 67" stroke="url(#blue)" stroke-width="0.84" opacity="0.82"/>
-    <path d="M-20 252 C28 204 63 253 111 205 C151 164 188 216 231 160 C274 105 306 111 340 76" stroke="url(#purple)" stroke-width="0.72" opacity="0.68"/>
-    <path d="M-20 222 C33 167 73 223 120 178 C161 138 196 174 246 117 C286 72 315 88 340 56" stroke="url(#blue)" stroke-width="0.68" opacity="0.62"/>
+    <path d="M-20 258 C25 245 42 175 88 188 C127 198 134 248 178 207 C218 169 224 92 278 78 C304 71 324 50 340 34" stroke="url(#purple)" stroke-width="1.45"/>
+    <path d="M-20 284 C30 262 66 286 101 244 C134 204 148 169 190 182 C232 195 256 141 286 128 C309 118 326 112 340 103" stroke="url(#blue)" stroke-width="1.18"/>
+    <path d="M-20 218 C28 158 70 150 105 202 C137 251 170 220 195 163 C219 110 244 116 267 151 C291 185 318 152 340 132" stroke="url(#purple)" stroke-width="0.98" opacity="0.90"/>
+    <path d="M-20 296 C38 286 70 222 120 237 C165 250 183 284 221 235 C256 191 258 145 300 124 C318 114 330 104 340 92" stroke="url(#purple)" stroke-width="0.80" opacity="0.76"/>
+    <path d="M-20 242 C36 209 61 265 110 255 C154 246 165 165 208 146 C243 131 262 169 290 146 C310 129 326 93 340 72" stroke="url(#blue)" stroke-width="0.86" opacity="0.82"/>
+    <path d="M-20 267 C18 228 57 205 92 222 C127 239 141 206 160 161 C180 113 208 77 240 90 C268 101 277 65 300 54 C318 45 330 41 340 38" stroke="url(#purple)" stroke-width="0.74" opacity="0.70"/>
+    <path d="M-20 230 C31 244 53 198 94 172 C134 145 151 191 183 194 C219 198 230 127 265 103 C293 85 315 96 340 83" stroke="url(#blue)" stroke-width="0.70" opacity="0.66"/>
   </g>
 
   <g fill="#a855f7">
-    <circle cx="36" cy="244" r="1.1" opacity="0.42"/>
-    <circle cx="54" cy="218" r="1.8" opacity="0.72" filter="url(#nodeGlow)"/>
-    <circle cx="72" cy="258" r="0.9" opacity="0.46"/>
-    <circle cx="88" cy="191" r="1.2" opacity="0.56"/>
-    <circle cx="104" cy="232" r="1.0" opacity="0.48"/>
-    <circle cx="121" cy="203" r="2.0" opacity="0.92" filter="url(#nodeGlow)"/>
-    <circle cx="138" cy="170" r="0.85" opacity="0.44"/>
-    <circle cx="151" cy="211" r="1.05" opacity="0.48"/>
-    <circle cx="168" cy="158" r="1.45" opacity="0.70"/>
-    <circle cx="183" cy="188" r="0.9" opacity="0.42"/>
-    <circle cx="199" cy="136" r="1.05" opacity="0.54"/>
-    <circle cx="216" cy="167" r="2.2" opacity="0.90" filter="url(#nodeGlow)"/>
-    <circle cx="232" cy="118" r="0.85" opacity="0.40"/>
-    <circle cx="247" cy="148" r="1.15" opacity="0.54"/>
-    <circle cx="263" cy="96" r="1.55" opacity="0.72" filter="url(#nodeGlow)"/>
-    <circle cx="279" cy="127" r="0.9" opacity="0.44"/>
-    <circle cx="297" cy="79" r="1.1" opacity="0.58"/>
+    <circle cx="28" cy="266" r="0.9" opacity="0.40"/>
+    <circle cx="42" cy="226" r="1.6" opacity="0.72" filter="url(#nodeGlow)"/>
+    <circle cx="55" cy="282" r="0.8" opacity="0.42"/>
+    <circle cx="68" cy="194" r="1.0" opacity="0.52"/>
+    <circle cx="82" cy="244" r="1.15" opacity="0.52"/>
+    <circle cx="96" cy="177" r="1.9" opacity="0.90" filter="url(#nodeGlow)"/>
+    <circle cx="110" cy="264" r="0.85" opacity="0.42"/>
+    <circle cx="124" cy="215" r="1.0" opacity="0.48"/>
+    <circle cx="139" cy="151" r="1.35" opacity="0.66"/>
+    <circle cx="154" cy="238" r="0.9" opacity="0.42"/>
+    <circle cx="169" cy="187" r="1.0" opacity="0.54"/>
+    <circle cx="184" cy="126" r="1.8" opacity="0.86" filter="url(#nodeGlow)"/>
+    <circle cx="199" cy="224" r="0.85" opacity="0.40"/>
+    <circle cx="214" cy="158" r="1.05" opacity="0.54"/>
+    <circle cx="229" cy="92" r="1.45" opacity="0.70" filter="url(#nodeGlow)"/>
+    <circle cx="245" cy="181" r="0.9" opacity="0.44"/>
+    <circle cx="260" cy="132" r="1.0" opacity="0.52"/>
+    <circle cx="275" cy="70" r="1.85" opacity="0.86" filter="url(#nodeGlow)"/>
+    <circle cx="291" cy="151" r="0.85" opacity="0.42"/>
+    <circle cx="306" cy="95" r="1.0" opacity="0.56"/>
   </g>
 
   <g fill="#3b82f6">
-    <circle cx="44" cy="232" r="0.9" opacity="0.46"/>
-    <circle cx="63" cy="202" r="1.1" opacity="0.50"/>
-    <circle cx="81" cy="246" r="1.5" opacity="0.70" filter="url(#nodeGlow)"/>
-    <circle cx="101" cy="186" r="0.85" opacity="0.44"/>
-    <circle cx="124" cy="215" r="1.0" opacity="0.50"/>
-    <circle cx="144" cy="162" r="1.55" opacity="0.68" filter="url(#nodeGlow)"/>
-    <circle cx="161" cy="191" r="0.9" opacity="0.44"/>
-    <circle cx="181" cy="149" r="1.1" opacity="0.58"/>
-    <circle cx="202" cy="171" r="0.85" opacity="0.42"/>
-    <circle cx="223" cy="124" r="1.8" opacity="0.82" filter="url(#nodeGlow)"/>
-    <circle cx="242" cy="142" r="0.95" opacity="0.46"/>
-    <circle cx="262" cy="99" r="1.05" opacity="0.48"/>
-    <circle cx="283" cy="113" r="1.45" opacity="0.68" filter="url(#nodeGlow)"/>
-    <circle cx="302" cy="72" r="0.95" opacity="0.50"/>
+    <circle cx="35" cy="247" r="0.85" opacity="0.44"/>
+    <circle cx="50" cy="293" r="1.0" opacity="0.46"/>
+    <circle cx="64" cy="211" r="1.4" opacity="0.68" filter="url(#nodeGlow)"/>
+    <circle cx="79" cy="260" r="0.85" opacity="0.42"/>
+    <circle cx="94" cy="187" r="1.0" opacity="0.50"/>
+    <circle cx="109" cy="228" r="1.45" opacity="0.68" filter="url(#nodeGlow)"/>
+    <circle cx="125" cy="164" r="0.85" opacity="0.44"/>
+    <circle cx="141" cy="248" r="1.0" opacity="0.50"/>
+    <circle cx="157" cy="200" r="0.9" opacity="0.44"/>
+    <circle cx="173" cy="139" r="1.55" opacity="0.72" filter="url(#nodeGlow)"/>
+    <circle cx="190" cy="214" r="0.85" opacity="0.42"/>
+    <circle cx="206" cy="171" r="1.0" opacity="0.50"/>
+    <circle cx="223" cy="111" r="1.75" opacity="0.80" filter="url(#nodeGlow)"/>
+    <circle cx="239" cy="202" r="0.9" opacity="0.44"/>
+    <circle cx="255" cy="146" r="1.0" opacity="0.50"/>
+    <circle cx="271" cy="101" r="1.35" opacity="0.66" filter="url(#nodeGlow)"/>
+    <circle cx="287" cy="132" r="0.9" opacity="0.44"/>
+    <circle cx="302" cy="62" r="1.0" opacity="0.52"/>
   </g>
 </svg>
