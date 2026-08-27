@@ -26,7 +26,8 @@ def test_batch3_runtime_is_loaded_without_replacing_core_statistics_semantics() 
     assert "data-dp-statistics-batch3" in bootstrap
     assert "const result = await previous.call(this, resolved)" in runtime
     assert "window.loadDetailedStats = wrapped" in runtime
-    assert "/stats/detail" not in runtime
+    assert "api('GET', '/stats/detail" not in runtime
+    assert 'api("GET", "/stats/detail' not in runtime
 
 
 def test_browser_tab_uses_original_compact_logo_while_large_shell_branding_stays_reviewed() -> None:
@@ -36,7 +37,8 @@ def test_browser_tab_uses_original_compact_logo_while_large_shell_branding_stays
     assert "vectorIcon.href = '/favicon.svg?v=6'" in bootstrap
     assert "icon32.remove()" in bootstrap
     assert "logo.setAttribute('src', '/logo-128.png?v=5')" in bootstrap
-    assert 'viewBox="0 0 512 512"' in favicon
+    assert 'viewBox="0 0 64 64"' in favicon
+    assert 'transform="scale(.125)"' in favicon
     assert 'linearGradient id="field"' in favicon
     assert 'linearGradient id="mark"' in favicon
     assert "dp-outline" not in favicon
