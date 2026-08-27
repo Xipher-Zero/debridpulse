@@ -56,7 +56,7 @@ def test_dark_elevation_stays_subdued_and_provider_card_has_light_parity() -> No
     assert "#view-dashboard .dp-dashboard-quick-add" in css
     assert "#view-dashboard .dp-dashboard-activity" in css
     assert "body.dp-v11-structural:not(.light) #sidebar" in css
-    assert "body.dp-v11-structural:not(.light) .sidebar-footer" in css
-    assert "body.light.dp-v11-structural .sidebar-footer" in css
+    assert "body.dp-v11-structural:not(.light) #sidebar .sidebar-footer" in css
+    assert "body.light.dp-v11-structural #sidebar .sidebar-footer" in css
     assert "rgba(132, 40, 237, .18)" in css
     assert "rgba(45, 61, 96, .14)" in css
