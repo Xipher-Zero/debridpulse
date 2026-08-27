@@ -20,7 +20,14 @@ class TransferRepository:
         return [int(row["id"]) for row in rows]
 
     async def parent_progress_rows(self):
-        """Return the aria2-backed rows required for parent aggregation."""
+        """Return only rows that can represent physical aria2 progress.
+
+        A retained pre-dispatch error with neither a local target nor an aria2
+        GID is a source/provider outcome, not physical delivery work.  Excluding
+        it here keeps the bound state-machine path on the same contract as the
+        direct-link result guard.  Genuine aria2 failures retain a local target
+        and/or GID and therefore remain in the physical denominator.
+        """
         async with get_db() as db:
             return await db.fetchall(
                 """SELECT t.id AS torrent_id, t.status AS torrent_status,
@@ -30,7 +37,13 @@ class TransferRepository:
                     WHERE t.download_client='aria2'
                       AND t.status IN ('queued','downloading','paused')
                       AND f.download_client='aria2' AND f.blocked=0
-                      AND f.status!='missing' ORDER BY t.id,f.id"""
+                      AND f.status!='missing'
+                      AND NOT (
+                          f.status='error'
+                          AND f.local_path IS NULL
+                          AND f.download_id IS NULL
+                      )
+                    ORDER BY t.id,f.id"""
             )
 
     async def persist_parent_progress(self, updates) -> None:
@@ -71,7 +84,8 @@ class TransferRepository:
             await db.execute(
                 """INSERT INTO transfer_pause_intents (torrent_id, paused, updated_at)
                    VALUES (?, ?, CURRENT_TIMESTAMP)
-                   ON CONFLICT(torrent_id) DO UPDATE SET paused=excluded.paused, updated_at=CURRENT_TIMESTAMP""",
+                   ON CONFLICT(torrent_id) DO UPDATE SET paused=excluded.paused,
+                       updated_at=CURRENT_TIMESTAMP""",
                 (int(target_id), 1 if target_paused else 0),
             )
             await db.commit()
