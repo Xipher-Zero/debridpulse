@@ -1,0 +1,172 @@
+/* DebridPulse v1.0.11 Statistics Batch 4 presentation contract.
+ * Final Statistics cleanup: optical icon normalization, centered historical
+ * KPI band, adaptive lower-card lists, and bounded overflow presentation.
+ */
+
+/* ── Historical KPI band ──────────────────────────────────────────────── */
+/* Five cards should retain the approximate width they had when the strip held
+   six metrics. Center the supporting band instead of stretching it into a
+   second full-width copy of the primary KPI grid. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid {
+  width: 83.333% !important;
+  margin-inline: auto !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+
+/* Calendar artwork is the reviewed optical baseline. The other SVGs carry
+   substantially more transparent canvas, so normalize the painted glyph rather
+   than enlarging every chip globally. The 38px chip itself remains unchanged. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon {
+  overflow: visible !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-kpi-day .dp-kpi-icon > .dp-icon,
+body.dp-v11-structural #view-stats .dp-stats-kpi-week .dp-kpi-icon > .dp-icon {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-kpi-success .dp-kpi-icon > .dp-icon {
+  width: 42px !important;
+  height: 42px !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-kpi-duration .dp-kpi-icon > .dp-icon {
+  width: 46px !important;
+  height: 46px !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-kpi-size .dp-kpi-icon > .dp-icon {
+  width: 50px !important;
+  height: 50px !important;
+}
+
+/* ── Adaptive lower-card lists ────────────────────────────────────────── */
+body.dp-v11-structural #view-stats .dp-stats-adaptive-list {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-list--single {
+  display: flex;
+  flex-direction: column;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-list--columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 26px;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-list--columns::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-.5px);
+  background: color-mix(in srgb, var(--dp-divider) 82%, transparent);
+  pointer-events: none;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-column {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-column:first-child {
+  padding-right: 2px;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-column:last-child {
+  padding-left: 2px;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-list .kv-row {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-adaptive-list .kv-row > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-more {
+  margin-top: 5px;
+  color: var(--dp-accent-purple-bright);
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: .01em;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-overflow-card {
+  cursor: pointer;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-overflow-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dp-accent-purple-bright) 72%, transparent);
+  outline-offset: 2px;
+}
+
+/* Full-list view reuses the standard application detail modal rather than
+   introducing a second modal language. */
+body.dp-v11-structural #modal-body .dp-stats-overflow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+body.dp-v11-structural #modal-body .dp-stats-overflow-list .kv-row {
+  min-height: 34px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--dp-divider);
+}
+
+body.dp-v11-structural #modal-body .dp-stats-overflow-list .kv-row:last-child {
+  border-bottom: 0;
+}
+
+body.dp-v11-structural #modal-body .dp-stats-overflow-list .kv-row > :last-child {
+  color: var(--dp-text-primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1439px) {
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    width: 100% !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 899px) {
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 639px) {
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-adaptive-list--columns {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-adaptive-list--columns::before {
+    display: none;
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-adaptive-column,
+  body.dp-v11-structural #view-stats .dp-stats-adaptive-column:first-child,
+  body.dp-v11-structural #view-stats .dp-stats-adaptive-column:last-child {
+    padding-inline: 0;
+  }
+}
