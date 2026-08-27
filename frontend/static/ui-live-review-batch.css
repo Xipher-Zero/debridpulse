@@ -129,6 +129,41 @@ body.light.dp-v11-structural #view-events .dp-activity-level:is(.info, .warn, .e
     0 0 20px color-mix(in srgb, var(--dp-event-point-color) 22%, transparent) !important;
 }
 
+/* ── Details event markers: exact Activity parity ────────────────────── */
+/* Details already emits the same event levels as Activity through .elevel.
+   Give those points the identical semantic palette and theme-aware bloom so a
+   transfer's local history reads exactly like the global Activity log. */
+body.dp-v11-structural #modal .dp-detail-events-list .elevel.info {
+  --dp-event-point-color: var(--dp-state-active);
+  background: var(--dp-event-point-color) !important;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .elevel.warn {
+  --dp-event-point-color: var(--dp-state-caution);
+  background: var(--dp-event-point-color) !important;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .elevel.error {
+  --dp-event-point-color: var(--dp-state-error);
+  background: var(--dp-event-point-color) !important;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .elevel:is(.ok, .success) {
+  --dp-event-point-color: var(--dp-state-success);
+  background: var(--dp-event-point-color) !important;
+}
+
+body.dp-v11-structural:not(.light) #modal .dp-detail-events-list .elevel:is(.info, .warn, .error, .ok, .success) {
+  box-shadow:
+    0 0 7px color-mix(in srgb, var(--dp-event-point-color) 92%, transparent),
+    0 0 16px color-mix(in srgb, var(--dp-event-point-color) 58%, transparent),
+    0 0 24px color-mix(in srgb, var(--dp-event-point-color) 28%, transparent) !important;
+}
+
+body.light.dp-v11-structural #modal .dp-detail-events-list .elevel:is(.info, .warn, .error, .ok, .success) {
+  box-shadow:
+    0 0 6px color-mix(in srgb, var(--dp-event-point-color) 88%, transparent),
+    0 0 14px color-mix(in srgb, var(--dp-event-point-color) 46%, transparent),
+    0 0 20px color-mix(in srgb, var(--dp-event-point-color) 22%, transparent) !important;
+}
+
 /* ── Dark-theme elevation: subdued purple → lavender depth ───────────── */
 body.dp-v11-structural:not(.light) {
   --dp-dark-surface-shadow:
