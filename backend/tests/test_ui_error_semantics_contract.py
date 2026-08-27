@@ -58,9 +58,10 @@ def test_terminal_failure_progress_preserves_actual_percent_and_uses_error_rail(
     css = read("ui-live-review-batch.css")
     assert ".prog.dp-terminal-error-rail" in css
     assert "overflow: visible !important" in css
+    assert "border-radius: 999px !important" in css
     assert ".prog.dp-terminal-error-rail::before" in css
     assert ".prog.dp-terminal-error-rail::after" in css
-    assert "width: 2px" in css
+    assert "width: 16px" in css
     assert "height: 9px" in css
     assert ".prog-fill.error" in css
     assert "background: var(--dp-state-error) !important" in css
@@ -79,8 +80,12 @@ def test_dark_dashboard_cards_receive_subdued_colored_shadow():
 
 
 def test_details_scrollbar_has_no_increment_decrement_buttons():
-    css = read("ui-modal-contract.css")
-    assert ".modal-body::-webkit-scrollbar-button" in css
-    assert "display: none" in css
-    assert "width: 0" in css
-    assert "height: 0" in css
+    modal_css = read("ui-modal-contract.css")
+    review_css = read("ui-live-review-batch.css")
+    assert ".modal-body::-webkit-scrollbar-button" in modal_css
+    assert "@supports selector(::-webkit-scrollbar)" in review_css
+    assert "::-webkit-scrollbar-button:vertical:decrement" in review_css
+    assert "::-webkit-scrollbar-button:vertical:increment" in review_css
+    assert "display: none !important" in review_css
+    assert "width: 0 !important" in review_css
+    assert "height: 0 !important" in review_css
