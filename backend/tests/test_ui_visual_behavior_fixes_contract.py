@@ -12,7 +12,7 @@ def read(name: str) -> str:
 
 def test_theme_bootstrap_loads_visual_behavior_corrections() -> None:
     bootstrap = read("ui-theme-bootstrap.js")
-    assert "/ui-visual-behavior-fixes.js?v=21" in bootstrap
+    assert "/ui-visual-behavior-fixes.js?v=22" in bootstrap
     assert "data-dp-visual-behavior-fixes" in bootstrap
 
 
