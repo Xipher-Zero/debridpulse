@@ -113,6 +113,12 @@ def test_more_than_ten_keeps_top_ten_and_opens_full_list_in_existing_modal() -> 
     assert "document.getElementById('modal-body')" in runtime
     assert "entries.forEach(function (entry)" in runtime
     assert "overlay.classList.add('open')" in runtime
+    assert "const header = card.querySelector(':scope > .card-header')" in runtime
+    assert "(header || card).appendChild(indicator)" in runtime
+    assert "clearOverflow(card)" in runtime
+    assert ".dp-stats-breakdown-grid > .list-card > .card-header" in css
+    assert "position: absolute" in css
+    assert "right: 10px" in css
     assert ".dp-stats-overflow-list" in css
 
 
