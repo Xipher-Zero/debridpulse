@@ -12,4 +12,15 @@
   } catch (_) {
     /* Storage can be unavailable in hardened/private browser contexts. */
   }
+
+  /* Failure presentation is intentionally a separate late runtime. It waits
+     until DOMContentLoaded so app.js and the canonical Lucide layer already own
+     the legacy rendering functions before it installs presentation overrides. */
+  if (!document.querySelector('script[data-dp-error-semantics]')) {
+    const script = document.createElement('script');
+    script.src = '/ui-error-semantics.js?v=20';
+    script.defer = true;
+    script.dataset.dpErrorSemantics = '1';
+    document.head.appendChild(script);
+  }
 })();

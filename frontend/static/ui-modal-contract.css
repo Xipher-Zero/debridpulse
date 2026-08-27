@@ -33,6 +33,15 @@ body.dp-v11-structural #modal .modal-body::-webkit-scrollbar {
   height: 14px;
 }
 
+/* Chromium/WebKit may expose native increment/decrement buttons at either end
+   of the custom scrollbar. Details needs only the track + thumb. */
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-button,
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-button:single-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--dp-surface-3) 82%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--dp-border-subtle) 72%, transparent);
