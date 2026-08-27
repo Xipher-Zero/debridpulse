@@ -94,14 +94,26 @@ body.dp-v11-structural #view-stats .dp-stats-adaptive-list .kv-row > :first-chil
   white-space: nowrap;
 }
 
+/* Overflow is exceptional and should not consume one of the five available
+   body rows. Keep the compact +N marker inside the header while preserving the
+   centered title. */
+body.dp-v11-structural #view-stats .dp-stats-breakdown-grid > .list-card > .card-header {
+  position: relative;
+}
+
 body.dp-v11-structural #view-stats .dp-stats-more {
-  margin-top: 5px;
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  margin: 0;
   color: var(--dp-accent-purple-bright);
-  font-size: 10.5px;
-  line-height: 1.2;
+  font-size: 9.5px;
+  line-height: 1;
   font-weight: 700;
-  text-align: center;
   letter-spacing: .01em;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 body.dp-v11-structural #view-stats .dp-stats-overflow-card {
