@@ -1,5 +1,7 @@
 /* DebridPulse v1.0.11 shared feature-icon contract.
  * One visual footprint across KPI and isolated card/page feature icons.
+ * Layout boxes stay identical; small per-asset padding corrections normalize
+ * the painted artwork to the accepted Dashboard optical baseline.
  */
 
 :root {
@@ -17,19 +19,26 @@ body.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon .dp-icon,
 body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
 body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon,
 body.dp-v11-structural #view-events .dp-activity-title-icon,
-body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon,
+body.dp-v11-structural #view-stats .dp-statistics-title-icon {
   width: var(--dp-feature-icon-size) !important;
   min-width: var(--dp-feature-icon-size) !important;
   height: var(--dp-feature-icon-size) !important;
   flex: 0 0 var(--dp-feature-icon-size) !important;
   object-fit: contain !important;
+  box-sizing: border-box !important;
 }
 
-/* document.svg paints a larger square tile inside the same source canvas than
-   the other feature artwork. Preserve the universal 51px layout box while
-   reducing only its internal painted footprint by roughly twelve percent. */
+/* Per-asset optical corrections. Dashboard artwork is the visual reference;
+   these values compensate only for differing SVG canvas occupancy. */
 body.dp-v11-structural #view-events .dp-activity-title-icon {
   padding: 3px !important;
+}
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+  padding: 1px !important;
+}
+body.dp-v11-structural #view-stats .dp-statistics-title-icon {
+  padding: 5px !important;
 }
 
 /* Dominant SVG colors, taken from the actual custom artwork. */
@@ -45,11 +54,15 @@ body.dp-v11-structural #view-events .dp-activity-title-icon {
 body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
   --dp-feature-icon-glow: #b866f5;
 }
+body.dp-v11-structural #view-stats .dp-statistics-title-icon {
+  --dp-feature-icon-glow: #a646f4;
+}
 
 body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
 body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon,
 body.dp-v11-structural #view-events .dp-activity-title-icon,
-body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+body.dp-v11-structural #view-torrents .dp-downloads-title-icon,
+body.dp-v11-structural #view-stats .dp-statistics-title-icon {
   filter:
     drop-shadow(0 0 5px color-mix(in srgb, var(--dp-feature-icon-glow) 62%, transparent))
     drop-shadow(0 0 11px color-mix(in srgb, var(--dp-feature-icon-glow) 27%, transparent)) !important;
@@ -58,7 +71,8 @@ body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
 body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
 body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon,
 body.light.dp-v11-structural #view-events .dp-activity-title-icon,
-body.light.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+body.light.dp-v11-structural #view-torrents .dp-downloads-title-icon,
+body.light.dp-v11-structural #view-stats .dp-statistics-title-icon {
   filter:
     drop-shadow(0 0 6px color-mix(in srgb, var(--dp-feature-icon-glow) 70%, transparent))
     drop-shadow(0 0 15px color-mix(in srgb, var(--dp-feature-icon-glow) 32%, transparent)) !important;
