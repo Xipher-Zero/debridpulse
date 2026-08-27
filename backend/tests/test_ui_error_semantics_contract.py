@@ -42,16 +42,23 @@ def test_concise_failure_taxonomy_is_complete():
     assert "/api/torrents/" in runtime
 
 
-def test_terminal_failure_progress_preserves_actual_percent():
+def test_terminal_failure_progress_preserves_actual_percent_and_forces_red_paint():
     runtime = read("ui-error-semantics.js")
     assert "failed && actual === 0 ? 100 : actual" in runtime
     assert "data-dp-actual-progress" in runtime
     assert "data-dp-visual-progress" in runtime
     assert "actual.toFixed(0) + '%'" in runtime
+    assert "fill.classList.remove('done')" in runtime
+    assert "setProperty('background', 'var(--dp-state-error)', 'important')" in runtime
+    assert "setProperty('background-image', 'none', 'important')" in runtime
+    assert "setProperty(\n      'box-shadow'" in runtime
 
     css = read("ui-live-review-batch.css")
     assert ".prog-fill.error" in css
-    assert "var(--dp-state-error)" in css
+    assert "background: var(--dp-state-error) !important" in css
+    assert "background-image: none !important" in css
+    assert "var(--dp-state-error) 88%" in css
+    assert "var(--dp-state-error) 46%" in css
 
 
 def test_dark_dashboard_cards_receive_subdued_colored_shadow():

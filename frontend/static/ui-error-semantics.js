@@ -223,10 +223,23 @@
 
     const pct = actualPercent(row);
     const visualWidth = pct <= 0 ? 100 : pct;
+
+    /* Strip any stale success paint before applying the terminal-error contract.
+       Inline !important is intentional: several migration-era progress rules also
+       carry !important, and failure red must be the final visual authority. */
+    fill.classList.remove('done');
     fill.classList.add('error', 'dp-terminal-error-progress');
-    fill.style.width = visualWidth + '%';
-    fill.style.opacity = '1';
-    fill.style.background = '';
+    fill.style.setProperty('width', visualWidth + '%');
+    fill.style.setProperty('opacity', '1');
+    fill.style.setProperty('background', 'var(--dp-state-error)', 'important');
+    fill.style.setProperty('background-color', 'var(--dp-state-error)', 'important');
+    fill.style.setProperty('background-image', 'none', 'important');
+    fill.style.setProperty(
+      'box-shadow',
+      '0 0 8px color-mix(in srgb, var(--dp-state-error) 88%, transparent), 0 0 17px color-mix(in srgb, var(--dp-state-error) 46%, transparent)',
+      'important'
+    );
+    fill.style.setProperty('filter', 'saturate(1.12) brightness(1.08)');
     fill.dataset.dpActualProgress = String(pct);
     fill.dataset.dpVisualProgress = String(visualWidth);
   }
@@ -330,9 +343,12 @@
         : Math.min(Math.max(Number.isFinite(raw) ? raw : 0, 0), 100);
       const showStripe = active && actual === 0;
       const visual = failed && actual === 0 ? 100 : actual;
-      const fillStyle = showStripe
+      let fillStyle = showStripe
         ? 'width:100%;opacity:.35;background:repeating-linear-gradient(90deg,var(--accent) 0,var(--accent) 8px,transparent 8px,transparent 16px)'
         : 'width:' + visual + '%';
+      if (failed) {
+        fillStyle += ';opacity:1;background:var(--dp-state-error)!important;background-color:var(--dp-state-error)!important;background-image:none!important;box-shadow:0 0 8px color-mix(in srgb,var(--dp-state-error) 88%,transparent),0 0 17px color-mix(in srgb,var(--dp-state-error) 46%,transparent)!important;filter:saturate(1.12) brightness(1.08)';
+      }
       const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : '');
       const label = done ? '100%' : (showStripe ? '…' : actual.toFixed(0) + '%');
       const attrs = failed

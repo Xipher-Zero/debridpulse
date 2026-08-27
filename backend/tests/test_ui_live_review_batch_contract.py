@@ -27,7 +27,7 @@ def test_status_badges_are_lucide_only_and_glow_like_progress() -> None:
     assert "0 0 13px" in css
 
 
-def test_activity_points_use_semantic_glow() -> None:
+def test_activity_points_use_stronger_theme_aware_semantic_glow() -> None:
     css = read("ui-live-review-batch.css")
     assert ".dp-activity-level.info" in css
     assert "var(--dp-state-active)" in css
@@ -35,11 +35,17 @@ def test_activity_points_use_semantic_glow() -> None:
     assert "var(--dp-state-caution)" in css
     assert ".dp-activity-level.error" in css
     assert "var(--dp-state-error)" in css
-    assert "var(--dp-event-point-color) 78%" in css
-    assert "var(--dp-event-point-color) 34%" in css
+    assert "body.dp-v11-structural:not(.light) #view-events" in css
+    assert "var(--dp-event-point-color) 92%" in css
+    assert "var(--dp-event-point-color) 58%" in css
+    assert "var(--dp-event-point-color) 28%" in css
+    assert "body.light.dp-v11-structural #view-events" in css
+    assert "var(--dp-event-point-color) 88%" in css
+    assert "var(--dp-event-point-color) 46%" in css
+    assert "var(--dp-event-point-color) 22%" in css
 
 
-def test_dark_elevation_uses_purple_lavender_without_changing_light_theme() -> None:
+def test_dark_elevation_stays_subdued_and_provider_card_has_light_parity() -> None:
     css = read("ui-live-review-batch.css")
     assert "body.dp-v11-structural:not(.light)" in css
     assert "--dp-dark-surface-shadow:" in css
@@ -51,4 +57,6 @@ def test_dark_elevation_uses_purple_lavender_without_changing_light_theme() -> N
     assert "#view-dashboard .dp-dashboard-activity" in css
     assert "body.dp-v11-structural:not(.light) #sidebar" in css
     assert "body.dp-v11-structural:not(.light) .sidebar-footer" in css
-    assert "body.light.dp-v11-structural" not in css
+    assert "body.light.dp-v11-structural .sidebar-footer" in css
+    assert "rgba(132, 40, 237, .18)" in css
+    assert "rgba(45, 61, 96, .14)" in css
