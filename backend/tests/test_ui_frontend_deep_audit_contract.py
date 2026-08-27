@@ -89,7 +89,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-downloads-desktop.css": "28",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "3",
-        "/ui-panel-surface-treatment.css": "21",
+        "/ui-panel-surface-treatment.css": "22",
         "/ui-transfer-contract.css": "31",
         "/ui-live-review-batch.css": "21",
     }
@@ -120,7 +120,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=3")
-    treatment_pos = overlay.index("/ui-panel-surface-treatment.css?v=21")
+    treatment_pos = overlay.index("/ui-panel-surface-treatment.css?v=22")
     transfer_pos = overlay.index("/ui-transfer-contract.css?v=31")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
