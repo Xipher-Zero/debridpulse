@@ -42,18 +42,26 @@ def test_concise_failure_taxonomy_is_complete():
     assert "/api/torrents/" in runtime
 
 
-def test_terminal_failure_progress_preserves_actual_percent_and_forces_red_paint():
+def test_terminal_failure_progress_preserves_actual_percent_and_uses_error_rail():
     runtime = read("ui-error-semantics.js")
-    assert "failed && actual === 0 ? 100 : actual" in runtime
+    assert "const visual = actual;" in runtime
+    assert "const visualWidth = pct;" in runtime
+    assert "track.classList.add('dp-terminal-error-rail')" in runtime
+    assert "failed && actual === 0 ? 100 : actual" not in runtime
     assert "data-dp-actual-progress" in runtime
     assert "data-dp-visual-progress" in runtime
     assert "actual.toFixed(0) + '%'" in runtime
     assert "fill.classList.remove('done')" in runtime
     assert "setProperty('background', 'var(--dp-state-error)', 'important')" in runtime
     assert "setProperty('background-image', 'none', 'important')" in runtime
-    assert "setProperty(\n      'box-shadow'" in runtime
 
     css = read("ui-live-review-batch.css")
+    assert ".prog.dp-terminal-error-rail" in css
+    assert "overflow: visible !important" in css
+    assert ".prog.dp-terminal-error-rail::before" in css
+    assert ".prog.dp-terminal-error-rail::after" in css
+    assert "width: 2px" in css
+    assert "height: 9px" in css
     assert ".prog-fill.error" in css
     assert "background: var(--dp-state-error) !important" in css
     assert "background-image: none !important" in css

@@ -19,8 +19,37 @@ body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge {
 }
 
 /* ── Terminal failure progress ───────────────────────────────────────── */
+/* A terminal failure keeps truthful progress geometry. The rail itself becomes
+   the high-salience error signal; a zero-byte failure therefore remains empty
+   while the red outline/glow and edge caps make the failure impossible to miss. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail {
+  position: relative;
+  overflow: visible !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--dp-state-error) 82%, transparent),
+    0 0 7px color-mix(in srgb, var(--dp-state-error) 72%, transparent),
+    0 0 15px color-mix(in srgb, var(--dp-state-error) 32%, transparent) !important;
+}
+
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::before,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  z-index: 2;
+  width: 2px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--dp-state-error);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--dp-state-error) 82%, transparent);
+  pointer-events: none;
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::before { left: 0; }
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog.dp-terminal-error-rail::after { right: 0; }
+
 /* Error fill must win over every normal success/active progress treatment.
-   The runtime preserves the real percentage independently from visual width. */
+   Partial failures fill only to the real percentage; zero-byte failures leave
+   the fill at zero and rely on the rail treatment above. */
 body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog-fill.error,
 body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog-fill.dp-terminal-error-progress {
   background: var(--dp-state-error) !important;
@@ -96,18 +125,19 @@ body.dp-v11-structural:not(.light) #sidebar {
     3px 0 12px -8px rgba(167, 139, 250, .07) !important;
 }
 
-/* Provider Status card: keep the dark treatment and give light theme matching
-   elevation rather than leaving it as the only flat sidebar card. */
-body.dp-v11-structural:not(.light) .sidebar-footer {
+/* Provider Status is an intentionally elevated shell card. Use positive-spread
+   ambient shadows so the effect remains visible against both sidebar themes;
+   earlier negative spreads collapsed almost entirely into the card edge. */
+body.dp-v11-structural:not(.light) #sidebar .sidebar-footer {
   box-shadow:
     inset 0 1px rgba(255,255,255,.02),
-    0 9px 24px -12px rgba(84, 38, 131, .20),
-    0 0 12px -8px rgba(167, 139, 250, .07) !important;
+    0 10px 28px rgba(84, 38, 131, .20),
+    0 0 16px rgba(167, 139, 250, .07) !important;
 }
 
-body.light.dp-v11-structural .sidebar-footer {
+body.light.dp-v11-structural #sidebar .sidebar-footer {
   box-shadow:
     inset 0 1px rgba(255,255,255,.88),
-    0 10px 24px -12px rgba(132, 40, 237, .18),
-    0 4px 14px -10px rgba(45, 61, 96, .14) !important;
+    0 10px 26px rgba(132, 40, 237, .18),
+    0 4px 16px rgba(45, 61, 96, .14) !important;
 }

@@ -220,13 +220,21 @@
     if (!row || !row.querySelector('.badge-error')) return;
     const fill = row.querySelector('.prog-fill');
     if (!fill) return;
+    const track = fill.closest('.prog');
 
     const pct = actualPercent(row);
-    const visualWidth = pct <= 0 ? 100 : pct;
+    const visualWidth = pct;
+
+    /* Keep failure geometry truthful. Zero-byte failures leave the fill empty;
+       the rail outline/glow and edge caps carry the terminal-failure signal. */
+    if (track) {
+      track.classList.add('dp-terminal-error-rail');
+      track.dataset.dpActualProgress = String(pct);
+    }
 
     /* Strip any stale success paint before applying the terminal-error contract.
        Inline !important is intentional: several migration-era progress rules also
-       carry !important, and failure red must be the final visual authority. */
+       carry !important, and failure red must be the final fill authority. */
     fill.classList.remove('done');
     fill.classList.add('error', 'dp-terminal-error-progress');
     fill.style.setProperty('width', visualWidth + '%');
@@ -330,8 +338,8 @@
   }
 
   function installProgressOverride() {
-    /* Preserve stored/visible percentage. A zero-byte terminal failure uses a
-       full-width red signal only visually; its label remains 0%. */
+    /* Preserve stored/visible percentage. Terminal failures use the rail itself
+       as the full-width failure signal instead of faking progress geometry. */
     window.progress = function progressWithTerminalFailure(pct, status) {
       const state = String(status || '').toLowerCase();
       const done = state === 'completed';
@@ -342,7 +350,7 @@
         ? 100
         : Math.min(Math.max(Number.isFinite(raw) ? raw : 0, 0), 100);
       const showStripe = active && actual === 0;
-      const visual = failed && actual === 0 ? 100 : actual;
+      const visual = actual;
       let fillStyle = showStripe
         ? 'width:100%;opacity:.35;background:repeating-linear-gradient(90deg,var(--accent) 0,var(--accent) 8px,transparent 8px,transparent 16px)'
         : 'width:' + visual + '%';
@@ -350,11 +358,12 @@
         fillStyle += ';opacity:1;background:var(--dp-state-error)!important;background-color:var(--dp-state-error)!important;background-image:none!important;box-shadow:0 0 8px color-mix(in srgb,var(--dp-state-error) 88%,transparent),0 0 17px color-mix(in srgb,var(--dp-state-error) 46%,transparent)!important;filter:saturate(1.12) brightness(1.08)';
       }
       const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : '');
+      const trackCls = failed ? 'prog dp-terminal-error-rail' : 'prog';
       const label = done ? '100%' : (showStripe ? '…' : actual.toFixed(0) + '%');
       const attrs = failed
         ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
         : '';
-      return '<div class="prog"><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
+      return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
              '<span class="prog-pct">' + label + '</span>';
     };
   }
