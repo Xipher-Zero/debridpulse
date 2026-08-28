@@ -2,6 +2,11 @@
  * Runs immediately after <body> exists so the stored palette is applied before
  * the visible application shell is parsed. app.js remains the authoritative
  * runtime theme controller after DOMContentLoaded.
+ *
+ * IMPORTANT: this global first-paint path must stay limited to shell-wide
+ * presentation runtimes. Page-specific Settings presentation is intentionally
+ * excluded; Settings rendering is lazy and must not gain application-wide
+ * bootstrap blast radius.
  */
 (function () {
   'use strict';
@@ -58,7 +63,8 @@
 
   /* These presentation runtimes are dynamically inserted classic scripts.
      `defer` does not establish execution order for dynamic scripts, so keep
-     async=false on explicitly ordered presentation chains. */
+     async=false on the Statistics chain. That makes the reviewed layers execute
+     in insertion order rather than whichever network/cache fetch finishes first. */
 
   /* Visual-review behavior corrections are deliberately isolated from app.js.
      They own only first-paint shell hydration, action-icon semantics and
@@ -104,22 +110,15 @@
     document.head.appendChild(script);
   }
 
-  /* Settings IA owns control placement only. Keep the Settings presentation
-     chain explicitly ordered so the master-card shell always wraps the reviewed
-     IA rather than racing the inherited renderer. */
+  /* Settings IA is the already-qualified sorting/ownership pass. It remains
+     additive to the inherited lazy renderer. The v=2 generation deliberately
+     invalidates any cached pre-fix Settings IA asset. Page-specific Settings
+     presentation must not be injected from this first-paint bootstrap. */
   if (!document.querySelector('script[data-dp-settings-architecture]')) {
     const script = document.createElement('script');
-    script.async = false;
-    script.src = '/ui-settings-architecture.js?v=1';
+    script.src = '/ui-settings-architecture.js?v=2';
+    script.defer = true;
     script.dataset.dpSettingsArchitecture = '1';
-    document.head.appendChild(script);
-  }
-
-  if (!document.querySelector('script[data-dp-settings-presentation]')) {
-    const script = document.createElement('script');
-    script.async = false;
-    script.src = '/ui-settings-presentation.js?v=1';
-    script.dataset.dpSettingsPresentation = '1';
     document.head.appendChild(script);
   }
 
