@@ -16,7 +16,7 @@ def test_settings_has_one_post_core_authoritative_page_runtime():
     loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
 
     assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=1" in loader
+    assert "/ui-settings-page.js?v=2" in loader
     assert "data-dp-settings-page" in loader
     assert "ui-settings-architecture.js" not in loader
     assert "ui-settings-presentation.js" not in loader
@@ -48,6 +48,52 @@ def test_settings_renderer_is_direct_and_does_not_call_or_transform_legacy_dom()
     assert "new MutationObserver" not in source
     assert "setTimeout(" not in source
     assert "setInterval(" not in source
+
+
+def test_settings_page_owns_tab_lifecycle_without_legacy_side_effects():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+    lifecycle = source[
+        source.index("function switchSettingsTabOwned"):
+        source.index("function activeTabBeforeRender")
+    ]
+
+    assert "window.switchSettingsTab = switchSettingsTabOwned;" in source
+    assert "switchSettingsTabOwned.dpSettingsPage = '1';" in source
+    assert "aria-selected" in lifecycle
+    assert "tab.tabIndex = active ? 0 : -1;" in lifecycle
+    assert "panel.hidden = !active;" in lifecycle
+    assert "data-settings-test-tab" in lifecycle
+    assert "initExtractionPasswordList();" in lifecycle
+
+    # A tab transition must never resurrect legacy page work. Runtime status is
+    # explicit/operator-driven; aria2 queue polling and backup listing do not
+    # belong to tab activation.
+    for forbidden in (
+        "loadAria2Downloads",
+        "loadAria2Runtime",
+        "loadDatabaseBackupList",
+        "setInterval(",
+        "aria2DownloadsTimer",
+    ):
+        assert forbidden not in lifecycle
+
+
+def test_auth_refresh_preserves_visible_one_time_api_token_without_persistence():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+    refresh = source[
+        source.index("async function refreshAuthenticationView"):
+        source.index("function panelHtml")
+    ]
+
+    assert "function visibleOneTimeApiToken()" in source
+    assert "function restoreOneTimeApiToken(token)" in source
+    assert "const oneTimeToken = visibleOneTimeApiToken();" in refresh
+    assert "panel.innerHTML = authenticationCards(authViewData);" in refresh
+    assert "restoreOneTimeApiToken(oneTimeToken);" in refresh
+    assert refresh.index("const oneTimeToken = visibleOneTimeApiToken();") < refresh.index("panel.innerHTML = authenticationCards(authViewData);")
+    assert refresh.index("panel.innerHTML = authenticationCards(authViewData);") < refresh.index("restoreOneTimeApiToken(oneTimeToken);")
+    assert "localStorage" not in source
+    assert "sessionStorage" not in source
 
 
 def test_settings_serializer_preserves_non_operator_state_without_hidden_controls():
@@ -269,5 +315,6 @@ def test_legacy_settings_renderer_remains_dead_code_until_cleanup_not_a_render_d
     assert "Delivery Mode" in app
     assert "Agent Name" in app
     assert "window.renderSettings = render;" in source
+    assert "window.switchSettingsTab = switchSettingsTabOwned;" in source
     assert "legacyRender" not in source
     assert "renderSettingsWithAuthentication" not in source
