@@ -220,3 +220,25 @@ def test_settings_presentation_loads_after_information_architecture():
 
     settings_block = bootstrap[bootstrap.index("Settings IA owns control placement only"):bootstrap.index("Failure presentation")]
     assert settings_block.count("script.async = false;") == 2
+
+
+def test_settings_presentation_waits_for_lazy_renderer_and_recomposes_after_rerender():
+    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
+    ready = source[source.index("function settingsReadyForPresentation"):source.index("function buildMaster")]
+
+    for tab_id in (
+        "tab-general",
+        "tab-download",
+        "tab-extract",
+        "tab-notifications",
+        "tab-authentication",
+        "tab-database",
+        "tab-advanced",
+    ):
+        assert tab_id in source
+
+    assert "form.querySelector('.dp-settings-ia-card')" in ready
+    assert "hasExpectedTabs && hasExpectedPanels && iaComposed" in ready
+    assert "if (!view || !tabs || !form || !settingsReadyForPresentation()) return false;" in source
+    assert "viewObserver.observe(view, {childList: true, subtree: true});" in source
+    assert "setTimeout(composeWhenReady, 0);" in source
