@@ -1,8 +1,9 @@
 /* DebridPulse v1.0.11 Statistics Batch 3 presentation contract.
  *
  * Presentation only: the existing /stats and /stats/detail APIs remain the
- * source of truth. This layer normalizes reviewed wording, layout, icons and
- * display labels after the legacy renderers finish.
+ * source of truth. This layer normalizes reviewed primary-metric wording and
+ * breakdown labels after the legacy renderer finishes. Historical KPI ordering,
+ * labels, icons and copy are owned exclusively by Batch 5.
  */
 (function () {
   'use strict';
@@ -160,7 +161,7 @@
 
   function normalizePrimaryMetrics(period) {
     const host = document.getElementById('detail-stat-cards');
-    if (!primaryMetricsHaveRenderedData(host)) return;
+    if (!primaryMetricsHaveRenderedData(host)) return false;
     const resolved = selectedPeriod(period);
 
     PRIMARY_METRICS.forEach(function (definition) {
@@ -178,6 +179,20 @@
       if (value && !String(value.textContent || '').trim()) value.textContent = '—';
       if (sub) sub.textContent = primaryDescription(definition.key, resolved);
     });
+    return PRIMARY_METRICS.every(function (definition) {
+      return !!host.querySelector(':scope > [data-dp-stats-metric="' + definition.key + '"]');
+    });
+  }
+
+  function observePrimaryMetrics() {
+    const host = document.getElementById('detail-stat-cards');
+    if (!host || host.dataset.dpStatsBatch3Observed === '1') return false;
+    host.dataset.dpStatsBatch3Observed = '1';
+
+    new MutationObserver(function () {
+      normalizePrimaryMetrics();
+    }).observe(host, {childList: true});
+    return true;
   }
 
   function normalizeBreakdownRows(container, kind) {
@@ -199,99 +214,9 @@
     normalizeBreakdownRows(document.getElementById('detail-sources'), 'source');
   }
 
-  function setKpiCopy(valueId, label, sub) {
-    const value = document.getElementById(valueId);
-    const card = value && value.closest('.dash-kpi');
-    if (!card) return null;
-    const labelEl = card.querySelector('.dash-kpi-lbl');
-    const subEl = card.querySelector('.dash-kpi-sub');
-    if (labelEl) labelEl.textContent = label;
-    if (subEl) subEl.textContent = sub;
-    return card;
-  }
-
-  function normalizeDurationValue() {
-    const value = document.getElementById('i-avg-duration');
-    if (!value) return;
-    const normalized = String(value.textContent || '')
-      .replace(/(\d+(?:\.\d+)?)(h|m|s)\b/g, '$1 $2')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (normalized && normalized !== value.textContent) value.textContent = normalized;
-  }
-
-  function normalizeHistoricalKpis() {
-    const strip = document.querySelector('#view-stats .dp-stats-history-grid');
-    if (!strip) return false;
-
-    const queueValue = document.getElementById('i-queue-health');
-    const queueCard = queueValue && queueValue.closest('.dash-kpi');
-    if (queueCard) {
-      queueCard.classList.add('dp-stats-history-compat');
-      queueCard.hidden = true;
-      queueCard.setAttribute('aria-hidden', 'true');
-    }
-
-    const success = setKpiCopy(
-      'i-success-rate',
-      'Success Rate',
-      'Share of finished downloads completed successfully.'
-    );
-    const day = setKpiCopy(
-      'i-last-day',
-      'Last 24 Hours',
-      'Completed downloads over the last 24 hours.'
-    );
-    const week = setKpiCopy(
-      'i-last-week',
-      'Last 7 Days',
-      'Completed downloads over the last 7 days.'
-    );
-    const duration = setKpiCopy(
-      'i-avg-duration',
-      'Average Duration',
-      'Mean completion time for finished downloads.'
-    );
-    const size = setKpiCopy(
-      'i-avg-size',
-      'Average Size',
-      'Mean size of completed downloads.'
-    );
-
-    if (success) {
-      success.classList.add('dp-stats-kpi-success');
-      const icon = success.querySelector('.dp-kpi-icon .dp-icon');
-      if (icon && icon.getAttribute('src') !== '/icons/dp/heartbeat-outline.svg') {
-        icon.src = '/icons/dp/heartbeat-outline.svg';
-      }
-    }
-    if (day) day.classList.add('dp-stats-kpi-day');
-    if (week) week.classList.add('dp-stats-kpi-week');
-    if (duration) duration.classList.add('dp-stats-kpi-duration');
-    if (size) size.classList.add('dp-stats-kpi-size');
-
-    [success, day, week, duration, size].forEach(function (card) {
-      if (card) strip.appendChild(card);
-    });
-    if (queueCard) strip.appendChild(queueCard);
-
-    normalizeDurationValue();
-    const durationValue = document.getElementById('i-avg-duration');
-    if (durationValue && !durationValue.dataset.dpStatsDurationObserved) {
-      durationValue.dataset.dpStatsDurationObserved = '1';
-      new MutationObserver(normalizeDurationValue).observe(durationValue, {
-        childList: true,
-        characterData: true,
-        subtree: true,
-      });
-    }
-    return true;
-  }
-
   function applyBatch3(period) {
     normalizePrimaryMetrics(period);
     normalizeBreakdowns();
-    normalizeHistoricalKpis();
   }
 
   function installDetailedStatsGuard() {
@@ -330,15 +255,15 @@
     loadBatchStyles();
     installCentralSourceLabels();
     installDetailedStatsGuard();
+    observePrimaryMetrics();
     observeBreakdownBodies();
 
     let attempts = 0;
     const settle = function () {
       attempts += 1;
-      const moved = normalizeHistoricalKpis();
       normalizeBreakdowns();
-      normalizePrimaryMetrics();
-      if (!moved && attempts < 120) setTimeout(settle, 50);
+      const primaryReady = normalizePrimaryMetrics();
+      if (!primaryReady && attempts < 160) setTimeout(settle, 50);
     };
     settle();
   }
