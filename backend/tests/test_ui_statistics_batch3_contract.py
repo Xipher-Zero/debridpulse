@@ -24,7 +24,7 @@ def test_batch3_runtime_is_loaded_without_replacing_core_statistics_semantics() 
     bootstrap = read(THEME_BOOTSTRAP)
     runtime = read(BATCH_RUNTIME)
 
-    assert "/ui-statistics-batch3.js?v=1" in bootstrap
+    assert "/ui-statistics-batch3.js?v=2" in bootstrap
     assert "data-dp-statistics-batch3" in bootstrap
     assert "const result = await previous.call(this, resolved)" in runtime
     assert "window.loadDetailedStats = wrapped" in runtime
@@ -75,42 +75,43 @@ def test_primary_statistics_cards_are_centered_larger_and_use_period_aware_copy(
     assert "justify-content: center" in css
 
 
-def test_queue_health_is_visually_removed_and_success_rate_leads_with_heart_icon() -> None:
+def test_batch3_reapplies_primary_semantics_when_legacy_renderer_replaces_cards() -> None:
     runtime = read(BATCH_RUNTIME)
+
+    assert "function observePrimaryMetrics()" in runtime
+    assert "host.dataset.dpStatsBatch3Observed = '1'" in runtime
+    assert "new MutationObserver(function ()" in runtime
+    assert ".observe(host, {childList: true})" in runtime
+    assert "const primaryReady = normalizePrimaryMetrics();" in runtime
+    assert "if (!primaryReady && attempts < 160)" in runtime
+
+
+def test_historical_kpi_order_labels_and_icons_are_not_owned_by_batch3() -> None:
+    runtime = read(BATCH_RUNTIME)
+
+    # Batch 5 is the sole owner. Keeping these writers out of Batch 3 prevents
+    # load-time last-writer-wins races between old and final presentation layers.
+    for forbidden in (
+        "i-queue-health",
+        "i-last-day",
+        "i-last-week",
+        "i-success-rate",
+        "i-avg-duration",
+        "i-avg-size",
+        "dp-stats-history-compat",
+        "dp-stats-kpi-success",
+        "heartbeat-outline.svg",
+        "normalizeDurationValue",
+    ):
+        assert forbidden not in runtime
+
+
+def test_secondary_kpi_visual_geometry_remains_available_for_final_owner() -> None:
     css = read(BATCH_CSS)
 
-    assert "dp-stats-history-compat" in runtime
-    assert "queueCard.hidden = true" in runtime
-    assert "[success, day, week, duration, size]" in runtime
-    assert "/icons/dp/heartbeat-outline.svg" in runtime
     assert "grid-template-columns: repeat(5, minmax(0, 1fr))" in css
     assert ".dp-stats-history-compat" in css
     assert "display: none !important" in css
-    assert "Queued Downloads" not in runtime
-
-
-def test_secondary_kpis_use_reviewed_option_b_copy_and_normalized_units() -> None:
-    runtime = read(BATCH_RUNTIME)
-
-    required = (
-        "Share of finished downloads completed successfully.",
-        "Completed downloads over the last 24 hours.",
-        "Completed downloads over the last 7 days.",
-        "Mean completion time for finished downloads.",
-        "Mean size of completed downloads.",
-        "Average Duration",
-        "Average Size",
-        "Last 24 Hours",
-        "Last 7 Days",
-        "normalizeDurationValue",
-    )
-    missing = [fragment for fragment in required if fragment not in runtime]
-    assert not missing, f"Secondary KPI wording/formatting is missing: {missing}"
-
-
-def test_secondary_kpi_icons_are_large_and_upper_left_while_text_remains_centered() -> None:
-    css = read(BATCH_CSS)
-
     assert "top: 12px" in css
     assert "left: 12px" in css
     assert "width: 32px !important" in css
