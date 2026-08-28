@@ -2,9 +2,10 @@
  *
  * Settings is rebuilt directly from settingsData into the same shared page/card
  * language used by Dashboard, Downloads and Activity Log. This runtime owns the
- * final Settings DOM and serializer boundary. It deliberately does NOT call the
- * inherited Settings renderer, reparent inherited cards, infer render completion
- * from DOM mutations, or preserve removed controls through hidden DOM.
+ * final Settings DOM, tab lifecycle and serializer boundary. It deliberately
+ * does NOT call the inherited Settings renderer, reparent inherited cards, infer
+ * render completion from DOM mutations, or preserve removed controls through
+ * hidden DOM.
  */
 (function () {
   'use strict';
@@ -491,13 +492,36 @@
     return authenticationCards(authViewData || authFallbackData(s));
   }
 
+  function visibleOneTimeApiToken() {
+    const box = document.getElementById('auth-api-token-once');
+    const tokenField = document.getElementById('auth-api-token-value');
+    if (!box || !tokenField || box.style.display === 'none') return '';
+    return String(tokenField.value || '');
+  }
+
+  function restoreOneTimeApiToken(token) {
+    if (!token) return;
+    const box = document.getElementById('auth-api-token-once');
+    const tokenField = document.getElementById('auth-api-token-value');
+    if (!box || !tokenField) return;
+    tokenField.value = token;
+    box.style.display = '';
+  }
+
   async function refreshAuthenticationView() {
     if (authViewBusy) return;
     authViewBusy = true;
     try {
       authViewData = await api('GET', '/auth/config', null, 5000);
+      // generateApiToken() renders first and reveals the one-time token while
+      // this request can still be in flight. Capture immediately before the
+      // panel replacement so an auth-status refresh cannot erase that token.
+      const oneTimeToken = visibleOneTimeApiToken();
       const panel = document.getElementById('tab-authentication');
-      if (panel) panel.innerHTML = authenticationCards(authViewData);
+      if (panel) {
+        panel.innerHTML = authenticationCards(authViewData);
+        restoreOneTimeApiToken(oneTimeToken);
+      }
     } catch (error) {
       const panel = document.getElementById('tab-authentication');
       if (panel && !panel.querySelector('.dp-settings-auth-load-error')) {
@@ -509,7 +533,7 @@
   }
 
   function panelHtml(id, contents) {
-    return `<div class="stab-panel" id="${html(id)}">${contents}</div>`;
+    return `<div class="stab-panel" id="${html(id)}" role="tabpanel" aria-labelledby="settings-tab-${html(id)}">${contents}</div>`;
   }
 
   function renderTabs(activeTab) {
@@ -517,8 +541,39 @@
       const id = tab[0];
       const label = tab[1];
       const authRefresh = id === 'tab-authentication' ? ';refreshSettingsAuthenticationView()' : '';
-      return `<button type="button" class="stab${id === activeTab ? ' active' : ''}" data-tab="${id}" role="tab" aria-selected="${id === activeTab ? 'true' : 'false'}" onclick="switchSettingsTab('${id}')${authRefresh}">${html(label)}</button>`;
+      const selected = id === activeTab;
+      return `<button type="button" id="settings-tab-${html(id)}" class="stab${selected ? ' active' : ''}" data-tab="${id}" role="tab" aria-controls="${html(id)}" aria-selected="${selected ? 'true' : 'false'}" tabindex="${selected ? '0' : '-1'}" onclick="switchSettingsTab('${id}')${authRefresh}">${html(label)}</button>`;
     }).join('');
+  }
+
+  function switchSettingsTabOwned(id) {
+    const activeTab = TABS.some(tab => tab[0] === id) ? id : 'tab-general';
+
+    document.querySelectorAll('#settings-tabs .stab').forEach(function (tab) {
+      const active = tab.dataset.tab === activeTab;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      tab.tabIndex = active ? 0 : -1;
+    });
+
+    document.querySelectorAll('#settings-form .stab-panel').forEach(function (panel) {
+      const active = panel.id === activeTab;
+      panel.classList.toggle('active', active);
+      panel.hidden = !active;
+    });
+
+    document.querySelectorAll('[data-settings-test-tab]').forEach(function (button) {
+      button.hidden = button.dataset.settingsTestTab !== activeTab;
+    });
+
+    // Extraction password editing is still a functional helper from app.js.
+    // It is the only inherited Settings-side behavior intentionally invoked by
+    // tab activation; queue polling and database-list loading are not tab work.
+    if (activeTab === 'tab-extract' && typeof initExtractionPasswordList === 'function') {
+      initExtractionPasswordList();
+    }
+
+    return activeTab;
   }
 
   function activeTabBeforeRender() {
@@ -574,7 +629,7 @@
         <button class="btn btn-primary" id="btn-save-settings" onclick="saveSettings(this)">💾 Save Settings</button>
       </section>`;
 
-    switchSettingsTab(activeTab);
+    switchSettingsTabOwned(activeTab);
     if (activeTab === 'tab-authentication') void refreshAuthenticationView();
 
     const avatarUrl = textValue(s, 'discord_avatar_url', '');
@@ -723,6 +778,8 @@
     serialize.dpSettingsPage = '1';
     window.getFormSettings = serialize;
 
+    switchSettingsTabOwned.dpSettingsPage = '1';
+    window.switchSettingsTab = switchSettingsTabOwned;
     window.refreshSettingsAuthenticationView = refreshAuthenticationView;
 
     if (typeof settingsData !== 'undefined' && settingsData && document.getElementById('view-settings')?.classList.contains('active')) {
