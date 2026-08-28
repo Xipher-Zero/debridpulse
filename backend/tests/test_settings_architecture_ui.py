@@ -4,48 +4,82 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_JS = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
 PRESENTATION_LOADER_JS = ROOT / "frontend" / "static" / "ui-presentation-loader.js"
-SETTINGS_IA_JS = ROOT / "frontend" / "static" / "ui-settings-architecture.js"
-SETTINGS_PRESENTATION_JS = ROOT / "frontend" / "static" / "ui-settings-presentation.js"
-SETTINGS_PRESENTATION_CSS = ROOT / "frontend" / "static" / "ui-settings-presentation.css"
+SETTINGS_PAGE_JS = ROOT / "frontend" / "static" / "ui-settings-page.js"
+SETTINGS_PAGE_CSS = ROOT / "frontend" / "static" / "ui-settings-page.css"
+STYLE_V11 = ROOT / "frontend" / "static" / "style-v11.css"
 APP_JS = ROOT / "frontend" / "static" / "app.js"
 TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def test_settings_information_architecture_and_presentation_load_after_core_in_order():
+def test_settings_has_one_post_core_authoritative_page_runtime():
     bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
     loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
-    runtime = SETTINGS_IA_JS.read_text(encoding="utf-8")
-    app = APP_JS.read_text(encoding="utf-8")
 
-    assert "ui-settings-architecture.js" not in bootstrap
-    assert "ui-settings-presentation.js" not in bootstrap
-    architecture = loader.index("/ui-settings-architecture.js?v=3")
-    presentation = loader.index("/ui-settings-presentation.js?v=2")
-    assert architecture < presentation
-    assert "UI only" in runtime
-    assert "dp-settings-preserved-controls" in runtime
-    # The inherited renderer remains present until the post-UI backend pruning pass.
-    assert "Delivery Mode" in app
-    assert "Agent Name" in app
+    assert "ui-settings-page.js" not in bootstrap
+    assert "/ui-settings-page.js?v=1" in loader
+    assert "data-dp-settings-page" in loader
+    assert "ui-settings-architecture.js" not in loader
+    assert "ui-settings-presentation.js" not in loader
 
 
-def test_settings_presentation_is_not_part_of_global_first_paint_bootstrap():
-    bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
-
-    assert "ui-settings-presentation.js" not in bootstrap
-    assert "ui-settings-architecture.js" not in bootstrap
-    assert "ui-error-semantics.js" not in bootstrap
-    assert "ui-presentation-loader.js?v=1" in bootstrap
+def test_settings_page_css_is_loaded_as_a_normal_page_contract():
+    styles = STYLE_V11.read_text(encoding="utf-8")
+    assert "@import url('/ui-settings-page.css?v=1');" in styles
 
 
-def test_settings_runtimes_are_owned_by_frontend_syntax_gate():
+def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
     workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
-    assert "node --check frontend/static/ui-settings-architecture.js" in workflow
-    assert "node --check frontend/static/ui-settings-presentation.js" in workflow
+    assert "node --check frontend/static/ui-settings-page.js" in workflow
+    assert "ui-settings-architecture.js" not in workflow
+    assert "ui-settings-presentation.js" not in workflow
 
 
-def test_settings_tabs_match_reviewed_ownership_order():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
+def test_settings_renderer_is_direct_and_does_not_call_or_transform_legacy_dom():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+
+    assert "window.renderSettings = render;" in source
+    assert "render.dpSettingsPage = '1';" in source
+    assert "view.innerHTML = `" in source
+    assert "previous.apply" not in source
+    assert "baseRenderSettings" not in source
+    assert "appendChild(unit" not in source
+    assert "preservationContainer" not in source
+    assert "dp-settings-preserved" not in source
+    assert "new MutationObserver" not in source
+    assert "setTimeout(" not in source
+    assert "setInterval(" not in source
+
+
+def test_settings_serializer_preserves_non_operator_state_without_hidden_controls():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+
+    assert "const data = {\n      ...current," in source
+    assert "window.getFormSettings = serialize;" in source
+    assert "serialize.dpSettingsPage = '1';" in source
+
+    # These legacy/internal settings are deliberately not rendered as controls.
+    # Their existing values survive because the serializer begins with settingsData.
+    for hidden_id in (
+        'id="s-alldebrid_agent"',
+        'id="s-download_client"',
+        'id="s-aria2_builtin_auto_start"',
+        'id="s-aria2_operation_timeout_seconds"',
+        'id="s-aria2_poll_interval_seconds"',
+        'id="s-aria2_purge_interval_minutes"',
+        'id="s-aria2_max_download_result"',
+        'id="s-aria2_waiting_window"',
+        'id="s-aria2_stopped_window"',
+        'id="s-aria2_max_upload_limit"',
+        'id="s-aria2_start_paused"',
+        'id="s-db_backup_folder"',
+        'id="s-db_backup_enabled"',
+        'id="s-db_backup_keep_days"',
+    ):
+        assert hidden_id not in source
+
+
+def test_settings_tabs_match_reviewed_order_in_the_authoritative_renderer():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
     expected = [
         "Sources & Providers",
         "Downloads",
@@ -67,15 +101,77 @@ def test_settings_tabs_match_reviewed_ownership_order():
         "'tab-database'",
         "'tab-advanced'",
     ]
-    order_block = source[source.index("const TAB_ORDER"):source.index("function installStyles")]
-    positions = [order_block.index(tab_id) for tab_id in expected_ids]
+    tab_block = source[source.index("const TABS"):source.index("let authViewData")]
+    positions = [tab_block.index(tab_id) for tab_id in expected_ids]
     assert positions == sorted(positions)
 
 
-def test_sources_and_downloads_preserve_upstream_downstream_boundary():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
+def test_settings_renderer_owns_final_master_card_and_separate_footer_directly():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
 
-    provider_block = source[source.index("function buildSourcesAndProviders"):source.index("function buildDownloads")]
+    assert 'class="card dp-settings-master"' in source
+    assert 'class="card-header dp-settings-master-header"' in source
+    assert 'class="stabs dp-settings-tabs" id="settings-tabs"' in source
+    assert 'class="card-body dp-settings-master-body"' in source
+    assert 'id="settings-form"' in source
+    assert 'class="card save-bar dp-settings-footer"' in source
+    assert 'aria-label="Settings actions"' in source
+
+
+def test_settings_nested_sections_use_shared_card_header_and_body_material():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+
+    card_fn = source[source.index("function card("):source.index("function providerStatusText")]
+    assert 'class="card dp-settings-section-card"' in card_fn
+    assert 'class="card-header"' in card_fn
+    assert 'class="card-body"' in card_fn
+    assert "scard" not in card_fn
+    assert "scard-header" not in source
+    assert "scard-body" not in source
+
+
+def test_settings_page_does_not_redefine_shared_master_header_material():
+    css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
+
+    selector = ".dp-settings-master > .dp-settings-master-header"
+    start = css.index(selector)
+    block = css[start:css.index("}", start)]
+    assert "background:" not in block
+    assert "box-shadow:" not in block
+    assert "border-bottom:" not in block
+    assert "radial-gradient" not in css
+
+
+def test_settings_master_tabs_are_centered_on_the_whole_card():
+    css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
+
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in css
+    assert ".dp-settings-tabs" in css
+    assert "grid-column: 2;" in css
+    assert "justify-self: center;" in css
+    assert ".dp-settings-master-balance" in css
+
+
+def test_settings_master_scrolls_above_persistent_footer_on_shared_lower_datum():
+    css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
+
+    assert "#content.settings-active" in css
+    assert "padding-bottom: 24px !important;" in css
+    assert "#view-settings.dp-settings-page.active" in css
+    assert "flex-direction: column;" in css
+    assert ".dp-settings-master-body" in css
+    assert "overflow: hidden;" in css
+    assert "#settings-form" in css
+    assert "overflow-y: auto;" in css
+    assert ".dp-settings-footer" in css
+    assert "position: static !important;" in css
+    assert "flex: 0 0 auto;" in css
+
+
+def test_sources_and_downloads_are_rendered_in_final_reviewed_ownership_groups():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+
+    provider = source[source.index("function sourcesPanel"):source.index("function downloadsPanel")]
     for control_id in (
         "s-alldebrid_api_key",
         "s-alldebrid_rate_limit_per_minute",
@@ -84,9 +180,9 @@ def test_sources_and_downloads_preserve_upstream_downstream_boundary():
         "s-upload_fail_retry_count",
         "s-upload_fail_retry_delay_minutes",
     ):
-        assert control_id in provider_block
+        assert control_id in provider
 
-    download_block = source[source.index("function buildDownloads"):source.index("function buildExtraction")]
+    downloads = source[source.index("function downloadsPanel"):source.index("function extractionPanel")]
     for control_id in (
         "s-aria2_mode",
         "s-aria2_url",
@@ -100,41 +196,13 @@ def test_sources_and_downloads_preserve_upstream_downstream_boundary():
         "s-filters_enabled",
         "s-torrent_labels_raw",
     ):
-        assert control_id in download_block
+        assert control_id in downloads
 
 
-def test_settings_pruning_hides_controls_without_deleting_serializer_inputs():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
-    app = APP_JS.read_text(encoding="utf-8")
+def test_notifications_maintenance_and_advanced_keep_reviewed_scope():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
 
-    preservation_block = source[source.index("function preserveInternalAndOperationalControls"):source.index("function syncProviderStatus")]
-    hidden_controls = (
-        "s-alldebrid_agent",
-        "s-download_client",
-        "s-aria2_builtin_auto_start",
-        "s-aria2_builtin_port",
-        "s-disk_guard_interval_seconds",
-        "s-aria2_operation_timeout_seconds",
-        "s-aria2_poll_interval_seconds",
-        "s-aria2_purge_interval_minutes",
-        "s-aria2_max_download_result",
-        "s-aria2_waiting_window",
-        "s-aria2_stopped_window",
-        "s-aria2_max_upload_limit",
-        "s-aria2_start_paused",
-        "s-db_backup_folder",
-        "s-db_backup_enabled",
-        "s-db_backup_keep_days",
-    )
-    for control_id in hidden_controls:
-        assert control_id in preservation_block
-        assert control_id in app
-
-
-def test_notifications_and_maintenance_move_non_configuration_browsing_out_of_normal_settings_ui():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
-
-    notifications = source[source.index("function buildNotifications"):source.index("function buildDataMaintenance")]
+    notifications = source[source.index("function notificationsPanel"):source.index("function dataMaintenancePanel")]
     assert "s-discord_notify_extract" in notifications
     assert "s-stats_report_webhook_url" in notifications
     assert "Send Test Report" in notifications
@@ -142,7 +210,7 @@ def test_notifications_and_maintenance_move_non_configuration_browsing_out_of_no
     assert "exportStats" not in notifications
     assert "triggerStatsSnapshot" not in notifications
 
-    maintenance = source[source.index("function buildDataMaintenance"):source.index("function buildAdvanced")]
+    maintenance = source[source.index("function dataMaintenancePanel"):source.index("function advancedPanel")]
     for control_id in (
         "s-backup_enabled",
         "s-backup_folder",
@@ -156,10 +224,7 @@ def test_notifications_and_maintenance_move_non_configuration_browsing_out_of_no
     ):
         assert control_id in maintenance
 
-
-def test_global_advanced_is_limited_to_transfer_engine_tuning_candidates():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
-    advanced = source[source.index("function buildAdvanced"):source.index("function preserveInternalAndOperationalControls")]
+    advanced = source[source.index("function advancedPanel"):source.index("function authFallbackData")]
     for control_id in (
         "s-aria2_split",
         "s-aria2_min_split_size",
@@ -171,96 +236,38 @@ def test_global_advanced_is_limited_to_transfer_engine_tuning_candidates():
     ):
         assert control_id in advanced
 
-    for provider_control in (
-        "s-alldebrid_rate_limit_per_minute",
-        "s-poll_interval_seconds",
-        "s-full_sync_interval_minutes",
-        "s-upload_fail_retry_count",
+
+def test_authentication_is_rendered_as_shared_cards_without_legacy_settings_augmentation():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+
+    auth = source[source.index("function authenticationCards"):source.index("function authenticationPanel")]
+    for control_id in (
+        "auth-password-enabled",
+        "auth-username",
+        "auth-new-password",
+        "auth-oidc-enabled",
+        "auth-oidc-provider",
+        "auth-oidc-issuer",
+        "auth-oidc-client-id",
+        "auth-api-token-enabled",
+        "auth-public-base-url",
+        "auth-session-hours",
     ):
-        assert provider_control not in advanced
+        assert control_id in auth
+    assert "card('Authentication Status'" in auth
+    assert "card('Username & Password'" in auth
+    assert "card('OpenID Connect'" in auth
+    assert "card('API Access'" in auth
+    assert "card('Sessions & Security'" in auth
 
 
-def test_provider_status_summary_is_idempotent_across_architecture_reapply():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
-    provider = source[source.index("function buildSourcesAndProviders"):source.index("function buildDownloads")]
+def test_legacy_settings_renderer_remains_dead_code_until_cleanup_not_a_render_dependency():
+    app = APP_JS.read_text(encoding="utf-8")
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
 
-    assert "let status = connection?.querySelector('.dp-settings-status');" in provider
-    assert "if (!status && connection)" in provider
-    assert "status = document.createElement('div');" in provider
-    assert "const keyState = status?.querySelector('#dp-settings-ad-key-state');" in provider
-
-
-def test_settings_architecture_has_one_explicit_render_lifecycle_owner():
-    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
-
-    assert "function installSettingsRenderHook()" in source
-    assert "const previous = window.renderSettings;" in source
-    assert "const result = previous.apply(this, arguments);" in source
-    assert "applyArchitecture();" in source
-    assert "wrapped.dpSettingsArchitecture = '1';" in source
-    assert source.count("window.renderSettings = wrapped;") == 1
-
-    # Provider-label observation is allowed; Settings-form lifecycle inference is not.
-    assert "settingsObserver" not in source
-    assert "observeSettingsForm" not in source
-    assert "scheduleApply" not in source
-    assert "setTimeout(boot" not in source
-
-
-def test_settings_presentation_uses_explicit_post_architecture_render_lifecycle():
-    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
-
-    assert "function installSettingsPresentationHook()" in source
-    assert "const previous = window.renderSettings;" in source
-    assert "previous.dpSettingsArchitecture !== '1'" in source
-    assert "const result = previous.apply(this, arguments);" in source
-    assert "composeSettingsPresentation();" in source
-    assert "wrapped.dpSettingsPresentation = '1';" in source
-    assert source.count("window.renderSettings = wrapped;") == 1
-
-    # The hardened presentation lifecycle must never infer completion from DOM churn.
-    assert "new MutationObserver" not in source
-    assert "setTimeout(" not in source
-    assert "setInterval(" not in source
-
-
-def test_settings_presentation_restores_master_card_and_separate_footer_card():
-    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
-
-    assert "master.id = 'dp-settings-master'" in source
-    assert "master.className = 'dp-card dp-settings-master'" in source
-    assert "header.appendChild(tabs);" in source
-    assert "body.appendChild(form);" in source
-    assert "saveBar.classList.add('dp-card', 'dp-settings-footer');" in source
-    assert "view.insertBefore(saveBar, master.nextElementSibling);" in source
-    assert "Settings actions" in source
-
-
-def test_settings_master_tabs_are_centered_and_footer_uses_shared_lower_datum():
-    css = SETTINGS_PRESENTATION_CSS.read_text(encoding="utf-8")
-
-    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in css
-    assert ".dp-settings-master #settings-tabs" in css
-    assert "grid-column: 2;" in css
-    assert "justify-self: center;" in css
-
-    assert "#content.settings-active" in css
-    assert "padding-left: var(--dp-shell-x) !important;" in css
-    assert "padding-right: var(--dp-shell-x) !important;" in css
-    assert "padding-bottom: 24px !important;" in css
-    assert ".dp-settings-footer" in css
-    assert "position: static !important;" in css
-    assert "margin: 0 !important;" in css
-
-
-def test_settings_master_body_scrolls_while_footer_remains_persistent():
-    css = SETTINGS_PRESENTATION_CSS.read_text(encoding="utf-8")
-
-    assert "#view-settings.dp-settings-presented.active" in css
-    assert "flex-direction: column;" in css
-    assert ".dp-settings-master__body" in css
-    assert "overflow: hidden;" in css
-    assert ".dp-settings-master__body > #settings-form" in css
-    assert "overflow-y: auto;" in css
-    assert ".dp-settings-footer" in css
-    assert "flex: 0 0 auto;" in css
+    assert "function renderSettings()" in app
+    assert "Delivery Mode" in app
+    assert "Agent Name" in app
+    assert "window.renderSettings = render;" in source
+    assert "legacyRender" not in source
+    assert "renderSettingsWithAuthentication" not in source
