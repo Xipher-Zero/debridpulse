@@ -41,10 +41,10 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     css = read(BATCH_CSS)
 
     assert "['downloads', 'completed', 'progress', 'success', 'data']" in runtime
-    for value_id in ("i-last-day", "i-last-week", "i-success-rate", "i-avg-duration", "i-avg-size"):
+    for value_id in ("i-last-day", "i-last-week", "i-avg-duration", "i-success-rate", "i-avg-size"):
         assert "'" + value_id + "'" in runtime
-    assert runtime.index("'i-last-day'") < runtime.index("'i-last-week'") < runtime.index("'i-success-rate'")
-    assert runtime.index("'i-success-rate'") < runtime.index("'i-avg-duration'") < runtime.index("'i-avg-size'")
+    assert runtime.index("'i-last-day'") < runtime.index("'i-last-week'") < runtime.index("'i-avg-duration'")
+    assert runtime.index("'i-avg-duration'") < runtime.index("'i-success-rate'") < runtime.index("'i-avg-size'")
 
     expected_primary = {
         'downloads': 'var(--dp-accent-purple-bright)',
