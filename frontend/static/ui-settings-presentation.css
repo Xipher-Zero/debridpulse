@@ -1,23 +1,41 @@
 /* DebridPulse v1.0.11 Settings presentation shell.
  *
- * Presentation only. The Settings information-architecture runtime remains
- * authoritative for which controls live in each section; this layer gives the
- * reviewed Settings page the same page-title -> master-card visual hierarchy as
- * the other v1.0.11 surfaces.
+ * Settings uses the same page-title -> master-card grammar as the reviewed
+ * application surfaces. The master card owns section navigation + scrollable
+ * content. The persistent Test/Save controls live in a separate footer card on
+ * the shared desktop lower datum.
  */
 
-body.dp-v11-structural #view-settings.dp-settings-presented {
+/* The inherited Settings layout removes shell insets. Restore the v1.0.11 shell
+   datum so the footer card ends on the same 24px baseline as the sidebar footer. */
+body.dp-v11-structural #content.settings-active {
+  padding-left: var(--dp-shell-x) !important;
+  padding-right: var(--dp-shell-x) !important;
+  padding-bottom: 24px !important;
+}
+
+body.dp-v11-structural #view-settings.dp-settings-presented.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
+  gap: 12px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-master {
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  margin: 0 0 14px;
+  min-height: 0;
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-master__header {
+  flex: 0 0 auto;
   min-height: 76px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -89,7 +107,7 @@ body.dp-v11-structural #view-settings .dp-settings-master__subtitle {
 }
 
 /* Equal left/right grid columns keep the section rail centered against the
-   whole master card rather than centered in the space left over by the title. */
+   entire master card rather than centered in the space left over by the title. */
 body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs {
   grid-column: 2;
   justify-self: center;
@@ -159,14 +177,22 @@ body.dp-v11-structural #view-settings .dp-settings-master__balance {
 }
 
 body.dp-v11-structural #view-settings .dp-settings-master__body {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-master__body > #settings-form {
   width: 100%;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-master__body #settings-form > .settings-panel,
@@ -182,6 +208,52 @@ body.dp-v11-structural #view-settings .dp-settings-master__body .dp-settings-ia-
   margin-bottom: 0 !important;
 }
 
+/* Persistent Settings actions are a separate card, not part of the master card.
+   The parent view's flex layout pins this card to the shared lower page datum. */
+body.dp-v11-structural #view-settings .dp-settings-footer {
+  position: static !important;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 62px;
+  margin: 0 !important;
+  padding: 11px 14px !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--dp-border-default) !important;
+  border-radius: var(--dp-radius-md) !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dp-surface-2) 94%, transparent), color-mix(in srgb, var(--dp-surface-1) 96%, transparent)) !important;
+  box-shadow: var(--dp-shadow-card, 0 8px 24px rgba(0,0,12,.14)) !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-footer .save-hint {
+  flex: 1 1 auto;
+  min-width: 180px;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-footer .settings-context-actions {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-footer .btn {
+  min-height: 36px;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-footer #btn-save-settings {
+  flex: 0 0 auto;
+}
+
 body.light.dp-v11-structural #view-settings .dp-settings-master__header {
   background:
     radial-gradient(circle at 12% 40%, color-mix(in srgb, var(--dp-accent-purple-bright) 9%, transparent), transparent 34%),
@@ -195,6 +267,10 @@ body.light.dp-v11-structural #view-settings .dp-settings-master__icon-frame {
   box-shadow:
     0 0 7px color-mix(in srgb, var(--dp-accent-purple-bright) 42%, transparent),
     0 0 18px color-mix(in srgb, var(--dp-accent-purple-bright) 17%, transparent);
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-footer {
+  background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,249,253,.98)) !important;
 }
 
 @media (max-width: 1180px) {
@@ -223,7 +299,17 @@ body.light.dp-v11-structural #view-settings .dp-settings-master__icon-frame {
   }
 }
 
+@media (max-width: 900px) {
+  body.dp-v11-structural #content.settings-active {
+    padding-bottom: 14px !important;
+  }
+}
+
 @media (max-width: 760px) {
+  body.dp-v11-structural #view-settings.dp-settings-presented.active {
+    gap: 10px;
+  }
+
   body.dp-v11-structural #view-settings .dp-settings-master__header {
     padding-inline: 12px;
   }
@@ -234,5 +320,20 @@ body.light.dp-v11-structural #view-settings .dp-settings-master__icon-frame {
 
   body.dp-v11-structural #view-settings .dp-settings-master__body {
     padding: 10px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-footer {
+    min-height: 0;
+    padding: 10px !important;
+    flex-wrap: wrap;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-footer .save-hint {
+    flex: 1 0 100%;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-footer .settings-context-actions {
+    margin-left: 0;
+    margin-right: auto;
   }
 }
