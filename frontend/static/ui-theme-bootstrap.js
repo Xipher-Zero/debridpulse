@@ -58,8 +58,7 @@
 
   /* These presentation runtimes are dynamically inserted classic scripts.
      `defer` does not establish execution order for dynamic scripts, so keep
-     async=false on the Statistics chain. That makes the reviewed layers execute
-     in insertion order rather than whichever network/cache fetch finishes first. */
+     async=false on explicitly ordered presentation chains. */
 
   /* Visual-review behavior corrections are deliberately isolated from app.js.
      They own only first-paint shell hydration, action-icon semantics and
@@ -105,14 +104,22 @@
     document.head.appendChild(script);
   }
 
-  /* Settings IA is presentation-only. It leaves the inherited renderer and
-     backend configuration model intact, then reorganizes the rendered controls
-     into the reviewed source/downstream ownership model. */
+  /* Settings IA owns control placement only. Keep the Settings presentation
+     chain explicitly ordered so the master-card shell always wraps the reviewed
+     IA rather than racing the inherited renderer. */
   if (!document.querySelector('script[data-dp-settings-architecture]')) {
     const script = document.createElement('script');
+    script.async = false;
     script.src = '/ui-settings-architecture.js?v=1';
-    script.defer = true;
     script.dataset.dpSettingsArchitecture = '1';
+    document.head.appendChild(script);
+  }
+
+  if (!document.querySelector('script[data-dp-settings-presentation]')) {
+    const script = document.createElement('script');
+    script.async = false;
+    script.src = '/ui-settings-presentation.js?v=1';
+    script.dataset.dpSettingsPresentation = '1';
     document.head.appendChild(script);
   }
 
