@@ -68,12 +68,16 @@ jobs:
           node --check frontend/static/ui-downloads-runtime.js
           node --check frontend/static/ui-accessibility-runtime.js
           node --check frontend/static/ui-theme-bootstrap.js
+          node --check frontend/static/ui-presentation-loader.js
+          node --check frontend/static/ui-shell-runtime.js
           node --check frontend/static/ui-settings-architecture.js
           node --check frontend/static/ui-settings-presentation.js
           node --check frontend/static/ui-visual-behavior-fixes.js
+          node --check frontend/static/ui-statistics-orchestrator.js
           node --check frontend/static/ui-statistics-batch3.js
           node --check frontend/static/ui-statistics-batch4.js
           node --check frontend/static/ui-statistics-batch5.js
+          node --check frontend/static/ui-error-semantics.js
 
   security:
     runs-on: ubuntu-latest

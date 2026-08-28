@@ -398,17 +398,20 @@
     });
   }
 
-  function startWhenReady() {
+  function startAfterCore() {
+    /* The sequential presentation loader runs only after parser-deferred core
+       runtimes. Do not spin the event loop waiting for dependencies: a missing
+       core helper is an explicit architecture failure, not a timing condition. */
     if (typeof window.progress !== 'function' || typeof window.badge !== 'function') {
-      window.setTimeout(startWhenReady, 0);
+      console.error('[DebridPulse] error semantics not installed: core render helpers unavailable.');
       return;
     }
     initialize();
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startWhenReady, {once: true});
+    document.addEventListener('DOMContentLoaded', startAfterCore, {once: true});
   } else {
-    startWhenReady();
+    startAfterCore();
   }
 })();

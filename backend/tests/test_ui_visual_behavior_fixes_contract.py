@@ -10,10 +10,11 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_theme_bootstrap_loads_visual_behavior_corrections() -> None:
+def test_presentation_loader_loads_visual_behavior_corrections_after_core() -> None:
     bootstrap = read("ui-theme-bootstrap.js")
-    assert "/ui-visual-behavior-fixes.js?v=22" in bootstrap
-    assert "data-dp-visual-behavior-fixes" in bootstrap
+    loader = read("ui-presentation-loader.js")
+    assert "ui-visual-behavior-fixes.js" not in bootstrap
+    assert "/ui-visual-behavior-fixes.js?v=23" in loader
 
 
 def test_aria2_topbar_is_css_visible_at_first_desktop_paint() -> None:
@@ -54,3 +55,10 @@ def test_theme_icon_represents_destination_with_visible_lucide_geometry() -> Non
     assert "button.innerHTML = themeSvg(iconName)" in runtime
     assert "attributeFilter: ['class']" in runtime
     assert "observer.observe(button" in runtime
+
+
+def test_statistics_chart_repaints_from_canonical_render_event_not_wrapper() -> None:
+    runtime = read("ui-visual-behavior-fixes.js")
+    assert "document.addEventListener('debridpulse:statistics-rendered'" in runtime
+    assert "window.loadDetailedStats = wrapped" not in runtime
+    assert "installStatisticsDetailedStatsGuard" not in runtime

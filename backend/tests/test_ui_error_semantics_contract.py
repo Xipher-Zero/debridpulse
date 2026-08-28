@@ -8,10 +8,11 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_error_semantics_runtime_is_loaded_by_first_paint_bootstrap():
+def test_error_semantics_runtime_is_loaded_after_core_by_presentation_loader():
     bootstrap = read("ui-theme-bootstrap.js")
-    assert "/ui-error-semantics.js?v=20" in bootstrap
-    assert "data-dp-error-semantics" in bootstrap
+    loader = read("ui-presentation-loader.js")
+    assert "ui-error-semantics.js" not in bootstrap
+    assert "/ui-error-semantics.js?v=21" in loader
 
 
 def test_concise_failure_taxonomy_is_complete():
@@ -68,6 +69,15 @@ def test_terminal_failure_progress_preserves_actual_percent_and_uses_error_rail(
     assert "background-image: none !important" in css
     assert "var(--dp-state-error) 88%" in css
     assert "var(--dp-state-error) 46%" in css
+
+
+def test_error_semantics_has_no_unbounded_startup_spin():
+    runtime = read("ui-error-semantics.js")
+    assert "function startAfterCore()" in runtime
+    assert "core render helpers unavailable" in runtime
+    assert "setTimeout(startWhenReady" not in runtime
+    assert "window.setTimeout(startWhenReady" not in runtime
+    assert "function startWhenReady()" not in runtime
 
 
 def test_dark_dashboard_cards_receive_subdued_colored_shadow():

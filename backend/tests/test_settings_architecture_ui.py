@@ -3,18 +3,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_JS = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
+PRESENTATION_LOADER_JS = ROOT / "frontend" / "static" / "ui-presentation-loader.js"
 SETTINGS_IA_JS = ROOT / "frontend" / "static" / "ui-settings-architecture.js"
 APP_JS = ROOT / "frontend" / "static" / "app.js"
 TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def test_settings_information_architecture_runtime_is_loaded_additively():
+def test_settings_information_architecture_runtime_is_loaded_after_core():
     bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
+    loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
     runtime = SETTINGS_IA_JS.read_text(encoding="utf-8")
     app = APP_JS.read_text(encoding="utf-8")
 
-    assert "ui-settings-architecture.js?v=2" in bootstrap
-    assert "data-dp-settings-architecture" in bootstrap
+    assert "ui-settings-architecture.js" not in bootstrap
+    assert "/ui-settings-architecture.js?v=3" in loader
     assert "UI only" in runtime
     assert "dp-settings-preserved-controls" in runtime
     # The inherited renderer remains present until the post-UI backend pruning pass.
@@ -26,9 +28,9 @@ def test_settings_presentation_is_not_part_of_global_first_paint_bootstrap():
     bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
 
     assert "ui-settings-presentation.js" not in bootstrap
-    assert "data-dp-settings-presentation" not in bootstrap
-    assert "Page-specific Settings" in bootstrap
-    assert "presentation must not be injected from this first-paint bootstrap" in bootstrap
+    assert "ui-settings-architecture.js" not in bootstrap
+    assert "ui-error-semantics.js" not in bootstrap
+    assert "ui-presentation-loader.js?v=1" in bootstrap
 
 
 def test_settings_runtime_is_owned_by_frontend_syntax_gate():
@@ -59,7 +61,7 @@ def test_settings_tabs_match_reviewed_ownership_order():
         "'tab-database'",
         "'tab-advanced'",
     ]
-    order_block = source[source.index("const TAB_ORDER"):source.index("let applying")]
+    order_block = source[source.index("const TAB_ORDER"):source.index("function installStyles")]
     positions = [order_block.index(tab_id) for tab_id in expected_ids]
     assert positions == sorted(positions)
 
@@ -182,14 +184,18 @@ def test_provider_status_summary_is_idempotent_across_architecture_reapply():
     assert "const keyState = status?.querySelector('#dp-settings-ad-key-state');" in provider
 
 
-def test_settings_architecture_observer_cannot_retrigger_from_its_own_dom_moves():
+def test_settings_architecture_has_one_explicit_render_lifecycle_owner():
     source = SETTINGS_IA_JS.read_text(encoding="utf-8")
-    apply_block = source[source.index("function applyArchitecture"):source.index("function scheduleApply")]
-    observer_block = source[source.index("function installObserver"):source.index("function boot")]
 
-    disconnect = apply_block.index("if (settingsObserver) settingsObserver.disconnect();")
-    mutate = apply_block.index("normalizeTabs();")
-    reconnect = apply_block.index("observeSettingsForm();")
-    assert disconnect < mutate < reconnect
-    assert "function observeSettingsForm()" in source
-    assert "observeSettingsForm();" in observer_block
+    assert "function installSettingsRenderHook()" in source
+    assert "const previous = window.renderSettings;" in source
+    assert "const result = previous.apply(this, arguments);" in source
+    assert "applyArchitecture();" in source
+    assert "wrapped.dpSettingsArchitecture = '1';" in source
+    assert source.count("window.renderSettings = wrapped;") == 1
+
+    # Provider-label observation is allowed; Settings-form lifecycle inference is not.
+    assert "settingsObserver" not in source
+    assert "observeSettingsForm" not in source
+    assert "scheduleApply" not in source
+    assert "setTimeout(boot" not in source

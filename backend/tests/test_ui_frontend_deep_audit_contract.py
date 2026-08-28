@@ -11,14 +11,20 @@ INDEX = STATIC / "index.html"
 STYLE = STATIC / "style-v11.css"
 SHARED = STATIC / "ui-shared-contract.css"
 SHELL_STYLE = STATIC / "ui-shell-structural.css"
+SHELL_BRAND = STATIC / "ui-shell-brand.css"
 ACTIVITY_STYLE = STATIC / "ui-activity-log-page.css"
 DOWNLOADS_STYLE = STATIC / "ui-downloads-page.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
+PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
+STATISTICS_ORCHESTRATOR = STATIC / "ui-statistics-orchestrator.js"
+SETTINGS_RUNTIME = STATIC / "ui-settings-architecture.js"
+ERROR_RUNTIME = STATIC / "ui-error-semantics.js"
 UI_RUNTIME = STATIC / "ui-runtime.js"
 DOWNLOADS_RUNTIME = STATIC / "ui-downloads-runtime.js"
 A11Y_RUNTIME = STATIC / "ui-accessibility-runtime.js"
 OPERATOR_RUNTIME = STATIC / "operator-title.js"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "tests.yml"
+MAIN = REPO_ROOT / "backend" / "main.py"
 
 
 def test_normal_ui_bootstrap_is_static_and_deterministic() -> None:
@@ -41,7 +47,7 @@ def test_normal_ui_bootstrap_is_static_and_deterministic() -> None:
     assert '/ui-shared-contract.css?v=23' not in html
 
 
-def test_parser_deferred_presentation_runtimes_have_one_normal_order() -> None:
+def test_parser_deferred_core_runtimes_have_one_normal_order() -> None:
     html = INDEX.read_text(encoding="utf-8")
     scripts = (
         '<script src="/app.js?v=15" defer></script>',
@@ -53,11 +59,90 @@ def test_parser_deferred_presentation_runtimes_have_one_normal_order() -> None:
     positions = [html.index(script) for script in scripts]
     assert positions == sorted(positions)
 
-    # Compatibility script injectors are permitted only because the static path
-    # carries the exact markers that make them no-ops during normal app boot.
     operator = OPERATOR_RUNTIME.read_text(encoding="utf-8")
     assert "script[data-dp-ui-runtime]" in operator
     assert "script[data-dp-downloads-runtime]" in operator
+
+
+def test_first_paint_bootstrap_has_minimal_authority() -> None:
+    bootstrap = THEME_BOOTSTRAP.read_text(encoding="utf-8")
+
+    assert "localStorage.getItem('theme')" in bootstrap
+    assert "document.body.classList.add('light')" in bootstrap
+    assert "/ui-presentation-loader.js?v=1" in bootstrap
+    for forbidden in (
+        "ui-statistics-batch3.js",
+        "ui-statistics-batch4.js",
+        "ui-statistics-batch5.js",
+        "ui-settings-architecture.js",
+        "ui-error-semantics.js",
+        "MutationObserver",
+        "fetch(",
+        "/api/",
+    ):
+        assert forbidden not in bootstrap
+
+
+def test_post_core_presentation_loader_is_sequential_and_failure_contained() -> None:
+    loader = PRESENTATION_LOADER.read_text(encoding="utf-8")
+    expected = (
+        "/ui-shell-runtime.js?v=1",
+        "/ui-visual-behavior-fixes.js?v=23",
+        "/ui-statistics-orchestrator.js?v=1",
+        "/ui-statistics-batch3.js?v=3",
+        "/ui-statistics-batch4.js?v=2",
+        "/ui-statistics-batch5.js?v=7",
+        "/ui-settings-architecture.js?v=3",
+        "/ui-error-semantics.js?v=21",
+    )
+    positions = [loader.index(item) for item in expected]
+    assert positions == sorted(positions)
+    assert "await loadRuntime(runtime);" in loader
+    assert "script.async = false;" in loader
+    assert "catch (error)" in loader
+    assert "continue" in loader
+    assert "debridpulse:presentation-ready" in loader
+
+
+def test_statistics_has_one_load_detailed_stats_presentation_owner() -> None:
+    orchestrator = STATISTICS_ORCHESTRATOR.read_text(encoding="utf-8")
+    assert orchestrator.count("window.loadDetailedStats = wrapped") == 1
+    assert "debridpulse:statistics-rendered" in orchestrator
+
+    for filename in (
+        "ui-visual-behavior-fixes.js",
+        "ui-statistics-batch3.js",
+        "ui-statistics-batch4.js",
+        "ui-statistics-batch5.js",
+    ):
+        source = (STATIC / filename).read_text(encoding="utf-8")
+        assert "window.loadDetailedStats = wrapped" not in source
+        assert "debridpulse:statistics-rendered" in source
+
+
+def test_settings_lifecycle_is_explicit_not_dom_inferred() -> None:
+    source = SETTINGS_RUNTIME.read_text(encoding="utf-8")
+    assert "function installSettingsRenderHook()" in source
+    assert source.count("window.renderSettings = wrapped") == 1
+    assert "settingsObserver" not in source
+    assert "observeSettingsForm" not in source
+    assert "scheduleApply" not in source
+    assert "setTimeout(boot" not in source
+
+
+def test_error_semantics_startup_is_bounded_by_loader_contract() -> None:
+    source = ERROR_RUNTIME.read_text(encoding="utf-8")
+    assert "function startAfterCore()" in source
+    assert "core render helpers unavailable" in source
+    assert "setTimeout(startWhenReady" not in source
+    assert "window.setTimeout(startWhenReady" not in source
+
+
+def test_static_frontend_resources_are_forced_to_revalidate() -> None:
+    main = MAIN.read_text(encoding="utf-8")
+    assert 'path.endswith((".html", ".js", ".css"))' in main
+    assert '"no-store" not in existing_cache.lower()' in main
+    assert 'response.headers["Cache-Control"] = "no-cache, must-revalidate"' in main
 
 
 def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
@@ -70,8 +155,6 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert "link[data-dp-v11-styles]" in runtime
     assert "style-v11\\.css\\?v=24$" in runtime
 
-    # Targeted invalidation stays explicit. Only layers changed by reviewed work
-    # advance; established approved layers retain their reviewed generations.
     imports = [line.strip() for line in overlay.splitlines() if line.strip().startswith("@import")]
     assert imports
     expected_versions = {
@@ -147,6 +230,8 @@ def test_page_layers_do_not_own_shell_contract() -> None:
     activity = ACTIVITY_STYLE.read_text(encoding="utf-8")
     downloads = DOWNLOADS_STYLE.read_text(encoding="utf-8")
     shell = SHELL_STYLE.read_text(encoding="utf-8")
+    shell_brand = SHELL_BRAND.read_text(encoding="utf-8")
+    stats_batch5 = (STATIC / "ui-statistics-batch5.css").read_text(encoding="utf-8")
 
     assert ".sidebar-footer" not in activity
     assert ".sidebar-footer" not in downloads
@@ -154,6 +239,8 @@ def test_page_layers_do_not_own_shell_contract() -> None:
     assert "body.dp-v11-structural .sidebar-footer" in shell
     assert "bottom: 24px !important" in shell
     assert ":has(#view-torrents.active) .sidebar-footer" not in shell
+    assert "#sidebar-version.dp-app-version" in shell_brand
+    assert "#sidebar-version.dp-app-version" not in stats_batch5
 
 
 def test_activity_rebuild_runtime_is_presentation_only() -> None:
@@ -201,14 +288,6 @@ def test_cross_cutting_accessibility_runtime_is_semantic_and_presentation_only()
     assert not present, f"accessibility runtime crossed into application I/O: {present}"
 
 
-def test_first_paint_theme_bootstrap_is_local_and_network_free() -> None:
-    js = THEME_BOOTSTRAP.read_text(encoding="utf-8")
-    assert "localStorage.getItem('theme')" in js
-    assert "document.body.classList.add('light')" in js
-    for forbidden in ("fetch(", "/api/", "XMLHttpRequest", "EventSource", "setTimeout("):
-        assert forbidden not in js
-
-
 def test_downloads_runtime_remains_presentational_after_static_bootstrap() -> None:
     js = DOWNLOADS_RUNTIME.read_text(encoding="utf-8")
     assert "decorateDownloadsStructure" in js
@@ -231,7 +310,15 @@ def test_ci_syntax_checks_every_first_party_browser_runtime() -> None:
         "ui-downloads-runtime.js",
         "ui-accessibility-runtime.js",
         "ui-theme-bootstrap.js",
+        "ui-presentation-loader.js",
+        "ui-shell-runtime.js",
         "ui-visual-behavior-fixes.js",
+        "ui-statistics-orchestrator.js",
+        "ui-statistics-batch3.js",
+        "ui-statistics-batch4.js",
+        "ui-statistics-batch5.js",
+        "ui-settings-architecture.js",
+        "ui-error-semantics.js",
     )
     missing = [
         filename

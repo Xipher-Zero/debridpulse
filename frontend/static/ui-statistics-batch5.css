@@ -1,7 +1,7 @@
 /* DebridPulse v1.0.11 Statistics Batch 5 presentation contract.
  * Final review corrections: semantic KPI ordering/color, optical icon centering,
- * standard chart header composition, five-row breakdown cadence, and shell
- * branding hierarchy. Data/API ownership remains unchanged.
+ * standard chart header composition and five-row breakdown cadence. Shell
+ * branding is owned separately by ui-shell-runtime/ui-shell-brand.css.
  */
 
 /* ── Primary KPI semantic color map ───────────────────────────────────── */
@@ -34,22 +34,14 @@ body.dp-v11-structural #view-stats .dp-stats-kpi-size {
   --c: var(--dp-state-active) !important;
 }
 
-/* Historical values carry the same semantic accent as their card/icon. Keep
-   this explicit so generic KPI typography cannot silently flatten the values
-   back to the primary text color when labels or runtime ordering change. */
 body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-val {
   color: var(--c) !important;
 }
 
-/* The icon frame/glow follows the card semantic accent. This prevents an
-   individual icon's default frame color from diverging from the card color. */
 body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi .dp-kpi-icon {
   --dp-icon-frame-fg: var(--c) !important;
 }
 
-/* Batch 4 established the correct painted glyph sizes. Keep those dimensions,
-   but center the oversized artwork inside the fixed 38px chip rather than
-   allowing each SVG's intrinsic canvas to bias its position. */
 body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon {
   display: grid !important;
   place-items: center !important;
@@ -72,8 +64,6 @@ body.dp-v11-structural #view-stats .dp-stats-chart .scard-header {
   font-size: inherit !important;
 }
 
-/* Retire the old 28px pseudo-icon; Batch 5 installs the same 51px custom
-   artwork footprint used by the approved Dashboard/section feature icons. */
 body.dp-v11-structural #view-stats .dp-stats-chart .scard-header::before {
   content: none !important;
   display: none !important;
@@ -119,103 +109,12 @@ body.dp-v11-structural #view-stats .dp-stats-chart #chart-title.dp-stats-chart-s
 }
 
 /* ── Five-row analytical cadence ──────────────────────────────────────── */
-/* The fixed lower-card body has room for five rows. Use that same cadence in
-   single-column and two-column modes so 6-10 items remain five rows per side. */
 body.dp-v11-structural #view-stats .dp-stats-breakdown-grid .dp-stats-adaptive-list .kv-row {
   min-height: 20px !important;
   line-height: 20px !important;
 }
 
-/* ── Shell brand hierarchy (application-wide, both palettes) ─────────── */
-body.dp-v11-structural #sidebar .logo-text {
-  min-width: 0;
-  height: 48px;
-  display: flex;
-  align-items: center;
-}
-body.dp-v11-structural #sidebar .logo-name {
-  margin: 0;
-  font-size: 20px;
-  line-height: 1;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-/* The version is deliberately detached from sidebar layout by the Batch 5
-   runtime. Keep it fixed to the viewport while aligning its right edge with the
-   universal content-card datum. On ultra-wide displays the max-width content
-   frame remains centered, so the right inset grows with that centered frame. */
-body.dp-v11-structural > #sidebar-version.dp-app-version {
-  position: fixed !important;
-  right: max(
-    var(--dp-shell-x),
-    calc((100vw - var(--dp-shell-sidebar) - var(--dp-content-max-width)) / 2)
-  ) !important;
-  bottom: 7px !important;
-  z-index: 520;
-  margin: 0 !important;
-  padding: 2px 6px;
-  border: 1px solid rgba(121, 132, 181, .20);
-  border-radius: 4px;
-  background: rgba(9, 13, 32, .64);
-  color: #aeb5d1;
-  font-family: var(--dp-font-mono);
-  font-size: 9px;
-  line-height: 1.1;
-  font-weight: 600;
-  letter-spacing: .02em;
-  text-align: right;
-  white-space: nowrap;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, .34);
-  box-shadow: 0 2px 8px rgba(0, 0, 12, .12);
-  pointer-events: none;
-}
-body.light.dp-v11-structural > #sidebar-version.dp-app-version {
-  border-color: rgba(113, 124, 166, .18);
-  background: rgba(255, 255, 255, .78);
-  color: #66708e;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, .94);
-  box-shadow: 0 2px 8px rgba(45, 61, 96, .08);
-}
-
-/* The shell now uses the vector logo directly. Its SVG already paints the
-   rounded gradient outline, so light mode must not add a second rectangular
-   frame. A true alpha-following drop shadow preserves restrained brand depth. */
-body.light.dp-v11-structural #sidebar .logo-icon {
-  border: 0 !important;
-  outline: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  filter: drop-shadow(0 0 8px rgba(124, 58, 237, .16)) !important;
-}
-
-@media (max-width: 1179px) {
-  body.dp-v11-structural #sidebar .logo-name {
-    font-size: 19px;
-  }
-
-  body.dp-v11-structural > #sidebar-version.dp-app-version {
-    right: var(--dp-shell-x) !important;
-  }
-}
-
-@media (max-width: 899px) {
-  body.dp-v11-structural #sidebar .logo-text {
-    display: flex;
-  }
-
-  body.dp-v11-structural > #sidebar-version.dp-app-version {
-    right: 14px !important;
-    bottom: 5px !important;
-    font-size: 8px;
-  }
-}
-
 /* ── Shared KPI vertical anchors ──────────────────────────────────────── */
-/* Both Statistics KPI tiers use one information hierarchy: title, value,
-   flavor text. Fixed row anchors replace per-card vertical centering so every
-   card in a tier lands its information on the same Y positions regardless of
-   copy length. Flavor text alone is allowed to consume extra height downward. */
 body.dp-v11-structural #view-stats #detail-stat-cards :is(.metric-card, .stat-card) {
   display: grid !important;
   grid-template-columns: 1fr !important;

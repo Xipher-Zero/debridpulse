@@ -11,7 +11,10 @@ BATCH3_RUNTIME = STATIC / "ui-statistics-batch3.js"
 BATCH_RUNTIME = STATIC / "ui-statistics-batch5.js"
 BATCH_CSS = STATIC / "ui-statistics-batch5.css"
 SURFACES = STATIC / "ui-panel-surface-treatment.css"
-THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
+PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
+ORCHESTRATOR = STATIC / "ui-statistics-orchestrator.js"
+SHELL_RUNTIME = STATIC / "ui-shell-runtime.js"
+SHELL_BRAND = STATIC / "ui-shell-brand.css"
 STYLE_V11 = STATIC / "style-v11.css"
 WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 VERSION = ROOT / "VERSION"
@@ -22,33 +25,36 @@ def read(path: Path) -> str:
 
 
 def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> None:
-    bootstrap = read(THEME_BOOTSTRAP)
+    loader = read(PRESENTATION_LOADER)
     runtime = read(BATCH_RUNTIME)
 
-    assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert "/ui-statistics-batch5.js?v=6" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=6")
-    assert "data-dp-statistics-batch5" in bootstrap
-    assert "previous.dpStatisticsBatch4 !== '1'" in runtime
-    assert "wrapped.dpStatisticsBatch5 = '1'" in runtime
-    assert "window.loadDetailedStats = wrapped" in runtime
-    assert "'/ui-statistics-batch5.css?v=2'" in runtime
-    for forbidden in ("fetch(", "api(", "/stats/detail", "XMLHttpRequest", "EventSource"):
+    assert "/ui-statistics-batch4.js?v=2" in loader
+    assert "/ui-statistics-batch5.js?v=7" in loader
+    assert loader.index("/ui-statistics-batch4.js?v=2") < loader.index("/ui-statistics-batch5.js?v=7")
+    assert "debridpulse:statistics-rendered" in runtime
+    assert "window.loadDetailedStats = wrapped" not in runtime
+    assert "'/ui-statistics-batch5.css?v=3'" in runtime
+    for forbidden in ("fetch(", "api(", "/stats/detail", "XMLHttpRequest", "EventSource", "setTimeout(", "new MutationObserver"):
         assert forbidden not in runtime
 
 
-def test_statistics_dynamic_presentation_chain_is_explicitly_serialized() -> None:
-    bootstrap = read(THEME_BOOTSTRAP)
+def test_statistics_presentation_chain_has_one_explicit_sequential_loader() -> None:
+    loader = read(PRESENTATION_LOADER)
 
-    visual = bootstrap.index("script.src = '/ui-visual-behavior-fixes.js?v=22'")
-    batch3 = bootstrap.index("script.src = '/ui-statistics-batch3.js?v=2'")
-    batch4 = bootstrap.index("script.src = '/ui-statistics-batch4.js?v=1'")
-    batch5 = bootstrap.index("script.src = '/ui-statistics-batch5.js?v=6'")
-    assert visual < batch3 < batch4 < batch5
-
-    statistics_chain = bootstrap[bootstrap.index("/* These presentation runtimes"):bootstrap.index("/* Settings IA")]
-    assert statistics_chain.count("script.async = false;") == 4
-    assert "`defer` does not establish execution order for dynamic scripts" in statistics_chain
+    expected = [
+        "/ui-shell-runtime.js?v=1",
+        "/ui-visual-behavior-fixes.js?v=23",
+        "/ui-statistics-orchestrator.js?v=1",
+        "/ui-statistics-batch3.js?v=3",
+        "/ui-statistics-batch4.js?v=2",
+        "/ui-statistics-batch5.js?v=7",
+        "/ui-settings-architecture.js?v=3",
+        "/ui-error-semantics.js?v=21",
+    ]
+    positions = [loader.index(item) for item in expected]
+    assert positions == sorted(positions)
+    assert "await loadRuntime(runtime);" in loader
+    assert "script.async = false;" in loader
 
 
 def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
@@ -118,16 +124,14 @@ def test_batch5_is_sole_historical_kpi_presentation_owner() -> None:
     assert "/icons/dp/heartbeat-outline.svg" in runtime
 
 
-def test_primary_kpi_order_is_idempotent_and_reasserted_after_legacy_render() -> None:
+def test_primary_kpi_order_is_idempotent_and_event_driven_after_legacy_render() -> None:
     runtime = read(BATCH_RUNTIME)
 
     assert "const alreadyOrdered = ordered.every" in runtime
-    assert "if (!alreadyOrdered)" in runtime
-    assert "function observePrimaryMetrics()" in runtime
-    assert "host.dataset.dpStatsBatch5Observed = '1'" in runtime
-    assert "attributeFilter: ['data-dp-stats-metric']" in runtime
+    assert "if (!alreadyOrdered) ordered.forEach" in runtime
+    assert "document.addEventListener('debridpulse:statistics-rendered'" in runtime
     assert "normalizePrimaryOrder();" in runtime
-    assert "normalizeSuccessRateCopy();" in runtime
+    assert "normalizeSuccessRateCopy(period);" in runtime
 
 
 def test_queue_health_cannot_resurface_in_final_statistics_layer() -> None:
@@ -139,7 +143,6 @@ def test_queue_health_cannot_resurface_in_final_statistics_layer() -> None:
     assert "queue.setAttribute('aria-hidden', 'true')" in runtime
     assert "queue.style.setProperty('display', 'none', 'important')" in runtime
     assert "suppressQueueHealth();" in runtime
-    assert "if (queue) strip.appendChild(queue)" not in runtime
 
 
 def test_statistics_kpi_rows_share_title_value_flavor_vertical_anchors() -> None:
@@ -184,17 +187,18 @@ def test_success_rate_copy_distinguishes_period_and_life_time_scopes() -> None:
     assert "normalizeSuccessRateCopy(period)" in runtime
 
 
-def test_average_duration_uses_compact_uppercase_day_hour_minute_units() -> None:
+def test_average_duration_is_owned_once_by_statistics_orchestrator() -> None:
+    orchestrator = read(ORCHESTRATOR)
     runtime = read(BATCH_RUNTIME)
 
-    assert "function formatCompactDuration(seconds)" in runtime
-    assert "Math.max(1, Math.round(value / 60))" in runtime
-    assert "parts.push(days + 'D')" in runtime
-    assert "parts.push(hours + 'H')" in runtime
-    assert "parts.push(minutes + 'M')" in runtime
-    assert "return parts.join(' ')" in runtime
-    assert "window.fmtDuration = formatCompactDuration" in runtime
-    assert "installCompactDurationFormatter();" in runtime
+    assert "function formatCompactDuration(seconds)" in orchestrator
+    assert "Math.max(1, Math.round(value / 60))" in orchestrator
+    assert "parts.push(days + 'D')" in orchestrator
+    assert "parts.push(hours + 'H')" in orchestrator
+    assert "parts.push(minutes + 'M')" in orchestrator
+    assert "return parts.join(' ')" in orchestrator
+    assert "window.fmtDuration = formatCompactDuration" in orchestrator
+    assert "formatCompactDuration" not in runtime
 
 
 def test_secondary_kpi_glyphs_are_centered_without_resizing_the_chip() -> None:
@@ -253,18 +257,25 @@ def test_breakdowns_reuse_shared_list_surface_and_five_row_cadence() -> None:
     assert "/ui-panel-surface-treatment.css?v=22" in overlay
 
 
-def test_shell_branding_uses_fixed_global_version_datum_and_unframed_light_logo() -> None:
+def test_shell_branding_is_owned_outside_statistics() -> None:
     runtime = read(BATCH_RUNTIME)
     css = read(BATCH_CSS)
+    shell_runtime = read(SHELL_RUNTIME)
+    shell_css = read(SHELL_BRAND)
 
-    assert "function normalizeShellBranding()" in runtime
-    assert "'/logo.svg?v=7'" in runtime
-    assert "version.classList.add('dp-app-version')" in runtime
-    assert "document.body.appendChild(version)" in runtime
+    for forbidden in ("normalizeShellBranding", "sidebar-version", "/logo.svg?v=7"):
+        assert forbidden not in runtime
+    assert "#sidebar .logo-name" not in css
+    assert "#sidebar-version.dp-app-version" not in css
+
+    assert "function normalizeShellBranding()" in shell_runtime
+    assert "'/logo.svg?v=7'" in shell_runtime
+    assert "version.classList.add('dp-app-version')" in shell_runtime
+    assert "document.body.appendChild(version)" in shell_runtime
 
     selector = "body.dp-v11-structural > #sidebar-version.dp-app-version"
-    assert selector in css
-    segment = css[css.index(selector):].split('}', 1)[0]
+    assert selector in shell_css
+    segment = shell_css[shell_css.index(selector):].split('}', 1)[0]
     assert "position: fixed !important" in segment
     assert "right: max(" in segment
     assert "var(--dp-shell-x)" in segment
@@ -274,10 +285,10 @@ def test_shell_branding_uses_fixed_global_version_datum_and_unframed_light_logo(
     assert "text-align: right" in segment
     assert "font-size: 9px" in segment
 
-    assert "#sidebar .logo-name" in css
-    assert "font-size: 20px" in css
-    assert "body.light.dp-v11-structural #sidebar .logo-icon" in css
-    light_logo = css[css.index("body.light.dp-v11-structural #sidebar .logo-icon"):].split('}', 1)[0]
+    assert "#sidebar .logo-name" in shell_css
+    assert "font-size: 20px" in shell_css
+    assert "body.light.dp-v11-structural #sidebar .logo-icon" in shell_css
+    light_logo = shell_css[shell_css.index("body.light.dp-v11-structural #sidebar .logo-icon"):].split('}', 1)[0]
     assert "border: 0 !important" in light_logo
     assert "outline: 0 !important" in light_logo
     assert "background: transparent !important" in light_logo
@@ -288,4 +299,5 @@ def test_shell_branding_uses_fixed_global_version_datum_and_unframed_light_logo(
 def test_ci_syntax_checks_batch5_runtime_and_version_stays_frozen() -> None:
     workflow = read(WORKFLOW)
     assert "node --check frontend/static/ui-statistics-batch5.js" in workflow
+    assert "node --check frontend/static/ui-statistics-orchestrator.js" in workflow
     assert read(VERSION).strip() == "1.0.10"

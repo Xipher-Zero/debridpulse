@@ -10,7 +10,7 @@ STATIC = ROOT / "frontend" / "static"
 BATCH_RUNTIME = STATIC / "ui-statistics-batch4.js"
 BATCH_CSS = STATIC / "ui-statistics-batch4.css"
 FEATURE_ICONS = STATIC / "ui-feature-icon-contract.css"
-THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
+PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
 STYLE_V11 = STATIC / "style-v11.css"
 VERSION = ROOT / "VERSION"
 
@@ -20,18 +20,17 @@ def read(path: Path) -> str:
 
 
 def test_batch4_runtime_loads_after_batch3_and_preserves_statistics_api_ownership() -> None:
-    bootstrap = read(THEME_BOOTSTRAP)
+    loader = read(PRESENTATION_LOADER)
     runtime = read(BATCH_RUNTIME)
 
-    assert "/ui-statistics-batch3.js?v=2" in bootstrap
-    assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch3.js?v=2") < bootstrap.index("/ui-statistics-batch4.js?v=1")
-    assert "data-dp-statistics-batch4" in bootstrap
-    assert "previous.dpStatisticsBatch3 !== '1'" in runtime
-    assert "previous.dpStatisticsBatch4 === '1'" in runtime
-    assert "window.loadDetailedStats = wrapped" in runtime
+    assert "/ui-statistics-batch3.js?v=3" in loader
+    assert "/ui-statistics-batch4.js?v=2" in loader
+    assert loader.index("/ui-statistics-batch3.js?v=3") < loader.index("/ui-statistics-batch4.js?v=2")
+    assert "debridpulse:statistics-rendered" in runtime
+    assert "window.loadDetailedStats = wrapped" not in runtime
     assert "api('GET', '/stats/detail" not in runtime
     assert 'api("GET", "/stats/detail' not in runtime
+    assert "setTimeout(" not in runtime
 
 
 def test_secondary_kpi_band_returns_to_centered_pre_removal_width() -> None:

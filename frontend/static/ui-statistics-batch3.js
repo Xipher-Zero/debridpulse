@@ -2,8 +2,8 @@
  *
  * Presentation only: the existing /stats and /stats/detail APIs remain the
  * source of truth. This layer normalizes reviewed primary-metric wording and
- * breakdown labels after the legacy renderer finishes. Historical KPI ordering,
- * labels, icons and copy are owned exclusively by Batch 5.
+ * breakdown labels after the canonical Statistics lifecycle event. Historical
+ * KPI ordering, labels, icons and copy are owned exclusively by Batch 5.
  */
 (function () {
   'use strict';
@@ -105,30 +105,6 @@
     document.head.appendChild(link);
   }
 
-  function installCentralSourceLabels() {
-    let attempts = 0;
-    const attempt = function () {
-      attempts += 1;
-      const previous = window.sourceLabel;
-      if (typeof previous !== 'function') {
-        if (attempts < 120) setTimeout(attempt, 50);
-        return;
-      }
-      if (previous.dpStatisticsBatch3 === '1') return;
-
-      const wrapped = function (source) {
-        const key = String(source || '').trim();
-        if (Object.prototype.hasOwnProperty.call(SOURCE_LABELS, key)) {
-          return SOURCE_LABELS[key];
-        }
-        return previous.apply(this, arguments);
-      };
-      wrapped.dpStatisticsBatch3 = '1';
-      window.sourceLabel = wrapped;
-    };
-    attempt();
-  }
-
   function findMetricCard(host, definition) {
     const cards = Array.from(host.querySelectorAll(':scope > .metric-card, :scope > .stat-card'));
     return cards.find(function (card) {
@@ -184,17 +160,6 @@
     });
   }
 
-  function observePrimaryMetrics() {
-    const host = document.getElementById('detail-stat-cards');
-    if (!host || host.dataset.dpStatsBatch3Observed === '1') return false;
-    host.dataset.dpStatsBatch3Observed = '1';
-
-    new MutationObserver(function () {
-      normalizePrimaryMetrics();
-    }).observe(host, {childList: true});
-    return true;
-  }
-
   function normalizeBreakdownRows(container, kind) {
     if (!container) return;
     container.querySelectorAll('.kv-row').forEach(function (row) {
@@ -219,53 +184,12 @@
     normalizeBreakdowns();
   }
 
-  function installDetailedStatsGuard() {
-    let attempts = 0;
-    const attempt = function () {
-      attempts += 1;
-      const previous = window.loadDetailedStats;
-      if (typeof previous !== 'function') {
-        if (attempts < 120) setTimeout(attempt, 50);
-        return;
-      }
-      if (previous.dpStatisticsBatch3 === '1') return;
-
-      const wrapped = async function (period) {
-        const resolved = selectedPeriod(period);
-        const result = await previous.call(this, resolved);
-        applyBatch3(resolved);
-        return result;
-      };
-      wrapped.dpStatisticsBatch3 = '1';
-      window.loadDetailedStats = wrapped;
-    };
-    attempt();
-  }
-
-  function observeBreakdownBodies() {
-    ['detail-torrent-status', 'detail-file-status', 'detail-event-levels', 'detail-sources'].forEach(function (id) {
-      const node = document.getElementById(id);
-      if (!node || node.dataset.dpStatsBatch3Observed === '1') return;
-      node.dataset.dpStatsBatch3Observed = '1';
-      new MutationObserver(normalizeBreakdowns).observe(node, {childList: true, subtree: true});
-    });
-  }
-
   function initialize() {
     loadBatchStyles();
-    installCentralSourceLabels();
-    installDetailedStatsGuard();
-    observePrimaryMetrics();
-    observeBreakdownBodies();
-
-    let attempts = 0;
-    const settle = function () {
-      attempts += 1;
-      normalizeBreakdowns();
-      const primaryReady = normalizePrimaryMetrics();
-      if (!primaryReady && attempts < 160) setTimeout(settle, 50);
-    };
-    settle();
+    applyBatch3();
+    document.addEventListener('debridpulse:statistics-rendered', function (event) {
+      applyBatch3(event.detail && event.detail.period);
+    });
   }
 
   if (document.readyState === 'loading') {

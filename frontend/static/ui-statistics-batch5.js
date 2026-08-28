@@ -1,7 +1,7 @@
 /* DebridPulse v1.0.11 Statistics Batch 5 presentation runtime.
  * Presentation only: preserves existing statistics API/Chart.js ownership while
- * applying the final reviewed ordering, wording, surface and branding contract.
- * Batch 5 is the sole owner of historical KPI labels, icons and DOM order.
+ * applying the final reviewed ordering, wording and surface contract. Batch 5
+ * is the sole owner of historical KPI labels, icons and DOM order.
  */
 (function () {
   'use strict';
@@ -37,28 +37,6 @@
     'all': 'Share of finished downloads completed successfully across all recorded history.',
   });
 
-  function formatCompactDuration(seconds) {
-    const value = Number(seconds);
-    if (!Number.isFinite(value) || value <= 0) return '—';
-
-    const totalMinutes = Math.max(1, Math.round(value / 60));
-    const days = Math.floor(totalMinutes / 1440);
-    const hours = Math.floor((totalMinutes % 1440) / 60);
-    const minutes = totalMinutes % 60;
-    const parts = [];
-
-    if (days) parts.push(days + 'D');
-    if (hours) parts.push(hours + 'H');
-    if (minutes) parts.push(minutes + 'M');
-
-    return parts.join(' ');
-  }
-
-  function installCompactDurationFormatter() {
-    window.fmtDuration = formatCompactDuration;
-    return window.fmtDuration === formatCompactDuration;
-  }
-
   function selectedPeriod(explicit) {
     if (explicit) return explicit;
     const active = document.querySelector('#stats-period-tabs .ftab.active');
@@ -69,27 +47,9 @@
     if (document.querySelector('link[data-dp-statistics-batch5]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/ui-statistics-batch5.css?v=2';
+    link.href = '/ui-statistics-batch5.css?v=3';
     link.dataset.dpStatisticsBatch5 = '1';
     document.head.appendChild(link);
-  }
-
-  function normalizeShellBranding() {
-    const logo = document.querySelector('#sidebar .logo-icon');
-    if (logo && logo.getAttribute('src') !== '/logo.svg?v=7') {
-      logo.setAttribute('src', '/logo.svg?v=7');
-    }
-
-    const version = document.getElementById('sidebar-version');
-    if (version) {
-      version.classList.add('dp-app-version');
-      version.setAttribute('aria-label', 'DebridPulse version');
-      if (version.parentElement !== document.body) {
-        document.body.appendChild(version);
-      }
-    }
-
-    return Boolean(logo && version);
   }
 
   function primaryCards(host) {
@@ -113,32 +73,7 @@
       return current[index] === card;
     });
 
-    if (!alreadyOrdered) {
-      ordered.forEach(function (card) { host.appendChild(card); });
-    }
-    return true;
-  }
-
-  function observePrimaryMetrics() {
-    const host = document.getElementById('detail-stat-cards');
-    if (!host || host.dataset.dpStatsBatch5Observed === '1') return false;
-    host.dataset.dpStatsBatch5Observed = '1';
-
-    let scheduled = false;
-    new MutationObserver(function () {
-      if (scheduled) return;
-      scheduled = true;
-      queueMicrotask(function () {
-        scheduled = false;
-        normalizePrimaryOrder();
-        normalizeSuccessRateCopy();
-      });
-    }).observe(host, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['data-dp-stats-metric'],
-    });
+    if (!alreadyOrdered) ordered.forEach(function (card) { host.appendChild(card); });
     return true;
   }
 
@@ -162,9 +97,6 @@
     const queue = historicalCard('i-queue-health');
     if (!queue) return true;
 
-    /* Queue Health was retired from the reviewed Statistics surface. Keep the
-       legacy node available for older update code, but make the final layer the
-       authoritative display owner so later grid rules cannot resurrect it. */
     queue.classList.add('dp-stats-history-compat');
     queue.hidden = true;
     queue.setAttribute('aria-hidden', 'true');
@@ -186,10 +118,7 @@
       return current[index] === card;
     });
 
-    if (!alreadyOrdered) {
-      ordered.forEach(function (card) { strip.appendChild(card); });
-    }
-
+    if (!alreadyOrdered) ordered.forEach(function (card) { strip.appendChild(card); });
     suppressQueueHealth();
     return true;
   }
@@ -291,8 +220,6 @@
   }
 
   function applyBatch5(period) {
-    installCompactDurationFormatter();
-    normalizeShellBranding();
     normalizePrimaryOrder();
     normalizeHistoricalOrder();
     normalizeSuccessRateCopy(period);
@@ -300,51 +227,12 @@
     applySharedSurfaceClass();
   }
 
-  function installDetailedStatsGuard() {
-    let attempts = 0;
-    const attempt = function () {
-      attempts += 1;
-      const previous = window.loadDetailedStats;
-      if (typeof previous !== 'function' || previous.dpStatisticsBatch4 !== '1') {
-        if (attempts < 160) setTimeout(attempt, 50);
-        return;
-      }
-      if (previous.dpStatisticsBatch5 === '1') return;
-
-      const wrapped = async function (period) {
-        const resolved = selectedPeriod(period);
-        const result = await previous.call(this, resolved);
-        applyBatch5(resolved);
-        return result;
-      };
-      wrapped.dpStatisticsBatch5 = '1';
-      window.loadDetailedStats = wrapped;
-    };
-    attempt();
-  }
-
   function initialize() {
     loadBatchStyles();
-    installCompactDurationFormatter();
-    normalizeShellBranding();
-    observePrimaryMetrics();
-    installDetailedStatsGuard();
-
-    let attempts = 0;
-    const settle = function () {
-      attempts += 1;
-      const durationReady = installCompactDurationFormatter();
-      const brandingReady = normalizeShellBranding();
-      const primaryReady = normalizePrimaryOrder();
-      const historyReady = normalizeHistoricalOrder();
-      const successReady = normalizeSuccessRateCopy();
-      const chartReady = decorateChartHeader();
-      applySharedSurfaceClass();
-      if ((!durationReady || !brandingReady || !primaryReady || !historyReady || !successReady || !chartReady) && attempts < 160) {
-        setTimeout(settle, 50);
-      }
-    };
-    settle();
+    applyBatch5();
+    document.addEventListener('debridpulse:statistics-rendered', function (event) {
+      applyBatch5(event.detail && event.detail.period);
+    });
   }
 
   if (document.readyState === 'loading') {

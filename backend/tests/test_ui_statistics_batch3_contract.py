@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 BATCH_RUNTIME = STATIC / "ui-statistics-batch3.js"
 BATCH_CSS = STATIC / "ui-statistics-batch3.css"
-THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
-INDEX = STATIC / "index.html"
+PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
+SHELL_RUNTIME = STATIC / "ui-shell-runtime.js"
 FAVICON = STATIC / "favicon.svg"
 SHELL_LOGO = STATIC / "logo.svg"
 VERSION = ROOT / "VERSION"
@@ -20,26 +20,28 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_batch3_runtime_is_loaded_without_replacing_core_statistics_semantics() -> None:
-    bootstrap = read(THEME_BOOTSTRAP)
+def test_batch3_runtime_is_loaded_after_orchestrator_without_replacing_core_statistics_semantics() -> None:
+    loader = read(PRESENTATION_LOADER)
     runtime = read(BATCH_RUNTIME)
 
-    assert "/ui-statistics-batch3.js?v=2" in bootstrap
-    assert "data-dp-statistics-batch3" in bootstrap
-    assert "const result = await previous.call(this, resolved)" in runtime
-    assert "window.loadDetailedStats = wrapped" in runtime
+    assert "/ui-statistics-orchestrator.js?v=1" in loader
+    assert "/ui-statistics-batch3.js?v=3" in loader
+    assert loader.index("/ui-statistics-orchestrator.js?v=1") < loader.index("/ui-statistics-batch3.js?v=3")
+    assert "debridpulse:statistics-rendered" in runtime
+    assert "window.loadDetailedStats = wrapped" not in runtime
     assert "api('GET', '/stats/detail" not in runtime
     assert 'api("GET", "/stats/detail' not in runtime
+    assert "setTimeout(" not in runtime
 
 
 def test_browser_tab_uses_original_compact_logo_while_shell_uses_reviewed_vector_mark() -> None:
-    bootstrap = read(THEME_BOOTSTRAP)
+    shell = read(SHELL_RUNTIME)
     favicon = read(FAVICON)
     shell_logo = read(SHELL_LOGO)
 
-    assert "vectorIcon.href = '/favicon.svg?v=6'" in bootstrap
-    assert "icon32.remove()" in bootstrap
-    assert "logo.setAttribute('src', '/logo.svg?v=7')" in bootstrap
+    assert "vectorIcon.href = '/favicon.svg?v=6'" in shell
+    assert "icon32.remove()" in shell
+    assert "logo.setAttribute('src', '/logo.svg?v=7')" in shell
     assert 'viewBox="0 0 512 512"' in shell_logo
     assert 'stroke="url(#dp-outline)"' in shell_logo
     assert 'viewBox="0 0 64 64"' in favicon
@@ -75,22 +77,21 @@ def test_primary_statistics_cards_are_centered_larger_and_use_period_aware_copy(
     assert "justify-content: center" in css
 
 
-def test_batch3_reapplies_primary_semantics_when_legacy_renderer_replaces_cards() -> None:
+def test_batch3_uses_explicit_statistics_lifecycle_instead_of_dom_observers() -> None:
     runtime = read(BATCH_RUNTIME)
 
-    assert "function observePrimaryMetrics()" in runtime
-    assert "host.dataset.dpStatsBatch3Observed = '1'" in runtime
-    assert "new MutationObserver(function ()" in runtime
-    assert ".observe(host, {childList: true})" in runtime
-    assert "const primaryReady = normalizePrimaryMetrics();" in runtime
-    assert "if (!primaryReady && attempts < 160)" in runtime
+    assert "function applyBatch3(period)" in runtime
+    assert "document.addEventListener('debridpulse:statistics-rendered'" in runtime
+    assert "new MutationObserver" not in runtime
+    assert "observePrimaryMetrics" not in runtime
+    assert "settle" not in runtime
 
 
 def test_historical_kpi_order_labels_and_icons_are_not_owned_by_batch3() -> None:
     runtime = read(BATCH_RUNTIME)
 
     # Batch 5 is the sole owner. Keeping these writers out of Batch 3 prevents
-    # load-time last-writer-wins races between old and final presentation layers.
+    # last-writer-wins races between old and final presentation layers.
     for forbidden in (
         "i-queue-health",
         "i-last-day",
@@ -124,11 +125,8 @@ def test_secondary_kpi_visual_geometry_remains_available_for_final_owner() -> No
 def test_bottom_breakdowns_use_human_labels_consistent_counts_and_centered_headers() -> None:
     runtime = read(BATCH_RUNTIME)
     css = read(BATCH_CSS)
-    index = read(INDEX)
+    index = read(STATIC / "index.html")
 
-    # The four card headings are structural markup owned by index.html. Batch 3
-    # owns only the humanized row-label translations applied after app.js renders
-    # the authoritative statistics data into those bodies.
     for heading in (
         "Download Status",
         "File Status",

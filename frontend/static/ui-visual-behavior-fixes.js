@@ -9,7 +9,8 @@
  *      decorator in operator-title.js.
  *   3. Build the Statistics presentation shell around the existing controls and
  *      data nodes, select the reviewed 7-day default, and recolor only the
- *      existing Chart.js completion dataset.
+ *      existing Chart.js completion dataset after the canonical Statistics
+ *      lifecycle event.
  *
  * Core transfer behavior, statistics I/O and aria2 ownership remain in app.js
  * and backend code.
@@ -71,9 +72,6 @@
     const badge = document.getElementById('aria2-speed-badge');
     if (!badge) return;
 
-    /* app.js owns this state via `var`, so it is safe to seed neutral values
-       here. Using string "0" for maxDl preserves a visible zero through the
-       legacy `s.maxDl || '—'` renderer until real runtime data replaces it. */
     if (typeof window._aria2BadgeState === 'object' && window._aria2BadgeState) {
       window._aria2BadgeState.active = 0;
       window._aria2BadgeState.maxDl = '0';
@@ -272,38 +270,13 @@
     if (typeof chart.update === 'function') chart.update('none');
   }
 
-  function installStatisticsDetailedStatsGuard() {
-    let attempts = 0;
-    const maxAttempts = 40;
-
-    const attempt = function () {
-      attempts += 1;
-      const legacy = window.loadDetailedStats;
-      if (typeof legacy !== 'function') {
-        if (attempts < maxAttempts) setTimeout(attempt, 50);
-        return;
-      }
-      if (legacy.dpStatisticsBatch1 === '1') return;
-
-      const wrapped = async function (period) {
-        const active = document.querySelector('#stats-period-tabs .ftab.active');
-        const resolved = period || (active && active.dataset.period) || '7d';
-        const result = await legacy.call(this, resolved);
-        applyStatisticsChartPalette();
-        return result;
-      };
-      wrapped.dpStatisticsBatch1 = '1';
-      window.loadDetailedStats = wrapped;
-    };
-
-    attempt();
-  }
-
   function initializeStatisticsBatch() {
     ensureStatisticsArchitecture();
     setStatisticsSevenDayDefault();
-    installStatisticsDetailedStatsGuard();
     applyStatisticsChartPalette();
+    document.addEventListener('debridpulse:statistics-rendered', function () {
+      applyStatisticsChartPalette();
+    });
   }
 
   function initialize() {

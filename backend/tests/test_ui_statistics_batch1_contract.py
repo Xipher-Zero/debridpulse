@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 STATS_CSS = STATIC / "ui-statistics-page.css"
 VISUAL_RUNTIME = STATIC / "ui-visual-behavior-fixes.js"
+ORCHESTRATOR = STATIC / "ui-statistics-orchestrator.js"
 STATS_ICON = STATIC / "icons" / "dp" / "statistics.svg"
 ICON_MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
@@ -47,12 +48,15 @@ def test_statistics_master_card_preserves_page_heading_and_builds_internal_heade
 
 def test_statistics_period_moves_to_header_and_defaults_to_seven_days() -> None:
     runtime = read(VISUAL_RUNTIME)
+    orchestrator = read(ORCHESTRATOR)
 
     assert "item.dataset.period === '7d'" in runtime
     assert "tabs.dataset.dpDefaultPeriod = '7d'" in runtime
-    assert "|| '7d'" in runtime
+    assert "|| '7d'" in orchestrator
     assert "aria-selected" in runtime
-    assert "window.loadDetailedStats = wrapped" in runtime
+    assert "window.loadDetailedStats = wrapped" in orchestrator
+    assert "window.loadDetailedStats = wrapped" not in runtime
+    assert "debridpulse:statistics-rendered" in runtime
 
 
 def test_statistics_bottom_breakdowns_are_one_four_column_desktop_row_with_five_row_capacity() -> None:

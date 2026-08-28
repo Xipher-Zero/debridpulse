@@ -5,6 +5,10 @@
  * Existing element IDs remain authoritative so the current serializer/API
  * behavior is preserved. Controls intentionally removed from normal UI are
  * retained in a hidden preservation container until backend pruning occurs.
+ *
+ * Lifecycle contract: app.js owns renderSettings. This runtime installs one
+ * explicit post-render hook; it never infers Settings completion by observing
+ * DOM mutations on the form it rearranges.
  */
 (function () {
   'use strict';
@@ -28,10 +32,6 @@
     'tab-database',
     'tab-advanced',
   ]);
-
-  let applying = false;
-  let scheduled = false;
-  let settingsObserver = null;
 
   function installStyles() {
     if (document.getElementById('dp-settings-architecture-style')) return;
@@ -558,73 +558,58 @@
     });
   }
 
-  function observeSettingsForm() {
-    const form = document.getElementById('settings-form');
-    if (!form || !settingsObserver) return;
-    settingsObserver.observe(form, {childList: true, subtree: false});
-  }
-
   function applyArchitecture() {
     const form = document.getElementById('settings-form');
     const tabs = document.getElementById('settings-tabs');
-    if (!form || !tabs || !panel('tab-general')) return;
-    if (applying) return;
+    if (!form || !tabs || !panel('tab-general')) return false;
 
-    if (settingsObserver) settingsObserver.disconnect();
-    applying = true;
-    try {
-      installStyles();
-      preservationContainer();
-      normalizeTabs();
-      buildSourcesAndProviders();
-      buildDownloads();
-      buildExtraction();
-      buildNotifications();
-      buildDataMaintenance();
-      buildAdvanced();
-      preserveInternalAndOperationalControls();
-      normalizeTabs();
-      syncProviderStatus();
-      observeProviderStatus();
-      form.dataset.dpSettingsArchitecture = '1';
-    } finally {
-      applying = false;
-      observeSettingsForm();
-    }
-  }
-
-  function scheduleApply() {
-    if (scheduled) return;
-    scheduled = true;
-    setTimeout(function () {
-      scheduled = false;
-      applyArchitecture();
-    }, 0);
-  }
-
-  function installObserver() {
-    const form = document.getElementById('settings-form');
-    if (!form || settingsObserver) return;
-    settingsObserver = new MutationObserver(function () {
-      if (!applying) scheduleApply();
-    });
-    observeSettingsForm();
-  }
-
-  function boot() {
     installStyles();
-    const form = document.getElementById('settings-form');
-    if (!form) {
-      setTimeout(boot, 50);
-      return;
+    preservationContainer();
+    normalizeTabs();
+    buildSourcesAndProviders();
+    buildDownloads();
+    buildExtraction();
+    buildNotifications();
+    buildDataMaintenance();
+    buildAdvanced();
+    preserveInternalAndOperationalControls();
+    normalizeTabs();
+    syncProviderStatus();
+    observeProviderStatus();
+    form.dataset.dpSettingsArchitecture = '1';
+    return true;
+  }
+
+  function installSettingsRenderHook() {
+    const previous = window.renderSettings;
+    if (typeof previous !== 'function') {
+      console.error('[DebridPulse] Settings architecture not installed: renderSettings is unavailable.');
+      return false;
     }
-    installObserver();
-    scheduleApply();
+    if (previous.dpSettingsArchitecture === '1') return true;
+
+    const wrapped = function () {
+      const result = previous.apply(this, arguments);
+      applyArchitecture();
+      return result;
+    };
+    wrapped.dpSettingsArchitecture = '1';
+    window.renderSettings = wrapped;
+    return true;
+  }
+
+  function initialize() {
+    installStyles();
+    installSettingsRenderHook();
+    /* Settings may already have been rendered before the post-core presentation
+       loader reaches this runtime. Normalize that generation exactly once now;
+       future generations flow through the explicit renderSettings hook. */
+    applyArchitecture();
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot, {once: true});
+    document.addEventListener('DOMContentLoaded', initialize, {once: true});
   } else {
-    boot();
+    initialize();
   }
 })();

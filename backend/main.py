@@ -364,6 +364,19 @@ async def request_id_middleware(request: Request, call_next):
     # Origin on same-origin HTML form POSTs used by the password login flow.
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("X-Frame-Options", "DENY")
+
+    # Frontend migration assets must never rely on manually bumped ?v= values as
+    # their only coherence boundary. Keep normal conditional caching (ETag /
+    # Last-Modified) but force browser revalidation of executable/presentation
+    # resources so a new container cannot silently run an older JS/CSS/HTML mix.
+    path = request.url.path
+    static_frontend = (
+        request.method.upper() in {"GET", "HEAD"}
+        and (path == "/" or path.endswith((".html", ".js", ".css")))
+    )
+    existing_cache = response.headers.get("Cache-Control", "")
+    if static_frontend and "no-store" not in existing_cache.lower():
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
     return response
 
 

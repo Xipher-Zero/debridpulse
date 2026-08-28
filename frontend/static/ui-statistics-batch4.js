@@ -2,7 +2,7 @@
  *
  * Presentation only. The existing statistics API and Batch 3 label semantics
  * remain authoritative. This layer adds adaptive lower-card composition and a
- * bounded full-list overflow view after those renderers finish.
+ * bounded full-list overflow view after the canonical Statistics render event.
  */
 (function () {
   'use strict';
@@ -161,10 +161,6 @@
 
     const card = body.closest('.list-card');
     if (!card) return false;
-
-    /* A marker means this exact DOM generation is already normalized. Legacy
-       loadDetailedStats replaces the body contents on the next refresh, which
-       removes the marker and lets us capture the new complete result set. */
     if (body.querySelector(':scope > .dp-stats-adaptive-list')) return true;
 
     const entries = captureEntries(body);
@@ -182,43 +178,12 @@
     BREAKDOWNS.forEach(applyAdaptiveBreakdown);
   }
 
-  function installDetailedStatsGuard() {
-    let attempts = 0;
-    const attempt = function () {
-      attempts += 1;
-      const previous = window.loadDetailedStats;
-      if (typeof previous !== 'function' || previous.dpStatisticsBatch3 !== '1') {
-        if (attempts < 160) setTimeout(attempt, 50);
-        return;
-      }
-      if (previous.dpStatisticsBatch4 === '1') return;
-
-      const wrapped = async function () {
-        const result = await previous.apply(this, arguments);
-        applyAdaptiveBreakdowns();
-        return result;
-      };
-      wrapped.dpStatisticsBatch4 = '1';
-      window.loadDetailedStats = wrapped;
-    };
-    attempt();
-  }
-
   function initialize() {
     loadBatchStyles();
-    installDetailedStatsGuard();
-
-    let attempts = 0;
-    const settle = function () {
-      attempts += 1;
+    applyAdaptiveBreakdowns();
+    document.addEventListener('debridpulse:statistics-rendered', function () {
       applyAdaptiveBreakdowns();
-      const ready = BREAKDOWNS.every(function (definition) {
-        const body = document.getElementById(definition.id);
-        return !!body && (!!body.querySelector(':scope > .dp-stats-adaptive-list') || !!body.querySelector('.empty'));
-      });
-      if (!ready && attempts < 160) setTimeout(settle, 50);
-    };
-    settle();
+    });
   }
 
   if (document.readyState === 'loading') {
