@@ -1,5 +1,5 @@
 /* DebridPulse v1.0.11 Dashboard live-review batch 2.
-   Second operator review pass: topbar actions, card accents/depth, sidebar depth,
+   Second operator review pass: topbar actions, card accents/depth,
    selected-navigation energy, and Dashboard action-button polish. */
 
 /* Pause/Resume All are operational state controls, so their surfaces should
@@ -114,16 +114,15 @@ body.light.dp-v11-structural .nav-item.active::after {
     0 0 15px 4px rgba(137, 63, 235, .17);
 }
 
-/* Sidebar sits above the working canvas instead of being painted into it. */
+/* Sidebar stacking is shell behavior retained here only for migration
+   compatibility. Surface depth belongs to ui-shell-structural.css. */
 body.dp-v11-structural #sidebar {
   position: relative;
   z-index: 3;
   border-right-color: rgba(116, 130, 194, .10) !important;
-  box-shadow: 13px 0 31px -18px rgba(0, 0, 18, .50) !important;
 }
 body.light.dp-v11-structural #sidebar {
   border-right-color: rgba(113, 124, 170, .13) !important;
-  box-shadow: 14px 0 32px -18px rgba(59, 68, 107, .22) !important;
 }
 body.dp-v11-structural #main {
   position: relative;

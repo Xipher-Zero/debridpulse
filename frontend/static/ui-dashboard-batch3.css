@@ -37,15 +37,6 @@ body.dp-v11-structural #sidebar::before {
 }
 body.light.dp-v11-structural #sidebar::before { opacity: .56; }
 
-/* Sidebar depth: a darker, shorter-falloff contact shadow makes the navigation
-   rail visibly sit above the canvas. */
-body.dp-v11-structural #sidebar {
-  box-shadow: 8px 0 15px -8px rgba(0, 0, 0, .72) !important;
-}
-body.light.dp-v11-structural #sidebar {
-  box-shadow: 8px 0 15px -8px rgba(30, 35, 56, .48) !important;
-}
-
 /* Selected navigation state: restore a substantial left rail and replace the
    previous pill-like endpoint with a compact circular light source + spark. */
 body.dp-v11-structural .nav-item.active::before {
