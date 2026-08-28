@@ -38,15 +38,29 @@ def test_settings_outer_view_does_not_clip_universal_card_paint():
     assert "overflow-x: hidden" not in form
 
 
-def test_shared_shell_owns_normal_content_scroll_boundary_for_every_page():
+def test_inherited_settings_shell_state_is_neutralized_without_overriding_other_pages():
     shell = read_static("ui-shell-structural.css")
-    selector = "body.dp-v11-structural #content"
+    legacy = read_static("style.css")
+    dashboard = read_static("ui-dashboard.css")
+    settings = read_static("ui-settings-page.css")
+
+    # Legacy navigation still emits settings-active, but it must no longer make
+    # Settings use a different shell viewport. Keep the compatibility bridge in
+    # the shared shell, not in the Settings page layer itself.
+    selector = "body.dp-v11-structural #content.settings-active"
     assert selector in shell
     rule = shell.split(selector, 1)[1].split("}", 1)[0]
     assert "overflow-y: auto;" in rule
-
-    settings = read_static("ui-settings-page.css")
+    assert "#content.settings-active" in legacy
     assert "#content.settings-active" not in settings
+
+    # Do not solve Settings with a high-specificity generic overflow rule that
+    # would defeat Dashboard's intentional fixed-at-a-glance desktop viewport.
+    generic = shell.split("body.dp-v11-structural #content {", 1)[1].split("}", 1)[0]
+    assert "overflow-y:" not in generic
+    assert "#content.dashboard-active" in dashboard
+    dash_rule = dashboard.split("#content.dashboard-active", 1)[1].split("}", 1)[0]
+    assert "overflow-y: hidden;" in dash_rule
 
 
 def test_help_moves_scroll_boundary_inside_the_card_body():

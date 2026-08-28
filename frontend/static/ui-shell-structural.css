@@ -276,12 +276,20 @@ body.dp-v11-structural .theme-toggle {
   border-color: rgba(116, 130, 194, .19);
 }
 
-/* The shell owns one normal content viewport for every page. Page layers may
-   own geometry inside their .view, but they must not replace this boundary. */
+/* The shell owns the ordinary content inset. Page layers may own geometry
+   inside their .view, but they must not replace the shell material itself. */
 body.dp-v11-structural #content {
   padding: 0 var(--dp-shell-x) 24px;
-  overflow-y: auto;
   background: transparent;
+}
+
+/* Legacy app.js still toggles settings-active during navigation. Inherited
+   style.css historically used that state to turn Settings into a different
+   shell viewport. Neutralize only that obsolete behavior here so Settings
+   resolves to the same normal #content scrolling contract as other pages.
+   Remove this bridge when the legacy navigation class is pruned. */
+body.dp-v11-structural #content.settings-active {
+  overflow-y: auto;
 }
 
 body.light.dp-v11-structural {
