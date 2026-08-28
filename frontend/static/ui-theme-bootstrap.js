@@ -99,6 +99,17 @@
     document.head.appendChild(script);
   }
 
+  /* Settings IA is presentation-only. It leaves the inherited renderer and
+     backend configuration model intact, then reorganizes the rendered controls
+     into the reviewed source/downstream ownership model. */
+  if (!document.querySelector('script[data-dp-settings-architecture]')) {
+    const script = document.createElement('script');
+    script.src = '/ui-settings-architecture.js?v=1';
+    script.defer = true;
+    script.dataset.dpSettingsArchitecture = '1';
+    document.head.appendChild(script);
+  }
+
   /* Failure presentation is intentionally a separate late runtime. It waits
      until DOMContentLoaded so app.js and the canonical Lucide layer already own
      the legacy rendering functions before it installs presentation overrides. */
