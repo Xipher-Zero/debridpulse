@@ -1,16 +1,13 @@
 /* DebridPulse v1.0.11 Settings presentation shell.
  *
- * Presentation only: wraps the existing reviewed Settings information
- * architecture in one shared master card. The page-level Settings title remains
- * outside the card; the card header owns the identity block plus the centered
- * section rail, while #settings-form remains the authoritative settings body.
+ * Presentation only. Settings information architecture remains authoritative for
+ * control ownership and placement. This runtime loads after that architecture
+ * layer and composes the reviewed master-card + persistent footer-card form.
  *
- * IMPORTANT: app.js renders Settings lazily when the view is opened. Do not
- * compose the master card around the initially-empty #settings-tabs / form
- * placeholders. Wait until the Settings IA pass has rebuilt the reviewed tabs
- * and subsection cards, then compose the shell. Observe only direct-child
- * replacement of #settings-form so inherited renderSettings() refreshes can be
- * re-composed without reacting to presentation/status mutations inside Settings.
+ * Lifecycle contract: no MutationObservers. The architecture runtime already
+ * owns one explicit renderSettings hook. This layer wraps that hardened hook
+ * once, composes after each legitimate Settings render, and performs one initial
+ * composition in case Settings rendered before the presentation loader arrived.
  */
 (function () {
   'use strict';
@@ -25,14 +22,11 @@
     'tab-advanced',
   ]);
 
-  let compositionScheduled = false;
-  let formObserver = null;
-
   function loadStyles() {
     if (document.querySelector('link[data-dp-settings-presentation]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/ui-settings-presentation.css?v=1';
+    link.href = '/ui-settings-presentation.css?v=2';
     link.dataset.dpSettingsPresentation = '1';
     document.head.appendChild(link);
   }
@@ -64,25 +58,6 @@
     return identity;
   }
 
-  function normalizeTabSemantics(tabs) {
-    if (!tabs) return;
-    tabs.classList.add('dp-settings-master__tabs');
-    tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Settings sections');
-
-    tabs.querySelectorAll('.stab').forEach(function (tab) {
-      tab.setAttribute('role', 'tab');
-      tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
-    });
-  }
-
-  function syncTabSelection(tabs) {
-    if (!tabs) return;
-    tabs.querySelectorAll('.stab').forEach(function (tab) {
-      tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
-    });
-  }
-
   function settingsReadyForPresentation() {
     const tabs = document.getElementById('settings-tabs');
     const form = document.getElementById('settings-form');
@@ -91,23 +66,29 @@
     const tabIds = Array.from(tabs.querySelectorAll('.stab[data-tab]'))
       .map(function (tab) { return tab.dataset.tab; });
 
-    const hasExpectedTabs = EXPECTED_TABS.every(function (id) {
-      return tabIds.includes(id);
-    });
-    const hasExpectedPanels = EXPECTED_TABS.every(function (id) {
-      return !!form.querySelector('#' + id);
-    });
-    const iaComposed = !!form.querySelector('.dp-settings-ia-card');
-
-    return hasExpectedTabs && hasExpectedPanels && iaComposed;
+    return EXPECTED_TABS.every(function (id) { return tabIds.includes(id); })
+      && EXPECTED_TABS.every(function (id) { return !!form.querySelector('#' + id); })
+      && !!form.querySelector('.dp-settings-ia-card');
   }
 
-  function buildMaster() {
-    const view = document.getElementById('view-settings');
-    const tabs = document.getElementById('settings-tabs');
-    const form = document.getElementById('settings-form');
-    if (!view || !tabs || !form || !settingsReadyForPresentation()) return false;
+  function syncTabSelection(tabs) {
+    if (!tabs) return;
+    tabs.querySelectorAll('.stab').forEach(function (tab) {
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+    });
+  }
 
+  function installTabInteraction(tabs) {
+    if (!tabs || tabs.dataset.dpSettingsPresentationClick === '1') return;
+    tabs.dataset.dpSettingsPresentationClick = '1';
+    tabs.addEventListener('click', function (event) {
+      if (!event.target.closest('.stab')) return;
+      queueMicrotask(function () { syncTabSelection(tabs); });
+    });
+  }
+
+  function ensureMaster(view, tabs, form, saveBar) {
     let master = document.getElementById('dp-settings-master');
     if (!master) {
       master = document.createElement('section');
@@ -128,69 +109,90 @@
 
       master.appendChild(header);
       master.appendChild(body);
-
-      const saveBar = view.querySelector(':scope > .save-bar');
-      view.insertBefore(master, saveBar || null);
+      view.insertBefore(master, saveBar);
       header.appendChild(tabs);
       header.appendChild(balance);
       body.appendChild(form);
-    } else {
-      const header = master.querySelector('.dp-settings-master__header');
-      const body = master.querySelector('.dp-settings-master__body');
-      if (header && tabs.parentElement !== header) {
-        const balance = header.querySelector('.dp-settings-master__balance');
-        header.insertBefore(tabs, balance || null);
-      }
-      if (body && form.parentElement !== body) body.appendChild(form);
+      return master;
     }
 
-    view.classList.add('dp-settings-presented');
-    normalizeTabSemantics(tabs);
+    const header = master.querySelector('.dp-settings-master__header');
+    const body = master.querySelector('.dp-settings-master__body');
+    if (header && tabs.parentElement !== header) {
+      const balance = header.querySelector('.dp-settings-master__balance');
+      header.insertBefore(tabs, balance || null);
+    }
+    if (body && form.parentElement !== body) body.appendChild(form);
+    if (master.parentElement !== view) view.insertBefore(master, saveBar);
+    return master;
+  }
+
+  function normalizeFooter(view, saveBar, master) {
+    saveBar.classList.add('dp-card', 'dp-settings-footer');
+    saveBar.setAttribute('aria-label', 'Settings actions');
+
+    /* Keep the persistent action card as a sibling below the master card. */
+    if (saveBar.parentElement !== view || master.nextElementSibling !== saveBar) {
+      view.insertBefore(saveBar, master.nextElementSibling);
+    }
+  }
+
+  function composeSettingsPresentation() {
+    const view = document.getElementById('view-settings');
+    const tabs = document.getElementById('settings-tabs');
+    const form = document.getElementById('settings-form');
+    const saveBar = view && view.querySelector('.save-bar');
+    if (!view || !tabs || !form || !saveBar || !settingsReadyForPresentation()) return false;
+
+    const master = ensureMaster(view, tabs, form, saveBar);
+    normalizeFooter(view, saveBar, master);
+
+    tabs.classList.add('dp-settings-master__tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Settings sections');
     syncTabSelection(tabs);
+    installTabInteraction(tabs);
+
+    view.classList.add('dp-settings-presented');
     view.dataset.dpSettingsPresentation = '1';
     return true;
   }
 
-  function installTabObserver() {
-    const tabs = document.getElementById('settings-tabs');
-    if (!tabs || tabs.dataset.dpSettingsPresentationObserved === '1') return;
-    tabs.dataset.dpSettingsPresentationObserved = '1';
-    new MutationObserver(function () {
-      normalizeTabSemantics(tabs);
-      syncTabSelection(tabs);
-    }).observe(tabs, {childList: true, subtree: true, attributes: true, attributeFilter: ['class']});
+  function installSettingsPresentationHook() {
+    const previous = window.renderSettings;
+    if (typeof previous !== 'function') {
+      console.error('[DebridPulse] Settings presentation not installed: renderSettings is unavailable.');
+      return false;
+    }
+    if (previous.dpSettingsPresentation === '1') return true;
+    if (previous.dpSettingsArchitecture !== '1') {
+      console.error('[DebridPulse] Settings presentation not installed: architecture lifecycle owner is unavailable.');
+      return false;
+    }
+
+    const wrapped = function () {
+      const result = previous.apply(this, arguments);
+      composeSettingsPresentation();
+      return result;
+    };
+    wrapped.dpSettingsArchitecture = '1';
+    wrapped.dpSettingsPresentation = '1';
+    window.renderSettings = wrapped;
+    return true;
   }
 
-  function composeWhenReady() {
-    compositionScheduled = false;
-    if (!settingsReadyForPresentation()) return;
-    if (buildMaster()) installTabObserver();
-  }
-
-  function scheduleComposition() {
-    if (compositionScheduled) return;
-    compositionScheduled = true;
-    setTimeout(composeWhenReady, 0);
-  }
-
-  function installFormObserver() {
-    const form = document.getElementById('settings-form');
-    if (!form || formObserver) return;
-    formObserver = new MutationObserver(function () {
-      scheduleComposition();
-    });
-    formObserver.observe(form, {childList: true, subtree: false});
-  }
-
-  function boot() {
+  function initialize() {
     loadStyles();
-    installFormObserver();
-    scheduleComposition();
+    installSettingsPresentationHook();
+    /* Settings can already be rendered when the sequential presentation loader
+       reaches this runtime. Compose that generation once; future generations
+       flow through the explicit renderSettings lifecycle above. */
+    composeSettingsPresentation();
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot, {once: true});
+    document.addEventListener('DOMContentLoaded', initialize, {once: true});
   } else {
-    boot();
+    initialize();
   }
 })();
