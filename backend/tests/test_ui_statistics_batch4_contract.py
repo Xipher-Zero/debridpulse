@@ -23,9 +23,9 @@ def test_batch4_runtime_loads_after_batch3_and_preserves_statistics_api_ownershi
     bootstrap = read(THEME_BOOTSTRAP)
     runtime = read(BATCH_RUNTIME)
 
-    assert "/ui-statistics-batch3.js?v=1" in bootstrap
+    assert "/ui-statistics-batch3.js?v=2" in bootstrap
     assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch3.js?v=1") < bootstrap.index("/ui-statistics-batch4.js?v=1")
+    assert bootstrap.index("/ui-statistics-batch3.js?v=2") < bootstrap.index("/ui-statistics-batch4.js?v=1")
     assert "data-dp-statistics-batch4" in bootstrap
     assert "previous.dpStatisticsBatch3 !== '1'" in runtime
     assert "previous.dpStatisticsBatch4 === '1'" in runtime
