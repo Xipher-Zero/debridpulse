@@ -35,7 +35,8 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'placeholder="Enter your username"' in source
     assert 'placeholder="Enter your password"' in source
     assert 'data-password-reveal' in source
-    assert 'or continue with single sign-on' in source
+    assert 'or continue with user name and password' in source
+    assert 'Sign in with {provider_name}' in source
     assert 'authentik-oidc.svg' in source
     assert 'Password-only LAN deployments may operate over HTTP.' in source
     assert 'OpenID Connect requires a canonical <span class="https">HTTPS</span> external URL.' in source
@@ -64,15 +65,26 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'class="particle twinkle"' in source
     assert source.count('<circle ') >= 60
 
+    # The brand sparkline is deliberately dramatic rather than a small squiggle:
+    # tall ECG-like excursions approach the logo from both sides and a broad
+    # ghost stroke provides the luminous mockup-style halo.
+    assert '_BRAND_PULSE_LEFT = "M8 60 H118' in source
+    assert '_BRAND_PULSE_RIGHT = "M308 60' in source
+    assert 'class="pulse-left pulse-ghost"' in source
+    assert 'class="pulse-right pulse-ghost"' in source
+    assert 'stroke-width:2.6' in source
+    assert 'stroke-width:7' in source
+
     # The security note is a centered card unit rather than a left-gutter row.
     assert 'flex-direction:column;align-items:center;justify-content:center' in source
     assert 'text-align:center' in source
     assert '.foot-icon { flex:0 0 21px' in source
 
-    # Hybrid mode is deliberately local credentials first, SSO second.
-    assert source.index('<form method="post" action="/login"') < source.index(
-        'or continue with single sign-on'
-    ) < source.index('/auth/oidc/start?next=')
+    # Hybrid mode deliberately prioritizes OIDC. Local credentials remain
+    # available below a descriptive separator as the fallback path.
+    assert source.index('/auth/oidc/start?next=') < source.index(
+        'or continue with user name and password'
+    ) < source.index('<form method="post" action="/login"')
 
 
 def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
