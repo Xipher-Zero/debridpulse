@@ -8,8 +8,9 @@
  * IMPORTANT: app.js renders Settings lazily when the view is opened. Do not
  * compose the master card around the initially-empty #settings-tabs / form
  * placeholders. Wait until the Settings IA pass has rebuilt the reviewed tabs
- * and subsection cards, then compose the shell. Keep observing so later
- * renderSettings() refreshes are re-composed after the IA pass completes.
+ * and subsection cards, then compose the shell. Observe only direct-child
+ * replacement of #settings-form so inherited renderSettings() refreshes can be
+ * re-composed without reacting to presentation/status mutations inside Settings.
  */
 (function () {
   'use strict';
@@ -25,7 +26,7 @@
   ]);
 
   let compositionScheduled = false;
-  let viewObserver = null;
+  let formObserver = null;
 
   function loadStyles() {
     if (document.querySelector('link[data-dp-settings-presentation]')) return;
@@ -172,18 +173,18 @@
     setTimeout(composeWhenReady, 0);
   }
 
-  function installViewObserver() {
-    const view = document.getElementById('view-settings');
-    if (!view || viewObserver) return;
-    viewObserver = new MutationObserver(function () {
+  function installFormObserver() {
+    const form = document.getElementById('settings-form');
+    if (!form || formObserver) return;
+    formObserver = new MutationObserver(function () {
       scheduleComposition();
     });
-    viewObserver.observe(view, {childList: true, subtree: true});
+    formObserver.observe(form, {childList: true, subtree: false});
   }
 
   function boot() {
     loadStyles();
-    installViewObserver();
+    installFormObserver();
     scheduleComposition();
   }
 
