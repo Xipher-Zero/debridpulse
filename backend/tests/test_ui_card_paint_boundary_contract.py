@@ -21,6 +21,34 @@ def test_downloads_outer_view_does_not_clip_universal_card_paint():
     assert "overflow: hidden" not in desktop_rule
 
 
+def test_settings_outer_view_does_not_clip_universal_card_paint():
+    css = read_static("ui-settings-page.css")
+
+    selector = "body.dp-v11-structural #view-settings.dp-settings-page.active"
+    assert selector in css
+    rule = css.split(selector, 1)[1].split("}", 1)[0]
+    assert "overflow: visible;" in rule
+    assert "overflow: hidden" not in rule
+
+    # The form is content grouping, not a nested viewport. Shared card shadows
+    # must be able to paint through it into the master body's inset.
+    form = css.split("body.dp-v11-structural #view-settings #settings-form", 1)[1].split("}", 1)[0]
+    assert "overflow: visible;" in form
+    assert "overflow-y: auto" not in form
+    assert "overflow-x: hidden" not in form
+
+
+def test_shared_shell_owns_normal_content_scroll_boundary_for_every_page():
+    shell = read_static("ui-shell-structural.css")
+    selector = "body.dp-v11-structural #content"
+    assert selector in shell
+    rule = shell.split(selector, 1)[1].split("}", 1)[0]
+    assert "overflow-y: auto;" in rule
+
+    settings = read_static("ui-settings-page.css")
+    assert "#content.settings-active" not in settings
+
+
 def test_help_moves_scroll_boundary_inside_the_card_body():
     css = read_static("ui-help-page.css")
 
@@ -31,8 +59,12 @@ def test_help_moves_scroll_boundary_inside_the_card_body():
     assert "overflow-y: auto;" in css
 
 
-def test_help_and_downloads_corrections_do_not_redefine_card_material():
-    combined = read_static("ui-downloads-page.css") + read_static("ui-help-page.css")
+def test_help_downloads_and_settings_corrections_do_not_redefine_card_material():
+    combined = (
+        read_static("ui-downloads-page.css")
+        + read_static("ui-help-page.css")
+        + read_static("ui-settings-page.css")
+    )
 
     forbidden = (
         "--dp-panel-surface:",
@@ -49,7 +81,10 @@ def test_card_paint_boundary_page_layers_are_loaded_after_universal_language():
     overlay = read_static("style-v11.css")
 
     universal = overlay.index("/ui-universal-language.css?v=20")
+    stats = overlay.index("/ui-statistics-page.css?v=21")
+    activity = overlay.index("/ui-activity-log-page.css?v=28")
     downloads = overlay.index("/ui-downloads-page.css?v=27")
+    settings = overlay.index("/ui-settings-page.css?v=1")
     help_page = overlay.index("/ui-help-page.css?v=22")
 
-    assert universal < downloads < help_page
+    assert universal < stats < activity < downloads < settings < help_page

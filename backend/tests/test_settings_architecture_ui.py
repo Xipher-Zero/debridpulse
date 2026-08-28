@@ -198,17 +198,32 @@ def test_settings_master_tabs_are_centered_on_the_whole_card():
     assert ".dp-settings-master-balance" in css
 
 
-def test_settings_master_scrolls_above_persistent_footer_on_shared_lower_datum():
+def test_settings_uses_normal_view_paint_boundary_and_one_master_scrollport():
     css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
 
-    assert "#content.settings-active" in css
-    assert "padding-bottom: 24px !important;" in css
-    assert "#view-settings.dp-settings-page.active" in css
-    assert "flex-direction: column;" in css
-    assert ".dp-settings-master-body" in css
-    assert "overflow: hidden;" in css
-    assert "#settings-form" in css
-    assert "overflow-y: auto;" in css
+    # Settings may own composition inside its view, but it must not rewrite the
+    # shared #content shell like the inherited page did.
+    assert "#content.settings-active" not in css
+
+    root_selector = "#view-settings.dp-settings-page.active"
+    root = css[css.index(root_selector):]
+    root = root[:root.index("}")]
+    assert "overflow: visible;" in root
+    assert "overflow: hidden" not in root
+
+    master_selector = ".dp-settings-master-body"
+    master = css[css.index(master_selector):]
+    master = master[:master.index("}")]
+    assert "overflow-y: auto;" in master
+    assert "overscroll-behavior: contain;" in master
+
+    form_selector = "#settings-form"
+    form = css[css.index(form_selector):]
+    form = form[:form.index("}")]
+    assert "overflow: visible;" in form
+    assert "overflow-y: auto" not in form
+    assert "overflow-x: hidden" not in form
+
     assert ".dp-settings-footer" in css
     assert "position: static !important;" in css
     assert "flex: 0 0 auto;" in css

@@ -276,8 +276,11 @@ body.dp-v11-structural .theme-toggle {
   border-color: rgba(116, 130, 194, .19);
 }
 
+/* The shell owns one normal content viewport for every page. Page layers may
+   own geometry inside their .view, but they must not replace this boundary. */
 body.dp-v11-structural #content {
   padding: 0 var(--dp-shell-x) 24px;
+  overflow-y: auto;
   background: transparent;
 }
 
