@@ -261,12 +261,19 @@
       }
     }
 
-    const status = document.createElement('div');
-    status.className = 'dp-settings-status';
-    status.innerHTML = `
-      <div><b>Stored API key</b><br><span id="dp-settings-ad-key-state">${currentSetting('alldebrid_api_key_configured', false) ? 'Configured' : 'Not configured'}</span></div>
-      <div><b>Provider status</b><br><span id="dp-settings-ad-runtime-state">Checking current connection…</span></div>`;
-    if (connection) connection.insertBefore(status, connection.firstChild);
+    let status = connection?.querySelector('.dp-settings-status');
+    if (!status && connection) {
+      status = document.createElement('div');
+      status.className = 'dp-settings-status';
+      status.innerHTML = `
+        <div><b>Stored API key</b><br><span id="dp-settings-ad-key-state"></span></div>
+        <div><b>Provider status</b><br><span id="dp-settings-ad-runtime-state">Checking current connection…</span></div>`;
+      connection.insertBefore(status, connection.firstChild);
+    }
+    const keyState = status?.querySelector('#dp-settings-ad-key-state');
+    if (keyState) {
+      keyState.textContent = currentSetting('alldebrid_api_key_configured', false) ? 'Configured' : 'Not configured';
+    }
     contextualClear('alldebrid_api_key', connection, 'Clear Stored API Key');
 
     const advanced = createCard(
@@ -551,12 +558,19 @@
     });
   }
 
+  function observeSettingsForm() {
+    const form = document.getElementById('settings-form');
+    if (!form || !settingsObserver) return;
+    settingsObserver.observe(form, {childList: true, subtree: false});
+  }
+
   function applyArchitecture() {
     const form = document.getElementById('settings-form');
     const tabs = document.getElementById('settings-tabs');
     if (!form || !tabs || !panel('tab-general')) return;
     if (applying) return;
 
+    if (settingsObserver) settingsObserver.disconnect();
     applying = true;
     try {
       installStyles();
@@ -575,6 +589,7 @@
       form.dataset.dpSettingsArchitecture = '1';
     } finally {
       applying = false;
+      observeSettingsForm();
     }
   }
 
@@ -593,7 +608,7 @@
     settingsObserver = new MutationObserver(function () {
       if (!applying) scheduleApply();
     });
-    settingsObserver.observe(form, {childList: true, subtree: false});
+    observeSettingsForm();
   }
 
   function boot() {
