@@ -1,0 +1,238 @@
+/* DebridPulse v1.0.11 Settings presentation shell.
+ *
+ * Presentation only. The Settings information-architecture runtime remains
+ * authoritative for which controls live in each section; this layer gives the
+ * reviewed Settings page the same page-title -> master-card visual hierarchy as
+ * the other v1.0.11 surfaces.
+ */
+
+body.dp-v11-structural #view-settings.dp-settings-presented {
+  min-height: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master {
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 14px;
+  overflow: hidden;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__header {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 16px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--dp-border-subtle);
+  background:
+    radial-gradient(circle at 12% 40%, color-mix(in srgb, var(--dp-accent-purple-bright) 10%, transparent), transparent 34%),
+    color-mix(in srgb, var(--dp-surface-2) 92%, transparent);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__identity {
+  grid-column: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__icon-frame {
+  width: var(--dp-feature-icon-size, 51px);
+  height: var(--dp-feature-icon-size, 51px);
+  flex: 0 0 var(--dp-feature-icon-size, 51px);
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 34%, var(--dp-border-default));
+  border-radius: var(--dp-radius-md);
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--dp-accent-purple-bright) 20%, transparent), transparent 62%),
+    color-mix(in srgb, var(--dp-accent-purple) 10%, #080b18);
+  color: #c58cff;
+  box-shadow:
+    0 0 7px color-mix(in srgb, var(--dp-accent-purple-bright) 44%, transparent),
+    0 0 18px color-mix(in srgb, var(--dp-accent-purple-bright) 18%, transparent);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__icon-frame svg {
+  width: 25px;
+  height: 25px;
+  stroke: currentColor;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__title {
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__subtitle {
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Equal left/right grid columns keep the section rail centered against the
+   whole master card rather than centered in the space left over by the title. */
+body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs {
+  grid-column: 2;
+  justify-self: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-md);
+  background: color-mix(in srgb, var(--dp-surface-1) 78%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 3%, transparent);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs .stab {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  margin: 0;
+  border: 0 !important;
+  border-radius: var(--dp-radius-sm) !important;
+  background: transparent;
+  color: var(--dp-text-muted);
+  font-size: var(--dp-type-control-size, 12px);
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .14s ease, background-color .14s ease, box-shadow .14s ease;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs .stab:hover {
+  color: var(--dp-text-primary);
+  background: color-mix(in srgb, var(--dp-accent-purple) 7%, transparent);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs .stab.active,
+body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs .stab[aria-selected="true"] {
+  color: var(--dp-nav-active-text);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dp-accent-purple-bright) 38%, var(--dp-surface-2)),
+    color-mix(in srgb, var(--dp-accent-purple) 28%, var(--dp-surface-2))
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--dp-accent-purple-bright) 28%, transparent),
+    0 0 12px color-mix(in srgb, var(--dp-accent-purple-bright) 12%, transparent);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__balance {
+  grid-column: 3;
+  min-width: 0;
+  min-height: 1px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__body {
+  min-width: 0;
+  padding: 12px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__body > #settings-form {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__body #settings-form > .settings-panel,
+body.dp-v11-structural #view-settings .dp-settings-master__body #settings-form > [id^="tab-"] {
+  margin-top: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__body .dp-settings-ia-card:first-child {
+  margin-top: 0 !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-master__body .dp-settings-ia-card:last-child {
+  margin-bottom: 0 !important;
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-master__header {
+  background:
+    radial-gradient(circle at 12% 40%, color-mix(in srgb, var(--dp-accent-purple-bright) 9%, transparent), transparent 34%),
+    color-mix(in srgb, var(--dp-surface-2) 94%, #fff);
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-master__icon-frame {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--dp-accent-purple-bright) 20%, transparent), transparent 62%),
+    color-mix(in srgb, var(--dp-accent-purple) 10%, #080b18);
+  box-shadow:
+    0 0 7px color-mix(in srgb, var(--dp-accent-purple-bright) 42%, transparent),
+    0 0 18px color-mix(in srgb, var(--dp-accent-purple-bright) 17%, transparent);
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-master__header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    row-gap: 10px;
+    padding-block: 12px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-master__identity {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: stretch;
+    width: 100%;
+    justify-content: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-master__balance {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  body.dp-v11-structural #view-settings .dp-settings-master__header {
+    padding-inline: 12px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-master #settings-tabs {
+    justify-content: flex-start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-master__body {
+    padding: 10px;
+  }
+}
