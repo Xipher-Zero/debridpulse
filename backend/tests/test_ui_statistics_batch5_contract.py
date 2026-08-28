@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
+BATCH3_RUNTIME = STATIC / "ui-statistics-batch3.js"
 BATCH_RUNTIME = STATIC / "ui-statistics-batch5.js"
 BATCH_CSS = STATIC / "ui-statistics-batch5.css"
 SURFACES = STATIC / "ui-panel-surface-treatment.css"
@@ -25,8 +26,8 @@ def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> No
     runtime = read(BATCH_RUNTIME)
 
     assert "/ui-statistics-batch4.js?v=1" in bootstrap
-    assert "/ui-statistics-batch5.js?v=5" in bootstrap
-    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=5")
+    assert "/ui-statistics-batch5.js?v=6" in bootstrap
+    assert bootstrap.index("/ui-statistics-batch4.js?v=1") < bootstrap.index("/ui-statistics-batch5.js?v=6")
     assert "data-dp-statistics-batch5" in bootstrap
     assert "previous.dpStatisticsBatch4 !== '1'" in runtime
     assert "wrapped.dpStatisticsBatch5 = '1'" in runtime
@@ -34,6 +35,20 @@ def test_batch5_loads_after_batch4_and_preserves_statistics_io_ownership() -> No
     assert "'/ui-statistics-batch5.css?v=2'" in runtime
     for forbidden in ("fetch(", "api(", "/stats/detail", "XMLHttpRequest", "EventSource"):
         assert forbidden not in runtime
+
+
+def test_statistics_dynamic_presentation_chain_is_explicitly_serialized() -> None:
+    bootstrap = read(THEME_BOOTSTRAP)
+
+    visual = bootstrap.index("script.src = '/ui-visual-behavior-fixes.js?v=22'")
+    batch3 = bootstrap.index("script.src = '/ui-statistics-batch3.js?v=2'")
+    batch4 = bootstrap.index("script.src = '/ui-statistics-batch4.js?v=1'")
+    batch5 = bootstrap.index("script.src = '/ui-statistics-batch5.js?v=6'")
+    assert visual < batch3 < batch4 < batch5
+
+    statistics_chain = bootstrap[bootstrap.index("/* These presentation runtimes"):bootstrap.index("/* Settings IA")]
+    assert statistics_chain.count("script.async = false;") == 4
+    assert "`defer` does not establish execution order for dynamic scripts" in statistics_chain
 
 
 def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
@@ -70,6 +85,49 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     assert value_selector in css
     value_segment = css[css.index(value_selector):].split('}', 1)[0]
     assert "color: var(--c) !important" in value_segment
+
+
+def test_batch5_is_sole_historical_kpi_presentation_owner() -> None:
+    runtime = read(BATCH_RUNTIME)
+    batch3 = read(BATCH3_RUNTIME)
+
+    for value_id in ("i-last-day", "i-last-week", "i-avg-duration", "i-success-rate", "i-avg-size"):
+        assert value_id in runtime
+        assert value_id not in batch3
+
+    for reviewed_copy in (
+        "Last 24 Hours",
+        "Completed downloads over the last 24 hours.",
+        "Last 7 Days",
+        "Completed downloads over the last 7 days.",
+        "MEAN DOWNLOAD TIME",
+        "LIFE-TIME SUCCESS RATE",
+        "MEAN DOWNLOAD SIZE",
+    ):
+        assert reviewed_copy in runtime
+
+    for class_name in (
+        "dp-stats-kpi-day",
+        "dp-stats-kpi-week",
+        "dp-stats-kpi-duration",
+        "dp-stats-kpi-success",
+        "dp-stats-kpi-size",
+    ):
+        assert class_name in runtime
+
+    assert "/icons/dp/heartbeat-outline.svg" in runtime
+
+
+def test_primary_kpi_order_is_idempotent_and_reasserted_after_legacy_render() -> None:
+    runtime = read(BATCH_RUNTIME)
+
+    assert "const alreadyOrdered = ordered.every" in runtime
+    assert "if (!alreadyOrdered)" in runtime
+    assert "function observePrimaryMetrics()" in runtime
+    assert "host.dataset.dpStatsBatch5Observed = '1'" in runtime
+    assert "attributeFilter: ['data-dp-stats-metric']" in runtime
+    assert "normalizePrimaryOrder();" in runtime
+    assert "normalizeSuccessRateCopy();" in runtime
 
 
 def test_queue_health_cannot_resurface_in_final_statistics_layer() -> None:
