@@ -19,7 +19,9 @@ def test_first_paint_does_not_own_page_runtimes():
         "ui-statistics-batch3.js",
         "ui-statistics-batch4.js",
         "ui-statistics-batch5.js",
+        "ui-settings-page.js",
         "ui-settings-architecture.js",
+        "ui-settings-presentation.js",
         "ui-error-semantics.js",
     ):
         assert page_runtime not in bootstrap
@@ -55,12 +57,16 @@ def test_statistics_layers_share_one_post_render_event():
         assert "debridpulse:statistics-rendered" in read(name)
 
 
-def test_settings_form_is_not_used_as_render_lifecycle_bus():
-    settings = read("ui-settings-architecture.js")
-    assert "window.renderSettings = wrapped" in settings
+def test_settings_page_is_direct_and_not_dom_lifecycle_driven():
+    settings = read("ui-settings-page.js")
+    assert "window.renderSettings = render" in settings
+    assert "window.getFormSettings = serialize" in settings
+    assert "view.innerHTML = `" in settings
     assert "settingsObserver" not in settings
     assert "observeSettingsForm" not in settings
     assert "scheduleApply" not in settings
+    assert "new MutationObserver" not in settings
+    assert "dp-settings-preserved" not in settings
 
 
 def test_statistics_page_does_not_own_global_shell_branding():
