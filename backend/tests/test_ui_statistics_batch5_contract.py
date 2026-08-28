@@ -88,105 +88,216 @@ def test_kpi_rows_use_reviewed_order_and_semantic_color_families() -> None:
     assert "--c: var(--dp-state-active) !important" in css
 
     value_selector = ".dp-stats-history-grid .dash-kpi-val"
-    value_block = css[css.index(value_selector):]
-    value_block = value_block[:value_block.index("}")]
-    assert "font-size: 31px" in value_block
+    assert value_selector in css
+    value_segment = css[css.index(value_selector):].split('}', 1)[0]
+    assert "color: var(--c) !important" in value_segment
 
 
 def test_batch5_is_sole_historical_kpi_presentation_owner() -> None:
+    runtime = read(BATCH_RUNTIME)
     batch3 = read(BATCH3_RUNTIME)
-    batch5 = read(BATCH_RUNTIME)
 
-    assert "HISTORY_ORDER" not in batch3
-    assert "i-last-day" not in batch3
-    assert "i-last-week" not in batch3
-    assert "i-avg-duration" not in batch3
-    assert "i-success-rate" not in batch3
-    assert "i-avg-size" not in batch3
+    for value_id in ("i-last-day", "i-last-week", "i-avg-duration", "i-success-rate", "i-avg-size"):
+        assert value_id in runtime
+        assert value_id not in batch3
 
-    assert "HISTORY_ORDER" in batch5
-    assert "Last 24 Hours" in batch5
-    assert "Last 7 Days" in batch5
-    assert "MEAN DOWNLOAD TIME" in batch5
-    assert "LIFE-TIME SUCCESS RATE" in batch5
-    assert "MEAN DOWNLOAD SIZE" in batch5
-    assert "/icons/dp/heartbeat-outline.svg" in batch5
+    for reviewed_copy in (
+        "Last 24 Hours",
+        "Completed downloads over the last 24 hours.",
+        "Last 7 Days",
+        "Completed downloads over the last 7 days.",
+        "MEAN DOWNLOAD TIME",
+        "LIFE-TIME SUCCESS RATE",
+        "MEAN DOWNLOAD SIZE",
+    ):
+        assert reviewed_copy in runtime
+
+    for class_name in (
+        "dp-stats-kpi-day",
+        "dp-stats-kpi-week",
+        "dp-stats-kpi-duration",
+        "dp-stats-kpi-success",
+        "dp-stats-kpi-size",
+    ):
+        assert class_name in runtime
+
+    assert "/icons/dp/heartbeat-outline.svg" in runtime
 
 
 def test_primary_kpi_order_is_idempotent_and_event_driven_after_legacy_render() -> None:
     runtime = read(BATCH_RUNTIME)
 
-    assert "const PRIMARY_ORDER = ['downloads', 'completed', 'progress', 'success', 'data'];" in runtime
-    assert "debridpulse:statistics-rendered" in runtime
-    assert "new MutationObserver" not in runtime
-    assert "setTimeout(" not in runtime
-    assert "window.loadDetailedStats = wrapped" not in runtime
-    assert "currentOrder === desiredOrder" in runtime
+    assert "const alreadyOrdered = ordered.every" in runtime
+    assert "if (!alreadyOrdered) ordered.forEach" in runtime
+    assert "document.addEventListener('debridpulse:statistics-rendered'" in runtime
+    assert "normalizePrimaryOrder();" in runtime
+    assert "normalizeSuccessRateCopy(period);" in runtime
 
 
 def test_queue_health_cannot_resurface_in_final_statistics_layer() -> None:
     runtime = read(BATCH_RUNTIME)
-    assert "Queue Health" in runtime
-    assert "aria-hidden" in runtime
-    assert "display:none !important" in runtime
+
+    assert "function suppressQueueHealth()" in runtime
+    assert "historicalCard('i-queue-health')" in runtime
+    assert "queue.hidden = true" in runtime
+    assert "queue.setAttribute('aria-hidden', 'true')" in runtime
+    assert "queue.style.setProperty('display', 'none', 'important')" in runtime
+    assert "suppressQueueHealth();" in runtime
 
 
 def test_statistics_kpi_rows_share_title_value_flavor_vertical_anchors() -> None:
     css = read(BATCH_CSS)
-    assert ".dp-stats-primary-grid .dash-kpi-label" in css
-    assert ".dp-stats-primary-grid .dash-kpi-val" in css
-    assert ".dp-stats-primary-grid .dash-kpi-sub" in css
-    assert ".dp-stats-history-grid .dash-kpi-label" in css
-    assert ".dp-stats-history-grid .dash-kpi-sub" in css
+    marker = "/* ── Shared KPI vertical anchors"
+    assert marker in css
+    alignment = css.split(marker, 1)[1]
+
+    assert "grid-template-rows: 18px 48px minmax(28px, auto) !important;" in alignment
+    assert "padding: 20px 16px 14px !important;" in alignment
+    assert "#detail-stat-cards :is(.metric-label, .stat-label)" in alignment
+    assert "#detail-stat-cards :is(.metric-value, .stat-value)" in alignment
+    assert "#detail-stat-cards :is(.metric-sub, .stat-sub)" in alignment
+
+    assert "grid-template-rows: 18px 28px minmax(24px, auto) !important;" in alignment
+    assert "padding: 14px 14px 12px !important;" in alignment
+
+    label = alignment[alignment.index(".dp-stats-history-grid .dash-kpi-lbl"):].split("}", 1)[0]
+    value = alignment[alignment.index(".dp-stats-history-grid .dash-kpi-val"):].split("}", 1)[0]
+    sub = alignment[alignment.index(".dp-stats-history-grid .dash-kpi-sub"):].split("}", 1)[0]
+    assert "grid-row: 1 !important;" in label
+    assert "grid-row: 2 !important;" in value
+    assert "grid-row: 3 !important;" in sub
+    assert "align-content: start !important;" in alignment
 
 
 def test_success_rate_copy_distinguishes_period_and_life_time_scopes() -> None:
     runtime = read(BATCH_RUNTIME)
-    assert "Share of finished downloads completed successfully during" in runtime
+
+    for flavor in (
+        "Share of finished downloads completed successfully during the last hour.",
+        "Share of finished downloads completed successfully during the last 24 hours.",
+        "Share of finished downloads completed successfully during the last 7 days.",
+        "Share of finished downloads completed successfully during the last 30 days.",
+        "Share of finished downloads completed successfully during the last year.",
+        "Share of finished downloads completed successfully across all recorded history.",
+    ):
+        assert flavor in runtime
+
+    assert "LIFE-TIME SUCCESS RATE" in runtime
     assert "Share of all recorded finished downloads completed successfully." in runtime
+    assert "normalizeSuccessRateCopy(period)" in runtime
 
 
 def test_average_duration_is_owned_once_by_statistics_orchestrator() -> None:
     orchestrator = read(ORCHESTRATOR)
-    batch5 = read(BATCH_RUNTIME)
-    assert "i-avg-duration" in orchestrator
-    assert "formatDurationCompact" in orchestrator
-    assert "formatDurationCompact" not in batch5
+    runtime = read(BATCH_RUNTIME)
+
+    assert "function formatCompactDuration(seconds)" in orchestrator
+    assert "Math.max(1, Math.round(value / 60))" in orchestrator
+    assert "parts.push(days + 'D')" in orchestrator
+    assert "parts.push(hours + 'H')" in orchestrator
+    assert "parts.push(minutes + 'M')" in orchestrator
+    assert "return parts.join(' ')" in orchestrator
+    assert "window.fmtDuration = formatCompactDuration" in orchestrator
+    assert "formatCompactDuration" not in runtime
 
 
 def test_secondary_kpi_glyphs_are_centered_without_resizing_the_chip() -> None:
     css = read(BATCH_CSS)
-    assert ".dp-stats-history-grid .dash-kpi-icon" in css
-    assert "display: grid" in css
-    assert "place-items: center" in css
+
+    assert ".dp-stats-history-grid .dp-kpi-icon > .dp-icon" in css
+    assert "top: 50% !important" in css
+    assert "left: 50% !important" in css
+    assert "transform: translate(-50%, -50%) !important" in css
+    assert "--dp-icon-frame-size" not in css
 
 
 def test_completion_chart_uses_standard_two_line_feature_header() -> None:
     runtime = read(BATCH_RUNTIME)
-    assert "Downloads completed over the selected period." in runtime
-    assert "/icons/dp/card-download.svg" in runtime
+    css = read(BATCH_CSS)
+
+    assert "heading.textContent = 'Completions'" in runtime
+    assert "dp-stats-chart-title-icon" in runtime
+    assert "'/icons/dp/card-download.svg'" in runtime
+    assert "chartTitle.className = 'dp-stats-chart-subtitle'" in runtime
+    for flavor in (
+        "Completed downloads in the last hour.",
+        "Completed downloads in the last 24 hours.",
+        "Completed downloads in the last 7 days.",
+        "Completed downloads in the last 30 days.",
+        "Completed downloads in the last year.",
+        "Completed downloads across all recorded history.",
+    ):
+        assert flavor in runtime
+
+    assert "min-height: 72px !important" in css
+    assert "width: var(--dp-feature-icon-size, 51px) !important" in css
+    assert ".dp-stats-chart .scard-header::before" in css
+    assert "content: none !important" in css
 
 
 def test_breakdowns_reuse_shared_list_surface_and_five_row_cadence() -> None:
     runtime = read(BATCH_RUNTIME)
+    css = read(BATCH_CSS)
     surfaces = read(SURFACES)
-    assert "dp-stats-breakdown-list" in runtime
-    assert "slice(0, 10)" in runtime
-    assert "dp-stats-breakdown-list" in surfaces
+    overlay = read(STYLE_V11)
+
+    assert "dp-list-workspace-surface" in surfaces
+    assert ".dp-list-workspace-surface" in surfaces
+    assert "chartCard.classList.add('dp-list-workspace-surface')" in runtime
+    for detail_id in (
+        "detail-torrent-status",
+        "detail-file-status",
+        "detail-event-levels",
+        "detail-sources",
+    ):
+        assert detail_id in runtime
+    assert "card.classList.add('dp-list-workspace-surface')" in runtime
+    assert "line-height: 20px !important" in css
+    assert "min-height: 20px !important" in css
+    assert "/ui-panel-surface-treatment.css?v=22" in overlay
 
 
 def test_shell_branding_is_owned_outside_statistics() -> None:
     runtime = read(BATCH_RUNTIME)
+    css = read(BATCH_CSS)
     shell_runtime = read(SHELL_RUNTIME)
-    shell_brand = read(SHELL_BRAND)
+    shell_css = read(SHELL_BRAND)
 
-    assert "normalizeShellBranding" not in runtime
-    assert "sidebar-version" not in runtime
-    assert "normalizeShellBranding" in shell_runtime
-    assert "#sidebar-version.dp-app-version" in shell_brand
+    for forbidden in ("normalizeShellBranding", "sidebar-version", "/logo.svg?v=7"):
+        assert forbidden not in runtime
+    assert "#sidebar .logo-name" not in css
+    assert "#sidebar-version.dp-app-version" not in css
+
+    assert "function normalizeShellBranding()" in shell_runtime
+    assert "'/logo.svg?v=7'" in shell_runtime
+    assert "version.classList.add('dp-app-version')" in shell_runtime
+    assert "document.body.appendChild(version)" in shell_runtime
+
+    selector = "body.dp-v11-structural > #sidebar-version.dp-app-version"
+    assert selector in shell_css
+    segment = shell_css[shell_css.index(selector):].split('}', 1)[0]
+    assert "position: fixed !important" in segment
+    assert "right: max(" in segment
+    assert "var(--dp-shell-x)" in segment
+    assert "var(--dp-shell-sidebar)" in segment
+    assert "var(--dp-content-max-width)" in segment
+    assert "bottom: 7px !important" in segment
+    assert "text-align: right" in segment
+    assert "font-size: 9px" in segment
+
+    assert "#sidebar .logo-name" in shell_css
+    assert "font-size: 20px" in shell_css
+    assert "body.light.dp-v11-structural #sidebar .logo-icon" in shell_css
+    light_logo = shell_css[shell_css.index("body.light.dp-v11-structural #sidebar .logo-icon"):].split('}', 1)[0]
+    assert "border: 0 !important" in light_logo
+    assert "outline: 0 !important" in light_logo
+    assert "background: transparent !important" in light_logo
+    assert "box-shadow: none !important" in light_logo
+    assert "drop-shadow" in light_logo
 
 
 def test_ci_syntax_checks_batch5_runtime_and_version_stays_frozen() -> None:
     workflow = read(WORKFLOW)
     assert "node --check frontend/static/ui-statistics-batch5.js" in workflow
+    assert "node --check frontend/static/ui-statistics-orchestrator.js" in workflow
     assert read(VERSION).strip() == "1.0.10"
