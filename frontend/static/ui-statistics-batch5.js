@@ -9,8 +9,8 @@
   const HISTORY_ORDER = Object.freeze([
     'i-last-day',
     'i-last-week',
-    'i-success-rate',
     'i-avg-duration',
+    'i-success-rate',
     'i-avg-size',
   ]);
   const BREAKDOWN_IDS = Object.freeze([
