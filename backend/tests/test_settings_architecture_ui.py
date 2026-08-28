@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_JS = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
 SETTINGS_IA_JS = ROOT / "frontend" / "static" / "ui-settings-architecture.js"
 APP_JS = ROOT / "frontend" / "static" / "app.js"
+TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
 def test_settings_information_architecture_runtime_is_loaded_additively():
@@ -19,6 +20,11 @@ def test_settings_information_architecture_runtime_is_loaded_additively():
     # The inherited renderer remains present until the post-UI backend pruning pass.
     assert "Delivery Mode" in app
     assert "Agent Name" in app
+
+
+def test_settings_runtime_is_owned_by_frontend_syntax_gate():
+    workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
+    assert "node --check frontend/static/ui-settings-architecture.js" in workflow
 
 
 def test_settings_tabs_match_reviewed_ownership_order():

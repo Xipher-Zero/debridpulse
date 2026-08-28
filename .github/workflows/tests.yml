@@ -68,6 +68,7 @@ jobs:
           node --check frontend/static/ui-downloads-runtime.js
           node --check frontend/static/ui-accessibility-runtime.js
           node --check frontend/static/ui-theme-bootstrap.js
+          node --check frontend/static/ui-settings-architecture.js
           node --check frontend/static/ui-visual-behavior-fixes.js
           node --check frontend/static/ui-statistics-batch3.js
           node --check frontend/static/ui-statistics-batch4.js
