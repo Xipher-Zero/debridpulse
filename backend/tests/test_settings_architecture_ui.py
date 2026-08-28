@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_JS = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
 SETTINGS_IA_JS = ROOT / "frontend" / "static" / "ui-settings-architecture.js"
+SETTINGS_PRESENTATION_JS = ROOT / "frontend" / "static" / "ui-settings-presentation.js"
+SETTINGS_PRESENTATION_CSS = ROOT / "frontend" / "static" / "ui-settings-presentation.css"
 APP_JS = ROOT / "frontend" / "static" / "app.js"
 TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
@@ -25,6 +27,7 @@ def test_settings_information_architecture_runtime_is_loaded_additively():
 def test_settings_runtime_is_owned_by_frontend_syntax_gate():
     workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
     assert "node --check frontend/static/ui-settings-architecture.js" in workflow
+    assert "node --check frontend/static/ui-settings-presentation.js" in workflow
 
 
 def test_settings_tabs_match_reviewed_ownership_order():
@@ -184,3 +187,36 @@ def test_settings_architecture_observer_cannot_retrigger_from_its_own_dom_moves(
     assert disconnect < mutate < reconnect
     assert "function observeSettingsForm()" in source
     assert "observeSettingsForm();" in observer_block
+
+
+def test_settings_master_card_wraps_tabs_and_authoritative_form():
+    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
+
+    assert "master.id = 'dp-settings-master'" in source
+    assert "master.className = 'dp-card dp-settings-master'" in source
+    assert "header.appendChild(tabs)" in source
+    assert "body.appendChild(form)" in source
+    assert "view.insertBefore(master, saveBar || null)" in source
+    assert "Configure providers, downloads, notifications, and system behavior." in source
+
+
+def test_settings_master_header_keeps_tab_rail_centered_against_whole_card():
+    css = SETTINGS_PRESENTATION_CSS.read_text(encoding="utf-8")
+
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in css
+    assert "#settings-tabs" in css
+    assert "grid-column: 2;" in css
+    assert "justify-self: center;" in css
+    assert ".dp-settings-master__identity" in css
+    assert ".dp-settings-master__balance" in css
+
+
+def test_settings_presentation_loads_after_information_architecture():
+    bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
+
+    architecture = bootstrap.index("/ui-settings-architecture.js?v=1")
+    presentation = bootstrap.index("/ui-settings-presentation.js?v=1")
+    assert architecture < presentation
+
+    settings_block = bootstrap[bootstrap.index("Settings IA owns control placement only"):bootstrap.index("Failure presentation")]
+    assert settings_block.count("script.async = false;") == 2
