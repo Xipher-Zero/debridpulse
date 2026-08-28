@@ -40,9 +40,9 @@ def test_selected_navigation_restores_left_rail_and_right_spark() -> None:
     assert "rgba(126, 48, 239, .58)" in BATCH2
 
 
-def test_sidebar_and_dashboard_panels_have_directional_depth() -> None:
-    assert "13px 0 31px -18px" in BATCH2
-    assert "14px 0 32px -18px" in BATCH2
+def test_dashboard_panels_keep_directional_depth_without_owning_shell_shadow() -> None:
+    assert "13px 0 31px -18px" not in BATCH2
+    assert "14px 0 32px -18px" not in BATCH2
     assert "-7px 9px 24px -14px" in BATCH2
     assert "-8px 10px 25px -14px" in BATCH2
 
