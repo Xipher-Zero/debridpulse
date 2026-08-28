@@ -80,11 +80,14 @@ def test_login_batch1_preserves_auth_order_and_reviewed_visual_contract() -> Non
     assert 'text-align:center' in source
     assert '.foot-icon { flex:0 0 21px' in source
 
-    # Hybrid mode deliberately prioritizes OIDC. Local credentials remain
-    # available below a descriptive separator as the fallback path.
-    assert source.index('/auth/oidc/start?next=') < source.index(
-        'or continue with user name and password'
-    ) < source.index('<form method="post" action="/login"')
+    # Hybrid mode deliberately prioritizes OIDC in the assembled controls.
+    # Local credentials are appended only after the explanatory separator.
+    oidc_append = source.index('controls.append(oidc_control)')
+    divider_append = source.index(
+        'controls.append(\'<div class="divider"><span>or continue with user name and password</span></div>\')'
+    )
+    password_append = source.index('controls.append(password_control)')
+    assert oidc_append < divider_append < password_append
 
 
 def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
