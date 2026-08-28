@@ -27,7 +27,8 @@ def test_settings_presentation_is_not_part_of_global_first_paint_bootstrap():
 
     assert "ui-settings-presentation.js" not in bootstrap
     assert "data-dp-settings-presentation" not in bootstrap
-    assert "Page-specific Settings presentation must not be injected" in bootstrap
+    assert "Page-specific Settings" in bootstrap
+    assert "presentation must not be injected from this first-paint bootstrap" in bootstrap
 
 
 def test_settings_runtime_is_owned_by_frontend_syntax_gate():
