@@ -70,8 +70,7 @@ jobs:
           node --check frontend/static/ui-theme-bootstrap.js
           node --check frontend/static/ui-presentation-loader.js
           node --check frontend/static/ui-shell-runtime.js
-          node --check frontend/static/ui-settings-architecture.js
-          node --check frontend/static/ui-settings-presentation.js
+          node --check frontend/static/ui-settings-page.js
           node --check frontend/static/ui-visual-behavior-fixes.js
           node --check frontend/static/ui-statistics-orchestrator.js
           node --check frontend/static/ui-statistics-batch3.js
