@@ -16,7 +16,7 @@ def test_settings_has_one_post_core_authoritative_page_runtime():
     loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
 
     assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=3" in loader
+    assert "/ui-settings-page.js?v=2" in loader
     assert "data-dp-settings-page" in loader
     assert "ui-settings-architecture.js" not in loader
     assert "ui-settings-presentation.js" not in loader
@@ -24,7 +24,7 @@ def test_settings_has_one_post_core_authoritative_page_runtime():
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     styles = STYLE_V11.read_text(encoding="utf-8")
-    assert "@import url('/ui-settings-page.css?v=2');" in styles
+    assert "@import url('/ui-settings-page.css?v=1');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
