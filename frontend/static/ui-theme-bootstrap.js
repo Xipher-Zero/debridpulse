@@ -56,13 +56,18 @@
 
   installReviewedBrandAssets();
 
+  /* These presentation runtimes are dynamically inserted classic scripts.
+     `defer` does not establish execution order for dynamic scripts, so keep
+     async=false on the Statistics chain. That makes the reviewed layers execute
+     in insertion order rather than whichever network/cache fetch finishes first. */
+
   /* Visual-review behavior corrections are deliberately isolated from app.js.
      They own only first-paint shell hydration, action-icon semantics and
      presentation-only Statistics composition. */
   if (!document.querySelector('script[data-dp-visual-behavior-fixes]')) {
     const script = document.createElement('script');
+    script.async = false;
     script.src = '/ui-visual-behavior-fixes.js?v=22';
-    script.defer = true;
     script.dataset.dpVisualBehaviorFixes = '1';
     document.head.appendChild(script);
   }
@@ -72,8 +77,8 @@
      authoritative while the reviewed wording/layout is applied after render. */
   if (!document.querySelector('script[data-dp-statistics-batch3]')) {
     const script = document.createElement('script');
-    script.src = '/ui-statistics-batch3.js?v=1';
-    script.defer = true;
+    script.async = false;
+    script.src = '/ui-statistics-batch3.js?v=2';
     script.dataset.dpStatisticsBatch3 = '1';
     document.head.appendChild(script);
   }
@@ -82,19 +87,20 @@
      normalization while preserving Batch 3's semantic copy. */
   if (!document.querySelector('script[data-dp-statistics-batch4]')) {
     const script = document.createElement('script');
+    script.async = false;
     script.src = '/ui-statistics-batch4.js?v=1';
-    script.defer = true;
     script.dataset.dpStatisticsBatch4 = '1';
     document.head.appendChild(script);
   }
 
   /* Statistics Batch 5 is the final reviewed presentation layer. It loads after
-     Batch 4 and owns ordering, semantic color, scope-explicit KPI copy,
-     chart-header composition, shared surface opt-in and shell-brand presentation. */
+     Batch 4 and exclusively owns historical KPI ordering/labels/icons plus
+     primary-card ordering, scope-explicit copy, chart-header composition,
+     shared surface opt-in and shell-brand presentation. */
   if (!document.querySelector('script[data-dp-statistics-batch5]')) {
     const script = document.createElement('script');
-    script.src = '/ui-statistics-batch5.js?v=5';
-    script.defer = true;
+    script.async = false;
+    script.src = '/ui-statistics-batch5.js?v=6';
     script.dataset.dpStatisticsBatch5 = '1';
     document.head.appendChild(script);
   }
