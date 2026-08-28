@@ -14,10 +14,11 @@ SHELL_STYLE = STATIC / "ui-shell-structural.css"
 SHELL_BRAND = STATIC / "ui-shell-brand.css"
 ACTIVITY_STYLE = STATIC / "ui-activity-log-page.css"
 DOWNLOADS_STYLE = STATIC / "ui-downloads-page.css"
+SETTINGS_STYLE = STATIC / "ui-settings-page.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
 STATISTICS_ORCHESTRATOR = STATIC / "ui-statistics-orchestrator.js"
-SETTINGS_RUNTIME = STATIC / "ui-settings-architecture.js"
+SETTINGS_RUNTIME = STATIC / "ui-settings-page.js"
 ERROR_RUNTIME = STATIC / "ui-error-semantics.js"
 UI_RUNTIME = STATIC / "ui-runtime.js"
 DOWNLOADS_RUNTIME = STATIC / "ui-downloads-runtime.js"
@@ -74,7 +75,9 @@ def test_first_paint_bootstrap_has_minimal_authority() -> None:
         "ui-statistics-batch3.js",
         "ui-statistics-batch4.js",
         "ui-statistics-batch5.js",
+        "ui-settings-page.js",
         "ui-settings-architecture.js",
+        "ui-settings-presentation.js",
         "ui-error-semantics.js",
         "MutationObserver",
         "fetch(",
@@ -92,11 +95,13 @@ def test_post_core_presentation_loader_is_sequential_and_failure_contained() -> 
         "/ui-statistics-batch3.js?v=3",
         "/ui-statistics-batch4.js?v=2",
         "/ui-statistics-batch5.js?v=7",
-        "/ui-settings-architecture.js?v=3",
+        "/ui-settings-page.js?v=1",
         "/ui-error-semantics.js?v=21",
     )
     positions = [loader.index(item) for item in expected]
     assert positions == sorted(positions)
+    assert "ui-settings-architecture.js" not in loader
+    assert "ui-settings-presentation.js" not in loader
     assert "await loadRuntime(runtime);" in loader
     assert "script.async = false;" in loader
     assert "catch (error)" in loader
@@ -120,14 +125,18 @@ def test_statistics_has_one_load_detailed_stats_presentation_owner() -> None:
         assert "debridpulse:statistics-rendered" in source
 
 
-def test_settings_lifecycle_is_explicit_not_dom_inferred() -> None:
+def test_settings_lifecycle_is_direct_not_dom_inferred() -> None:
     source = SETTINGS_RUNTIME.read_text(encoding="utf-8")
-    assert "function installSettingsRenderHook()" in source
-    assert source.count("window.renderSettings = wrapped") == 1
+    assert "function installAuthoritativeSettingsPage()" in source
+    assert source.count("window.renderSettings = render") == 1
+    assert source.count("window.getFormSettings = serialize") == 1
+    assert "view.innerHTML = `" in source
     assert "settingsObserver" not in source
     assert "observeSettingsForm" not in source
     assert "scheduleApply" not in source
+    assert "new MutationObserver" not in source
     assert "setTimeout(boot" not in source
+    assert "dp-settings-preserved" not in source
 
 
 def test_error_semantics_startup_is_bounded_by_loader_contract() -> None:
@@ -170,6 +179,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
+        "/ui-settings-page.css": "1",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "3",
         "/ui-panel-surface-treatment.css": "22",
@@ -201,6 +211,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     activity_pos = overlay.index("/ui-activity-log-page.css?v=28")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=27")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
+    settings_pos = overlay.index("/ui-settings-page.css?v=1")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=3")
     treatment_pos = overlay.index("/ui-panel-surface-treatment.css?v=22")
@@ -208,7 +219,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
     assert dashboard_pos < dashboard_control_pos < dashboard_consistency_pos < statistics_pos < activity_pos < downloads_pos
-    assert downloads_pos < downloads_desktop_pos < help_pos < feature_icon_pos < treatment_pos < transfer_pos
+    assert downloads_pos < downloads_desktop_pos < settings_pos < help_pos < feature_icon_pos < treatment_pos < transfer_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
@@ -229,12 +240,14 @@ def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None
 def test_page_layers_do_not_own_shell_contract() -> None:
     activity = ACTIVITY_STYLE.read_text(encoding="utf-8")
     downloads = DOWNLOADS_STYLE.read_text(encoding="utf-8")
+    settings = SETTINGS_STYLE.read_text(encoding="utf-8")
     shell = SHELL_STYLE.read_text(encoding="utf-8")
     shell_brand = SHELL_BRAND.read_text(encoding="utf-8")
     stats_batch5 = (STATIC / "ui-statistics-batch5.css").read_text(encoding="utf-8")
 
     assert ".sidebar-footer" not in activity
     assert ".sidebar-footer" not in downloads
+    assert ".sidebar-footer" not in settings
     assert ".sidebar-footer::before" in shell
     assert "body.dp-v11-structural .sidebar-footer" in shell
     assert "bottom: 24px !important" in shell
@@ -317,7 +330,7 @@ def test_ci_syntax_checks_every_first_party_browser_runtime() -> None:
         "ui-statistics-batch3.js",
         "ui-statistics-batch4.js",
         "ui-statistics-batch5.js",
-        "ui-settings-architecture.js",
+        "ui-settings-page.js",
         "ui-error-semantics.js",
     )
     missing = [
