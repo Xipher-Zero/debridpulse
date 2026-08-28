@@ -95,7 +95,7 @@ def test_post_core_presentation_loader_is_sequential_and_failure_contained() -> 
         "/ui-statistics-batch3.js?v=3",
         "/ui-statistics-batch4.js?v=2",
         "/ui-statistics-batch5.js?v=7",
-        "/ui-settings-page.js?v=1",
+        "/ui-settings-page.js?v=2",
         "/ui-error-semantics.js?v=21",
     )
     positions = [loader.index(item) for item in expected]
