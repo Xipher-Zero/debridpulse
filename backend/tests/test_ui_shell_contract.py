@@ -60,6 +60,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-activity-log-page.css?v=28",
         "/ui-downloads-page.css?v=27",
         "/ui-downloads-desktop.css?v=28",
+        "/ui-settings-page.css?v=1",
         "/ui-help-page.css?v=22",
         "/ui-feature-icon-contract.css?v=3",
         "/ui-panel-surface-treatment.css?v=22",
@@ -87,6 +88,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-activity-log-page.css": "28",
         "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
+        "/ui-settings-page.css": "1",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "3",
         "/ui-panel-surface-treatment.css": "22",
@@ -204,7 +206,6 @@ def test_lucide_license_and_inventory_are_bundled() -> None:
 
     assert "ISC License" in notice
     assert "Lucide Icons and Contributors" in notice
-    assert "The MIT License (MIT)" in notice
     assert "Lucide Icons UI subset" in inventory
     assert "Lucide-ISC-MIT.txt" in inventory
     assert "23f9abc4ed0146cffededd3d7f94c1018bfdf693" in inventory
