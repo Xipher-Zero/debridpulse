@@ -1,6 +1,7 @@
 /* DebridPulse v1.0.11 Statistics Batch 5 presentation runtime.
  * Presentation only: preserves existing statistics API/Chart.js ownership while
  * applying the final reviewed ordering, wording, surface and branding contract.
+ * Batch 5 is the sole owner of historical KPI labels, icons and DOM order.
  */
 (function () {
   'use strict';
@@ -91,21 +92,70 @@
     return Boolean(logo && version);
   }
 
+  function primaryCards(host) {
+    if (!host) return [];
+    return PRIMARY_ORDER.map(function (key) {
+      return host.querySelector(':scope > [data-dp-stats-metric="' + key + '"]');
+    });
+  }
+
   function normalizePrimaryOrder() {
     const host = document.getElementById('detail-stat-cards');
     if (!host) return false;
-    PRIMARY_ORDER.forEach(function (key) {
-      const card = host.querySelector(':scope > [data-dp-stats-metric="' + key + '"]');
-      if (card) host.appendChild(card);
+
+    const ordered = primaryCards(host);
+    if (ordered.some(function (card) { return !card; })) return false;
+
+    const current = Array.from(host.children).filter(function (card) {
+      return card.hasAttribute('data-dp-stats-metric');
     });
-    return PRIMARY_ORDER.every(function (key) {
-      return !!host.querySelector(':scope > [data-dp-stats-metric="' + key + '"]');
+    const alreadyOrdered = ordered.every(function (card, index) {
+      return current[index] === card;
     });
+
+    if (!alreadyOrdered) {
+      ordered.forEach(function (card) { host.appendChild(card); });
+    }
+    return true;
+  }
+
+  function observePrimaryMetrics() {
+    const host = document.getElementById('detail-stat-cards');
+    if (!host || host.dataset.dpStatsBatch5Observed === '1') return false;
+    host.dataset.dpStatsBatch5Observed = '1';
+
+    let scheduled = false;
+    new MutationObserver(function () {
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(function () {
+        scheduled = false;
+        normalizePrimaryOrder();
+        normalizeSuccessRateCopy();
+      });
+    }).observe(host, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-dp-stats-metric'],
+    });
+    return true;
   }
 
   function historicalCard(valueId) {
     const value = document.getElementById(valueId);
     return value && value.closest('.dash-kpi');
+  }
+
+  function historicalCopy(valueId, labelText, subText, className) {
+    const card = historicalCard(valueId);
+    if (!card) return null;
+    const label = card.querySelector('.dash-kpi-lbl');
+    const sub = card.querySelector('.dash-kpi-sub');
+    if (label) label.textContent = labelText;
+    if (sub) sub.textContent = subText;
+    if (className) card.classList.add(className);
+    return card;
   }
 
   function suppressQueueHealth() {
@@ -126,13 +176,22 @@
     const strip = document.querySelector('#view-stats .dp-stats-history-grid');
     if (!strip) return false;
 
-    HISTORY_ORDER.forEach(function (valueId) {
-      const card = historicalCard(valueId);
-      if (card) strip.appendChild(card);
+    const ordered = HISTORY_ORDER.map(historicalCard);
+    if (ordered.some(function (card) { return !card; })) return false;
+
+    const current = Array.from(strip.children).filter(function (node) {
+      return node.classList && node.classList.contains('dash-kpi') && !node.hidden;
+    });
+    const alreadyOrdered = ordered.every(function (card, index) {
+      return current[index] === card;
     });
 
+    if (!alreadyOrdered) {
+      ordered.forEach(function (card) { strip.appendChild(card); });
+    }
+
     suppressQueueHealth();
-    return HISTORY_ORDER.every(function (valueId) { return !!historicalCard(valueId); });
+    return true;
   }
 
   function normalizeSuccessRateCopy(period) {
@@ -145,29 +204,43 @@
         'Share of finished downloads completed successfully during the selected period.';
     }
 
-    const historical = historicalCard('i-success-rate');
-    const label = historical && historical.querySelector('.dash-kpi-lbl');
-    const sub = historical && historical.querySelector('.dash-kpi-sub');
-    if (label) label.textContent = 'LIFE-TIME SUCCESS RATE';
-    if (sub) sub.textContent = 'Share of all recorded finished downloads completed successfully.';
-
-    const averageDuration = historicalCard('i-avg-duration');
-    const averageDurationLabel = averageDuration && averageDuration.querySelector('.dash-kpi-lbl');
-    const averageDurationSub = averageDuration && averageDuration.querySelector('.dash-kpi-sub');
-    if (averageDurationLabel) averageDurationLabel.textContent = 'MEAN DOWNLOAD TIME';
-    if (averageDurationSub) averageDurationSub.textContent = 'Average completion time for downloads to finish.';
-
-    const averageSize = historicalCard('i-avg-size');
-    const averageSizeLabel = averageSize && averageSize.querySelector('.dash-kpi-lbl');
-    const averageSizeSub = averageSize && averageSize.querySelector('.dash-kpi-sub');
-    if (averageSizeLabel) averageSizeLabel.textContent = 'MEAN DOWNLOAD SIZE';
-    if (averageSizeSub) averageSizeSub.textContent = 'Average size of completed downloads.';
-
-    return Boolean(
-      primarySub && label && sub &&
-      averageDurationLabel && averageDurationSub &&
-      averageSizeLabel && averageSizeSub
+    const day = historicalCopy(
+      'i-last-day',
+      'Last 24 Hours',
+      'Completed downloads over the last 24 hours.',
+      'dp-stats-kpi-day'
     );
+    const week = historicalCopy(
+      'i-last-week',
+      'Last 7 Days',
+      'Completed downloads over the last 7 days.',
+      'dp-stats-kpi-week'
+    );
+    const duration = historicalCopy(
+      'i-avg-duration',
+      'MEAN DOWNLOAD TIME',
+      'Average completion time for downloads to finish.',
+      'dp-stats-kpi-duration'
+    );
+    const historical = historicalCopy(
+      'i-success-rate',
+      'LIFE-TIME SUCCESS RATE',
+      'Share of all recorded finished downloads completed successfully.',
+      'dp-stats-kpi-success'
+    );
+    const size = historicalCopy(
+      'i-avg-size',
+      'MEAN DOWNLOAD SIZE',
+      'Average size of completed downloads.',
+      'dp-stats-kpi-size'
+    );
+
+    const icon = historical && historical.querySelector('.dp-kpi-icon .dp-icon');
+    if (icon && icon.getAttribute('src') !== '/icons/dp/heartbeat-outline.svg') {
+      icon.src = '/icons/dp/heartbeat-outline.svg';
+    }
+
+    return Boolean(primarySub && day && week && duration && historical && size);
   }
 
   function decorateChartHeader(period) {
@@ -254,6 +327,7 @@
     loadBatchStyles();
     installCompactDurationFormatter();
     normalizeShellBranding();
+    observePrimaryMetrics();
     installDetailedStatsGuard();
 
     let attempts = 0;
