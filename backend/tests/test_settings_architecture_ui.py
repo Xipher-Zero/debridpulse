@@ -2,350 +2,348 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BOOTSTRAP_JS = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
-PRESENTATION_LOADER_JS = ROOT / "frontend" / "static" / "ui-presentation-loader.js"
-SETTINGS_PAGE_JS = ROOT / "frontend" / "static" / "ui-settings-page.js"
-SETTINGS_PAGE_CSS = ROOT / "frontend" / "static" / "ui-settings-page.css"
-STYLE_V11 = ROOT / "frontend" / "static" / "style-v11.css"
-APP_JS = ROOT / "frontend" / "static" / "app.js"
+STATIC = ROOT / "frontend" / "static"
+BOOTSTRAP_JS = STATIC / "ui-theme-bootstrap.js"
+PRESENTATION_LOADER_JS = STATIC / "ui-presentation-loader.js"
+SETTINGS_PAGE_JS = STATIC / "ui-settings-page.js"
+SETTINGS_PAGE_CSS = STATIC / "ui-settings-page.css"
+STYLE_V11 = STATIC / "style-v11.css"
+AUTH_BOOTSTRAP_JS = STATIC / "auth.js"
+APP_JS = STATIC / "app.js"
+INDEX_HTML = STATIC / "index.html"
 TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def test_settings_has_one_post_core_authoritative_page_runtime():
-    bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
-    loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
+def source(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def test_settings_has_one_post_core_clean_room_runtime():
+    bootstrap = source(BOOTSTRAP_JS)
+    loader = source(PRESENTATION_LOADER_JS)
+    runtime = source(SETTINGS_PAGE_JS)
 
     assert "ui-settings-page.js" not in bootstrap
     assert "/ui-settings-page.js?v=2" in loader
     assert "data-dp-settings-page" in loader
-    assert "ui-settings-architecture.js" not in loader
-    assert "ui-settings-presentation.js" not in loader
+    assert "clean-room Settings page" in runtime
+    assert "window.DPSettingsPage = Object.freeze({load});" in runtime
+
+
+def test_settings_clean_room_runtime_owns_only_the_navigation_entry_hook():
+    runtime = source(SETTINGS_PAGE_JS)
+
+    # app.js still owns generic page navigation, so its single Settings entry
+    # hook is replaced. No inherited Settings renderer/serializer/action is used.
+    assert "window.loadSettings = load;" in runtime
+    assert "loadSettings = load;" in runtime
+
+    for forbidden in (
+        "window.renderSettings =",
+        "window.getFormSettings =",
+        "window.switchSettingsTab =",
+        "baseRenderSettings",
+        "baseGetFormSettings",
+        "baseSaveSettings",
+        "previous.apply",
+        "legacyRender",
+        "renderSettingsWithAuthentication",
+        "removeLegacyAuthenticationControls",
+        "new MutationObserver",
+        "settingsObserver",
+        "preservationContainer",
+        "dp-settings-preserved",
+    ):
+        assert forbidden not in runtime
+
+
+def test_settings_runtime_rejects_the_legacy_settings_shell_state_before_paint():
+    runtime = source(SETTINGS_PAGE_JS)
+    assert "document.getElementById('content')?.classList.remove('settings-active');" in runtime
+    assert runtime.count("classList.remove('settings-active')") >= 2
+
+    css = source(SETTINGS_PAGE_CSS)
+    assert "#content.settings-active" not in css
+    assert "#content" not in css
+    assert "#main" not in css
+    assert "#sidebar" not in css
+    assert "#topbar" not in css
+
+
+def test_settings_runtime_does_not_consume_legacy_settings_dom_ids_or_functions():
+    runtime = source(SETTINGS_PAGE_JS)
+
+    for forbidden in (
+        'id="settings-tabs"',
+        'id="settings-form"',
+        'id="tab-general"',
+        'id="tab-download"',
+        'id="tab-extract"',
+        'id="tab-notifications"',
+        'id="tab-authentication"',
+        'id="tab-database"',
+        'id="tab-advanced"',
+        'id="s-',
+        "renderSettings(",
+        "getFormSettings(",
+        "switchSettingsTab(",
+        "saveSettings(",
+        "testAD(",
+        "testAria2(",
+        "testDiscord(",
+        "initExtractionPasswordList(",
+        "loadDatabaseBackupList(",
+        "loadAria2Downloads(",
+        "loadAria2Runtime(",
+    ):
+        assert forbidden not in runtime
+
+
+def test_settings_runtime_directly_uses_backend_api_contracts():
+    runtime = source(SETTINGS_PAGE_JS)
+
+    required = (
+        "request('GET', '/settings'",
+        "request('PUT', '/settings'",
+        "request('GET', '/auth/config'",
+        "request('PUT', '/auth/config'",
+        "request('POST', '/auth/oidc/verify-config'",
+        "request('PUT', '/auth/api-token'",
+        "request('POST', '/auth/api-token'",
+        "request('DELETE', '/auth/api-token'",
+        "'/settings/test-alldebrid'",
+        "'/settings/test-aria2'",
+        "'/settings/test-discord'",
+        "request('POST', '/settings/upload-avatar'",
+        "request('POST', '/admin/backup'",
+        "request('GET', '/admin/backups'",
+        "request('POST', '/admin/database/wipe'",
+        "request('POST', `/stats/report/send?hours=${hours}`",
+    )
+    missing = [item for item in required if item not in runtime]
+    assert not missing, f"clean Settings runtime is missing backend contracts: {missing}"
+
+
+def test_settings_authentication_is_clean_implemented_and_secret_safe():
+    runtime = source(SETTINGS_PAGE_JS)
+
+    required = (
+        "function authPayload()",
+        "function persistAuth(",
+        "function clearPassword(",
+        "function setApiTokenEnabled(",
+        "function generateToken(",
+        "function clearToken(",
+        "function verifyOidc(",
+        "function finishOidc(",
+        "return_to: '/oidc-verify-complete.html'",
+        "confirm_open_mode",
+        "clear_password",
+        "clear_oidc_client_secret",
+        "Copy this token now — it will not be shown again.",
+    )
+    missing = [item for item in required if item not in runtime]
+    assert not missing, f"clean authentication implementation is incomplete: {missing}"
+
+    assert "oneTimeToken" in runtime
+    assert "localStorage" not in runtime
+    assert "sessionStorage" not in runtime
+
+
+def test_old_authentication_settings_augmentations_are_not_loaded():
+    bootstrap = source(AUTH_BOOTSTRAP_JS)
+
+    assert "/auth-settings.js" not in bootstrap
+    assert "/auth-ux.js" not in bootstrap
+    assert "/auth-help.js?v=1" in bootstrap
+    # auth-ux.css remains only for the authenticated sidebar stack. The clean
+    # Settings runtime intentionally uses different ids/classes so those old
+    # Settings selectors cannot match it.
+    assert "/auth-ux.css?v=1" in bootstrap
+
+
+def test_settings_tabs_match_the_reviewed_order_with_new_ids():
+    runtime = source(SETTINGS_PAGE_JS)
+    expected = [
+        "['sources', 'Sources & Providers']",
+        "['downloads', 'Downloads']",
+        "['extraction', 'Extraction']",
+        "['notifications', 'Notifications']",
+        "['authentication', 'Authentication']",
+        "['maintenance', 'Data & Maintenance']",
+        "['advanced', 'Advanced']",
+    ]
+    positions = [runtime.index(item) for item in expected]
+    assert positions == sorted(positions)
+
+
+def test_settings_groups_keep_the_reviewed_field_inventory():
+    runtime = source(SETTINGS_PAGE_JS)
+
+    sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
+    for key in (
+        "alldebrid_api_key",
+        "alldebrid_rate_limit_per_minute",
+        "poll_interval_seconds",
+        "full_sync_interval_minutes",
+        "upload_fail_retry_count",
+        "upload_fail_retry_delay_minutes",
+    ):
+        assert key in sources
+
+    downloads = runtime[runtime.index("function downloadsPanel"):runtime.index("function extractionPanel")]
+    for key in (
+        "aria2_mode",
+        "aria2_url",
+        "aria2_secret",
+        "download_folder",
+        "aria2_download_path",
+        "aria2_max_active_downloads",
+        "min_free_disk_gb",
+        "disk_guard_resume_hysteresis_gb",
+        "stuck_download_timeout_hours",
+        "aria2_error_retry_count",
+        "aria2_error_retry_delay_seconds",
+        "filters_enabled",
+        "blocked_extensions",
+        "blocked_keywords",
+        "min_file_size_mb",
+        "block_samples",
+        "block_extras",
+        "torrent_labels_raw",
+    ):
+        assert key in downloads
+
+    extraction = runtime[runtime.index("function extractionPanel"):runtime.index("function notificationsPanel")]
+    for key in ("extract_enabled", "extract_delete_archive", "extract_max_concurrent", "extraction_password"):
+        assert key in extraction
+
+    notifications = runtime[runtime.index("function notificationsPanel"):runtime.index("function authStatusCard")]
+    for key in (
+        "discord_username",
+        "discord_avatar_url",
+        "discord_webhook_url",
+        "discord_webhook_added",
+        "discord_notify_added",
+        "discord_notify_finished",
+        "discord_notify_error",
+        "discord_notify_extract",
+        "discord_notify_update",
+        "update_check_interval_hours",
+        "stats_report_webhook_url",
+        "stats_report_interval_hours",
+        "stats_report_window_hours",
+    ):
+        assert key in notifications
+
+    maintenance = runtime[runtime.index("function maintenancePanel"):runtime.index("function advancedPanel")]
+    for key in (
+        "backup_enabled",
+        "backup_folder",
+        "backup_interval_hours",
+        "backup_keep_days",
+        "stats_snapshot_interval_minutes",
+        "stats_snapshot_keep_days",
+        "events_keep_days",
+        "db_wipe_enabled",
+        "db_backup_before_wipe",
+    ):
+        assert key in maintenance
+
+    advanced = runtime[runtime.index("function advancedPanel"):runtime.index("function panel(")]
+    for key in (
+        "aria2_split",
+        "aria2_min_split_size",
+        "aria2_max_connection_per_server",
+        "aria2_disk_cache",
+        "aria2_file_allocation",
+        "aria2_lowest_speed_limit",
+        "aria2_continue_downloads",
+    ):
+        assert key in advanced
+
+
+def test_non_auth_serializer_starts_from_server_state_and_preserves_hidden_settings():
+    runtime = source(SETTINGS_PAGE_JS)
+    serializer = runtime[runtime.index("function nonAuthPayload()"):runtime.index("async function persistNonAuth")]
+
+    assert "const current = state.settings || {};" in serializer
+    assert "...current," in serializer
+    assert "clear_secrets: clearSecrets()," in serializer
+    assert "max_concurrent_downloads: maxDownloads" in serializer
+    assert "aria2_max_active_downloads: maxDownloads" in serializer
+
+
+def test_settings_root_is_structural_and_only_real_header_content_footer_are_cards():
+    runtime = source(SETTINGS_PAGE_JS)
+
+    assert '<div class="dp-settings-clean">' in runtime
+    assert '<section class="card dp-settings-header-card"' in runtime
+    assert '<section class="card dp-settings-footer"' in runtime
+    assert 'class="card dp-settings-card' in runtime
+
+    # No page-sized card/master abstraction exists in the new implementation.
+    for forbidden in (
+        "dp-settings-master",
+        'class="card dp-settings-clean"',
+        'class="card dp-settings-panel"',
+        'class="card dp-settings-scroll"',
+    ):
+        assert forbidden not in runtime
+
+
+def test_settings_css_has_one_internal_scroll_owner_and_no_card_material_redefinition():
+    css = source(SETTINGS_PAGE_CSS)
+
+    assert "#view-settings.dp-settings-clean-view.active" in css
+    clean_root = css.split("#view-settings.dp-settings-clean-view.active", 1)[1].split("}", 1)[0]
+    assert "overflow: hidden;" in clean_root
+
+    scroll = css.split(".dp-settings-scroll", 1)[1].split("}", 1)[0]
+    assert "overflow-y: auto;" in scroll
+    assert "overscroll-behavior: contain;" in scroll
+
+    for forbidden in (
+        "radial-gradient",
+        "--dp-panel-frame",
+        "--dp-panel-surface",
+        "--dp-panel-shadow",
+        "::after",
+        "box-shadow:",
+        "backdrop-filter:",
+    ):
+        assert forbidden not in css
 
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
-    styles = STYLE_V11.read_text(encoding="utf-8")
+    styles = source(STYLE_V11)
     assert "@import url('/ui-settings-page.css?v=1');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
-    workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
+    workflow = source(TESTS_WORKFLOW)
     assert "node --check frontend/static/ui-settings-page.js" in workflow
-    assert "ui-settings-architecture.js" not in workflow
-    assert "ui-settings-presentation.js" not in workflow
 
 
-def test_settings_renderer_is_direct_and_does_not_call_or_transform_legacy_dom():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
+def test_static_settings_dom_is_never_a_runtime_dependency():
+    runtime = source(SETTINGS_PAGE_JS)
+    index = source(INDEX_HTML)
 
-    assert "window.renderSettings = render;" in source
-    assert "render.dpSettingsPage = '1';" in source
-    assert "view.innerHTML = `" in source
-    assert "previous.apply" not in source
-    assert "baseRenderSettings" not in source
-    assert "appendChild(unit" not in source
-    assert "preservationContainer" not in source
-    assert "dp-settings-preserved" not in source
-    assert "new MutationObserver" not in source
-    assert "setTimeout(" not in source
-    assert "setInterval(" not in source
+    # The old placeholder may remain in index.html during monolith cleanup, but
+    # the clean runtime replaces #view-settings wholesale and does not query any
+    # of its descendants.
+    assert 'id="view-settings"' in index
+    assert "view.innerHTML =" in runtime
+    assert "getElementById('settings-tabs')" not in runtime
+    assert "getElementById('settings-form')" not in runtime
 
 
-def test_settings_page_owns_tab_lifecycle_without_legacy_side_effects():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-    lifecycle = source[
-        source.index("function switchSettingsTabOwned"):
-        source.index("function activeTabBeforeRender")
-    ]
+def test_legacy_app_settings_implementation_is_dead_from_the_clean_runtime_path():
+    app = source(APP_JS)
+    runtime = source(SETTINGS_PAGE_JS)
 
-    assert "window.switchSettingsTab = switchSettingsTabOwned;" in source
-    assert "switchSettingsTabOwned.dpSettingsPage = '1';" in source
-    assert "aria-selected" in lifecycle
-    assert "tab.tabIndex = active ? 0 : -1;" in lifecycle
-    assert "panel.hidden = !active;" in lifecycle
-    assert "data-settings-test-tab" in lifecycle
-    assert "initExtractionPasswordList();" in lifecycle
-
-    # A tab transition must never resurrect legacy page work. Runtime status is
-    # explicit/operator-driven; aria2 queue polling and backup listing do not
-    # belong to tab activation.
-    for forbidden in (
-        "loadAria2Downloads",
-        "loadAria2Runtime",
-        "loadDatabaseBackupList",
-        "setInterval(",
-        "aria2DownloadsTimer",
-    ):
-        assert forbidden not in lifecycle
-
-
-def test_auth_refresh_preserves_visible_one_time_api_token_without_persistence():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-    refresh = source[
-        source.index("async function refreshAuthenticationView"):
-        source.index("function panelHtml")
-    ]
-
-    assert "function visibleOneTimeApiToken()" in source
-    assert "function restoreOneTimeApiToken(token)" in source
-    assert "const oneTimeToken = visibleOneTimeApiToken();" in refresh
-    assert "panel.innerHTML = authenticationCards(authViewData);" in refresh
-    assert "restoreOneTimeApiToken(oneTimeToken);" in refresh
-    assert refresh.index("const oneTimeToken = visibleOneTimeApiToken();") < refresh.index("panel.innerHTML = authenticationCards(authViewData);")
-    assert refresh.index("panel.innerHTML = authenticationCards(authViewData);") < refresh.index("restoreOneTimeApiToken(oneTimeToken);")
-    assert "localStorage" not in source
-    assert "sessionStorage" not in source
-
-
-def test_settings_serializer_preserves_non_operator_state_without_hidden_controls():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
-    assert "const data = {\n      ...current," in source
-    assert "window.getFormSettings = serialize;" in source
-    assert "serialize.dpSettingsPage = '1';" in source
-
-    # These legacy/internal settings are deliberately not rendered as controls.
-    # Their existing values survive because the serializer begins with settingsData.
-    for hidden_id in (
-        'id="s-alldebrid_agent"',
-        'id="s-download_client"',
-        'id="s-aria2_builtin_auto_start"',
-        'id="s-aria2_operation_timeout_seconds"',
-        'id="s-aria2_poll_interval_seconds"',
-        'id="s-aria2_purge_interval_minutes"',
-        'id="s-aria2_max_download_result"',
-        'id="s-aria2_waiting_window"',
-        'id="s-aria2_stopped_window"',
-        'id="s-aria2_max_upload_limit"',
-        'id="s-aria2_start_paused"',
-        'id="s-db_backup_folder"',
-        'id="s-db_backup_enabled"',
-        'id="s-db_backup_keep_days"',
-    ):
-        assert hidden_id not in source
-
-
-def test_settings_tabs_match_reviewed_order_in_the_authoritative_renderer():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-    expected = [
-        "Sources & Providers",
-        "Downloads",
-        "Extraction",
-        "Notifications",
-        "Authentication",
-        "Data & Maintenance",
-        "Advanced",
-    ]
-    positions = [source.index(f"'{label}'") for label in expected]
-    assert positions == sorted(positions)
-
-    expected_ids = [
-        "'tab-general'",
-        "'tab-download'",
-        "'tab-extract'",
-        "'tab-notifications'",
-        "'tab-authentication'",
-        "'tab-database'",
-        "'tab-advanced'",
-    ]
-    tab_block = source[source.index("const TABS"):source.index("let authViewData")]
-    positions = [tab_block.index(tab_id) for tab_id in expected_ids]
-    assert positions == sorted(positions)
-
-
-def test_settings_renderer_owns_unpainted_master_structure_and_separate_footer_directly():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
-    assert 'class="dp-settings-master"' in source
-    assert 'class="dp-settings-master-header"' in source
-    assert 'class="stabs dp-settings-tabs" id="settings-tabs"' in source
-    assert 'class="dp-settings-master-body"' in source
-    assert 'id="settings-form"' in source
-    assert 'class="card save-bar dp-settings-footer"' in source
-    assert 'aria-label="Settings actions"' in source
-
-    # The full-height Settings master is a structural viewport, not a shared
-    # material card. Card aliases here would repaint the page-sized frame.
-    assert 'class="card dp-settings-master"' not in source
-    assert 'class="card-header dp-settings-master-header"' not in source
-    assert 'class="card-body dp-settings-master-body"' not in source
-
-
-def test_settings_nested_sections_use_shared_card_header_and_body_material():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
-    card_fn = source[source.index("function card("):source.index("function providerStatusText")]
-    assert 'class="card dp-settings-section-card"' in card_fn
-    assert 'class="card-header"' in card_fn
-    assert 'class="card-body"' in card_fn
-    assert "scard" not in card_fn
-    assert "scard-header" not in source
-    assert "scard-body" not in source
-
-
-def test_settings_master_structure_does_not_define_card_material():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-    css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
-
-    assert 'class="card dp-settings-master"' not in source
-    assert 'class="card-header dp-settings-master-header"' not in source
-    assert 'class="card-body dp-settings-master-body"' not in source
-
-    for selector in (
-        ".dp-settings-master {",
-        ".dp-settings-master > .dp-settings-master-header",
-    ):
-        start = css.index(selector)
-        block = css[start:css.index("}", start)]
-        assert "background:" not in block
-        assert "box-shadow:" not in block
-        assert "border-radius:" not in block
-        assert "border:" not in block
-
-    assert "radial-gradient" not in css
-
-
-def test_settings_master_tabs_are_centered_on_the_whole_structural_view():
-    css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
-
-    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in css
-    assert ".dp-settings-tabs" in css
-    assert "grid-column: 2;" in css
-    assert "justify-self: center;" in css
-    assert ".dp-settings-master-balance" in css
-
-
-def test_settings_uses_normal_view_paint_boundary_and_one_master_scrollport():
-    css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
-
-    # Settings may own composition inside its view, but it must not rewrite the
-    # shared #content shell like the inherited page did.
-    assert "#content.settings-active" not in css
-
-    root_selector = "#view-settings.dp-settings-page.active"
-    root = css[css.index(root_selector):]
-    root = root[:root.index("}")]
-    assert "overflow: visible;" in root
-    assert "overflow: hidden" not in root
-
-    master_selector = ".dp-settings-master-body"
-    master = css[css.index(master_selector):]
-    master = master[:master.index("}")]
-    assert "overflow-y: auto;" in master
-    assert "overscroll-behavior: contain;" in master
-
-    form_selector = "#settings-form"
-    form = css[css.index(form_selector):]
-    form = form[:form.index("}")]
-    assert "overflow: visible;" in form
-    assert "overflow-y: auto" not in form
-    assert "overflow-x: hidden" not in form
-
-    assert ".dp-settings-footer" in css
-    assert "position: static !important;" in css
-    assert "flex: 0 0 auto;" in css
-
-
-def test_sources_and_downloads_are_rendered_in_final_reviewed_ownership_groups():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
-    provider = source[source.index("function sourcesPanel"):source.index("function downloadsPanel")]
-    for control_id in (
-        "s-alldebrid_api_key",
-        "s-alldebrid_rate_limit_per_minute",
-        "s-poll_interval_seconds",
-        "s-full_sync_interval_minutes",
-        "s-upload_fail_retry_count",
-        "s-upload_fail_retry_delay_minutes",
-    ):
-        assert control_id in provider
-
-    downloads = source[source.index("function downloadsPanel"):source.index("function extractionPanel")]
-    for control_id in (
-        "s-aria2_mode",
-        "s-aria2_url",
-        "s-aria2_secret",
-        "s-download_folder",
-        "s-aria2_download_path",
-        "s-aria2_max_active_downloads",
-        "s-min_free_disk_gb",
-        "s-stuck_download_timeout_hours",
-        "s-aria2_error_retry_count",
-        "s-filters_enabled",
-        "s-torrent_labels_raw",
-    ):
-        assert control_id in downloads
-
-
-def test_notifications_maintenance_and_advanced_keep_reviewed_scope():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
-    notifications = source[source.index("function notificationsPanel"):source.index("function dataMaintenancePanel")]
-    assert "s-discord_notify_extract" in notifications
-    assert "s-stats_report_webhook_url" in notifications
-    assert "Send Test Report" in notifications
-    assert "loadComprehensiveStats" not in notifications
-    assert "exportStats" not in notifications
-    assert "triggerStatsSnapshot" not in notifications
-
-    maintenance = source[source.index("function dataMaintenancePanel"):source.index("function advancedPanel")]
-    for control_id in (
-        "s-backup_enabled",
-        "s-backup_folder",
-        "s-backup_interval_hours",
-        "s-backup_keep_days",
-        "s-stats_snapshot_interval_minutes",
-        "s-stats_snapshot_keep_days",
-        "s-events_keep_days",
-        "s-db_wipe_enabled",
-        "s-db_backup_before_wipe",
-    ):
-        assert control_id in maintenance
-
-    advanced = source[source.index("function advancedPanel"):source.index("function authFallbackData")]
-    for control_id in (
-        "s-aria2_split",
-        "s-aria2_min_split_size",
-        "s-aria2_max_connection_per_server",
-        "s-aria2_disk_cache",
-        "s-aria2_file_allocation",
-        "s-aria2_lowest_speed_limit",
-        "s-aria2_continue_downloads",
-    ):
-        assert control_id in advanced
-
-
-def test_authentication_is_rendered_as_shared_cards_without_legacy_settings_augmentation():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
-    auth = source[source.index("function authenticationCards"):source.index("function authenticationPanel")]
-    for control_id in (
-        "auth-password-enabled",
-        "auth-username",
-        "auth-new-password",
-        "auth-oidc-enabled",
-        "auth-oidc-provider",
-        "auth-oidc-issuer",
-        "auth-oidc-client-id",
-        "auth-api-token-enabled",
-        "auth-public-base-url",
-        "auth-session-hours",
-    ):
-        assert control_id in auth
-    assert "card('Authentication Status'" in auth
-    assert "card('Username & Password'" in auth
-    assert "card('OpenID Connect'" in auth
-    assert "card('API Access'" in auth
-    assert "card('Sessions & Security'" in auth
-
-
-def test_legacy_settings_renderer_remains_dead_code_until_cleanup_not_a_render_dependency():
-    app = APP_JS.read_text(encoding="utf-8")
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-
+    # app.js may retain dead code until the monolith cleanup pass, but the single
+    # navigation entry is replaced before Settings is opened.
     assert "function renderSettings()" in app
-    assert "Delivery Mode" in app
-    assert "Agent Name" in app
-    assert "window.renderSettings = render;" in source
-    assert "window.switchSettingsTab = switchSettingsTabOwned;" in source
-    assert "legacyRender" not in source
-    assert "renderSettingsWithAuthentication" not in source
+    assert "window.loadSettings = load;" in runtime
+    assert "renderSettings(" not in runtime

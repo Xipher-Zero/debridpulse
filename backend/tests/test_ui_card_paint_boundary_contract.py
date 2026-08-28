@@ -21,46 +21,39 @@ def test_downloads_outer_view_does_not_clip_universal_card_paint():
     assert "overflow: hidden" not in desktop_rule
 
 
-def test_settings_outer_view_does_not_clip_universal_card_paint():
+def test_clean_settings_uses_structural_root_and_one_internal_scroll_boundary():
     css = read_static("ui-settings-page.css")
+    runtime = read_static("ui-settings-page.js")
 
-    selector = "body.dp-v11-structural #view-settings.dp-settings-page.active"
+    selector = "body.dp-v11-structural #view-settings.dp-settings-clean-view.active"
     assert selector in css
     rule = css.split(selector, 1)[1].split("}", 1)[0]
-    assert "overflow: visible;" in rule
-    assert "overflow: hidden" not in rule
+    assert "overflow: hidden;" in rule
 
-    # The form is content grouping, not a nested viewport. Shared card shadows
-    # must be able to paint through it into the master body's inset.
-    form = css.split("body.dp-v11-structural #view-settings #settings-form", 1)[1].split("}", 1)[0]
-    assert "overflow: visible;" in form
-    assert "overflow-y: auto" not in form
-    assert "overflow-x: hidden" not in form
+    scroll = css.split(".dp-settings-scroll", 1)[1].split("}", 1)[0]
+    assert "overflow-y: auto;" in scroll
+    assert "overscroll-behavior: contain;" in scroll
+
+    assert '<section class="card dp-settings-header-card"' in runtime
+    assert '<section class="card dp-settings-footer"' in runtime
+    assert 'class="card dp-settings-card' in runtime
+    assert "dp-settings-master" not in runtime
 
 
-def test_inherited_settings_shell_state_is_neutralized_without_overriding_other_pages():
+def test_inherited_settings_shell_state_is_rejected_by_clean_runtime():
     shell = read_static("ui-shell-structural.css")
     legacy = read_static("style.css")
-    dashboard = read_static("ui-dashboard.css")
+    runtime = read_static("ui-settings-page.js")
     settings = read_static("ui-settings-page.css")
 
-    # Legacy navigation still emits settings-active, but it must no longer make
-    # Settings use a different shell viewport. Keep the compatibility bridge in
-    # the shared shell, not in the Settings page layer itself.
-    selector = "body.dp-v11-structural #content.settings-active"
-    assert selector in shell
-    rule = shell.split(selector, 1)[1].split("}", 1)[0]
-    assert "overflow-y: auto;" in rule
+    # app.js still emits the inherited class until the monolith cleanup pass.
+    # The clean Settings entry removes it synchronously before rendering any
+    # Settings DOM, so the legacy zero-padding viewport never owns the page.
     assert "#content.settings-active" in legacy
+    assert "body.dp-v11-structural #content.settings-active" in shell
+    assert "classList.remove('settings-active')" in runtime
     assert "#content.settings-active" not in settings
-
-    # Do not solve Settings with a high-specificity generic overflow rule that
-    # would defeat Dashboard's intentional fixed-at-a-glance desktop viewport.
-    generic = shell.split("body.dp-v11-structural #content {", 1)[1].split("}", 1)[0]
-    assert "overflow-y:" not in generic
-    assert "#content.dashboard-active" in dashboard
-    dash_rule = dashboard.split("#content.dashboard-active", 1)[1].split("}", 1)[0]
-    assert "overflow-y: hidden;" in dash_rule
+    assert "#content" not in settings
 
 
 def test_help_moves_scroll_boundary_inside_the_card_body():

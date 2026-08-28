@@ -1,97 +1,76 @@
-/* DebridPulse v1.0.11 Settings page contract.
+/* DebridPulse v1.0.11 clean-room Settings page.
  *
- * Settings owns only page geometry, section composition and Settings-specific
- * state presentation. Cards, fields, tabs, buttons and theme material are
- * inherited from the universal application language.
+ * This file owns Settings composition only. The application shell and shared
+ * card/field/button material remain owned by their normal application layers.
  */
 
-/* Settings is a normal application view. Keep the outer paint boundary open,
-   exactly as the stable Downloads page does, so shared card shadows can render
-   outside their boxes. Scrolling belongs inside the structural master body. */
-body.dp-v11-structural #view-settings.dp-settings-page.active {
+body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
   display: flex !important;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  overflow: visible;
-  gap: 12px;
+  overflow: hidden;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-master {
+body.dp-v11-structural #view-settings .dp-settings-clean {
+  display: flex;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  margin: 0 !important;
-  display: flex;
   flex-direction: column;
-  overflow: visible;
+  gap: 12px;
 }
 
-/* The master header is structural and intentionally unpainted. Settings owns
-   only its geometry so the section rail remains centered on the full view. */
-body.dp-v11-structural #view-settings .dp-settings-master > .dp-settings-master-header {
+body.dp-v11-structural #view-settings .dp-settings-header-card,
+body.dp-v11-structural #view-settings .dp-settings-footer {
   flex: 0 0 auto;
-  min-height: 76px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  column-gap: 16px;
-  padding: 9px 17px;
+  margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-master-identity {
-  grid-column: 1;
+body.dp-v11-structural #view-settings .dp-settings-header-body {
+  min-height: 76px;
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-header-copy {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  justify-self: start;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-title-icon {
-  width: 51px;
-  height: 51px;
-  flex: 0 0 51px;
+body.dp-v11-structural #view-settings .dp-settings-header-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
   display: grid;
   place-items: center;
   color: var(--dp-accent-purple-bright);
+  font-size: 24px;
+  line-height: 1;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-title-icon svg {
-  width: 31px;
-  height: 31px;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-heading-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-heading {
+body.dp-v11-structural #view-settings .dp-settings-header-title {
   color: var(--dp-text-primary);
   font-size: 16px;
   line-height: 1.2;
-  font-weight: 600;
+  font-weight: 650;
   letter-spacing: -.01em;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-subtitle {
-  max-width: 360px;
-  overflow: hidden;
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
+  margin-top: 4px;
+  max-width: 560px;
   color: var(--dp-text-muted);
-  font-size: 10.5px;
-  line-height: 1.25;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-tabs {
-  grid-column: 2;
-  justify-self: center;
   width: max-content;
   max-width: 100%;
   margin: 0;
@@ -105,17 +84,7 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
   font: inherit;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-master-balance {
-  grid-column: 3;
-  min-width: 0;
-  min-height: 1px;
-}
-
-/* The master body is the single Settings scroll viewport. Its inset leaves
-   enough paint room for nested shared cards before the scroll boundary. */
-body.dp-v11-structural #view-settings .dp-settings-master-body {
-  position: relative;
-  z-index: 1;
+body.dp-v11-structural #view-settings .dp-settings-scroll {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -123,41 +92,33 @@ body.dp-v11-structural #view-settings .dp-settings-master-body {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 18px 20px 24px;
+  padding: 4px 5px 18px;
 }
 
-/* settings-form is semantic grouping only. It must never become another
-   viewport or clipping boundary around the universal cards it contains. */
-body.dp-v11-structural #view-settings #settings-form {
+body.dp-v11-structural #view-settings .dp-settings-panels,
+body.dp-v11-structural #view-settings .dp-settings-panel {
   width: 100%;
-  height: auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: visible;
-}
-
-body.dp-v11-structural #view-settings .stab-panel {
-  display: none;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .stab-panel.active {
-  display: block;
+body.dp-v11-structural #view-settings .dp-settings-panel[hidden] {
+  display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-section-card {
+body.dp-v11-structural #view-settings .dp-settings-card {
+  width: 100%;
   margin: 0 0 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-section-card:last-child {
+body.dp-v11-structural #view-settings .dp-settings-card:last-child {
   margin-bottom: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-section-card > .card-header {
+body.dp-v11-structural #view-settings .dp-settings-card > .card-header {
   min-height: 50px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-section-copy {
+body.dp-v11-structural #view-settings .dp-settings-copy {
   margin: 0 0 14px;
   color: var(--dp-text-muted);
   font-size: 11px;
@@ -169,36 +130,21 @@ body.dp-v11-structural #view-settings .dp-settings-toggle + .dp-settings-field,
 body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-toggle,
 body.dp-v11-structural #view-settings .dp-settings-toggle + .dp-settings-toggle,
 body.dp-v11-structural #view-settings .dp-settings-clear-secret + .dp-settings-field,
-body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-clear-secret {
+body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-clear-secret,
+body.dp-v11-structural #view-settings .dp-settings-mode-external + .dp-settings-field,
+body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-mode-external {
   margin-top: 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-status-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  margin-bottom: 14px;
+body.dp-v11-structural #view-settings .dp-settings-mode-external[hidden] {
+  display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-status-item {
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--dp-border-default);
-  border-radius: var(--dp-radius-sm);
-  background: var(--dp-surface-2);
-  color: var(--dp-text-secondary);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-status-item b {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--dp-text-primary);
-}
-
-body.dp-v11-structural #view-settings .dp-settings-status-item span {
-  overflow-wrap: anywhere;
+body.dp-v11-structural #view-settings .dp-settings-mode-external {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--dp-divider);
+  border-radius: var(--radius-sm);
 }
 
 body.dp-v11-structural #view-settings .dp-settings-clear-secret {
@@ -225,10 +171,27 @@ body.dp-v11-structural #view-settings .dp-settings-clear-secret b {
   font-weight: 600;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret small {
+body.dp-v11-structural #view-settings .dp-settings-clear-secret small,
+body.dp-v11-structural #view-settings .dp-settings-inline-check {
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-filter-fields {
+  margin-top: 12px;
+  transition: opacity .15s ease;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-filter-fields.is-disabled {
+  opacity: .45;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-actions {
@@ -237,6 +200,118 @@ body.dp-v11-structural #view-settings .dp-settings-actions {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-file-button {
+  cursor: pointer;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+  color: var(--dp-text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview[hidden] {
+  display: none !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview img {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-status {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--dp-surface-2);
+  color: var(--dp-text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-status b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--dp-text-primary);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-status span {
+  overflow-wrap: anywhere;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-caution,
+body.dp-v11-structural #view-settings .dp-settings-load-error {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 45%, var(--dp-border-default));
+  border-radius: var(--radius-sm);
+  background: var(--dp-state-caution-bg);
+  color: var(--dp-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-caution {
+  margin-bottom: 12px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-caution b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--dp-state-caution);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-caution span,
+body.dp-v11-structural #view-settings .dp-settings-load-error span {
+  display: block;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-load-error {
+  border-color: color-mix(in srgb, var(--dp-state-error) 42%, var(--dp-border-default));
+  background: var(--dp-state-error-bg);
+  color: var(--dp-state-error);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-loading,
+body.dp-v11-structural #view-settings .dp-settings-load-error {
+  margin: 4px 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-loading {
+  color: var(--dp-text-muted);
+  font-size: 12px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-token-once {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 45%, var(--dp-border-default));
+  border-radius: var(--radius-sm);
+  background: var(--dp-surface-2);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-token-once > b {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--dp-accent-purple-bright);
+  font-size: 11px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-inline-field {
@@ -251,114 +326,38 @@ body.dp-v11-structural #view-settings .dp-settings-inline-field > .input {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-upload {
-  flex: 0 0 auto;
-  cursor: pointer;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-avatar-preview {
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--dp-text-secondary);
-  font-size: 11px;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-avatar-preview img {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  border: 1px solid var(--dp-border-default);
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-password-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-filter-fields {
-  margin-top: 12px;
-}
-
 body.dp-v11-structural #view-settings .dp-settings-result-list {
   margin-top: 10px;
   color: var(--dp-text-secondary);
   font-size: 11px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution,
-body.dp-v11-structural #view-settings .dp-settings-auth-load-error {
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 45%, var(--dp-border-default));
-  border-radius: var(--dp-radius-sm);
-  background: var(--dp-state-caution-bg);
-  color: var(--dp-text-secondary);
-  font-size: 11px;
-  line-height: 1.45;
+body.dp-v11-structural #view-settings .dp-settings-result-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--dp-divider);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution b {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--dp-state-caution);
+body.dp-v11-structural #view-settings .dp-settings-result-row:last-child {
+  border-bottom: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution span {
-  display: block;
+body.dp-v11-structural #view-settings .dp-settings-result-row span:last-child {
+  color: var(--dp-text-muted);
+  text-align: right;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-load-error {
-  border-color: color-mix(in srgb, var(--dp-state-error) 42%, var(--dp-border-default));
-  background: var(--dp-state-error-bg);
-  color: var(--dp-state-error);
-}
-
-body.dp-v11-structural #view-settings .dp-settings-state--ok {
-  color: var(--dp-state-success);
-}
-
-body.dp-v11-structural #view-settings .dp-settings-state--error {
-  color: var(--dp-state-error);
-}
-
-body.dp-v11-structural #view-settings .dp-settings-token-state {
-  margin: 10px 0 0;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-token-once {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 45%, var(--dp-border-default));
-  border-radius: var(--dp-radius-sm);
-  background: var(--dp-surface-2);
-}
-
-body.dp-v11-structural #view-settings .dp-settings-token-once > b {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--dp-accent-purple-bright);
-  font-size: 11px;
-}
-
-/* Persistent Settings actions are a separate shared card. */
 body.dp-v11-structural #view-settings .dp-settings-footer {
-  position: static !important;
-  flex: 0 0 auto;
-  width: 100%;
-  min-height: 62px;
-  margin: 0 !important;
-  padding: 11px 14px !important;
+  min-height: 60px;
+  padding: 10px 13px;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-footer .save-hint {
+body.dp-v11-structural #view-settings .dp-settings-save-hint {
   flex: 1 1 auto;
   min-width: 180px;
   color: var(--dp-text-muted);
@@ -366,14 +365,15 @@ body.dp-v11-structural #view-settings .dp-settings-footer .save-hint {
   line-height: 1.35;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-footer .settings-context-actions {
-  flex: 0 1 auto;
+body.dp-v11-structural #view-settings .dp-settings-context-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-context-actions [hidden] {
+  display: none !important;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-footer .btn {
@@ -382,44 +382,25 @@ body.dp-v11-structural #view-settings .dp-settings-footer .btn {
 }
 
 @media (max-width: 1180px) {
-  body.dp-v11-structural #view-settings .dp-settings-master > .dp-settings-master-header {
+  body.dp-v11-structural #view-settings .dp-settings-header-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    row-gap: 10px;
-    padding: 12px 17px;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-master-identity {
-    grid-column: 1;
-    grid-row: 1;
+    align-items: stretch;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-tabs {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: stretch;
     width: 100%;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-master-balance {
-    display: none;
   }
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings.dp-settings-page.active {
+  body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
     height: auto;
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-master {
-    flex: none;
-    overflow: visible;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-master-body,
-  body.dp-v11-structural #view-settings #settings-form {
-    height: auto;
+  body.dp-v11-structural #view-settings .dp-settings-clean,
+  body.dp-v11-structural #view-settings .dp-settings-scroll {
+    min-height: auto;
     overflow: visible;
   }
 
@@ -428,24 +409,30 @@ body.dp-v11-structural #view-settings .dp-settings-footer .btn {
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-footer .settings-context-actions {
+  body.dp-v11-structural #view-settings .dp-settings-context-actions {
     width: 100%;
     justify-content: flex-start;
     margin-left: 0;
+    flex-wrap: wrap;
   }
 }
 
 @media (max-width: 700px) {
-  body.dp-v11-structural #view-settings .dp-settings-tabs {
-    justify-self: stretch;
+  body.dp-v11-structural #view-settings .dp-settings-header-body {
+    padding: 12px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-master-body {
-    padding: 14px;
+  body.dp-v11-structural #view-settings .dp-settings-scroll {
+    padding: 2px 2px 14px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-inline-field {
+  body.dp-v11-structural #view-settings .dp-settings-inline-field,
+  body.dp-v11-structural #view-settings .dp-settings-result-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-result-row span:last-child {
+    text-align: left;
   }
 }

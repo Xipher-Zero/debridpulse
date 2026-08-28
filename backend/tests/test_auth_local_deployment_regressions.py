@@ -103,8 +103,6 @@ def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monke
 
 
 def test_auth_pages_use_reviewed_debridpulse_login_palettes():
-    # The Login surface keeps the application's geometry and typography while
-    # using a richer translucent auth-specific material and mockup-like field.
     assert "--bg:#030612" in _AUTH_PAGE_STYLE
     assert "--bg2:#081126" in _AUTH_PAGE_STYLE
     assert "--card:rgba(10,16,33,.55)" in _AUTH_PAGE_STYLE
@@ -147,21 +145,21 @@ def test_baseline_referrer_policy_preserves_same_origin_form_origin():
 
 
 def test_auth_settings_present_external_base_as_general_security_setting():
-    source = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "auth-settings.js").read_text()
+    source = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "ui-settings-page.js").read_text()
     assert "External Base URL (Canonical Origin)" in source
     assert "reverse-proxy origin validation" in source
     assert "PUBLIC_BASE_URL environment variable" in source
 
 
-def test_authentication_ux_assets_are_packaged_and_loaded():
+def test_authentication_session_and_help_assets_are_packaged_without_settings_augmentation():
     static = Path(__file__).resolve().parents[2] / "frontend" / "static"
     bootstrap = (static / "auth.js").read_text()
-    ux_script = (static / "auth-ux.js").read_text()
+    settings = (static / "ui-settings-page.js").read_text()
     ux_style = (static / "auth-ux.css").read_text()
 
-    assert "/auth-ux.js?v=1" in bootstrap
+    assert "/auth-help.js?v=1" in bootstrap
     assert "/auth-ux.css?v=1" in bootstrap
-    assert "External Authentication Origin" in ux_script
-    assert "Authorization & Claim Mapping" in ux_script
-    assert "#settings-form .stab-panel.active" in ux_style
-    assert "max-width: none" in ux_style
+    assert "/auth-settings.js" not in bootstrap
+    assert "/auth-ux.js" not in bootstrap
+    assert "sidebar-bottom-stack" in ux_style
+    assert "window.DPSettingsPage = Object.freeze({load});" in settings

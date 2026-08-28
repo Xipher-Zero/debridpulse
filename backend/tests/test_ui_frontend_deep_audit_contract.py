@@ -125,12 +125,18 @@ def test_statistics_has_one_load_detailed_stats_presentation_owner() -> None:
         assert "debridpulse:statistics-rendered" in source
 
 
-def test_settings_lifecycle_is_direct_not_dom_inferred() -> None:
+def test_settings_lifecycle_is_clean_room_and_direct_not_dom_inferred() -> None:
     source = SETTINGS_RUNTIME.read_text(encoding="utf-8")
-    assert "function installAuthoritativeSettingsPage()" in source
-    assert source.count("window.renderSettings = render") == 1
-    assert source.count("window.getFormSettings = serialize") == 1
-    assert "view.innerHTML = `" in source
+    assert "clean-room Settings page" in source
+    assert "window.DPSettingsPage = Object.freeze({load});" in source
+    assert "window.loadSettings = load;" in source
+    assert "view.innerHTML =" in source
+    assert "Promise.all([" in source
+    assert "request('GET', '/settings'" in source
+    assert "request('GET', '/auth/config'" in source
+    assert "window.renderSettings =" not in source
+    assert "window.getFormSettings =" not in source
+    assert "window.switchSettingsTab =" not in source
     assert "settingsObserver" not in source
     assert "observeSettingsForm" not in source
     assert "scheduleApply" not in source

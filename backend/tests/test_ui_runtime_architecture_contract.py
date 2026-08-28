@@ -57,11 +57,16 @@ def test_statistics_layers_share_one_post_render_event():
         assert "debridpulse:statistics-rendered" in read(name)
 
 
-def test_settings_page_is_direct_and_not_dom_lifecycle_driven():
+def test_settings_page_is_clean_room_and_not_dom_lifecycle_driven():
     settings = read("ui-settings-page.js")
-    assert "window.renderSettings = render" in settings
-    assert "window.getFormSettings = serialize" in settings
-    assert "view.innerHTML = `" in settings
+    assert "window.DPSettingsPage = Object.freeze({load});" in settings
+    assert "window.loadSettings = load;" in settings
+    assert "view.innerHTML =" in settings
+    assert "request('GET', '/settings'" in settings
+    assert "request('GET', '/auth/config'" in settings
+    assert "window.renderSettings =" not in settings
+    assert "window.getFormSettings =" not in settings
+    assert "window.switchSettingsTab =" not in settings
     assert "settingsObserver" not in settings
     assert "observeSettingsForm" not in settings
     assert "scheduleApply" not in settings

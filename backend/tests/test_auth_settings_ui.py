@@ -14,9 +14,8 @@ from core.config_validator import validate_and_sanitise
 
 
 ROOT = Path(__file__).resolve().parents[2]
-AUTH_SETTINGS_JS = ROOT / "frontend" / "static" / "auth-settings.js"
+SETTINGS_PAGE_JS = ROOT / "frontend" / "static" / "ui-settings-page.js"
 AUTH_BOOTSTRAP_JS = ROOT / "frontend" / "static" / "auth.js"
-APP_JS = ROOT / "frontend" / "static" / "app.js"
 
 
 def _settings(**updates):
@@ -76,37 +75,39 @@ def _request(path, payload, *, principal=None):
     return request
 
 
-def test_authentication_settings_module_is_loaded_without_rewriting_large_app_renderer():
+def test_authentication_settings_are_owned_by_clean_settings_runtime():
     bootstrap = AUTH_BOOTSTRAP_JS.read_text(encoding="utf-8")
-    module = AUTH_SETTINGS_JS.read_text(encoding="utf-8")
-    app = APP_JS.read_text(encoding="utf-8")
+    module = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
 
-    assert "auth-settings.js?v=2" in bootstrap
-    assert "removeLegacyAuthenticationControls" in module
-    assert "Access Control" in app  # inherited renderer remains untouched
-    assert "header.textContent.includes('Access Control')" in module
-    assert "s-clear-auth_password" in module
-    assert "field !== 'auth_password'" in module
+    assert "/auth-settings.js" not in bootstrap
+    assert "/auth-ux.js" not in bootstrap
+    assert "function authenticationPanel(" in module
+    assert "function authPayload()" in module
+    assert "function persistAuth(" in module
+    assert "window.DPSettingsPage = Object.freeze({load});" in module
+    assert "baseRenderSettings" not in module
+    assert "removeLegacyAuthenticationControls" not in module
 
 
 def test_authentication_tab_contains_required_cards_and_uses_dedicated_api():
-    source = AUTH_SETTINGS_JS.read_text(encoding="utf-8")
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
     for label in (
         "Authentication Status",
-        "Username &amp; Password",
+        "Username & Password",
         "OpenID Connect",
         "API Access",
-        "Sessions &amp; Security",
+        "Sessions & Security",
     ):
         assert label in source
 
-    assert "tab-authentication" in source
-    assert "api('PUT', '/auth/config'" in source
-    assert "api('POST', '/auth/oidc/verify-config'" in source
-    assert "api('POST', '/auth/api-token'" in source
-    assert "api('DELETE', '/auth/api-token'" in source
+    assert "request('PUT', '/auth/config'" in source
+    assert "request('POST', '/auth/oidc/verify-config'" in source
+    assert "request('POST', '/auth/api-token'" in source
+    assert "request('DELETE', '/auth/api-token'" in source
     assert "return_to: '/oidc-verify-complete.html'" in source
     assert "Copy this token now — it will not be shown again." in source
+    assert "localStorage" not in source
+    assert "sessionStorage" not in source
 
 
 def test_auth_secret_clear_intents_are_transient_and_not_serialized():

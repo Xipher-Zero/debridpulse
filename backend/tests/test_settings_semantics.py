@@ -60,27 +60,42 @@ class SQLiteOnlySettingsTests(unittest.TestCase):
 
 
 class SettingsFrontendContractTests(unittest.TestCase):
-    def test_active_settings_tab_lookup_is_scoped(self):
-        js = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
-        self.assertIn("document.querySelector('#settings-tabs .stab.active')?.dataset.tab", js)
+    @staticmethod
+    def settings_js():
+        return (
+            Path(__file__).resolve().parents[2]
+            / "frontend"
+            / "static"
+            / "ui-settings-page.js"
+        ).read_text()
+
+    def test_active_settings_tab_lookup_is_owned_by_clean_state(self):
+        js = self.settings_js()
+        self.assertIn("activeTab: 'sources'", js)
+        self.assertIn("function activateTab(name)", js)
+        self.assertIn("state.activeTab = name;", js)
         self.assertNotIn("document.querySelector('.stab.active')?.dataset.tab", js)
 
-    def test_database_tab_is_sqlite_only(self):
-        js = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
-        self.assertNotIn("Runtime Database", js)
-        self.assertIn("Database Maintenance", js)
-        for stale in ("s-postgres_host", "s-postgres_password", "btn-test-postgres",
-                      "PostgreSQL (external)", "docs/postgresql.md"):
+    def test_database_scope_is_sqlite_only(self):
+        js = self.settings_js()
+        self.assertIn("Data & Maintenance", js)
+        self.assertIn("Database Destructive Actions", js)
+        for stale in (
+            "postgres_host",
+            "postgres_password",
+            "btn-test-postgres",
+            "PostgreSQL (external)",
+            "docs/postgresql.md",
+        ):
             self.assertNotIn(stale, js)
 
     def test_stalled_download_recovery_remains_download_scoped(self):
-        js = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
-        general = js.split('id="tab-general"', 1)[1].split('id="tab-download"', 1)[0]
-        download = js.split('id="tab-download"', 1)[1].split('id="tab-extract"', 1)[0]
-        self.assertNotIn('id="s-stuck_download_timeout_hours"', general)
-        self.assertIn('id="s-stuck_download_timeout_hours"', download)
-        self.assertIn("Auto-Recover Stalled Downloads", download)
-        self.assertIn("regardless of transfer source", download)
+        js = self.settings_js()
+        downloads = js.split("function downloadsPanel", 1)[1].split("function extractionPanel", 1)[0]
+        sources = js.split("function sourcesPanel", 1)[1].split("function downloadsPanel", 1)[0]
+        self.assertNotIn("stuck_download_timeout_hours", sources)
+        self.assertIn("stuck_download_timeout_hours", downloads)
+        self.assertIn("Download Safety & Recovery", downloads)
 
 
 if __name__ == "__main__":
