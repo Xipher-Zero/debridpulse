@@ -19,21 +19,21 @@
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
   ]);
 
-  function alreadyLoaded(definition) {
-    return Boolean(document.querySelector('script[' + definition.marker + ']'));
+  function alreadyLoaded(runtime) {
+    return Boolean(document.querySelector('script[' + runtime.marker + ']'));
   }
 
-  function loadOne(definition) {
-    if (alreadyLoaded(definition)) return Promise.resolve();
+  function loadRuntime(runtime) {
+    if (alreadyLoaded(runtime)) return Promise.resolve();
 
     return new Promise(function (resolve, reject) {
       const script = document.createElement('script');
-      script.src = definition.src;
+      script.src = runtime.src;
       script.async = false;
-      script.setAttribute(definition.marker, '1');
+      script.setAttribute(runtime.marker, '1');
       script.onload = function () { resolve(); };
       script.onerror = function () {
-        reject(new Error('Unable to load ' + definition.src));
+        reject(new Error('Unable to load ' + runtime.src));
       };
       document.head.appendChild(script);
     });
@@ -43,11 +43,12 @@
     if (document.documentElement.dataset.dpPresentationLoaderStarted === '1') return;
     document.documentElement.dataset.dpPresentationLoaderStarted = '1';
 
-    for (const definition of RUNTIMES) {
+    for (const runtime of RUNTIMES) {
       try {
-        await loadOne(definition);
+        await loadRuntime(runtime);
       } catch (error) {
-        console.error('[DebridPulse] presentation runtime skipped:', definition.src, error);
+        console.error('[DebridPulse] presentation runtime skipped:', runtime.src, error);
+        continue;
       }
     }
 

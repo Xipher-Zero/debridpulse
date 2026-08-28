@@ -14,7 +14,7 @@
     document.head.appendChild(link);
   }
 
-  function normalizeBrandAssets() {
+  function normalizeShellBranding() {
     const vectorIcon = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
     if (vectorIcon) {
       vectorIcon.type = 'image/svg+xml';
@@ -42,5 +42,5 @@
   }
 
   loadShellStyles();
-  normalizeBrandAssets();
+  normalizeShellBranding();
 })();
