@@ -240,5 +240,14 @@ def test_settings_presentation_waits_for_lazy_renderer_and_recomposes_after_rere
     assert "form.querySelector('.dp-settings-ia-card')" in ready
     assert "hasExpectedTabs && hasExpectedPanels && iaComposed" in ready
     assert "if (!view || !tabs || !form || !settingsReadyForPresentation()) return false;" in source
-    assert "viewObserver.observe(view, {childList: true, subtree: true});" in source
+    assert "formObserver.observe(form, {childList: true, subtree: false});" in source
     assert "setTimeout(composeWhenReady, 0);" in source
+
+
+def test_settings_presentation_never_observes_the_whole_settings_subtree():
+    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
+    observer_block = source[source.index("function installFormObserver"):source.index("function boot")]
+
+    assert "viewObserver" not in source
+    assert "view-settings" not in observer_block
+    assert "formObserver.observe(form, {childList: true, subtree: false});" in observer_block
