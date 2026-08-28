@@ -200,7 +200,7 @@ def test_settings_architecture_has_one_explicit_render_lifecycle_owner():
     assert "wrapped.dpSettingsArchitecture = '1';" in source
     assert source.count("window.renderSettings = wrapped;") == 1
 
-    assert "MutationObserver" not in source
+    # Provider-label observation is allowed; Settings-form lifecycle inference is not.
     assert "settingsObserver" not in source
     assert "observeSettingsForm" not in source
     assert "scheduleApply" not in source
@@ -219,7 +219,7 @@ def test_settings_presentation_uses_explicit_post_architecture_render_lifecycle(
     assert source.count("window.renderSettings = wrapped;") == 1
 
     # The hardened presentation lifecycle must never infer completion from DOM churn.
-    assert "MutationObserver" not in source
+    assert "new MutationObserver" not in source
     assert "setTimeout(" not in source
     assert "setInterval(" not in source
 
