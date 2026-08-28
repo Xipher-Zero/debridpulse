@@ -12,7 +12,10 @@
  */
 
 /* ── Standard raised panels/cards ─────────────────────────────────────── */
-body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card) {
+/* Shell roots are structural canvases, never raised content. Keep them outside
+   the migration-era card aliases so an accidental legacy class cannot turn the
+   application viewport into a card or acquire the universal painted frame. */
+body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card):not(#sidebar):not(#main):not(#topbar):not(#content) {
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -23,8 +26,9 @@ body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card) {
 }
 
 /* Dashboard-derived painted frame: defined top edge, side edges dissolving
-   toward the bottom, no painted lower edge. */
-body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card)::after {
+   toward the bottom, no painted lower edge. Shell roots are excluded for the
+   same ownership reason as the base card material above. */
+body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card):not(#sidebar):not(#main):not(#topbar):not(#content)::after {
   content: '';
   position: absolute;
   z-index: 5;
