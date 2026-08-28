@@ -173,9 +173,10 @@ body::after {
 }
 .card > * { position:relative;z-index:1; }
 .brand-lockup { position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 0 22px; }
-.brand-pulse { position:absolute;z-index:0;top:9px;left:50%;transform:translateX(-50%);width:min(590px,88%);height:106px;opacity:.86; }
-.brand-pulse .grid { stroke:var(--border);stroke-width:.7;opacity:.32; }.brand-pulse .pulse-left { stroke:var(--wave-purple); }.brand-pulse .pulse-right { stroke:var(--wave-blue); }
-.brand-pulse .pulse-left,.brand-pulse .pulse-right { fill:none;stroke-width:2;filter:drop-shadow(0 0 7px currentColor); }
+.brand-pulse { position:absolute;z-index:0;top:3px;left:50%;transform:translateX(-50%);width:min(620px,96%);height:118px;opacity:.98; }
+.brand-pulse .grid { stroke:var(--border);stroke-width:.65;opacity:.18; }.brand-pulse .pulse-left { stroke:var(--wave-purple); }.brand-pulse .pulse-right { stroke:var(--wave-blue); }
+.brand-pulse .pulse-left,.brand-pulse .pulse-right { fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 8px currentColor) drop-shadow(0 0 15px currentColor); }
+.brand-pulse .pulse-ghost { fill:none;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;opacity:.11;filter:blur(2px); }
 .brand-mark { position:relative;z-index:1;width:110px;height:110px;display:block;object-fit:contain;filter:drop-shadow(0 9px 22px rgba(var(--accent-rgb),.28)); }
 .brand { position:relative;z-index:1;margin-top:14px;font-size:46px;font-weight:800;letter-spacing:-1.7px;line-height:1;color:var(--text); }
 .brand span { color:var(--accent); }.brand-sub { margin-top:13px;color:var(--text2);font-size:19px;font-weight:500; }.sr-only { position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important; }
@@ -216,7 +217,7 @@ input:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-
 @media (max-width:700px) {
   body { padding:48px 14px 24px;align-items:start; }.version { right:14px;bottom:12px;font-size:11px; }
   .card { width:100%;padding:34px 24px 24px;border-radius:12px;-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%); }.brand-mark { width:86px;height:86px; }.brand { font-size:36px; }.brand-sub { font-size:16px; }
-  .brand-pulse { width:98%;top:2px; }.auth-action { min-height:56px; }.oidc-mark { width:34px;height:34px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
+  .brand-pulse { width:100%;top:0;height:104px; }.auth-action { min-height:56px; }.oidc-mark { width:34px;height:34px;left:14px; }.oidc.secondary .oidc-separator { left:57px; }
 }
 @media (max-width:460px) {
   .card { padding-left:17px;padding-right:17px; }.brand { font-size:32px; }.divider { gap:10px;font-size:11px; }.auth-action { font-size:14px;padding-left:52px;padding-right:48px; }
@@ -277,10 +278,14 @@ _AUTH_BACKDROP_HTML = """<svg class="auth-backdrop" viewBox="0 0 1600 900" prese
   </g>
 </svg>"""
 
-_BRAND_PULSE_HTML = """<svg class="brand-pulse" viewBox="0 0 600 110" aria-hidden="true">
-  <g class="grid"><path d="M0 55h600"/><path d="M60 18v74M120 18v74M180 18v74M240 18v74M300 18v74M360 18v74M420 18v74M480 18v74M540 18v74"/></g>
-  <path class="pulse-left" d="M12 55h120l12 9 13-14 14 12 13-14 16 12 13-11 11 5 8-28 9 60 12-45 11 22 19-8h27"/>
-  <path class="pulse-right" d="M300 55h34l13-8 9 18 12-44 10 69 13-41 11 21 15-12 18 9 16-15 17 11 16-10 18 2h106"/>
+_BRAND_PULSE_LEFT = "M8 60 H118 L130 60 L140 69 L152 47 L164 67 L177 42 L190 63 L202 54 L211 60 L219 25 L228 101 L239 13 L249 108 L261 32 L272 82 L283 49 L292 60"
+_BRAND_PULSE_RIGHT = "M308 60 L318 60 L327 37 L337 86 L348 19 L359 103 L370 31 L382 79 L394 46 L407 67 L420 51 L434 62 L449 43 L463 60 H592"
+_BRAND_PULSE_HTML = f"""<svg class="brand-pulse" viewBox="0 0 600 120" aria-hidden="true">
+  <g class="grid"><path d="M0 60h600"/><path d="M60 14v92M120 14v92M180 14v92M240 14v92M300 14v92M360 14v92M420 14v92M480 14v92M540 14v92"/></g>
+  <path class="pulse-left pulse-ghost" d="{_BRAND_PULSE_LEFT}"/>
+  <path class="pulse-right pulse-ghost" d="{_BRAND_PULSE_RIGHT}"/>
+  <path class="pulse-left" d="{_BRAND_PULSE_LEFT}"/>
+  <path class="pulse-right" d="{_BRAND_PULSE_RIGHT}"/>
 </svg>"""
 
 
@@ -414,10 +419,9 @@ def _login_page(
         f'<div class="error" role="alert">{html.escape(error)}</div>' if error else ""
     )
 
-    controls: list[str] = []
+    password_control = ""
     if password_enabled and password_ready:
-        controls.append(
-            f"""
+        password_control = f"""
             <form method="post" action="/login" autocomplete="on">
               <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">
               <input type="hidden" name="next" value="{html.escape(return_to, quote=True)}">
@@ -428,28 +432,33 @@ def _login_page(
               <button class="auth-action primary" type="submit"><span>Sign In</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
             </form>
             """
-        )
     elif password_enabled:
-        controls.append(
+        password_control = (
             '<div class="error" role="alert">Username &amp; Password authentication is enabled '
             "but is not fully configured. That mechanism is unavailable.</div>"
         )
 
+    oidc_control = ""
     if oidc_enabled and oidc_ready:
-        if password_ready:
-            controls.append('<div class="divider"><span>or continue with single sign-on</span></div>')
         oidc_class = "secondary" if password_ready else "primary"
         separator = '<span class="oidc-separator" aria-hidden="true"></span>' if password_ready else ""
-        controls.append(
+        oidc_control = (
             f'<a class="auth-action oidc {oidc_class}" href="/auth/oidc/start?next={quote(return_to, safe="")}">'
-            f'{_AUTH_OIDC_MARK_HTML}{separator}<span>Continue with {provider_name}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>'
+            f'{_AUTH_OIDC_MARK_HTML}{separator}<span>Sign in with {provider_name}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>'
         )
     elif oidc_enabled:
-        controls.append(
+        oidc_control = (
             '<div class="error" role="alert">OpenID Connect is enabled but its local '
             "configuration is incomplete or invalid.</div>"
         )
 
+    controls: list[str] = []
+    if oidc_control:
+        controls.append(oidc_control)
+    if password_control:
+        if oidc_ready and password_ready:
+            controls.append('<div class="divider"><span>or continue with user name and password</span></div>')
+        controls.append(password_control)
     if not password_enabled and not oidc_enabled:
         controls.append('<p class="muted auth-only-message">Authentication is not currently required.</p>')
 
