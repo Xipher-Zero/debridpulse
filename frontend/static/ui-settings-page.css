@@ -1,13 +1,13 @@
 /* DebridPulse v1.0.11 Settings page contract.
  *
  * Settings owns only page geometry, section composition and Settings-specific
- * state presentation. Card, header, field, tab, button and theme material are
+ * state presentation. Cards, fields, tabs, buttons and theme material are
  * inherited from the universal application language.
  */
 
 /* Settings is a normal application view. Keep the outer paint boundary open,
    exactly as the stable Downloads page does, so shared card shadows can render
-   outside their boxes. Scrolling belongs inside the master card body. */
+   outside their boxes. Scrolling belongs inside the structural master body. */
 body.dp-v11-structural #view-settings.dp-settings-page.active {
   display: flex !important;
   flex-direction: column;
@@ -24,10 +24,11 @@ body.dp-v11-structural #view-settings .dp-settings-master {
   margin: 0 !important;
   display: flex;
   flex-direction: column;
+  overflow: visible;
 }
 
-/* Master header uses the shared .card-header material. Settings owns only its
-   three-column geometry so the section rail remains centered on the full card. */
+/* The master header is structural and intentionally unpainted. Settings owns
+   only its geometry so the section rail remains centered on the full view. */
 body.dp-v11-structural #view-settings .dp-settings-master > .dp-settings-master-header {
   flex: 0 0 auto;
   min-height: 76px;
@@ -35,7 +36,7 @@ body.dp-v11-structural #view-settings .dp-settings-master > .dp-settings-master-
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   column-gap: 16px;
-  padding-block: 9px;
+  padding: 9px 17px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-master-identity {
@@ -385,7 +386,7 @@ body.dp-v11-structural #view-settings .dp-settings-footer .btn {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
     row-gap: 10px;
-    padding-block: 12px;
+    padding: 12px 17px;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-master-identity {

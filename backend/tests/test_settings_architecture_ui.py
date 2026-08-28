@@ -16,7 +16,7 @@ def test_settings_has_one_post_core_authoritative_page_runtime():
     loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
 
     assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=2" in loader
+    assert "/ui-settings-page.js?v=3" in loader
     assert "data-dp-settings-page" in loader
     assert "ui-settings-architecture.js" not in loader
     assert "ui-settings-presentation.js" not in loader
@@ -24,7 +24,7 @@ def test_settings_has_one_post_core_authoritative_page_runtime():
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     styles = STYLE_V11.read_text(encoding="utf-8")
-    assert "@import url('/ui-settings-page.css?v=1');" in styles
+    assert "@import url('/ui-settings-page.css?v=2');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
@@ -152,16 +152,22 @@ def test_settings_tabs_match_reviewed_order_in_the_authoritative_renderer():
     assert positions == sorted(positions)
 
 
-def test_settings_renderer_owns_final_master_card_and_separate_footer_directly():
+def test_settings_renderer_owns_unpainted_master_structure_and_separate_footer_directly():
     source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
 
-    assert 'class="card dp-settings-master"' in source
-    assert 'class="card-header dp-settings-master-header"' in source
+    assert 'class="dp-settings-master"' in source
+    assert 'class="dp-settings-master-header"' in source
     assert 'class="stabs dp-settings-tabs" id="settings-tabs"' in source
-    assert 'class="card-body dp-settings-master-body"' in source
+    assert 'class="dp-settings-master-body"' in source
     assert 'id="settings-form"' in source
     assert 'class="card save-bar dp-settings-footer"' in source
     assert 'aria-label="Settings actions"' in source
+
+    # The full-height Settings master is a structural viewport, not a shared
+    # material card. Card aliases here would repaint the page-sized frame.
+    assert 'class="card dp-settings-master"' not in source
+    assert 'class="card-header dp-settings-master-header"' not in source
+    assert 'class="card-body dp-settings-master-body"' not in source
 
 
 def test_settings_nested_sections_use_shared_card_header_and_body_material():
@@ -176,19 +182,29 @@ def test_settings_nested_sections_use_shared_card_header_and_body_material():
     assert "scard-body" not in source
 
 
-def test_settings_page_does_not_redefine_shared_master_header_material():
+def test_settings_master_structure_does_not_define_card_material():
+    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
     css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
 
-    selector = ".dp-settings-master > .dp-settings-master-header"
-    start = css.index(selector)
-    block = css[start:css.index("}", start)]
-    assert "background:" not in block
-    assert "box-shadow:" not in block
-    assert "border-bottom:" not in block
+    assert 'class="card dp-settings-master"' not in source
+    assert 'class="card-header dp-settings-master-header"' not in source
+    assert 'class="card-body dp-settings-master-body"' not in source
+
+    for selector in (
+        ".dp-settings-master {",
+        ".dp-settings-master > .dp-settings-master-header",
+    ):
+        start = css.index(selector)
+        block = css[start:css.index("}", start)]
+        assert "background:" not in block
+        assert "box-shadow:" not in block
+        assert "border-radius:" not in block
+        assert "border:" not in block
+
     assert "radial-gradient" not in css
 
 
-def test_settings_master_tabs_are_centered_on_the_whole_card():
+def test_settings_master_tabs_are_centered_on_the_whole_structural_view():
     css = SETTINGS_PAGE_CSS.read_text(encoding="utf-8")
 
     assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in css
