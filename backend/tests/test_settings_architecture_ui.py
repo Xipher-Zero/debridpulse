@@ -161,3 +161,26 @@ def test_global_advanced_is_limited_to_transfer_engine_tuning_candidates():
         "s-upload_fail_retry_count",
     ):
         assert provider_control not in advanced
+
+
+def test_provider_status_summary_is_idempotent_across_architecture_reapply():
+    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
+    provider = source[source.index("function buildSourcesAndProviders"):source.index("function buildDownloads")]
+
+    assert "let status = connection?.querySelector('.dp-settings-status');" in provider
+    assert "if (!status && connection)" in provider
+    assert "status = document.createElement('div');" in provider
+    assert "const keyState = status?.querySelector('#dp-settings-ad-key-state');" in provider
+
+
+def test_settings_architecture_observer_cannot_retrigger_from_its_own_dom_moves():
+    source = SETTINGS_IA_JS.read_text(encoding="utf-8")
+    apply_block = source[source.index("function applyArchitecture"):source.index("function scheduleApply")]
+    observer_block = source[source.index("function installObserver"):source.index("function boot")]
+
+    disconnect = apply_block.index("if (settingsObserver) settingsObserver.disconnect();")
+    mutate = apply_block.index("normalizeTabs();")
+    reconnect = apply_block.index("observeSettingsForm();")
+    assert disconnect < mutate < reconnect
+    assert "function observeSettingsForm()" in source
+    assert "observeSettingsForm();" in observer_block
