@@ -4,9 +4,28 @@
  * architecture in one shared master card. The page-level Settings title remains
  * outside the card; the card header owns the identity block plus the centered
  * section rail, while #settings-form remains the authoritative settings body.
+ *
+ * IMPORTANT: app.js renders Settings lazily when the view is opened. Do not
+ * compose the master card around the initially-empty #settings-tabs / form
+ * placeholders. Wait until the Settings IA pass has rebuilt the reviewed tabs
+ * and subsection cards, then compose the shell. Keep observing so later
+ * renderSettings() refreshes are re-composed after the IA pass completes.
  */
 (function () {
   'use strict';
+
+  const EXPECTED_TABS = Object.freeze([
+    'tab-general',
+    'tab-download',
+    'tab-extract',
+    'tab-notifications',
+    'tab-authentication',
+    'tab-database',
+    'tab-advanced',
+  ]);
+
+  let compositionScheduled = false;
+  let viewObserver = null;
 
   function loadStyles() {
     if (document.querySelector('link[data-dp-settings-presentation]')) return;
@@ -63,11 +82,30 @@
     });
   }
 
+  function settingsReadyForPresentation() {
+    const tabs = document.getElementById('settings-tabs');
+    const form = document.getElementById('settings-form');
+    if (!tabs || !form) return false;
+
+    const tabIds = Array.from(tabs.querySelectorAll('.stab[data-tab]'))
+      .map(function (tab) { return tab.dataset.tab; });
+
+    const hasExpectedTabs = EXPECTED_TABS.every(function (id) {
+      return tabIds.includes(id);
+    });
+    const hasExpectedPanels = EXPECTED_TABS.every(function (id) {
+      return !!form.querySelector('#' + id);
+    });
+    const iaComposed = !!form.querySelector('.dp-settings-ia-card');
+
+    return hasExpectedTabs && hasExpectedPanels && iaComposed;
+  }
+
   function buildMaster() {
     const view = document.getElementById('view-settings');
     const tabs = document.getElementById('settings-tabs');
     const form = document.getElementById('settings-form');
-    if (!view || !tabs || !form) return false;
+    if (!view || !tabs || !form || !settingsReadyForPresentation()) return false;
 
     let master = document.getElementById('dp-settings-master');
     if (!master) {
@@ -122,18 +160,31 @@
     }).observe(tabs, {childList: true, subtree: true, attributes: true, attributeFilter: ['class']});
   }
 
+  function composeWhenReady() {
+    compositionScheduled = false;
+    if (!settingsReadyForPresentation()) return;
+    if (buildMaster()) installTabObserver();
+  }
+
+  function scheduleComposition() {
+    if (compositionScheduled) return;
+    compositionScheduled = true;
+    setTimeout(composeWhenReady, 0);
+  }
+
+  function installViewObserver() {
+    const view = document.getElementById('view-settings');
+    if (!view || viewObserver) return;
+    viewObserver = new MutationObserver(function () {
+      scheduleComposition();
+    });
+    viewObserver.observe(view, {childList: true, subtree: true});
+  }
+
   function boot() {
     loadStyles();
-    let attempts = 0;
-    const apply = function () {
-      attempts += 1;
-      if (buildMaster()) {
-        installTabObserver();
-        return;
-      }
-      if (attempts < 120) setTimeout(apply, 50);
-    };
-    apply();
+    installViewObserver();
+    scheduleComposition();
   }
 
   if (document.readyState === 'loading') {
