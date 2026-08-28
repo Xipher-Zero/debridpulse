@@ -5,18 +5,23 @@ ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_JS = ROOT / "frontend" / "static" / "ui-theme-bootstrap.js"
 PRESENTATION_LOADER_JS = ROOT / "frontend" / "static" / "ui-presentation-loader.js"
 SETTINGS_IA_JS = ROOT / "frontend" / "static" / "ui-settings-architecture.js"
+SETTINGS_PRESENTATION_JS = ROOT / "frontend" / "static" / "ui-settings-presentation.js"
+SETTINGS_PRESENTATION_CSS = ROOT / "frontend" / "static" / "ui-settings-presentation.css"
 APP_JS = ROOT / "frontend" / "static" / "app.js"
 TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def test_settings_information_architecture_runtime_is_loaded_after_core():
+def test_settings_information_architecture_and_presentation_load_after_core_in_order():
     bootstrap = BOOTSTRAP_JS.read_text(encoding="utf-8")
     loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
     runtime = SETTINGS_IA_JS.read_text(encoding="utf-8")
     app = APP_JS.read_text(encoding="utf-8")
 
     assert "ui-settings-architecture.js" not in bootstrap
-    assert "/ui-settings-architecture.js?v=3" in loader
+    assert "ui-settings-presentation.js" not in bootstrap
+    architecture = loader.index("/ui-settings-architecture.js?v=3")
+    presentation = loader.index("/ui-settings-presentation.js?v=2")
+    assert architecture < presentation
     assert "UI only" in runtime
     assert "dp-settings-preserved-controls" in runtime
     # The inherited renderer remains present until the post-UI backend pruning pass.
@@ -33,9 +38,10 @@ def test_settings_presentation_is_not_part_of_global_first_paint_bootstrap():
     assert "ui-presentation-loader.js?v=1" in bootstrap
 
 
-def test_settings_runtime_is_owned_by_frontend_syntax_gate():
+def test_settings_runtimes_are_owned_by_frontend_syntax_gate():
     workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
     assert "node --check frontend/static/ui-settings-architecture.js" in workflow
+    assert "node --check frontend/static/ui-settings-presentation.js" in workflow
 
 
 def test_settings_tabs_match_reviewed_ownership_order():
@@ -194,8 +200,67 @@ def test_settings_architecture_has_one_explicit_render_lifecycle_owner():
     assert "wrapped.dpSettingsArchitecture = '1';" in source
     assert source.count("window.renderSettings = wrapped;") == 1
 
-    # Provider-label observation is allowed; Settings-form lifecycle inference is not.
+    assert "MutationObserver" not in source
     assert "settingsObserver" not in source
     assert "observeSettingsForm" not in source
     assert "scheduleApply" not in source
     assert "setTimeout(boot" not in source
+
+
+def test_settings_presentation_uses_explicit_post_architecture_render_lifecycle():
+    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
+
+    assert "function installSettingsPresentationHook()" in source
+    assert "const previous = window.renderSettings;" in source
+    assert "previous.dpSettingsArchitecture !== '1'" in source
+    assert "const result = previous.apply(this, arguments);" in source
+    assert "composeSettingsPresentation();" in source
+    assert "wrapped.dpSettingsPresentation = '1';" in source
+    assert source.count("window.renderSettings = wrapped;") == 1
+
+    # The hardened presentation lifecycle must never infer completion from DOM churn.
+    assert "MutationObserver" not in source
+    assert "setTimeout(" not in source
+    assert "setInterval(" not in source
+
+
+def test_settings_presentation_restores_master_card_and_separate_footer_card():
+    source = SETTINGS_PRESENTATION_JS.read_text(encoding="utf-8")
+
+    assert "master.id = 'dp-settings-master'" in source
+    assert "master.className = 'dp-card dp-settings-master'" in source
+    assert "header.appendChild(tabs);" in source
+    assert "body.appendChild(form);" in source
+    assert "saveBar.classList.add('dp-card', 'dp-settings-footer');" in source
+    assert "view.insertBefore(saveBar, master.nextElementSibling);" in source
+    assert "Settings actions" in source
+
+
+def test_settings_master_tabs_are_centered_and_footer_uses_shared_lower_datum():
+    css = SETTINGS_PRESENTATION_CSS.read_text(encoding="utf-8")
+
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in css
+    assert ".dp-settings-master #settings-tabs" in css
+    assert "grid-column: 2;" in css
+    assert "justify-self: center;" in css
+
+    assert "#content.settings-active" in css
+    assert "padding-left: var(--dp-shell-x) !important;" in css
+    assert "padding-right: var(--dp-shell-x) !important;" in css
+    assert "padding-bottom: 24px !important;" in css
+    assert ".dp-settings-footer" in css
+    assert "position: static !important;" in css
+    assert "margin: 0 !important;" in css
+
+
+def test_settings_master_body_scrolls_while_footer_remains_persistent():
+    css = SETTINGS_PRESENTATION_CSS.read_text(encoding="utf-8")
+
+    assert "#view-settings.dp-settings-presented.active" in css
+    assert "flex-direction: column;" in css
+    assert ".dp-settings-master__body" in css
+    assert "overflow: hidden;" in css
+    assert ".dp-settings-master__body > #settings-form" in css
+    assert "overflow-y: auto;" in css
+    assert ".dp-settings-footer" in css
+    assert "flex: 0 0 auto;" in css
