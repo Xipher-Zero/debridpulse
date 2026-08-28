@@ -1,0 +1,144 @@
+/* DebridPulse v1.0.11 Settings presentation shell.
+ *
+ * Presentation only: wraps the existing reviewed Settings information
+ * architecture in one shared master card. The page-level Settings title remains
+ * outside the card; the card header owns the identity block plus the centered
+ * section rail, while #settings-form remains the authoritative settings body.
+ */
+(function () {
+  'use strict';
+
+  function loadStyles() {
+    if (document.querySelector('link[data-dp-settings-presentation]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/ui-settings-presentation.css?v=1';
+    link.dataset.dpSettingsPresentation = '1';
+    document.head.appendChild(link);
+  }
+
+  function buildIdentity() {
+    const identity = document.createElement('div');
+    identity.className = 'dp-settings-master__identity';
+
+    const icon = document.createElement('div');
+    icon.className = 'dp-settings-master__icon-frame';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+    const copy = document.createElement('div');
+    copy.className = 'dp-settings-master__copy';
+
+    const title = document.createElement('div');
+    title.className = 'dp-settings-master__title';
+    title.textContent = 'Settings';
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'dp-settings-master__subtitle';
+    subtitle.textContent = 'Configure providers, downloads, notifications, and system behavior.';
+
+    copy.appendChild(title);
+    copy.appendChild(subtitle);
+    identity.appendChild(icon);
+    identity.appendChild(copy);
+    return identity;
+  }
+
+  function normalizeTabSemantics(tabs) {
+    if (!tabs) return;
+    tabs.classList.add('dp-settings-master__tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Settings sections');
+
+    tabs.querySelectorAll('.stab').forEach(function (tab) {
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+    });
+  }
+
+  function syncTabSelection(tabs) {
+    if (!tabs) return;
+    tabs.querySelectorAll('.stab').forEach(function (tab) {
+      tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+    });
+  }
+
+  function buildMaster() {
+    const view = document.getElementById('view-settings');
+    const tabs = document.getElementById('settings-tabs');
+    const form = document.getElementById('settings-form');
+    if (!view || !tabs || !form) return false;
+
+    let master = document.getElementById('dp-settings-master');
+    if (!master) {
+      master = document.createElement('section');
+      master.id = 'dp-settings-master';
+      master.className = 'dp-card dp-settings-master';
+      master.setAttribute('aria-label', 'Settings configuration');
+
+      const header = document.createElement('header');
+      header.className = 'dp-settings-master__header';
+      header.appendChild(buildIdentity());
+
+      const balance = document.createElement('div');
+      balance.className = 'dp-settings-master__balance';
+      balance.setAttribute('aria-hidden', 'true');
+
+      const body = document.createElement('div');
+      body.className = 'dp-settings-master__body';
+
+      master.appendChild(header);
+      master.appendChild(body);
+
+      const saveBar = view.querySelector(':scope > .save-bar');
+      view.insertBefore(master, saveBar || null);
+      header.appendChild(tabs);
+      header.appendChild(balance);
+      body.appendChild(form);
+    } else {
+      const header = master.querySelector('.dp-settings-master__header');
+      const body = master.querySelector('.dp-settings-master__body');
+      if (header && tabs.parentElement !== header) {
+        const balance = header.querySelector('.dp-settings-master__balance');
+        header.insertBefore(tabs, balance || null);
+      }
+      if (body && form.parentElement !== body) body.appendChild(form);
+    }
+
+    view.classList.add('dp-settings-presented');
+    normalizeTabSemantics(tabs);
+    syncTabSelection(tabs);
+    view.dataset.dpSettingsPresentation = '1';
+    return true;
+  }
+
+  function installTabObserver() {
+    const tabs = document.getElementById('settings-tabs');
+    if (!tabs || tabs.dataset.dpSettingsPresentationObserved === '1') return;
+    tabs.dataset.dpSettingsPresentationObserved = '1';
+    new MutationObserver(function () {
+      normalizeTabSemantics(tabs);
+      syncTabSelection(tabs);
+    }).observe(tabs, {childList: true, subtree: true, attributes: true, attributeFilter: ['class']});
+  }
+
+  function boot() {
+    loadStyles();
+    let attempts = 0;
+    const apply = function () {
+      attempts += 1;
+      if (buildMaster()) {
+        installTabObserver();
+        return;
+      }
+      if (attempts < 120) setTimeout(apply, 50);
+    };
+    apply();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, {once: true});
+  } else {
+    boot();
+  }
+})();
