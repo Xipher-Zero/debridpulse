@@ -374,23 +374,17 @@
     schedulePoll(POLL_MS);
   }
 
-  function applyMode(card) {
-    if (!card) return;
+  function syncCardForMode(panel = downloadsPanel()) {
     const builtin = currentMode() === 'builtin';
-    const body = card.querySelector('[data-dp-aria2-live-body]');
-    const refresh = card.querySelector('[data-dp-aria2-live-refresh]');
-
-    card.classList.toggle('is-external', !builtin);
-    card.setAttribute('aria-disabled', builtin ? 'false' : 'true');
-    if (body) body.hidden = !builtin;
-    if (refresh) refresh.hidden = !builtin;
-
     if (!builtin) {
       stopPolling();
-      return;
+      liveCard()?.remove();
+      return null;
     }
 
-    startVisibleQueue();
+    const card = ensureCard(panel);
+    if (card) startVisibleQueue();
+    return card;
   }
 
   function apply() {
@@ -398,8 +392,7 @@
     if (!view) return;
 
     reorderTabs(view);
-    const card = ensureCard(downloadsPanel());
-    applyMode(card);
+    syncCardForMode(downloadsPanel());
   }
 
   function observe(view) {
@@ -437,8 +430,7 @@
     view.addEventListener('change', event => {
       if (!event.target.matches('[data-setting="aria2_mode"]')) return;
       queueMicrotask(() => {
-        const card = liveCard();
-        applyMode(card);
+        syncCardForMode(downloadsPanel());
       });
     });
 
