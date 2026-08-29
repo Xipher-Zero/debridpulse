@@ -10,6 +10,7 @@ from services.dispatch_coordinator import (
     collapse_direct_link_mirrors,
     plan_direct_link_mirror_suppression,
 )
+from services.restart_resume_control import RestartResumableTransferControlCoordinator
 
 
 def _row(
@@ -373,6 +374,9 @@ def test_transfer_control_service_uses_mirror_aware_authoritative_queue():
     source = (root / "backend/services/transfer_control_service.py").read_text()
     control_source = (root / "backend/services/transfer_control.py").read_text()
 
-    assert "MirrorAwareTransferControlCoordinator" in source
-    assert "self.coordinator = MirrorAwareTransferControlCoordinator(engine)" in source
+    assert issubclass(
+        RestartResumableTransferControlCoordinator,
+        MirrorAwareTransferControlCoordinator,
+    )
+    assert "self.coordinator = RestartResumableTransferControlCoordinator(engine)" in source
     assert "result = await self._orig_dispatch(snapshot)" in control_source
