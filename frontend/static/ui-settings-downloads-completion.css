@@ -18,59 +18,77 @@ body.dp-v11-structural #view-settings [data-panel="downloads"] .dp-settings-aria
   inset-inline-start: 3px;
 }
 
-/* The external aria2 clear-secret action is one compact, centered control
-   block: title -> checkbox -> explanatory copy. */
+/* At desktop widths the configured external connection band deliberately gives
+   some of the former URL surplus to secret replacement and explicit clearing.
+   The resulting 45 / 30 / 25 balance keeps the three controls visually related
+   without compromising a useful RPC endpoint width. */
+@media (min-width: 1181px) {
+  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured {
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, .9fr) minmax(320px, .75fr);
+  }
+}
+
+/* Boolean/action controls use a different grammar from text fields: title and
+   explanation form one text block and the compact control sits just to its
+   right, vertically centered against that complete block. */
 body.dp-v11-structural #view-settings .dp-settings-external-connection-row .dp-settings-clear-secret--aria2 {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  display: grid;
+  grid-template-columns: fit-content(340px) auto;
+  grid-template-rows: auto auto;
   justify-content: center;
-  gap: 6px;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 3px;
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
-  text-align: center;
+  text-align: left;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > .form-label {
-  width: 100%;
-  align-self: auto;
+  grid-column: 1;
+  grid-row: 1;
+  width: auto;
+  align-self: end;
   margin: 0;
-  text-align: center;
+  text-align: left;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > small {
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  display: block;
+  margin: 0;
+  text-align: left;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control {
-  width: 100%;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  width: auto;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 1px 0;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > small {
-  width: 100%;
-  display: block;
+  align-self: center;
   margin: 0;
-  text-align: center;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 input {
   margin: 0;
 }
 
-/* Continue Partial Downloads follows the same title -> control -> helper
-   sandwich as the ordinary fields. The toggle belongs between its title and
-   explanation instead of floating in a separate horizontal control lane. */
 body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-  align-content: start;
-  justify-items: start;
-  row-gap: 6px;
+  grid-template-columns: fit-content(620px) auto;
+  grid-template-rows: auto auto;
+  justify-content: start;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 3px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field > .form-label {
@@ -79,20 +97,20 @@ body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field > 
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control {
+body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field > .form-hint {
   grid-column: 1;
   grid-row: 2;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control {
+  grid-column: 2;
+  grid-row: 1 / 3;
   min-height: 0;
-  align-self: start;
+  align-self: center;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field > .form-hint {
-  grid-column: 1;
-  grid-row: 3;
-  margin: 0;
 }
 
 /* File Allocation keeps the compact text-block + control grammar and remains
@@ -133,6 +151,42 @@ body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation > .dp-
   width: 100%;
   min-width: 0;
   align-self: center;
+}
+
+/* Safety & Recovery uses the supplied purple recovery artwork at the same
+   perceived 34px footprint as Download Engine. The artwork owns its frame;
+   CSS contributes only the established two-stage omnidirectional glow. */
+body.dp-v11-structural #view-settings .dp-settings-download-recovery-card > .card-header > .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-recovery-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-recovery-icon img {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.78))
+    drop-shadow(0 0 9px rgba(184,102,245,.34));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-download-recovery-icon img {
+  filter:
+    saturate(1.08)
+    contrast(1.04)
+    drop-shadow(0 0 4px rgba(184,102,245,.88))
+    drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
 /* Safety & Recovery is deliberately a 3-over-2 equal-width matrix. Six grid
@@ -215,6 +269,10 @@ body.dp-v11-structural #view-settings .dp-settings-file-filters-retired {
 }
 
 @media (max-width: 700px) {
+  body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation > .dp-settings-field {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto;
