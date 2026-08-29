@@ -172,10 +172,10 @@ def test_settings_tabs_match_the_reviewed_order_and_glyph_inventory():
         "['notifications', 'Notifications', 'bell']",
         "['authentication', 'Authentication', 'shield-check']",
         "['maintenance', 'Data & Maintenance', 'database-backup']",
-        "['advanced', 'Advanced', 'sliders-horizontal']",
     ]
     positions = [runtime.index(item) for item in expected]
     assert positions == sorted(positions)
+    assert "['advanced', 'Advanced', 'sliders-horizontal']" not in runtime
 
 
 def test_sources_panel_uses_source_type_master_group_before_provider_cards():
@@ -231,6 +231,13 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "block_samples",
         "block_extras",
         "torrent_labels_raw",
+        "aria2_split",
+        "aria2_min_split_size",
+        "aria2_max_connection_per_server",
+        "aria2_disk_cache",
+        "aria2_file_allocation",
+        "aria2_lowest_speed_limit",
+        "aria2_continue_downloads",
     ):
         assert key in downloads
 
@@ -256,7 +263,7 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
     ):
         assert key in notifications
 
-    maintenance = runtime[runtime.index("function maintenancePanel"):runtime.index("function advancedPanel")]
+    maintenance = runtime[runtime.index("function maintenancePanel"):runtime.index("function panel(")]
     for key in (
         "backup_enabled",
         "backup_folder",
@@ -270,17 +277,8 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
     ):
         assert key in maintenance
 
-    advanced = runtime[runtime.index("function advancedPanel"):runtime.index("function panel(")]
-    for key in (
-        "aria2_split",
-        "aria2_min_split_size",
-        "aria2_max_connection_per_server",
-        "aria2_disk_cache",
-        "aria2_file_allocation",
-        "aria2_lowest_speed_limit",
-        "aria2_continue_downloads",
-    ):
-        assert key in advanced
+    assert "function advancedPanel" not in runtime
+    assert "panel('advanced'" not in runtime
 
 
 def test_non_auth_serializer_starts_from_server_state_and_preserves_hidden_settings():

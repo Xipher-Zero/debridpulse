@@ -14,7 +14,6 @@
     ['notifications', 'Notifications', 'bell'],
     ['authentication', 'Authentication', 'shield-check'],
     ['maintenance', 'Data & Maintenance', 'database-backup'],
-    ['advanced', 'Advanced', 'sliders-horizontal'],
   ]);
 
   const state = {
@@ -169,6 +168,7 @@
       <section class="card dp-settings-card ${options.className || ''}">
         <div class="card-header">
           <span class="${titleClass}">${titleMarkup}</span>
+          ${options.headerCenter ? `<div class="dp-settings-card-header-center">${options.headerCenter}</div>` : ''}
           ${options.action || ''}
         </div>
         <div class="card-body">${body}</div>
@@ -233,6 +233,48 @@
       </div>`;
   }
 
+  function aria2RpcSecretFields(configured) {
+    const key = 'aria2_secret';
+    const id = fieldId(key);
+    const masked = '••••••••••••••••';
+    const hint = configured
+      ? 'Enter a new RPC secret to replace the stored secret when you click Apply Settings. Leave this field blank to keep the current secret.'
+      : 'Enter the RPC secret used by your external aria2 server. It will be saved only when you click Apply Settings.';
+    return `
+      <div class="dp-settings-field dp-settings-aria2-secret-field">
+        <label class="form-label" for="${id}">aria2 RPC Secret</label>
+        <input class="input" id="${id}" data-setting="${key}" type="password" value=""
+               placeholder="${configured ? masked : 'Optional RPC secret'}" autocomplete="off">
+        <div class="dp-settings-aria2-secret-meta">
+          <span class="form-hint">${hint}</span>
+          ${configured ? '<span class="form-hint dp-settings-key-present">Secret Present</span>' : ''}
+        </div>
+      </div>
+      ${configured ? `
+        <label class="dp-settings-clear-secret dp-settings-clear-secret--aria2">
+          <span class="form-label">Clear stored aria2 RPC Secret</span>
+          <span class="dp-settings-clear-secret-control" aria-hidden="true">
+            <input type="checkbox" data-clear-secret="${key}" aria-label="Clear stored aria2 RPC Secret">
+          </span>
+          <small>Remove the saved RPC secret when you click Apply Settings.</small>
+        </label>` : ''}`;
+  }
+
+  function tuningToggle(key, label, detail, value) {
+    const id = fieldId(key);
+    return `
+      <div class="dp-settings-field dp-settings-engine-tuning-toggle-field">
+        <label class="form-label" for="${id}">${html(label)}</label>
+        <div class="dp-settings-engine-tuning-toggle-control">
+          <span class="toggle">
+            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)}>
+            <span class="ttrack"></span>
+          </span>
+        </div>
+        <span class="form-hint">${html(detail)}</span>
+      </div>`;
+  }
+
   function sourcesPanel(s) {
     const providerIdentity = `
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
@@ -278,6 +320,11 @@
 
   function downloadsPanel(s) {
     const builtIn = (s.aria2_mode || 'builtin') === 'builtin';
+    const engineIdentity = `
+      <span class="dp-settings-download-engine-icon" aria-hidden="true">
+        <img src="/icons/dp/download-engine.svg?v=1" alt="">
+      </span>`;
+    const engineCopy = 'Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server.';
     const modeSelection = `
       <div class="dp-settings-download-engine-mode">
         ${selectField('aria2_mode', 'Mode Selection', s.aria2_mode || 'builtin', [
@@ -286,18 +333,12 @@
         ])}
       </div>`;
     const delivery = card('Download Engine', `
-      <p class="dp-settings-copy dp-settings-download-engine-copy">Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server.</p>
-      <div class="dp-settings-mode-external" ${builtIn ? 'hidden' : ''}>
+      <div class="dp-settings-mode-external dp-settings-external-connection-row ${s.aria2_secret_configured ? 'is-secret-configured' : ''}" ${builtIn ? 'hidden' : ''}>
         ${input('aria2_url', 'External RPC URL', s.aria2_url || 'http://127.0.0.1:6800/jsonrpc', {
-          placeholder: 'http://aria2:6800/jsonrpc'
+          placeholder: 'http://aria2:6800/jsonrpc',
+          hint: 'JSON-RPC endpoint DebridPulse uses to connect to your external aria2 server.'
         })}
-        ${secretField(
-          'aria2_secret',
-          'aria2 RPC Secret',
-          !!s.aria2_secret_configured,
-          'Optional RPC secret',
-          'Used only for External aria2. Blank preserves the stored secret.'
-        )}
+        ${aria2RpcSecretFields(!!s.aria2_secret_configured)}
       </div>
       <div class="dp-settings-download-engine-row">
         <div class="dp-settings-download-path-stack" data-download-path-mode="builtin" ${builtIn ? '' : 'hidden'}>
@@ -317,8 +358,48 @@
           })}
         </div>
       </div>
+      <details class="dp-settings-additional dp-settings-engine-tuning" ${builtIn ? '' : 'hidden'}>
+        <summary><span>Additional Engine Tuning</span></summary>
+        <div class="dp-settings-additional-body">
+          <div class="dp-settings-engine-tuning-grid">
+            ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', s.aria2_lowest_speed_limit || '0', {
+              hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
+            })}
+            ${tuningToggle(
+              'aria2_continue_downloads',
+              'Continue Partial Downloads',
+              'Resume existing partial files when possible instead of restarting them from the beginning.',
+              s.aria2_continue_downloads !== false
+            )}
+            ${input('aria2_split', 'Segments per File', s.aria2_split ?? 16, {
+              type: 'number', min: 1, max: 64,
+              hint: 'Controls how many parallel segments aria2 can use for a single file. Actual connections may be limited by the server and split-size settings.'
+            })}
+            ${input('aria2_max_connection_per_server', 'Connections per Server', s.aria2_max_connection_per_server ?? 16, {
+              type: 'number', min: 1, max: 64,
+              hint: 'Maximum number of connections a single download can open to the same server.'
+            })}
+            ${input('aria2_min_split_size', 'Minimum Split Size', s.aria2_min_split_size || '10M', {
+              hint: 'Controls how small file sections can become when aria2 splits a download. Larger values create fewer parallel segments.'
+            })}
+            ${input('aria2_disk_cache', 'Disk Cache', s.aria2_disk_cache || '64M', {
+              hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
+            })}
+          </div>
+          <div class="dp-settings-engine-file-allocation">
+            ${selectField('aria2_file_allocation', 'File Allocation', s.aria2_file_allocation || 'falloc', [
+              ['trunc', 'Truncate'],
+              ['falloc', 'Fallocate'],
+              ['prealloc', 'Preallocate'],
+              ['none', 'None'],
+            ], 'Controls how aria2 prepares disk space for new files.')}
+          </div>
+        </div>
+      </details>
     `, {
       className: 'dp-settings-download-engine-card',
+      titlePrefix: engineIdentity,
+      headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(engineCopy)}</span>`,
       action: modeSelection,
     });
 
@@ -559,21 +640,6 @@
     `);
   }
 
-  function advancedPanel(s) {
-    return card('aria2 Transfer Tuning', `
-      <p class="dp-settings-copy">Advanced physical-transfer options. Defaults are appropriate for most deployments.</p>
-      ${input('aria2_split', 'Segments per File', s.aria2_split ?? 16, {type: 'number', min: 1, max: 64})}
-      ${input('aria2_min_split_size', 'Minimum Split Size', s.aria2_min_split_size || '10M')}
-      ${input('aria2_max_connection_per_server', 'Connections per Server', s.aria2_max_connection_per_server ?? 16, {type: 'number', min: 1, max: 64})}
-      ${input('aria2_disk_cache', 'Disk Cache', s.aria2_disk_cache || '64M')}
-      ${selectField('aria2_file_allocation', 'File Allocation', s.aria2_file_allocation || 'falloc', [
-        ['none', 'none'], ['prealloc', 'prealloc'], ['trunc', 'trunc'], ['falloc', 'falloc']
-      ])}
-      ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', s.aria2_lowest_speed_limit || '0')}
-      ${toggle('aria2_continue_downloads', 'Continue Partial Downloads', 'Allow aria2 to resume existing partial payloads.', s.aria2_continue_downloads !== false)}
-    `);
-  }
-
   function panel(name, body) {
     return `<section class="dp-settings-panel" data-panel="${html(name)}" role="tabpanel" ${state.activeTab === name ? '' : 'hidden'}>${body}</section>`;
   }
@@ -623,7 +689,6 @@
               ${panel('notifications', notificationsPanel(state.settings))}
               ${panel('authentication', authenticationPanel(state.auth))}
               ${panel('maintenance', maintenancePanel(state.settings))}
-              ${panel('advanced', advancedPanel(state.settings))}
             </div>
           </div>
         </div>
@@ -730,6 +795,9 @@
     });
     root()?.querySelectorAll('[data-download-path-mode]').forEach(el => {
       el.hidden = el.dataset.downloadPathMode !== mode;
+    });
+    root()?.querySelectorAll('.dp-settings-engine-tuning').forEach(el => {
+      el.hidden = mode !== 'builtin';
     });
   }
 

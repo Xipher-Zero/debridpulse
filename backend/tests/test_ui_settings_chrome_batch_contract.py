@@ -92,7 +92,6 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
         "notifications": ("bell.svg", "#39c6e8"),
         "authentication": ("shield-check.svg", "#48c77e"),
         "maintenance": ("database-backup.svg", "#3ab8a8"),
-        "advanced": ("sliders-horizontal.svg", "#b866f5"),
     }
 
     assert 'class="dp-settings-tab-chip"' in runtime
@@ -127,11 +126,8 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
         assert PIN in raw
         assert "<image" not in raw.lower()
 
-    # Advanced must use the exact bright Sources & Providers stroke, not merely
-    # a brighter filter around the previous darker SVG artwork.
-    advanced = read(LUCIDE / "sliders-horizontal.svg")
-    assert 'stroke="#B866F5"' in advanced
-    assert "content: url('/icons/lucide/sliders-horizontal.svg?v=2');" in chrome
+    assert ".stab[data-tab='advanced']" not in chrome
+    assert "sliders-horizontal" not in runtime
 
 
 def test_sources_panel_consolidates_primary_key_and_collapsed_additional_settings() -> None:
@@ -139,7 +135,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     page = read(PAGE)
     chrome = read(CHROME)
     manifest = json.loads(read(MANIFEST))
-    key_helper = runtime[runtime.index("function allDebridApiKeyField"):runtime.index("function sourcesPanel")]
+    key_helper = runtime[runtime.index("function allDebridApiKeyField"):runtime.index("function aria2RpcSecretFields")]
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime

@@ -109,22 +109,42 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='authenti
 body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='maintenance'] {
   --dp-settings-tab-color: #3ab8a8;
 }
-body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='advanced'] {
-  --dp-settings-tab-color: #b866f5;
-}
 
-/* The Advanced source artwork used a darker purple in the previous generation.
-   Force the corrected bright-purple SVG resource so stale image cache cannot
-   preserve the old stroke after the CSS generation advances. */
-body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='advanced'] .dp-settings-tab-glyph {
-  content: url('/icons/lucide/sliders-horizontal.svg?v=2');
-}
-
-/* ── Sources & Providers identity ────────────────────────────────────── */
+/* ── Sources & Providers / Download Engine identity ─────────────────── */
 body.dp-v11-structural #view-settings .dp-settings-card-title--with-icon {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Download Engine uses the supplied purple artwork directly. The artwork owns
+   its rounded-square frame; CSS adds only the same two-stage omnidirectional
+   glow used by the other custom Settings card header artwork. */
+body.dp-v11-structural #view-settings .dp-settings-download-engine-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-icon img {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.78))
+    drop-shadow(0 0 9px rgba(184,102,245,.34));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-download-engine-icon img {
+  filter:
+    saturate(1.08)
+    contrast(1.04)
+    drop-shadow(0 0 4px rgba(184,102,245,.88))
+    drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
 /* Debrid Services is a source-type master group. The supplied artwork already
@@ -154,9 +174,9 @@ body.light.dp-v11-structural #view-settings .dp-settings-debrid-services > .card
     drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
-/* Keep the provider disclosure visually subordinate to the primary key row:
-   the label is inset from the card datum, the chevron remains immediately after
-   the label, and revealed controls step in one level farther. */
+/* Keep provider/engine disclosures visually subordinate to their primary rows:
+   labels are inset from the card datum, chevrons remain immediately after the
+   label, and revealed controls step in one level farther. */
 body.dp-v11-structural #view-settings .dp-settings-additional > summary {
   justify-content: flex-start;
   gap: 8px;
