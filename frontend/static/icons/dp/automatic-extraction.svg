@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#31204f"/><stop offset=".48" stop-color="#151124"/><stop offset="1" stop-color="#0d0a17"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e5b8ff"/><stop offset=".35" stop-color="#963cff"/><stop offset=".72" stop-color="#5d12b7"/><stop offset="1" stop-color="#d487ff"/></linearGradient>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#b85cff"/><stop offset="1" stop-color="#50148d"/></linearGradient>
+    <linearGradient id="flap" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d68aff"/><stop offset=".55" stop-color="#9b35ef"/><stop offset="1" stop-color="#5b12a7"/></linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f3d4ff"/><stop offset=".45" stop-color="#be64ff"/><stop offset="1" stop-color="#6b20c7"/></linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="24" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="116" y="116" width="1816" height="1816" rx="330" fill="#351057" opacity=".7" filter="url(#glow)"/>
+  <rect x="138" y="138" width="1772" height="1772" rx="310" fill="url(#bg)" stroke="url(#edge)" stroke-width="72"/>
+  <rect x="192" y="192" width="1664" height="1664" rx="265" fill="none" stroke="#d890ff" stroke-width="18" opacity=".72"/>
+  <path d="M302 482Q450 282 770 252h675q278 18 382 184" fill="none" stroke="#f1cfff" stroke-width="34" stroke-linecap="round" opacity=".24"/>
+  <path d="M592 1015l432 142 432-142-55 514q-7 72-79 96l-298 99-298-99q-72-24-79-96z" fill="url(#box)" stroke="#b85cff" stroke-width="18"/>
+  <path d="M592 1015l-282-120 264-262 450 276-258 300z" fill="url(#flap)" stroke="#f0b9ff" stroke-width="18"/>
+  <path d="M1456 1015l282-120-264-262-450 276 258 300z" fill="url(#flap)" stroke="#f0b9ff" stroke-width="18"/>
+  <path d="M766 1209l258-300 258 300-258 80z" fill="#5d199f" stroke="#d887ff" stroke-width="14" opacity=".85"/>
+  <path d="M500 972l-224 267 411 117 337-67-258-80z" fill="url(#flap)" stroke="#f0b9ff" stroke-width="18"/>
+  <path d="M1548 972l224 267-411 117-337-67 258-80z" fill="url(#flap)" stroke="#f0b9ff" stroke-width="18"/>
+  <path d="M1024 1286v282" stroke="#f4d7ff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M963 1322h122M963 1374h122M963 1426h122M963 1478h122M963 1530h122" stroke="#f4d7ff" stroke-width="20" stroke-linecap="round"/>
+  <path d="M1024 1555c-48 0-82 37-82 83s34 82 82 82 82-36 82-82-34-83-82-83zm0 45a38 38 0 110 76 38 38 0 010-76z" fill="#e1a0ff"/>
+  <g fill="url(#flap)" stroke="#e9b2ff" stroke-width="8">
+    <rect x="760" y="595" width="104" height="104" rx="16" transform="rotate(-6 812 647)"/>
+    <rect x="864" y="718" width="116" height="116" rx="16" transform="rotate(-4 922 776)"/>
+    <rect x="1110" y="690" width="110" height="110" rx="16" transform="rotate(5 1165 745)"/>
+    <rect x="1240" y="550" width="108" height="108" rx="16" transform="rotate(7 1294 604)"/>
+    <rect x="678" y="480" width="76" height="76" rx="14"/>
+    <rect x="1324" y="484" width="84" height="84" rx="14"/>
+  </g>
+  <path d="M953 921V572H840l184-252 184 252h-113v349z" fill="url(#arrow)" stroke="#f6dfff" stroke-width="28" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M1024 397v458" stroke="#fff" stroke-width="22" stroke-linecap="round" opacity=".62"/>
+</svg>
