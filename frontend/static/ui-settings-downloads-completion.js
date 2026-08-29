@@ -72,6 +72,26 @@
     if (hintNode.textContent !== hint) hintNode.textContent = hint;
   }
 
+  function ensureRecoveryIdentity(recovery) {
+    const header = directChild(recovery, '.card-header');
+    const titleNode = header?.querySelector('.card-title');
+    if (!titleNode) return;
+
+    titleNode.classList.add('dp-settings-card-title--with-icon');
+    if (titleNode.querySelector('.dp-settings-download-recovery-icon')) return;
+
+    const icon = document.createElement('span');
+    icon.className = 'dp-settings-download-recovery-icon';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const image = document.createElement('img');
+    image.src = '/icons/dp/download-safety-recovery.svg?v=1';
+    image.alt = '';
+    image.decoding = 'async';
+    icon.appendChild(image);
+    titleNode.prepend(icon);
+  }
+
   function expandConfiguredSecretMasks(view) {
     view.querySelectorAll(
       '[data-panel="sources"] input[type="password"], [data-panel="downloads"] input[type="password"]'
@@ -88,7 +108,10 @@
     if (!panel) return;
 
     const recovery = cardByTitle(panel, 'Download Safety & Recovery');
-    recovery?.classList.add('dp-settings-download-recovery-card');
+    if (recovery) {
+      recovery.classList.add('dp-settings-download-recovery-card');
+      ensureRecoveryIdentity(recovery);
+    }
 
     for (const [key, label, hint] of RECOVERY_COPY) {
       setFieldCopy(panel, key, label, hint);
