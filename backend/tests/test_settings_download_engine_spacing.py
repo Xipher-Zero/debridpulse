@@ -23,7 +23,7 @@ def test_download_engine_body_uses_standard_settings_card_top_spacing():
     assert "margin-top: 0;" in rule
 
     page_import = "@import url('/ui-settings-page.css?v=2');"
-    spacing_import = "@import url('/ui-settings-download-engine-spacing.css?v=1');"
+    spacing_import = "@import url('/ui-settings-download-engine-spacing.css?v=20');"
     assert page_import in imports
     assert spacing_import in imports
     assert imports.index(spacing_import) > imports.index(page_import)
