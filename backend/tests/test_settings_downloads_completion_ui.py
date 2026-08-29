@@ -5,6 +5,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
+RECOVERY_ICON = STATIC / "icons" / "dp" / "download-safety-recovery.svg"
 
 
 def read(name: str) -> str:
@@ -13,10 +14,10 @@ def read(name: str) -> str:
 
 def test_completion_assets_are_loaded_in_deterministic_order():
     loader = read("ui-presentation-loader.js")
-    assert "/ui-settings-downloads-completion.css?v=2" in loader
+    assert "/ui-settings-downloads-completion.css?v=3" in loader
     assert "/ui-settings-page.js?v=4" in loader
-    assert "/ui-settings-downloads-completion.js?v=1" in loader
-    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=1")
+    assert "/ui-settings-downloads-completion.js?v=2" in loader
+    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=2")
 
 
 def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leakage():
@@ -28,35 +29,64 @@ def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leaka
     assert "input[type=\"password\"]" in runtime
 
 
-def test_external_rpc_clear_secret_is_one_compact_centered_control_block():
+def test_external_rpc_clear_secret_is_adjacent_to_copy_and_connection_band_is_rebalanced():
     page = read("ui-settings-page.js")
     css = read("ui-settings-downloads-completion.css")
 
     assert "Clear stored aria2 RPC Secret" in page
     assert "Remove the saved RPC secret when you click Apply Settings." in page
-    assert "flex-direction: column;" in css
-    assert ".dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control" in css
-    assert "justify-content: center;" in css
+    assert "grid-template-columns: minmax(0, 1.35fr) minmax(300px, .9fr) minmax(320px, .75fr);" in css
+    assert ".dp-settings-external-connection-row .dp-settings-clear-secret--aria2" in css
+    assert "grid-template-columns: fit-content(340px) auto;" in css
+    assert ".dp-settings-clear-secret--aria2 > .form-label" in css
     assert ".dp-settings-clear-secret--aria2 > small" in css
-    assert "text-align: center;" in css
+    assert ".dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control" in css
+    assert "grid-row: 1 / 3;" in css
+    assert "column-gap: 14px;" in css
 
 
-def test_continue_partial_uses_title_control_helper_sandwich_and_file_allocation_stays_grouped():
+def test_continue_partial_uses_copy_block_with_adjacent_centered_toggle_and_file_allocation_stays_grouped():
     css = read("ui-settings-downloads-completion.css")
 
     assert ".dp-settings-engine-tuning-toggle-field" in css
-    assert "grid-template-columns: minmax(0, 1fr);" in css
-    assert "grid-template-rows: auto auto auto;" in css
-    assert ".dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control" in css
-    assert "grid-row: 2;" in css
+    assert "grid-template-columns: fit-content(620px) auto;" in css
+    assert "grid-template-rows: auto auto;" in css
+    assert ".dp-settings-engine-tuning-toggle-field > .form-label" in css
     assert ".dp-settings-engine-tuning-toggle-field > .form-hint" in css
-    assert "grid-row: 3;" in css
-    assert "fit-content(620px) auto" not in css
+    assert ".dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control" in css
+    assert "grid-row: 1 / 3;" in css
+    assert "align-self: center;" in css
 
     assert ".dp-settings-engine-file-allocation" in css
     assert "width: min(100%, 680px);" in css
     assert "grid-template-columns: fit-content(380px) minmax(180px, 220px);" in css
     assert ".dp-settings-engine-file-allocation > .dp-settings-field > .dp-dropdown-shell" in css
+
+
+def test_download_safety_recovery_has_vector_header_artwork_and_established_glow():
+    runtime = read("ui-settings-downloads-completion.js")
+    css = read("ui-settings-downloads-completion.css")
+    icon = RECOVERY_ICON.read_text(encoding="utf-8")
+
+    assert "ensureRecoveryIdentity" in runtime
+    assert "dp-settings-download-recovery-icon" in runtime
+    assert "/icons/dp/download-safety-recovery.svg?v=1" in runtime
+    assert "titleNode.prepend(icon);" in runtime
+
+    assert ".dp-settings-download-recovery-icon" in css
+    assert ".dp-settings-download-recovery-icon img" in css
+    assert "width: 34px;" in css
+    assert "height: 34px;" in css
+    assert "drop-shadow(0 0 4px rgba(184,102,245,.78))" in css
+    assert "drop-shadow(0 0 9px rgba(184,102,245,.34))" in css
+    assert "body.light.dp-v11-structural #view-settings .dp-settings-download-recovery-icon img" in css
+    assert "drop-shadow(0 0 10px rgba(184,102,245,.44))" in css
+
+    assert 'viewBox="0 0 256 256"' in icon
+    assert icon.count("<path") >= 10
+    assert "<linearGradient" in icon
+    assert "<image" not in icon.lower()
+    assert "data:image" not in icon.lower()
 
 
 def test_file_filters_are_retired_from_presentation_without_destructive_ui_pass_rewrite():
