@@ -30,7 +30,7 @@ select.dp-native-select--enhanced {
 .dp-dropdown-shell {
   position: relative;
   display: inline-flex;
-  width: 100%;
+  width: auto;
   max-width: 100%;
   min-width: 0;
   vertical-align: middle;
@@ -130,13 +130,47 @@ select.dp-native-select--enhanced {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--dp-border-default);
+  border: 1px solid color-mix(in srgb, var(--dp-border-strong) 78%, var(--dp-accent-purple) 22%);
   border-radius: var(--dp-radius-md);
-  background: color-mix(in srgb, var(--dp-surface-overlay) 96%, transparent);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 4.8%, transparent) 40%,
+      transparent 74%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 2.4%, transparent) 44%,
+      transparent 76%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.026) 0%,
+      transparent 38%,
+      color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 74%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 92%, var(--dp-surface-overlay) 8%);
   color: var(--dp-text-primary);
-  box-shadow: var(--dp-shadow-raised);
+  box-shadow: var(--dp-shadow-raised), 0 3px 9px rgba(20,18,36,.16);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+}
+
+body.light .dp-dropdown-menu {
+  border-color: color-mix(in srgb, var(--dp-border-strong) 82%, var(--dp-accent-purple) 18%);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 7.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 3.2%, transparent) 42%,
+      transparent 76%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 4.4%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 1.8%, transparent) 46%,
+      transparent 78%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.52) 0%,
+      transparent 42%,
+      rgba(105,90,145,.04) 76%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 86%, var(--dp-surface-2) 14%);
+  box-shadow: var(--dp-shadow-raised), 0 3px 10px rgba(45,61,96,.11);
 }
 
 .dp-dropdown-menu[hidden] { display: none !important; }
@@ -200,11 +234,53 @@ select.dp-native-select--enhanced {
   font-size: 12px;
 }
 
-/* The speed-cap control is a richer popover rather than a simple select, but
-   it participates in the same anchoring language: the menu's right edge is
-   exactly the trigger button's right edge. */
+/* The speed-cap control is a richer popover rather than a simple select. Its
+   local wrapper must not become the positioning containing block; the existing
+   positioned #aria2-speed-badge owns the popover anchor so right:0 means the
+   complete operational widget's right edge, not the inner cap button. */
+body.dp-v11-structural #aria2-speed-badge .aria2-cap-control {
+  position: static;
+}
+
 body.dp-v11-structural .aria2-cap-menu {
   right: 0 !important;
+  border-color: color-mix(in srgb, var(--dp-border-strong) 78%, var(--dp-accent-purple) 22%);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 4.8%, transparent) 40%,
+      transparent 74%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 2.4%, transparent) 44%,
+      transparent 76%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.026) 0%,
+      transparent 38%,
+      color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 74%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 92%, var(--dp-surface-overlay) 8%) !important;
+  box-shadow: var(--dp-shadow-raised), 0 3px 9px rgba(20,18,36,.16);
+}
+
+body.light.dp-v11-structural .aria2-cap-menu {
+  border-color: color-mix(in srgb, var(--dp-border-strong) 82%, var(--dp-accent-purple) 18%);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 7.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 3.2%, transparent) 42%,
+      transparent 76%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 4.4%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 1.8%, transparent) 46%,
+      transparent 78%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.52) 0%,
+      transparent 42%,
+      rgba(105,90,145,.04) 76%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 86%, var(--dp-surface-2) 14%) !important;
+  box-shadow: var(--dp-shadow-raised), 0 3px 10px rgba(45,61,96,.11);
 }
 
 @media (prefers-reduced-motion: reduce) {
