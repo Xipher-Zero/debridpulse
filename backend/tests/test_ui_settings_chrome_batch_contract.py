@@ -56,7 +56,9 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert "justify-self: center;" in chrome
     assert "@media (max-width: 1180px)" in chrome
 
-    assert "url('/icons/dp/settings-header.svg')" in chrome
+    # The explicit query generation prevents a browser-cached synthetic glyph
+    # from masking the supplied Settings asset after a staging image update.
+    assert "url('/icons/dp/settings-header.svg?v=2')" in chrome
     assert "background-size: 51px 51px;" in chrome
     assert manifest["icons"]["settingsHeader"] == "settings-header.svg"
     gear = read(STATIC / "icons" / "dp" / "settings-header.svg")
@@ -89,7 +91,7 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
         "notifications": ("bell.svg", "#39c6e8"),
         "authentication": ("shield-check.svg", "#48c77e"),
         "maintenance": ("database-backup.svg", "#3ab8a8"),
-        "advanced": ("sliders-horizontal.svg", "#9d7bea"),
+        "advanced": ("sliders-horizontal.svg", "#b866f5"),
     }
 
     assert 'class="dp-settings-tab-chip"' in runtime
@@ -155,6 +157,7 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger
     logo = chrome.split(".dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
     assert "width: 34px;" in logo
     assert "height: 34px;" in logo
+    assert "transform: translateY(1px);" in logo
     assert "drop-shadow(0 0 3px rgba(220,158,14,.92))" in logo
     assert "drop-shadow(0 0 7px rgba(220,158,14,.52))" in logo
 
@@ -177,9 +180,11 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     assert 'data-action="test-alldebrid"' in runtime
     assert 'class="dp-settings-action-chip"' in runtime
     assert 'class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg"' in runtime
+    action_owner = chrome.split("button[data-action='test-alldebrid'] {", 1)[1].split("}", 1)[0]
     action_glyph = chrome.split(".dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
     light_action = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
     action_chip = chrome.split(".dp-settings-action-chip {", 1)[1].split("}", 1)[0]
+    assert "--dp-settings-action-color: #b866f5;" in action_owner
     assert "saturate(1.5)" in action_glyph
     assert "drop-shadow" in action_glyph
     assert "saturate(2.15)" in light_action
