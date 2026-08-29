@@ -204,6 +204,32 @@
         </label>` : ''}`;
   }
 
+  function allDebridApiKeyField(configured) {
+    const key = 'alldebrid_api_key';
+    const id = fieldId(key);
+    const masked = '••••••••••••••••';
+    return `
+      <div class="dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}">
+        <div class="dp-settings-field dp-settings-alldebrid-key-field">
+          <label class="form-label" for="${id}">API Key</label>
+          <input class="input" id="${id}" data-setting="${key}" type="password" value=""
+                 placeholder="${configured ? masked : 'Your AllDebrid API key'}" autocomplete="off">
+          <div class="dp-settings-alldebrid-key-meta">
+            <span class="form-hint">Get the key from alldebrid.com/apikeys. Blank preserves the stored key.</span>
+            ${configured ? '<span class="form-hint dp-settings-key-present">Key present</span>' : ''}
+          </div>
+        </div>
+        ${configured ? `
+          <label class="dp-settings-clear-secret dp-settings-clear-secret--alldebrid">
+            <span>
+              <b>Clear stored API Key</b>
+              <small>Erase the stored value when Settings are saved.</small>
+            </span>
+            <input type="checkbox" data-clear-secret="${key}">
+          </label>` : ''}
+      </div>`;
+  }
+
   function sourcesPanel(s) {
     const providerIdentity = `
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
@@ -211,38 +237,33 @@
       </span>`;
     const provider = card('AllDebrid', `
       <p class="dp-settings-copy">Configure the debrid provider used for direct links, magnets, and torrent files.</p>
-      ${secretField(
-        'alldebrid_api_key',
-        'API Key',
-        !!s.alldebrid_api_key_configured,
-        'Your AllDebrid API key',
-        'Get the key from alldebrid.com/apikeys. Leaving this blank preserves the stored key.'
-      )}
-      ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', s.alldebrid_rate_limit_per_minute ?? 60, {
-        type: 'number', min: 0, max: 300, hint: '0 disables the local rate limit.'
-      })}
-      ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', s.poll_interval_seconds ?? 30, {
-        type: 'number', min: 10, hint: 'How often active provider work is checked.'
-      })}
-      ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
-        type: 'number', min: 0, max: 1440, hint: '0 disables scheduled full reconciliation.'
-      })}
+      ${allDebridApiKeyField(!!s.alldebrid_api_key_configured)}
+      <details class="dp-settings-additional">
+        <summary><span>Additional Settings</span></summary>
+        <div class="dp-settings-additional-body">
+          ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', s.alldebrid_rate_limit_per_minute ?? 60, {
+            type: 'number', min: 0, max: 300, hint: '0 disables the local rate limit.'
+          })}
+          ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', s.poll_interval_seconds ?? 30, {
+            type: 'number', min: 10, hint: 'How often active provider work is checked.'
+          })}
+          ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
+            type: 'number', min: 0, max: 1440, hint: '0 disables scheduled full reconciliation.'
+          })}
+          ${input('upload_fail_retry_count', 'Upload Failure Retries', s.upload_fail_retry_count ?? 3, {
+            type: 'number', min: 0, max: 20
+          })}
+          ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', s.upload_fail_retry_delay_minutes ?? 5, {
+            type: 'number', min: 0, max: 1440
+          })}
+        </div>
+      </details>
     `, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
     });
 
-    const recovery = card('Provider Recovery', `
-      <p class="dp-settings-copy">Retry policy for provider-side upload failures.</p>
-      ${input('upload_fail_retry_count', 'Upload Failure Retries', s.upload_fail_retry_count ?? 3, {
-        type: 'number', min: 0, max: 20
-      })}
-      ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', s.upload_fail_retry_delay_minutes ?? 5, {
-        type: 'number', min: 0, max: 1440
-      })}
-    `, {className: 'dp-settings-provider-recovery-card'});
-
-    return groupCard('Debrid Services', provider + recovery, {
+    return groupCard('Debrid Services', provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
   }
