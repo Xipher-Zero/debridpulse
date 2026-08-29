@@ -113,6 +113,11 @@
     refresh?.addEventListener('click', () => void refreshQueue(true));
 
     panel.appendChild(card);
+
+    /* Prime the queue exactly once when this Settings card is materialized.
+       The initial read must not depend on Settings/Downloads visibility timing;
+       visibility only controls the continuing poll loop. */
+    void refreshQueue(false, true);
     return card;
   }
 
@@ -202,10 +207,10 @@
     }, Math.max(0, delay));
   }
 
-  async function refreshQueue(manual) {
+  async function refreshQueue(manual, force = false) {
     const builtin = currentMode() === 'builtin';
     if (!builtin) return null;
-    if (!manual && !shouldRunLiveQueue()) return null;
+    if (!manual && !force && !shouldRunLiveQueue()) return null;
     if (refreshRunning) return refreshRunning;
 
     const card = liveCard();
