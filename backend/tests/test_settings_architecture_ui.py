@@ -24,7 +24,7 @@ def test_settings_has_one_post_core_clean_room_runtime():
     runtime = source(SETTINGS_PAGE_JS)
 
     assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=3" in loader
+    assert "/ui-settings-page.js?v=4" in loader
     assert "data-dp-settings-page" in loader
     assert "clean-room Settings page" in runtime
     assert "window.DPSettingsPage = Object.freeze({load});" in runtime
@@ -163,19 +163,33 @@ def test_old_authentication_settings_augmentations_are_not_loaded():
     assert "/auth-ux.css?v=1" in bootstrap
 
 
-def test_settings_tabs_match_the_reviewed_order_with_new_ids():
+def test_settings_tabs_match_the_reviewed_order_and_glyph_inventory():
     runtime = source(SETTINGS_PAGE_JS)
     expected = [
-        "['sources', 'Sources & Providers']",
-        "['downloads', 'Downloads']",
-        "['extraction', 'Extraction']",
-        "['notifications', 'Notifications']",
-        "['authentication', 'Authentication']",
-        "['maintenance', 'Data & Maintenance']",
-        "['advanced', 'Advanced']",
+        "['sources', 'Sources & Providers', 'zap']",
+        "['downloads', 'Downloads', 'download']",
+        "['extraction', 'Extraction', 'package-open']",
+        "['notifications', 'Notifications', 'bell']",
+        "['authentication', 'Authentication', 'shield-check']",
+        "['maintenance', 'Data & Maintenance', 'database-backup']",
+        "['advanced', 'Advanced', 'sliders-horizontal']",
     ]
     positions = [runtime.index(item) for item in expected]
     assert positions == sorted(positions)
+
+
+def test_sources_panel_uses_source_type_master_group_before_provider_cards():
+    runtime = source(SETTINGS_PAGE_JS)
+    sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
+
+    assert "function groupCard(" in runtime
+    assert "groupCard('Debrid Services', provider + recovery" in sources
+    assert "dp-settings-source-group dp-settings-debrid-services" in sources
+    assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
+    assert "dp-settings-provider-recovery-card" in sources
+    assert "return provider + recovery" not in sources
+    # Source-type identity is intentionally text-only until the reviewed asset arrives.
+    assert "dp-settings-debrid-services-icon" not in sources
 
 
 def test_settings_groups_keep_the_reviewed_field_inventory():
@@ -284,6 +298,7 @@ def test_settings_is_one_master_card_with_internal_header_body_and_footer():
     assert '<div class="dp-settings-scroll">' in runtime
     assert '<div class="dp-settings-master-footer"' in runtime
     assert 'class="card dp-settings-card' in runtime
+    assert 'class="card dp-settings-group-card' in runtime
 
     # The header/footer are regions of the master card, never independent cards.
     assert 'class="card dp-settings-header-card"' not in runtime
