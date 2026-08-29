@@ -17,6 +17,8 @@
     'maintenance',
   ]);
   const POLL_MS = 5000;
+  const QUEUE_TIMEOUT_MS = 20000;
+  const QUEUE_ID = 'dp-settings-aria2-downloads';
 
   let observer = null;
   let scheduled = false;
@@ -27,6 +29,7 @@
   const downloadsPanel = () => root()?.querySelector('[data-panel="downloads"]') || null;
   const modeControl = () => root()?.querySelector('[data-setting="aria2_mode"]') || null;
   const liveCard = () => root()?.querySelector('[data-dp-aria2-live-card="1"]') || null;
+  const queueNode = () => liveCard()?.querySelector('[data-dp-aria2-live-queue="1"]') || null;
 
   function currentMode() {
     const control = modeControl();
@@ -89,7 +92,7 @@
         <div class="dp-settings-aria2-live-note">
           <b>Engine-level controls:</b> actions here change built-in aria2 directly. DebridPulse transfer records are not rewritten by this control surface.
         </div>
-        <div id="aria2-downloads" class="dp-settings-aria2-live-queue" aria-live="polite">
+        <div id="${QUEUE_ID}" data-dp-aria2-live-queue="1" class="dp-settings-aria2-live-queue" aria-live="polite">
           <div class="empty">Loading built-in aria2 queue…</div>
         </div>
       </div>`;
@@ -114,7 +117,7 @@
   }
 
   function relabelEngineActions() {
-    const queue = document.getElementById('aria2-downloads');
+    const queue = queueNode();
     if (!queue) return;
 
     queue.querySelectorAll('.aria2-actions button').forEach(button => {
@@ -146,6 +149,44 @@
     }
   }
 
+  function showQueueError(message) {
+    const queue = queueNode();
+    if (!queue) return;
+    const error = document.createElement('div');
+    error.className = 'aria2-error';
+    error.textContent = `Queue error: ${String(message || 'Unable to load built-in aria2 queue')}`;
+    queue.replaceChildren(error);
+  }
+
+  function renderIntoSettingsQueue(data) {
+    const queue = queueNode();
+    if (!queue) throw new Error('Settings aria2 queue target is unavailable');
+    if (typeof renderAria2Downloads !== 'function') {
+      throw new Error('aria2 queue renderer is unavailable');
+    }
+
+    /* The inherited renderer is intentionally reused, but it historically
+       resolves a global #aria2-downloads node. Give it the Settings queue as
+       an explicit temporary target and displace any stale legacy target for
+       the duration of the render. */
+    const displaced = Array.from(document.querySelectorAll('[id="aria2-downloads"]'))
+      .filter(element => element !== queue);
+    displaced.forEach((element, index) => {
+      element.id = `dp-legacy-aria2-downloads-${index}`;
+    });
+
+    const originalId = queue.id;
+    queue.id = 'aria2-downloads';
+    try {
+      renderAria2Downloads(data);
+    } finally {
+      queue.id = originalId || QUEUE_ID;
+      displaced.forEach(element => {
+        element.id = 'aria2-downloads';
+      });
+    }
+  }
+
   function stopPolling() {
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
@@ -162,15 +203,16 @@
   }
 
   async function refreshQueue(manual) {
-    if (!shouldRunLiveQueue()) return null;
+    const builtin = currentMode() === 'builtin';
+    if (!builtin) return null;
+    if (!manual && !shouldRunLiveQueue()) return null;
     if (refreshRunning) return refreshRunning;
 
     const card = liveCard();
     const refresh = card?.querySelector('[data-dp-aria2-live-refresh]');
-    const queue = document.getElementById('aria2-downloads');
 
-    if (typeof loadAria2Downloads !== 'function') {
-      if (queue) queue.innerHTML = '<div class="aria2-error">Built-in aria2 queue controls are unavailable.</div>';
+    if (typeof api !== 'function') {
+      showQueueError('Application API client is unavailable');
       return null;
     }
 
@@ -180,11 +222,13 @@
         refresh.textContent = 'Refreshing…';
       }
       try {
-        const data = await loadAria2Downloads();
+        const data = await api('GET', '/aria2/downloads', null, QUEUE_TIMEOUT_MS);
+        renderIntoSettingsQueue(data);
         relabelEngineActions();
         setHeaderStatus(card, data);
         return data;
-      } catch (_) {
+      } catch (error) {
+        showQueueError(error?.message || error);
         setHeaderStatus(card, null);
         return null;
       } finally {
@@ -197,6 +241,15 @@
     })();
 
     return refreshRunning;
+  }
+
+  function startVisibleQueue() {
+    if (!shouldRunLiveQueue()) {
+      stopPolling();
+      return;
+    }
+    void refreshQueue(false);
+    schedulePoll(POLL_MS);
   }
 
   function applyMode(card) {
@@ -216,7 +269,7 @@
       return;
     }
 
-    if (shouldRunLiveQueue()) schedulePoll(0);
+    startVisibleQueue();
   }
 
   function apply() {
@@ -270,10 +323,7 @@
 
     view.addEventListener('click', event => {
       if (!event.target.closest('.dp-settings-tabs [data-tab]')) return;
-      queueMicrotask(() => {
-        if (shouldRunLiveQueue()) schedulePoll(0);
-        else stopPolling();
-      });
+      queueMicrotask(startVisibleQueue);
     });
   }
 
@@ -284,8 +334,10 @@
     const original = aria2DownloadAction;
     window.aria2DownloadAction = async function (...args) {
       const result = await original.apply(this, args);
-      relabelEngineActions();
-      if (shouldRunLiveQueue()) schedulePoll(POLL_MS);
+      if (shouldRunLiveQueue()) {
+        await refreshQueue(false);
+        schedulePoll(POLL_MS);
+      }
       return result;
     };
     document.documentElement.dataset.dpAria2LiveActionWrapped = '1';
@@ -304,7 +356,7 @@
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) stopPolling();
-      else if (shouldRunLiveQueue()) schedulePoll(0);
+      else startVisibleQueue();
     });
   }
 
