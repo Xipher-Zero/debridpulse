@@ -11,7 +11,7 @@ def read(name: str) -> str:
 
 def test_universal_dropdown_contract_is_loaded_before_page_layers():
     style = read("style-v11.css")
-    dropdown_import = "@import url('/ui-dropdown-contract.css?v=1');"
+    dropdown_import = "@import url('/ui-dropdown-contract.css?v=20');"
     assert dropdown_import in style
     assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=2');")
     assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=28');")
