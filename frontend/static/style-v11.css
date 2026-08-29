@@ -6,7 +6,7 @@
  *   -> page-specific exceptions -> final shared transfer semantics.
  *
  * Universal defaults must load before pages. Pages may override genuine
- * geometry/behavior requirements, but reusable transfer material is finalized
+ * geometry/behavior/content details, but reusable transfer material is finalized
  * after the migration-era Dashboard layers so stale experiments cannot leak
  * into the effective application contract.
  */
@@ -51,7 +51,7 @@
 @import url('/ui-downloads-page.css?v=27');
 @import url('/ui-downloads-desktop.css?v=28');
 @import url('/ui-settings-page.css?v=2');
-@import url('/ui-settings-chrome.css?v=2');
+@import url('/ui-settings-chrome.css?v=3');
 @import url('/ui-help-page.css?v=22');
 @import url('/ui-feature-icon-contract.css?v=4');
 
