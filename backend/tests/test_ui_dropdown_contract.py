@@ -11,7 +11,7 @@ def read(name: str) -> str:
 
 def test_universal_dropdown_contract_is_loaded_before_page_layers():
     style = read("style-v11.css")
-    dropdown_import = "@import url('/ui-dropdown-contract.css?v=21');"
+    dropdown_import = "@import url('/ui-dropdown-contract.css?v=20');"
     assert dropdown_import in style
     assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=2');")
     assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=28');")
@@ -38,14 +38,15 @@ def test_projected_trigger_preserves_source_geometry_before_native_control_is_hi
     runtime = read("ui-accessibility-runtime.js")
     css = read("ui-dropdown-contract.css")
     geometry = runtime[runtime.index("function copySelectGeometry"):runtime.index("function enhanceSelect")]
+    shell = css.split(".dp-dropdown-shell", 1)[1].split("}", 1)[0]
 
     assert "const rect = select.getBoundingClientRect();" in geometry
     assert "const parentRect = select.parentElement ? select.parentElement.getBoundingClientRect() : null;" in geometry
     assert "const fillsParent = parentWidth > 0 && rect.width >= parentWidth - 2;" in geometry
     assert "shell.style.width = fillsParent ? '100%' : rect.width + 'px';" in geometry
     assert "copySelectGeometry(select, shell);" in runtime
-    assert "width: auto;" in css.split(".dp-dropdown-shell", 1)[1].split("}", 1)[0]
-    assert "width: 100%;" not in css.split(".dp-dropdown-shell", 1)[1].split("}", 1)[0]
+    assert "\n  width: auto;" in shell
+    assert "\n  width: 100%;" not in shell
 
 
 def test_open_menu_uses_shared_top_layer_and_trigger_width():
