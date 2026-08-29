@@ -94,6 +94,7 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
 
     assert 'class="dp-settings-tab-chip"' in runtime
     assert 'class="dp-settings-tab-glyph"' in runtime
+    assert 'src="/icons/lucide/${html(icon)}.svg"' in runtime
     assert ".dp-settings-tab-chip" in chrome
     assert "width: 22px;" in chrome
     assert "height: 22px;" in chrome
@@ -114,7 +115,7 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
     for tab, (filename, color) in expected.items():
         assert f".stab[data-tab='{tab}']" in chrome
         assert color in chrome
-        assert f"/icons/lucide/{filename}" in runtime
+        assert f"'{Path(filename).stem}'" in runtime
 
         raw = read(LUCIDE / filename)
         icon_root = ET.fromstring(raw)
