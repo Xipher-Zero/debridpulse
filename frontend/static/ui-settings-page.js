@@ -278,12 +278,15 @@
 
   function downloadsPanel(s) {
     const builtIn = (s.aria2_mode || 'builtin') === 'builtin';
-    const delivery = card('aria2 Delivery', `
-      <p class="dp-settings-copy">DebridPulse hands unlocked provider URLs to aria2. Built-in mode is managed by the container; external mode connects to an existing JSON-RPC daemon.</p>
-      ${selectField('aria2_mode', 'aria2 Mode', s.aria2_mode || 'builtin', [
-        ['builtin', 'Built-in aria2'],
-        ['external', 'External aria2'],
-      ])}
+    const modeSelection = `
+      <div class="dp-settings-download-engine-mode">
+        ${selectField('aria2_mode', 'Mode Selection', s.aria2_mode || 'builtin', [
+          ['builtin', 'Built-in aria2'],
+          ['external', 'External aria2'],
+        ])}
+      </div>`;
+    const delivery = card('Download Engine', `
+      <p class="dp-settings-copy dp-settings-download-engine-copy">Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server.</p>
       <div class="dp-settings-mode-external" ${builtIn ? 'hidden' : ''}>
         ${input('aria2_url', 'External RPC URL', s.aria2_url || 'http://127.0.0.1:6800/jsonrpc', {
           placeholder: 'http://aria2:6800/jsonrpc'
@@ -296,16 +299,28 @@
           'Used only for External aria2. Blank preserves the stored secret.'
         )}
       </div>
-      ${input('download_folder', 'Built-in Download Folder', s.download_folder || '/download', {
-        hint: 'Path as seen by DebridPulse and the built-in aria2 daemon.'
-      })}
-      ${input('aria2_download_path', 'External aria2 Download Path', s.aria2_download_path || '', {
-        hint: 'Path to the same download location as seen by an external aria2 daemon.'
-      })}
-      ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {
-        type: 'number', min: 1, max: 100
-      })}
-    `);
+      <div class="dp-settings-download-engine-row">
+        <div class="dp-settings-download-path-stack" data-download-path-mode="builtin" ${builtIn ? '' : 'hidden'}>
+          ${input('download_folder', 'Built-in Download Folder', s.download_folder || '/download', {
+            hint: 'Where DebridPulse saves downloads.'
+          })}
+        </div>
+        <div class="dp-settings-download-path-stack" data-download-path-mode="external" ${builtIn ? 'hidden' : ''}>
+          ${input('aria2_download_path', 'External aria2 Download Path', s.aria2_download_path || '', {
+            hint: 'Path your external aria2 server uses for the shared download folder on that server.'
+          })}
+        </div>
+        <div class="dp-settings-download-limit">
+          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {
+            type: 'number', min: 1, max: 100,
+            hint: 'Maximum number of downloads DebridPulse can run at the same time.'
+          })}
+        </div>
+      </div>
+    `, {
+      className: 'dp-settings-download-engine-card',
+      action: modeSelection,
+    });
 
     const recovery = card('Download Safety & Recovery', `
       ${input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
@@ -712,6 +727,9 @@
     const mode = valueOf('aria2_mode') || 'builtin';
     root()?.querySelectorAll('.dp-settings-mode-external').forEach(el => {
       el.hidden = mode !== 'external';
+    });
+    root()?.querySelectorAll('[data-download-path-mode]').forEach(el => {
+      el.hidden = el.dataset.downloadPathMode !== mode;
     });
   }
 
