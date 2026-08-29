@@ -126,9 +126,17 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
         assert PIN in raw
         assert "<image" not in raw.lower()
 
+    # Advanced must use the exact bright Sources & Providers stroke, not merely
+    # a brighter filter around the previous darker SVG artwork.
+    advanced = read(LUCIDE / "sliders-horizontal.svg")
+    assert 'stroke="#B866F5"' in advanced
+    assert "content: url('/icons/lucide/sliders-horizontal.svg?v=2');" in chrome
+
 
 def test_sources_panel_has_debrid_services_master_group_with_provider_and_recovery_nested() -> None:
     runtime = read(RUNTIME)
+    chrome = read(CHROME)
+    manifest = json.loads(read(MANIFEST))
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
@@ -137,8 +145,23 @@ def test_sources_panel_has_debrid_services_master_group_with_provider_and_recove
     assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
     assert "dp-settings-provider-recovery-card" in sources
     assert "Debrid Services" in sources
-    # The source-type group intentionally has no invented icon yet.
-    assert "dp-settings-debrid-services-icon" not in sources
+
+    assert manifest["icons"]["debridServices"] == "debrid-services.svg"
+    raw = read(STATIC / "icons" / "dp" / "debrid-services.svg")
+    root = ET.fromstring(raw)
+    assert root.tag.endswith("svg")
+    assert root.attrib.get("viewBox") in {"0 0 2048 2048", "0 0 2e3 2e3"}
+    assert "<path" in raw
+    assert "<image" not in raw.lower()
+    assert "data:image" not in raw.lower()
+
+    icon_rule = chrome.split(".dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
+    assert "url('/icons/dp/debrid-services.svg?v=1')" in icon_rule
+    assert "width: 34px;" in icon_rule
+    assert "height: 34px;" in icon_rule
+    assert icon_rule.count("drop-shadow") == 2
+    light_rule = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
+    assert light_rule.count("drop-shadow") == 2
 
 
 def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger_logo() -> None:
@@ -190,8 +213,10 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     assert "saturate(2.15)" in light_action
     assert light_action.count("drop-shadow") == 3
     assert "filter:" not in action_chip
+    assert "content: url('/icons/lucide/flask-conical.svg?v=2');" in chrome
     assert ">Apply Settings</button>" in runtime
     assert ">Save Settings</button>" not in runtime
     assert PIN in raw
     assert "<path" in raw
+    assert 'stroke="#B866F5"' in raw
     assert ".btn-primary" not in chrome
