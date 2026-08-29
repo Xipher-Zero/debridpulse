@@ -1,0 +1,8 @@
+/* DebridPulse v1.0.11 Settings Download Engine spacing correction.
+ *
+ * The Download Engine body uses the same card-body top padding as every other
+ * Settings card. The engine row therefore must not add a second top margin.
+ */
+body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
+  margin-top: 0;
+}
