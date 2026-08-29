@@ -29,7 +29,7 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     chrome = read(CHROME)
 
     settings = overlay.index("/ui-settings-page.css?v=2")
-    settings_chrome = overlay.index("/ui-settings-chrome.css?v=2")
+    settings_chrome = overlay.index("/ui-settings-chrome.css?v=3")
     help_page = overlay.index("/ui-help-page.css?v=22")
     feature = overlay.index("/ui-feature-icon-contract.css?v=4")
     assert settings < settings_chrome < help_page < feature
@@ -182,6 +182,15 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "text-align: right;" in page
     assert ".dp-settings-additional > summary" in page
     assert ".dp-settings-additional[open] > summary::after" in page
+
+    disclosure = chrome.split(".dp-settings-additional > summary {", 1)[1].split("}", 1)[0]
+    assert "justify-content: flex-start;" in disclosure
+    assert "gap: 8px;" in disclosure
+    assert "padding-left: 16px;" in disclosure
+    chevron = chrome.split(".dp-settings-additional > summary::after {", 1)[1].split("}", 1)[0]
+    assert "margin-left: 2px;" in chevron
+    additional_body = chrome.split(".dp-settings-additional-body {", 1)[1].split("}", 1)[0]
+    assert "padding: 8px 0 4px 28px;" in additional_body
 
     assert manifest["icons"]["debridServices"] == "debrid-services.svg"
     raw = read(STATIC / "icons" / "dp" / "debrid-services.svg")
