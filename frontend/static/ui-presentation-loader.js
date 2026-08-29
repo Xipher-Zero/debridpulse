@@ -1,4 +1,10 @@
-/* DebridPulse v1.0.11 deterministic presentation-runtime loader. */
+/* DebridPulse v1.0.11 deterministic presentation-runtime loader.
+ *
+ * app.js and parser-deferred core runtimes have already executed before this
+ * file is loaded. Presentation layers are then loaded one at a time in an
+ * explicit order. A missing presentation asset is logged and skipped rather
+ * than preventing the remaining UI layers or core application from running.
+ */
 (function () {
   'use strict';
 
@@ -13,29 +19,42 @@
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
   ]);
 
-  function loadRuntime(index) {
-    if (index >= RUNTIMES.length) return;
-    const runtime = RUNTIMES[index];
-    if (document.querySelector('script[' + runtime.marker + ']')) {
-      loadRuntime(index + 1);
-      return;
+  function alreadyLoaded(runtime) {
+    return Boolean(document.querySelector('script[' + runtime.marker + ']'));
+  }
+
+  function loadRuntime(runtime) {
+    if (alreadyLoaded(runtime)) return Promise.resolve();
+
+    return new Promise(function (resolve, reject) {
+      const script = document.createElement('script');
+      script.src = runtime.src;
+      script.async = false;
+      script.setAttribute(runtime.marker, '1');
+      script.onload = function () { resolve(); };
+      script.onerror = function () {
+        reject(new Error('Unable to load ' + runtime.src));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  async function loadPresentationRuntimes() {
+    if (document.documentElement.dataset.dpPresentationLoaderStarted === '1') return;
+    document.documentElement.dataset.dpPresentationLoaderStarted = '1';
+
+    for (const runtime of RUNTIMES) {
+      try {
+        await loadRuntime(runtime);
+      } catch (error) {
+        console.error('[DebridPulse] presentation runtime skipped:', runtime.src, error);
+        continue;
+      }
     }
 
-    const script = document.createElement('script');
-    script.src = runtime.src;
-    script.async = false;
-    script.setAttribute(runtime.marker, '1');
-    script.addEventListener('load', function () { loadRuntime(index + 1); }, {once: true});
-    script.addEventListener('error', function () {
-      console.error('[DebridPulse] failed to load presentation runtime:', runtime.src);
-      loadRuntime(index + 1);
-    }, {once: true});
-    document.head.appendChild(script);
+    document.documentElement.dataset.dpPresentationLoaderReady = '1';
+    document.dispatchEvent(new CustomEvent('debridpulse:presentation-ready'));
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { loadRuntime(0); }, {once: true});
-  } else {
-    loadRuntime(0);
-  }
+  void loadPresentationRuntimes();
 })();
