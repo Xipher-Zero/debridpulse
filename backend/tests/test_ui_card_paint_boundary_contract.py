@@ -21,7 +21,7 @@ def test_downloads_outer_view_does_not_clip_universal_card_paint():
     assert "overflow: hidden" not in desktop_rule
 
 
-def test_clean_settings_uses_paint_visible_root_and_one_internal_scroll_boundary():
+def test_clean_settings_uses_one_master_card_and_one_internal_scroll_boundary():
     css = read_static("ui-settings-page.css")
     runtime = read_static("ui-settings-page.js")
 
@@ -31,21 +31,36 @@ def test_clean_settings_uses_paint_visible_root_and_one_internal_scroll_boundary
     assert "overflow: visible;" in rule
     assert "overflow: hidden;" not in rule
 
+    master = css.split("#view-settings > .dp-settings-master-card", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto;" in master
+    assert "min-height: 0;" in master
+    assert "margin-bottom: 0 !important;" in master
+
+    body = css.split("#view-settings .dp-settings-master-body", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto;" in body
+    assert "overflow: hidden;" in body
+
     scroll = css.split("#view-settings .dp-settings-scroll", 1)[1].split("}", 1)[0]
     assert "overflow-y: auto;" in scroll
     assert "overscroll-behavior: contain;" in scroll
-    assert "padding: 0;" in scroll
 
     panels = css.split("#view-settings .dp-settings-panels", 1)[1].split("}", 1)[0]
-    assert "padding: 8px 12px 18px;" in panels
+    assert "padding: 12px 12px 16px;" in panels
 
-    assert '<section class="card dp-settings-header-card"' in runtime
-    assert '<section class="card dp-settings-footer"' in runtime
+    footer = css.split("#view-settings .dp-settings-master-footer", 1)[1].split("}", 1)[0]
+    assert "flex: 0 0 auto;" in footer
+    assert "border-top: 1px solid var(--dp-divider);" in footer
+
+    assert '<section class="card dp-settings-master-card"' in runtime
+    assert '<div class="card-header dp-settings-master-header">' in runtime
+    assert '<div class="dp-settings-master-body">' in runtime
+    assert '<div class="dp-settings-master-footer"' in runtime
     assert 'class="card dp-settings-card' in runtime
-    assert "dp-settings-master" not in runtime
+    assert '<section class="card dp-settings-header-card"' not in runtime
+    assert '<section class="card dp-settings-footer"' not in runtime
 
 
-def test_inherited_settings_shell_state_is_rejected_by_clean_runtime():
+def test_inherited_settings_shell_state_is_rejected_but_normal_content_height_is_reused():
     shell = read_static("ui-shell-structural.css")
     legacy = read_static("style.css")
     runtime = read_static("ui-settings-page.js")
@@ -53,12 +68,18 @@ def test_inherited_settings_shell_state_is_rejected_by_clean_runtime():
 
     # app.js still emits the inherited class until the monolith cleanup pass.
     # The clean Settings entry removes it synchronously before rendering any
-    # Settings DOM, so the legacy zero-padding viewport never owns the page.
+    # Settings DOM. The only #content selector Settings owns mirrors Activity:
+    # suppress outer scrolling while the page fills the shell-owned content box.
     assert "#content.settings-active" in legacy
     assert "body.dp-v11-structural #content.settings-active" in shell
     assert "classList.remove('settings-active')" in runtime
     assert "#content.settings-active" not in settings
-    assert "#content" not in settings
+    assert "body.dp-v11-structural #content:has(#view-settings.active)" in settings
+
+    content_rule = settings.split("#content:has(#view-settings.active)", 1)[1].split("}", 1)[0]
+    assert "overflow-y: hidden;" in content_rule
+    for forbidden in ("#main", "#sidebar", "#topbar"):
+        assert forbidden not in settings
 
 
 def test_help_moves_scroll_boundary_inside_the_card_body():
@@ -96,7 +117,7 @@ def test_card_paint_boundary_page_layers_are_loaded_after_universal_language():
     stats = overlay.index("/ui-statistics-page.css?v=21")
     activity = overlay.index("/ui-activity-log-page.css?v=28")
     downloads = overlay.index("/ui-downloads-page.css?v=27")
-    settings = overlay.index("/ui-settings-page.css?v=1")
+    settings = overlay.index("/ui-settings-page.css?v=2")
     help_page = overlay.index("/ui-help-page.css?v=22")
 
     assert universal < stats < activity < downloads < settings < help_page
