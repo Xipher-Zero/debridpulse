@@ -1,27 +1,26 @@
-/* DebridPulse v1.0.11 Settings / Downloads completion pass.
+/* DebridPulse v1.0.11 Settings completion pass.
  *
- * This layer is presentation-only: it finishes the Downloads geometry without
- * changing the persisted transfer semantics owned by ui-settings-page.js.
+ * This layer finishes final Settings geometry without changing the persisted
+ * transfer semantics owned by ui-settings-page.js.
  */
 
-/* Standard Settings fields in Sources and Downloads use one small shared text
-   offset so the complete title/helper blocks align with the control datum.
-   Relative positioning moves wrapped helper lines as a unit; unlike inline
-   padding, continuation lines cannot snap back to the unshifted left edge. */
+/* Standard Settings fields use one small shared text offset so complete title
+   and helper blocks align with the control datum. Relative positioning moves
+   wrapped helper lines as a unit; continuation lines cannot snap back left. */
 body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-field > .form-label,
 body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-field > .form-hint,
 body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-alldebrid-key-meta > .form-hint:first-child,
 body.dp-v11-structural #view-settings [data-panel="downloads"] .dp-settings-field > .form-label,
 body.dp-v11-structural #view-settings [data-panel="downloads"] .dp-settings-field > .form-hint,
-body.dp-v11-structural #view-settings [data-panel="downloads"] .dp-settings-aria2-secret-meta > .form-hint:first-child {
+body.dp-v11-structural #view-settings [data-panel="downloads"] .dp-settings-aria2-secret-meta > .form-hint:first-child,
+body.dp-v11-structural #view-settings [data-panel="extraction"] .dp-settings-field > .form-label,
+body.dp-v11-structural #view-settings [data-panel="extraction"] .dp-settings-field > .form-hint {
   position: relative;
   inset-inline-start: 3px;
 }
 
 /* At desktop widths the configured external connection band deliberately gives
-   some of the former URL surplus to secret replacement and explicit clearing.
-   The resulting 45 / 30 / 25 balance keeps the three controls visually related
-   without compromising a useful RPC endpoint width. */
+   some of the former URL surplus to secret replacement and explicit clearing. */
 @media (min-width: 1181px) {
   body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured {
     grid-template-columns: minmax(0, 1.35fr) minmax(300px, .9fr) minmax(320px, .75fr);
@@ -38,6 +37,7 @@ body.dp-v11-structural #view-settings .dp-settings-external-connection-row .dp-s
   grid-template-rows: auto auto;
   justify-content: center;
   align-items: center;
+  align-self: center;
   column-gap: 14px;
   row-gap: 3px;
   margin-top: 0;
@@ -80,13 +80,39 @@ body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 input {
   margin: 0;
 }
 
+/* Keep the AllDebrid clear action as one compact text/control unit rather than
+   stretching its checkbox to the far edge of the allocated column. */
+body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-clear-secret--alldebrid {
+  width: max-content !important;
+  max-width: 100%;
+  justify-self: end;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  align-items: center;
+  justify-content: start;
+  column-gap: 14px;
+}
+
+body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-clear-secret--alldebrid > span {
+  padding-right: 0 !important;
+}
+
+body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-clear-secret--alldebrid > input {
+  margin-left: 0 !important;
+  align-self: center;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field {
   min-width: 0;
+  width: fit-content;
+  max-width: 100%;
   display: grid;
   grid-template-columns: fit-content(620px) auto;
   grid-template-rows: auto auto;
   justify-content: start;
+  justify-self: start;
   align-items: center;
+  align-self: center;
   column-gap: 14px;
   row-gap: 3px;
 }
@@ -153,9 +179,8 @@ body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation > .dp-
   align-self: center;
 }
 
-/* Safety & Recovery uses the supplied purple recovery artwork at the same
-   perceived 34px footprint as Download Engine. The artwork owns its frame;
-   CSS contributes only the established two-stage omnidirectional glow. */
+/* Safety & Recovery uses its purple artwork at the same perceived 34px
+   footprint as Download Engine, with the established two-stage glow. */
 body.dp-v11-structural #view-settings .dp-settings-download-recovery-card > .card-header > .card-title {
   display: inline-flex;
   align-items: center;
@@ -189,9 +214,7 @@ body.light.dp-v11-structural #view-settings .dp-settings-download-recovery-icon 
     drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
-/* Safety & Recovery is deliberately a 3-over-2 equal-width matrix. Six grid
-   tracks let every setting span exactly two tracks while centering the second
-   row beneath the first to form the intended inverted pyramid. */
+/* Safety & Recovery is deliberately a 3-over-2 equal-width matrix. */
 body.dp-v11-structural #view-settings .dp-settings-download-recovery-card > .card-body {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -217,8 +240,7 @@ body.dp-v11-structural #view-settings .dp-settings-download-recovery-card .input
   width: 100%;
 }
 
-/* AllDebrid Additional Settings deliberately mirrors Safety & Recovery: three
-   equal-width fields above two fields of the same width, centered below them. */
+/* AllDebrid Additional Settings deliberately mirrors Safety & Recovery. */
 body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -244,11 +266,254 @@ body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-provid
   width: 100%;
 }
 
-/* File Filters is retired from the v1.0.11 Downloads presentation. Its loaded
-   values remain in the DOM only so this UI-only pass does not destructively
-   rewrite legacy configuration before the later backend/config pruning pass. */
+/* File Filters is retired from the v1.0.11 Downloads presentation. */
 body.dp-v11-structural #view-settings .dp-settings-file-filters-retired {
   display: none !important;
+}
+
+/* ── Automatic Extraction ───────────────────────────────────────────── */
+/* Match Download Engine's three-part card-header grammar: identity left,
+   explanatory copy true-centered, and the master enable control at right. */
+body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(380px, 780px) minmax(180px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header > .card-title {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-icon img {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.78))
+    drop-shadow(0 0 9px rgba(184,102,245,.34));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-extraction-icon img {
+  filter:
+    saturate(1.08)
+    contrast(1.04)
+    drop-shadow(0 0 4px rgba(184,102,245,.88))
+    drop-shadow(0 0 10px rgba(184,102,245,.44));
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-header-copy {
+  display: block;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-enable {
+  min-width: 0;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-enable > .form-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* The first body row deliberately gives concurrency a compact field and leaves
+   the remaining width to the descriptive delete-after-extraction boolean. */
+body.dp-v11-structural #view-settings .dp-settings-extraction-controls-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
+  align-items: center;
+  gap: 36px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-controls-row > .dp-settings-field {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0 !important;
+  align-self: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-controls-row > .dp-settings-field .input {
+  width: 100%;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-delete {
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0;
+  display: grid;
+  grid-template-columns: fit-content(720px) auto;
+  grid-template-rows: auto auto;
+  justify-content: start;
+  justify-self: start;
+  align-items: center;
+  align-self: center;
+  column-gap: 14px;
+  row-gap: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-delete > .toggle-info {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-delete .tl {
+  color: var(--dp-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-delete .td {
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-delete > .toggle {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-password-field {
+  margin-top: 20px !important;
+}
+
+/* The actual textarea remains the serializer's authoritative data-setting but
+   is visually replaced by a line-aware editor so only the active password need
+   be revealed. */
+body.dp-v11-structural #view-settings .dp-settings-extraction-password-source {
+  display: none !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-extraction-password-editor {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 118px;
+  max-height: 240px;
+  padding: 8px 44px 8px 11px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  cursor: text;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-rows {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-line {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  padding: 2px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--dp-text-primary);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-line::placeholder {
+  color: var(--dp-text-muted);
+  opacity: .72;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-line:focus {
+  color: var(--dp-text-primary);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-eye {
+  appearance: none;
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dp-text-muted);
+  cursor: pointer;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-eye:hover,
+body.dp-v11-structural #view-settings .dp-settings-password-eye:focus-visible,
+body.dp-v11-structural #view-settings .dp-settings-password-eye.is-open {
+  color: var(--dp-accent-purple-bright);
+  background: rgba(184,102,245,.08);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-eye svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-eye-open {
+  display: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-eye.is-open .dp-settings-password-eye-closed {
+  display: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-password-eye.is-open .dp-settings-password-eye-open {
+  display: block;
+}
+
+/* The old one-click archive-password clear action is intentionally retired;
+   the directly editable list is the only visible source of truth. */
+body.dp-v11-structural #view-settings [data-panel="extraction"] .dp-settings-clear-secret:has([data-clear-secret="extraction_password"]) {
+  display: none !important;
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header {
+    grid-template-columns: minmax(210px, 1fr) minmax(260px, 1.35fr) auto;
+  }
 }
 
 @media (max-width: 900px) {
@@ -266,11 +531,39 @@ body.dp-v11-structural #view-settings .dp-settings-file-filters-retired {
   body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field:nth-child(5) {
     grid-column: 1;
   }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 8px 16px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header > .card-title {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header > .dp-settings-extraction-enable {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header > .dp-settings-card-header-center {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-controls-row {
+    grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
+    gap: 24px;
+  }
 }
 
 @media (max-width: 700px) {
   body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field {
     grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation > .dp-settings-field {
@@ -294,5 +587,15 @@ body.dp-v11-structural #view-settings .dp-settings-file-filters-retired {
     grid-column: 1;
     grid-row: 3;
     margin-top: 2px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-controls-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-extraction-delete {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
