@@ -16,8 +16,8 @@ def test_completion_assets_are_loaded_in_deterministic_order():
     loader = read("ui-presentation-loader.js")
     assert "/ui-settings-downloads-completion.css?v=4" in loader
     assert "/ui-settings-page.js?v=4" in loader
-    assert "/ui-settings-downloads-completion.js?v=3" in loader
-    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=3")
+    assert "/ui-settings-downloads-completion.js?v=4" in loader
+    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=4")
 
 
 def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leakage():
@@ -172,11 +172,15 @@ def test_sources_and_downloads_shift_complete_copy_blocks_not_first_lines():
     assert "padding-inline-start: 6px;" not in css
 
 
-def test_completion_runtime_is_idempotently_bound_to_the_persistent_settings_root():
+def test_completion_runtime_is_idempotently_bound_and_suppresses_its_own_mutations():
     runtime = read("ui-settings-downloads-completion.js")
 
     assert "dpSettingsDownloadsCompletionBound" in runtime
     assert "if (view.dataset.dpSettingsDownloadsCompletionBound === '1')" in runtime
+    assert "let observer = null;" in runtime
+    assert "if (observer) observer.disconnect();" in runtime
+    assert "function applyWithoutSelfObservation()" in runtime
     assert "observer.observe(view, {childList: true, subtree: true});" in runtime
+    assert "applyWithoutSelfObservation();" in runtime
     assert "addEventListener('click'" not in runtime
     assert "addEventListener('change'" not in runtime
