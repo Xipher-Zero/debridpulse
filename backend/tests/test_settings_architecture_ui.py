@@ -24,7 +24,7 @@ def test_settings_has_one_post_core_clean_room_runtime():
     runtime = source(SETTINGS_PAGE_JS)
 
     assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=4" in loader
+    assert "/ui-settings-page.js?v=5" in loader
     assert "data-dp-settings-page" in loader
     assert "clean-room Settings page" in runtime
     assert "window.DPSettingsPage = Object.freeze({load});" in runtime
@@ -197,6 +197,32 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     assert "dp-settings-debrid-services-icon" not in sources
 
 
+def test_download_engine_card_matches_reviewed_mode_and_layout_contract():
+    runtime = source(SETTINGS_PAGE_JS)
+    css = source(SETTINGS_PAGE_CSS)
+    downloads = runtime[runtime.index("function downloadsPanel"):runtime.index("function extractionPanel")]
+
+    assert "card('Download Engine'" in downloads
+    assert "aria2 Delivery" not in downloads
+    assert "'Mode Selection'" in downloads
+    assert "['builtin', 'Built-in aria2']" in downloads
+    assert "['external', 'External aria2']" in downloads
+    assert "Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server." in downloads
+    assert "data-download-path-mode=\"builtin\"" in downloads
+    assert "data-download-path-mode=\"external\"" in downloads
+    assert "Where DebridPulse saves downloads." in downloads
+    assert "Path your external aria2 server uses for the shared download folder on that server." in downloads
+    assert "Maximum number of downloads DebridPulse can run at the same time." in downloads
+    assert "el.dataset.downloadPathMode !== mode" in runtime
+
+    assert ".dp-settings-download-engine-mode" in css
+    assert ".dp-settings-download-engine-copy" in css
+    assert ".dp-settings-download-engine-row" in css
+    assert "grid-template-columns: minmax(0, 60%) minmax(240px, 320px);" in css
+    assert ".dp-settings-download-limit" in css
+    assert "justify-self: end;" in css
+
+
 def test_settings_groups_keep_the_reviewed_field_inventory():
     runtime = source(SETTINGS_PAGE_JS)
 
@@ -365,7 +391,7 @@ def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_regi
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     styles = source(STYLE_V11)
-    assert "@import url('/ui-settings-page.css?v=2');" in styles
+    assert "@import url('/ui-settings-page.css?v=3');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
