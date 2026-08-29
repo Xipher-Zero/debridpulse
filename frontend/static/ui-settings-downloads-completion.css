@@ -60,11 +60,12 @@ body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 input {
 
 /* Continue Partial Downloads reads as one compact text/control unit. The toggle
    is vertically centered against the combined title + helper copy rather than
-   occupying its own full-width control lane. */
+   occupying its own full-width control lane. fit-content keeps the toggle close
+   to the actual copy instead of pinning it to an arbitrary column edge. */
 body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-field {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 430px) auto;
+  grid-template-columns: fit-content(620px) auto;
   grid-template-rows: auto auto;
   justify-content: start;
   align-items: center;
@@ -104,7 +105,7 @@ body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation {
 body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation > .dp-settings-field {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 380px) minmax(180px, 220px);
+  grid-template-columns: fit-content(380px) minmax(180px, 220px);
   grid-template-rows: auto auto;
   justify-content: center;
   align-items: center;
