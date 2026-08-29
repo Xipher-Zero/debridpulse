@@ -168,6 +168,70 @@ body.dp-v11-structural #view-settings .dp-settings-mode-external {
   border-radius: var(--radius-sm);
 }
 
+/* Download Engine keeps engine selection in the header and presents only the
+   path relevant to that mode. The active path and concurrency limit share a
+   stable row, with concurrency explicitly anchored to the card's right datum. */
+body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header {
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-mode {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-mode > .dp-settings-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-mode .form-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-mode .dp-dropdown-shell {
+  width: 180px;
+  min-width: 180px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-copy {
+  max-width: 900px;
+  margin: 0 auto 18px;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
+  display: grid;
+  grid-template-columns: minmax(0, 60%) minmax(240px, 320px);
+  justify-content: space-between;
+  align-items: start;
+  gap: 32px;
+  margin-top: 16px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-path-stack,
+body.dp-v11-structural #view-settings .dp-settings-download-limit {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-path-stack[hidden] {
+  display: none !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-row .dp-settings-field {
+  margin-top: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-limit {
+  width: 100%;
+  max-width: 320px;
+  justify-self: end;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-clear-secret {
   display: flex;
   align-items: center;
@@ -542,6 +606,16 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
     gap: 12px;
   }
 
+  body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-download-limit {
+    max-width: none;
+    justify-self: stretch;
+  }
+
   body.dp-v11-structural #view-settings .dp-settings-master-footer {
     align-items: stretch;
     flex-direction: column;
@@ -562,6 +636,20 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
 
   body.dp-v11-structural #view-settings .dp-settings-panels {
     padding: 10px 10px 14px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-download-engine-mode {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-download-engine-mode > .dp-settings-field {
+    justify-content: space-between;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta {
