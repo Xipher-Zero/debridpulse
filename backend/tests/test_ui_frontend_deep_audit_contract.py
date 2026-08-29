@@ -96,7 +96,7 @@ def test_post_core_presentation_loader_is_sequential_and_failure_contained() -> 
         "/ui-statistics-batch3.js?v=3",
         "/ui-statistics-batch4.js?v=2",
         "/ui-statistics-batch5.js?v=7",
-        "/ui-settings-page.js?v=3",
+        "/ui-settings-page.js?v=4",
         "/ui-error-semantics.js?v=21",
     )
     positions = [loader.index(item) for item in expected]
@@ -187,7 +187,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
         "/ui-settings-page.css": "2",
-        "/ui-settings-chrome.css": "1",
+        "/ui-settings-chrome.css": "2",
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "4",
         "/ui-panel-surface-treatment.css": "22",
@@ -220,7 +220,7 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     downloads_pos = overlay.index("/ui-downloads-page.css?v=27")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     settings_pos = overlay.index("/ui-settings-page.css?v=2")
-    settings_chrome_pos = overlay.index("/ui-settings-chrome.css?v=1")
+    settings_chrome_pos = overlay.index("/ui-settings-chrome.css?v=2")
     help_pos = overlay.index("/ui-help-page.css?v=22")
     feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=4")
     treatment_pos = overlay.index("/ui-panel-surface-treatment.css?v=22")
