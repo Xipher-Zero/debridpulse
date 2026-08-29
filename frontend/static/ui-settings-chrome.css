@@ -1,0 +1,163 @@
+/* DebridPulse v1.0.11 Settings visual chrome.
+ *
+ * The clean Settings page owns structure in ui-settings-page.css. This layer is
+ * deliberately presentation-only: page-header artwork, centered tab chrome,
+ * section identity, and action glyphs. It does not redefine shared card/input
+ * material or the Settings scroll/layout contract.
+ */
+
+/* ── Master header identity and true-centered navigation ─────────────── */
+body.dp-v11-structural #view-settings .dp-settings-master-header {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-header-copy {
+  grid-column: 1;
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-tabs {
+  grid-column: 2;
+  justify-self: center;
+}
+
+/* Replace the temporary text/Lucide-style gear with a DP feature asset. The
+   shared feature-icon contract owns its final 51px footprint and glow. */
+body.dp-v11-structural #view-settings .dp-settings-header-icon {
+  color: transparent;
+  font-size: 0;
+  background-image: url('/icons/dp/settings-header.svg');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 45px 45px;
+}
+
+/* Temporary copy marker requested for this review cycle. Final page copy is a
+   separate cleanup pass. */
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
+  font-size: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle::after {
+  content: 'To Be Determined';
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* ── Settings section tabs ───────────────────────────────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
+  --dp-settings-tab-color: var(--dp-accent-purple-bright);
+  --dp-settings-tab-icon: none;
+  position: relative;
+  gap: 7px;
+  padding-inline: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab::before {
+  content: '';
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 1px solid color-mix(in srgb, var(--dp-settings-tab-color) 44%, #31313d);
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--dp-settings-tab-color) 20%, #111119);
+  background-image: var(--dp-settings-tab-icon);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 13px 13px;
+  filter:
+    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-tab-color) 32%, transparent))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--dp-settings-tab-color) 14%, transparent));
+}
+
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='sources'] {
+  --dp-settings-tab-color: #b866f5;
+  --dp-settings-tab-icon: url('/icons/lucide/zap.svg');
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='downloads'] {
+  --dp-settings-tab-color: #4c8fff;
+  --dp-settings-tab-icon: url('/icons/lucide/download.svg');
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='extraction'] {
+  --dp-settings-tab-color: #e0a02b;
+  --dp-settings-tab-icon: url('/icons/lucide/package-open.svg');
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='notifications'] {
+  --dp-settings-tab-color: #39c6e8;
+  --dp-settings-tab-icon: url('/icons/lucide/bell.svg');
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='authentication'] {
+  --dp-settings-tab-color: #48c77e;
+  --dp-settings-tab-icon: url('/icons/lucide/shield-check.svg');
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='maintenance'] {
+  --dp-settings-tab-color: #3ab8a8;
+  --dp-settings-tab-icon: url('/icons/lucide/database-backup.svg');
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='advanced'] {
+  --dp-settings-tab-color: #9d7bea;
+  --dp-settings-tab-icon: url('/icons/lucide/sliders-horizontal.svg');
+}
+
+/* ── Sources & Providers identity ────────────────────────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-card:has([data-setting='alldebrid_api_key']) > .card-header .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-card:has([data-setting='alldebrid_api_key']) > .card-header .card-title::before {
+  content: '';
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border: 1px solid color-mix(in srgb, #777985 62%, var(--dp-border-default));
+  border-radius: 9px;
+  background:
+    url('/icons/providers/alldebrid.svg') center / 28px 28px no-repeat,
+    linear-gradient(145deg, #d8d9df 0%, #9c9faa 52%, #777a86 100%);
+  filter:
+    drop-shadow(0 0 4px rgba(20,20,26,.20))
+    drop-shadow(0 0 9px rgba(164,166,178,.14));
+}
+
+/* The provider-test control uses the same chip-before-copy grammar as tabs,
+   but remains a secondary action beside Save Settings. */
+body.dp-v11-structural #view-settings button[data-action='test-alldebrid'] {
+  position: relative;
+  gap: 7px;
+}
+
+body.dp-v11-structural #view-settings button[data-action='test-alldebrid']::before {
+  content: '';
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 1px solid color-mix(in srgb, #9d7bea 44%, #31313d);
+  border-radius: 6px;
+  background-color: color-mix(in srgb, #9d7bea 20%, #111119);
+  background-image: url('/icons/lucide/flask-conical.svg');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 13px 13px;
+  filter:
+    drop-shadow(0 0 4px rgba(157,123,234,.30))
+    drop-shadow(0 0 8px rgba(157,123,234,.13));
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-master-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-header-copy,
+  body.dp-v11-structural #view-settings .dp-settings-tabs {
+    grid-column: 1;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-tabs {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
