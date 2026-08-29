@@ -23,11 +23,13 @@ body.dp-v11-structural #view-settings .dp-settings-tabs {
 
 /* The supplied Settings feature artwork owns its own rounded-square visual
    frame. Render the complete asset at the shared 51px feature footprint; the
-   feature-icon contract supplies the same external glow as other page headers. */
+   feature-icon contract supplies the same external glow as other page headers.
+   The query generation deliberately evicts the previously cached synthetic
+   Settings glyph without changing the authoritative asset path. */
 body.dp-v11-structural #view-settings .dp-settings-header-icon {
   color: transparent;
   font-size: 0;
-  background-image: url('/icons/dp/settings-header.svg');
+  background-image: url('/icons/dp/settings-header.svg?v=2');
   background-position: center;
   background-repeat: no-repeat;
   background-size: 51px 51px;
@@ -108,7 +110,7 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='maintena
   --dp-settings-tab-color: #3ab8a8;
 }
 body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='advanced'] {
-  --dp-settings-tab-color: #9d7bea;
+  --dp-settings-tab-color: #b866f5;
 }
 
 /* ── Sources & Providers identity ────────────────────────────────────── */
@@ -148,6 +150,7 @@ body.dp-v11-structural #view-settings .dp-settings-provider-logo--alldebrid {
   height: 34px;
   display: block;
   object-fit: contain;
+  transform: translateY(1px);
   filter:
     saturate(1.08)
     drop-shadow(0 0 3px rgba(220,158,14,.92))
@@ -165,7 +168,7 @@ body.light.dp-v11-structural #view-settings .dp-settings-provider-logo--alldebri
 /* The provider-test control uses the same chip-before-copy grammar as tabs,
    but remains a secondary action beside Apply Settings. */
 body.dp-v11-structural #view-settings button[data-action='test-alldebrid'] {
-  --dp-settings-action-color: #9d7bea;
+  --dp-settings-action-color: #b866f5;
   position: relative;
   gap: 7px;
 }
