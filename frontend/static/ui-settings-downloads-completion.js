@@ -407,7 +407,7 @@
         extractionPasswords.values = normalizePasswordLines(payload?.passwords || '');
         extractionPasswords.loaded = true;
         extractionPasswords.failed = false;
-        applyExtraction(root());
+        scheduleApply();
       } catch (error) {
         extractionPasswords.failed = true;
         console.error('[DebridPulse Settings] unable to load archive password list for editing');
@@ -493,8 +493,12 @@
       deleteRow.classList.add('dp-settings-extraction-delete');
       const title = deleteRow.querySelector('.tl');
       const detail = deleteRow.querySelector('.td');
-      if (title) title.textContent = 'Delete Archives After Extraction';
-      if (detail) detail.textContent = 'Remove original archive files only after extraction completes successfully.';
+      if (title && title.textContent !== 'Delete Archives After Extraction') {
+        title.textContent = 'Delete Archives After Extraction';
+      }
+      if (detail && detail.textContent !== 'Remove original archive files only after extraction completes successfully.') {
+        detail.textContent = 'Remove original archive files only after extraction completes successfully.';
+      }
     }
 
     let controls = directChild(body, '.dp-settings-extraction-controls-row');
@@ -510,14 +514,16 @@
     if (passwordField) {
       passwordField.classList.add('dp-settings-extraction-password-field');
       const label = directChild(passwordField, '.form-label');
-      if (label) label.textContent = 'Archive Passwords (one per line)';
+      if (label && label.textContent !== 'Archive Passwords (one per line)') {
+        label.textContent = 'Archive Passwords (one per line)';
+      }
       let hint = directChild(passwordField, '.form-hint');
       if (!hint) {
         hint = document.createElement('span');
         hint.className = 'form-hint';
         passwordField.appendChild(hint);
       }
-      hint.textContent = EXTRACTION_PASSWORD_HINT;
+      if (hint.textContent !== EXTRACTION_PASSWORD_HINT) hint.textContent = EXTRACTION_PASSWORD_HINT;
 
       panel.querySelectorAll('[data-clear-secret="extraction_password"]:not([data-dp-extraction-clear-compat="1"])')
         .forEach(control => control.closest('label')?.remove());
@@ -549,12 +555,31 @@
   }
 
   let scheduled = false;
+  let observer = null;
+
+  function observe(view) {
+    if (!observer || !view) return;
+    observer.observe(view, {childList: true, subtree: true});
+  }
+
+  function applyWithoutSelfObservation() {
+    const view = root();
+    if (!view) return;
+
+    if (observer) observer.disconnect();
+    try {
+      apply();
+    } finally {
+      observe(view);
+    }
+  }
+
   function scheduleApply() {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      apply();
+      applyWithoutSelfObservation();
     });
   }
 
@@ -562,14 +587,14 @@
     const view = root();
     if (!view) return;
     if (view.dataset.dpSettingsDownloadsCompletionBound === '1') {
-      apply();
+      applyWithoutSelfObservation();
       return;
     }
 
     view.dataset.dpSettingsDownloadsCompletionBound = '1';
-    const observer = new MutationObserver(scheduleApply);
-    observer.observe(view, {childList: true, subtree: true});
-    apply();
+    observer = new MutationObserver(scheduleApply);
+    observe(view);
+    applyWithoutSelfObservation();
   }
 
   if (document.readyState === 'loading') {
