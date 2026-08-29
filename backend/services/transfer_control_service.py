@@ -5,9 +5,19 @@ import logging
 
 from core.config import apply_settings, get_settings, save_settings
 from core.logging_utils import sanitize_exception
+from services.dispatch_coordinator import MirrorAwareTransferControlCoordinator
 from services.restart_resume_control import RestartResumableTransferControlCoordinator
 
 logger = logging.getLogger("debridpulse.control")
+
+# Restart recovery is additive: the authoritative operator-control coordinator
+# must continue to carry the existing MirrorAwareTransferControlCoordinator
+# dispatch/failover contract rather than replacing it with a parallel queue.
+if not issubclass(
+    RestartResumableTransferControlCoordinator,
+    MirrorAwareTransferControlCoordinator,
+):
+    raise RuntimeError("Restart-resume coordinator must remain mirror-aware")
 
 
 class TransferControlService:
