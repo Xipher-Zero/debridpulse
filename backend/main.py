@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
+from api.settings_validation_routes import router as settings_validation_router
 from auth.middleware import enforce_authentication, enforce_general_web_security
 from auth.policy import (
     interactive_auth_enabled,
@@ -174,6 +175,9 @@ class RequestBodyLimitMiddleware:
             limit = min(self.max_bytes, 64 * 1024)
         elif path in {
             "/api/settings",
+            "/api/settings/validate-alldebrid",
+            "/api/settings/validate-aria2",
+            "/api/settings/validate-discord",
             "/api/auth/config",
             "/api/auth/oidc/verify-config",
             "/api/auth/api-token",
@@ -384,6 +388,7 @@ async def request_id_middleware(request: Request, call_next):
 # can become authoritative before the replacement application session is issued.
 app.include_router(auth_config_router)
 app.include_router(auth_router)
+app.include_router(settings_validation_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────
