@@ -1,36 +1,39 @@
 /* DebridPulse v1.0.11 clean-room Settings page.
  *
- * This file owns Settings composition only. The application shell and shared
- * card/field/button material remain owned by their normal application layers.
- * Settings follows the proven Downloads/Activity page contract: page boundaries
- * stay paint-visible and scrolling is confined to an unpainted inner viewport.
+ * Settings is one full-height workspace card, matching the proven Downloads /
+ * Activity composition. The master card owns the fixed header and footer; only
+ * its body scrolls. Shared card/field/button material remains owned by the
+ * universal UI language rather than being recreated here.
  */
 
-body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
-  display: flex !important;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: visible;
+/* Desktop follows the same shell-height contract as Downloads and Activity:
+   #content already owns the 24px lower datum, so Settings fills that box rather
+   than recomputing viewport height. */
+@media (min-width: 901px) {
+  body.dp-v11-structural #content:has(#view-settings.active) {
+    overflow-y: hidden;
+  }
+
+  body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
+    display: flex !important;
+    flex-direction: column;
+    height: 100% !important;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-settings > .dp-settings-master-card {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0 !important;
+  }
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clean {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-  gap: 12px;
-  overflow: visible;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-header-card,
-body.dp-v11-structural #view-settings .dp-settings-footer {
+/* ── Master header ───────────────────────────────────────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-master-header {
   flex: 0 0 auto;
-  margin: 0;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-header-body {
   min-height: 76px;
   padding: 10px 16px;
   display: grid;
@@ -87,9 +90,15 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
   font: inherit;
 }
 
-/* The scroll owner is deliberately material-free. Cards sit inside an inset
-   composition box so their universal contact shadows paint before the scroll
-   viewport clips content at its actual boundary. */
+/* ── Master body / sole scroll owner ────────────────────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-master-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-scroll {
   flex: 1 1 auto;
   min-width: 0;
@@ -98,13 +107,14 @@ body.dp-v11-structural #view-settings .dp-settings-scroll {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 0;
 }
 
+/* Inset the tab content so nested shared-card contact shadows have paint room
+   inside the scroll viewport. The master card itself owns the outer frame. */
 body.dp-v11-structural #view-settings .dp-settings-panels {
   width: 100%;
   min-width: 0;
-  padding: 8px 12px 18px;
+  padding: 12px 12px 16px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-panel {
@@ -360,12 +370,16 @@ body.dp-v11-structural #view-settings .dp-settings-result-row span:last-child {
   text-align: right;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-footer {
+/* ── Fixed-within-card footer ───────────────────────────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-master-footer {
+  flex: 0 0 auto;
   min-height: 60px;
   padding: 10px 13px;
   display: flex;
   align-items: center;
   gap: 10px;
+  border-top: 1px solid var(--dp-divider);
+  background: transparent;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-save-hint {
@@ -387,13 +401,13 @@ body.dp-v11-structural #view-settings .dp-settings-context-actions [hidden] {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-footer .btn {
+body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
   min-height: 36px;
   margin: 0;
 }
 
 @media (max-width: 1180px) {
-  body.dp-v11-structural #view-settings .dp-settings-header-body {
+  body.dp-v11-structural #view-settings .dp-settings-master-header {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
@@ -409,13 +423,14 @@ body.dp-v11-structural #view-settings .dp-settings-footer .btn {
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-clean,
+  body.dp-v11-structural #view-settings > .dp-settings-master-card,
+  body.dp-v11-structural #view-settings .dp-settings-master-body,
   body.dp-v11-structural #view-settings .dp-settings-scroll {
     min-height: auto;
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-footer {
+  body.dp-v11-structural #view-settings .dp-settings-master-footer {
     align-items: stretch;
     flex-direction: column;
   }
@@ -429,12 +444,12 @@ body.dp-v11-structural #view-settings .dp-settings-footer .btn {
 }
 
 @media (max-width: 700px) {
-  body.dp-v11-structural #view-settings .dp-settings-header-body {
+  body.dp-v11-structural #view-settings .dp-settings-master-header {
     padding: 12px;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-panels {
-    padding: 2px 2px 14px;
+    padding: 10px 10px 14px;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-inline-field,
