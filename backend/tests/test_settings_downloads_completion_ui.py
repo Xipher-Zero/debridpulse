@@ -13,7 +13,7 @@ def read(name: str) -> str:
 
 def test_completion_assets_are_loaded_in_deterministic_order():
     loader = read("ui-presentation-loader.js")
-    assert "/ui-settings-downloads-completion.css?v=1" in loader
+    assert "/ui-settings-downloads-completion.css?v=2" in loader
     assert "/ui-settings-page.js?v=4" in loader
     assert "/ui-settings-downloads-completion.js?v=1" in loader
     assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=1")
@@ -41,13 +41,17 @@ def test_external_rpc_clear_secret_is_one_compact_centered_control_block():
     assert "text-align: center;" in css
 
 
-def test_continue_partial_and_file_allocation_use_text_block_control_grammar():
+def test_continue_partial_uses_title_control_helper_sandwich_and_file_allocation_stays_grouped():
     css = read("ui-settings-downloads-completion.css")
 
     assert ".dp-settings-engine-tuning-toggle-field" in css
-    assert "grid-template-columns: fit-content(620px) auto;" in css
+    assert "grid-template-columns: minmax(0, 1fr);" in css
+    assert "grid-template-rows: auto auto auto;" in css
     assert ".dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control" in css
-    assert "grid-row: 1 / 3;" in css
+    assert "grid-row: 2;" in css
+    assert ".dp-settings-engine-tuning-toggle-field > .form-hint" in css
+    assert "grid-row: 3;" in css
+    assert "fit-content(620px) auto" not in css
 
     assert ".dp-settings-engine-file-allocation" in css
     assert "width: min(100%, 680px);" in css
@@ -94,22 +98,48 @@ def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
 def test_safety_recovery_is_equal_width_three_over_two_inverted_pyramid():
     css = read("ui-settings-downloads-completion.css")
 
+    assert ".dp-settings-download-recovery-card > .card-body" in css
     assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in css
     assert "grid-column: span 2;" in css
-    assert ".dp-settings-field:nth-child(4)" in css
+    assert ".dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(4)" in css
     assert "grid-column: 2 / span 2;" in css
-    assert ".dp-settings-field:nth-child(5)" in css
+    assert ".dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(5)" in css
     assert "grid-column: 4 / span 2;" in css
 
 
-def test_sources_and_downloads_share_the_same_small_field_copy_inset():
+def test_alldebrid_additional_settings_matches_three_over_two_inverted_pyramid():
+    css = read("ui-settings-downloads-completion.css")
+    page = read("ui-settings-page.js")
+
+    assert "Additional Settings" in page
+    for key in (
+        "alldebrid_rate_limit_per_minute",
+        "poll_interval_seconds",
+        "full_sync_interval_minutes",
+        "upload_fail_retry_count",
+        "upload_fail_retry_delay_minutes",
+    ):
+        assert key in page
+
+    selector = '[data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body'
+    assert selector in css
+    assert f"{selector} > .dp-settings-field:nth-child(4)" in css
+    assert f"{selector} > .dp-settings-field:nth-child(5)" in css
+    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in css
+    assert "grid-column: 2 / span 2;" in css
+    assert "grid-column: 4 / span 2;" in css
+
+
+def test_sources_and_downloads_shift_complete_copy_blocks_not_first_lines():
     css = read("ui-settings-downloads-completion.css")
 
     assert '[data-panel="sources"] .dp-settings-field > .form-label' in css
     assert '[data-panel="downloads"] .dp-settings-field > .form-label' in css
     assert '[data-panel="sources"] .dp-settings-alldebrid-key-meta > .form-hint:first-child' in css
     assert '[data-panel="downloads"] .dp-settings-aria2-secret-meta > .form-hint:first-child' in css
-    assert "padding-inline-start: 6px;" in css
+    assert "position: relative;" in css
+    assert "inset-inline-start: 3px;" in css
+    assert "padding-inline-start: 6px;" not in css
 
 
 def test_completion_runtime_is_idempotently_bound_to_the_persistent_settings_root():
