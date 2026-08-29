@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 CHROME = STATIC / "ui-settings-chrome.css"
+RUNTIME = STATIC / "ui-settings-page.js"
 FEATURE = STATIC / "ui-feature-icon-contract.css"
 STYLE = STATIC / "style-v11.css"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
@@ -27,7 +28,7 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     chrome = read(CHROME)
 
     settings = overlay.index("/ui-settings-page.css?v=2")
-    settings_chrome = overlay.index("/ui-settings-chrome.css?v=1")
+    settings_chrome = overlay.index("/ui-settings-chrome.css?v=2")
     help_page = overlay.index("/ui-help-page.css?v=22")
     feature = overlay.index("/ui-feature-icon-contract.css?v=4")
     assert settings < settings_chrome < help_page < feature
@@ -42,7 +43,7 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     assert "--dp-panel-surface" not in chrome
 
 
-def test_settings_master_header_uses_feature_asset_and_true_centered_tabs() -> None:
+def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_tabs() -> None:
     chrome = read(CHROME)
     feature = read(FEATURE)
     manifest = json.loads(read(MANIFEST))
@@ -56,11 +57,18 @@ def test_settings_master_header_uses_feature_asset_and_true_centered_tabs() -> N
     assert "@media (max-width: 1180px)" in chrome
 
     assert "url('/icons/dp/settings-header.svg')" in chrome
+    assert "background-size: 51px 51px;" in chrome
     assert manifest["icons"]["settingsHeader"] == "settings-header.svg"
     gear = read(STATIC / "icons" / "dp" / "settings-header.svg")
-    assert "linearGradient" in gear
-    assert "#A95BFF" in gear
+    root = ET.fromstring(gear)
+    assert root.tag.endswith("svg")
+    assert root.attrib.get("viewBox") == "0 0 2048 2048"
+    assert gear.count("<path") > 20
+    assert "#b053ec" in gear
+    assert "#fce6fd" in gear
+    assert "#080116" in gear
     assert "<image" not in gear.lower()
+    assert "data:image" not in gear.lower()
 
     assert "#view-settings .dp-settings-header-icon" in feature
     assert "--dp-feature-icon-size: 51px" in feature
@@ -71,8 +79,9 @@ def test_settings_master_header_uses_feature_asset_and_true_centered_tabs() -> N
     assert "content: 'To Be Determined';" in chrome
 
 
-def test_settings_tabs_use_reviewed_lucide_glyphs_with_optically_small_chips() -> None:
+def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow() -> None:
     chrome = read(CHROME)
+    runtime = read(RUNTIME)
     expected = {
         "sources": ("zap.svg", "#b866f5"),
         "downloads": ("download.svg", "#4c8fff"),
@@ -83,34 +92,73 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_optically_small_chips() -
         "advanced": ("sliders-horizontal.svg", "#9d7bea"),
     }
 
+    assert 'class="dp-settings-tab-chip"' in runtime
+    assert 'class="dp-settings-tab-glyph"' in runtime
+    assert ".dp-settings-tab-chip" in chrome
     assert "width: 22px;" in chrome
     assert "height: 22px;" in chrome
-    assert "background-size: 13px 13px;" in chrome
+    assert ".dp-settings-tab-glyph" in chrome
+    assert "width: 13px;" in chrome
+    assert "height: 13px;" in chrome
     assert "gap: 7px;" in chrome
+
+    dark_glyph = chrome.split(".dp-settings-tab-glyph {", 1)[1].split("}", 1)[0]
+    light_glyph = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-tab-glyph {", 1)[1].split("}", 1)[0]
+    chip = chrome.split(".dp-settings-tab-chip {", 1)[1].split("}", 1)[0]
+    assert "saturate(1.5)" in dark_glyph
+    assert "drop-shadow" in dark_glyph
+    assert "saturate(2.15)" in light_glyph
+    assert light_glyph.count("drop-shadow") == 3
+    assert "filter:" not in chip
 
     for tab, (filename, color) in expected.items():
         assert f".stab[data-tab='{tab}']" in chrome
-        assert f"url('/icons/lucide/{filename}')" in chrome
         assert color in chrome
+        assert f"/icons/lucide/{filename}" in runtime
 
         raw = read(LUCIDE / filename)
-        root = ET.fromstring(raw)
-        assert root.tag.endswith("svg")
-        assert root.attrib.get("viewBox") == "0 0 24 24"
+        icon_root = ET.fromstring(raw)
+        assert icon_root.tag.endswith("svg")
+        assert icon_root.attrib.get("viewBox") == "0 0 24 24"
         assert PIN in raw
         assert "<image" not in raw.lower()
 
 
-def test_alldebrid_card_uses_supplied_provider_art_on_neutral_chip() -> None:
+def test_sources_panel_has_debrid_services_master_group_with_provider_and_recovery_nested() -> None:
+    runtime = read(RUNTIME)
+    sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
+
+    assert "function groupCard(" in runtime
+    assert "groupCard('Debrid Services', provider + recovery" in sources
+    assert "dp-settings-source-group dp-settings-debrid-services" in sources
+    assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
+    assert "dp-settings-provider-recovery-card" in sources
+    assert "Debrid Services" in sources
+    # The source-type group intentionally has no invented icon yet.
+    assert "dp-settings-debrid-services-icon" not in sources
+
+
+def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger_logo() -> None:
     chrome = read(CHROME)
+    runtime = read(RUNTIME)
     raw = read(PROVIDERS / "alldebrid.svg")
     root = ET.fromstring(raw)
 
-    assert ":has([data-setting='alldebrid_api_key'])" in chrome
-    assert "url('/icons/providers/alldebrid.svg')" in chrome
-    assert "width: 38px;" in chrome
-    assert "height: 38px;" in chrome
-    assert "linear-gradient(145deg, #d8d9df 0%, #9c9faa 52%, #777a86 100%)" in chrome
+    assert "dp-settings-provider-chip--alldebrid" in runtime
+    assert "dp-settings-provider-logo--alldebrid" in runtime
+    assert 'src="/icons/providers/alldebrid.svg"' in runtime
+    assert "#dc9e0e" in chrome
+    assert "#5f4306" in chrome
+    assert "#f2c14b" in chrome
+
+    logo = chrome.split(".dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
+    assert "width: 34px;" in logo
+    assert "height: 34px;" in logo
+    assert "drop-shadow(0 0 3px rgba(220,158,14,.92))" in logo
+    assert "drop-shadow(0 0 7px rgba(220,158,14,.52))" in logo
+
+    light_logo = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
+    assert "drop-shadow(0 0 8px rgba(220,158,14,.62))" in light_logo
 
     assert root.tag.endswith("svg")
     assert root.attrib.get("viewBox") == "0 0 2048 2048"
@@ -120,13 +168,24 @@ def test_alldebrid_card_uses_supplied_provider_art_on_neutral_chip() -> None:
     assert "rgb(250,250,249)" in raw
 
 
-def test_alldebrid_test_action_uses_flaskconical_chip_without_becoming_primary() -> None:
+def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() -> None:
     chrome = read(CHROME)
+    runtime = read(RUNTIME)
     raw = read(LUCIDE / "flask-conical.svg")
 
-    assert "button[data-action='test-alldebrid']" in chrome
-    assert "url('/icons/lucide/flask-conical.svg')" in chrome
-    assert "background-size: 13px 13px;" in chrome
+    assert 'data-action="test-alldebrid"' in runtime
+    assert 'class="dp-settings-action-chip"' in runtime
+    assert 'class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg"' in runtime
+    action_glyph = chrome.split(".dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
+    light_action = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
+    action_chip = chrome.split(".dp-settings-action-chip {", 1)[1].split("}", 1)[0]
+    assert "saturate(1.5)" in action_glyph
+    assert "drop-shadow" in action_glyph
+    assert "saturate(2.15)" in light_action
+    assert light_action.count("drop-shadow") == 3
+    assert "filter:" not in action_chip
+    assert ">Apply Settings</button>" in runtime
+    assert ">Save Settings</button>" not in runtime
     assert PIN in raw
     assert "<path" in raw
     assert ".btn-primary" not in chrome
