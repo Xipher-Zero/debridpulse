@@ -523,8 +523,11 @@
 
   function copySelectGeometry(select, shell) {
     const source = select.style;
+    const computed = window.getComputedStyle(select);
+    const rect = select.getBoundingClientRect();
+    const parentRect = select.parentElement ? select.parentElement.getBoundingClientRect() : null;
     const properties = [
-      'width', 'minWidth', 'maxWidth',
+      'minWidth', 'maxWidth',
       'height', 'minHeight', 'maxHeight',
       'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
       'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf'
@@ -533,11 +536,29 @@
       if (source[property]) shell.style[property] = source[property];
     });
 
-    const computed = window.getComputedStyle(select);
+    /* The projected control must preserve the geometry the native select had
+       before it is visually hidden. Full-width form controls remain fluid;
+       bounded/filter selects retain their actual rendered width instead of
+       inheriting an accidental 100% wrapper width. */
+    if (source.width) {
+      shell.style.width = source.width;
+    } else if (Number.isFinite(rect.width) && rect.width > 0) {
+      const parentWidth = parentRect && Number.isFinite(parentRect.width) ? parentRect.width : 0;
+      const fillsParent = parentWidth > 0 && rect.width >= parentWidth - 2;
+      shell.style.width = fillsParent ? '100%' : rect.width + 'px';
+    }
+
+    if (!source.maxWidth && computed.maxWidth && computed.maxWidth !== 'none') {
+      shell.style.maxWidth = computed.maxWidth;
+    }
+    if (!source.minWidth && computed.minWidth && computed.minWidth !== 'auto') {
+      shell.style.minWidth = computed.minWidth;
+    }
+
     const height = parseFloat(computed.height);
     const fontSize = parseFloat(computed.fontSize);
     if ((Number.isFinite(height) && height <= 32) ||
-        (Number.isFinite(fontSize) && fontSize <= 12 && source.width)) {
+        (Number.isFinite(fontSize) && fontSize <= 12 && (source.width || rect.width > 0))) {
       shell.classList.add('dp-dropdown-shell--compact');
     }
   }
