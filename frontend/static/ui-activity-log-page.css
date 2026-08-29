@@ -104,6 +104,15 @@ body.dp-v11-structural #view-events #ev-level {
   flex: 0 0 160px;
 }
 
+/* The universal projected select is inserted next to the native control. Once
+   the native select becomes visually hidden its old flex-basis no longer owns
+   the row, so carry the reviewed 160px footprint onto the projected shell. */
+body.dp-v11-structural #view-events #ev-level + .dp-dropdown-shell {
+  width: 160px;
+  max-width: 160px;
+  flex: 0 0 160px;
+}
+
 /* ── Event viewport ───────────────────────────────────────────────────── */
 body.dp-v11-structural #view-events .dp-activity-list {
   position: relative;
