@@ -7,6 +7,7 @@ import logging
 
 from core.config import get_settings
 from core.performance import async_timer, increment
+from services.aria2_runtime import is_builtin_mode  # compatibility seam for tests/adapters
 
 logger = logging.getLogger("debridpulse.reconciliation")
 _cycle_snapshot: ContextVar[tuple[asyncio.Task, list] | None] = ContextVar(
