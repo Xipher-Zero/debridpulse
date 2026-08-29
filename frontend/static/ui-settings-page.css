@@ -2,6 +2,8 @@
  *
  * This file owns Settings composition only. The application shell and shared
  * card/field/button material remain owned by their normal application layers.
+ * Settings follows the proven Downloads/Activity page contract: page boundaries
+ * stay paint-visible and scrolling is confined to an unpainted inner viewport.
  */
 
 body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
@@ -9,7 +11,7 @@ body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-clean {
@@ -19,6 +21,7 @@ body.dp-v11-structural #view-settings .dp-settings-clean {
   min-height: 0;
   flex-direction: column;
   gap: 12px;
+  overflow: visible;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-header-card,
@@ -84,6 +87,9 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
   font: inherit;
 }
 
+/* The scroll owner is deliberately material-free. Cards sit inside an inset
+   composition box so their universal contact shadows paint before the scroll
+   viewport clips content at its actual boundary. */
 body.dp-v11-structural #view-settings .dp-settings-scroll {
   flex: 1 1 auto;
   min-width: 0;
@@ -92,10 +98,15 @@ body.dp-v11-structural #view-settings .dp-settings-scroll {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 4px 5px 18px;
+  padding: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-panels,
+body.dp-v11-structural #view-settings .dp-settings-panels {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px 18px;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-panel {
   width: 100%;
   min-width: 0;
@@ -422,7 +433,7 @@ body.dp-v11-structural #view-settings .dp-settings-footer .btn {
     padding: 12px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-scroll {
+  body.dp-v11-structural #view-settings .dp-settings-panels {
     padding: 2px 2px 14px;
   }
 

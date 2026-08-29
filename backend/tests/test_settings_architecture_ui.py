@@ -292,16 +292,24 @@ def test_settings_root_is_structural_and_only_real_header_content_footer_are_car
         assert forbidden not in runtime
 
 
-def test_settings_css_has_one_internal_scroll_owner_and_no_card_material_redefinition():
+def test_settings_css_uses_paint_visible_page_and_one_unpainted_scroll_owner():
     css = source(SETTINGS_PAGE_CSS)
 
     assert "#view-settings.dp-settings-clean-view.active" in css
     clean_root = css.split("#view-settings.dp-settings-clean-view.active", 1)[1].split("}", 1)[0]
-    assert "overflow: hidden;" in clean_root
+    assert "overflow: visible;" in clean_root
+    assert "overflow: hidden;" not in clean_root
 
-    scroll = css.split(".dp-settings-scroll", 1)[1].split("}", 1)[0]
+    clean = css.split("#view-settings .dp-settings-clean", 1)[1].split("}", 1)[0]
+    assert "overflow: visible;" in clean
+
+    scroll = css.split("#view-settings .dp-settings-scroll", 1)[1].split("}", 1)[0]
     assert "overflow-y: auto;" in scroll
     assert "overscroll-behavior: contain;" in scroll
+    assert "padding: 0;" in scroll
+
+    panels = css.split("#view-settings .dp-settings-panels", 1)[1].split("}", 1)[0]
+    assert "padding: 8px 12px 18px;" in panels
 
     for forbidden in (
         "radial-gradient",
