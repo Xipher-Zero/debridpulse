@@ -5,7 +5,7 @@ import logging
 
 from core.config import apply_settings, get_settings, save_settings
 from core.logging_utils import sanitize_exception
-from services.dispatch_coordinator import MirrorAwareTransferControlCoordinator
+from services.restart_resume_control import RestartResumableTransferControlCoordinator
 
 logger = logging.getLogger("debridpulse.control")
 
@@ -14,7 +14,7 @@ class TransferControlService:
     def __init__(self, engine, repository, state_machine):
         self.engine = engine
         self.repository = repository
-        self.coordinator = MirrorAwareTransferControlCoordinator(engine)
+        self.coordinator = RestartResumableTransferControlCoordinator(engine)
         self.coordinator._orig_parent_progress = state_machine.aggregate_parent_progress
 
     @property
