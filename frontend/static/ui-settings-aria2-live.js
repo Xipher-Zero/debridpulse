@@ -1,9 +1,8 @@
-/* DebridPulse v1.0.11 Settings aria2 operator escape hatch.
+/* DebridPulse v1.0.11 Settings built-in engine-state escape hatch.
  *
  * This surface intentionally exposes the built-in aria2 engine beneath the
- * normal DebridPulse transfer workflow. Engine actions mutate aria2 only;
- * DebridPulse records are left for the normal reconciliation machinery to
- * observe afterward.
+ * normal DebridPulse transfer workflow. Engine actions mutate aria2 directly;
+ * DebridPulse remains the durable transfer record and reconciles afterward.
  */
 (function () {
   'use strict';
@@ -16,6 +15,8 @@
     'notifications',
     'maintenance',
   ]);
+  const FILTERS = Object.freeze(['all', 'active', 'waiting', 'paused', 'stopped']);
+  const STOPPED_STATES = new Set(['complete', 'error', 'removed']);
   const POLL_MS = 5000;
   const QUEUE_TIMEOUT_MS = 20000;
   const QUEUE_ID = 'dp-settings-aria2-downloads';
@@ -24,6 +25,7 @@
   let scheduled = false;
   let pollTimer = null;
   let refreshRunning = null;
+  let activeFilter = 'all';
 
   const root = () => document.getElementById('view-settings');
   const downloadsPanel = () => root()?.querySelector('[data-panel="downloads"]') || null;
@@ -71,6 +73,22 @@
     for (const id of TAB_ORDER) tablist.appendChild(buttons.get(id));
   }
 
+  function filterMarkup() {
+    const labels = {
+      all: 'All',
+      active: 'Active',
+      waiting: 'Waiting',
+      paused: 'Paused',
+      stopped: 'Stopped',
+    };
+    return FILTERS.map(id => `
+      <button type="button"
+              class="ftab${id === activeFilter ? ' active' : ''}"
+              role="tab"
+              aria-selected="${id === activeFilter ? 'true' : 'false'}"
+              data-engine-filter="${id}">${labels[id]}</button>`).join('');
+  }
+
   function cardMarkup() {
     return `
       <div class="card-header">
@@ -78,22 +96,36 @@
           <span class="dp-settings-aria2-live-icon" aria-hidden="true">
             <img src="/icons/dp/card-download.svg?v=1" alt="" decoding="async">
           </span>
-          <span class="dp-settings-card-title-text">aria2 Live Downloads</span>
+          <span class="dp-settings-card-title-text">Built-In Download Engine State</span>
         </span>
         <div class="dp-settings-card-header-center">
-          <span class="dp-settings-aria2-live-copy">Inspect and directly control DebridPulse's built-in aria2 queue.</span>
+          <span class="dp-settings-aria2-live-copy">Inspect and control the built-in aria2 engine.</span>
         </div>
         <div class="dp-settings-aria2-live-header-actions">
-          <span class="dp-settings-aria2-live-status" data-dp-aria2-live-status>Built-in engine</span>
           <button type="button" class="btn btn-ghost btn-sm" data-dp-aria2-live-refresh>Refresh</button>
         </div>
       </div>
       <div class="card-body" data-dp-aria2-live-body>
-        <div class="dp-settings-aria2-live-note">
-          <b>Engine-level controls:</b> actions here change built-in aria2 directly. DebridPulse transfer records are not rewritten by this control surface.
+        <div class="dp-settings-aria2-live-context">
+          This reflects temporary aria2 runtime state, not transfer history. DebridPulse Downloads remains the historical record.
+        </div>
+        <div class="dp-settings-aria2-live-control-row">
+          <div class="dp-settings-aria2-live-note">
+            <div class="dp-settings-aria2-live-note-title">Direct Engine Controls</div>
+            <div class="dp-settings-aria2-live-note-text">Bypasses normal DebridPulse transfer controls. Use for troubleshooting or recovery.</div>
+          </div>
+          <div class="dp-settings-aria2-live-tools">
+            <div class="dp-settings-aria2-live-metrics" aria-label="Built-in aria2 engine metrics">
+              <span data-dp-aria2-live-speed>0 KB/s</span>
+              <span data-dp-aria2-live-remaining>— Remaining</span>
+            </div>
+            <div class="filter-tabs dp-settings-aria2-live-filters" role="tablist" aria-label="Filter built-in aria2 engine jobs">
+              ${filterMarkup()}
+            </div>
+          </div>
         </div>
         <div id="${QUEUE_ID}" data-dp-aria2-live-queue="1" class="dp-settings-aria2-live-queue" aria-live="polite">
-          <div class="empty">Loading built-in aria2 queue…</div>
+          <div class="empty">Loading built-in aria2 engine state…</div>
         </div>
       </div>`;
   }
@@ -106,11 +138,20 @@
     card = document.createElement('section');
     card.className = 'card dp-settings-card dp-settings-aria2-live-card';
     card.dataset.dpAria2LiveCard = '1';
-    card.setAttribute('aria-label', 'aria2 Live Downloads');
+    card.setAttribute('aria-label', 'Built-In Download Engine State');
     card.innerHTML = cardMarkup();
 
     const refresh = card.querySelector('[data-dp-aria2-live-refresh]');
     refresh?.addEventListener('click', () => void refreshQueue(true));
+
+    card.addEventListener('click', event => {
+      const filter = event.target.closest('[data-engine-filter]');
+      if (!filter || !card.contains(filter)) return;
+      const next = String(filter.dataset.engineFilter || 'all');
+      if (!FILTERS.includes(next)) return;
+      activeFilter = next;
+      applyFilter();
+    });
 
     panel.appendChild(card);
 
@@ -132,26 +173,101 @@
 
       button.textContent = 'Remove from aria2';
       button.dataset.defaultLabel = 'Remove from aria2';
-      button.title = 'Directly remove this GID from built-in aria2. DebridPulse transfer state is not changed by this action.';
+      button.title = 'Directly remove this GID from the built-in aria2 engine.';
       button.classList.add('dp-settings-aria2-live-remove');
     });
   }
 
-  function setHeaderStatus(card, data) {
-    const status = card?.querySelector('[data-dp-aria2-live-status]');
-    if (!status) return;
+  function orderedItems(data) {
+    const items = Array.isArray(data?.items) ? data.items.slice() : [];
+    const weight = {active: 0, waiting: 1, paused: 2, error: 3, complete: 4, removed: 5};
+    return items.sort((a, b) => (weight[a?.status] ?? 9) - (weight[b?.status] ?? 9));
+  }
 
-    if (currentMode() !== 'builtin') {
-      status.textContent = 'Built-in queue unavailable in External mode';
+  function filterGroup(status) {
+    const value = String(status || '').toLowerCase();
+    if (STOPPED_STATES.has(value)) return 'stopped';
+    if (value === 'active' || value === 'waiting' || value === 'paused') return value;
+    return value;
+  }
+
+  function updateMetrics(data) {
+    const card = liveCard();
+    if (!card) return;
+    const summary = data?.summary || {};
+    const speedNode = card.querySelector('[data-dp-aria2-live-speed]');
+    const remainingNode = card.querySelector('[data-dp-aria2-live-remaining]');
+    const speed = Number(summary.download_speed || 0);
+    const remaining = Number(summary.remaining_length || 0);
+
+    if (speedNode) {
+      speedNode.textContent = typeof fmtSpeed === 'function' ? fmtSpeed(speed) : `${Math.max(0, speed)} B/s`;
+    }
+    if (remainingNode) {
+      const formatted = remaining > 0 && typeof fmtSize === 'function' ? fmtSize(remaining) : '—';
+      remainingNode.textContent = `${formatted} Remaining`;
+    }
+  }
+
+  function updateFilterSelection() {
+    const card = liveCard();
+    if (!card) return;
+    card.querySelectorAll('[data-engine-filter]').forEach(button => {
+      const selected = String(button.dataset.engineFilter || '') === activeFilter;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+  }
+
+  function applyFilter() {
+    const queue = queueNode();
+    if (!queue) return;
+    updateFilterSelection();
+
+    const jobs = Array.from(queue.querySelectorAll('.aria2-job'));
+    let visible = 0;
+    jobs.forEach(job => {
+      const group = filterGroup(job.dataset.engineStatus);
+      const show = activeFilter === 'all' || group === activeFilter;
+      job.hidden = !show;
+      if (show) visible += 1;
+    });
+
+    let filteredEmpty = queue.querySelector('[data-dp-aria2-filter-empty]');
+    if (!jobs.length || visible > 0 || activeFilter === 'all') {
+      filteredEmpty?.remove();
       return;
     }
 
-    const summary = data?.summary || {};
-    if (data && typeof data === 'object') {
-      status.textContent = `Built-in · ${Number(summary.active || 0)} active · ${Number(summary.waiting || 0)} waiting`;
-    } else {
-      status.textContent = 'Built-in engine';
+    if (!filteredEmpty) {
+      filteredEmpty = document.createElement('div');
+      filteredEmpty.className = 'empty dp-settings-aria2-filter-empty';
+      filteredEmpty.dataset.dpAria2FilterEmpty = '1';
+      queue.appendChild(filteredEmpty);
     }
+    const label = activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1);
+    filteredEmpty.textContent = `No ${label.toLowerCase()} jobs currently retained by aria2.`;
+  }
+
+  function postProcessQueue(data) {
+    const queue = queueNode();
+    if (!queue) return;
+
+    queue.querySelector('.aria2-summary')?.remove();
+
+    const items = orderedItems(data);
+    const jobs = Array.from(queue.querySelectorAll('.aria2-job'));
+    jobs.forEach((job, index) => {
+      job.dataset.engineStatus = String(items[index]?.status || '').toLowerCase();
+    });
+
+    if (!items.length) {
+      const empty = queue.querySelector('.empty');
+      if (empty) empty.textContent = 'No jobs currently retained by aria2.';
+    }
+
+    updateMetrics(data);
+    applyFilter();
   }
 
   function showQueueError(message) {
@@ -159,8 +275,9 @@
     if (!queue) return;
     const error = document.createElement('div');
     error.className = 'aria2-error';
-    error.textContent = `Queue error: ${String(message || 'Unable to load built-in aria2 queue')}`;
+    error.textContent = `Queue error: ${String(message || 'Unable to load built-in aria2 engine state')}`;
     queue.replaceChildren(error);
+    updateMetrics(null);
   }
 
   function renderIntoSettingsQueue(data) {
@@ -190,6 +307,8 @@
         element.id = 'aria2-downloads';
       });
     }
+
+    postProcessQueue(data);
   }
 
   function stopPolling() {
@@ -230,11 +349,9 @@
         const data = await api('GET', '/aria2/downloads', null, QUEUE_TIMEOUT_MS);
         renderIntoSettingsQueue(data);
         relabelEngineActions();
-        setHeaderStatus(card, data);
         return data;
       } catch (error) {
         showQueueError(error?.message || error);
-        setHeaderStatus(card, null);
         return null;
       } finally {
         if (manual && refresh) {
@@ -267,7 +384,6 @@
     card.setAttribute('aria-disabled', builtin ? 'false' : 'true');
     if (body) body.hidden = !builtin;
     if (refresh) refresh.hidden = !builtin;
-    setHeaderStatus(card, null);
 
     if (!builtin) {
       stopPolling();

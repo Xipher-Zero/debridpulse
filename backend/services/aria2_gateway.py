@@ -71,7 +71,19 @@ class Aria2Gateway:
         return await self.engine._aria2_get_memory_diagnostics()
 
     async def housekeeping(self):
-        return await self.engine.run_aria2_housekeeping()
+        """Reapply engine tuning without deleting bounded stopped-result state."""
+        if not is_builtin_mode():
+            return {
+                "ok": True,
+                "reason": "external aria2 history is daemon-owned",
+                "diagnostics": await self.memory_diagnostics(),
+            }
+        await self.apply_memory_tuning()
+        return {
+            "ok": True,
+            "reason": "bounded built-in aria2 result state retained",
+            "diagnostics": await self.memory_diagnostics(),
+        }
 
     async def deep_sync(self):
         return await self.engine.deep_sync_aria2_finished()

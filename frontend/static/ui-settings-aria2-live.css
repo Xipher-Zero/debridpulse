@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 Settings aria2 operator escape hatch. */
+/* DebridPulse v1.0.11 Settings built-in engine-state escape hatch. */
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-card > .card-header > .card-title {
   display: inline-flex;
@@ -46,23 +46,10 @@ body.dp-v11-structural #view-settings .dp-settings-aria2-live-header-actions {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-aria2-live-status {
-  color: var(--text2);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-card.is-external > .card-header {
   border-bottom-color: transparent;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-aria2-live-card.is-external .dp-settings-aria2-live-status {
-  color: var(--text3);
-  font-weight: 500;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-card > .card-body {
@@ -76,19 +63,83 @@ body.dp-v11-structural #view-settings .dp-settings-aria2-live-card > .card-body[
   display: none !important;
 }
 
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-context {
+  width: min(100%, 900px);
+  margin: 0 auto;
+  color: var(--text3);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-note {
+  flex: 0 1 430px;
+  max-width: 430px;
+  min-width: 300px;
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   border-radius: 9px;
   background: color-mix(in srgb, var(--accent) 5%, transparent);
   padding: 9px 12px;
-  color: var(--text3);
-  font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-aria2-live-note b {
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-note-title {
   color: var(--text2);
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-note-text {
+  margin-top: 2px;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-tools {
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-metrics {
+  min-width: 118px;
+  flex: 0 0 auto;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-metrics [data-dp-aria2-live-speed] {
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-filters {
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue {
@@ -101,15 +152,23 @@ body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue {
 }
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue .aria2-summary {
-  margin-bottom: 12px;
+  display: none !important;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue .aria2-job {
   margin-bottom: 10px;
 }
 
+body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue .aria2-job[hidden] {
+  display: none !important;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue .aria2-job:last-child {
   margin-bottom: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-aria2-filter-empty {
+  margin-top: 6px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-aria2-live-remove {
@@ -124,22 +183,58 @@ body.dp-v11-structural #view-settings .dp-settings-aria2-live-remove {
   body.dp-v11-structural #view-settings .dp-settings-aria2-live-card .dp-settings-card-header-center {
     grid-column: 1 / -1;
     grid-row: 2;
-    justify-self: start;
+    justify-self: center;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-aria2-live-copy {
-    text-align: left;
+    text-align: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-control-row {
+    gap: 18px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-note {
+    flex-basis: 390px;
+    min-width: 270px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-tools {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 940px) {
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-control-row {
+    flex-wrap: wrap;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-note {
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-tools {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
 @media (max-width: 760px) {
   body.dp-v11-structural #view-settings .dp-settings-aria2-live-header-actions {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-aria2-live-status {
-    white-space: normal;
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-tools {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-aria2-live-filters {
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-aria2-live-queue {

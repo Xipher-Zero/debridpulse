@@ -11,7 +11,7 @@
   const STYLES = Object.freeze([
     {href: '/ui-settings-downloads-completion.css?v=4', marker: 'data-dp-settings-downloads-completion-style'},
     {href: '/ui-settings-password-layout-followup.css?v=1', marker: 'data-dp-settings-password-layout-followup-style'},
-    {href: '/ui-settings-aria2-live.css?v=1', marker: 'data-dp-settings-aria2-live-style'},
+    {href: '/ui-settings-aria2-live.css?v=2', marker: 'data-dp-settings-aria2-live-style'},
   ]);
 
   const RUNTIMES = Object.freeze([
@@ -23,7 +23,7 @@
     {src: '/ui-statistics-batch5.js?v=7', marker: 'data-dp-statistics-batch5'},
     {src: '/ui-settings-page.js?v=4', marker: 'data-dp-settings-page'},
     {src: '/ui-settings-downloads-completion.js?v=4&statefix=1', marker: 'data-dp-settings-downloads-completion'},
-    {src: '/ui-settings-aria2-live.js?v=3', marker: 'data-dp-settings-aria2-live'},
+    {src: '/ui-settings-aria2-live.js?v=4', marker: 'data-dp-settings-aria2-live'},
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
   ]);
 

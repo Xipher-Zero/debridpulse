@@ -11,6 +11,7 @@ STATIC = ROOT / "frontend" / "static"
 
 def test_settings_aria2_live_runtime_contract():
     runtime = (STATIC / "ui-settings-aria2-live.js").read_text()
+    styles = (STATIC / "ui-settings-aria2-live.css").read_text()
     loader = (STATIC / "ui-presentation-loader.js").read_text()
 
     order = runtime.split("const TAB_ORDER = Object.freeze([", 1)[1].split("]);", 1)[0]
@@ -25,22 +26,42 @@ def test_settings_aria2_live_runtime_contract():
     positions = [order.index(item) for item in expected]
     assert positions == sorted(positions)
 
-    assert "/ui-settings-aria2-live.css?v=1" in loader
-    assert "/ui-settings-aria2-live.js?v=3" in loader
-    assert "aria2 Live Downloads" in runtime
+    assert "/ui-settings-aria2-live.css?v=2" in loader
+    assert "/ui-settings-aria2-live.js?v=4" in loader
+    assert "Built-In Download Engine State" in runtime
+    assert "Inspect and control the built-in aria2 engine." in runtime
+    assert "This reflects temporary aria2 runtime state, not transfer history. DebridPulse Downloads remains the historical record." in runtime
+    assert "Direct Engine Controls" in runtime
+    assert "Bypasses normal DebridPulse transfer controls. Use for troubleshooting or recovery." in runtime
+    assert "const FILTERS = Object.freeze(['all', 'active', 'waiting', 'paused', 'stopped'])" in runtime
+    assert "const STOPPED_STATES = new Set(['complete', 'error', 'removed'])" in runtime
+    assert "data-dp-aria2-live-speed" in runtime
+    assert "data-dp-aria2-live-remaining" in runtime
+    assert "data-engine-filter" in runtime
+    assert "filter-tabs dp-settings-aria2-live-filters" in runtime
+    assert "Built-in ·" not in runtime
+    assert "aria2 Live Downloads" not in runtime
     assert "const QUEUE_ID = 'dp-settings-aria2-downloads'" in runtime
     assert "data-dp-aria2-live-queue=\"1\"" in runtime
     assert "api('GET', '/aria2/downloads', null, QUEUE_TIMEOUT_MS)" in runtime
     assert "renderAria2Downloads(data);" in runtime
+    assert "queue.querySelector('.aria2-summary')?.remove();" in runtime
+    assert "No jobs currently retained by aria2." in runtime
     assert "showQueueError(error?.message || error)" in runtime
     assert "currentMode() === 'builtin'" in runtime
     assert "body.hidden = !builtin" in runtime
-    assert "Built-in queue unavailable in External mode" in runtime
     assert "Remove from aria2" in runtime
-    assert "DebridPulse transfer records are not rewritten" in runtime
     assert "observer.observe(view, {childList: true, subtree: false})" in runtime
 
-    # The first built-in queue read is deterministic when the card is created.
+    # Control composition: direct-engine warning left, stacked metrics and the
+    # existing Downloads-style segmented filter language on the right.
+    assert ".dp-settings-aria2-live-control-row" in styles
+    assert ".dp-settings-aria2-live-tools" in styles
+    assert ".dp-settings-aria2-live-metrics" in styles
+    assert ".dp-settings-aria2-live-filters" in styles
+    assert "justify-content: flex-end" in styles
+
+    # The first built-in engine read is deterministic when the card is created.
     # Settings/Downloads visibility only controls the recurring poll loop.
     assert "void refreshQueue(false, true);" in runtime
     assert "async function refreshQueue(manual, force = false)" in runtime

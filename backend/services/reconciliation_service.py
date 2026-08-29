@@ -7,7 +7,6 @@ import logging
 
 from core.config import get_settings
 from core.performance import async_timer, increment
-from services.aria2_runtime import is_builtin_mode
 
 logger = logging.getLogger("debridpulse.reconciliation")
 _cycle_snapshot: ContextVar[tuple[asyncio.Task, list] | None] = ContextVar(
@@ -120,12 +119,10 @@ class ReconciliationService:
         async with async_timer("reconcile.deferred_provider"):
             await self.engine.resume_deferred_provider_submissions()
 
-        if is_builtin_mode():
-            try:
-                async with async_timer("reconcile.cleanup"):
-                    await self.engine._cleanup_aria2_orphans()
-            except Exception as exc:
-                logger.debug("aria2 orphan cleanup deferred: %s", exc)
+        # Stopped result objects are inert, bounded aria2 runtime state. Keep
+        # them available to the built-in engine escape hatch after DebridPulse
+        # has reconciled the durable transfer record. Active orphan recovery is
+        # handled by the normal sync/dispatch paths rather than result deletion.
 
     async def startup(self):
         await self.engine.reconcile_aria2_on_startup()
