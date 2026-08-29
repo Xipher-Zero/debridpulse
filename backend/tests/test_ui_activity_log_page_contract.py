@@ -72,6 +72,17 @@ def test_activity_rebuild_uses_downloads_search_band_recipe() -> None:
         assert fragment in downloads
 
 
+def test_activity_projected_level_filter_keeps_compact_reviewed_footprint() -> None:
+    css = read("ui-activity-log-page.css")
+
+    native = css.split("#view-events #ev-level {", 1)[1].split("}", 1)[0]
+    projected = css.split("#view-events #ev-level + .dp-dropdown-shell {", 1)[1].split("}", 1)[0]
+    for block in (native, projected):
+        assert "width: 160px;" in block
+        assert "max-width: 160px;" in block
+        assert "flex: 0 0 160px;" in block
+
+
 def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:
     controls = read("ui-dashboard-control-polish.css")
 
@@ -111,14 +122,14 @@ def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
     assert ".sidebar-footer" not in activity
 
 
-def test_activity_log_rebuild_layer_is_generation_28() -> None:
+def test_activity_log_rebuild_layer_is_generation_29() -> None:
     overlay = read("style-v11.css")
 
     shell = overlay.index("/ui-shell-structural.css?v=26")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     controls = overlay.index("/ui-dashboard-control-polish.css?v=23")
     stats = overlay.index("/ui-statistics-page.css?v=21")
-    activity = overlay.index("/ui-activity-log-page.css?v=28")
+    activity = overlay.index("/ui-activity-log-page.css?v=29")
     downloads = overlay.index("/ui-downloads-page.css?v=27")
     transfer = overlay.index("/ui-transfer-contract.css?v=31")
 
