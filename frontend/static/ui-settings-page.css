@@ -199,6 +199,113 @@ body.dp-v11-structural #view-settings .dp-settings-inline-check {
   line-height: 1.35;
 }
 
+/* AllDebrid keeps the primary secret action in one coherent row: the key field
+   gives up horizontal space to the explicit clear control, while the checkbox
+   stays pinned to the card's right datum and centers against the two-line copy. */
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-items: center;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row.is-configured {
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-field {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta .form-hint:first-child {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-key-present {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--dp-state-success);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid {
+  width: 100%;
+  min-width: 0;
+  align-self: center;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > span {
+  padding-right: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > input {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Secondary provider tuning lives in a native disclosure rather than another
+   nested card. Native details/summary keeps the collapsed state accessible and
+   requires no additional runtime state or event ownership. */
+body.dp-v11-structural #view-settings .dp-settings-additional {
+  margin-top: 14px;
+  border-top: 1px solid var(--dp-divider);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional > summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  color: var(--dp-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional > summary::-webkit-details-marker {
+  display: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional > summary::after {
+  content: '›';
+  flex: 0 0 auto;
+  color: var(--dp-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform .15s ease, color .15s ease;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional[open] > summary::after {
+  color: var(--dp-accent-purple-bright);
+  transform: rotate(90deg);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional-body {
+  padding: 2px 0 4px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional-body > .dp-settings-field + .dp-settings-field {
+  margin-top: 12px;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-inline-check {
   display: flex;
   align-items: center;
@@ -430,6 +537,11 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
     overflow: visible;
   }
 
+  body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row.is-configured {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
   body.dp-v11-structural #view-settings .dp-settings-master-footer {
     align-items: stretch;
     flex-direction: column;
@@ -450,6 +562,17 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
 
   body.dp-v11-structural #view-settings .dp-settings-panels {
     padding: 10px 10px 14px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-key-present {
+    margin-left: 0;
+    text-align: left;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-inline-field,
