@@ -21,18 +21,23 @@ def test_downloads_outer_view_does_not_clip_universal_card_paint():
     assert "overflow: hidden" not in desktop_rule
 
 
-def test_clean_settings_uses_structural_root_and_one_internal_scroll_boundary():
+def test_clean_settings_uses_paint_visible_root_and_one_internal_scroll_boundary():
     css = read_static("ui-settings-page.css")
     runtime = read_static("ui-settings-page.js")
 
     selector = "body.dp-v11-structural #view-settings.dp-settings-clean-view.active"
     assert selector in css
     rule = css.split(selector, 1)[1].split("}", 1)[0]
-    assert "overflow: hidden;" in rule
+    assert "overflow: visible;" in rule
+    assert "overflow: hidden;" not in rule
 
-    scroll = css.split(".dp-settings-scroll", 1)[1].split("}", 1)[0]
+    scroll = css.split("#view-settings .dp-settings-scroll", 1)[1].split("}", 1)[0]
     assert "overflow-y: auto;" in scroll
     assert "overscroll-behavior: contain;" in scroll
+    assert "padding: 0;" in scroll
+
+    panels = css.split("#view-settings .dp-settings-panels", 1)[1].split("}", 1)[0]
+    assert "padding: 8px 12px 18px;" in panels
 
     assert '<section class="card dp-settings-header-card"' in runtime
     assert '<section class="card dp-settings-footer"' in runtime
