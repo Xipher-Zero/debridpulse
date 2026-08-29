@@ -1,8 +1,9 @@
-"""Transient validation endpoints for unsaved Settings drafts.
+"""Transient validation and editable Settings helper endpoints.
 
-These routes deliberately test candidate connection values without persisting or
-applying them. The Settings page owns the commit boundary through Apply Settings;
-validation must never turn a test action into an implicit configuration write.
+Validation routes deliberately test candidate connection values without
+persisting or applying them. The extraction-password route is a narrow Settings
+read surface for the operator-maintained archive-password list; operational
+credentials remain write-only through the normal public Settings payload.
 """
 from __future__ import annotations
 
@@ -41,6 +42,17 @@ class DiscordValidationRequest(BaseModel):
 
 def _safe_failure(exc: Exception) -> str:
     return sanitize_exception(exc, max_length=200)
+
+
+@router.get("/settings/extraction-passwords")
+async def get_extraction_passwords():
+    """Return the operator-maintained archive-password list for editing.
+
+    Archive passwords are content-unlock data rather than operational service
+    credentials. The general Settings response continues to redact this field;
+    only this purpose-built Settings surface returns the actual newline list.
+    """
+    return {"passwords": str(get_settings().extraction_password or "")}
 
 
 @router.post("/settings/validate-alldebrid")
