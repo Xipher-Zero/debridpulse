@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 CHROME = STATIC / "ui-settings-chrome.css"
+PAGE = STATIC / "ui-settings-page.css"
 RUNTIME = STATIC / "ui-settings-page.js"
 FEATURE = STATIC / "ui-feature-icon-contract.css"
 STYLE = STATIC / "style-v11.css"
@@ -133,18 +134,54 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
     assert "content: url('/icons/lucide/sliders-horizontal.svg?v=2');" in chrome
 
 
-def test_sources_panel_has_debrid_services_master_group_with_provider_and_recovery_nested() -> None:
+def test_sources_panel_consolidates_primary_key_and_collapsed_additional_settings() -> None:
     runtime = read(RUNTIME)
+    page = read(PAGE)
     chrome = read(CHROME)
     manifest = json.loads(read(MANIFEST))
+    key_helper = runtime[runtime.index("function allDebridApiKeyField"):runtime.index("function sourcesPanel")]
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('Debrid Services', provider + recovery" in sources
+    assert "groupCard('Debrid Services', provider," in sources
+    assert "provider + recovery" not in sources
+    assert "const recovery =" not in sources
+    assert "dp-settings-provider-recovery-card" not in sources
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
     assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
-    assert "dp-settings-provider-recovery-card" in sources
-    assert "Debrid Services" in sources
+
+    assert 'class="dp-settings-alldebrid-key-row ${configured ? \'is-configured\' : \'\'}"' in key_helper
+    assert 'value=""' in key_helper
+    assert "••••••••••••••••" in key_helper
+    assert "Key present" in key_helper
+    assert "Clear stored API Key" in key_helper
+    assert 'data-clear-secret="${key}"' in key_helper
+    assert "configured — blank keeps current value" not in key_helper
+    assert "alldebrid_api_key: valueOf('alldebrid_api_key')" in runtime
+
+    assert '<details class="dp-settings-additional">' in sources
+    assert '<details class="dp-settings-additional" open' not in sources
+    assert '<summary><span>Additional Settings</span></summary>' in sources
+    additional = sources[sources.index('class="dp-settings-additional-body"'):]
+    for key in (
+        "alldebrid_rate_limit_per_minute",
+        "poll_interval_seconds",
+        "full_sync_interval_minutes",
+        "upload_fail_retry_count",
+        "upload_fail_retry_delay_minutes",
+    ):
+        assert key in additional
+
+    assert ".dp-settings-alldebrid-key-row.is-configured" in page
+    assert "grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);" in page
+    clear_rule = page.split(".dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid {", 1)[1].split("}", 1)[0]
+    assert "border-top: 0;" in clear_rule
+    assert "padding-top: 0;" in clear_rule
+    assert "margin-top: 0;" in clear_rule
+    assert ".dp-settings-key-present" in page
+    assert "text-align: right;" in page
+    assert ".dp-settings-additional > summary" in page
+    assert ".dp-settings-additional[open] > summary::after" in page
 
     assert manifest["icons"]["debridServices"] == "debrid-services.svg"
     raw = read(STATIC / "icons" / "dp" / "debrid-services.svg")
