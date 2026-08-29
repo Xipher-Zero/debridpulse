@@ -67,26 +67,36 @@ def test_download_engine_mode_switch_preserves_contextual_paths_and_builtin_tuni
     row = css.split(".dp-settings-download-engine-row {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);" in row
     assert "gap: 32px;" in row
-    limit = css.split(".dp-settings-download-limit {", 1)[1].split("}", 1)[0]
-    assert "max-width: 320px;" in limit
-    assert "justify-self: end;" in limit
+    assert (
+        "body.dp-v11-structural #view-settings .dp-settings-download-limit {\n"
+        "  width: 100%;\n"
+        "  max-width: 320px;\n"
+        "  justify-self: end;\n"
+        "}"
+    ) in css
 
 
 def test_external_mode_uses_one_connection_row_and_alldebrid_style_secret_semantics():
+    runtime = source(SETTINGS_PAGE_JS)
     downloads = downloads_runtime()
     css = source(SETTINGS_PAGE_CSS)
+    secret_helper = runtime[
+        runtime.index("function aria2RpcSecretFields"):
+        runtime.index("function tuningToggle")
+    ]
 
     assert "dp-settings-external-connection-row" in downloads
     assert "External RPC URL" in downloads
     assert "JSON-RPC endpoint DebridPulse uses to connect to your external aria2 server." in downloads
-    assert "aria2 RPC Secret" in downloads
-    assert "••••••••••••••••" in downloads
-    assert "Secret Present" in downloads
-    assert "Enter a new RPC secret to replace the stored secret when you click Apply Settings. Leave this field blank to keep the current secret." in downloads
-    assert "Enter the RPC secret used by your external aria2 server. It will be saved only when you click Apply Settings." in downloads
-    assert "Clear stored aria2 RPC Secret" in downloads
-    assert "Remove the saved RPC secret when you click Apply Settings." in downloads
-    assert 'data-clear-secret="${key}"' in downloads
+    assert "${aria2RpcSecretFields(!!s.aria2_secret_configured)}" in downloads
+    assert "aria2 RPC Secret" in secret_helper
+    assert "••••••••••••••••" in secret_helper
+    assert "Secret Present" in secret_helper
+    assert "Enter a new RPC secret to replace the stored secret when you click Apply Settings. Leave this field blank to keep the current secret." in secret_helper
+    assert "Enter the RPC secret used by your external aria2 server. It will be saved only when you click Apply Settings." in secret_helper
+    assert "Clear stored aria2 RPC Secret" in secret_helper
+    assert "Remove the saved RPC secret when you click Apply Settings." in secret_helper
+    assert 'data-clear-secret="${key}"' in secret_helper
 
     row = css.split(".dp-settings-external-connection-row.is-secret-configured {", 1)[1].split("}", 1)[0]
     assert "minmax(0, 1.7fr)" in row
