@@ -45,13 +45,13 @@ def test_continue_partial_and_file_allocation_use_text_block_control_grammar():
     css = read("ui-settings-downloads-completion.css")
 
     assert ".dp-settings-engine-tuning-toggle-field" in css
-    assert "grid-template-columns: minmax(0, 430px) auto;" in css
+    assert "grid-template-columns: fit-content(620px) auto;" in css
     assert ".dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control" in css
     assert "grid-row: 1 / 3;" in css
 
     assert ".dp-settings-engine-file-allocation" in css
     assert "width: min(100%, 680px);" in css
-    assert "grid-template-columns: minmax(0, 380px) minmax(180px, 220px);" in css
+    assert "grid-template-columns: fit-content(380px) minmax(180px, 220px);" in css
     assert ".dp-settings-engine-file-allocation > .dp-settings-field > .dp-dropdown-shell" in css
 
 
