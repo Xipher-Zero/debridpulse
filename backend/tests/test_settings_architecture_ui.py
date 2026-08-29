@@ -24,7 +24,7 @@ def test_settings_has_one_post_core_clean_room_runtime():
     runtime = source(SETTINGS_PAGE_JS)
 
     assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=2" in loader
+    assert "/ui-settings-page.js?v=3" in loader
     assert "data-dp-settings-page" in loader
     assert "clean-room Settings page" in runtime
     assert "window.DPSettingsPage = Object.freeze({load});" in runtime
@@ -57,14 +57,15 @@ def test_settings_clean_room_runtime_owns_only_the_navigation_entry_hook():
         assert forbidden not in runtime
 
 
-def test_settings_runtime_rejects_the_legacy_settings_shell_state_before_paint():
+def test_settings_runtime_rejects_legacy_shell_state_but_uses_normal_full_height_content_contract():
     runtime = source(SETTINGS_PAGE_JS)
     assert "document.getElementById('content')?.classList.remove('settings-active');" in runtime
     assert runtime.count("classList.remove('settings-active')") >= 2
 
     css = source(SETTINGS_PAGE_CSS)
     assert "#content.settings-active" not in css
-    assert "#content" not in css
+    assert "#content:has(#view-settings.active)" in css
+    assert "overflow-y: hidden;" in css.split("#content:has(#view-settings.active)", 1)[1].split("}", 1)[0]
     assert "#main" not in css
     assert "#sidebar" not in css
     assert "#topbar" not in css
@@ -274,43 +275,57 @@ def test_non_auth_serializer_starts_from_server_state_and_preserves_hidden_setti
     assert "aria2_max_active_downloads: maxDownloads" in serializer
 
 
-def test_settings_root_is_structural_and_only_real_header_content_footer_are_cards():
+def test_settings_is_one_master_card_with_internal_header_body_and_footer():
     runtime = source(SETTINGS_PAGE_JS)
 
-    assert '<div class="dp-settings-clean">' in runtime
-    assert '<section class="card dp-settings-header-card"' in runtime
-    assert '<section class="card dp-settings-footer"' in runtime
+    assert '<section class="card dp-settings-master-card"' in runtime
+    assert '<div class="card-header dp-settings-master-header">' in runtime
+    assert '<div class="dp-settings-master-body">' in runtime
+    assert '<div class="dp-settings-scroll">' in runtime
+    assert '<div class="dp-settings-master-footer"' in runtime
     assert 'class="card dp-settings-card' in runtime
 
-    # No page-sized card/master abstraction exists in the new implementation.
-    for forbidden in (
-        "dp-settings-master",
-        'class="card dp-settings-clean"',
-        'class="card dp-settings-panel"',
-        'class="card dp-settings-scroll"',
-    ):
-        assert forbidden not in runtime
+    # The header/footer are regions of the master card, never independent cards.
+    assert 'class="card dp-settings-header-card"' not in runtime
+    assert 'class="card dp-settings-footer"' not in runtime
+    assert 'class="card dp-settings-master-footer"' not in runtime
+    assert 'class="card dp-settings-panel"' not in runtime
+    assert 'class="card dp-settings-scroll"' not in runtime
 
 
-def test_settings_css_uses_paint_visible_page_and_one_unpainted_scroll_owner():
+def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_region():
     css = source(SETTINGS_PAGE_CSS)
 
     assert "#view-settings.dp-settings-clean-view.active" in css
-    clean_root = css.split("#view-settings.dp-settings-clean-view.active", 1)[1].split("}", 1)[0]
-    assert "overflow: visible;" in clean_root
-    assert "overflow: hidden;" not in clean_root
+    active = css.split("#view-settings.dp-settings-clean-view.active", 1)[1].split("}", 1)[0]
+    assert "height: 100% !important;" in active
+    assert "min-height: 0;" in active
+    assert "overflow: visible;" in active
 
-    clean = css.split("#view-settings .dp-settings-clean", 1)[1].split("}", 1)[0]
-    assert "overflow: visible;" in clean
+    master = css.split("#view-settings > .dp-settings-master-card", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto;" in master
+    assert "min-height: 0;" in master
+    assert "margin-bottom: 0 !important;" in master
+
+    body = css.split("#view-settings .dp-settings-master-body", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto;" in body
+    assert "min-height: 0;" in body
+    assert "overflow: hidden;" in body
 
     scroll = css.split("#view-settings .dp-settings-scroll", 1)[1].split("}", 1)[0]
     assert "overflow-y: auto;" in scroll
     assert "overscroll-behavior: contain;" in scroll
-    assert "padding: 0;" in scroll
 
     panels = css.split("#view-settings .dp-settings-panels", 1)[1].split("}", 1)[0]
-    assert "padding: 8px 12px 18px;" in panels
+    assert "padding: 12px 12px 16px;" in panels
 
+    footer = css.split("#view-settings .dp-settings-master-footer", 1)[1].split("}", 1)[0]
+    assert "flex: 0 0 auto;" in footer
+    assert "border-top: 1px solid var(--dp-divider);" in footer
+    assert "position: fixed" not in footer
+    assert "position: absolute" not in footer
+
+    # Settings owns geometry only. Shared card material must stay universal.
     for forbidden in (
         "radial-gradient",
         "--dp-panel-frame",
@@ -325,7 +340,7 @@ def test_settings_css_uses_paint_visible_page_and_one_unpainted_scroll_owner():
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     styles = source(STYLE_V11)
-    assert "@import url('/ui-settings-page.css?v=1');" in styles
+    assert "@import url('/ui-settings-page.css?v=2');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
