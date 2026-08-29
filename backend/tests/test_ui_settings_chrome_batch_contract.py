@@ -29,7 +29,7 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     chrome = read(CHROME)
 
     settings = overlay.index("/ui-settings-page.css?v=2")
-    settings_chrome = overlay.index("/ui-settings-chrome.css?v=3")
+    settings_chrome = overlay.index("/ui-settings-chrome.css?v=2")
     help_page = overlay.index("/ui-help-page.css?v=22")
     feature = overlay.index("/ui-feature-icon-contract.css?v=4")
     assert settings < settings_chrome < help_page < feature
