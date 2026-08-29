@@ -26,8 +26,8 @@ def test_settings_aria2_live_runtime_contract():
     positions = [order.index(item) for item in expected]
     assert positions == sorted(positions)
 
-    assert "/ui-settings-aria2-live.css?v=2" in loader
-    assert "/ui-settings-aria2-live.js?v=4" in loader
+    assert "/ui-settings-aria2-live.css?v=3" in loader
+    assert "/ui-settings-aria2-live.js?v=5" in loader
     assert "Built-In Download Engine State" in runtime
     assert "Inspect and control the built-in aria2 engine." in runtime
     assert "This reflects temporary aria2 runtime state, not transfer history. DebridPulse Downloads remains the historical record." in runtime
@@ -49,9 +49,25 @@ def test_settings_aria2_live_runtime_contract():
     assert "No jobs currently retained by aria2." in runtime
     assert "showQueueError(error?.message || error)" in runtime
     assert "currentMode() === 'builtin'" in runtime
-    assert "body.hidden = !builtin" in runtime
+    assert "function syncCardForMode(panel = downloadsPanel())" in runtime
+    assert "liveCard()?.remove();" in runtime
+    assert "const card = ensureCard(panel);" in runtime
+    assert "body.hidden = !builtin" not in runtime
+    assert "is-external" not in runtime
     assert "Remove from aria2" in runtime
     assert "observer.observe(view, {childList: true, subtree: false})" in runtime
+
+    # Header copy is true-centered across the card while Refresh alone owns the
+    # right track. The direct-control note consumes available desktop space
+    # instead of wrapping inside an artificially capped column.
+    assert ".dp-settings-aria2-live-card > .card-header" in styles
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);" in styles
+    assert ".dp-settings-aria2-live-header-actions" in styles
+    assert "grid-column: 3;" in styles
+    assert ".dp-settings-aria2-live-note" in styles
+    assert "flex: 1 1 auto;" in styles
+    assert "max-width: none;" in styles
+    assert "max-width: 430px" not in styles
 
     # Control composition: direct-engine warning left, stacked metrics and the
     # existing Downloads-style segmented filter language on the right.
