@@ -8,6 +8,10 @@
 (function () {
   'use strict';
 
+  const STYLES = Object.freeze([
+    {href: '/ui-settings-downloads-completion.css?v=1', marker: 'data-dp-settings-downloads-completion-style'},
+  ]);
+
   const RUNTIMES = Object.freeze([
     {src: '/ui-shell-runtime.js?v=1', marker: 'data-dp-shell-runtime'},
     {src: '/ui-visual-behavior-fixes.js?v=23', marker: 'data-dp-visual-behavior-fixes'},
@@ -16,11 +20,32 @@
     {src: '/ui-statistics-batch4.js?v=2', marker: 'data-dp-statistics-batch4'},
     {src: '/ui-statistics-batch5.js?v=7', marker: 'data-dp-statistics-batch5'},
     {src: '/ui-settings-page.js?v=4', marker: 'data-dp-settings-page'},
+    {src: '/ui-settings-downloads-completion.js?v=1', marker: 'data-dp-settings-downloads-completion'},
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
   ]);
 
   function alreadyLoaded(runtime) {
     return Boolean(document.querySelector('script[' + runtime.marker + ']'));
+  }
+
+  function styleAlreadyLoaded(style) {
+    return Boolean(document.querySelector('link[' + style.marker + ']'));
+  }
+
+  function loadStyle(style) {
+    if (styleAlreadyLoaded(style)) return Promise.resolve();
+
+    return new Promise(function (resolve, reject) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = style.href;
+      link.setAttribute(style.marker, '1');
+      link.onload = function () { resolve(); };
+      link.onerror = function () {
+        reject(new Error('Unable to load ' + style.href));
+      };
+      document.head.appendChild(link);
+    });
   }
 
   function loadRuntime(runtime) {
@@ -42,6 +67,15 @@
   async function loadPresentationRuntimes() {
     if (document.documentElement.dataset.dpPresentationLoaderStarted === '1') return;
     document.documentElement.dataset.dpPresentationLoaderStarted = '1';
+
+    for (const style of STYLES) {
+      try {
+        await loadStyle(style);
+      } catch (error) {
+        console.error('[DebridPulse] presentation style skipped:', style.href, error);
+        continue;
+      }
+    }
 
     for (const runtime of RUNTIMES) {
       try {
