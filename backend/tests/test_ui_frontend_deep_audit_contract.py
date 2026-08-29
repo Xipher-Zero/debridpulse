@@ -15,6 +15,7 @@ SHELL_BRAND = STATIC / "ui-shell-brand.css"
 ACTIVITY_STYLE = STATIC / "ui-activity-log-page.css"
 DOWNLOADS_STYLE = STATIC / "ui-downloads-page.css"
 SETTINGS_STYLE = STATIC / "ui-settings-page.css"
+SETTINGS_CHROME = STATIC / "ui-settings-chrome.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
 STATISTICS_ORCHESTRATOR = STATIC / "ui-statistics-orchestrator.js"
@@ -182,12 +183,13 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-statistics-page.css": "21",
-        "/ui-activity-log-page.css": "28",
+        "/ui-activity-log-page.css": "29",
         "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
         "/ui-settings-page.css": "2",
+        "/ui-settings-chrome.css": "1",
         "/ui-help-page.css": "22",
-        "/ui-feature-icon-contract.css": "3",
+        "/ui-feature-icon-contract.css": "4",
         "/ui-panel-surface-treatment.css": "22",
         "/ui-transfer-contract.css": "31",
         "/ui-live-review-batch.css": "21",
@@ -214,18 +216,19 @@ def test_v11_stylesheet_runtime_is_fallback_not_normal_owner() -> None:
     dashboard_control_pos = overlay.index("/ui-dashboard-control-polish.css?v=23")
     dashboard_consistency_pos = overlay.index("/ui-dashboard-consistency.css?v=23")
     statistics_pos = overlay.index("/ui-statistics-page.css?v=21")
-    activity_pos = overlay.index("/ui-activity-log-page.css?v=28")
+    activity_pos = overlay.index("/ui-activity-log-page.css?v=29")
     downloads_pos = overlay.index("/ui-downloads-page.css?v=27")
     downloads_desktop_pos = overlay.index("/ui-downloads-desktop.css?v=28")
     settings_pos = overlay.index("/ui-settings-page.css?v=2")
+    settings_chrome_pos = overlay.index("/ui-settings-chrome.css?v=1")
     help_pos = overlay.index("/ui-help-page.css?v=22")
-    feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=3")
+    feature_icon_pos = overlay.index("/ui-feature-icon-contract.css?v=4")
     treatment_pos = overlay.index("/ui-panel-surface-treatment.css?v=22")
     transfer_pos = overlay.index("/ui-transfer-contract.css?v=31")
     assert universal_pos < shared_pos < modal_pos < shell_pos < shell_structural_pos
     assert shell_structural_pos < provider_pos < provider_v2_pos < dashboard_pos
     assert dashboard_pos < dashboard_control_pos < dashboard_consistency_pos < statistics_pos < activity_pos < downloads_pos
-    assert downloads_pos < downloads_desktop_pos < settings_pos < help_pos < feature_icon_pos < treatment_pos < transfer_pos
+    assert downloads_pos < downloads_desktop_pos < settings_pos < settings_chrome_pos < help_pos < feature_icon_pos < treatment_pos < transfer_pos
 
 
 def test_shared_visual_contract_is_owned_by_css_not_runtime_javascript() -> None:
@@ -247,6 +250,7 @@ def test_page_layers_do_not_own_shell_contract() -> None:
     activity = ACTIVITY_STYLE.read_text(encoding="utf-8")
     downloads = DOWNLOADS_STYLE.read_text(encoding="utf-8")
     settings = SETTINGS_STYLE.read_text(encoding="utf-8")
+    settings_chrome = SETTINGS_CHROME.read_text(encoding="utf-8")
     shell = SHELL_STYLE.read_text(encoding="utf-8")
     shell_brand = SHELL_BRAND.read_text(encoding="utf-8")
     stats_batch5 = (STATIC / "ui-statistics-batch5.css").read_text(encoding="utf-8")
@@ -254,6 +258,7 @@ def test_page_layers_do_not_own_shell_contract() -> None:
     assert ".sidebar-footer" not in activity
     assert ".sidebar-footer" not in downloads
     assert ".sidebar-footer" not in settings
+    assert ".sidebar-footer" not in settings_chrome
     assert ".sidebar-footer::before" in shell
     assert "body.dp-v11-structural .sidebar-footer" in shell
     assert "bottom: 24px !important" in shell
