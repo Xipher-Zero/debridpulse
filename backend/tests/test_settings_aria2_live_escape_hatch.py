@@ -26,9 +26,13 @@ def test_settings_aria2_live_runtime_contract():
     assert positions == sorted(positions)
 
     assert "/ui-settings-aria2-live.css?v=1" in loader
-    assert "/ui-settings-aria2-live.js?v=1" in loader
+    assert "/ui-settings-aria2-live.js?v=2" in loader
     assert "aria2 Live Downloads" in runtime
-    assert "loadAria2Downloads" in runtime
+    assert "const QUEUE_ID = 'dp-settings-aria2-downloads'" in runtime
+    assert "data-dp-aria2-live-queue=\"1\"" in runtime
+    assert "api('GET', '/aria2/downloads', null, QUEUE_TIMEOUT_MS)" in runtime
+    assert "renderAria2Downloads(data);" in runtime
+    assert "showQueueError(error?.message || error)" in runtime
     assert "currentMode() === 'builtin'" in runtime
     assert "body.hidden = !builtin" in runtime
     assert "Built-in queue unavailable in External mode" in runtime
