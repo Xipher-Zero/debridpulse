@@ -9,7 +9,7 @@
   'use strict';
 
   const STYLES = Object.freeze([
-    {href: '/ui-settings-downloads-completion.css?v=1', marker: 'data-dp-settings-downloads-completion-style'},
+    {href: '/ui-settings-downloads-completion.css?v=2', marker: 'data-dp-settings-downloads-completion-style'},
   ]);
 
   const RUNTIMES = Object.freeze([
