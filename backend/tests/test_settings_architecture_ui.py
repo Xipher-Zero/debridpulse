@@ -183,12 +183,17 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('Debrid Services', provider + recovery" in sources
+    assert "groupCard('Debrid Services', provider," in sources
+    assert "provider + recovery" not in sources
+    assert "const recovery =" not in sources
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
     assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
-    assert "dp-settings-provider-recovery-card" in sources
-    assert "return provider + recovery" not in sources
-    # Source-type identity is intentionally text-only until the reviewed asset arrives.
+    assert "dp-settings-provider-recovery-card" not in sources
+    assert '<details class="dp-settings-additional">' in sources
+    assert "Additional Settings" in sources
+    assert "upload_fail_retry_count" in sources
+    assert "upload_fail_retry_delay_minutes" in sources
+    # Source-type artwork is presentation-owned by CSS; runtime needs no icon class.
     assert "dp-settings-debrid-services-icon" not in sources
 
 
@@ -346,11 +351,16 @@ def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_regi
         "--dp-panel-frame",
         "--dp-panel-surface",
         "--dp-panel-shadow",
-        "::after",
         "box-shadow:",
         "backdrop-filter:",
     ):
         assert forbidden not in css
+    for forbidden_selector in (
+        ".dp-settings-master-card::after",
+        ".dp-settings-card::after",
+        ".dp-settings-group-card::after",
+    ):
+        assert forbidden_selector not in css
 
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
