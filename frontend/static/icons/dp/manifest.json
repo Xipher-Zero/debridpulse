@@ -4,6 +4,7 @@
   "customRendering": "external-img",
   "utilityLibrary": "Lucide",
   "icons": {
+    "automaticExtraction": "automatic-extraction.svg",
     "broadcastSignal": "broadcast-signal.svg",
     "calendar": "calendar.svg",
     "calendar24": "calendar-24.svg",
