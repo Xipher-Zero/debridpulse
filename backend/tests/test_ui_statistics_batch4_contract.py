@@ -74,7 +74,7 @@ def test_feature_icons_share_dashboard_layout_box_with_asset_specific_optical_pa
     assert "#view-events .dp-activity-title-icon {\n  padding: 3px !important" in css
     assert "#view-torrents .dp-downloads-title-icon {\n  padding: 1px !important" in css
     assert "#view-stats .dp-statistics-title-icon {\n  padding: 5px !important" in css
-    assert "/ui-feature-icon-contract.css?v=3" in imports
+    assert "/ui-feature-icon-contract.css?v=4" in imports
 
 
 def test_lower_cards_switch_from_single_to_balanced_two_column_top_ten_layout() -> None:
