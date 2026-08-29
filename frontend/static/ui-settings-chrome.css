@@ -113,11 +113,45 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='advanced
   --dp-settings-tab-color: #b866f5;
 }
 
+/* The Advanced source artwork used a darker purple in the previous generation.
+   Force the corrected bright-purple SVG resource so stale image cache cannot
+   preserve the old stroke after the CSS generation advances. */
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='advanced'] .dp-settings-tab-glyph {
+  content: url('/icons/lucide/sliders-horizontal.svg?v=2');
+}
+
 /* ── Sources & Providers identity ────────────────────────────────────── */
 body.dp-v11-structural #view-settings .dp-settings-card-title--with-icon {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Debrid Services is a source-type master group. The supplied artwork already
+   owns its rounded-square frame, so CSS adds only layout and the established
+   omnidirectional purple artwork glow rather than inventing another chip. */
+body.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {
+  content: '';
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: block;
+  background: url('/icons/dp/debrid-services.svg?v=1') center / 34px 34px no-repeat;
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.78))
+    drop-shadow(0 0 9px rgba(184,102,245,.34));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.88))
+    drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
 body.dp-v11-structural #view-settings .dp-settings-provider-chip--alldebrid {
@@ -203,6 +237,12 @@ body.light.dp-v11-structural #view-settings .dp-settings-action-glyph {
     drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-action-color) 94%, transparent))
     drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-action-color) 68%, transparent))
     drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-action-color) 34%, transparent));
+}
+
+/* Same cache-eviction rule for the Test glyph: the SVG now carries the exact
+   Sources & Providers purple rather than the previous darker purple. */
+body.dp-v11-structural #view-settings button[data-action='test-alldebrid'] .dp-settings-action-glyph {
+  content: url('/icons/lucide/flask-conical.svg?v=2');
 }
 
 @media (max-width: 1180px) {
