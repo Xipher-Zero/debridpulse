@@ -142,6 +142,34 @@ def test_sources_and_download_boolean_nits_use_compact_centered_units():
     assert "justify-self: end;" in alldebrid
 
 
+def test_completion_observer_cannot_retrigger_from_its_own_extraction_dom_writes():
+    runtime = source(COMPLETION_JS)
+
+    assert "let observer = null;" in runtime
+    assert "function applyWithoutSelfObservation()" in runtime
+    assert "if (observer) observer.disconnect();" in runtime
+    guarded = runtime.split("function applyWithoutSelfObservation()", 1)[1].split("function scheduleApply()", 1)[0]
+    assert "try {" in guarded
+    assert "apply();" in guarded
+    assert "finally {" in guarded
+    assert "observe(view);" in guarded
+
+    scheduled = runtime.split("function scheduleApply()", 1)[1].split("function attach()", 1)[0]
+    assert "queueMicrotask" in scheduled
+    assert "applyWithoutSelfObservation();" in scheduled
+
+    # Async password loading must enter through the guarded scheduler rather
+    # than mutating the observed Settings subtree directly.
+    assert "scheduleApply();" in runtime
+    assert "applyExtraction(root());" not in runtime
+
+    # Extraction copy writes are idempotent as a second line of defense.
+    assert "if (title && title.textContent !== 'Delete Archives After Extraction')" in runtime
+    assert "if (detail && detail.textContent !== 'Remove original archive files only after extraction completes successfully.')" in runtime
+    assert "if (label && label.textContent !== 'Archive Passwords (one per line)')" in runtime
+    assert "if (hint.textContent !== EXTRACTION_PASSWORD_HINT) hint.textContent = EXTRACTION_PASSWORD_HINT;" in runtime
+
+
 def test_automatic_extraction_icon_is_registered_and_pure_vector():
     raw = source(EXTRACTION_ICON)
     manifest = source(ICON_MANIFEST)
@@ -153,4 +181,4 @@ def test_automatic_extraction_icon_is_registered_and_pure_vector():
     assert "data:image" not in raw.lower()
     assert '"automaticExtraction": "automatic-extraction.svg"' in manifest
     assert "/ui-settings-downloads-completion.css?v=4" in loader
-    assert "/ui-settings-downloads-completion.js?v=3" in loader
+    assert "/ui-settings-downloads-completion.js?v=4" in loader
