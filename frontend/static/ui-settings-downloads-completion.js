@@ -188,6 +188,7 @@
     if (!input) return;
     const value = String(extractionPasswords.values[index] || '');
     const next = reveal ? value : passwordMask(value);
+    input.dataset.passwordDisplay = reveal ? 'raw' : 'masked';
     if (input.value !== next) input.value = next;
   }
 
@@ -203,9 +204,13 @@
 
   function activatePasswordLine(editor, index) {
     if (extractionPasswords.activeIndex !== index) {
-      const previous = rowInput(editor, extractionPasswords.activeIndex);
+      const previousIndex = extractionPasswords.activeIndex;
+      const previous = rowInput(editor, previousIndex);
       if (previous && !extractionPasswords.revealAll) {
-        setRowVisibility(previous, extractionPasswords.activeIndex, false);
+        /* Commit the still-raw edit before changing its presentation. The blur
+           that follows a pointer switch will see a masked field and no-op. */
+        commitPasswordLine(editor?.closest('[data-panel="extraction"]'), previous);
+        setRowVisibility(previous, previousIndex, false);
       }
     }
     extractionPasswords.activeIndex = index;
@@ -215,6 +220,8 @@
   function commitPasswordLine(panel, input) {
     const index = Number(input.dataset.passwordIndex);
     if (!Number.isInteger(index) || index < 0) return;
+    /* A mask is presentation only and must never cross into canonical state. */
+    if (input.dataset.passwordDisplay === 'masked') return;
     extractionPasswords.values[index] = String(input.value || '');
     syncExtractionPasswordSource(panel);
   }
@@ -289,6 +296,8 @@
     source.tabIndex = -1;
     source.insertAdjacentElement('afterend', editor);
 
+    extractionPasswords.activeIndex = -1;
+    extractionPasswords.revealAll = false;
     renderPasswordRows(panel, editor);
     syncExtractionPasswordSource(panel);
     return editor;
@@ -310,9 +319,11 @@
       input.spellcheck = false;
       input.setAttribute('aria-label', `Archive password ${index + 1}`);
       input.placeholder = index === 0 && !value ? 'Add an archive password' : '';
-      input.value = extractionPasswords.revealAll || index === extractionPasswords.activeIndex
-        ? String(value || '')
-        : passwordMask(value);
+      setRowVisibility(
+        input,
+        index,
+        extractionPasswords.revealAll || index === extractionPasswords.activeIndex
+      );
 
       input.addEventListener('pointerdown', () => activatePasswordLine(editor, index));
       input.addEventListener('focus', () => activatePasswordLine(editor, index));
