@@ -208,6 +208,9 @@
     const key = 'alldebrid_api_key';
     const id = fieldId(key);
     const masked = '••••••••••••••••';
+    const hint = configured
+      ? 'Enter a new API key to replace the stored key when you click Apply Settings. Leave this field blank to keep the current key.'
+      : 'Enter your AllDebrid API key. It will be saved only when you click Apply Settings.';
     return `
       <div class="dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}">
         <div class="dp-settings-field dp-settings-alldebrid-key-field">
@@ -215,7 +218,7 @@
           <input class="input" id="${id}" data-setting="${key}" type="password" value=""
                  placeholder="${configured ? masked : 'Your AllDebrid API key'}" autocomplete="off">
           <div class="dp-settings-alldebrid-key-meta">
-            <span class="form-hint">Get the key from alldebrid.com/apikeys. Blank preserves the stored key.</span>
+            <span class="form-hint">${hint}</span>
             ${configured ? '<span class="form-hint dp-settings-key-present">Key present</span>' : ''}
           </div>
         </div>
@@ -223,7 +226,7 @@
           <label class="dp-settings-clear-secret dp-settings-clear-secret--alldebrid">
             <span>
               <b>Clear stored API Key</b>
-              <small>Erase the stored value when Settings are saved.</small>
+              <small>Remove the saved API key when you click Apply Settings.</small>
             </span>
             <input type="checkbox" data-clear-secret="${key}">
           </label>` : ''}
@@ -236,25 +239,30 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
       </span>`;
     const provider = card('AllDebrid', `
-      <p class="dp-settings-copy">Configure the debrid provider used for direct links, magnets, and torrent files.</p>
+      <p class="dp-settings-copy">Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.</p>
       ${allDebridApiKeyField(!!s.alldebrid_api_key_configured)}
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
           ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', s.alldebrid_rate_limit_per_minute ?? 60, {
-            type: 'number', min: 0, max: 300, hint: '0 disables the local rate limit.'
+            type: 'number', min: 0, max: 300,
+            hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
           })}
           ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', s.poll_interval_seconds ?? 30, {
-            type: 'number', min: 10, hint: 'How often active provider work is checked.'
+            type: 'number', min: 10,
+            hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
           })}
           ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
-            type: 'number', min: 0, max: 1440, hint: '0 disables scheduled full reconciliation.'
+            type: 'number', min: 0, max: 1440,
+            hint: 'How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.'
           })}
           ${input('upload_fail_retry_count', 'Upload Failure Retries', s.upload_fail_retry_count ?? 3, {
-            type: 'number', min: 0, max: 20
+            type: 'number', min: 0, max: 20,
+            hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
           })}
           ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', s.upload_fail_retry_delay_minutes ?? 5, {
-            type: 'number', min: 0, max: 1440
+            type: 'number', min: 0, max: 1440,
+            hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
           })}
         </div>
       </details>
@@ -648,13 +656,11 @@
   }
 
   function bindEvents(view) {
-    view.querySelector('.dp-settings-tabs')?.addEventListener('click', event => {
-      const tab = event.target.closest('[data-tab]');
-      if (tab) activateTab(tab.dataset.tab);
-    });
+    if (view.dataset.dpSettingsEventsBound === '1') return;
+    view.dataset.dpSettingsEventsBound = '1';
 
-    view.querySelector('.dp-settings-tabs')?.addEventListener('keydown', event => {
-      const current = event.target.closest('[data-tab]');
+    view.addEventListener('keydown', event => {
+      const current = event.target.closest('.dp-settings-tabs [data-tab]');
       if (!current || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const buttons = Array.from(view.querySelectorAll('.dp-settings-tabs [data-tab]'));
@@ -675,6 +681,12 @@
     });
 
     view.addEventListener('click', event => {
+      const tab = event.target.closest('.dp-settings-tabs [data-tab]');
+      if (tab) {
+        activateTab(tab.dataset.tab);
+        return;
+      }
+
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
@@ -907,27 +919,48 @@
     }
   }
 
+  function connectionTestPayload(kind) {
+    const clears = new Set(clearSecrets());
+    if (kind === 'alldebrid') {
+      return {
+        api_key: valueOf('alldebrid_api_key'),
+        clear_api_key: clears.has('alldebrid_api_key'),
+      };
+    }
+    if (kind === 'aria2') {
+      return {
+        mode: valueOf('aria2_mode', state.settings?.aria2_mode || 'builtin'),
+        url: valueOf('aria2_url'),
+        secret: valueOf('aria2_secret'),
+        clear_secret: clears.has('aria2_secret'),
+      };
+    }
+    if (kind === 'discord') {
+      return {
+        webhook_url: valueOf('discord_webhook_url'),
+        clear_webhook: clears.has('discord_webhook_url'),
+      };
+    }
+    throw new Error(`Unsupported connection test: ${kind}`);
+  }
+
   async function testConnection(kind, button) {
     const endpoints = {
-      alldebrid: '/settings/test-alldebrid',
-      aria2: '/settings/test-aria2',
-      discord: '/settings/test-discord',
+      alldebrid: '/settings/validate-alldebrid',
+      aria2: '/settings/validate-aria2',
+      discord: '/settings/validate-discord',
     };
     const labels = {alldebrid: 'AllDebrid', aria2: 'aria2', discord: 'Discord'};
     setBusy(button, true, 'Testing…');
     try {
-      await persistNonAuth({renderAfter: false, quiet: true});
-      const result = await request('POST', endpoints[kind], undefined, 20000);
+      const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
       if (kind === 'alldebrid') {
         notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
-        try { if (typeof setDot === 'function') setDot('api', 'ok', `AllDebrid: ${result.username || 'online'}`); } catch (_) {}
       } else if (kind === 'aria2') {
         notify(`aria2 ${result.version ? `v${result.version}` : 'online'}`, 'success');
-        try { if (typeof setDot === 'function') setDot('aria2', 'ok', `aria2: ${result.version || 'online'}`); } catch (_) {}
       } else {
         notify('Discord notification sent', 'success');
       }
-      render();
     } catch (error) {
       notify(`${labels[kind]}: ${error.message}`, 'error');
     } finally {
@@ -971,7 +1004,6 @@
   async function sendReport(button) {
     setBusy(button, true, 'Sending…');
     try {
-      await persistNonAuth({renderAfter: false, quiet: true});
       const hours = intOf('stats_report_window_hours', 24);
       const result = await request('POST', `/stats/report/send?hours=${hours}`, undefined, 20000);
       notify(`Report sent (${result.hours || hours}h)`, 'success');
@@ -986,7 +1018,6 @@
   async function runBackup(button) {
     setBusy(button, true, 'Running…');
     try {
-      await persistNonAuth({renderAfter: false, quiet: true});
       const result = await request('POST', '/admin/backup', undefined, 30000);
       if (result.skipped) notify('Backup is disabled in Settings', 'warn');
       else notify('Backup completed', 'success');
@@ -1016,8 +1047,12 @@
   }
 
   async function wipeDatabaseClean(button) {
+    if (!state.settings?.db_wipe_enabled) {
+      notify("Apply 'Allow Database Wipe' before running a wipe", 'warn');
+      return;
+    }
     if (!boolOf('db_wipe_enabled')) {
-      notify('Enable database wipe first', 'warn');
+      notify('Database wipe is disabled in the current draft', 'warn');
       return;
     }
     if (!window.confirm('This will remove all database rows. Continue?')) return;
@@ -1025,7 +1060,6 @@
 
     setBusy(button, true, 'Wiping…');
     try {
-      await persistNonAuth({renderAfter: false, quiet: true});
       const result = await request('POST', '/admin/database/wipe', {confirm: true}, 60000);
       notify(result.backup && !result.backup.skipped ? 'Database wiped. Pre-wipe backup created.' : 'Database wiped.', 'success');
       try { if (typeof loadStats === 'function') loadStats(); } catch (_) {}
