@@ -154,6 +154,23 @@ body.light.dp-v11-structural #view-settings .dp-settings-debrid-services > .card
     drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
+/* Keep the provider disclosure visually subordinate to the primary key row:
+   the label is inset from the card datum, the chevron remains immediately after
+   the label, and revealed controls step in one level farther. */
+body.dp-v11-structural #view-settings .dp-settings-additional > summary {
+  justify-content: flex-start;
+  gap: 8px;
+  padding-left: 16px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional > summary::after {
+  margin-left: 2px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional-body {
+  padding: 8px 0 4px 28px;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-provider-chip--alldebrid {
   width: 38px;
   height: 38px;
