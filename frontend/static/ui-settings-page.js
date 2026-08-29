@@ -8,13 +8,13 @@
   'use strict';
 
   const TABS = Object.freeze([
-    ['sources', 'Sources & Providers'],
-    ['downloads', 'Downloads'],
-    ['extraction', 'Extraction'],
-    ['notifications', 'Notifications'],
-    ['authentication', 'Authentication'],
-    ['maintenance', 'Data & Maintenance'],
-    ['advanced', 'Advanced'],
+    ['sources', 'Sources & Providers', 'zap'],
+    ['downloads', 'Downloads', 'download'],
+    ['extraction', 'Extraction', 'package-open'],
+    ['notifications', 'Notifications', 'bell'],
+    ['authentication', 'Authentication', 'shield-check'],
+    ['maintenance', 'Data & Maintenance', 'database-backup'],
+    ['advanced', 'Advanced', 'sliders-horizontal'],
   ]);
 
   const state = {
@@ -62,15 +62,15 @@
   function setBusy(button, busy, label) {
     if (!button) return;
     if (busy) {
-      if (!button.dataset.dpSettingsLabel) button.dataset.dpSettingsLabel = button.textContent;
+      if (!button.dataset.dpSettingsMarkup) button.dataset.dpSettingsMarkup = button.innerHTML;
       button.disabled = true;
       if (label) button.textContent = label;
       return;
     }
     button.disabled = false;
-    if (button.dataset.dpSettingsLabel) {
-      button.textContent = button.dataset.dpSettingsLabel;
-      delete button.dataset.dpSettingsLabel;
+    if (button.dataset.dpSettingsMarkup) {
+      button.innerHTML = button.dataset.dpSettingsMarkup;
+      delete button.dataset.dpSettingsMarkup;
     }
   }
 
@@ -161,13 +161,28 @@
   }
 
   function card(title, body, options = {}) {
+    const titleClass = options.titlePrefix ? 'card-title dp-settings-card-title--with-icon' : 'card-title';
+    const titleMarkup = options.titlePrefix
+      ? `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`
+      : html(title);
     return `
       <section class="card dp-settings-card ${options.className || ''}">
+        <div class="card-header">
+          <span class="${titleClass}">${titleMarkup}</span>
+          ${options.action || ''}
+        </div>
+        <div class="card-body">${body}</div>
+      </section>`;
+  }
+
+  function groupCard(title, body, options = {}) {
+    return `
+      <section class="card dp-settings-group-card ${options.className || ''}">
         <div class="card-header">
           <span class="card-title">${html(title)}</span>
           ${options.action || ''}
         </div>
-        <div class="card-body">${body}</div>
+        <div class="card-body dp-settings-group-body">${body}</div>
       </section>`;
   }
 
@@ -190,6 +205,10 @@
   }
 
   function sourcesPanel(s) {
+    const providerIdentity = `
+      <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
+        <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
+      </span>`;
     const provider = card('AllDebrid', `
       <p class="dp-settings-copy">Configure the debrid provider used for direct links, magnets, and torrent files.</p>
       ${secretField(
@@ -208,7 +227,10 @@
       ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
         type: 'number', min: 0, max: 1440, hint: '0 disables scheduled full reconciliation.'
       })}
-    `);
+    `, {
+      className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
+      titlePrefix: providerIdentity,
+    });
 
     const recovery = card('Provider Recovery', `
       <p class="dp-settings-copy">Retry policy for provider-side upload failures.</p>
@@ -218,9 +240,11 @@
       ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', s.upload_fail_retry_delay_minutes ?? 5, {
         type: 'number', min: 0, max: 1440
       })}
-    `);
+    `, {className: 'dp-settings-provider-recovery-card'});
 
-    return provider + recovery;
+    return groupCard('Debrid Services', provider + recovery, {
+      className: 'dp-settings-source-group dp-settings-debrid-services',
+    });
   }
 
   function downloadsPanel(s) {
@@ -521,18 +545,23 @@
 
     view.classList.add('dp-settings-clean-view');
 
-    const tabs = TABS.map(([id, label]) => `
+    const tabs = TABS.map(([id, label, icon]) => `
       <button class="stab ${state.activeTab === id ? 'active' : ''}" type="button"
               data-tab="${html(id)}" role="tab"
               aria-selected="${state.activeTab === id ? 'true' : 'false'}"
-              tabindex="${state.activeTab === id ? '0' : '-1'}">${html(label)}</button>
+              tabindex="${state.activeTab === id ? '0' : '-1'}">
+        <span class="dp-settings-tab-chip" aria-hidden="true">
+          <img class="dp-settings-tab-glyph" src="/icons/lucide/${html(icon)}.svg" alt="">
+        </span>
+        <span class="dp-settings-tab-label">${html(label)}</span>
+      </button>
     `).join('');
 
     view.innerHTML = `
       <section class="card dp-settings-master-card" aria-label="Settings">
         <div class="card-header dp-settings-master-header">
           <div class="dp-settings-header-copy">
-            <div class="dp-settings-header-icon" aria-hidden="true">⚙</div>
+            <div class="dp-settings-header-icon" aria-hidden="true"></div>
             <div>
               <div class="dp-settings-header-title">Settings</div>
               <div class="dp-settings-header-subtitle">Configure providers, downloads, automation, authentication, and maintenance.</div>
@@ -558,11 +587,16 @@
         <div class="dp-settings-master-footer" aria-label="Settings actions">
           <span class="dp-settings-save-hint">Changes are applied after saving.</span>
           <div class="dp-settings-context-actions">
-            <button class="btn btn-ghost" type="button" data-context-action="sources" data-action="test-alldebrid">Test AllDebrid</button>
+            <button class="btn btn-ghost" type="button" data-context-action="sources" data-action="test-alldebrid">
+              <span class="dp-settings-action-chip" aria-hidden="true">
+                <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
+              </span>
+              <span>Test AllDebrid</span>
+            </button>
             <button class="btn btn-ghost" type="button" data-context-action="downloads" data-action="test-aria2">Test aria2</button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord">Test Discord</button>
           </div>
-          <button class="btn btn-primary" type="button" data-action="save">Save Settings</button>
+          <button class="btn btn-primary" type="button" data-action="save">Apply Settings</button>
         </div>
       </section>`;
 
