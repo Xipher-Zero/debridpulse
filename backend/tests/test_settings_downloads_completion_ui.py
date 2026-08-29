@@ -14,10 +14,10 @@ def read(name: str) -> str:
 
 def test_completion_assets_are_loaded_in_deterministic_order():
     loader = read("ui-presentation-loader.js")
-    assert "/ui-settings-downloads-completion.css?v=3" in loader
+    assert "/ui-settings-downloads-completion.css?v=4" in loader
     assert "/ui-settings-page.js?v=4" in loader
-    assert "/ui-settings-downloads-completion.js?v=2" in loader
-    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=2")
+    assert "/ui-settings-downloads-completion.js?v=3" in loader
+    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-downloads-completion.js?v=3")
 
 
 def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leakage():
