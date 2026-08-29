@@ -529,33 +529,33 @@
     `).join('');
 
     view.innerHTML = `
-      <div class="dp-settings-clean">
-        <section class="card dp-settings-header-card" aria-label="Settings navigation">
-          <div class="card-body dp-settings-header-body">
-            <div class="dp-settings-header-copy">
-              <div class="dp-settings-header-icon" aria-hidden="true">⚙</div>
-              <div>
-                <div class="dp-settings-header-title">Settings</div>
-                <div class="dp-settings-header-subtitle">Configure providers, downloads, automation, authentication, and maintenance.</div>
-              </div>
+      <section class="card dp-settings-master-card" aria-label="Settings">
+        <div class="card-header dp-settings-master-header">
+          <div class="dp-settings-header-copy">
+            <div class="dp-settings-header-icon" aria-hidden="true">⚙</div>
+            <div>
+              <div class="dp-settings-header-title">Settings</div>
+              <div class="dp-settings-header-subtitle">Configure providers, downloads, automation, authentication, and maintenance.</div>
             </div>
-            <div class="stabs dp-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
           </div>
-        </section>
+          <div class="stabs dp-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
+        </div>
 
-        <div class="dp-settings-scroll">
-          <div class="dp-settings-panels">
-            ${panel('sources', sourcesPanel(state.settings))}
-            ${panel('downloads', downloadsPanel(state.settings))}
-            ${panel('extraction', extractionPanel(state.settings))}
-            ${panel('notifications', notificationsPanel(state.settings))}
-            ${panel('authentication', authenticationPanel(state.auth))}
-            ${panel('maintenance', maintenancePanel(state.settings))}
-            ${panel('advanced', advancedPanel(state.settings))}
+        <div class="dp-settings-master-body">
+          <div class="dp-settings-scroll">
+            <div class="dp-settings-panels">
+              ${panel('sources', sourcesPanel(state.settings))}
+              ${panel('downloads', downloadsPanel(state.settings))}
+              ${panel('extraction', extractionPanel(state.settings))}
+              ${panel('notifications', notificationsPanel(state.settings))}
+              ${panel('authentication', authenticationPanel(state.auth))}
+              ${panel('maintenance', maintenancePanel(state.settings))}
+              ${panel('advanced', advancedPanel(state.settings))}
+            </div>
           </div>
         </div>
 
-        <section class="card dp-settings-footer" aria-label="Settings actions">
+        <div class="dp-settings-master-footer" aria-label="Settings actions">
           <span class="dp-settings-save-hint">Changes are applied after saving.</span>
           <div class="dp-settings-context-actions">
             <button class="btn btn-ghost" type="button" data-context-action="sources" data-action="test-alldebrid">Test AllDebrid</button>
@@ -563,8 +563,8 @@
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord">Test Discord</button>
           </div>
           <button class="btn btn-primary" type="button" data-action="save">Save Settings</button>
-        </section>
-      </div>`;
+        </div>
+      </section>`;
 
     activateTab(state.activeTab);
     bindEvents(view);
@@ -580,7 +580,7 @@
       const active = tab.dataset.tab === name;
       tab.classList.toggle('active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
-      tab.tabIndex = active ? 0 : -1;
+      tab.tabIndex = active ? '0' : '-1';
     });
 
     root()?.querySelectorAll('[data-panel]').forEach(section => {
