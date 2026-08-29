@@ -1,0 +1,92 @@
+/* DebridPulse v1.0.11 Data & Maintenance database-wipe card. */
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(340px, 1.25fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header > .card-title {
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-header-copy {
+  justify-self: center;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-card .dp-settings-caution {
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .85fr) auto;
+  align-items: center;
+  gap: clamp(28px, 4vw, 72px);
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row > .dp-settings-toggle {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin: 0 !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row .toggle-info {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row .toggle {
+  align-self: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-action .btn {
+  width: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header {
+    grid-template-columns: minmax(200px, 1fr) minmax(300px, 1.15fr) minmax(200px, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) auto;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-header-copy {
+    justify-self: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-action {
+    justify-content: flex-end;
+  }
+}
