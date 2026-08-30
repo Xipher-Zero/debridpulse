@@ -1,12 +1,16 @@
-"""Transient validation and editable Settings helper endpoints.
+"""Transient validation, editable Settings helpers, and bundled document reads.
 
 Validation routes deliberately test candidate connection values without
 persisting or applying them. The extraction-password route is a narrow Settings
 read surface for the operator-maintained archive-password list; operational
 credentials remain write-only through the normal public Settings payload.
+Bundled legal/reference documents are exposed from a fixed allowlist so the UI
+can display the exact files shipped with the installed DebridPulse build
+without depending on GitHub or other external network access.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -17,6 +21,7 @@ from pydantic import BaseModel, Field
 from core.branding import APP_SHORT_NAME
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
+from core.version import read_version
 from services.alldebrid import AllDebridService
 from services.aria2 import Aria2Service
 from services.notifications import NotificationService
@@ -24,6 +29,35 @@ from services.transfer_service import transfer_service
 
 
 router = APIRouter()
+
+
+_LEGAL_DOCUMENTS = {
+    "gpl": {
+        "title": "GNU General Public License v2.0",
+        "path": ("LICENSE",),
+        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSE",
+    },
+    "notice": {
+        "title": "DebridPulse Attribution Notice",
+        "path": ("NOTICE",),
+        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/NOTICE",
+    },
+    "upstream-mit": {
+        "title": "Upstream MIT License",
+        "path": ("LICENSES", "MIT.txt"),
+        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSES/MIT.txt",
+    },
+    "source-offer": {
+        "title": "Corresponding Source Offer",
+        "path": ("SOURCE_OFFER.md",),
+        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/SOURCE_OFFER.md",
+    },
+    "third-party": {
+        "title": "Third-Party Dependency Licenses",
+        "path": ("docs", "DEPENDENCY_LICENSES.md"),
+        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/docs/DEPENDENCY_LICENSES.md",
+    },
+}
 
 
 class AllDebridValidationRequest(BaseModel):
@@ -55,6 +89,36 @@ class StatisticsReportDraftRequest(BaseModel):
 
 def _safe_failure(exc: Exception) -> str:
     return sanitize_exception(exc, max_length=200)
+
+
+def _resolve_repository_root() -> Path:
+    """Locate the root that contains the legal files in source and packaged runs."""
+    here = Path(__file__).resolve()
+    for candidate in (here.parents[2], here.parents[1], Path("/app")):
+        if (candidate / "LICENSE").is_file() and (candidate / "NOTICE").is_file():
+            return candidate
+    raise RuntimeError("Bundled DebridPulse legal documents are unavailable")
+
+
+def _legal_document_payload(document_id: str) -> dict[str, str]:
+    meta = _LEGAL_DOCUMENTS.get(str(document_id or ""))
+    if meta is None:
+        raise HTTPException(404, "Unknown bundled document")
+
+    root = _resolve_repository_root()
+    document_path = root.joinpath(*meta["path"])
+    try:
+        content = document_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(500, "Bundled document could not be read") from exc
+
+    return {
+        "id": document_id,
+        "title": meta["title"],
+        "content": content,
+        "latest_url": meta["latest_url"],
+        "bundled_version": read_version(),
+    }
 
 
 def _resolve_secret_candidate(candidate: str, stored: str, *, clear: bool) -> str:
@@ -109,6 +173,12 @@ async def _send_discord_draft_test(webhook_url: str, username: str, avatar_url: 
             if response.status not in (200, 204):
                 body = await response.text()
                 raise RuntimeError(f"Discord webhook returned HTTP {response.status}: {body[:200]}")
+
+
+@router.get("/legal-documents/{document_id}")
+async def get_bundled_legal_document(document_id: str):
+    """Return one fixed, locally bundled legal/reference document."""
+    return _legal_document_payload(document_id)
 
 
 @router.get("/settings/extraction-passwords")
