@@ -28,6 +28,7 @@ from auth.oidc import (
     oidc_configuration,
     oidc_transaction_store,
 )
+from auth.oidc_verification import oidc_verification_store
 from auth.oidc_version import (
     authentication_configuration_baseline_version,
     oidc_configuration_version,
@@ -128,6 +129,12 @@ def _local_oidc_state(cfg) -> tuple[bool, str]:
         return False, ""
 
 
+def _oidc_configuration_version_for_status(cfg) -> str:
+    """Fingerprint configured OIDC even while its enable toggle is off."""
+    candidate = cfg.model_copy(update={"auth_oidc_enabled": True}, deep=True)
+    return oidc_configuration_version(candidate)
+
+
 async def _oidc_runtime_available(cfg, configured: bool) -> bool | None:
     if not oidc_auth_enabled(cfg) or not configured:
         return None
@@ -142,6 +149,9 @@ async def _oidc_runtime_available(cfg, configured: bool) -> bool | None:
 async def _authentication_payload(request: Request) -> dict:
     cfg = get_settings()
     oidc_configured, callback_url = _local_oidc_state(cfg)
+    oidc_version = _oidc_configuration_version_for_status(cfg) if oidc_configured else ""
+    oidc_verification = oidc_verification_store.status(oidc_version)
+    oidc_available = await _oidc_runtime_available(cfg, oidc_configured)
     principal = getattr(request.state, "principal", Principal.anonymous())
     configured_public_base = str(getattr(cfg, "public_base_url", "") or "").strip()
     env_public_base = str(os.getenv("PUBLIC_BASE_URL", "") or "").strip()
@@ -157,7 +167,9 @@ async def _authentication_payload(request: Request) -> dict:
         "oidc_enabled": oidc_auth_enabled(cfg),
         "oidc_configured": oidc_configured,
         "oidc_ready": oidc_auth_ready(cfg) if oidc_auth_enabled(cfg) else False,
-        "oidc_available": await _oidc_runtime_available(cfg, oidc_configured),
+        "oidc_available": oidc_available,
+        "oidc_verified": oidc_verification.verified,
+        "oidc_verified_at": oidc_verification.verified_at,
         "oidc_provider_name": str(getattr(cfg, "oidc_provider_name", "") or "OpenID Connect"),
         "oidc_issuer_url": str(getattr(cfg, "oidc_issuer_url", "") or ""),
         "oidc_client_id": str(getattr(cfg, "oidc_client_id", "") or ""),

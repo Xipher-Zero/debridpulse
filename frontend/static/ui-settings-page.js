@@ -508,24 +508,98 @@
   }
 
   function authStatusCard(a) {
-    const runtime = a.oidc_available === true ? 'Available' : a.oidc_available === false ? 'Unavailable' : 'Not active';
     const callback = a.oidc_callback_url || 'Configure External Base URL to derive callback';
+    const modeRaw = String(a.mode || 'Unknown');
+    const modeValue = modeRaw === 'OIDC'
+      ? 'OpenID Connect'
+      : modeRaw === 'No authentication'
+        ? 'No Authentication'
+        : modeRaw;
+
+    const passwordOperational = !!a.password_enabled && !!a.password_ready;
+    const oidcOperational = !!a.oidc_enabled && !!a.oidc_ready && a.oidc_available !== false;
+
+    let modeTone = 'neutral';
+    if (a.authentication_required) {
+      modeTone = passwordOperational || oidcOperational ? 'green' : 'red';
+    }
+
+    let passwordValue = 'Not Configured';
+    let passwordTone = 'neutral';
+    if (a.password_configured) {
+      if (!a.password_enabled) {
+        passwordValue = 'Configured';
+        passwordTone = 'yellow';
+      } else if (a.password_ready) {
+        passwordValue = 'Configured & Enabled';
+        passwordTone = 'green';
+      } else {
+        passwordValue = 'Configuration Error';
+        passwordTone = 'red';
+      }
+    } else if (a.password_enabled) {
+      passwordValue = 'Configuration Error';
+      passwordTone = 'red';
+    }
+
+    let oidcValue = 'Not Configured';
+    let oidcTone = 'neutral';
+    if (a.oidc_configured) {
+      if (!a.oidc_enabled) {
+        oidcValue = 'Configured';
+        oidcTone = 'yellow';
+      } else if (a.oidc_available === false) {
+        oidcValue = a.oidc_verified ? 'Verified · Runtime Unavailable' : 'Runtime Unavailable';
+        oidcTone = 'red';
+      } else if (a.oidc_verified) {
+        oidcValue = 'Enabled & Verified';
+        oidcTone = 'green';
+      } else if (a.oidc_ready) {
+        oidcValue = 'Configured & Enabled';
+        oidcTone = 'yellow';
+      } else {
+        oidcValue = 'Configuration Error';
+        oidcTone = 'red';
+      }
+    } else if (a.oidc_enabled) {
+      oidcValue = 'Configuration Error';
+      oidcTone = 'red';
+    }
+
+    let tokenValue = 'Not Configured';
+    let tokenTone = 'neutral';
+    if (a.api_token_configured) {
+      if (a.api_token_enabled) {
+        tokenValue = 'Configured & Enabled';
+        tokenTone = 'green';
+      } else {
+        tokenValue = 'Configured';
+        tokenTone = 'yellow';
+      }
+    } else if (a.api_token_enabled) {
+      tokenValue = 'Configuration Error';
+      tokenTone = 'red';
+    }
+
     const items = [
-      ['Effective mode', a.mode || 'Unknown'],
-      ['Password', a.password_configured ? 'Configured' : 'Not configured'],
-      ['OIDC configuration', a.oidc_configured ? 'Configured' : 'Not configured'],
-      ['OIDC runtime', runtime],
-      ['API token', a.api_token_configured ? (a.api_token_enabled ? 'Enabled' : 'Configured / disabled') : 'Not configured'],
-      ['Current session', a.current_session_mechanism || 'Open / anonymous'],
+      ['Authentication Mode', modeValue, modeTone],
+      ['Username & Password', passwordValue, passwordTone],
+      ['OIDC State', oidcValue, oidcTone],
+      ['API Token', tokenValue, tokenTone],
     ];
     return card('Authentication Status', `
       ${!a.authentication_required ? `
-        <div class="dp-settings-caution">
-          <b>No interactive authentication enabled</b>
-          <span>This is a supported standalone/LAN mode. The application and API are intentionally open.</span>
+        <div class="dp-settings-caution dp-settings-auth-open-notice">
+          <span><b>No interactive authentication enabled</b> — supported standalone/LAN mode; application and API are intentionally open.</span>
         </div>` : ''}
-      <div class="dp-settings-status-grid">
-        ${items.map(([label, value]) => `<div class="dp-settings-status"><b>${html(label)}</b><span>${html(value)}</span></div>`).join('')}
+      <div class="dp-settings-status-grid dp-settings-auth-kpi-grid">
+        ${items.map(([label, value, tone]) => `
+          <div class="dash-hero-stat dp-settings-auth-kpi" data-c="${html(tone)}">
+            <div class="dhs-body">
+              <div class="dhs-label">${html(label)}</div>
+              <div class="dhs-val">${html(value)}</div>
+            </div>
+          </div>`).join('')}
       </div>
       <div class="dp-settings-field">
         <label class="form-label">OIDC Callback URL</label>

@@ -208,6 +208,10 @@
     setFieldCopy(issuer, 'Issuer URL', 'OIDC issuer URL published by your identity provider.');
     setFieldCopy(clientId, 'Client ID', 'Client identifier issued by your OIDC provider.');
     setFieldCopy(secret, 'Client Secret', 'Leave blank to keep the stored secret. Enter a new value to replace it.');
+    const secretInput = secret.querySelector('#dp-auth-oidc-secret');
+    if (secretInput && secret.querySelector('#dp-auth-clear-oidc-secret')) {
+      secretInput.placeholder = 'Stored Client Secret Configured. Blank keeps it.';
+    }
     setFieldCopy(scopes, 'Scopes', 'Space-separated scopes requested during sign-in.');
     setFieldCopy(groupClaim, 'Group Claim', 'Claim containing group memberships used by group authorization rules.');
     setFieldCopy(subjects, 'Allowed Subjects', 'Authorize matching OIDC subject identifiers, one per line.');
