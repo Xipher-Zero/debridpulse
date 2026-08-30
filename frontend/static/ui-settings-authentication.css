@@ -1,12 +1,14 @@
-/* DebridPulse v1.0.11 Authentication — Username & Password card. */
-body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header {
+/* DebridPulse v1.0.11 Authentication cards. */
+body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header,
+body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
   align-items: center;
   gap: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header > .card-title {
+body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header > .card-title,
+body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header > .card-title {
   justify-self: start;
 }
 
@@ -50,6 +52,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle {
   margin: 0;
 }
 
+/* Username & Password ------------------------------------------------------ */
 /* Match the form datum used by Sources, Downloads, Maintenance, and
    Notifications: labels and helper copy start with the input content edge. */
 body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label,
@@ -115,8 +118,117 @@ body.dp-v11-structural #view-settings .dp-settings-auth-action-control .btn {
   white-space: nowrap;
 }
 
+/* API Access --------------------------------------------------------------- */
+body.dp-v11-structural #view-settings .dp-settings-api-token-layout {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, auto);
+  grid-template-rows: var(--dp-input-height) auto;
+  justify-content: center;
+  justify-items: center;
+  align-items: center;
+  column-gap: 36px;
+  row-gap: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-actions {
+  min-width: 0;
+  min-height: var(--dp-input-height);
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-status {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: center;
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Keep every Generate/Rotate busy and resting label on exactly one footprint. */
+body.dp-v11-structural #view-settings .dp-settings-api-token-generate {
+  inline-size: 136px;
+  min-inline-size: 136px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-revoke {
+  inline-size: 116px;
+  min-inline-size: 116px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+/* When a one-time token exists, use explicit shared grid rows so the button
+   centerline and readonly token field centerline are identical. */
+body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
+  grid-template-columns: minmax(300px, auto) minmax(520px, 1fr);
+  grid-template-rows: auto var(--dp-input-height) auto;
+  justify-content: stretch;
+  justify-items: stretch;
+  row-gap: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
+  grid-column: 1;
+  grid-row: 3;
+  justify-self: center;
+  margin-top: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-warning {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  justify-self: start;
+  margin: 0 0 7px 3px;
+  color: var(--dp-accent, var(--accent));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-field {
+  min-width: 0;
+  min-height: var(--dp-input-height);
+  width: 100%;
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-field .input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 @media (max-width: 1280px) {
-  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header {
+  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header,
+  body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
@@ -124,10 +236,16 @@ body.dp-v11-structural #view-settings .dp-settings-auth-action-control .btn {
     grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.2fr) auto;
     gap: 22px;
   }
+
+  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
+    grid-template-columns: minmax(300px, auto) minmax(420px, 1fr);
+    column-gap: 28px;
+  }
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header {
+  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header,
+  body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
     padding-block: 10px;
@@ -157,5 +275,34 @@ body.dp-v11-structural #view-settings .dp-settings-auth-action-control .btn {
 
   body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
     grid-template-rows: auto;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--dp-input-height) auto auto var(--dp-input-height);
+    row-gap: 7px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: 0;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-api-token-warning {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    margin: 8px 0 0 3px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-api-token-field {
+    grid-column: 1;
+    grid-row: 4;
   }
 }

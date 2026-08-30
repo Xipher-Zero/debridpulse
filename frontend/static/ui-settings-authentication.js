@@ -3,6 +3,7 @@
   'use strict';
 
   const USERNAME_PASSWORD_MARKER = 'dpUsernamePasswordPolished';
+  const API_ACCESS_MARKER = 'dpApiAccessPolished';
   let scheduled = false;
 
   function textOf(node) {
@@ -13,12 +14,20 @@
     return document.querySelector('#view-settings [data-panel="authentication"]');
   }
 
-  function findUsernamePasswordCard() {
+  function findCard(title) {
     const host = panel();
     if (!host) return null;
     return Array.from(host.querySelectorAll('.dp-settings-card')).find(function (card) {
-      return textOf(card.querySelector(':scope > .card-header > .card-title')) === 'Username & Password';
+      return textOf(card.querySelector(':scope > .card-header > .card-title')) === title;
     }) || null;
+  }
+
+  function findUsernamePasswordCard() {
+    return findCard('Username & Password');
+  }
+
+  function findApiAccessCard() {
+    return findCard('API Access');
   }
 
   function fieldFor(card, key) {
@@ -41,14 +50,24 @@
     return true;
   }
 
-  function addCenteredHeaderCopy(header) {
+  function addCenteredHeaderCopy(header, copyText, modifier) {
     let copy = header.querySelector('.dp-settings-auth-header-copy');
     if (!copy) {
       copy = document.createElement('div');
       copy.className = 'dp-settings-card-header-center dp-settings-auth-header-copy';
       header.appendChild(copy);
     }
-    copy.textContent = 'Configure local credentials for browser sign-in and HTTP Basic API access.';
+    if (modifier) copy.classList.add(modifier);
+    copy.textContent = copyText;
+  }
+
+  function moveEnableToHeader(header, enable) {
+    const enableInfo = enable.querySelector('.toggle-info');
+    const enableTitle = enableInfo?.querySelector('.tl');
+    if (enableTitle) enableTitle.textContent = 'Enable';
+    enableInfo?.querySelector('.td')?.remove();
+    enable.classList.add('dp-settings-auth-header-enable');
+    header.appendChild(enable);
   }
 
   function polishUsernamePasswordCard(card) {
@@ -68,14 +87,12 @@
     card.dataset[USERNAME_PASSWORD_MARKER] = '1';
     card.classList.add('dp-settings-username-password-card');
 
-    addCenteredHeaderCopy(header);
-
-    const enableInfo = enable.querySelector('.toggle-info');
-    const enableTitle = enableInfo?.querySelector('.tl');
-    if (enableTitle) enableTitle.textContent = 'Enable';
-    enableInfo?.querySelector('.td')?.remove();
-    enable.classList.add('dp-settings-auth-header-enable');
-    header.appendChild(enable);
+    addCenteredHeaderCopy(
+      header,
+      'Configure local credentials for browser sign-in and HTTP Basic API access.',
+      'dp-settings-auth-header-copy--credentials'
+    );
+    moveEnableToHeader(header, enable);
 
     setFieldCopy(
       usernameField,
@@ -105,10 +122,108 @@
     body.replaceChildren(row);
   }
 
+  function installApiTokenLanguageBridge() {
+    if (!window.__dpSettingsApiTokenConfirmWrapped && typeof window.confirm === 'function') {
+      const baseConfirm = window.confirm.bind(window);
+      window.confirm = function (message) {
+        const source = String(message ?? '');
+        if (source === 'Clear the API token? Existing automation using it will immediately lose access.') {
+          return baseConfirm('Revoke the API token? Automation and API clients using it will lose access immediately.');
+        }
+        return baseConfirm(message);
+      };
+      window.__dpSettingsApiTokenConfirmWrapped = true;
+    }
+
+    if (!window.__dpSettingsApiTokenToastWrapped && typeof window.toast === 'function') {
+      const baseToast = window.toast;
+      window.toast = function (message, ...args) {
+        const translated = String(message ?? '') === 'API token cleared' ? 'API token revoked' : message;
+        return baseToast.call(this, translated, ...args);
+      };
+      window.__dpSettingsApiTokenToastWrapped = true;
+    }
+  }
+
+  function polishApiAccessCard(card) {
+    if (!card || card.dataset[API_ACCESS_MARKER] === '1') return;
+
+    const header = card.querySelector(':scope > .card-header');
+    const body = card.querySelector(':scope > .card-body');
+    const enable = card.querySelector('input[data-setting="api_token_enabled"]')?.closest('.dp-settings-toggle') || null;
+    const generateButton = card.querySelector('button[data-action="generate-token"]');
+    const revokeButton = card.querySelector('button[data-action="clear-token"]');
+    const actions = generateButton?.closest('.dp-settings-actions') || null;
+    const status = Array.from(body?.querySelectorAll(':scope > .dp-settings-copy') || []).find(function (node) {
+      return textOf(node).startsWith('Stored token state:');
+    }) || null;
+    const oneTime = body?.querySelector(':scope > .dp-settings-token-once') || null;
+    const tokenWarning = oneTime?.querySelector(':scope > b') || null;
+    const tokenField = oneTime?.querySelector(':scope > .dp-settings-inline-field') || null;
+
+    if (!header || !body || !enable || !generateButton || !revokeButton || !actions || !status) return;
+    if (oneTime && (!tokenWarning || !tokenField)) return;
+
+    card.dataset[API_ACCESS_MARKER] = '1';
+    card.classList.add('dp-settings-api-access-card');
+
+    addCenteredHeaderCopy(
+      header,
+      'Use a dedicated bearer token for automation, monitoring, and API integrations.',
+      'dp-settings-auth-header-copy--api'
+    );
+    moveEnableToHeader(header, enable);
+
+    generateButton.classList.add('dp-settings-api-token-generate');
+    revokeButton.classList.add('dp-settings-api-token-revoke');
+    revokeButton.textContent = 'Revoke Token';
+    revokeButton.addEventListener('click', function () {
+      queueMicrotask(function () {
+        if (textOf(revokeButton) === 'Clearing…') revokeButton.textContent = 'Revoking…';
+      });
+    });
+
+    const configured = !revokeButton.disabled;
+    const stateValue = document.createElement('b');
+    stateValue.textContent = configured ? 'Configured' : 'Not Configured';
+    status.replaceChildren(document.createTextNode('Stored Token: '), stateValue);
+    status.classList.add('dp-settings-api-token-status');
+
+    actions.classList.add('dp-settings-api-token-actions');
+
+    const layout = document.createElement('div');
+    layout.className = 'dp-settings-api-token-layout';
+    layout.append(actions, status);
+
+    if (oneTime) {
+      layout.classList.add('has-token');
+      tokenWarning.textContent = 'Copy this token now. DebridPulse will not display it again.';
+      tokenWarning.classList.add('dp-settings-api-token-warning');
+      tokenField.classList.add('dp-settings-api-token-field');
+      layout.append(tokenWarning, tokenField);
+    }
+
+    body.replaceChildren(layout);
+  }
+
+  function needsPolish() {
+    const credentials = findUsernamePasswordCard();
+    const apiAccess = findApiAccessCard();
+    return !!(
+      (credentials && credentials.dataset[USERNAME_PASSWORD_MARKER] !== '1') ||
+      (apiAccess && apiAccess.dataset[API_ACCESS_MARKER] !== '1')
+    );
+  }
+
   function polish() {
     scheduled = false;
-    const card = findUsernamePasswordCard();
-    if (card) polishUsernamePasswordCard(card);
+    installApiTokenLanguageBridge();
+
+    const credentials = findUsernamePasswordCard();
+    if (credentials) polishUsernamePasswordCard(credentials);
+
+    const apiAccess = findApiAccessCard();
+    if (apiAccess) polishApiAccessCard(apiAccess);
   }
 
   function schedule() {
@@ -123,8 +238,7 @@
   if (view) {
     const observer = new MutationObserver(function (mutations) {
       if (!mutations.some(function (mutation) { return mutation.type === 'childList'; })) return;
-      const card = findUsernamePasswordCard();
-      if (card && card.dataset[USERNAME_PASSWORD_MARKER] !== '1') schedule();
+      if (needsPolish()) schedule();
     });
     observer.observe(view, {childList: true, subtree: true});
   }
