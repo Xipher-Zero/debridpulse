@@ -10,6 +10,7 @@
 
   const STYLES = Object.freeze([
     {href: '/ui-help-chrome.css?v=1', marker: 'data-dp-help-chrome-style'},
+    {href: '/ui-help-license-documents.css?v=1', marker: 'data-dp-help-license-documents-style'},
     {href: '/ui-settings-downloads-completion.css?v=4', marker: 'data-dp-settings-downloads-completion-style'},
     {href: '/ui-settings-password-layout-followup.css?v=1', marker: 'data-dp-settings-password-layout-followup-style'},
     {href: '/ui-settings-aria2-live.css?v=3', marker: 'data-dp-settings-aria2-live-style'},
@@ -29,6 +30,7 @@
     {src: '/ui-statistics-batch5.js?v=7', marker: 'data-dp-statistics-batch5'},
     {src: '/ui-help-page.js?v=1', marker: 'data-dp-help-page'},
     {src: '/ui-help-chrome.js?v=1', marker: 'data-dp-help-chrome'},
+    {src: '/ui-help-license-documents.js?v=1', marker: 'data-dp-help-license-documents'},
     {src: '/ui-settings-page.js?v=4', marker: 'data-dp-settings-page'},
     {src: '/ui-settings-auth-resilience.js?v=1', marker: 'data-dp-settings-auth-resilience'},
     {src: '/ui-settings-maintenance-wipe.js?v=3', marker: 'data-dp-settings-maintenance-wipe'},
