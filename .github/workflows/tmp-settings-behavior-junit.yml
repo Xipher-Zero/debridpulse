@@ -1,0 +1,39 @@
+name: Temporary Settings Behavior JUnit
+
+on:
+  push:
+    branches:
+      - work/settings-behavior-confirm
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: work/settings-behavior-confirm
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+      - name: Run full suite
+        id: pytest
+        continue-on-error: true
+        run: |
+          cd backend
+          python -m pytest tests/ -q --tb=short --junitxml=../pytest-settings-behavior.xml
+      - name: Upload JUnit result
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-settings-behavior
+          path: pytest-settings-behavior.xml
+          if-no-files-found: error
+      - name: Propagate pytest failure
+        if: steps.pytest.outcome != 'success'
+        run: exit 1
