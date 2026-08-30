@@ -34,6 +34,7 @@
     {src: '/ui-settings-authentication.js?v=1', marker: 'data-dp-settings-authentication'},
     {src: '/ui-settings-authentication-polish.js?v=1', marker: 'data-dp-settings-authentication-polish'},
     {src: '/ui-settings-authentication-oidc.js?v=1', marker: 'data-dp-settings-authentication-oidc'},
+    {src: '/ui-settings-authentication-callback.js?v=1', marker: 'data-dp-settings-authentication-callback'},
     {src: '/ui-settings-downloads-completion.js?v=4&statefix=1', marker: 'data-dp-settings-downloads-completion'},
     {src: '/ui-settings-aria2-live.js?v=5', marker: 'data-dp-settings-aria2-live'},
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
