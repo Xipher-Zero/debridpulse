@@ -4,6 +4,22 @@
  * full-width content cards under the selector and topical Lucide chip glyphs.
  */
 
+/* ── Settings-style master-header navigation ────────────────────────── */
+body.dp-v11-structural #view-help .dp-help-master-header {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+body.dp-v11-structural #view-help .dp-help-header-copy {
+  grid-column: 1;
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-help .dp-help-tabs {
+  grid-column: 2;
+  width: auto;
+  justify-self: center;
+}
+
 /* ── Settings-style section selector ────────────────────────────────── */
 body.dp-v11-structural #view-help .dp-help-tab {
   --dp-help-tab-color: var(--dp-accent-purple-bright);
@@ -124,6 +140,22 @@ body.dp-v11-structural #view-help .dp-help-section-card-body {
 
 body.dp-v11-structural #view-help .dp-help-section-card-body > a {
   color: var(--dp-accent-purple-bright);
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-help .dp-help-master-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-help .dp-help-header-copy,
+  body.dp-v11-structural #view-help .dp-help-tabs {
+    grid-column: 1;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-tabs {
+    width: 100%;
+    justify-self: stretch;
+  }
 }
 
 @media (max-width: 900px) {
