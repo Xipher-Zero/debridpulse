@@ -30,7 +30,7 @@ def test_callback_url_moves_to_oidc_as_centered_sandwich():
     assert "return cardByTitle('OpenID Connect');" in js
     assert "fieldByLabel(statusCard, 'OIDC Callback URL') || fieldByLabel(oidc, 'OIDC Callback URL')" in js
     assert "publicBaseField.after(field);" in js
-    assert "Redirect URI to configure with your OpenID Connect provider." in js
+    assert "Copy this exact URL into your identity provider's redirect/callback URI configuration." in js
     assert ".dp-settings-oidc-card .dp-settings-auth-callback-field" in css
     assert "width: clamp(420px, 30%, 640px);" in css
     assert "margin: 18px auto 0;" in css
