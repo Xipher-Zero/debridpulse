@@ -1,9 +1,10 @@
 /* DebridPulse v1.0.11 Help presentation structure.
  *
  * The clean Help runtime owns content and tab behavior. This layer only applies
- * the approved Settings-derived presentation language: topical Lucide chips and
- * one full-width content card per Help section. It deliberately uses no DOM
- * observer; Help paints once and tab changes only toggle existing panels.
+ * the approved Settings-derived presentation language: topical Lucide chips,
+ * user-facing section labels, and one full-width content card per Help section.
+ * It deliberately uses no DOM observer; Help paints once and tab changes only
+ * toggle existing panels.
  */
 (function () {
   'use strict';
@@ -18,6 +19,10 @@
     license: 'scroll-text',
   });
 
+  const LABELS = Object.freeze({
+    aria2: 'Download Engine',
+  });
+
   function root() {
     return document.getElementById('view-help');
   }
@@ -28,7 +33,7 @@
       const icon = ICONS[tab.dataset.tab];
       if (!icon) return;
 
-      const labelText = String(tab.textContent || '').trim();
+      const labelText = LABELS[tab.dataset.tab] || String(tab.textContent || '').trim();
       const chip = document.createElement('span');
       chip.className = 'dp-help-tab-chip';
       chip.setAttribute('aria-hidden', 'true');
