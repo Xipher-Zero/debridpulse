@@ -38,6 +38,14 @@ def test_final_polish_locks_the_five_reviewed_master_card_headers() -> None:
         assert text in source
 
 
+def test_settings_final_subtitle_replaces_temporary_review_placeholder() -> None:
+    css = read("ui-final-polish.css")
+    assert "#view-settings .dp-settings-header-subtitle" in css
+    assert "font-size: 11px !important" in css
+    assert "#view-settings .dp-settings-header-subtitle::after" in css
+    assert "content: none !important" in css
+
+
 def test_settings_and_help_use_reviewed_surface_hierarchy() -> None:
     source = read("ui-final-polish.js")
     treatment = read("ui-panel-surface-treatment.css")
@@ -60,10 +68,11 @@ def test_downloads_bulk_actions_are_integrated_above_the_table_header() -> None:
     assert "border-bottom: 1px solid var(--dp-divider) !important" in css
 
 
-def test_help_master_icon_uses_feature_glow_without_geometry_changes() -> None:
+def test_help_master_icon_uses_primary_blue_feature_glow_without_geometry_changes() -> None:
     css = read("ui-final-polish.css")
     assert "#view-help .dp-help-title-icon" in css
-    assert "--dp-feature-icon-glow: #a646f4" in css
+    assert "--dp-feature-icon-glow: #4c8fff" in css
+    assert "#a646f4" not in css
     assert "drop-shadow(0 0 5px" in css
     assert "drop-shadow(0 0 11px" in css
     assert "width:" not in css.split("#view-help .dp-help-title-icon", 1)[1].split("}", 1)[0]
