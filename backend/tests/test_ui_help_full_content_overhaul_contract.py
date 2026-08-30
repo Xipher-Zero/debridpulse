@@ -12,7 +12,7 @@ def _source() -> str:
 def _panel(function_name: str, next_function_name: str) -> str:
     source = _source()
     start = source.index(f"  function {function_name}() {{")
-    end = source.index(f"\n  function {next_function_name}() {{", start)
+    end = source.index(f"\n  function {next_function_name}(", start)
     return source[start:end]
 
 
@@ -61,7 +61,7 @@ def test_aria2_help_uses_current_downloads_ui_and_safe_external_ownership_model(
         "Download Safety &amp; Recovery",
         "speed-cap control",
         "Test aria2",
-        "current draft values",
+        "values currently entered in the form",
     ):
         assert phrase in panel
 
