@@ -3,7 +3,8 @@
   'use strict';
 
   const CALLBACK_PATH = '/auth/oidc/callback';
-  const EMPTY_COPY = 'Set Public Base URL to display the Callback URL.';
+  const PUBLIC_BASE_LABEL = 'Public DebridPulse Base URL';
+  const EMPTY_COPY = 'Set Public DebridPulse Base URL to display the Callback URL.';
   const CALLBACK_HINT = "Copy this exact URL into your identity provider's redirect/callback URI configuration.";
   let scheduled = false;
 
@@ -60,6 +61,14 @@
     try {
       if (typeof toast === 'function') toast(String(message), kind || 'info');
     } catch (_) {}
+  }
+
+  function ensurePublicBaseLabel(source) {
+    const field = source?.closest('.dp-settings-field');
+    const label = field?.querySelector(':scope > .form-label') || null;
+    if (!label) return;
+    if (textOf(label) !== PUBLIC_BASE_LABEL) label.textContent = PUBLIC_BASE_LABEL;
+    label.htmlFor = source.id;
   }
 
   function ensureHint(field) {
@@ -179,6 +188,7 @@
     const source = publicBaseInput();
     const field = callbackField();
     if (!source || !field) return;
+    ensurePublicBaseLabel(source);
     bindPublicBaseDraft(source);
     updatePreview();
   }
