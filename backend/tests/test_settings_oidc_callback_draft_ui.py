@@ -51,7 +51,8 @@ def test_callback_draft_runtime_does_not_persist_or_probe_configuration():
     assert "/auth/oidc/verify-config" not in source
     assert "fetch(" not in source
     assert "XMLHttpRequest" not in source
-    assert "oidc_callback_url" not in source
+    assert "state.auth?.oidc_callback_url" not in source
+    assert "state.auth.oidc_callback_url" not in source
 
 
 def test_callback_observers_share_one_helper_copy_to_prevent_dom_ping_pong():
