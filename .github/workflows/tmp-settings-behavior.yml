@@ -24,6 +24,18 @@ jobs:
           node-version: '24'
       - name: Apply asserted patch
         run: python .tmp/apply_settings_behavior.py
+      - name: Normalize generated text EOFs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name in (
+              'frontend/static/ui-settings-page.js',
+              'frontend/static/ui-settings-page.css',
+              'backend/tests/test_settings_behavior_ui.py',
+          ):
+              path = Path(name)
+              path.write_text(path.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
+          PY
       - name: Validate browser syntax
         run: node --check frontend/static/ui-settings-page.js
       - name: Validate test syntax
