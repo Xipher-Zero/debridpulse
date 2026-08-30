@@ -1,0 +1,161 @@
+/* DebridPulse v1.0.11 Authentication — Username & Password card. */
+body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header > .card-title {
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-header-copy {
+  min-width: 0;
+  justify-self: center;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
+  width: auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 10px;
+  margin: 0 !important;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle-info {
+  display: block;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle-info .tl {
+  display: block;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0;
+}
+
+/* Match the form datum used by Sources, Downloads, Maintenance, and
+   Notifications: labels and helper copy start with the input content edge. */
+body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label,
+body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
+  position: relative;
+  inset-inline-start: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
+  display: block;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr) auto;
+  align-items: start;
+  gap: 28px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row > .dp-settings-field {
+  min-width: 0;
+  margin: 0;
+}
+
+/* The destructive action owns the same label/control vertical tracks as the
+   two field sandwiches. The small button is centered inside an input-height
+   control slot, so its centerline matches both form fields exactly. */
+body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
+  min-width: max-content;
+  display: grid;
+  grid-template-rows: auto var(--dp-input-height);
+  align-items: start;
+  justify-items: end;
+  justify-self: end;
+  gap: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-action-label {
+  display: block;
+  visibility: hidden;
+  margin-bottom: 7px;
+  pointer-events: none;
+  user-select: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-action-control {
+  min-height: var(--dp-input-height);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-action-control .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header {
+    grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
+    grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.2fr) auto;
+    gap: 22px;
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding-block: 10px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-header-copy {
+    justify-self: start;
+    text-align: left;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
+    justify-self: start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
+    justify-self: end;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-action-label {
+    display: none;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
+    grid-template-rows: auto;
+  }
+}

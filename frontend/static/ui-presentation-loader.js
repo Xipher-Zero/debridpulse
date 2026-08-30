@@ -14,6 +14,7 @@
     {href: '/ui-settings-aria2-live.css?v=3', marker: 'data-dp-settings-aria2-live-style'},
     {href: '/ui-settings-maintenance-wipe.css?v=3', marker: 'data-dp-settings-maintenance-wipe-style'},
     {href: '/ui-settings-notifications.css?v=2', marker: 'data-dp-settings-notifications-style'},
+    {href: '/ui-settings-authentication.css?v=1', marker: 'data-dp-settings-authentication-style'},
   ]);
 
   const RUNTIMES = Object.freeze([
@@ -26,6 +27,7 @@
     {src: '/ui-settings-page.js?v=4', marker: 'data-dp-settings-page'},
     {src: '/ui-settings-maintenance-wipe.js?v=3', marker: 'data-dp-settings-maintenance-wipe'},
     {src: '/ui-settings-notifications.js?v=2', marker: 'data-dp-settings-notifications'},
+    {src: '/ui-settings-authentication.js?v=1', marker: 'data-dp-settings-authentication'},
     {src: '/ui-settings-downloads-completion.js?v=4&statefix=1', marker: 'data-dp-settings-downloads-completion'},
     {src: '/ui-settings-aria2-live.js?v=5', marker: 'data-dp-settings-aria2-live'},
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
