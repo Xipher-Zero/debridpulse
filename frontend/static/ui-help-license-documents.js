@@ -100,6 +100,87 @@
     }
   }
 
+  function isMarkdownHeading(line) {
+    return /^#{1,6}\s+/.test(line.trim());
+  }
+
+  function isListItem(line) {
+    return /^(?:[-*+]\s+|\d+[.)]\s+)/.test(line.trim());
+  }
+
+  function isTableRow(line) {
+    return /^\s*\|.*\|\s*$/.test(line);
+  }
+
+  function isCodeFence(line) {
+    return /^\s*```/.test(line);
+  }
+
+  function appendDocumentBlock(container, text, className) {
+    const block = document.createElement('div');
+    block.className = 'dp-help-legal-document-block' + (className ? ' ' + className : '');
+    block.textContent = text;
+    container.appendChild(block);
+  }
+
+  function renderFlowingBlock(container, blockText) {
+    const lines = blockText.split('\n');
+
+    if (lines.some(isCodeFence) || lines.every(function (line) {
+      return !line.trim() || isTableRow(line);
+    })) {
+      appendDocumentBlock(container, blockText, 'is-structured');
+      return;
+    }
+
+    if (lines.length === 1 && isMarkdownHeading(lines[0])) {
+      appendDocumentBlock(container, lines[0].trim(), 'is-heading');
+      return;
+    }
+
+    if (lines.some(isListItem)) {
+      let current = '';
+      let currentIsListItem = false;
+
+      lines.forEach(function (line) {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        if (isListItem(line) || isMarkdownHeading(line)) {
+          if (current) {
+            appendDocumentBlock(container, current, currentIsListItem ? 'is-list-item' : '');
+          }
+          current = trimmed;
+          currentIsListItem = isListItem(line);
+          return;
+        }
+
+        current = current ? current + ' ' + trimmed : trimmed;
+      });
+
+      if (current) {
+        appendDocumentBlock(container, current, currentIsListItem ? 'is-list-item' : '');
+      }
+      return;
+    }
+
+    appendDocumentBlock(
+      container,
+      lines.map(function (line) { return line.trim(); }).filter(Boolean).join(' '),
+      ''
+    );
+  }
+
+  function renderBundledDocument(container, content) {
+    const normalized = String(content || '').replace(/\r\n?/g, '\n').trim();
+    container.replaceChildren();
+    if (!normalized) return;
+
+    normalized.split(/\n[\t ]*\n+/).forEach(function (blockText) {
+      renderFlowingBlock(container, blockText);
+    });
+  }
+
   async function fetchBundledDocument(documentId) {
     const controller = new AbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
@@ -156,7 +237,7 @@
     latest.setAttribute('role', 'note');
     latest.textContent = 'Loading bundled document…';
 
-    const documentBody = document.createElement('pre');
+    const documentBody = document.createElement('div');
     documentBody.className = 'dp-help-legal-document';
     documentBody.textContent = 'Loading…';
 
@@ -203,15 +284,16 @@
       link.textContent = 'View the latest version on GitHub.';
 
       modal.latest.append(prefix, link);
-      modal.documentBody.textContent = String(payload.content || '');
+      renderBundledDocument(modal.documentBody, payload.content);
       modal.body.scrollTop = 0;
     } catch (error) {
       if (activeBackdrop !== modal.backdrop) return;
       modal.latest.classList.add('is-error');
       modal.latest.textContent = 'The bundled document could not be loaded.';
-      modal.documentBody.textContent = error && error.message
-        ? String(error.message)
-        : 'Unable to load bundled document.';
+      renderBundledDocument(
+        modal.documentBody,
+        error && error.message ? String(error.message) : 'Unable to load bundled document.'
+      );
     }
   }
 
