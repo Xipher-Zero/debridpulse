@@ -6,6 +6,7 @@ STATIC = ROOT / "frontend" / "static"
 RUNTIME = STATIC / "ui-settings-notifications.js"
 STYLE = STATIC / "ui-settings-notifications.css"
 LOADER = STATIC / "ui-presentation-loader.js"
+SEND_ICON = STATIC / "icons" / "lucide" / "send.svg"
 
 
 def source(path: Path) -> str:
@@ -26,12 +27,15 @@ def test_discord_notifications_header_and_field_copy_are_locked():
         ),
         (
             "Update Check Interval (Hours Between Checks)",
-            "How often DebridPulse checks for a newer release.",
+            "Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.",
         ),
     ]
     for title, flavor in expected:
         assert title in js
         assert flavor in js
+
+    assert "updateIntervalInput.setAttribute('min', '0')" in js
+    assert "updateIntervalInput.setAttribute('max', '168')" in js
 
 
 def test_discord_notification_event_copy_and_row_grouping_are_locked():
@@ -78,11 +82,11 @@ def test_discord_notifications_reuse_existing_controls_and_secret_semantics():
     assert "attributes: true" not in js
 
 
-def test_discord_notifications_layout_uses_field_datum_and_inverted_pyramid():
+def test_discord_delivery_fields_share_control_datum_and_preserve_inverted_pyramid():
     css = source(STYLE)
 
-    assert '[data-panel="notifications"] .dp-settings-discord-card .dp-settings-field > .form-label' in css
-    assert '[data-panel="notifications"] .dp-settings-discord-card .dp-settings-field > .form-hint' in css
+    assert '[data-panel="notifications"] .dp-settings-field > .form-label' in css
+    assert '[data-panel="notifications"] .dp-settings-field > .form-hint' in css
     assert "inset-inline-start: 3px;" in css
 
     assert ".dp-settings-notifications-identity-row" in css
@@ -94,6 +98,9 @@ def test_discord_notifications_layout_uses_field_datum_and_inverted_pyramid():
     assert ".dp-settings-notifications-delivery-row" in css
     assert "width: min(92%, 1500px);" in css
     assert "grid-template-columns: minmax(320px, 1.45fr) minmax(320px, 1.45fr) minmax(190px, .55fr);" in css
+    assert ".dp-settings-notifications-delivery-row > .dp-settings-field > .form-label" in css
+    assert "min-height: 30px;" in css
+    assert "align-items: flex-end;" in css
 
     assert ".dp-settings-notifications-toggle-row--primary" in css
     assert "width: min(82%, 1360px);" in css
@@ -103,25 +110,93 @@ def test_discord_notifications_layout_uses_field_datum_and_inverted_pyramid():
     assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
 
 
-def test_discord_notification_toggles_use_stacked_copy_with_centered_adjacent_toggle():
+def test_discord_notification_toggles_keep_item_spacing_but_tighten_switch_association():
     css = source(STYLE)
 
+    assert ".dp-settings-notifications-toggle-row" in css
+    assert "gap: 24px;" in css
     assert ".dp-settings-notifications-toggle-row > .dp-settings-toggle" in css
-    assert "grid-template-columns: minmax(0, 1fr) auto;" in css
-    assert "gap: 14px;" in css
+    assert "display: flex;" in css
+    assert "justify-content: center;" in css
+    assert "gap: 10px;" in css
     assert ".dp-settings-notifications-toggle-row .toggle-info" in css
     assert "flex-direction: column;" in css
     assert "align-items: flex-start;" in css
+    assert "max-width: 330px;" in css
     assert ".dp-settings-notifications-toggle-row .toggle" in css
     assert "align-self: center;" in css
-    assert "justify-self: end;" in css
+    assert "margin-left: 0;" in css
+
+
+def test_statistics_reporting_copy_and_single_row_layout_are_locked():
+    js = source(RUNTIME)
+    css = source(STYLE)
+
+    expected = [
+        "Statistics Reporting",
+        "Configure where reports are sent, how often they are delivered, and how much activity they summarize.",
+        "Reporting Webhook",
+        "Optional destination for statistics reports. Leave blank to use the primary Discord webhook.",
+        "Automatic Report Interval (Hours Between Reports)",
+        "Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.",
+        "Report Window",
+        "Choose how much recent activity each statistics report includes.",
+        "Clear Stored Reporting Webhook",
+    ]
+    for text in expected:
+        assert text in js
+
+    assert "reportingRow.append(webhookField, intervalField, windowField);" in js
+    assert "reportIntervalInput.setAttribute('min', '0')" in js
+    assert "reportIntervalInput.setAttribute('max', '168')" in js
+
+    assert ".dp-settings-statistics-reporting-row" in css
+    assert "width: min(88%, 1450px);" in css
+    assert "grid-template-columns: minmax(430px, 2fr) minmax(260px, .9fr) minmax(220px, .7fr);" in css
+    assert ".dp-settings-statistics-reporting-row > .dp-settings-field > .form-label" in css
+
+
+def test_notifications_footer_actions_are_contextual_and_semantically_distinct():
+    js = source(RUNTIME)
+    icon = source(SEND_ICON)
+
+    assert "test-discord-draft" in js
+    assert "send-report-draft" in js
+    assert "data-context-action=\"notifications\"" not in js  # set through dataset on reused real button
+    assert "reportButton.dataset.contextAction = 'notifications';" in js
+    assert "testDiscord.insertAdjacentElement('afterend', reportButton);" in js
+    assert "'/icons/lucide/flask-conical.svg', 'Test Discord'" in js
+    assert "'/icons/lucide/send.svg', 'Send Report Now'" in js
+    assert "<svg" in icon
+    assert "<path" in icon
+    assert "data:image" not in icon
+
+
+def test_notification_context_actions_use_current_draft_without_persisting_it():
+    js = source(RUNTIME)
+
+    assert "'/settings/validate-discord'" in js
+    assert "username: valueOf('discord_username')" in js
+    assert "avatar_url: valueOf('discord_avatar_url')" in js
+    assert "clear_webhook: clearChecked('discord_webhook_url')" in js
+
+    assert "'/settings/send-stats-report'" in js
+    assert "stats_report_webhook_url: valueOf('stats_report_webhook_url')" in js
+    assert "clear_stats_report_webhook: clearChecked('stats_report_webhook_url')" in js
+    assert "discord_webhook_url: valueOf('discord_webhook_url')" in js
+    assert "clear_discord_webhook: clearChecked('discord_webhook_url')" in js
+    assert "hours = Math.max(1, intValueOf('stats_report_window_hours', 24))" in js
+
+    # A contextual send must not rerender the Settings page and discard unsaved draft fields.
+    send_function = js[js.index("async function sendReportNow"):js.index("function polishDiscordCard")]
+    assert "render()" not in send_function
 
 
 def test_notifications_presentation_assets_load_after_settings_page():
     loader = source(LOADER)
 
-    css_entry = "'/ui-settings-notifications.css?v=1'"
-    js_entry = "'/ui-settings-notifications.js?v=1'"
+    css_entry = "'/ui-settings-notifications.css?v=2'"
+    js_entry = "'/ui-settings-notifications.js?v=2'"
     settings_entry = "'/ui-settings-page.js?v=4'"
     assert css_entry in loader
     assert js_entry in loader

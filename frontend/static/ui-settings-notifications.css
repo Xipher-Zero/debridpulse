@@ -1,16 +1,19 @@
-/* DebridPulse v1.0.11 Notifications card. */
-body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header {
+/* DebridPulse v1.0.11 Notifications cards. */
+body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header,
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-card > .card-header {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
   align-items: center;
   gap: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header > .card-title {
+body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header > .card-title,
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-card > .card-header > .card-title {
   justify-self: start;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-notifications-header-copy {
+body.dp-v11-structural #view-settings .dp-settings-notifications-header-copy,
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-header-copy {
   justify-self: center;
   color: var(--dp-text-muted);
   font-size: 11px;
@@ -24,18 +27,18 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-header-spacer {
 
 /* Match Sources / Downloads / Data & Maintenance: field labels and helper copy
    share the input's 3px content datum rather than drifting left of the field. */
-body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-discord-card .dp-settings-field > .form-label,
-body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-discord-card .dp-settings-field > .form-hint {
+body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-field > .form-label,
+body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-field > .form-hint {
   position: relative;
   inset-inline-start: 3px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-discord-card .dp-settings-field > .form-label {
+body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-field > .form-label {
   display: block;
   margin-bottom: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-discord-card .dp-settings-field > .form-hint {
+body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-field > .form-hint {
   display: block;
   margin-top: 7px;
   line-height: 1.4;
@@ -43,7 +46,8 @@ body.dp-v11-structural #view-settings .dp-settings-discord-card .dp-settings-fie
 
 body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row,
 body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row,
-body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row {
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row,
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row {
   min-width: 0;
 }
 
@@ -126,6 +130,15 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > 
   margin: 0;
 }
 
+/* The long update-interval title occupies two lines. Reserve the same title
+   height for all three fields so the two webhook sandwiches move down together
+   and all three form controls sit on one horizontal datum. */
+body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field > .form-label {
+  min-height: 30px;
+  display: flex;
+  align-items: flex-end;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-notifications-clear-secret {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -177,23 +190,28 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--sec
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Keep the row-to-row and item-to-item spacing intact while making each switch
+   visually belong to its own title/flavor block instead of pinning it to the
+   far edge of an equal-width grid column. */
 body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row > .dp-settings-toggle {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  gap: 10px;
   min-width: 0;
   width: 100%;
   margin: 0 !important;
-  padding-right: 6px;
+  padding-right: 0;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle-info {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   align-items: flex-start;
   gap: 3px;
   min-width: 0;
+  max-width: 330px;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle-info .tl,
@@ -203,12 +221,35 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .tog
 
 body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle {
   align-self: center;
-  justify-self: end;
   flex: 0 0 auto;
+  margin-left: 0;
+}
+
+/* Statistics Reporting is a single centered configuration row. The destination
+   gets most of the width while cadence and report-window controls stay compact. */
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row {
+  width: min(88%, 1450px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(430px, 2fr) minmax(260px, .9fr) minmax(220px, .7fr);
+  align-items: start;
+  gap: 28px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row > .dp-settings-field {
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row > .dp-settings-field > .form-label {
+  min-height: 30px;
+  display: flex;
+  align-items: flex-end;
 }
 
 @media (max-width: 1280px) {
-  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header {
+  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
@@ -230,11 +271,18 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .tog
   body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--secondary {
     width: 70%;
   }
+
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row {
+    width: 94%;
+    grid-template-columns: minmax(340px, 1.6fr) minmax(230px, .8fr) minmax(190px, .6fr);
+    gap: 22px;
+  }
 }
 
 @media (max-width: 1000px) {
   body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row,
-  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row {
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row {
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -250,7 +298,8 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .tog
     width: auto;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field:last-child {
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field:last-child,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row > .dp-settings-field:last-child {
     grid-column: 1 / -1;
     width: min(320px, 100%);
     justify-self: center;
@@ -265,13 +314,16 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .tog
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header {
+  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header > .card-title,
-  body.dp-v11-structural #view-settings .dp-settings-notifications-header-copy {
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-card > .card-header > .card-title,
+  body.dp-v11-structural #view-settings .dp-settings-notifications-header-copy,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-header-copy {
     justify-self: center;
   }
 
@@ -282,7 +334,8 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .tog
 
 @media (max-width: 700px) {
   body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row,
-  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row {
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -291,9 +344,16 @@ body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .tog
     justify-self: start;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field:last-child {
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field:last-child,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row > .dp-settings-field:last-child {
     grid-column: auto;
     width: 100%;
     justify-self: stretch;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field > .form-label,
+  body.dp-v11-structural #view-settings .dp-settings-statistics-reporting-row > .dp-settings-field > .form-label {
+    min-height: 0;
+    display: block;
   }
 }

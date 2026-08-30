@@ -8,10 +8,13 @@ credentials remain write-only through the normal public Settings payload.
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlparse
 
+import aiohttp
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from core.branding import APP_SHORT_NAME
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from services.alldebrid import AllDebridService
@@ -38,10 +41,74 @@ class Aria2ValidationRequest(BaseModel):
 class DiscordValidationRequest(BaseModel):
     webhook_url: str = Field(default="", max_length=8192)
     clear_webhook: bool = False
+    username: str = Field(default="", max_length=80)
+    avatar_url: str = Field(default="", max_length=8192)
+
+
+class StatisticsReportDraftRequest(BaseModel):
+    hours: int = Field(default=24, ge=1, le=8760)
+    stats_report_webhook_url: str = Field(default="", max_length=8192)
+    clear_stats_report_webhook: bool = False
+    discord_webhook_url: str = Field(default="", max_length=8192)
+    clear_discord_webhook: bool = False
 
 
 def _safe_failure(exc: Exception) -> str:
     return sanitize_exception(exc, max_length=200)
+
+
+def _resolve_secret_candidate(candidate: str, stored: str, *, clear: bool) -> str:
+    """Resolve a redacted Settings secret without persisting draft state.
+
+    A non-empty candidate wins. A blank candidate preserves the stored value
+    unless the operator explicitly checked the corresponding clear control.
+    """
+    if clear:
+        return ""
+    typed = str(candidate or "").strip()
+    if typed:
+        return typed
+    return str(stored or "").strip()
+
+
+def _is_discord_webhook(url: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return False
+    return host in {"discord.com", "discordapp.com", "canary.discord.com", "ptb.discord.com"}
+
+
+def _draft_discord_identity(username: str, avatar_url: str) -> tuple[str, str]:
+    name = str(username or "").strip() or APP_SHORT_NAME
+    avatar = str(avatar_url or "").strip()
+    if avatar.startswith("data:") or avatar.lower().endswith(".svg"):
+        avatar = ""
+    return name, avatar
+
+
+async def _send_discord_draft_test(webhook_url: str, username: str, avatar_url: str) -> None:
+    """Send the Discord test using the identity currently shown in Settings."""
+    name, avatar = _draft_discord_identity(username, avatar_url)
+    payload = {
+        "username": name,
+        "embeds": [
+            {
+                "title": "🔔 Test Notification",
+                "description": f"**{APP_SHORT_NAME}** is connected and ready.",
+                "color": 0x3B82F6,
+            }
+        ],
+    }
+    if avatar:
+        payload["avatar_url"] = avatar
+
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(webhook_url, json=payload) as response:
+            if response.status not in (200, 204):
+                body = await response.text()
+                raise RuntimeError(f"Discord webhook returned HTTP {response.status}: {body[:200]}")
 
 
 @router.get("/settings/extraction-passwords")
@@ -113,17 +180,65 @@ async def validate_aria2(payload: Aria2ValidationRequest):
 @router.post("/settings/validate-discord")
 async def validate_discord(payload: DiscordValidationRequest):
     cfg = get_settings()
-    if payload.clear_webhook:
-        webhook_url = ""
-    else:
-        webhook_url = payload.webhook_url.strip() or str(cfg.discord_webhook_url or "").strip()
+    webhook_url = _resolve_secret_candidate(
+        payload.webhook_url,
+        str(cfg.discord_webhook_url or ""),
+        clear=payload.clear_webhook,
+    )
     if not webhook_url:
         raise HTTPException(400, "No Discord webhook configured or entered")
 
     try:
-        sent = await NotificationService(webhook_url).test()
+        if _is_discord_webhook(webhook_url):
+            await _send_discord_draft_test(
+                webhook_url,
+                payload.username,
+                payload.avatar_url,
+            )
+            sent = True
+        else:
+            # Preserve the existing generic-webhook validation behavior. Draft
+            # Discord identity is only meaningful for a Discord destination.
+            sent = await NotificationService(webhook_url).test()
         if not sent:
             raise RuntimeError("Discord test did not send a notification")
         return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from exc
+
+
+@router.post("/settings/send-stats-report")
+async def send_stats_report_from_draft(payload: StatisticsReportDraftRequest):
+    """Send a report using the current Notifications draft without saving it.
+
+    Secret fields preserve their stored value while redacted/blank, respect an
+    explicit clear request, and retain the normal reporting -> primary Discord
+    webhook fallback. Only Apply Settings persists any of these draft values.
+    """
+    cfg = get_settings()
+    reporting_url = _resolve_secret_candidate(
+        payload.stats_report_webhook_url,
+        str(getattr(cfg, "stats_report_webhook_url", "") or ""),
+        clear=payload.clear_stats_report_webhook,
+    )
+    if not reporting_url:
+        reporting_url = _resolve_secret_candidate(
+            payload.discord_webhook_url,
+            str(getattr(cfg, "discord_webhook_url", "") or ""),
+            clear=payload.clear_discord_webhook,
+        )
+    if not reporting_url:
+        raise HTTPException(400, "No reporting or primary Discord webhook configured or entered")
+
+    try:
+        from services.stats import send_stats_report
+
+        return await send_stats_report(
+            hours=payload.hours,
+            webhook_url=reporting_url,
+            triggered_by="manual",
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(502, _safe_failure(exc)) from exc
