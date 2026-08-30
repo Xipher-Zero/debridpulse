@@ -1,0 +1,90 @@
+name: Temporary Settings Behavior Modal Fix
+
+on:
+  push:
+    branches:
+      - work/settings-behavior-confirm
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: work/settings-behavior-confirm
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Move confirmation paint into shared modal layer
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          settings_css = Path('frontend/static/ui-settings-page.css')
+          modal_css = Path('frontend/static/ui-modal-contract.css')
+          test_file = Path('backend/tests/test_settings_behavior_ui.py')
+
+          settings = settings_css.read_text(encoding='utf-8')
+          modal = modal_css.read_text(encoding='utf-8')
+          tests = test_file.read_text(encoding='utf-8')
+
+          marker = '/* ── Settings confirmation dialog ─────────────────────────────────────── */'
+          if settings.count(marker) != 1:
+              raise SystemExit(f'expected one confirmation block in Settings CSS, found {settings.count(marker)}')
+          head, block = settings.split(marker, 1)
+          block = marker + block
+          if '.dp-settings-confirm-overlay' not in block:
+              raise SystemExit('confirmation block missing overlay selector')
+          if marker in modal or '.dp-settings-confirm-overlay' in modal:
+              raise SystemExit('shared modal layer already contains Settings confirmation block')
+
+          settings = head.rstrip() + '\n'
+          modal = modal.rstrip() + '\n\n' + block.strip() + '\n'
+
+          old = '''STYLE = STATIC / "ui-settings-page.css"\n'''
+          new = '''STYLE = STATIC / "ui-settings-page.css"\nMODAL_STYLE = STATIC / "ui-modal-contract.css"\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('test STYLE declaration contract changed')
+          tests = tests.replace(old, new, 1)
+
+          old = '''    css = source(STYLE)\n    assert "async function confirmAction" in js\n'''
+          new = '''    css = source(STYLE)\n    modal_css = source(MODAL_STYLE)\n    assert "async function confirmAction" in js\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('test CSS load contract changed')
+          tests = tests.replace(old, new, 1)
+
+          old = '''    assert ".dp-settings-confirm-overlay" in css\n    assert ".dp-settings-confirm-dialog" in css\n    assert 'data-tone="warning"' in css\n    assert 'data-tone="danger"' in css\n'''
+          new = '''    assert ".dp-settings-confirm-overlay" not in css\n    assert "--dp-panel-surface" not in css\n    assert "box-shadow: var(--dp-panel-shadow)" not in css\n    assert ".dp-settings-confirm-overlay" in modal_css\n    assert ".dp-settings-confirm-dialog" in modal_css\n    assert 'data-tone="warning"' in modal_css\n    assert 'data-tone="danger"' in modal_css\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('test modal CSS assertion contract changed')
+          tests = tests.replace(old, new, 1)
+
+          settings_css.write_text(settings, encoding='utf-8')
+          modal_css.write_text(modal, encoding='utf-8')
+          test_file.write_text(tests.rstrip() + '\n', encoding='utf-8')
+          PY
+      - name: Check behavior regression tests
+        run: |
+          cd backend
+          python -m pytest tests/test_settings_behavior_ui.py -q
+      - name: Check affected architecture tests
+        run: |
+          cd backend
+          python -m pytest \
+            tests/test_settings_architecture_ui.py::test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_region \
+            tests/test_ui_card_paint_boundary_contract.py::test_help_downloads_and_settings_corrections_do_not_redefine_card_material \
+            -q
+      - name: Check diff
+        run: git diff --check
+      - name: Commit shippable correction
+        run: |
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add frontend/static/ui-settings-page.css frontend/static/ui-modal-contract.css backend/tests/test_settings_behavior_ui.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'ui: place settings confirmation in shared modal layer'
+          git push origin HEAD:work/settings-behavior-confirm
