@@ -24,7 +24,7 @@ def test_callback_runtime_loads_after_oidc_regrouping():
 def test_callback_is_derived_from_live_unsaved_public_base_url():
     source = read(CALLBACK_JS)
     assert "const CALLBACK_PATH = '/auth/oidc/callback';" in source
-    assert "Set Public Base URL to display the Callback URL." in source
+    assert "Set Public DebridPulse Base URL to display the Callback URL." in source
     assert "function callbackFromPublicBase(value)" in source
     assert "parsed = new URL(raw);" in source
     assert "parsed.protocol !== 'https:' || !parsed.hostname" in source
