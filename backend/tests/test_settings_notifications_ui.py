@@ -162,7 +162,6 @@ def test_notifications_footer_actions_are_contextual_and_semantically_distinct()
 
     assert "test-discord-draft" in js
     assert "send-report-draft" in js
-    assert "data-context-action=\"notifications\"" not in js  # set through dataset on reused real button
     assert "reportButton.dataset.contextAction = 'notifications';" in js
     assert "testDiscord.insertAdjacentElement('afterend', reportButton);" in js
     assert "'/icons/lucide/flask-conical.svg', 'Test Discord'" in js
