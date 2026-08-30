@@ -1,0 +1,43 @@
+name: Auth KPI Color Fix
+
+on:
+  push:
+    branches:
+      - work/auth-kpi-color-fix-20260830
+    paths:
+      - .github/workflows/auth-kpi-color-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/auth-kpi-color-fix-20260830
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python .github/scripts/apply-auth-kpi-color-fix.py
+
+      - name: Validate targeted regression tests
+        run: pytest -q backend/tests/test_settings_authentication_kpi_ui.py
+
+      - name: Validate frontend syntax
+        run: node --check frontend/static/ui-settings-page.js
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit patched source
+        run: |
+          git config user.name "Xipher-Zero"
+          git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
+          git add frontend/static/ui-settings-page.js \
+                  frontend/static/ui-settings-authentication.css \
+                  backend/tests/test_settings_authentication_kpi_ui.py
+          git diff --cached --quiet && exit 1
+          git commit -m "ui: fix authentication KPI state colors"
+          git push origin HEAD:work/auth-kpi-color-fix-20260830
