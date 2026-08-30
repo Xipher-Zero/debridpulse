@@ -384,6 +384,15 @@ body.dp-v11-structural #view-help .dp-help-license-note {
   line-height: 1.6;
 }
 
+body.dp-v11-structural #view-help .dp-help-license-note p:last-child {
+  color: var(--dp-text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 650;
+  text-align: center;
+  letter-spacing: .005em;
+}
+
 @media (max-width: 1180px) {
   body.dp-v11-structural #view-help .dp-help-master-header {
     grid-template-columns: minmax(190px, .34fr) minmax(0, 1.66fr);
