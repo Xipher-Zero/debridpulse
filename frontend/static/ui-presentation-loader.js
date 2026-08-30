@@ -26,6 +26,7 @@
     {src: '/ui-statistics-batch3.js?v=3', marker: 'data-dp-statistics-batch3'},
     {src: '/ui-statistics-batch4.js?v=2', marker: 'data-dp-statistics-batch4'},
     {src: '/ui-statistics-batch5.js?v=7', marker: 'data-dp-statistics-batch5'},
+    {src: '/ui-help-page.js?v=1', marker: 'data-dp-help-page'},
     {src: '/ui-settings-page.js?v=4', marker: 'data-dp-settings-page'},
     {src: '/ui-settings-maintenance-wipe.js?v=3', marker: 'data-dp-settings-maintenance-wipe'},
     {src: '/ui-settings-notifications.js?v=2', marker: 'data-dp-settings-notifications'},

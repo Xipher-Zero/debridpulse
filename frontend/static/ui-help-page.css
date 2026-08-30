@@ -1,70 +1,455 @@
-/* DebridPulse v1.0.11 Help & License page layer.
+/* DebridPulse v1.0.11 clean-room Help & Documentation page.
  *
- * Help uses the universal card material unchanged. This layer owns only the
- * page's fixed-tab / scroll geometry and, critically, keeps the card-bearing
- * ancestors paint-visible so the universal frame/contact shadow is not clipped.
+ * Help follows the same full-height master-card composition as Settings,
+ * Downloads, Activity Log, and Statistics. Shared card/tab/button material is
+ * inherited from the canonical dp-* component language; this layer owns Help
+ * geometry, documentation typography, accordions, and content flow only.
  */
 
-body.dp-v11-structural #view-help.active {
-  display: flex !important;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: visible;
+@media (min-width: 901px) {
+  body.dp-v11-structural #content:has(#view-help.active) {
+    overflow-y: hidden;
+  }
+
+  body.dp-v11-structural #view-help.dp-help-clean-view.active {
+    display: flex !important;
+    flex-direction: column;
+    height: 100% !important;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-help > .dp-help-master-card {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0 !important;
+  }
 }
 
-body.dp-v11-structural #view-help .view-header,
-body.dp-v11-structural #view-help #help-tabs {
+body.dp-v11-structural #view-help .dp-help-master-header {
   flex: 0 0 auto;
+  min-height: 76px;
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: minmax(210px, .42fr) minmax(0, 1.58fr);
+  align-items: center;
+  gap: 16px;
 }
 
-/* The legacy layout made this wrapper the scrollport. Because every Help card
-   starts flush against the wrapper's top/side edges, that clipped the exact
-   external paint that gives standard DP cards their frame/depth. The wrapper
-   now carries geometry only; scrolling moves inside the card body. */
-body.dp-v11-structural #view-help .help-panels-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: visible;
-}
-
-body.dp-v11-structural #view-help .help-panels-wrap .help-panel {
-  min-height: 0;
-  overflow: visible;
-}
-
-body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active {
-  display: block;
-  max-height: 100%;
-}
-
-body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card {
+body.dp-v11-structural #view-help .dp-help-header-copy {
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  max-height: 100%;
-  min-height: 0;
+  align-items: center;
+  gap: 12px;
 }
 
-/* Preserve the existing fixed Help tabs for long documents without making the
-   card itself a clipping ancestor. The card body is the content scrollport. */
-body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card > .card-body {
+body.dp-v11-structural #view-help .dp-help-title-icon {
+  width: 51px;
+  min-width: 51px;
+  height: 51px;
+  flex: 0 0 51px;
+  object-fit: contain;
+  padding: 3px;
+}
+
+body.dp-v11-structural #view-help .dp-help-header-title {
+  min-width: 0;
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-help .dp-help-tabs {
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+  scrollbar-width: thin;
+}
+
+body.dp-v11-structural #view-help .dp-help-tab {
+  flex: 1 0 auto;
+  min-width: max-content;
+}
+
+body.dp-v11-structural #view-help .dp-help-master-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+
+body.dp-v11-structural #view-help .dp-help-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+body.dp-v11-structural #view-help .dp-help-panels {
+  width: 100%;
+  min-width: 0;
+  padding: 16px 18px 22px;
+}
+
+body.dp-v11-structural #view-help .dp-help-panel {
+  width: 100%;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-panel[hidden] {
+  display: none !important;
+}
+
+body.dp-v11-structural #view-help .dp-help-document {
+  width: min(100%, 980px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--dp-divider);
+}
+
+body.dp-v11-structural #view-help .dp-help-section-heading h2 {
+  margin: 0;
+  color: var(--dp-accent-purple-bright);
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-heading p {
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body.dp-v11-structural #view-help .dp-help-copy {
+  color: var(--dp-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+body.dp-v11-structural #view-help .dp-help-copy b,
+body.dp-v11-structural #view-help .dp-help-prose h3,
+body.dp-v11-structural #view-help .dp-help-inset h3 {
+  color: var(--dp-text-primary);
+}
+
+body.dp-v11-structural #view-help .dp-help-copy a,
+body.dp-v11-structural #view-help .dp-help-document > a {
+  color: var(--dp-accent-purple-bright);
+}
+
+body.dp-v11-structural #view-help .dp-help-copy code,
+body.dp-v11-structural #view-help .dp-help-license-note code {
+  padding: 2px 5px;
+  border: 1px solid var(--dp-border-subtle);
+  border-radius: 5px;
+  background: var(--dp-surface-3);
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-size: .91em;
+}
+
+body.dp-v11-structural #view-help .dp-help-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-lg);
+  overflow: hidden;
+}
+
+body.dp-v11-structural #view-help .dp-help-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--dp-divider);
+  background: transparent;
+}
+
+body.dp-v11-structural #view-help .dp-help-step:last-child {
+  border-bottom: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-step-number {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 46%, var(--dp-border-default));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--dp-accent-purple) 17%, var(--dp-surface-2));
+  color: var(--dp-nav-active-text);
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 750;
+}
+
+body.dp-v11-structural #view-help .dp-help-step-copy {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-step-title {
+  margin-bottom: 3px;
+  color: var(--dp-text-primary);
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 650;
+}
+
+body.dp-v11-structural #view-help .dp-help-copy--lead p,
+body.dp-v11-structural #view-help .dp-help-copy--after p,
+body.dp-v11-structural #view-help .dp-help-prose p,
+body.dp-v11-structural #view-help .dp-help-prose ul,
+body.dp-v11-structural #view-help .dp-help-accordion-body p {
+  margin: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-help .dp-help-prose h3 {
+  margin: 3px 0 -4px;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+body.dp-v11-structural #view-help .dp-help-prose ul {
+  padding-left: 20px;
+}
+
+body.dp-v11-structural #view-help .dp-help-prose li + li {
+  margin-top: 5px;
+}
+
+body.dp-v11-structural #view-help .dp-help-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body.dp-v11-structural #view-help .dp-help-pipeline-row {
+  display: grid;
+  grid-template-columns: 168px 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+body.dp-v11-structural #view-help .dp-help-pipeline-node {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-surface-2);
+  color: var(--dp-text-primary);
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 650;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-help .dp-help-pipeline-row.is-active .dp-help-pipeline-node {
+  color: var(--dp-accent-purple-bright);
+}
+
+body.dp-v11-structural #view-help .dp-help-pipeline-row.is-success .dp-help-pipeline-node {
+  color: var(--dp-state-success);
+}
+
+body.dp-v11-structural #view-help .dp-help-pipeline-arrow {
+  color: var(--dp-text-muted);
+  text-align: center;
+}
+
+body.dp-v11-structural #view-help .dp-help-integration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+body.dp-v11-structural #view-help .dp-help-inset {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-md);
+  background: color-mix(in srgb, var(--dp-surface-2) 76%, transparent);
+}
+
+body.dp-v11-structural #view-help .dp-help-inset h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 650;
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion {
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-md);
+  background: color-mix(in srgb, var(--dp-surface-2) 74%, transparent);
+  overflow: hidden;
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  color: var(--dp-text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion > summary::before {
+  content: '›';
+  width: 16px;
+  flex: 0 0 16px;
+  color: var(--dp-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform .14s ease;
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion[open] > summary {
+  border-bottom: 1px solid var(--dp-divider);
+}
+
+body.dp-v11-structural #view-help .dp-help-accordion-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 14px 40px;
+}
+
+body.dp-v11-structural #view-help .dp-help-attribution {
+  line-height: 1.7;
+}
+
+body.dp-v11-structural #view-help .dp-help-license-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body.dp-v11-structural #view-help .dp-help-license-note {
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-help .dp-help-master-header {
+    grid-template-columns: minmax(190px, .34fr) minmax(0, 1.66fr);
+    gap: 12px;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-title-icon {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-help.dp-help-clean-view.active {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-master-header {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-tabs {
+    width: 100%;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-master-body,
+  body.dp-v11-structural #view-help .dp-help-scroll {
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-panels {
+    padding: 14px;
+  }
 }
 
 @media (max-width: 700px) {
-  /* Mobile already uses normal document scrolling; avoid a nested body
-     scrollport when vertical space is constrained. */
-  body.dp-v11-structural #view-help.active {
-    height: auto;
+  body.dp-v11-structural #view-help .dp-help-header-title {
+    white-space: normal;
   }
 
-  body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card {
-    max-height: none;
+  body.dp-v11-structural #view-help .dp-help-pipeline-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
-  body.dp-v11-structural #view-help .help-panels-wrap .help-panel.active > .card > .card-body {
-    overflow-y: visible;
+  body.dp-v11-structural #view-help .dp-help-pipeline-arrow {
+    display: none;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-integration-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-accordion-body {
+    padding-left: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.dp-v11-structural #view-help .dp-help-accordion > summary::before {
+    transition: none;
   }
 }
