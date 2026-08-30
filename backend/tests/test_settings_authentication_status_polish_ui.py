@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Regression contract for the Authentication Status mini-polish layer.
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 
