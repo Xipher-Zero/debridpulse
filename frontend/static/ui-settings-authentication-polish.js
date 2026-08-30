@@ -1,0 +1,93 @@
+/* DebridPulse v1.0.11 Authentication status mini-polish. */
+(function () {
+  'use strict';
+
+  let scheduled = false;
+
+  function textOf(node) {
+    return String(node?.textContent || '').trim();
+  }
+
+  function authenticationStatusCard() {
+    const panel = document.querySelector('#view-settings [data-panel="authentication"]');
+    if (!panel) return null;
+    return Array.from(panel.querySelectorAll('.dp-settings-card')).find(function (card) {
+      return textOf(card.querySelector(':scope > .card-header > .card-title')) === 'Authentication Status';
+    }) || null;
+  }
+
+  function fieldByLabel(card, label) {
+    return Array.from(card?.querySelectorAll('.dp-settings-field') || []).find(function (field) {
+      return textOf(field.querySelector(':scope > .form-label')) === label;
+    }) || null;
+  }
+
+  function ensureHint(field, copy) {
+    if (!field) return;
+    let hint = field.querySelector(':scope > .form-hint');
+    if (!hint) {
+      hint = document.createElement('span');
+      hint.className = 'form-hint';
+      field.appendChild(hint);
+    }
+    if (textOf(hint) !== copy) hint.textContent = copy;
+  }
+
+  function polishLifetime(card) {
+    const input = card?.querySelector('input[data-setting="auth_session_lifetime_hours"]') || null;
+    const field = input?.closest('.dp-settings-field') || null;
+    if (!input || !field) return false;
+
+    field.classList.add('dp-settings-auth-session-lifetime-polished');
+    input.setAttribute('aria-label', 'Browser Session Lifetime in hours');
+
+    if (!input.closest('.dp-settings-auth-duration-control')) {
+      const control = document.createElement('span');
+      control.className = 'dp-settings-auth-duration-control';
+      input.before(control);
+      control.appendChild(input);
+
+      const unit = document.createElement('span');
+      unit.className = 'dp-settings-auth-duration-unit';
+      unit.setAttribute('aria-hidden', 'true');
+      unit.textContent = 'hours';
+      control.appendChild(unit);
+    }
+
+    return true;
+  }
+
+  function polishCallback(card) {
+    const field = fieldByLabel(card, 'OIDC Callback URL');
+    if (!field) return false;
+
+    field.classList.add('dp-settings-auth-callback-field');
+    ensureHint(field, 'Redirect URI to configure with your OpenID Connect provider.');
+    return true;
+  }
+
+  function polish() {
+    scheduled = false;
+    const card = authenticationStatusCard();
+    if (!card) return;
+    polishLifetime(card);
+    polishCallback(card);
+  }
+
+  function schedule() {
+    if (scheduled) return;
+    scheduled = true;
+    queueMicrotask(polish);
+  }
+
+  schedule();
+
+  const view = document.getElementById('view-settings');
+  if (view) {
+    const observer = new MutationObserver(function (mutations) {
+      if (!mutations.some(function (mutation) { return mutation.type === 'childList'; })) return;
+      schedule();
+    });
+    observer.observe(view, {childList: true, subtree: true});
+  }
+})();
