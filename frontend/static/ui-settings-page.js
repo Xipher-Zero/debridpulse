@@ -588,10 +588,6 @@
       ['API Token', tokenValue, tokenTone],
     ];
     return card('Authentication Status', `
-      ${!a.authentication_required ? `
-        <div class="dp-settings-caution dp-settings-auth-open-notice">
-          <span><b>No interactive authentication enabled</b> — supported standalone/LAN mode; application and API are intentionally open.</span>
-        </div>` : ''}
       <div class="dp-settings-status-grid dp-settings-auth-kpi-grid">
         ${items.map(([label, value, tone]) => `
           <div class="dash-hero-stat dp-settings-auth-kpi" data-c="${html(tone)}">

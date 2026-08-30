@@ -123,16 +123,29 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat::befo
 }
 
 body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="green"] {
-  --c: var(--dp-semantic-success);
+  --c: var(--dp-state-success);
 }
 body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="yellow"] {
-  --c: var(--dp-semantic-processing);
+  --c: var(--dp-state-caution);
 }
 body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="red"] {
-  --c: var(--dp-semantic-error);
+  --c: var(--dp-state-error);
 }
 body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="neutral"] {
   --c: var(--dp-text-muted);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="green"] .dhs-val {
+  color: var(--dp-state-success);
+}
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="yellow"] .dhs-val {
+  color: var(--dp-state-caution);
+}
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="red"] .dhs-val {
+  color: var(--dp-state-error);
+}
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="neutral"] .dhs-val {
+  color: var(--dp-text-muted);
 }
 
 body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-body {
@@ -163,17 +176,6 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-val {
   line-height: 1.25;
   text-align: center;
   overflow-wrap: anywhere;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-auth-open-notice {
-  min-height: 0;
-  display: block;
-  padding: 7px 12px;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-auth-open-notice > span {
-  display: block;
-  line-height: 1.4;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
