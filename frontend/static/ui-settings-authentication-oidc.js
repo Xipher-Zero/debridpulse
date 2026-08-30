@@ -55,12 +55,8 @@
     hintNode.textContent = hint;
   }
 
-  function alignSandwichToInputText(field) {
-    const control = field?.querySelector('input, textarea, select') || null;
-    if (!field || !control) return;
-    const style = window.getComputedStyle(control);
-    const inset = style.paddingInlineStart || style.paddingLeft || '0px';
-    field.style.setProperty('--dp-settings-oidc-input-text-inset', inset);
+  function markSandwich(field) {
+    if (!field) return;
     field.classList.add('dp-settings-oidc-sandwich');
   }
 
@@ -95,34 +91,53 @@
   function configureClearSecret(secretField) {
     const checkbox = secretField?.querySelector('#dp-auth-clear-oidc-secret') || null;
     const label = checkbox?.closest('label') || null;
-    if (!checkbox || !label) return;
+    if (!checkbox || !label) return null;
 
     label.className = 'dp-settings-oidc-clear-secret';
 
-    const copy = document.createElement('span');
-    copy.className = 'dp-settings-oidc-clear-secret-copy';
-
-    const title = document.createElement('b');
+    const title = document.createElement('span');
+    title.className = 'dp-settings-oidc-clear-secret-copy';
     title.textContent = 'Clear Stored Secret';
+    label.replaceChildren(title, checkbox);
 
-    const detail = document.createElement('small');
-    detail.textContent = 'Remove the saved secret when settings are applied.';
+    const action = document.createElement('div');
+    action.className = 'dp-settings-oidc-clear-secret-action';
 
-    copy.append(title, detail);
-    label.replaceChildren(copy, checkbox);
+    const spacer = document.createElement('span');
+    spacer.className = 'form-label dp-settings-oidc-clear-secret-spacer';
+    spacer.textContent = 'Clear Stored Secret';
+
+    const control = document.createElement('div');
+    control.className = 'dp-settings-oidc-clear-secret-control';
+    control.appendChild(label);
+
+    const hint = document.createElement('small');
+    hint.className = 'dp-settings-oidc-clear-secret-hint';
+    hint.textContent = 'Remove the saved secret when settings are applied.';
+
+    action.append(spacer, control, hint);
+    return action;
   }
 
   function configureAccessControl(allowAll, subjects, emails, groups) {
     const info = allowAll.querySelector('.toggle-info');
     const title = info?.querySelector('.tl');
-    const detail = info?.querySelector('.td');
     if (title) title.textContent = 'Allow Any Authenticated OIDC Identity';
-    if (detail) detail.textContent = 'Allow any successful OIDC sign-in. Turn off to enforce the allowlists below.';
+    info?.querySelector('.td')?.remove();
     allowAll.classList.add('dp-settings-oidc-allow-all');
 
     const heading = document.createElement('div');
     heading.className = 'dp-settings-oidc-section-heading';
-    heading.innerHTML = '<span>Access Control</span><small>Choose who can sign in through this provider.</small>';
+
+    const headingTitle = document.createElement('span');
+    headingTitle.className = 'dp-settings-oidc-section-title';
+    headingTitle.textContent = 'Access Control';
+
+    const headingCopy = document.createElement('small');
+    headingCopy.className = 'dp-settings-oidc-section-copy';
+    headingCopy.textContent = 'Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.';
+
+    heading.append(headingTitle, headingCopy, allowAll);
 
     const allowlists = document.createElement('div');
     allowlists.className = 'dp-settings-oidc-allowlists';
@@ -130,7 +145,7 @@
 
     const access = document.createElement('section');
     access.className = 'dp-settings-oidc-access';
-    access.append(heading, allowAll, allowlists);
+    access.append(heading, allowlists);
     return access;
   }
 
@@ -199,14 +214,18 @@
     setFieldCopy(emails, 'Allowed Emails', 'Authorize verified email addresses, one per line. Requires email_verified=true.');
     setFieldCopy(groups, 'Allowed Groups', 'Authorize identities belonging to matching OIDC groups, one per line.');
 
-    configureClearSecret(secret);
+    const clearSecret = configureClearSecret(secret);
+    if (!clearSecret) {
+      card.dataset[OIDC_MARKER] = '0';
+      return false;
+    }
 
     [publicBase, callback, provider, issuer, clientId, secret, scopes, groupClaim, subjects, emails, groups]
-      .forEach(alignSandwichToInputText);
+      .forEach(markSandwich);
 
     const originRow = createRow('dp-settings-oidc-row--origin', [publicBase, callback]);
     const identityRow = createRow('dp-settings-oidc-row--identity', [provider, issuer]);
-    const credentialsRow = createRow('dp-settings-oidc-row--credentials', [clientId, secret]);
+    const credentialsRow = createRow('dp-settings-oidc-row--credentials', [clientId, secret, clearSecret]);
     const protocolRow = createRow('dp-settings-oidc-row--protocol', [scopes, groupClaim]);
     const access = configureAccessControl(allowAll, subjects, emails, groups);
 

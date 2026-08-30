@@ -33,14 +33,15 @@ def test_oidc_card_uses_master_header_and_grouped_provider_rows():
     assert "'Scopes', 'Space-separated scopes requested during sign-in.'" in source
 
 
-def test_oidc_card_groups_origin_and_callback_and_aligns_to_input_text():
+def test_oidc_card_groups_origin_and_callback_and_uses_shared_field_datum():
     source = read(OIDC_JS)
     css = read(OIDC_CSS)
     assert "createRow('dp-settings-oidc-row--origin', [publicBase, callback])" in source
     assert "Copy this redirect URI into your identity provider." in source
-    assert "window.getComputedStyle(control)" in source
-    assert "paddingInlineStart" in source
-    assert "--dp-settings-oidc-input-text-inset" in source
+    assert "field.classList.add('dp-settings-oidc-sandwich')" in source
+    assert "window.getComputedStyle(control)" not in source
+    assert "paddingInlineStart" not in source
+    assert "inset-inline-start: 3px;" in css
     assert "grid-template-columns: minmax(0, 1.85fr) minmax(380px, 1fr);" in css
     assert ".dp-settings-oidc-grouped-card .dp-settings-auth-callback-field" in css
     assert "width: 100%;" in css
@@ -50,13 +51,25 @@ def test_oidc_access_control_is_one_section_with_three_parallel_allowlists():
     source = read(OIDC_JS)
     css = read(OIDC_CSS)
     assert "Access Control" in source
-    assert "Choose who can sign in through this provider." in source
-    assert "Allow any successful OIDC sign-in. Turn off to enforce the allowlists below." in source
+    assert "Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below." in source
+    assert "heading.append(headingTitle, headingCopy, allowAll)" in source
     assert "allowlists.append(subjects, emails, groups)" in source
     assert "Allowed Subjects" in source
     assert "Allowed Emails" in source
     assert "Allowed Groups" in source
     assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
+
+
+def test_oidc_allow_any_policy_lives_in_access_header_with_title_left_of_toggle():
+    source = read(OIDC_JS)
+    css = read(OIDC_CSS)
+    assert "title.textContent = 'Allow Any Authenticated OIDC Identity'" in source
+    assert "info?.querySelector('.td')?.remove();" in source
+    assert ".dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all" in css
+    assert "display: inline-flex;" in css
+    assert "justify-self: end;" in css
+    assert ".dp-settings-oidc-allow-all .toggle-info .tl" in css
+    assert "white-space: nowrap;" in css
 
 
 def test_oidc_clear_secret_preserves_clear_on_apply_semantics():
@@ -67,6 +80,19 @@ def test_oidc_clear_secret_preserves_clear_on_apply_semantics():
     assert "Remove the saved secret when settings are applied." in source
     assert "clear_oidc_client_secret: !!byId('dp-auth-clear-oidc-secret')?.checked" in settings
     assert "/auth/oidc" not in source
+
+
+def test_oidc_clear_secret_is_third_credentials_control_on_field_centerline():
+    source = read(OIDC_JS)
+    css = read(OIDC_CSS)
+    assert "const clearSecret = configureClearSecret(secret);" in source
+    assert "createRow('dp-settings-oidc-row--credentials', [clientId, secret, clearSecret])" in source
+    assert "grid-template-columns: minmax(300px, .8fr) minmax(420px, 1.2fr) auto;" in css
+    assert ".dp-settings-oidc-clear-secret-action" in css
+    assert "grid-template-rows: auto var(--dp-input-height) auto;" in css
+    assert ".dp-settings-oidc-clear-secret-control" in css
+    assert "min-height: var(--dp-input-height);" in css
+    assert "align-items: center;" in css
 
 
 def test_oidc_sign_in_test_moves_to_authentication_context_footer_without_redefining_behavior():
