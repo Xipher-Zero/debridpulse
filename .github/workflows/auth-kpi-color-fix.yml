@@ -19,14 +19,24 @@ jobs:
           ref: work/auth-kpi-color-fix-20260830
           fetch-depth: 0
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements-dev.txt
+
       - name: Provision targeted test runner
-        run: python -m pip install pytest
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
 
       - name: Apply patch
         run: python .github/scripts/apply-auth-kpi-color-fix.py
 
       - name: Validate targeted regression tests
-        run: python -m pytest -q backend/tests/test_settings_authentication_kpi_ui.py
+        run: |
+          cd backend
+          python -m pytest -q tests/test_settings_authentication_kpi_ui.py
 
       - name: Validate frontend syntax
         run: node --check frontend/static/ui-settings-page.js
