@@ -10,8 +10,8 @@ def read(name: str) -> str:
 
 def test_help_chrome_loads_after_clean_help_runtime():
     loader = read("ui-presentation-loader.js")
-    assert "/ui-help-chrome.css?v=1" in loader
-    assert loader.index("/ui-help-page.js?v=1") < loader.index("/ui-help-chrome.js?v=1")
+    assert "/ui-help-chrome.css?v=2" in loader
+    assert loader.index("/ui-help-page.js?v=1") < loader.index("/ui-help-chrome.js?v=2")
 
 
 def test_help_tabs_use_settings_style_topical_lucide_chips():
