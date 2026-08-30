@@ -1,0 +1,40 @@
+name: Temporary Settings Behavior Patch
+
+on:
+  push:
+    branches:
+      - work/settings-behavior-confirm
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/settings-behavior-confirm
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply asserted patch
+        run: python .tmp/apply_settings_behavior.py
+      - name: Validate browser syntax
+        run: node --check frontend/static/ui-settings-page.js
+      - name: Validate test syntax
+        run: python -m py_compile backend/tests/test_settings_behavior_ui.py
+      - name: Validate diff
+        run: git diff --check
+      - name: Commit shippable source only
+        run: |
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add frontend/static/ui-settings-page.js frontend/static/ui-settings-page.css backend/tests/test_settings_behavior_ui.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'ui: preserve settings context and confirm destructive actions'
+          git push origin HEAD:work/settings-behavior-confirm
