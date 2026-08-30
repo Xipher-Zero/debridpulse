@@ -1,10 +1,10 @@
 /* DebridPulse v1.0.11 Help presentation chrome.
  *
- * Mirrors the approved Settings section language without changing Help copy:
- * full-width content cards under the selector and topical Lucide chip glyphs.
+ * Mirrors the approved Settings master-header and section-selector language
+ * while retaining Help-specific labels, colors, and content cards.
  */
 
-/* ── Settings-style master-header navigation ────────────────────────── */
+/* ── Settings master-header geometry ────────────────────────────────── */
 body.dp-v11-structural #view-help .dp-help-master-header {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 }
@@ -14,18 +14,37 @@ body.dp-v11-structural #view-help .dp-help-header-copy {
   justify-self: start;
 }
 
+body.dp-v11-structural #view-help .dp-help-header-text {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-header-subtitle {
+  margin-top: 4px;
+  max-width: 560px;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 body.dp-v11-structural #view-help .dp-help-tabs {
   grid-column: 2;
-  width: auto;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
   justify-self: center;
 }
 
-/* ── Settings-style section selector ────────────────────────────────── */
+/* ── Settings section-selector geometry and emphasis ────────────────── */
 body.dp-v11-structural #view-help .dp-help-tab {
   --dp-help-tab-color: var(--dp-accent-purple-bright);
+  appearance: none;
   position: relative;
+  min-height: 32px;
+  flex: 0 0 auto;
   gap: 7px;
   padding-inline: 10px;
+  border: 0;
+  font: inherit;
 }
 
 body.dp-v11-structural #view-help .dp-help-tab-chip {
