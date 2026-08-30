@@ -1,0 +1,34 @@
+name: Temporary Settings Behavior Focus
+
+on:
+  push:
+    branches:
+      - work/settings-behavior-confirm
+
+permissions:
+  contents: read
+
+jobs:
+  focus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: work/settings-behavior-confirm
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+      - name: Viewport Apply contract
+        run: cd backend && python -m pytest tests/test_settings_behavior_ui.py::test_settings_apply_rerenders_without_losing_viewport -q
+      - name: First-party dialog contract
+        run: cd backend && python -m pytest tests/test_settings_behavior_ui.py::test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs -q
+      - name: Destructive action contract
+        run: cd backend && python -m pytest tests/test_settings_behavior_ui.py::test_destructive_settings_actions_share_confirmation_primitive -q
+      - name: Typed confirmation contract
+        run: cd backend && python -m pytest tests/test_settings_behavior_ui.py::test_typed_confirmation_gates_destructive_action_until_exact_phrase -q
+      - name: Action rerender contract
+        run: cd backend && python -m pytest tests/test_settings_behavior_ui.py::test_settings_action_rerenders_use_viewport_preserving_refresh -q
