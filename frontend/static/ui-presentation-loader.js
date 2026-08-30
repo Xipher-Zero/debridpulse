@@ -11,6 +11,7 @@
   const STYLES = Object.freeze([
     {href: '/ui-help-chrome.css?v=2', marker: 'data-dp-help-chrome-style'},
     {href: '/ui-help-license-documents.css?v=2', marker: 'data-dp-help-license-documents-style'},
+    {href: '/ui-help-final-balance.css?v=1', marker: 'data-dp-help-final-balance-style'},
     {href: '/ui-settings-downloads-completion.css?v=4', marker: 'data-dp-settings-downloads-completion-style'},
     {href: '/ui-settings-password-layout-followup.css?v=1', marker: 'data-dp-settings-password-layout-followup-style'},
     {href: '/ui-settings-aria2-live.css?v=3', marker: 'data-dp-settings-aria2-live-style'},
@@ -19,6 +20,7 @@
     {href: '/ui-settings-authentication.css?v=1', marker: 'data-dp-settings-authentication-style'},
     {href: '/ui-settings-authentication-polish.css?v=1', marker: 'data-dp-settings-authentication-polish-style'},
     {href: '/ui-settings-authentication-oidc.css?v=1', marker: 'data-dp-settings-authentication-oidc-style'},
+    {href: '/ui-settings-card-icons.css?v=1', marker: 'data-dp-settings-card-icons-style'},
   ]);
 
   const RUNTIMES = Object.freeze([
@@ -41,6 +43,7 @@
     {src: '/ui-settings-authentication-callback.js?v=1', marker: 'data-dp-settings-authentication-callback'},
     {src: '/ui-settings-downloads-completion.js?v=4&statefix=1', marker: 'data-dp-settings-downloads-completion'},
     {src: '/ui-settings-aria2-live.js?v=5', marker: 'data-dp-settings-aria2-live'},
+    {src: '/ui-settings-card-icons.js?v=1', marker: 'data-dp-settings-card-icons'},
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
   ]);
 
