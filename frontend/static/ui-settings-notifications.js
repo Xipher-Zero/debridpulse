@@ -197,6 +197,9 @@
   }
 
   function polishFooter(sendReportButton) {
+    const saveHint = document.querySelector('#view-settings .dp-settings-master-footer .dp-settings-save-hint');
+    if (saveHint) saveHint.textContent = 'Changes remain unsaved until Apply Settings is selected.';
+
     const host = panel();
     if (!host) return;
 
