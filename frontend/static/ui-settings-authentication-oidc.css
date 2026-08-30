@@ -89,6 +89,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card .dp-setting
 /* Clearing a stored OIDC secret remains a clear-on-Apply choice, but now owns
    the third control slot in the Client ID / Client Secret row. */
 body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-action {
+  --dp-oidc-clear-copy-line: 13.75px;
   min-width: max-content;
   display: grid;
   grid-template-rows: auto var(--dp-input-height) auto;
@@ -129,7 +130,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy {
   color: var(--dp-text-primary);
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: var(--dp-oidc-clear-copy-line);
   white-space: nowrap;
 }
 
@@ -140,7 +141,10 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret > input {
 
 body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-hint {
   max-width: 220px;
-  margin-top: 7px;
+  /* The checkbox copy is centered in an input-height slot. Collapse the
+     unused lower half of that slot so helper copy starts at the normal 7px
+     helper gap without moving the checkbox off the neighboring field centerline. */
+  margin-top: calc(7px - ((var(--dp-input-height) - var(--dp-oidc-clear-copy-line)) / 2));
   color: var(--dp-text-muted);
   font-size: 10px;
   line-height: 1.35;
@@ -154,7 +158,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-access {
   display: grid;
   gap: 16px;
   padding-top: 18px;
-  border-top: 1px solid var(--dp-border, var(--border));
+  border-top: 1px solid color-mix(in srgb, var(--dp-border, var(--border)) 65%, var(--dp-text-muted) 35%);
 }
 
 body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {

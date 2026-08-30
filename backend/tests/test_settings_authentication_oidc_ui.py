@@ -95,6 +95,19 @@ def test_oidc_clear_secret_is_third_credentials_control_on_field_centerline():
     assert "align-items: center;" in css
 
 
+def test_oidc_clear_secret_helper_collapses_unused_lower_half_of_input_slot():
+    css = read(OIDC_CSS)
+    assert "--dp-oidc-clear-copy-line: 13.75px;" in css
+    assert "line-height: var(--dp-oidc-clear-copy-line);" in css
+    assert "margin-top: calc(7px - ((var(--dp-input-height) - var(--dp-oidc-clear-copy-line)) / 2));" in css
+
+
+def test_oidc_access_separator_is_strengthened_without_added_weight_or_accent():
+    css = read(OIDC_CSS)
+    assert "border-top: 1px solid color-mix(in srgb, var(--dp-border, var(--border)) 65%, var(--dp-text-muted) 35%);" in css
+    assert "border-top: 2px" not in css
+
+
 def test_oidc_sign_in_test_moves_to_authentication_context_footer_without_redefining_behavior():
     source = read(OIDC_JS)
     settings = read(SETTINGS_JS)
