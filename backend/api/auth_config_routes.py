@@ -136,6 +136,7 @@ def _oidc_configuration_version_for_status(cfg) -> str:
 
 
 async def _oidc_runtime_available(cfg, configured: bool) -> bool | None:
+    """Probe live provider discovery outside the configuration read/write path."""
     if not oidc_auth_enabled(cfg) or not configured:
         return None
     try:
@@ -146,12 +147,18 @@ async def _oidc_runtime_available(cfg, configured: bool) -> bool | None:
         return False
 
 
-async def _authentication_payload(request: Request) -> dict:
-    cfg = get_settings()
+async def _authentication_payload(request: Request, *, cfg=None) -> dict:
+    """Build the authentication configuration/status payload from local state only.
+
+    This function intentionally performs no provider discovery or other network
+    I/O. GET/PUT /api/auth/config are configuration boundaries and must remain
+    available even when the configured identity provider is offline or deleted.
+    Live OIDC reachability is exposed separately by the runtime-status endpoint.
+    """
+    cfg = cfg if cfg is not None else get_settings()
     oidc_configured, callback_url = _local_oidc_state(cfg)
     oidc_version = _oidc_configuration_version_for_status(cfg) if oidc_configured else ""
     oidc_verification = oidc_verification_store.status(oidc_version)
-    oidc_available = await _oidc_runtime_available(cfg, oidc_configured)
     principal = getattr(request.state, "principal", Principal.anonymous())
     configured_public_base = str(getattr(cfg, "public_base_url", "") or "").strip()
     env_public_base = str(os.getenv("PUBLIC_BASE_URL", "") or "").strip()
@@ -167,7 +174,7 @@ async def _authentication_payload(request: Request) -> dict:
         "oidc_enabled": oidc_auth_enabled(cfg),
         "oidc_configured": oidc_configured,
         "oidc_ready": oidc_auth_ready(cfg) if oidc_auth_enabled(cfg) else False,
-        "oidc_available": oidc_available,
+        "oidc_available": None,
         "oidc_verified": oidc_verification.verified,
         "oidc_verified_at": oidc_verification.verified_at,
         "oidc_provider_name": str(getattr(cfg, "oidc_provider_name", "") or "OpenID Connect"),
@@ -373,6 +380,22 @@ async def get_authentication_config(request: Request):
     return response
 
 
+@router.get("/api/auth/oidc/runtime-status")
+async def get_oidc_runtime_status():
+    """Return live provider reachability without blocking configuration access."""
+    cfg = get_settings()
+    oidc_configured, _callback_url = _local_oidc_state(cfg)
+    response = JSONResponse(
+        {
+            "oidc_enabled": oidc_auth_enabled(cfg),
+            "oidc_configured": oidc_configured,
+            "oidc_available": await _oidc_runtime_available(cfg, oidc_configured),
+        }
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @router.put("/api/auth/config")
 async def update_authentication_config(request: Request, update: AuthenticationConfigUpdate):
     current = get_settings()
@@ -429,7 +452,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
         "enabled" if password_auth_enabled(clean) else "disabled",
         "enabled" if oidc_auth_enabled(clean) else "disabled",
     )
-    response = JSONResponse({"ok": True, **(await _authentication_payload(request))})
+    response = JSONResponse({"ok": True, **(await _authentication_payload(request, cfg=clean))})
     response.headers["Cache-Control"] = "no-store"
     return response
 
