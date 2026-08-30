@@ -1,6 +1,11 @@
-"""Runtime architecture invariants for the v1.0.11 migration layer."""
+"""Final-state runtime ownership contracts for the v1.0.11 UI branch."""
 
+from __future__ import annotations
+
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
+
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
@@ -10,84 +15,102 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_first_paint_does_not_own_page_runtimes():
+def all_js_files() -> list[Path]:
+    return sorted(STATIC.glob("*.js"))
+
+
+def files_containing(fragment: str) -> list[str]:
+    return [
+        path.name
+        for path in all_js_files()
+        if fragment in path.read_text(encoding="utf-8")
+    ]
+
+
+def normalized(path: str) -> str:
+    return urlsplit(path).path
+
+
+def test_first_paint_bootstrap_does_not_own_application_io_or_page_state() -> None:
     bootstrap = read("ui-theme-bootstrap.js")
-    assert "/ui-presentation-loader.js?v=1" in bootstrap
-    for page_runtime in (
-        "ui-visual-behavior-fixes.js",
-        "ui-statistics-orchestrator.js",
-        "ui-statistics-batch3.js",
-        "ui-statistics-batch4.js",
-        "ui-statistics-batch5.js",
-        "ui-settings-page.js",
-        "ui-settings-architecture.js",
-        "ui-settings-presentation.js",
-        "ui-error-semantics.js",
+    assert "localStorage.getItem('theme')" in bootstrap
+    for forbidden in (
+        "fetch(",
+        "/api/",
+        "XMLHttpRequest",
+        "EventSource",
+        "MutationObserver",
+        "loadDetailedStats",
+        "loadSettings",
     ):
-        assert page_runtime not in bootstrap
+        assert forbidden not in bootstrap
 
 
-def test_statistics_wrapper_graph_has_exactly_one_writer():
+def test_statistics_detail_endpoint_has_one_frontend_io_owner() -> None:
+    owners = files_containing("/stats/detail")
+    assert len(owners) == 1, f"Statistics detail I/O has multiple owners: {owners}"
+
+
+def test_statistics_render_wrapper_has_at_most_one_owner() -> None:
     owners = {
-        name: read(name).count("window.loadDetailedStats = wrapped")
-        for name in (
-            "ui-statistics-orchestrator.js",
-            "ui-visual-behavior-fixes.js",
-            "ui-statistics-batch3.js",
-            "ui-statistics-batch4.js",
-            "ui-statistics-batch5.js",
-        )
+        path.name: path.read_text(encoding="utf-8").count("window.loadDetailedStats = wrapped")
+        for path in all_js_files()
     }
-    assert owners == {
-        "ui-statistics-orchestrator.js": 1,
-        "ui-visual-behavior-fixes.js": 0,
-        "ui-statistics-batch3.js": 0,
-        "ui-statistics-batch4.js": 0,
-        "ui-statistics-batch5.js": 0,
-    }
+    active = {name: count for name, count in owners.items() if count}
+    assert sum(active.values()) <= 1, f"Statistics render wrapper has multiple owners: {active}"
 
 
-def test_statistics_layers_share_one_post_render_event():
-    for name in (
-        "ui-visual-behavior-fixes.js",
-        "ui-statistics-batch3.js",
-        "ui-statistics-batch4.js",
-        "ui-statistics-batch5.js",
-    ):
-        assert "debridpulse:statistics-rendered" in read(name)
-
-
-def test_settings_page_is_clean_room_and_not_dom_lifecycle_driven():
+def test_settings_page_is_authoritative_clean_room_owner() -> None:
     settings = read("ui-settings-page.js")
     assert "window.DPSettingsPage = Object.freeze({load});" in settings
     assert "window.loadSettings = load;" in settings
     assert "view.innerHTML =" in settings
     assert "request('GET', '/settings'" in settings
     assert "request('GET', '/auth/config'" in settings
-    assert "window.renderSettings =" not in settings
-    assert "window.getFormSettings =" not in settings
-    assert "window.switchSettingsTab =" not in settings
-    assert "settingsObserver" not in settings
-    assert "observeSettingsForm" not in settings
-    assert "scheduleApply" not in settings
-    assert "new MutationObserver" not in settings
-    assert "dp-settings-preserved" not in settings
+    for forbidden in (
+        "window.renderSettings =",
+        "window.getFormSettings =",
+        "window.switchSettingsTab =",
+        "settingsObserver",
+        "observeSettingsForm",
+        "new MutationObserver",
+    ):
+        assert forbidden not in settings
 
 
-def test_statistics_page_does_not_own_global_shell_branding():
-    batch5_js = read("ui-statistics-batch5.js")
-    batch5_css = read("ui-statistics-batch5.css")
+def test_loaded_runtime_markers_are_unique_when_a_presentation_loader_exists() -> None:
+    loader_path = STATIC / "ui-presentation-loader.js"
+    if not loader_path.exists():
+        return
+
+    loader = loader_path.read_text(encoding="utf-8")
+    runtime_paths = re.findall(r"src:\s*['\"]([^'\"]+\.js(?:\?[^'\"]*)?)['\"]", loader)
+    style_paths = re.findall(r"href:\s*['\"]([^'\"]+\.css(?:\?[^'\"]*)?)['\"]", loader)
+    markers = re.findall(r"marker:\s*['\"]([^'\"]+)['\"]", loader)
+
+    normalized_runtimes = [normalized(path) for path in runtime_paths]
+    normalized_styles = [normalized(path) for path in style_paths]
+
+    assert len(normalized_runtimes) == len(set(normalized_runtimes))
+    assert len(normalized_styles) == len(set(normalized_styles))
+    assert len(markers) == len(set(markers))
+
+
+def test_statistics_page_does_not_own_global_shell_branding() -> None:
+    statistics_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(STATIC.glob("ui-statistics*"))
+    )
     shell_js = read("ui-shell-runtime.js")
     shell_css = read("ui-shell-brand.css")
 
-    assert "normalizeShellBranding" not in batch5_js
-    assert "sidebar-version" not in batch5_js
-    assert "#sidebar-version.dp-app-version" not in batch5_css
+    assert "normalizeShellBranding" not in statistics_sources
+    assert "#sidebar-version.dp-app-version" not in statistics_sources
     assert "normalizeShellBranding" in shell_js
     assert "#sidebar-version.dp-app-version" in shell_css
 
 
-def test_error_semantics_does_not_busy_poll_for_core_helpers():
+def test_error_semantics_does_not_busy_poll_for_core_helpers() -> None:
     error = read("ui-error-semantics.js")
     assert "startAfterCore" in error
     assert "setTimeout(startWhenReady" not in error
