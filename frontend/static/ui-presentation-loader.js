@@ -9,7 +9,7 @@
   'use strict';
 
   const STYLES = Object.freeze([
-    {href: '/ui-help-chrome.css?v=1', marker: 'data-dp-help-chrome-style'},
+    {href: '/ui-help-chrome.css?v=2', marker: 'data-dp-help-chrome-style'},
     {href: '/ui-help-license-documents.css?v=2', marker: 'data-dp-help-license-documents-style'},
     {href: '/ui-settings-downloads-completion.css?v=4', marker: 'data-dp-settings-downloads-completion-style'},
     {href: '/ui-settings-password-layout-followup.css?v=1', marker: 'data-dp-settings-password-layout-followup-style'},
@@ -29,7 +29,7 @@
     {src: '/ui-statistics-batch4.js?v=2', marker: 'data-dp-statistics-batch4'},
     {src: '/ui-statistics-batch5.js?v=7', marker: 'data-dp-statistics-batch5'},
     {src: '/ui-help-page.js?v=1', marker: 'data-dp-help-page'},
-    {src: '/ui-help-chrome.js?v=1', marker: 'data-dp-help-chrome'},
+    {src: '/ui-help-chrome.js?v=2', marker: 'data-dp-help-chrome'},
     {src: '/ui-help-license-documents.js?v=2', marker: 'data-dp-help-license-documents'},
     {src: '/ui-settings-page.js?v=4', marker: 'data-dp-settings-page'},
     {src: '/ui-settings-auth-resilience.js?v=1', marker: 'data-dp-settings-auth-resilience'},
