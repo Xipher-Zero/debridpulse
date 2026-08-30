@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 SETTINGS = STATIC / "ui-settings-page.js"
 STYLE = STATIC / "ui-settings-page.css"
+MODAL_STYLE = STATIC / "ui-modal-contract.css"
 
 
 def source(path: Path) -> str:
@@ -34,6 +35,7 @@ def test_settings_apply_rerenders_without_losing_viewport():
 def test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs():
     js = source(SETTINGS)
     css = source(STYLE)
+    modal_css = source(MODAL_STYLE)
     assert "async function confirmAction" in js
     assert 'role="alertdialog"' in js
     assert 'aria-modal="true"' in js
@@ -43,10 +45,13 @@ def test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs():
     assert "cancel.focus()" in js
     assert "window.confirm" not in js
     assert "window.prompt" not in js
-    assert ".dp-settings-confirm-overlay" in css
-    assert ".dp-settings-confirm-dialog" in css
-    assert 'data-tone="warning"' in css
-    assert 'data-tone="danger"' in css
+    assert ".dp-settings-confirm-overlay" not in css
+    assert "--dp-panel-surface" not in css
+    assert "box-shadow: var(--dp-panel-shadow)" not in css
+    assert ".dp-settings-confirm-overlay" in modal_css
+    assert ".dp-settings-confirm-dialog" in modal_css
+    assert 'data-tone="warning"' in modal_css
+    assert 'data-tone="danger"' in modal_css
 
 
 def test_destructive_settings_actions_share_confirmation_primitive():
