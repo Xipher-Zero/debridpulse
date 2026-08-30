@@ -1,0 +1,299 @@
+/* DebridPulse v1.0.11 Notifications card. */
+body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header > .card-title {
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-header-copy {
+  justify-self: center;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-header-spacer {
+  min-width: 1px;
+}
+
+/* Match Sources / Downloads / Data & Maintenance: field labels and helper copy
+   share the input's 3px content datum rather than drifting left of the field. */
+body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-discord-card .dp-settings-field > .form-label,
+body.dp-v11-structural #view-settings [data-panel="notifications"] .dp-settings-discord-card .dp-settings-field > .form-hint {
+  position: relative;
+  inset-inline-start: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-discord-card .dp-settings-field > .form-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-discord-card .dp-settings-field > .form-hint {
+  display: block;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row,
+body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row,
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row {
+  display: grid;
+  grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr) auto;
+  align-items: center;
+  gap: 28px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row > .dp-settings-field {
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  justify-self: end;
+  gap: 8px;
+  width: 132px;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-actions .btn {
+  width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview--compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  margin-top: 7px;
+  padding: 0 0 0 3px;
+  border: 0;
+  background: transparent;
+  color: var(--dp-text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview--compact[hidden] {
+  display: none !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview--compact img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-avatar-preview--compact span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Delivery row is intentionally narrower than the identity row to continue the
+   page's inverted-pyramid rhythm. Webhook inputs receive the useful width; the
+   numeric update interval remains compact. */
+body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row {
+  width: min(92%, 1500px);
+  margin: 26px auto 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 1.45fr) minmax(320px, 1.45fr) minmax(190px, .55fr);
+  align-items: start;
+  gap: 28px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field {
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-clear-secret {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px !important;
+  padding: 8px 3px 0;
+  border-top: 1px solid var(--dp-divider);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-clear-secret > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-clear-secret b {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-clear-secret small {
+  color: var(--dp-text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-clear-secret input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row {
+  display: grid;
+  align-items: stretch;
+  gap: 24px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--primary {
+  width: min(82%, 1360px);
+  margin: 28px auto 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--secondary {
+  width: min(58%, 980px);
+  margin: 20px auto 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row > .dp-settings-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+  margin: 0 !important;
+  padding-right: 6px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle-info .tl,
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle-info .td {
+  display: block;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row .toggle {
+  align-self: center;
+  justify-self: end;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1280px) {
+  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header {
+    grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row {
+    grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.25fr) auto;
+    gap: 22px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row {
+    width: 96%;
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(170px, .45fr);
+    gap: 22px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--primary {
+    width: 92%;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--secondary {
+    width: 70%;
+  }
+}
+
+@media (max-width: 1000px) {
+  body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row,
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-avatar-actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-self: end;
+    width: auto;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-avatar-actions .btn {
+    width: auto;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field:last-child {
+    grid-column: 1 / -1;
+    width: min(320px, 100%);
+    justify-self: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--primary,
+  body.dp-v11-structural #view-settings .dp-settings-notifications-toggle-row--secondary {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-discord-card > .card-header > .card-title,
+  body.dp-v11-structural #view-settings .dp-settings-notifications-header-copy {
+    justify-self: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-header-spacer {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural #view-settings .dp-settings-notifications-identity-row,
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-avatar-actions {
+    grid-column: auto;
+    justify-self: start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-notifications-delivery-row > .dp-settings-field:last-child {
+    grid-column: auto;
+    width: 100%;
+    justify-self: stretch;
+  }
+}
