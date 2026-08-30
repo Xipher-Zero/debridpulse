@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 CALLBACK_JS = STATIC / "ui-settings-authentication-callback.js"
+POLISH_JS = STATIC / "ui-settings-authentication-polish.js"
 LOADER = STATIC / "ui-presentation-loader.js"
 WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
@@ -51,6 +52,16 @@ def test_callback_draft_runtime_does_not_persist_or_probe_configuration():
     assert "fetch(" not in source
     assert "XMLHttpRequest" not in source
     assert "oidc_callback_url" not in source
+
+
+def test_callback_observers_share_one_helper_copy_to_prevent_dom_ping_pong():
+    callback = read(CALLBACK_JS)
+    polish = read(POLISH_JS)
+    helper = "Copy this exact URL into your identity provider's redirect/callback URI configuration."
+    assert helper in callback
+    assert helper in polish
+    assert "ensureHint(field, OIDC_CALLBACK_HINT);" in polish
+    assert "Redirect URI to configure with your OpenID Connect provider." not in polish
 
 
 def test_callback_runtime_is_in_frontend_syntax_gate():
