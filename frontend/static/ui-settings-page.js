@@ -73,6 +73,149 @@
     }
   }
 
+
+  function captureSettingsViewport() {
+    const settingsScroller = root()?.querySelector('.dp-settings-scroll');
+    const shellScroller = document.getElementById('content');
+    return {
+      settingsTop: Number(settingsScroller?.scrollTop || 0),
+      shellTop: Number(shellScroller?.scrollTop || 0),
+      windowTop: Number(window.scrollY || 0),
+    };
+  }
+
+  function restoreSettingsViewport(snapshot) {
+    if (!snapshot) return;
+    const settingsScroller = root()?.querySelector('.dp-settings-scroll');
+    const shellScroller = document.getElementById('content');
+    if (settingsScroller) settingsScroller.scrollTop = snapshot.settingsTop;
+    if (shellScroller) shellScroller.scrollTop = snapshot.shellTop;
+    if (typeof window.scrollTo === 'function') {
+      try {
+        window.scrollTo({top: snapshot.windowTop, left: window.scrollX || 0, behavior: 'auto'});
+      } catch (_) {
+        window.scrollTo(0, snapshot.windowTop);
+      }
+    }
+  }
+
+  function renderPreservingViewport() {
+    const snapshot = captureSettingsViewport();
+    render();
+    restoreSettingsViewport(snapshot);
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => restoreSettingsViewport(snapshot));
+    }
+  }
+
+  async function confirmAction({
+    title,
+    message,
+    confirmLabel = 'Confirm',
+    tone = 'warning',
+    typedPhrase = '',
+  }) {
+    return new Promise(resolve => {
+      const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const overlay = document.createElement('div');
+      const dialogId = `dp-settings-confirm-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const titleId = `${dialogId}-title`;
+      const messageId = `${dialogId}-message`;
+      overlay.className = 'dp-settings-confirm-overlay';
+      overlay.innerHTML = `
+        <section class="dp-settings-confirm-dialog" data-tone="${tone === 'danger' ? 'danger' : 'warning'}"
+                 role="alertdialog" aria-modal="true" aria-labelledby="${titleId}" aria-describedby="${messageId}">
+          <header class="dp-settings-confirm-header">
+            <div class="dp-settings-confirm-title" id="${titleId}"></div>
+          </header>
+          <div class="dp-settings-confirm-body">
+            <p class="dp-settings-confirm-message" id="${messageId}"></p>
+            <label class="dp-settings-confirm-typed" ${typedPhrase ? '' : 'hidden'}>
+              <span class="form-label"></span>
+              <input class="input" type="text" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+          <footer class="dp-settings-confirm-footer">
+            <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
+            <button class="btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}" type="button" data-confirm-accept></button>
+          </footer>
+        </section>`;
+
+      const dialog = overlay.querySelector('.dp-settings-confirm-dialog');
+      const titleEl = overlay.querySelector('.dp-settings-confirm-title');
+      const messageEl = overlay.querySelector('.dp-settings-confirm-message');
+      const typed = overlay.querySelector('.dp-settings-confirm-typed');
+      const typedLabel = typed?.querySelector('.form-label');
+      const typedInput = typed?.querySelector('input');
+      const cancel = overlay.querySelector('[data-confirm-cancel]');
+      const accept = overlay.querySelector('[data-confirm-accept]');
+
+      titleEl.textContent = String(title || 'Confirm action');
+      messageEl.textContent = String(message || '');
+      accept.textContent = String(confirmLabel || 'Confirm');
+
+      if (typedPhrase) {
+        typed.hidden = false;
+        typedLabel.textContent = `Type ${typedPhrase} to confirm.`;
+        typedInput.placeholder = typedPhrase;
+        accept.disabled = true;
+        typedInput.addEventListener('input', () => {
+          accept.disabled = typedInput.value !== typedPhrase;
+        });
+        typedInput.addEventListener('keydown', event => {
+          if (event.key === 'Enter' && !accept.disabled) {
+            event.preventDefault();
+            accept.click();
+          }
+        });
+      }
+
+      let settled = false;
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        overlay.remove();
+        if (!document.querySelector('.dp-settings-confirm-overlay')) {
+          document.body.classList.remove('dp-settings-confirm-open');
+        }
+        if (previousFocus?.isConnected) {
+          try { previousFocus.focus(); } catch (_) {}
+        }
+        resolve(value);
+      };
+
+      cancel.addEventListener('click', () => finish(false));
+      accept.addEventListener('click', () => finish(true));
+      overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          finish(false);
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(dialog.querySelectorAll('button:not([disabled]), input:not([disabled])'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      });
+
+      document.body.appendChild(overlay);
+      document.body.classList.add('dp-settings-confirm-open');
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => cancel.focus());
+      } else {
+        cancel.focus();
+      }
+    });
+  }
+
   function syncGlobalSettings(data) {
     state.settings = data;
     try { settingsData = data; } catch (_) {}
@@ -996,7 +1139,7 @@
     syncGlobalSettings(result);
     if (renderAfter) {
       state.activeTab = active;
-      render();
+      renderPreservingViewport();
     }
     if (!quiet) notify('Settings saved', 'success');
     try { if (typeof updateAria2ngLink === 'function') updateAria2ngLink(); } catch (_) {}
@@ -1038,8 +1181,14 @@
   }
 
   async function persistAuth(button, payload = authPayload(), successMessage = 'Authentication settings saved') {
-    if (!payload.auth_password_enabled && !payload.auth_oidc_enabled && state.auth?.authentication_required) {
-      if (!window.confirm('Disable all interactive authentication and place DebridPulse in open mode?')) return false;
+    if (!payload.auth_password_enabled && !payload.auth_oidc_enabled && state.auth?.authentication_required && !payload.confirm_open_mode) {
+      const confirmed = await confirmAction({
+        title: 'Disable interactive authentication?',
+        message: 'Username & Password and OpenID Connect will both be disabled. DebridPulse and its API will be intentionally open.',
+        confirmLabel: 'Continue to Open Mode',
+        tone: 'warning',
+      });
+      if (!confirmed) return false;
       payload.confirm_open_mode = true;
     }
 
@@ -1048,7 +1197,7 @@
       state.auth = await request('PUT', '/auth/config', payload, 15000);
       syncAuthIntoSettings(state.auth);
       state.activeTab = 'authentication';
-      render();
+      renderPreservingViewport();
       notify(successMessage, 'success');
       return true;
     } catch (error) {
@@ -1163,7 +1312,7 @@
       const hours = intOf('stats_report_window_hours', 24);
       const result = await request('POST', `/stats/report/send?hours=${hours}`, undefined, 20000);
       notify(`Report sent (${result.hours || hours}h)`, 'success');
-      render();
+      renderPreservingViewport();
     } catch (error) {
       notify(error.message, 'error');
     } finally {
@@ -1211,8 +1360,14 @@
       notify('Database wipe is disabled in the current draft', 'warn');
       return;
     }
-    if (!window.confirm('This will remove all database rows. Continue?')) return;
-    if (window.prompt('Type WIPE to confirm database wipe') !== 'WIPE') return;
+    const confirmed = await confirmAction({
+      title: 'Wipe database?',
+      message: 'Processing must be paused. This permanently removes all database rows. If Backup Before Wipe is enabled, DebridPulse will create the required backup first.',
+      confirmLabel: 'Wipe Database',
+      tone: 'danger',
+      typedPhrase: 'WIPE',
+    });
+    if (!confirmed) return;
 
     setBusy(button, true, 'Wiping…');
     try {
@@ -1223,7 +1378,7 @@
       try {
         if (document.getElementById('view-torrents')?.classList.contains('active') && typeof loadTorrents === 'function') loadTorrents();
       } catch (_) {}
-      render();
+      renderPreservingViewport();
     } catch (error) {
       notify(error.message, 'error');
     } finally {
@@ -1232,15 +1387,22 @@
   }
 
   async function clearPassword(button) {
-    if (!window.confirm('Clear the stored local password? Username & Password authentication will also be disabled.')) return;
     const payload = authPayload();
+    const entersOpenMode = !payload.auth_oidc_enabled && state.auth?.authentication_required;
+    const confirmed = await confirmAction({
+      title: 'Clear stored password?',
+      message: entersOpenMode
+        ? 'The stored local password will be removed and Username & Password authentication will be disabled. Because OpenID Connect is also disabled, DebridPulse will enter open mode.'
+        : 'The stored local password will be removed and Username & Password authentication will be disabled.',
+      confirmLabel: 'Clear Password',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+
     payload.auth_password_enabled = false;
     payload.auth_password = '';
     payload.clear_password = true;
-    if (!payload.auth_oidc_enabled && state.auth?.authentication_required) {
-      if (!window.confirm('This also leaves no interactive authentication. Continue into open mode?')) return;
-      payload.confirm_open_mode = true;
-    }
+    if (entersOpenMode) payload.confirm_open_mode = true;
     await persistAuth(button, payload, 'Stored password cleared');
   }
 
@@ -1251,7 +1413,7 @@
       const result = await request('PUT', '/auth/api-token', {enabled: desired}, 10000);
       state.auth.api_token_enabled = !!result.enabled;
       state.auth.api_token_configured = !!result.configured;
-      render();
+      renderPreservingViewport();
       notify(`API token ${result.enabled ? 'enabled' : 'disabled'}`, 'success');
     } catch (error) {
       inputEl.checked = !desired;
@@ -1268,7 +1430,7 @@
       state.auth.api_token_enabled = true;
       state.auth.api_token_configured = true;
       state.oneTimeToken = text(result.token);
-      render();
+      renderPreservingViewport();
       notify(result.rotated ? 'API token rotated' : 'API token generated', 'success');
     } catch (error) {
       notify(error.message, 'error');
@@ -1278,14 +1440,20 @@
   }
 
   async function clearToken(button) {
-    if (!window.confirm('Clear the API token? Existing automation using it will immediately lose access.')) return;
+    const confirmed = await confirmAction({
+      title: 'Revoke API token?',
+      message: 'Existing automation using this token will immediately lose access.',
+      confirmLabel: 'Revoke Token',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     setBusy(button, true, 'Clearing…');
     try {
       await request('DELETE', '/auth/api-token', undefined, 10000);
       state.auth.api_token_enabled = false;
       state.auth.api_token_configured = false;
       state.oneTimeToken = '';
-      render();
+      renderPreservingViewport();
       notify('API token cleared', 'success');
     } catch (error) {
       notify(error.message, 'error');
@@ -1339,7 +1507,7 @@
       state.auth = await request('GET', '/auth/config', undefined, 7000);
       syncAuthIntoSettings(state.auth);
       state.activeTab = 'authentication';
-      render();
+      renderPreservingViewport();
     } catch (_) {}
 
     const ok = !!result?.ok;
