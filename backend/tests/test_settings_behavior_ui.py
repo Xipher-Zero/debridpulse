@@ -64,19 +64,27 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     assert "await confirmAction" in persist_auth
     assert "Continue to Open Mode" in persist_auth
     assert "!payload.confirm_open_mode" in persist_auth
+    assert "if (!confirmed) return false;" in persist_auth
+    assert persist_auth.index("if (!confirmed) return false;") < persist_auth.index("payload.confirm_open_mode = true")
 
     assert "await confirmAction" in password
     assert password.count("await confirmAction") == 1
     assert "entersOpenMode" in password
     assert "payload.confirm_open_mode = true" in password
+    assert "if (!confirmed) return;" in password
+    assert password.index("if (!confirmed) return;") < password.index("payload.auth_password_enabled = false")
 
     assert "await confirmAction" in token
     assert "Revoke API token?" in token
     assert "Revoke Token" in token
+    assert "if (!confirmed) return;" in token
+    assert token.index("if (!confirmed) return;") < token.index("request('DELETE', '/auth/api-token'")
 
     assert "await confirmAction" in wipe
     assert "typedPhrase: 'WIPE'" in wipe
     assert "Wipe Database" in wipe
+    assert "if (!confirmed) return;" in wipe
+    assert wipe.index("if (!confirmed) return;") < wipe.index("request('POST', '/admin/database/wipe'")
 
 
 def test_typed_confirmation_gates_destructive_action_until_exact_phrase():
