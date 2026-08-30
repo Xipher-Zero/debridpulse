@@ -52,6 +52,71 @@ body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle {
   margin: 0;
 }
 
+/* Authentication Status --------------------------------------------------- */
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(270px, 1.15fr) minmax(260px, .9fr) auto;
+  align-items: start;
+  gap: 24px;
+  margin-top: 14px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row > .dp-settings-status {
+  min-width: 0;
+  align-self: center;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime {
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label,
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
+  position: relative;
+  inset-inline-start: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
+  display: block;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-session-actions {
+  min-width: max-content;
+  display: grid;
+  grid-template-rows: auto var(--dp-input-height);
+  align-items: start;
+  justify-items: end;
+  justify-self: end;
+  gap: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-session-action-control {
+  min-height: var(--dp-input-height);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-session-action-control .btn {
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-card .dp-settings-auth-public-base-field {
+  margin-top: 0;
+}
+
 /* Username & Password ------------------------------------------------------ */
 /* Match the form datum used by Sources, Downloads, Maintenance, and
    Notifications: labels and helper copy start with the input content edge. */
@@ -232,6 +297,11 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
+  body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
+    grid-template-columns: minmax(190px, 1fr) minmax(230px, 1.1fr) minmax(230px, .9fr) auto;
+    gap: 18px;
+  }
+
   body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
     grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.2fr) auto;
     gap: 22px;
@@ -258,6 +328,20 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
 
   body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
     justify-self: start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-session-actions {
+    grid-template-rows: auto;
+    justify-self: end;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-session-actions .dp-settings-auth-action-label {
+    display: none;
   }
 
   body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {

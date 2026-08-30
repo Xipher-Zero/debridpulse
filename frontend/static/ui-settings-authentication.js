@@ -4,6 +4,7 @@
 
   const USERNAME_PASSWORD_MARKER = 'dpUsernamePasswordPolished';
   const API_ACCESS_MARKER = 'dpApiAccessPolished';
+  const AUTH_STATUS_MARKER = 'dpAuthenticationStatusPolished';
   let scheduled = false;
 
   function textOf(node) {
@@ -28,6 +29,18 @@
 
   function findApiAccessCard() {
     return findCard('API Access');
+  }
+
+  function findAuthenticationStatusCard() {
+    return findCard('Authentication Status');
+  }
+
+  function findSessionsSecurityCard() {
+    return findCard('Sessions & Security');
+  }
+
+  function findOidcCard() {
+    return findCard('OpenID Connect');
   }
 
   function fieldFor(card, key) {
@@ -68,6 +81,91 @@
     enableInfo?.querySelector('.td')?.remove();
     enable.classList.add('dp-settings-auth-header-enable');
     header.appendChild(enable);
+  }
+
+  function mechanismLabel(value) {
+    const raw = String(value || '').trim();
+    if (raw === 'password_session') return 'Password Session';
+    if (raw === 'oidc_session') return 'OIDC Session';
+    return raw || 'Open / anonymous';
+  }
+
+  function polishAuthenticationStatusCard(card) {
+    if (!card || card.dataset[AUTH_STATUS_MARKER] === '1') return;
+
+    const body = card.querySelector(':scope > .card-body');
+    const statusGrid = body?.querySelector(':scope > .dp-settings-status-grid') || null;
+    const sessionsCard = findSessionsSecurityCard();
+    const sessionsBody = sessionsCard?.querySelector(':scope > .card-body') || null;
+    const sessionStatusGrid = sessionsBody?.querySelector(':scope > .dp-settings-status-grid') || null;
+    const oidcCard = findOidcCard();
+    const oidcBody = oidcCard?.querySelector(':scope > .card-body') || null;
+    const oidcEnable = oidcCard?.querySelector('input[data-setting="auth_oidc_enabled"]')?.closest('.dp-settings-toggle') || null;
+    const lifetimeField = fieldFor(sessionsCard, 'auth_session_lifetime_hours');
+    const publicBaseField = sessionsCard?.querySelector('#dp-auth-public-base-url')?.closest('.dp-settings-field') || null;
+    const logoutActions = sessionsCard?.querySelector('button[data-action="logout-session"]')?.closest('.dp-settings-actions') || null;
+    const logoutButton = logoutActions?.querySelector('button[data-action="logout-session"]') || null;
+
+    const sessionStatuses = Array.from(sessionStatusGrid?.querySelectorAll(':scope > .dp-settings-status') || []);
+    const activeSessions = sessionStatuses.find(function (item) {
+      return textOf(item.querySelector(':scope > b')).toLowerCase() === 'active browser sessions';
+    }) || null;
+    const currentMechanism = sessionStatuses.find(function (item) {
+      return textOf(item.querySelector(':scope > b')).toLowerCase() === 'current mechanism';
+    }) || null;
+
+    if (!body || !statusGrid || !sessionsCard || !sessionsBody || !sessionStatusGrid ||
+        !oidcCard || !oidcBody || !oidcEnable || !lifetimeField || !publicBaseField ||
+        !logoutActions || !logoutButton || !activeSessions || !currentMechanism) return;
+
+    card.dataset[AUTH_STATUS_MARKER] = '1';
+    card.classList.add('dp-settings-auth-status-card');
+    oidcCard.classList.add('dp-settings-oidc-card');
+
+    // "Current session" and the moved mechanism tile expose the same backend
+    // value. Keep the explicit mechanism tile in the new session row and remove
+    // the duplicate KPI from the upper status grid.
+    Array.from(statusGrid.querySelectorAll(':scope > .dp-settings-status')).forEach(function (item) {
+      if (textOf(item.querySelector(':scope > b')).toLowerCase() === 'current session') item.remove();
+    });
+
+    const activeTitle = activeSessions.querySelector(':scope > b');
+    if (activeTitle) activeTitle.textContent = 'Active Browser Sessions';
+
+    const mechanismTitle = currentMechanism.querySelector(':scope > b');
+    const mechanismValue = currentMechanism.querySelector(':scope > span');
+    if (mechanismTitle) mechanismTitle.textContent = 'Current Authentication Mechanism';
+    if (mechanismValue) mechanismValue.textContent = mechanismLabel(mechanismValue.textContent);
+
+    setFieldCopy(
+      lifetimeField,
+      'Browser Session Lifetime',
+      'How long a browser login remains valid before sign-in is required again.'
+    );
+    lifetimeField.classList.add('dp-settings-auth-session-lifetime');
+
+    logoutActions.classList.add('dp-settings-auth-session-actions');
+    const actionLabel = document.createElement('span');
+    actionLabel.className = 'form-label dp-settings-auth-action-label';
+    actionLabel.setAttribute('aria-hidden', 'true');
+    actionLabel.textContent = '\u00a0';
+
+    const actionControl = document.createElement('span');
+    actionControl.className = 'dp-settings-auth-session-action-control';
+    actionControl.appendChild(logoutButton);
+    logoutActions.replaceChildren(actionLabel, actionControl);
+
+    const sessionRow = document.createElement('div');
+    sessionRow.className = 'dp-settings-auth-session-row';
+    sessionRow.append(activeSessions, currentMechanism, lifetimeField, logoutActions);
+    statusGrid.after(sessionRow);
+
+    const publicBaseLabel = publicBaseField.querySelector(':scope > .form-label');
+    if (publicBaseLabel) publicBaseLabel.textContent = 'Public Base URL';
+    publicBaseField.classList.add('dp-settings-auth-public-base-field');
+    oidcEnable.after(publicBaseField);
+
+    sessionsCard.remove();
   }
 
   function polishUsernamePasswordCard(card) {
@@ -209,15 +307,22 @@
   function needsPolish() {
     const credentials = findUsernamePasswordCard();
     const apiAccess = findApiAccessCard();
+    const status = findAuthenticationStatusCard();
+    const sessions = findSessionsSecurityCard();
     return !!(
       (credentials && credentials.dataset[USERNAME_PASSWORD_MARKER] !== '1') ||
-      (apiAccess && apiAccess.dataset[API_ACCESS_MARKER] !== '1')
+      (apiAccess && apiAccess.dataset[API_ACCESS_MARKER] !== '1') ||
+      (status && status.dataset[AUTH_STATUS_MARKER] !== '1') ||
+      sessions
     );
   }
 
   function polish() {
     scheduled = false;
     installApiTokenLanguageBridge();
+
+    const status = findAuthenticationStatusCard();
+    if (status) polishAuthenticationStatusCard(status);
 
     const credentials = findUsernamePasswordCard();
     if (credentials) polishUsernamePasswordCard(credentials);
