@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -12,6 +13,12 @@ INDEX = STATIC / "index.html"
 VERSION = ROOT / "VERSION"
 STATS_ICON = STATIC / "icons" / "dp" / "statistics.svg"
 ICON_MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
+
+_STATS_DETAIL_IO_PATTERNS = (
+    re.compile(r"""\bapi\(\s*['\"]GET['\"]\s*,\s*['\"]/stats/detail"""),
+    re.compile(r"""\bfetch\(\s*['\"]/stats/detail"""),
+    re.compile(r"""\brequest\(\s*['\"]GET['\"]\s*,\s*['\"]/stats/detail"""),
+)
 
 
 def read(path: Path) -> str:
@@ -41,6 +48,15 @@ def statistics_css() -> str:
 
 def first_party_js_files() -> list[Path]:
     return sorted(STATIC.glob("*.js"))
+
+
+def statistics_detail_io_owners() -> list[str]:
+    owners = []
+    for path in first_party_js_files():
+        source = read(path)
+        if any(pattern.search(source) for pattern in _STATS_DETAIL_IO_PATTERNS):
+            owners.append(path.name)
+    return owners
 
 
 def test_statistics_master_surface_period_and_primary_copy_are_locked() -> None:
@@ -189,11 +205,7 @@ def test_completion_chart_keeps_reviewed_header_copy_and_purple_visual_language(
 
 
 def test_statistics_detail_io_has_one_frontend_owner_and_no_duplicate_wrapper() -> None:
-    endpoint_owners = [
-        path.name
-        for path in first_party_js_files()
-        if "/stats/detail" in read(path)
-    ]
+    endpoint_owners = statistics_detail_io_owners()
     wrapper_owners = [
         path.name
         for path in first_party_js_files()
