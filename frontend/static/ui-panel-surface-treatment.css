@@ -8,7 +8,8 @@
  */
 
 /* Shared treatment for the large card families reviewed across Dashboard,
-   Downloads, Activity Log, Help, Statistics and Details. */
+   Downloads, Activity Log, Help, Statistics and Details. dp-large-panel-surface
+   is the reusable standard-strength opt-in for equivalent nested content cards. */
 body.dp-v11-structural :is(
   #view-dashboard .dp-dashboard-quick-add,
   #view-dashboard .dp-dashboard-activity,
@@ -18,7 +19,8 @@ body.dp-v11-structural :is(
   #view-stats > .card,
   #view-stats > .scard,
   #view-stats > .list-card,
-  #modal .dp-detail-section-card
+  #modal .dp-detail-section-card,
+  .dp-large-panel-surface
 ) {
   background:
     radial-gradient(ellipse 96% 74% at 88% 86%,
@@ -52,7 +54,8 @@ body.light.dp-v11-structural :is(
   #view-stats > .card,
   #view-stats > .scard,
   #view-stats > .list-card,
-  #modal .dp-detail-section-card
+  #modal .dp-detail-section-card,
+  .dp-large-panel-surface
 ) {
   background:
     radial-gradient(ellipse 98% 76% at 88% 86%,
