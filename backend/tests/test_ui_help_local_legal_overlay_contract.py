@@ -16,10 +16,10 @@ def read(path: Path) -> str:
 def test_help_local_document_overlay_loads_after_help_chrome():
     loader = read(LOADER)
 
-    assert "/ui-help-license-documents.css?v=1" in loader
-    assert "/ui-help-license-documents.js?v=1" in loader
+    assert "/ui-help-license-documents.css?v=2" in loader
+    assert "/ui-help-license-documents.js?v=2" in loader
     assert loader.index("/ui-help-chrome.js?v=1") < loader.index(
-        "/ui-help-license-documents.js?v=1"
+        "/ui-help-license-documents.js?v=2"
     )
 
 
@@ -56,6 +56,28 @@ def test_overlay_uses_canonical_dialog_semantics_and_normal_close_paths():
     assert "overscroll-behavior: contain" in css
 
 
+def test_overlay_uses_card_material_and_document_text_reflows_to_modal_width():
+    runtime = read(RUNTIME)
+    css = read(CSS)
+
+    assert "documentBody = document.createElement('div')" in runtime
+    assert "renderBundledDocument(modal.documentBody, payload.content);" in runtime
+    assert "filter(Boolean).join(' ')" in runtime
+    assert "dp-help-legal-document-block" in runtime
+
+    assert "background: linear-gradient(160deg, var(--dp-surface-2), var(--dp-surface-1))" in css
+    assert "box-shadow: var(--dp-shadow-card)" in css
+    assert "border: 1px solid var(--dp-border-default)" in css
+    assert "font-size: var(--dp-type-card-title-size)" in css
+    assert "padding: var(--dp-card-padding)" in css
+
+    assert ".dp-help-legal-document {" in css
+    assert "max-width: none" in css
+    assert ".dp-help-legal-document-block {" in css
+    assert "white-space: normal" in css
+    assert "overflow-wrap: anywhere" in css
+
+
 def test_overlay_identifies_bundled_snapshot_and_exposes_only_explicit_latest_link():
     runtime = read(RUNTIME)
 
@@ -64,7 +86,7 @@ def test_overlay_identifies_bundled_snapshot_and_exposes_only_explicit_latest_li
     assert "link.target = '_blank';" in runtime
     assert "link.rel = 'noopener';" in runtime
     assert "payload.latest_url" in runtime
-    assert "modal.documentBody.textContent = String(payload.content || '');" in runtime
+    assert "renderBundledDocument(modal.documentBody, payload.content);" in runtime
 
 
 def test_help_legal_overlay_runtime_is_in_frontend_syntax_gate():
