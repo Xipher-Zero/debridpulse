@@ -1,0 +1,43 @@
+name: Temp Auth KPI Test
+
+on:
+  push:
+    branches:
+      - work/auth-status-kpi-20260830
+    paths:
+      - .github/workflows/temp-auth-kpi-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: work/auth-status-kpi-20260830
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+          pip install ruff
+      - name: Lint resolved symbols
+        run: cd backend && ruff check api auth core db services main.py --select F821,F822,F823
+      - name: Full backend suite
+        run: cd backend && python -m pytest tests/ -v --tb=short
+      - name: Compile Python
+        run: cd backend && python -m compileall -q .
+      - name: Browser syntax
+        run: |
+          node --check frontend/static/ui-settings-page.js
+          node --check frontend/static/ui-settings-authentication.js
+          node --check frontend/static/ui-settings-authentication-polish.js
+          node --check frontend/static/ui-settings-authentication-oidc.js
