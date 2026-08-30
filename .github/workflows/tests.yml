@@ -71,6 +71,7 @@ jobs:
           node --check frontend/static/ui-presentation-loader.js
           node --check frontend/static/ui-shell-runtime.js
           node --check frontend/static/ui-help-page.js
+          node --check frontend/static/ui-help-chrome.js
           node --check frontend/static/ui-settings-page.js
           node --check frontend/static/ui-settings-auth-resilience.js
           node --check frontend/static/ui-settings-authentication.js
