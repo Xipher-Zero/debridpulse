@@ -2,6 +2,7 @@
 (function () {
   'use strict';
 
+  const OIDC_CALLBACK_HINT = "Copy this exact URL into your identity provider's redirect/callback URI configuration.";
   let scheduled = false;
 
   function textOf(node) {
@@ -85,7 +86,7 @@
     if (!oidc || !publicBaseField || !field) return false;
 
     field.classList.add('dp-settings-auth-callback-field');
-    ensureHint(field, 'Redirect URI to configure with your OpenID Connect provider.');
+    ensureHint(field, OIDC_CALLBACK_HINT);
 
     if (field.parentElement !== publicBaseField.parentElement || field.previousElementSibling !== publicBaseField) {
       publicBaseField.after(field);
