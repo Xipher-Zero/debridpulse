@@ -18,7 +18,7 @@ def test_help_local_document_overlay_loads_after_help_chrome():
 
     assert "/ui-help-license-documents.css?v=2" in loader
     assert "/ui-help-license-documents.js?v=2" in loader
-    assert loader.index("/ui-help-chrome.js?v=1") < loader.index(
+    assert loader.index("/ui-help-chrome.js?v=2") < loader.index(
         "/ui-help-license-documents.js?v=2"
     )
 
