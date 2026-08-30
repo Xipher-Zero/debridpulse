@@ -43,34 +43,25 @@ def test_help_rewrite_uses_master_card_and_semantic_tabs():
     assert "overflow-y: auto" in css
 
 
-def test_help_rewrite_preserves_the_seven_legacy_content_sections():
+def test_help_rewrite_preserves_the_seven_section_boundaries_during_content_overhaul():
     runtime = _read(STATIC / "ui-help-page.js")
 
-    for tab_id, label in (
-        ("quickstart", "Quick Start"),
-        ("howitworks", "How it works"),
-        ("aria2", "aria2"),
-        ("integrations", "Integrations"),
-        ("settings", "Settings"),
-        ("trouble", "Troubleshooting"),
-        ("license", "License"),
-    ):
-        assert f"['{tab_id}', '{label}']" in runtime
+    sections = (
+        ("quickstart", "Quick Start", "quickStartPanel"),
+        ("howitworks", "How it works", "howItWorksPanel"),
+        ("aria2", "aria2", "aria2Panel"),
+        ("integrations", "Integrations", "integrationsPanel"),
+        ("settings", "Settings", "settingsPanel"),
+        ("trouble", "Troubleshooting", "troubleshootingPanel"),
+        ("license", "License", "licensePanel"),
+    )
 
-    for legacy_copy in (
-        "Five steps to your first download",
-        "Complete these steps once and everything runs automatically from then on.",
-        "The download pipeline",
-        "aria2 — the download engine",
-        "Discord Notifications",
-        "Prometheus Metrics",
-        "Settings reference",
-        'Torrents are not downloading / stuck at "processing"',
-        "DebridPulse licensing",
-        "GPL-2.0-or-later",
-        "The complete license, notices, dependency inventory, and source offer are also packaged in the DebridPulse container image.",
-    ):
-        assert legacy_copy in runtime
+    for tab_id, label, panel_function in sections:
+        assert f"['{tab_id}', '{label}']" in runtime
+        assert f"function {panel_function}()" in runtime
+        assert f"panel('{tab_id}', {panel_function}())" in runtime
+
+    assert "Getting started with DebridPulse" in runtime
 
 
 def test_help_page_uses_canonical_components_without_repainting_them():
