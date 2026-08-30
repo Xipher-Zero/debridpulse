@@ -1,0 +1,224 @@
+/* DebridPulse v1.0.11 OpenID Connect Settings regrouping pass. */
+
+/* Header follows the same Title / centered flavor / Enable pattern as the
+   other Settings cards with a master control. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .card-title {
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy {
+  justify-self: center;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
+  justify-self: end;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-body {
+  display: grid;
+  gap: 20px;
+}
+
+/* Every OIDC field uses the actual input-content start as the sandwich datum,
+   not the outer control border. The runtime derives this inset from the
+   control's computed padding. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-label,
+body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-hint {
+  position: relative;
+  inset-inline-start: var(--dp-settings-oidc-input-text-inset, 0px);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-hint {
+  display: block;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-row {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  align-items: start;
+  gap: 28px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-row > .dp-settings-field {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+
+/* Use horizontal space according to expected content rather than giving every
+   value a full-width row. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-row--origin {
+  grid-template-columns: minmax(0, 1.85fr) minmax(380px, 1fr);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-row--identity {
+  grid-template-columns: minmax(260px, .72fr) minmax(0, 1.68fr);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-row--credentials {
+  grid-template-columns: minmax(320px, .82fr) minmax(0, 1.18fr);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-row--protocol {
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr);
+}
+
+/* The callback is no longer a floating centered reference field; it is the
+   derived half of the Public Base URL relationship. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card .dp-settings-auth-callback-field {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* Clearing a stored OIDC secret remains a clear-on-Apply choice. Keep that
+   lifecycle visible without giving the checkbox its own full form row. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--dp-text-muted);
+  cursor: pointer;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy > b {
+  color: var(--dp-text-primary);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy > small {
+  color: var(--dp-text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret > input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* Access-control policy is one coherent section rather than four unrelated
+   vertically stacked controls. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-access {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--dp-border, var(--border));
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading > span {
+  color: var(--dp-text-primary);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading > small {
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-allow-all {
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists > .dp-settings-field {
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists textarea.input {
+  min-height: 104px;
+  resize: vertical;
+}
+
+@media (max-width: 1280px) {
+  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header {
+    grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-row {
+    gap: 22px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-row--origin {
+    grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding-block: 10px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy,
+  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
+    justify-self: start;
+    text-align: left;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-row--origin,
+  body.dp-v11-structural #view-settings .dp-settings-oidc-row--identity,
+  body.dp-v11-structural #view-settings .dp-settings-oidc-row--credentials,
+  body.dp-v11-structural #view-settings .dp-settings-oidc-row--protocol,
+  body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret {
+    justify-content: flex-start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy {
+    text-align: left;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
+    display: grid;
+    gap: 4px;
+  }
+}
