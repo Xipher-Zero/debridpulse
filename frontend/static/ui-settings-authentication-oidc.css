@@ -163,8 +163,9 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-access {
 
 body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
   min-width: 0;
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(160px, .6fr) minmax(420px, 1.4fr) minmax(390px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 18px;
 }
@@ -177,7 +178,11 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-section-title {
 }
 
 body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
-  justify-self: center;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(620px, 44%);
+  transform: translate(-50%, -50%);
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.4;
@@ -246,8 +251,8 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists textarea.inpu
     grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
-    grid-template-columns: auto minmax(300px, 1fr) auto;
+  body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
+    width: min(500px, 40%);
   }
 }
 
@@ -275,8 +280,14 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists textarea.inpu
 
   body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-action,
   body.dp-v11-structural #view-settings .dp-settings-oidc-section-title,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy,
   body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
+    justify-self: start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
+    position: static;
+    width: auto;
+    transform: none;
     justify-self: start;
   }
 

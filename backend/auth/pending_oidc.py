@@ -8,6 +8,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from auth.oidc_verification import oidc_verification_store
 from auth.oidc_version import (
     authentication_configuration_baseline_version,
     oidc_configuration_version,
@@ -173,6 +174,10 @@ def commit_verified_pending_oidc(
         return False
 
     merged = _merge_verified_oidc_settings(current, item)
+    # Record the proof before the configuration write. If proof persistence fails,
+    # the configuration remains untouched. If the subsequent config write fails,
+    # the stored fingerprint cannot validate against the unchanged live config.
+    oidc_verification_store.record(item.configuration_version)
     save_settings(merged)
     authoritative = merged.model_copy(update={"oidc_client_secret_clear": False}, deep=True)
     apply_settings(authoritative)

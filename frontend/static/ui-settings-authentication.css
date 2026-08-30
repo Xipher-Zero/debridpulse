@@ -53,6 +53,129 @@ body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle {
 }
 
 /* Authentication Status --------------------------------------------------- */
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Reuse the Dashboard KPI component classes/material language while adapting
+   only the state-card geometry: no icon, no sparkline, centered two-line copy. */
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat {
+  --c: var(--dp-text-muted);
+  min-width: 0;
+  min-height: 76px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 13px 16px 12px;
+  border: 1px solid rgba(105, 119, 181, .23);
+  border-radius: var(--dp-radius-lg);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--c) 12%, transparent) 0%,
+      color-mix(in srgb, var(--c) 5%, transparent) 24%,
+      transparent 48%),
+    linear-gradient(145deg, rgba(17, 22, 51, .96), rgba(9, 14, 35, .98));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.025),
+    -7px 9px 24px -14px rgba(0, 0, 14, .42),
+    0 7px 20px rgba(0,0,12,.055);
+  transform: none;
+  transition: none;
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat {
+  border-color: #dce1ef;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--c) 9%, white) 0%,
+      color-mix(in srgb, var(--c) 3%, white) 27%,
+      #ffffff 58%,
+      #f8f9fd 100%);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.70),
+    -8px 10px 25px -14px rgba(64, 73, 110, .22),
+    0 6px 18px rgba(70, 79, 113, .055);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat::before {
+  display: block;
+  content: '';
+  position: absolute;
+  z-index: 4;
+  left: -1px;
+  top: -1px;
+  width: calc(100% - 19px);
+  height: 10px;
+  border-top: 3px solid var(--c);
+  border-left: 1.5px solid color-mix(in srgb, var(--c) 72%, transparent);
+  border-top-left-radius: 12px;
+  background: transparent;
+  box-shadow: 0 -1px 8px color-mix(in srgb, var(--c) 24%, transparent);
+  -webkit-mask-image: linear-gradient(90deg,
+    #000 0%, #000 87%, rgba(0,0,0,.80) 93%, transparent 100%);
+  mask-image: linear-gradient(90deg,
+    #000 0%, #000 87%, rgba(0,0,0,.80) 93%, transparent 100%);
+  pointer-events: none;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="green"] {
+  --c: var(--dp-semantic-success);
+}
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="yellow"] {
+  --c: var(--dp-semantic-processing);
+}
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="red"] {
+  --c: var(--dp-semantic-error);
+}
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="neutral"] {
+  --c: var(--dp-text-muted);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-body {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-label {
+  min-width: 0;
+  color: var(--dp-text-primary);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-val {
+  min-width: 0;
+  color: var(--dp-text-muted);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-open-notice {
+  min-height: 0;
+  display: block;
+  padding: 7px 12px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-auth-open-notice > span {
+  display: block;
+  line-height: 1.4;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
   min-width: 0;
   width: 100%;
@@ -297,6 +420,10 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
+  body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
     grid-template-columns: minmax(190px, 1fr) minmax(230px, 1.1fr) minmax(230px, .9fr) auto;
     gap: 18px;
@@ -328,6 +455,10 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
 
   body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
     justify-self: start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
