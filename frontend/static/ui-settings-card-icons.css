@@ -1,5 +1,9 @@
 /* DebridPulse v1.0.11 Settings inner-card icon presentation. */
 
+body.dp-v11-structural #view-settings .dp-settings-replaced-legacy-icon {
+  display: none !important;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-inner-card-title {
   display: inline-flex;
   align-items: center;
