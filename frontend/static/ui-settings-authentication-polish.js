@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 Authentication status mini-polish. */
+/* DebridPulse v1.0.11 Authentication mini-polish. */
 (function () {
   'use strict';
 
@@ -8,12 +8,24 @@
     return String(node?.textContent || '').trim();
   }
 
-  function authenticationStatusCard() {
-    const panel = document.querySelector('#view-settings [data-panel="authentication"]');
+  function authenticationPanel() {
+    return document.querySelector('#view-settings [data-panel="authentication"]');
+  }
+
+  function cardByTitle(title) {
+    const panel = authenticationPanel();
     if (!panel) return null;
     return Array.from(panel.querySelectorAll('.dp-settings-card')).find(function (card) {
-      return textOf(card.querySelector(':scope > .card-header > .card-title')) === 'Authentication Status';
+      return textOf(card.querySelector(':scope > .card-header > .card-title')) === title;
     }) || null;
+  }
+
+  function authenticationStatusCard() {
+    return cardByTitle('Authentication Status');
+  }
+
+  function oidcCard() {
+    return cardByTitle('OpenID Connect');
   }
 
   function fieldByLabel(card, label) {
@@ -31,6 +43,14 @@
       field.appendChild(hint);
     }
     if (textOf(hint) !== copy) hint.textContent = copy;
+  }
+
+  function alignSandwichToInputText(field) {
+    const control = field?.querySelector('input, textarea, select') || null;
+    if (!field || !control) return;
+    const style = window.getComputedStyle(control);
+    const inset = style.paddingInlineStart || style.paddingLeft || '0px';
+    field.style.setProperty('--dp-settings-auth-input-text-inset', inset);
   }
 
   function polishLifetime(card) {
@@ -54,15 +74,24 @@
       control.appendChild(unit);
     }
 
+    alignSandwichToInputText(field);
     return true;
   }
 
-  function polishCallback(card) {
-    const field = fieldByLabel(card, 'OIDC Callback URL');
-    if (!field) return false;
+  function polishCallback(statusCard) {
+    const oidc = oidcCard();
+    const publicBaseField = oidc?.querySelector('#dp-auth-public-base-url')?.closest('.dp-settings-field') || null;
+    const field = fieldByLabel(statusCard, 'OIDC Callback URL') || fieldByLabel(oidc, 'OIDC Callback URL');
+    if (!oidc || !publicBaseField || !field) return false;
 
     field.classList.add('dp-settings-auth-callback-field');
     ensureHint(field, 'Redirect URI to configure with your OpenID Connect provider.');
+
+    if (field.parentElement !== publicBaseField.parentElement || field.previousElementSibling !== publicBaseField) {
+      publicBaseField.after(field);
+    }
+
+    alignSandwichToInputText(field);
     return true;
   }
 

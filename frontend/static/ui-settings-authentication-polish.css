@@ -1,12 +1,16 @@
-/* DebridPulse v1.0.11 Authentication status mini-polish. */
+/* DebridPulse v1.0.11 Authentication mini-polish. */
 
-/* The sandwich datum is the outer edge of the actual form control. */
+/*
+ * Field sandwiches align to the actual editable-text datum inside the form
+ * control. The runtime derives this value from the control's computed inline
+ * padding so the relationship survives shared input-padding changes.
+ */
 body.dp-v11-structural #view-settings .dp-settings-auth-session-lifetime-polished > .form-label,
 body.dp-v11-structural #view-settings .dp-settings-auth-session-lifetime-polished > .form-hint,
 body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-label,
 body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-hint {
   position: relative;
-  inset-inline-start: 0;
+  inset-inline-start: var(--dp-settings-auth-input-text-inset, 0px);
 }
 
 /* Keep the title clean while declaring the UOM as part of the control. */
@@ -34,8 +38,8 @@ body.dp-v11-structural #view-settings .dp-settings-auth-duration-unit {
   user-select: none;
 }
 
-/* Callback is reference information, not a full-width working field. */
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-callback-field {
+/* Callback is OIDC reference information, not Authentication Status. */
+body.dp-v11-structural #view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
   width: clamp(420px, 30%, 640px);
   max-width: 100%;
   margin: 18px auto 0;
@@ -53,7 +57,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-h
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-callback-field {
+  body.dp-v11-structural #view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
     width: 100%;
   }
 }
