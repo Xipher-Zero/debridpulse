@@ -56,6 +56,14 @@ body.dp-v11-structural #view-settings .dp-settings-backups-field-grid > .dp-sett
   margin: 0;
 }
 
+/* Match the established Sources / Downloads field sandwich: label and helper
+   copy share the input's 3px content datum, including wrapped helper lines. */
+body.dp-v11-structural #view-settings [data-panel="maintenance"] .dp-settings-field > .form-label,
+body.dp-v11-structural #view-settings [data-panel="maintenance"] .dp-settings-field > .form-hint {
+  position: relative;
+  inset-inline-start: 3px;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-backups-field-grid .form-label {
   display: block;
   margin-bottom: 7px;
@@ -79,7 +87,18 @@ body.dp-v11-structural #view-settings .dp-settings-backups-actions .btn {
   width: auto;
 }
 
-/* Database Wipe Controls */
+body.dp-v11-structural #view-settings .dp-settings-run-backup-success {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 25%, transparent);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-run-backup-success:hover {
+  background: color-mix(in srgb, var(--green) 22%, transparent);
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+}
+
+/* Database Reset Controls */
 body.dp-v11-structural #view-settings .dp-settings-database-wipe-card .dp-settings-caution {
   text-align: center;
 }

@@ -25,7 +25,7 @@
   }
 
   function findWipeCard() {
-    return findCard(['Database Destructive Actions', 'Database Wipe Controls']);
+    return findCard(['Database Destructive Actions', 'Database Wipe Controls', 'Database Reset Controls']);
   }
 
   function findBackupsCard() {
@@ -99,7 +99,7 @@
 
     card.dataset[WIPE_MARKER] = '1';
     card.classList.add('dp-settings-database-wipe-card');
-    title.textContent = 'Database Wipe Controls';
+    title.textContent = 'Database Reset Controls';
 
     ensureHeaderCopy(
       header,
@@ -109,21 +109,23 @@
 
     const cautionTitle = caution.querySelector('b');
     const cautionBody = caution.querySelector('span');
-    if (cautionTitle) cautionTitle.textContent = 'Database Wipe is Destructive';
+    if (cautionTitle) cautionTitle.textContent = 'Database Reset is Destructive';
     if (cautionBody) {
-      cautionBody.textContent = 'Processing must be paused before the database can be wiped. A backup can be created automatically before the wipe begins.';
+      cautionBody.textContent = 'Processing must be paused before the database can be reset. A backup can be created automatically before the reset begins.';
     }
 
     if (!setToggleCopy(
       backupToggle,
-      'Backup Database Before Wipe',
-      'Create a backup before wiping the database. The wipe is aborted if the backup fails.'
+      'Backup Database Before Reset',
+      'Create a backup before resetting the database. The reset is aborted if the backup fails.'
     )) return;
     if (!setToggleCopy(
       allowToggle,
-      'Allow Database Wipe',
-      'Unlock the database wipe action.'
+      'Allow Database Reset',
+      'Unlock the database reset action.'
     )) return;
+
+    wipeButton.textContent = 'Reset Database';
 
     let row = card.querySelector('.dp-settings-database-wipe-row');
     if (!row) {
@@ -180,6 +182,9 @@
     setToggleCopy(enabledToggle, 'Enable', '');
     enabledToggle.classList.add('dp-settings-backups-header-toggle');
     header.appendChild(enabledToggle);
+
+    runButton.classList.remove('btn-ghost');
+    runButton.classList.add('dp-settings-run-backup-success');
 
     let grid = card.querySelector('.dp-settings-backups-field-grid');
     if (!grid) {

@@ -12,26 +12,29 @@ def source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_database_wipe_card_copy_and_operator_order_are_locked():
+def test_database_reset_card_copy_and_operator_order_are_locked():
     js = source(RUNTIME)
 
-    assert "Database Wipe Controls" in js
+    assert "Database Reset Controls" in js
     assert "Configure database safeguards. Perform a destructive database reset when required." in js
-    assert "Database Wipe is Destructive" in js
+    assert "Database Reset is Destructive" in js
     assert (
-        "Processing must be paused before the database can be wiped. "
-        "A backup can be created automatically before the wipe begins."
+        "Processing must be paused before the database can be reset. "
+        "A backup can be created automatically before the reset begins."
     ) in js
-    assert "Backup Database Before Wipe" in js
-    assert "Create a backup before wiping the database. The wipe is aborted if the backup fails." in js
-    assert "Allow Database Wipe" in js
-    assert "Unlock the database wipe action." in js
+    assert "Backup Database Before Reset" in js
+    assert "Create a backup before resetting the database. The reset is aborted if the backup fails." in js
+    assert "Allow Database Reset" in js
+    assert "Unlock the database reset action." in js
+    assert "wipeButton.textContent = 'Reset Database';" in js
     assert "row.append(backupToggle, allowToggle, wipeActions);" in js
 
 
-def test_database_wipe_card_reuses_existing_controls_and_is_idempotent():
+def test_database_reset_card_reuses_existing_internal_controls_and_is_idempotent():
     js = source(RUNTIME)
 
+    # Persisted keys and the existing backend action remain intentionally stable;
+    # only operator-facing language changes from wipe to reset.
     assert 'input[data-setting="db_backup_before_wipe"]' in js
     assert 'input[data-setting="db_wipe_enabled"]' in js
     assert 'button[data-action="wipe-database"]' in js
@@ -42,7 +45,7 @@ def test_database_wipe_card_reuses_existing_controls_and_is_idempotent():
     assert "attributes: true" not in js
 
 
-def test_database_wipe_toggle_text_is_stacked_and_controls_stay_adjacent():
+def test_database_reset_toggle_text_is_stacked_and_controls_stay_adjacent():
     css = source(STYLE)
 
     assert ".dp-settings-database-wipe-row > .dp-settings-toggle" in css
@@ -85,6 +88,28 @@ def test_backups_retention_fields_use_requested_titles_and_flavor_copy():
         assert flavor in js
 
 
+def test_backups_retention_field_text_uses_shared_three_pixel_input_datum():
+    css = source(STYLE)
+
+    assert '[data-panel="maintenance"] .dp-settings-field > .form-label' in css
+    assert '[data-panel="maintenance"] .dp-settings-field > .form-hint' in css
+    assert "position: relative;" in css
+    assert "inset-inline-start: 3px;" in css
+
+
+def test_run_backup_now_uses_scoped_success_semantics_and_list_remains_unchanged():
+    js = source(RUNTIME)
+    css = source(STYLE)
+
+    assert "runButton.classList.remove('btn-ghost');" in js
+    assert "runButton.classList.add('dp-settings-run-backup-success');" in js
+    assert ".dp-settings-run-backup-success" in css
+    assert "color: var(--green);" in css
+    assert "color-mix(in srgb, var(--green) 12%, transparent)" in css
+    assert "color-mix(in srgb, var(--green) 22%, transparent)" in css
+    assert "listButton.classList.remove" not in js
+
+
 def test_backups_retention_layout_is_three_by_two_with_centered_actions_and_responsive_collapse():
     css = source(STYLE)
 
@@ -101,8 +126,8 @@ def test_backups_retention_layout_is_three_by_two_with_centered_actions_and_resp
 def test_maintenance_presentation_assets_are_loaded_after_settings_page_with_cache_bump():
     loader = source(LOADER)
 
-    css_entry = "'/ui-settings-maintenance-wipe.css?v=2'"
-    js_entry = "'/ui-settings-maintenance-wipe.js?v=2'"
+    css_entry = "'/ui-settings-maintenance-wipe.css?v=3'"
+    js_entry = "'/ui-settings-maintenance-wipe.js?v=3'"
     settings_entry = "'/ui-settings-page.js?v=4'"
     assert css_entry in loader
     assert js_entry in loader
