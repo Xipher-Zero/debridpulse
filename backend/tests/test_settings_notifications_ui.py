@@ -160,6 +160,7 @@ def test_notifications_footer_actions_are_contextual_and_semantically_distinct()
     js = source(RUNTIME)
     icon = source(SEND_ICON)
 
+    assert "Changes remain unsaved until Apply Settings is selected." in js
     assert "test-discord-draft" in js
     assert "send-report-draft" in js
     assert "reportButton.dataset.contextAction = 'notifications';" in js
@@ -168,6 +169,8 @@ def test_notifications_footer_actions_are_contextual_and_semantically_distinct()
     assert "'/icons/lucide/send.svg', 'Send Report Now'" in js
     assert "<svg" in icon
     assert "<path" in icon
+    assert 'stroke="#B866F5"' in icon
+    assert 'stroke="currentColor"' not in icon
     assert "data:image" not in icon
 
 
