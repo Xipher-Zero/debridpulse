@@ -1,10 +1,10 @@
 /* DebridPulse v1.0.11 Help presentation structure.
  *
  * The clean Help runtime owns content and tab behavior. This layer only applies
- * the approved Settings-derived presentation language: topical Lucide chips,
- * user-facing section labels, and one full-width content card per Help section.
- * It deliberately uses no DOM observer; Help paints once and tab changes only
- * toggle existing panels.
+ * the approved Settings-derived presentation language: master-header copy,
+ * topical Lucide chips, user-facing section labels, and one full-width content
+ * card per Help section. It deliberately uses no DOM observer; Help paints once
+ * and tab changes only toggle existing panels.
  */
 (function () {
   'use strict';
@@ -25,6 +25,22 @@
 
   function root() {
     return document.getElementById('view-help');
+  }
+
+  function normalizeMasterHeader(view) {
+    const copy = view.querySelector('.dp-help-header-copy');
+    const title = copy?.querySelector('.dp-help-header-title');
+    if (!copy || !title || copy.querySelector('.dp-help-header-subtitle')) return;
+
+    const textBlock = document.createElement('div');
+    textBlock.className = 'dp-help-header-text';
+    title.before(textBlock);
+    textBlock.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'dp-help-header-subtitle';
+    subtitle.textContent = 'To Be Determined';
+    textBlock.appendChild(subtitle);
   }
 
   function decorateTabs(view) {
@@ -80,6 +96,7 @@
   function enhance() {
     const view = root();
     if (!view || !view.querySelector('.dp-help-master-card')) return false;
+    normalizeMasterHeader(view);
     decorateTabs(view);
     structureSectionCards(view);
     view.dataset.dpHelpChromeReady = '1';
