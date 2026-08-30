@@ -1,0 +1,42 @@
+/* DebridPulse v1.0.11 final master-card polish.
+ *
+ * This late presentation layer owns only the final reviewed cross-page details:
+ * Help master icon glow and the integrated Downloads multi-selection strip.
+ */
+
+/* Help uses the same feature-icon glow language as the other master cards. */
+body.dp-v11-structural #view-help .dp-help-title-icon {
+  --dp-feature-icon-glow: #a646f4;
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-feature-icon-glow) 62%, transparent))
+    drop-shadow(0 0 11px color-mix(in srgb, var(--dp-feature-icon-glow) 27%, transparent));
+}
+
+body.light.dp-v11-structural #view-help .dp-help-title-icon {
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--dp-feature-icon-glow) 70%, transparent))
+    drop-shadow(0 0 15px color-mix(in srgb, var(--dp-feature-icon-glow) 32%, transparent));
+}
+
+/* Multi-selection actions are part of the Downloads table state, not a second
+   floating page card. The runtime places this strip directly before the table
+   viewport, which puts it immediately above the column-header row. */
+body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.dp-downloads-bulk-integrated {
+  margin: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-top: 0 !important;
+  border-bottom: 1px solid var(--dp-divider) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.dp-downloads-bulk-integrated > .dp-downloads-bulk-toolbar {
+  min-height: 54px;
+  border-radius: 0 !important;
+}
+
+body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.dp-downloads-bulk-integrated.visible {
+  display: block !important;
+}
