@@ -1,0 +1,108 @@
+name: Temporary Settings Behavior Final Polish
+
+on:
+  push:
+    branches:
+      - work/settings-behavior-confirm
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: work/settings-behavior-confirm
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+      - name: Apply final confirmation contract polish
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          js_path = Path('frontend/static/ui-settings-page.js')
+          css_path = Path('frontend/static/ui-modal-contract.css')
+          test_path = Path('backend/tests/test_settings_behavior_ui.py')
+
+          js = js_path.read_text(encoding='utf-8')
+          css = css_path.read_text(encoding='utf-8')
+          tests = test_path.read_text(encoding='utf-8')
+
+          old = "class=\"btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}\" type=\"button\" data-confirm-accept"
+          new = "class=\"btn ${tone === 'danger' ? 'dp-settings-confirm-danger' : 'btn-primary'}\" type=\"button\" data-confirm-accept"
+          if js.count(old) != 1:
+              raise SystemExit(f'expected one obsolete btn-danger reference, found {js.count(old)}')
+          js = js.replace(old, new, 1)
+          if 'btn-danger' in js:
+              raise SystemExit('obsolete btn-danger remains in Settings runtime')
+
+          anchor = '''.dp-settings-confirm-footer .btn {\n  min-width: 104px;\n}\n'''
+          addition = '''.dp-settings-confirm-footer .btn {\n  min-width: 104px;\n}\n\n.dp-settings-confirm-footer .dp-settings-confirm-danger {\n  color: var(--dp-state-error);\n  background: var(--dp-state-error-bg);\n  border-color: color-mix(in srgb, var(--dp-state-error) 34%, transparent);\n}\n\n.dp-settings-confirm-footer .dp-settings-confirm-danger:hover:not(:disabled) {\n  color: var(--dp-state-error);\n  background: color-mix(in srgb, var(--dp-state-error) 17%, transparent);\n  border-color: color-mix(in srgb, var(--dp-state-error) 48%, transparent);\n}\n'''
+          if css.count(anchor) != 1:
+              raise SystemExit('confirmation footer button anchor changed')
+          if '.dp-settings-confirm-danger' in css:
+              raise SystemExit('danger confirm styling already present')
+          css = css.replace(anchor, addition, 1)
+
+          old = '''    assert "await confirmAction" in persist_auth\n    assert "Continue to Open Mode" in persist_auth\n    assert "!payload.confirm_open_mode" in persist_auth\n\n    assert "await confirmAction" in password\n'''
+          new = '''    assert "await confirmAction" in persist_auth\n    assert "Continue to Open Mode" in persist_auth\n    assert "!payload.confirm_open_mode" in persist_auth\n    assert "if (!confirmed) return false;" in persist_auth\n    assert persist_auth.index("if (!confirmed) return false;") < persist_auth.index("payload.confirm_open_mode = true")\n\n    assert "await confirmAction" in password\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('persistAuth regression anchor changed')
+          tests = tests.replace(old, new, 1)
+
+          old = '''    assert "entersOpenMode" in password\n    assert "payload.confirm_open_mode = true" in password\n\n    assert "await confirmAction" in token\n'''
+          new = '''    assert "entersOpenMode" in password\n    assert "payload.confirm_open_mode = true" in password\n    assert "if (!confirmed) return;" in password\n    assert password.index("if (!confirmed) return;") < password.index("payload.auth_password_enabled = false")\n\n    assert "await confirmAction" in token\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('password regression anchor changed')
+          tests = tests.replace(old, new, 1)
+
+          old = '''    assert "Revoke API token?" in token\n    assert "Revoke Token" in token\n\n    assert "await confirmAction" in wipe\n'''
+          new = '''    assert "Revoke API token?" in token\n    assert "Revoke Token" in token\n    assert "if (!confirmed) return;" in token\n    assert token.index("if (!confirmed) return;") < token.index("request('DELETE', '/auth/api-token'")\n\n    assert "await confirmAction" in wipe\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('token regression anchor changed')
+          tests = tests.replace(old, new, 1)
+
+          old = '''    assert "typedPhrase: 'WIPE'" in wipe\n    assert "Wipe Database" in wipe\n'''
+          new = '''    assert "typedPhrase: 'WIPE'" in wipe\n    assert "Wipe Database" in wipe\n    assert "if (!confirmed) return;" in wipe\n    assert wipe.index("if (!confirmed) return;") < wipe.index("request('POST', '/admin/database/wipe'")\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('wipe regression anchor changed')
+          tests = tests.replace(old, new, 1)
+
+          old = '''    assert 'data-tone="danger"' in modal_css\n'''
+          new = '''    assert 'data-tone="danger"' in modal_css\n    assert ".dp-settings-confirm-danger" in modal_css\n    assert "var(--dp-state-error-bg)" in modal_css\n    assert "btn-danger" not in js\n'''
+          if tests.count(old) != 1:
+              raise SystemExit('modal styling regression anchor changed')
+          tests = tests.replace(old, new, 1)
+
+          js_path.write_text(js.rstrip() + '\n', encoding='utf-8')
+          css_path.write_text(css.rstrip() + '\n', encoding='utf-8')
+          test_path.write_text(tests.rstrip() + '\n', encoding='utf-8')
+          PY
+      - name: Validate targeted contracts
+        run: |
+          cd backend
+          python -m pytest \
+            tests/test_settings_behavior_ui.py \
+            tests/test_settings_architecture_ui.py::test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_region \
+            tests/test_ui_card_paint_boundary_contract.py::test_help_downloads_and_settings_corrections_do_not_redefine_card_material \
+            -q
+      - name: Validate JavaScript and diff
+        run: |
+          node --check frontend/static/ui-settings-page.js
+          git diff --check
+      - name: Commit shippable polish
+        run: |
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add frontend/static/ui-settings-page.js frontend/static/ui-modal-contract.css backend/tests/test_settings_behavior_ui.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'ui: finalize settings confirmation behavior'
+          git push origin HEAD:work/settings-behavior-confirm
