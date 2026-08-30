@@ -200,6 +200,9 @@
     const saveHint = document.querySelector('#view-settings .dp-settings-master-footer .dp-settings-save-hint');
     if (saveHint) saveHint.textContent = 'Changes remain unsaved until Apply Settings is selected.';
 
+    const testDownloadEngine = document.querySelector('#view-settings button[data-context-action="downloads"][data-action="test-aria2"]');
+    if (testDownloadEngine) testDownloadEngine.textContent = 'Test Download Engine';
+
     const host = panel();
     if (!host) return;
 
@@ -218,6 +221,7 @@
     reportButton.dataset.contextAction = 'notifications';
     reportButton.className = 'btn btn-ghost';
     reportButton.innerHTML = glyphMarkup('/icons/lucide/send.svg', 'Send Report Now');
+    reportButton.hidden = testDiscord.hidden;
     bindDraftAction(reportButton, sendReportNow);
 
     testDiscord.insertAdjacentElement('afterend', reportButton);
