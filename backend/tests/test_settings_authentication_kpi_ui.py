@@ -39,18 +39,20 @@ def test_authentication_kpi_state_ladders_are_semantic_and_truthful():
     assert "tokenValue = 'Configured & Enabled';" in js
     assert "Configuration Error" in js
     assert 'data-c="${html(tone)}"' in js
-    assert '[data-c="green"]' in css and "var(--dp-semantic-success)" in css
-    assert '[data-c="yellow"]' in css and "var(--dp-semantic-processing)" in css
-    assert '[data-c="red"]' in css and "var(--dp-semantic-error)" in css
+    assert '[data-c="green"]' in css and "var(--dp-state-success)" in css
+    assert '[data-c="yellow"]' in css and "var(--dp-state-caution)" in css
+    assert '[data-c="red"]' in css and "var(--dp-state-error)" in css
     assert '[data-c="neutral"]' in css
+    assert '[data-c="green"] .dhs-val' in css
+    assert '[data-c="yellow"] .dhs-val' in css
+    assert '[data-c="red"] .dhs-val' in css
 
 
-def test_open_auth_notice_is_compact_single_line_copy():
+def test_open_auth_notice_is_removed_as_redundant_with_authentication_mode_kpi():
     js = source(SETTINGS)
     css = source(STYLE)
-    assert "No interactive authentication enabled</b> — supported standalone/LAN mode; application and API are intentionally open." in js
-    assert ".dp-settings-auth-open-notice" in css
-    assert "padding: 7px 12px;" in css
+    assert "No interactive authentication enabled" not in js
+    assert ".dp-settings-auth-open-notice" not in css
 
 
 def test_oidc_minor_copy_and_access_centering_are_locked():
