@@ -35,20 +35,24 @@
     return String(clone.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
-  function removeExistingArtwork(title) {
+  function suppressExistingArtwork(title) {
     Array.from(title.children).forEach(child => {
       if (child.classList.contains('dp-settings-inner-card-icon')) return;
       if (!child.matches('[aria-hidden="true"]')) return;
       if (!child.querySelector('img,svg') && !child.matches('.dp-settings-download-engine-icon,.dp-settings-aria2-live-icon')) return;
+
+      /* Do not remove the legacy node. The older Settings completion runtime
+         watches child-list changes and would recreate it. Marking it as replaced
+         keeps the DOM stable while the icon stylesheet removes it from layout. */
       child.dataset.dpSettingsReplacedIcon = '1';
-      child.remove();
+      child.classList.add('dp-settings-replaced-legacy-icon');
     });
   }
 
   function decorateTitle(title, section, src) {
     if (!title || title.querySelector(':scope > .dp-settings-inner-card-icon')) return;
 
-    removeExistingArtwork(title);
+    suppressExistingArtwork(title);
     title.classList.add('dp-settings-card-title--with-icon', 'dp-settings-inner-card-title');
     title.dataset.dpSettingsIconSection = section;
 
