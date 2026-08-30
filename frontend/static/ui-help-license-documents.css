@@ -1,0 +1,104 @@
+/* DebridPulse v1.0.11 bundled legal-document overlay. */
+
+body.dp-help-legal-modal-open {
+  overflow: hidden;
+}
+
+.dp-help-legal-backdrop {
+  z-index: 940;
+}
+
+.dp-help-legal-dialog {
+  width: min(calc(100vw - 48px), 1120px);
+  max-height: min(86vh, 900px);
+}
+
+.dp-help-legal-dialog-header {
+  flex: 0 0 auto;
+}
+
+.dp-help-legal-dialog-header .dp-dialog__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dp-help-legal-close {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.dp-help-legal-dialog-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dp-help-legal-latest {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 24%, var(--dp-border-default));
+  border-radius: var(--dp-radius-sm);
+  background: color-mix(in srgb, var(--dp-accent-purple) 7%, var(--dp-surface-2));
+  color: var(--dp-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dp-help-legal-latest a {
+  color: var(--dp-accent-purple-bright);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dp-help-legal-latest a:hover {
+  text-decoration: underline;
+}
+
+.dp-help-legal-latest.is-error {
+  border-color: color-mix(in srgb, var(--dp-state-error) 32%, var(--dp-border-default));
+  background: var(--dp-state-error-bg);
+  color: var(--dp-state-error);
+}
+
+.dp-help-legal-document {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+.dp-help-local-document-button {
+  appearance: none;
+}
+
+@media (max-width: 700px) {
+  .dp-help-legal-dialog {
+    width: 100%;
+    max-height: 92vh;
+  }
+
+  .dp-help-legal-dialog-body {
+    gap: 12px;
+  }
+
+  .dp-help-legal-document {
+    font-size: 12px;
+    line-height: 1.58;
+  }
+}
