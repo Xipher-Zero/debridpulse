@@ -305,6 +305,7 @@ async def test_oidc_can_be_removed_while_retaining_password_authentication(monke
     )
     update = auth_config_routes.AuthenticationConfigUpdate(
         auth_password_enabled=True,
+        auth_username="operator",
         auth_oidc_enabled=False,
         oidc_issuer_url="",
         oidc_client_id="",
