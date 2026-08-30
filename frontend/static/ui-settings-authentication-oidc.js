@@ -42,7 +42,7 @@
   function setFieldCopy(field, label, hint) {
     if (!field) return;
     const labelNode = field.querySelector(':scope > .form-label');
-    if (labelNode) labelNode.textContent = label;
+    if (labelNode && textOf(labelNode) !== label) labelNode.textContent = label;
 
     let hintNode = field.querySelector(':scope > .form-hint');
     if (!hintNode) {
@@ -52,7 +52,7 @@
       if (control) control.insertAdjacentElement('afterend', hintNode);
       else field.appendChild(hintNode);
     }
-    hintNode.textContent = hint;
+    if (textOf(hintNode) !== hint) hintNode.textContent = hint;
   }
 
   function markSandwich(field) {
@@ -77,28 +77,23 @@
       copy.className = 'dp-settings-card-header-center dp-settings-auth-header-copy dp-settings-oidc-header-copy';
       header.appendChild(copy);
     }
-    copy.textContent = 'Configure an external identity provider for browser sign-in.';
+    const headerCopy = 'Configure an external identity provider for browser sign-in.';
+    if (textOf(copy) !== headerCopy) copy.textContent = headerCopy;
 
     const info = enable.querySelector('.toggle-info');
     const title = info?.querySelector('.tl');
-    if (title) title.textContent = 'Enable';
+    if (title && textOf(title) !== 'Enable') title.textContent = 'Enable';
     info?.querySelector('.td')?.remove();
     enable.classList.add('dp-settings-auth-header-enable', 'dp-settings-oidc-header-enable');
-    header.appendChild(enable);
+    if (enable.parentElement !== header || enable !== header.lastElementChild) header.appendChild(enable);
     return true;
   }
 
   function configureClearSecret(secretField) {
-    const checkbox = secretField?.querySelector('#dp-auth-clear-oidc-secret') || null;
-    const label = checkbox?.closest('label') || null;
-    if (!checkbox || !label) return null;
+    if (!secretField) return null;
 
-    label.className = 'dp-settings-oidc-clear-secret';
-
-    const title = document.createElement('span');
-    title.className = 'dp-settings-oidc-clear-secret-copy';
-    title.textContent = 'Clear Stored Secret';
-    label.replaceChildren(title, checkbox);
+    const existingCheckbox = secretField.querySelector('#dp-auth-clear-oidc-secret') || null;
+    const existingLabel = existingCheckbox?.closest('label') || null;
 
     const action = document.createElement('div');
     action.className = 'dp-settings-oidc-clear-secret-action';
@@ -109,11 +104,42 @@
 
     const control = document.createElement('div');
     control.className = 'dp-settings-oidc-clear-secret-control';
-    control.appendChild(label);
 
     const hint = document.createElement('small');
     hint.className = 'dp-settings-oidc-clear-secret-hint';
-    hint.textContent = 'Remove the saved secret when settings are applied.';
+
+    if (existingCheckbox && existingLabel) {
+      existingLabel.className = 'dp-settings-oidc-clear-secret';
+
+      const title = document.createElement('span');
+      title.className = 'dp-settings-oidc-clear-secret-copy';
+      title.textContent = 'Clear Stored Secret';
+      existingLabel.replaceChildren(title, existingCheckbox);
+      control.appendChild(existingLabel);
+      hint.textContent = 'Remove the saved secret when settings are applied.';
+    } else {
+      // A cleared or never-configured client secret is a valid OIDC state. The
+      // legacy transformer treated the missing clear-secret checkbox as a hard
+      // grouping failure after already mutating the card. Its MutationObserver
+      // then retried forever, wedging the page. Render an inert control instead
+      // so grouping completes once and the serializer still resolves false.
+      const disabledLabel = document.createElement('label');
+      disabledLabel.className = 'dp-settings-oidc-clear-secret is-disabled';
+
+      const title = document.createElement('span');
+      title.className = 'dp-settings-oidc-clear-secret-copy';
+      title.textContent = 'Clear Stored Secret';
+
+      const disabledCheckbox = document.createElement('input');
+      disabledCheckbox.id = 'dp-auth-clear-oidc-secret';
+      disabledCheckbox.type = 'checkbox';
+      disabledCheckbox.disabled = true;
+      disabledCheckbox.setAttribute('aria-disabled', 'true');
+
+      disabledLabel.append(title, disabledCheckbox);
+      control.appendChild(disabledLabel);
+      hint.textContent = 'No stored client secret is configured.';
+    }
 
     action.append(spacer, control, hint);
     return action;
@@ -219,10 +245,7 @@
     setFieldCopy(groups, 'Allowed Groups', 'Authorize identities belonging to matching OIDC groups, one per line.');
 
     const clearSecret = configureClearSecret(secret);
-    if (!clearSecret) {
-      card.dataset[OIDC_MARKER] = '0';
-      return false;
-    }
+    if (!clearSecret) return false;
 
     [publicBase, callback, provider, issuer, clientId, secret, scopes, groupClaim, subjects, emails, groups]
       .forEach(markSandwich);
