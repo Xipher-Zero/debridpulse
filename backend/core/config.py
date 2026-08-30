@@ -169,11 +169,9 @@ class AppSettings(BaseModel):
     oidc_allowed_emails: List[str] = []
     oidc_allowed_groups: List[str] = []
     oidc_group_claim: str = "groups"
-    # Canonical externally reachable origin used for secure-cookie classification
-    # behind a trusted HTTPS reverse proxy. The OIDC callback is separately
-    # configurable, but must remain on this same external origin.
+    # Canonical externally reachable origin used for OIDC callback construction
+    # and secure-cookie classification behind a trusted HTTPS reverse proxy.
     public_base_url: str = ""
-    oidc_callback_url: str = ""
 
     def model_dump(self, *args, **kwargs):
         """Carry explicit legacy clear intent across the broad settings merge."""
