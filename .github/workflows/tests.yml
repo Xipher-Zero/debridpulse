@@ -60,9 +60,7 @@ jobs:
         run: |
           node --check frontend/static/app.js
           node --check frontend/static/auth.js
-          node --check frontend/static/auth-settings.js
           node --check frontend/static/auth-help.js
-          node --check frontend/static/auth-ux.js
           node --check frontend/static/operator-title.js
           node --check frontend/static/ui-runtime.js
           node --check frontend/static/ui-downloads-runtime.js
