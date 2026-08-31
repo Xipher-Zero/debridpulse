@@ -71,22 +71,6 @@ class AppSettings(BaseModel):
     discord_notify_error: bool = True
     discord_notify_update: bool = True
 
-    # Filters
-    filters_enabled: bool = False
-    blocked_extensions: List[str] = [
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
-        ".svg", ".ico", ".tiff", ".heic", ".nfo", ".sfv"
-    ]
-    blocked_keywords: List[str] = []
-    min_file_size_mb: int = 0
-
-    # ── Smart File Selection ──────────────────────────────────────────────────
-    # Automatically block sample files, extras, and featurettes.
-    # Works alongside blocked_keywords — enabling this adds the most common
-    # sample/extra patterns without requiring manual keyword configuration.
-    block_samples: bool = False
-    block_extras: bool = False
-
     # ── Advanced Extraction ───────────────────────────────────────────────────
     extraction_password: str = ""
 
@@ -134,9 +118,6 @@ class AppSettings(BaseModel):
     # aria2 download retry on error
     aria2_error_retry_count: int = 3
     aria2_error_retry_delay_seconds: int = 60
-
-    # Labels / categories
-    torrent_labels: List[str] = []
 
     # ── Statistics & Reporting ────────────────────────────────────────────────
     stats_snapshot_interval_minutes: int = 60

@@ -127,15 +127,6 @@
     for (const [key, label, hint] of RECOVERY_COPY) {
       setFieldCopy(panel, key, label, hint);
     }
-
-    /* UI-only retirement: keep the loaded controls intact so Apply Settings
-       preserves legacy values until their backend/config pruning pass. */
-    const fileFilters = cardByTitle(panel, 'File Filters');
-    if (fileFilters) {
-      fileFilters.classList.add('dp-settings-file-filters-retired');
-      fileFilters.setAttribute('aria-hidden', 'true');
-      fileFilters.inert = true;
-    }
   }
 
   function normalizePasswordLines(raw) {

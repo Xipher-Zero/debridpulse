@@ -224,13 +224,6 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "stuck_download_timeout_hours",
         "aria2_error_retry_count",
         "aria2_error_retry_delay_seconds",
-        "filters_enabled",
-        "blocked_extensions",
-        "blocked_keywords",
-        "min_file_size_mb",
-        "block_samples",
-        "block_extras",
-        "torrent_labels_raw",
         "aria2_split",
         "aria2_min_split_size",
         "aria2_max_connection_per_server",
@@ -240,6 +233,17 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "aria2_continue_downloads",
     ):
         assert key in downloads
+
+    for retired in (
+        "filters_enabled",
+        "blocked_extensions",
+        "blocked_keywords",
+        "min_file_size_mb",
+        "block_samples",
+        "block_extras",
+        "torrent_labels_raw",
+    ):
+        assert retired not in downloads
 
     extraction = runtime[runtime.index("function extractionPanel"):runtime.index("function notificationsPanel")]
     for key in ("extract_enabled", "extract_delete_archive", "extract_max_concurrent", "extraction_password"):
