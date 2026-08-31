@@ -61,6 +61,18 @@ if legacy_form_import in style:
     style = style.replace(legacy_form_import, canonical_form_import, 1)
 write('frontend/static/style-v11.css', style)
 
+# Transform helpers can leave whitespace-only lines when entire functions are
+# removed. Normalize trailing whitespace in the transformed frontend text tree
+# before git diff --check; this is formatting-only and changes no semantics.
+for file in STATIC.iterdir():
+    if file.is_file() and file.suffix in {'.js', '.css', '.html'}:
+        content = file.read_text()
+        normalized = '\n'.join(line.rstrip() for line in content.splitlines())
+        if content.endswith('\n'):
+            normalized += '\n'
+        if normalized != content:
+            file.write_text(normalized)
+
 # Re-run the complete targeted executable-observer inventory. Comments that
 # document the retired MutationObserver behavior are not runtime scaffolding.
 for rel in (
