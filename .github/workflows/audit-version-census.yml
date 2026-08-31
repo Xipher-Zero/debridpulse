@@ -1,4 +1,4 @@
-name: Audit Version Census
+name: Audit Finalize v1.0.11
 
 on:
   push:
@@ -6,17 +6,58 @@ on:
       - 'audit/v1.0.11-version-census'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  census:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - name: Find RC identifiers
+
+      - name: Apply final release transformation
+        run: python3 .github/scripts/finalize-v1011.py
+
+      - name: Install test dependencies
+        run: python3 -m pip install -r backend/requirements-dev.txt
+
+      - name: Full Python test suite
+        working-directory: backend
+        run: python3 -m pytest -q
+
+      - name: Undefined-name gate
+        working-directory: backend
+        run: python3 -m ruff check --select F821 .
+
+      - name: Python compile gate
+        working-directory: backend
+        run: python3 -m compileall -q .
+
+      - name: Frontend JavaScript syntax gate
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== all rc1 occurrences ==='
-          grep -RIni --exclude-dir=.git --exclude='audit-version-census.yml' 'rc1' . || true
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find frontend/static -type f -name '*.js' -print0)
+
+      - name: Remove audit scaffolding and verify final RC census
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/scripts/finalize-v1011.py .github/workflows/audit-version-census.yml
+          if grep -RIni --exclude-dir=.git --exclude='test_version_utils.py' 'rc1' .; then
+            echo 'ERROR: stale RC1 identifier remains outside intentional prerelease tests'
+            exit 1
+          fi
+          git diff --check
+
+      - name: Commit qualified candidate on disposable branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add -A
+          git commit -m 'release: finalize v1.0.11 surfaces'
+          git push origin HEAD:audit/v1.0.11-version-census
