@@ -477,3 +477,79 @@ body.dp-v11-structural .nav-item.active::before {
     0 0 6px rgba(205, 139, 255, .92),
     0 0 12px rgba(153, 66, 255, .48) !important;
 }
+
+/* Canonical selected-navigation icon treatment retained from the accepted review. */
+body.dp-v11-structural .nav-item.active .icon,
+body.dp-v11-structural .nav-item.active .icon svg {
+  color: #d7adff !important;
+  opacity: 1 !important;
+  stroke-width: 2.25 !important;
+  filter: drop-shadow(0 0 4px rgba(190, 105, 255, .45));
+}
+body.light.dp-v11-structural .nav-item.active .icon,
+body.light.dp-v11-structural .nav-item.active .icon svg {
+  color: #9d4ce8 !important;
+  filter: drop-shadow(0 0 3px rgba(142, 63, 224, .28));
+}
+
+/* Canonical masthead depth retained from the accepted review. */
+body.dp-v11-structural .logo {
+  position: relative !important;
+  isolation: isolate;
+  border-bottom-color: transparent !important;
+  background:
+    linear-gradient(90deg,
+      rgba(151,81,244,.24) 0%,
+      rgba(120,78,221,.10) 42%,
+      transparent 84%) bottom / 100% 1px no-repeat,
+    radial-gradient(ellipse 130% 110% at 12% 18%,
+      rgba(131,72,236,.15) 0%,
+      rgba(108,72,222,.07) 35%,
+      transparent 66%),
+    radial-gradient(ellipse 88% 92% at 48% 22%,
+      rgba(66,122,255,.075) 0%,
+      transparent 66%),
+    linear-gradient(180deg, rgba(12,15,36,.96), rgba(7,10,27,.94)) !important;
+}
+body.light.dp-v11-structural .logo {
+  background:
+    linear-gradient(90deg,
+      rgba(139,74,232,.20) 0%,
+      rgba(115,76,214,.075) 42%,
+      transparent 84%) bottom / 100% 1px no-repeat,
+    radial-gradient(ellipse 130% 110% at 12% 18%,
+      rgba(127,77,225,.115) 0%,
+      rgba(116,83,220,.052) 35%,
+      transparent 66%),
+    radial-gradient(ellipse 88% 92% at 48% 22%,
+      rgba(65,114,226,.055) 0%,
+      transparent 66%),
+    linear-gradient(180deg, #ffffff 0%, #fbfaff 100%) !important;
+}
+body.dp-v11-structural .logo-icon {
+  box-shadow:
+    0 5px 12px rgba(0,0,0,.18),
+    0 0 27px rgba(117,72,255,.25) !important;
+}
+body.light.dp-v11-structural .logo-icon {
+  box-shadow:
+    0 5px 12px rgba(47,42,70,.16),
+    0 0 25px rgba(117,72,255,.19) !important;
+}
+body.dp-v11-structural .logo-name {
+  text-shadow: 0 1px 1px rgba(0,0,0,.20);
+}
+body.light.dp-v11-structural .logo-name {
+  text-shadow: 0 1px 1px rgba(37,30,58,.10);
+}
+body.dp-v11-structural .logo-name span {
+  text-shadow:
+    0 1px 1px rgba(0,0,0,.16),
+    0 0 11px rgba(164,92,255,.27);
+}
+body.light.dp-v11-structural .logo-name span {
+  text-shadow:
+    0 1px 1px rgba(48,35,73,.08),
+    0 0 10px rgba(124,58,237,.18);
+}
+body.dp-v11-structural .logo-ver { opacity: .78; }

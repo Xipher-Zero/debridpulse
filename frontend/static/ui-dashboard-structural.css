@@ -322,8 +322,8 @@ body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-
   padding: 1px;
 }
 
-/* Canonical Dashboard card framing retained from the accepted third review.
-   Batch 4 and later layers continue to tune the mask, material and controls. */
+/* Canonical Dashboard card framing retained from the accepted review state.
+   Later final layers may tune controls without owning this base framing. */
 body.dp-v11-structural #view-dashboard .dash-hero-stat,
 body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
 body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
@@ -395,4 +395,117 @@ body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) td 
 }
 body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) .empty {
   background: transparent !important;
+}
+
+/* Canonical Dashboard surface calibration retained from the accepted review. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat::before {
+  display: block !important;
+  content: '';
+  position: absolute !important;
+  z-index: 6 !important;
+  left: -1px !important;
+  top: -1px !important;
+  width: calc(100% - 13px) !important;
+  height: 10px !important;
+  border: 0 !important;
+  border-top: 3px solid var(--c) !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--c) 72%, transparent) !important;
+  border-top-left-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: 0 -1px 8px color-mix(in srgb, var(--c) 24%, transparent) !important;
+  -webkit-mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%) !important;
+  mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%) !important;
+  pointer-events: none;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--c) 19%, transparent) 0%,
+      color-mix(in srgb, var(--c) 13%, transparent) 24%,
+      color-mix(in srgb, var(--c) 7%, transparent) 46%,
+      color-mix(in srgb, var(--c) 2.5%, transparent) 64%,
+      transparent 76%),
+    linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1)) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--c) 15%, transparent) 0%,
+      color-mix(in srgb, var(--c) 10%, transparent) 25%,
+      color-mix(in srgb, var(--c) 5.5%, transparent) 48%,
+      color-mix(in srgb, var(--c) 2%, transparent) 65%,
+      transparent 77%),
+    linear-gradient(180deg, #ffffff, var(--dp-surface-2)) !important;
+}
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  overflow: hidden !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0 !important;
+  background-clip: padding-box !important;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  -webkit-mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%) !important;
+  mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%) !important;
+}
+
+body.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #1d1930 0%, #171528 100%) !important;
+  border-bottom-color: rgba(137, 119, 174, .26) !important;
+}
+body.light.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%) !important;
+  border-bottom-color: #dcd6e8 !important;
+}
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon {
+  width: 38px !important;
+  height: 38px !important;
+  margin: 0 auto 8px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background: url('/icons/dp/card-download.svg?v=11') center / contain no-repeat !important;
+  opacity: .78;
+  filter: saturate(.92) drop-shadow(0 3px 7px rgba(116, 56, 196, .18));
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon {
+  opacity: .72;
+  filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
 }

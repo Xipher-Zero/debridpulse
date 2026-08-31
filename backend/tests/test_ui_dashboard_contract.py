@@ -17,13 +17,14 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-dashboard-structural.css?v=23" in entry
+    assert "/ui-dashboard-structural.css?v=24" in entry
     assert "/ui-shell.css?v=21" in entry
     for retired in (
         "ui-dashboard-batch1.css",
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
         "ui-dashboard-batch3.css",
+        "ui-dashboard-batch4.css",
     ):
         assert retired not in entry
         assert not (STATIC / retired).exists()
@@ -58,6 +59,24 @@ def test_dashboard_structural_owner_keeps_reviewed_card_framing_and_empty_state(
     assert "rgba(95, 48, 174, .26)" in css
     assert "#dash-tbody tr:not([data-torrent-id])" in css
     assert "background: transparent !important;" in css
+
+
+def test_dashboard_structural_owner_keeps_reviewed_surface_calibration() -> None:
+    css = DASHBOARD_STRUCTURAL_CSS.read_text(encoding="utf-8")
+
+    required = (
+        "width: calc(100% - 13px) !important",
+        "border-top-left-radius: 12px !important",
+        "#000 74%",
+        "ellipse 105% 88% at 1% -8%",
+        "transparent 98%",
+        "background-clip: padding-box !important",
+        "#1d1930",
+        "#f2eff8",
+        "card-download.svg?v=11",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"Dashboard structural surface contract is missing: {missing}"
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:

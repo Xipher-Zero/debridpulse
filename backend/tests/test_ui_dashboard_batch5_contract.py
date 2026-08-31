@@ -11,14 +11,15 @@ STYLE = STATIC / "style-v11.css"
 BATCH = STATIC / "ui-dashboard-batch5.css"
 
 
-def test_batch5_remains_after_batch4_with_universal_base_preceding_dashboard() -> None:
+def test_batch5_follows_canonical_dashboard_owner_with_universal_base_preceding() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     universal = "/ui-universal-language.css?v=20"
-    batch4 = "/ui-dashboard-batch4.css?v=20"
+    dashboard = "/ui-dashboard-structural.css?v=24"
     batch5 = "/ui-dashboard-batch5.css?v=20"
-    for layer in (universal, batch4, batch5):
+    for layer in (universal, dashboard, batch5):
         assert layer in overlay
-    assert overlay.index(universal) < overlay.index(batch4) < overlay.index(batch5)
+    assert "/ui-dashboard-batch4.css" not in overlay
+    assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(batch5)
 
 
 def test_batch5_provider_and_spotlight_contracts() -> None:

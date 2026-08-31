@@ -51,11 +51,11 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css?v=31",
         "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=21",
-        "/ui-shell-structural.css?v=29",
+        "/ui-shell-structural.css?v=30",
         "/ui-shell-provider-status.css?v=24",
         "/ui-shell-provider-status-v2.css?v=28",
         "/ui-dashboard.css?v=20",
-        "/ui-dashboard-structural.css?v=23",
+        "/ui-dashboard-structural.css?v=24",
         "/ui-dashboard-control-polish.css?v=23",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=21",
@@ -83,10 +83,10 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "25",
         "/ui-shell.css": "21",
-        "/ui-shell-structural.css": "29",
+        "/ui-shell-structural.css": "30",
         "/ui-shell-provider-status.css": "24",
         "/ui-shell-provider-status-v2.css": "28",
-        "/ui-dashboard-structural.css": "23",
+        "/ui-dashboard-structural.css": "24",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-statistics-page.css": "21",
@@ -123,6 +123,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
         "ui-dashboard-batch3.css",
+        "ui-dashboard-batch4.css",
     ):
         assert retired_import not in overlay
 
@@ -188,6 +189,9 @@ def test_structural_shell_owns_selected_navigation_and_title_depth() -> None:
     assert "position: absolute;" in css
     assert "body.light.dp-v11-structural .nav-item.active::before" in css
     assert "#bd7aff" in css
+    assert "stroke-width: 2.25 !important;" in css
+    assert "#d7adff" in css
+    assert "#9d4ce8" in css
     assert "body.dp-v11-structural #sidebar" in css
     assert "z-index: 3;" in css
     assert "body.dp-v11-structural #main" in css
@@ -206,6 +210,22 @@ def test_structural_shell_owns_reviewed_canvas_and_selected_rail_base() -> None:
     assert "transform: none !important;" in css
     assert "width: 6px !important;" in css
     assert "#d49dff" in css
+
+
+def test_structural_shell_owns_reviewed_masthead_depth() -> None:
+    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
+
+    required = (
+        "radial-gradient(ellipse 130% 110% at 12% 18%",
+        "linear-gradient(180deg, rgba(12,15,36,.96), rgba(7,10,27,.94))",
+        "0 0 27px rgba(117,72,255,.25)",
+        "0 0 25px rgba(117,72,255,.19)",
+        "0 0 11px rgba(164,92,255,.27)",
+        "0 0 10px rgba(124,58,237,.18)",
+        ".logo-ver { opacity: .78; }",
+    )
+    missing = [fragment for fragment in required if fragment not in css]
+    assert not missing, f"shell masthead contract is missing: {missing}"
 
 
 def test_provider_status_shell_owns_title_asset_copy_and_exception_visibility() -> None:
@@ -317,6 +337,7 @@ def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
         "ui-dashboard-batch3.css",
+        "ui-dashboard-batch4.css",
     )
     present = [name for name in junk if (STATIC / name).exists()]
     assert not present, f"temporary/retired migration files leaked into final tree: {present}"
