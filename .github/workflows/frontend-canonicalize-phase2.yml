@@ -49,7 +49,10 @@ jobs:
               code=$?
             fi
           fi
+          git diff > phase2-working-tree.diff
+          grep -R -n "MutationObserver" frontend/static/ui-runtime.js frontend/static/ui-downloads-runtime.js frontend/static/ui-settings-*.js > phase2-observers.txt 2>&1
           cat phase2-transform.log
+          cat phase2-observers.txt || true
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
@@ -58,7 +61,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: phase2-transform-diagnostics
-          path: phase2-transform.log
+          path: |
+            phase2-transform.log
+            phase2-working-tree.diff
+            phase2-observers.txt
+            frontend/static/ui-settings-authentication-oidc.js
+            frontend/static/ui-settings-authentication.js
+            frontend/static/ui-settings-authentication-polish.js
+            frontend/static/ui-settings-authentication-callback.js
+            frontend/static/ui-settings-maintenance-wipe.js
+            frontend/static/ui-settings-notifications.js
+            frontend/static/ui-downloads-runtime.js
           if-no-files-found: error
 
       - name: Require successful transformation
@@ -89,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/_canonicalize_phase2.py scripts/_canonicalize_phase2_resume.py scripts/_canonicalize_phase2_repair.py .github/workflows/frontend-canonicalize-phase2.yml phase2-transform.log
+          rm -f scripts/_canonicalize_phase2.py scripts/_canonicalize_phase2_resume.py scripts/_canonicalize_phase2_repair.py .github/workflows/frontend-canonicalize-phase2.yml phase2-transform.log phase2-working-tree.diff phase2-observers.txt
           git config user.name "Xipher-Zero"
           git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
           git add -A
