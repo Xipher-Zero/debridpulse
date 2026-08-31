@@ -5125,8 +5125,10 @@ class TorrentManager:
           4. If all retries exhausted: mark as error and notify permanently.
         """
         cfg = get_settings()
-        max_retries = max(0, int(getattr(cfg, "upload_fail_retry_count", 3) or 3))
-        delay_minutes = max(0, int(getattr(cfg, "upload_fail_retry_delay_minutes", 5) or 5))
+        retry_setting = getattr(cfg, "upload_fail_retry_count", 3)
+        delay_setting = getattr(cfg, "upload_fail_retry_delay_minutes", 5)
+        max_retries = max(0, int(3 if retry_setting is None else retry_setting))
+        delay_minutes = max(0, int(5 if delay_setting is None else delay_setting))
 
         torrent_id  = int(row["id"])
         name        = str(row["name"] or f"torrent {torrent_id}")

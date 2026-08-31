@@ -496,7 +496,7 @@
         </div>
         <div class="dp-settings-download-limit">
           ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {
-            type: 'number', min: 1, max: 100,
+            type: 'number', min: 1, max: 20,
             hint: 'Maximum number of downloads DebridPulse can run at the same time.'
           })}
         </div>
@@ -519,7 +519,7 @@
               hint: 'Controls how many parallel segments aria2 can use for a single file. Actual connections may be limited by the server and split-size settings.'
             })}
             ${input('aria2_max_connection_per_server', 'Connections per Server', s.aria2_max_connection_per_server ?? 16, {
-              type: 'number', min: 1, max: 64,
+              type: 'number', min: 1, max: 32,
               hint: 'Maximum number of connections a single download can open to the same server.'
             })}
             ${input('aria2_min_split_size', 'Minimum Split Size', s.aria2_min_split_size || '10M', {
@@ -554,7 +554,7 @@
         type: 'number', min: 0, step: 0.1
       })}
       ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', s.stuck_download_timeout_hours ?? 6, {
-        type: 'number', min: 0, hint: '0 disables automatic stalled-download recovery.'
+        type: 'number', min: 0, max: 168, hint: '0 disables automatic stalled-download recovery.'
       })}
       ${input('aria2_error_retry_count', 'aria2 Error Retries', s.aria2_error_retry_count ?? 3, {
         type: 'number', min: 0, max: 20
@@ -832,8 +832,10 @@
       ${input('backup_folder', 'Backup Folder', s.backup_folder || '/app/data/backups')}
       ${input('backup_interval_hours', 'Backup Interval (hours)', s.backup_interval_hours ?? 24, {type: 'number', min: 1, max: 168})}
       ${input('backup_keep_days', 'Keep Backups (days)', s.backup_keep_days ?? 7, {type: 'number', min: 1, max: 90})}
-      ${input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval (minutes)', s.stats_snapshot_interval_minutes ?? 60, {type: 'number', min: 1})}
-      ${input('stats_snapshot_keep_days', 'Keep Statistics Snapshots (days)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1})}
+      ${input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval (minutes)', s.stats_snapshot_interval_minutes ?? 60, {
+        type: 'number', min: 0, max: 1440, hint: '0 disables automatic statistics snapshots.'
+      })}
+      ${input('stats_snapshot_keep_days', 'Keep Statistics Snapshots (days)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1, max: 365})}
       ${input('events_keep_days', 'Keep Event Log (days)', s.events_keep_days ?? 30, {type: 'number', min: 1})}
       <div class="dp-settings-actions">
         <button class="btn btn-ghost btn-sm" type="button" data-action="run-backup">Run Backup Now</button>
