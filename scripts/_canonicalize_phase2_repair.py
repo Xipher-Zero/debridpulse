@@ -51,7 +51,8 @@ for rel in (
     text = text[:cut].rstrip() + "\n\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n"
     write(rel, text)
 
-# Re-run the complete targeted observer inventory.
+# Re-run the complete targeted executable-observer inventory. Comments that
+# document the retired MutationObserver behavior are not runtime scaffolding.
 for rel in (
     'frontend/static/ui-runtime.js',
     'frontend/static/ui-downloads-runtime.js',
@@ -65,7 +66,7 @@ for rel in (
     'frontend/static/ui-settings-aria2-live.js',
     'frontend/static/ui-settings-card-icons.js',
 ):
-    if 'MutationObserver' in read(rel):
+    if re.search(r'\bnew\s+MutationObserver\b', read(rel)):
         raise RuntimeError(f'correction observer remains in {rel}')
 
 style = read('frontend/static/style-v11.css')
