@@ -1,14 +1,13 @@
 /* DebridPulse v1.0.11 visual system overlay.
  *
  * Cascade contract:
- *   tokens -> foundation/components -> Dashboard-derived universal language
- *   -> cross-cutting shared contract -> shell -> reference-page calibration
- *   -> page-specific exceptions -> final shared transfer semantics.
+ *   tokens -> foundation/components -> universal language -> shared contracts
+ *   -> shell -> Dashboard calibration -> page geometry -> shared transfer semantics
+ *   -> final visual and shell accents.
  *
- * Universal defaults must load before pages. Pages may override genuine
- * geometry/behavior/content details, but reusable transfer material is finalized
- * after the migration-era Dashboard layers so stale experiments cannot leak
- * into the effective application contract.
+ * Universal defaults load before pages. Page layers may override genuine
+ * geometry, behavior, and content details. Shared contracts intentionally
+ * outrank older calibration rules only where the responsibility is cross-page.
  */
 @import url('/design-tokens.css?v=20');
 @import url('/ui-language-tokens.css?v=21');
@@ -27,18 +26,18 @@
 @import url('/ui-shell-provider-status-v2.css?v=28');
 @import url('/ui-topbar-first-paint.css?v=20');
 
-/* Dashboard remains the visual reference/calibration page. These layers are
-   intentionally page-specific where they tune Dashboard composition itself;
-   generic material extracted from them now lives above. */
+/* Dashboard remains the accepted visual reference. The remaining calibration
+   layers are live and intentionally retained until a browser-proven fold can
+   preserve the accepted rendering. */
 @import url('/ui-dashboard.css?v=20');
 @import url('/ui-dashboard-structural.css?v=24');
 @import url('/ui-dashboard-batch5.css?v=20');
 @import url('/ui-dashboard-polish.css?v=20');
 @import url('/ui-dashboard-polish-final.css?v=20');
-@import url('/ui-dashboard-control-polish.css?v=23');
+@import url('/ui-utility-controls.css?v=23');
 @import url('/ui-dashboard-consistency.css?v=23');
 
-/* Page layers contain only page-specific geometry/behavior/content details. */
+/* Page layers contain page-specific geometry, behavior, and content details. */
 @import url('/ui-statistics-page.css?v=21');
 @import url('/ui-activity-log-page.css?v=30');
 @import url('/ui-downloads-page.css?v=27');
@@ -49,16 +48,12 @@
 @import url('/ui-help-page.css?v=22');
 @import url('/ui-feature-icon-contract.css?v=4');
 
-/* Shared large-panel interior richness. Loaded after page geometry so the same
-   luminance-cloud language applies consistently without changing layout. */
+/* Shared large-panel interior richness. */
 @import url('/ui-panel-surface-treatment.css?v=22');
 
-/* Final shared transfer-row semantics. This deliberately outranks the old
-   Dashboard calibration experiments and is not a page-specific exception. */
+/* Final shared transfer-row semantics. */
 @import url('/ui-transfer-contract.css?v=31');
 
-/* Final live-review visual accents only; semantics/geometry remain owned above. */
-@import url('/ui-live-review-batch.css?v=21');
-
-/* Final sidequest polish: text-only version datum + rising sidebar signal field. */
-@import url('/ui-sidequest-polish.css?v=20');
+/* Cross-page visual accents and shell signal field. */
+@import url('/ui-visual-accents.css?v=21');
+@import url('/ui-shell-signal-field.css?v=20');

@@ -87,7 +87,7 @@ jobs:
           node --check frontend/static/ui-visual-behavior-fixes.js
           node --check frontend/static/ui-statistics.js
           node --check frontend/static/ui-error-semantics.js
-          node --check frontend/static/ui-final-polish.js
+          node --check frontend/static/ui-page-finalization.js
 
   security:
     runs-on: ubuntu-latest

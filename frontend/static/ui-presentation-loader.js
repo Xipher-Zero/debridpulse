@@ -1,9 +1,9 @@
 /* DebridPulse v1.0.11 deterministic presentation-runtime loader.
  *
- * app.js and parser-deferred core runtimes have already executed before this
- * file is loaded. Presentation layers are then loaded one at a time in an
- * explicit order. A missing presentation asset is logged and skipped rather
- * than preventing the remaining UI layers or core application from running.
+ * app.js and parser-deferred core runtimes execute before this loader.
+ * Presentation assets then load one at a time in an explicit order. A missing
+ * presentation asset is logged and skipped so the remaining UI and core
+ * application can continue to initialize.
  */
 (function () {
   'use strict';
@@ -11,9 +11,9 @@
   const STYLES = Object.freeze([
     {href: '/ui-help-chrome.css?v=2', marker: 'data-dp-help-chrome-style'},
     {href: '/ui-help-license-documents.css?v=2', marker: 'data-dp-help-license-documents-style'},
-    {href: '/ui-help-final-balance.css?v=1', marker: 'data-dp-help-final-balance-style'},
+    {href: '/ui-help-license-balance.css?v=1', marker: 'data-dp-help-license-balance-style'},
     {href: '/ui-settings-downloads-completion.css?v=4', marker: 'data-dp-settings-downloads-completion-style'},
-    {href: '/ui-settings-password-layout-followup.css?v=1', marker: 'data-dp-settings-password-layout-followup-style'},
+    {href: '/ui-settings-form-layout.css?v=1', marker: 'data-dp-settings-form-layout-style'},
     {href: '/ui-settings-aria2-live.css?v=3', marker: 'data-dp-settings-aria2-live-style'},
     {href: '/ui-settings-maintenance-wipe.css?v=3', marker: 'data-dp-settings-maintenance-wipe-style'},
     {href: '/ui-settings-notifications.css?v=2', marker: 'data-dp-settings-notifications-style'},
@@ -21,7 +21,7 @@
     {href: '/ui-settings-authentication-polish.css?v=1', marker: 'data-dp-settings-authentication-polish-style'},
     {href: '/ui-settings-authentication-oidc.css?v=1', marker: 'data-dp-settings-authentication-oidc-style'},
     {href: '/ui-settings-card-icons.css?v=2', marker: 'data-dp-settings-card-icons-style'},
-    {href: '/ui-final-polish.css?v=1', marker: 'data-dp-final-polish-style'},
+    {href: '/ui-page-finalization.css?v=1', marker: 'data-dp-page-finalization-style'},
     {href: '/ui-statistics.css?v=1', marker: 'data-dp-statistics-style'},
   ]);
 
@@ -44,7 +44,7 @@
     {src: '/ui-settings-aria2-live.js?v=5', marker: 'data-dp-settings-aria2-live'},
     {src: '/ui-settings-card-icons.js?v=2', marker: 'data-dp-settings-card-icons'},
     {src: '/ui-error-semantics.js?v=21', marker: 'data-dp-error-semantics'},
-    {src: '/ui-final-polish.js?v=1', marker: 'data-dp-final-polish'},
+    {src: '/ui-page-finalization.js?v=1', marker: 'data-dp-page-finalization'},
   ]);
 
   function alreadyLoaded(runtime) {

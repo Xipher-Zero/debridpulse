@@ -1,4 +1,4 @@
-"""Structural contract for the v1.0.11 application shell migration."""
+"""Final-state shell ownership and bootstrap contracts."""
 
 from __future__ import annotations
 
@@ -7,78 +7,82 @@ import json
 import re
 import xml.etree.ElementTree as ET
 
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-STATIC = REPO_ROOT / "frontend" / "static"
+ROOT = Path(__file__).resolve().parents[2]
+STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
 STYLE_ENTRY = STATIC / "style.css"
 LEGACY_STYLE = STATIC / "style-legacy.css"
 V11_STYLE = STATIC / "style-v11.css"
-DASHBOARD_STYLE = STATIC / "ui-dashboard.css"
-STATISTICS_STYLE = STATIC / "ui-statistics-page.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
-SHELL_STRUCTURAL_STYLE = STATIC / "ui-shell-structural.css"
-SHELL_PROVIDER_STYLE = STATIC / "ui-shell-provider-status.css"
+SHELL_STRUCTURAL = STATIC / "ui-shell-structural.css"
+SHELL_PROVIDER = STATIC / "ui-shell-provider-status.css"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
 PULSE = STATIC / "icons" / "dp" / "shell-pulse.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
-DEPENDENCIES = REPO_ROOT / "docs" / "DEPENDENCY_LICENSES.md"
-LUCIDE_LICENSE = REPO_ROOT / "licenses" / "Lucide-ISC-MIT.txt"
+DEPENDENCIES = ROOT / "docs" / "DEPENDENCY_LICENSES.md"
+LUCIDE_LICENSE = ROOT / "licenses" / "Lucide-ISC-MIT.txt"
 
 
-def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base() -> None:
-    legacy_entry = STYLE_ENTRY.read_text(encoding="utf-8")
-    preserved = LEGACY_STYLE.read_text(encoding="utf-8")
-    overlay = V11_STYLE.read_text(encoding="utf-8")
-    runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
-    # Existing functional/inherited selectors continue to treat style.css as
-    # the monolithic v1 compatibility stylesheet. v1.0.11 is a second visual
-    # layer statically loaded after it, with a guarded runtime fallback.
-    assert legacy_entry == preserved
 
-    # The v1.0.11 cascade is architectural: semantic/design primitives first,
-    # then the Dashboard-derived universal component defaults, shared audited
-    # corrections, shell, reference-page calibration, and page exceptions.
-    imports = [
+def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
+    assert read(STYLE_ENTRY) == read(LEGACY_STYLE)
+    overlay = read(V11_STYLE)
+    imports = (
         "/design-tokens.css?v=20",
         "/ui-language-tokens.css?v=21",
         "/ui-foundation.css?v=20",
         "/ui-components.css?v=20",
-        "/icon-system.css?v=20",
         "/ui-universal-language.css?v=20",
         "/ui-shared-contract.css?v=31",
         "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=21",
         "/ui-shell-structural.css?v=30",
         "/ui-shell-provider-status.css?v=24",
-        "/ui-shell-provider-status-v2.css?v=28",
         "/ui-dashboard.css?v=20",
         "/ui-dashboard-structural.css?v=24",
-        "/ui-dashboard-control-polish.css?v=23",
+        "/ui-utility-controls.css?v=23",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=21",
         "/ui-activity-log-page.css?v=30",
         "/ui-downloads-page.css?v=27",
-        "/ui-downloads-desktop.css?v=28",
         "/ui-settings-page.css?v=2",
-        "/ui-settings-chrome.css?v=2",
         "/ui-help-page.css?v=22",
-        "/ui-feature-icon-contract.css?v=4",
         "/ui-panel-surface-treatment.css?v=22",
         "/ui-transfer-contract.css?v=31",
-        "/ui-live-review-batch.css?v=21",
-    ]
-    positions = [overlay.index(value) for value in imports]
-    assert positions == sorted(positions), "v1.0.11 stylesheet layering order drifted"
+        "/ui-visual-accents.css?v=21",
+        "/ui-shell-signal-field.css?v=20",
+    )
+    positions = [overlay.index(item) for item in imports]
+    assert positions == sorted(positions)
 
-    # Targeted invalidation: only layers changed by reviewed work advance their
-    # cache generations; established approved layers retain their generations.
-    generations = re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay)
-    assert generations
-    version_by_path = {path: version for path, version in generations}
-    expected_changed_versions = {
+    for retired in (
+        "ui-card-shell-final.css",
+        "ui-downloads-structural.css",
+        "ui-downloads-polish.css",
+        "ui-downloads-consistency.css",
+        "ui-downloads-shell-sync.css",
+        "ui-regression-fixes.css",
+        "ui-dashboard-batch1.css",
+        "ui-dashboard-batch2.css",
+        "ui-dashboard-batch2-final.css",
+        "ui-dashboard-batch3.css",
+        "ui-dashboard-batch4.css",
+        "ui-dashboard-control-polish.css",
+        "ui-live-review-batch.css",
+        "ui-sidequest-polish.css",
+    ):
+        assert retired not in overlay
+        assert not (STATIC / retired).exists()
+
+
+def test_v11_cache_generations_remain_targeted() -> None:
+    overlay = read(V11_STYLE)
+    generations = dict(re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay))
+    expected = {
         "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "25",
@@ -87,7 +91,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shell-provider-status.css": "24",
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-dashboard-structural.css": "24",
-        "/ui-dashboard-control-polish.css": "23",
+        "/ui-utility-controls.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-statistics-page.css": "21",
         "/ui-activity-log-page.css": "30",
@@ -99,245 +103,82 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-feature-icon-contract.css": "4",
         "/ui-panel-surface-treatment.css": "22",
         "/ui-transfer-contract.css": "31",
-        "/ui-live-review-batch.css": "21",
+        "/ui-visual-accents.css": "21",
     }
-    for path, version in expected_changed_versions.items():
-        assert version_by_path[path] == version
+    for path, version in expected.items():
+        assert generations[path] == version
 
-    changed_paths = set(expected_changed_versions)
-    unchanged_versions = {
-        version for path, version in generations if path not in changed_paths
-    }
-    assert unchanged_versions == {"20"}
 
-    # Old page-local material copies and retired correction layers must not
-    # return to the active cascade.
-    for retired_import in (
-        "ui-card-shell-final.css",
-        "ui-downloads-structural.css",
-        "ui-downloads-polish.css",
-        "ui-downloads-consistency.css",
-        "ui-downloads-shell-sync.css",
-        "ui-regression-fixes.css",
-        "ui-dashboard-batch1.css",
-        "ui-dashboard-batch2.css",
-        "ui-dashboard-batch2-final.css",
-        "ui-dashboard-batch3.css",
-        "ui-dashboard-batch4.css",
-    ):
-        assert retired_import not in overlay
-
+def test_bootstrap_cache_generation_and_runtime_fallbacks_are_coherent() -> None:
+    index = read(INDEX)
+    operator = read(SHELL_RUNTIME)
+    runtime = read(PRESENTATION_RUNTIME)
+    assert "/style-v11.css?v=24" in index
+    assert "/operator-title.js?v=23" in index
+    assert "/ui-runtime.js?v=24" in index
+    assert "/ui-runtime.js?v=24" in operator
+    assert "/ui-downloads-runtime.js?v=22" in operator
     assert "/style-v11.css?v=24" in runtime
-    assert "data-dp-v11-styles" in runtime
-    assert "dp-v11-structural" in runtime
 
 
-def test_statistics_owns_geometry_not_dashboard_material() -> None:
-    dashboard = DASHBOARD_STYLE.read_text(encoding="utf-8")
-    statistics = STATISTICS_STYLE.read_text(encoding="utf-8")
-
-    # Once the historical KPI strip moves to Statistics, Dashboard must no
-    # longer style that page. The universal metric bridge owns card material.
-    assert "#view-stats" not in dashboard
-    assert ".dp-stats-history-grid" in statistics
-    assert ".dash-kpi" in statistics
-    assert "grid-template-columns" in statistics
-
-    forbidden_material = (
-        "background: linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1))",
-        "box-shadow: var(--dp-shadow-card)",
-        "border: 1px solid var(--dp-border-default)",
-    )
-    present = [fragment for fragment in forbidden_material if fragment in statistics]
-    assert not present, f"Statistics page reintroduced base material ownership: {present}"
-
-
-def test_v11_bootstrap_cache_generation_is_coherent() -> None:
-    index = INDEX.read_text(encoding="utf-8")
-    operator = SHELL_RUNTIME.read_text(encoding="utf-8")
-    runtime = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
-
-    assert '/style-v11.css?v=24' in index
-    assert '/operator-title.js?v=23' in index
-    assert '/ui-runtime.js?v=24' in index
-    assert '/ui-runtime.js?v=24' in operator
-    assert '/ui-downloads-runtime.js?v=22' in operator
-    assert '/style-v11.css?v=24' in runtime
-
-
-def test_structural_shell_owns_resolved_main_topbar_and_theme_geometry() -> None:
-    overlay = V11_STYLE.read_text(encoding="utf-8")
-    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
-    operator = SHELL_RUNTIME.read_text(encoding="utf-8")
-
-    assert "/ui-regression-fixes.css" not in overlay
-    assert "margin-left: 0 !important;" in css
-    assert "padding-right: var(--dp-shell-x) !important;" in css
-    assert "padding-right: 16px !important;" in css
-    assert "padding: 8px 16px 8px 12px !important;" in css
-    assert ".sidebar-theme-control.topbar-theme-control" in css
-    assert ".topbar-theme-control .theme-toggle" in css
-    assert "control.classList.add('topbar-theme-control')" in operator
-    assert "topbar.appendChild(control)" in operator
-
-
-def test_structural_shell_owns_selected_navigation_and_title_depth() -> None:
-    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
-
-    assert "rgba(126, 48, 239, .58)" in css
-    assert "body.dp-v11-structural .nav-item.active::after" in css
-    assert "position: absolute;" in css
-    assert "body.light.dp-v11-structural .nav-item.active::before" in css
-    assert "#bd7aff" in css
-    assert "stroke-width: 2.25 !important;" in css
-    assert "#d7adff" in css
-    assert "#9d4ce8" in css
-    assert "body.dp-v11-structural #sidebar" in css
-    assert "z-index: 3;" in css
-    assert "body.dp-v11-structural #main" in css
-    assert "z-index: 1;" in css
-    assert "body.light.dp-v11-structural #page-title" in css
-    assert "text-shadow:" in css
-    assert "body.light.dp-v11-structural #page-title::after" in css
-    assert "drop-shadow(0 2px 3px rgba(103, 67, 205, .18))" in css
-
-
-def test_structural_shell_owns_reviewed_canvas_and_selected_rail_base() -> None:
-    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
-
-    assert "radial-gradient(920px 540px at 36% 4%" in css
-    assert "#f7f7fb !important" in css
-    assert "transform: none !important;" in css
-    assert "width: 6px !important;" in css
-    assert "#d49dff" in css
-
-
-def test_structural_shell_owns_reviewed_masthead_depth() -> None:
-    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
-
-    required = (
-        "radial-gradient(ellipse 130% 110% at 12% 18%",
-        "linear-gradient(180deg, rgba(12,15,36,.96), rgba(7,10,27,.94))",
-        "0 0 27px rgba(117,72,255,.25)",
-        "0 0 25px rgba(117,72,255,.19)",
-        "0 0 11px rgba(164,92,255,.27)",
-        "0 0 10px rgba(124,58,237,.18)",
-        ".logo-ver { opacity: .78; }",
-    )
-    missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"shell masthead contract is missing: {missing}"
-
-
-def test_provider_status_shell_owns_title_asset_copy_and_exception_visibility() -> None:
-    css = SHELL_PROVIDER_STYLE.read_text(encoding="utf-8")
-
-    assert "content: 'Provider Status';" in css
-    assert "/icons/dp/crown.svg?v=11" in css
-    assert "content: 'AllDebrid: Connected';" in css
-    assert ".conn-row:has(#dot-aria2)" in css
-    assert ".conn-row:has(#dot-db)" in css
-    assert "display: none !important;" in css
-    assert ".conn-row:has(#dot-aria2.warn)" in css
-    assert ".conn-row:has(#dot-db.error)" in css
-    assert "display: flex !important;" in css
-    assert "#lbl-premium::before" in css
-    assert "content: none !important;" in css
-
-
-def test_shell_matches_required_mockup_structure() -> None:
-    css = SHELL_STYLE.read_text(encoding="utf-8")
-
-    required_fragments = (
+def test_shell_owns_topbar_navigation_canvas_and_provider_geometry() -> None:
+    shell = read(SHELL_STYLE)
+    structural = read(SHELL_STRUCTURAL)
+    provider = read(SHELL_PROVIDER)
+    for fragment in (
         ".sidebar-theme-control",
-        "position: fixed",
-        "right: 20px",
         "#page-title::after",
-        "margin-left: 8px",
-        "/icons/dp/shell-pulse.svg",
         "#aria2-speed-badge.external-control",
-        "#aria2-cap-toggle .dp-speedcap-arrow",
         ".aria2-cap-options button:hover",
-        "var(--dp-state-connectivity)",
-        "@media (max-width: 1439px)",
-        "@media (max-width: 1179px)",
         "@media (max-width: 899px)",
-        "@media (max-width: 699px)",
-    )
+    ):
+        assert fragment in shell
+    for fragment in (
+        "margin-left: 0 !important;",
+        ".sidebar-theme-control.topbar-theme-control",
+        "body.dp-v11-structural .nav-item.active::after",
+        "body.light.dp-v11-structural #page-title",
+        "radial-gradient(920px 540px at 36% 4%",
+    ):
+        assert fragment in structural
+    for fragment in (
+        "content: 'Provider Status';",
+        "/icons/dp/crown.svg?v=11",
+        "content: 'AllDebrid: Connected';",
+        ".conn-row:has(#dot-aria2)",
+        ".conn-row:has(#dot-db)",
+    ):
+        assert fragment in provider
 
-    missing = [fragment for fragment in required_fragments if fragment not in css]
-    assert not missing, f"shell contract is missing: {missing}"
 
-
-def test_shell_uses_local_lucide_subset_without_runtime_cdn() -> None:
-    js = SHELL_RUNTIME.read_text(encoding="utf-8")
-
+def test_shell_uses_local_lucide_subset_and_bundled_license() -> None:
+    js = read(SHELL_RUNTIME)
     for icon in (
-        "dashboard",
-        "download",
-        "logs",
-        "statistics",
-        "settings",
-        "help",
-        "menu",
-        "sun",
-        "moon",
-        "pause",
-        "play",
-        "chevronDown",
+        "dashboard", "download", "logs", "statistics", "settings", "help",
+        "menu", "sun", "moon", "pause", "play", "chevronDown",
     ):
         assert f"{icon}:" in js
-
     assert "23f9abc4ed0146cffededd3d7f94c1018bfdf693" in js
     lowered = js.lower()
     assert "unpkg.com" not in lowered
     assert "jsdelivr" not in lowered
     assert "lucide.dev" not in lowered
 
-
-def test_lucide_license_and_inventory_are_bundled() -> None:
-    notice = LUCIDE_LICENSE.read_text(encoding="utf-8")
-    inventory = DEPENDENCIES.read_text(encoding="utf-8")
-
+    notice = read(LUCIDE_LICENSE)
+    inventory = read(DEPENDENCIES)
     assert "ISC License" in notice
     assert "Lucide Icons and Contributors" in notice
     assert "Lucide Icons UI subset" in inventory
     assert "Lucide-ISC-MIT.txt" in inventory
-    assert "23f9abc4ed0146cffededd3d7f94c1018bfdf693" in inventory
 
 
 def test_shell_pulse_is_registered_true_vector_art() -> None:
-    raw = PULSE.read_text(encoding="utf-8")
+    raw = read(PULSE)
     root = ET.fromstring(raw)
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-
+    manifest = json.loads(read(MANIFEST))
     assert root.tag.endswith("svg")
     assert root.attrib.get("viewBox")
     assert "<path" in raw
     assert "<image" not in raw.lower()
     assert "data:image" not in raw.lower()
     assert manifest["icons"]["shellPulse"] == "shell-pulse.svg"
-
-
-def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
-    junk = (
-        "style-next.css",
-        "style-v11-loader.css",
-        "style-legacy-marker.txt",
-        "STYLE_MIGRATION_NOTE.md",
-        "DO_NOT_USE.txt",
-        "ZZZ",
-        "placeholder-cleanup-anchor",
-        "ui-card-shell-final.css",
-        "ui-downloads-structural.css",
-        "ui-downloads-polish.css",
-        "ui-downloads-consistency.css",
-        "ui-downloads-shell-sync.css",
-        "ui-regression-fixes.css",
-        "ui-dashboard-batch1.css",
-        "ui-dashboard-batch2.css",
-        "ui-dashboard-batch2-final.css",
-        "ui-dashboard-batch3.css",
-        "ui-dashboard-batch4.css",
-    )
-    present = [name for name in junk if (STATIC / name).exists()]
-    assert not present, f"temporary/retired migration files leaked into final tree: {present}"

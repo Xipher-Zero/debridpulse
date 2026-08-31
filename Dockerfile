@@ -4,7 +4,7 @@ WORKDIR /app
 
 ARG APP_VERSION=unknown
 ARG VCS_REF=unknown
-LABEL org.opencontainers.image.title="DebridPulse — AllDebrid + aria2 Download Manager"
+LABEL org.opencontainers.image.title="DebridPulse: AllDebrid + aria2 Download Manager"
 LABEL org.opencontainers.image.version="${APP_VERSION}"
 LABEL org.opencontainers.image.description="AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2"
 LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/debridpulse"
@@ -55,7 +55,7 @@ COPY docs/DEPENDENCY_LICENSES.md /app/docs/DEPENDENCY_LICENSES.md
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Directories — owned by nobody:users (65534:100) by default
+# Directories - owned by nobody:users (65534:100) by default
 # Override at runtime via PUID / PGID environment variables
 RUN mkdir -p /app/data /app/config /download && \
     chown -R 99:100 /app /download

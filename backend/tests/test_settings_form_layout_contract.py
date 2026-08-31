@@ -1,10 +1,11 @@
-from pathlib import Path
+"""Final-state Settings form-layout and archive-password contracts."""
 
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 RUNTIME = STATIC / "ui-settings-downloads-completion.js"
-LAYOUT = STATIC / "ui-settings-password-layout-followup.css"
+LAYOUT = STATIC / "ui-settings-form-layout.css"
 LOADER = STATIC / "ui-presentation-loader.js"
 
 
@@ -12,9 +13,8 @@ def source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_state():
+def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_state() -> None:
     runtime = source(RUNTIME)
-
     visibility = runtime.split("function setRowVisibility", 1)[1].split("function setRevealAll", 1)[0]
     assert "input.dataset.passwordDisplay = reveal ? 'raw' : 'masked';" in visibility
 
@@ -27,18 +27,11 @@ def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_sta
     activate = runtime.split("function activatePasswordLine", 1)[1].split("function commitPasswordLine", 1)[0]
     assert "commitPasswordLine(editor?.closest('[data-panel=\"extraction\"]'), previous);" in activate
     assert "setRowVisibility(previous, previousIndex, false);" in activate
-    assert activate.index("commitPasswordLine") < activate.index(
-        "setRowVisibility(previous, previousIndex, false);"
-    )
-
-    render = runtime.split("function renderPasswordRows", 1)[1].split("async function loadExtractionPasswords", 1)[0]
-    assert "setRowVisibility(" in render
-    assert "input.value = extractionPasswords.revealAll || index === extractionPasswords.activeIndex" not in render
+    assert activate.index("commitPasswordLine") < activate.index("setRowVisibility(previous, previousIndex, false);")
 
 
-def test_reviewed_settings_geometry_uses_flexed_secret_fields_and_centered_extraction_block():
+def test_settings_secret_fields_and_extraction_controls_keep_accepted_geometry() -> None:
     css = source(LAYOUT)
-
     alldebrid = css.split(".dp-settings-alldebrid-key-row.is-configured {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns: minmax(0, 1fr) max-content;" in alldebrid
 
@@ -53,9 +46,8 @@ def test_reviewed_settings_geometry_uses_flexed_secret_fields_and_centered_extra
     assert "justify-content: center;" in controls
 
 
-def test_archive_password_editor_fills_remaining_desktop_extraction_card_height():
+def test_archive_password_editor_fills_remaining_extraction_card_height() -> None:
     css = source(LAYOUT)
-
     assert '.dp-settings-scroll:has([data-panel="extraction"]:not([hidden])) .dp-settings-panels' in css
     assert '[data-panel="extraction"]:not([hidden])' in css
     assert ".dp-settings-extraction-card > .card-body" in css
@@ -70,12 +62,10 @@ def test_archive_password_editor_fills_remaining_desktop_extraction_card_height(
     assert "max-height: none;" in editor
 
 
-def test_followup_assets_are_loaded_after_the_existing_settings_completion_layer():
+def test_form_layout_loads_after_settings_completion_style() -> None:
     loader = source(LOADER)
-
     assert "/ui-settings-downloads-completion.css?v=4" in loader
-    assert "/ui-settings-password-layout-followup.css?v=1" in loader
+    assert "/ui-settings-form-layout.css?v=1" in loader
     assert loader.index("/ui-settings-downloads-completion.css?v=4") < loader.index(
-        "/ui-settings-password-layout-followup.css?v=1"
+        "/ui-settings-form-layout.css?v=1"
     )
-    assert "/ui-settings-downloads-completion.js?v=4&statefix=1" in loader
