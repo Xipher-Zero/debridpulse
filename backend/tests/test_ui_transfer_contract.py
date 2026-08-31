@@ -14,17 +14,16 @@ DASHBOARD = STATIC / "ui-dashboard-consistency.css"
 
 def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    progress = "/ui-dashboard-progress-weight.css?v=20"
     dashboard_fix = "/ui-dashboard-consistency.css?v=23"
     downloads = "/ui-downloads-page.css?v=27"
     help_page = "/ui-help-page.css?v=22"
     transfer = "/ui-transfer-contract.css?v=31"
 
-    for layer in (progress, dashboard_fix, downloads, help_page, transfer):
+    for layer in (dashboard_fix, downloads, help_page, transfer):
         assert layer in overlay
+    assert "/ui-dashboard-progress-weight.css" not in overlay
     assert (
-        overlay.index(progress)
-        < overlay.index(dashboard_fix)
+        overlay.index(dashboard_fix)
         < overlay.index(downloads)
         < overlay.index(help_page)
         < overlay.index(transfer)
