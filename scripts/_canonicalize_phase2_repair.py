@@ -20,9 +20,10 @@ if observer in text:
     text = text.replace(observer, '', 1)
 write(path, text)
 
-# The Settings correction files had slightly different observer-tail shapes.
-# If a resume transform left one of those tails intact, replace the whole tail
-# with the explicit Settings-rendered lifecycle rather than widening a DOM watch.
+# These five modules all end with a Settings-root correction observer. The body
+# before that point is preserved exactly; only the observer tail becomes the
+# explicit canonical-render lifecycle emitted by ui-settings-page.js.
+view_marker = "\n  const view = document.getElementById('view-settings');"
 for rel in (
     'frontend/static/ui-settings-authentication.js',
     'frontend/static/ui-settings-authentication-polish.js',
@@ -33,15 +34,12 @@ for rel in (
     text = read(rel)
     if 'MutationObserver' not in text:
         continue
-    text, count = re.subn(
-        r"\n\s*const view = document\.getElementById\('view-settings'\);.*?\n\s*\}\n\}\)\(\);\s*$",
-        "\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n",
-        text,
-        count=1,
-        flags=re.S,
-    )
-    if count != 1:
-        raise RuntimeError(f'unrecognized Settings observer tail in {rel}')
+    cut = text.rfind(view_marker)
+    if cut < 0:
+        raise RuntimeError(f'Settings observer marker missing in {rel}')
+    if not text.rstrip().endswith('})();'):
+        raise RuntimeError(f'unexpected Settings module tail in {rel}')
+    text = text[:cut] + "\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n"
     write(rel, text)
 
 # Re-run the complete targeted observer inventory.
