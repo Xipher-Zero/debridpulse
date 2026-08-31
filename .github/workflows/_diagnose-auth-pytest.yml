@@ -42,6 +42,13 @@ jobs:
           set -euo pipefail
           python scripts/_canonicalize_settings_auth.py
           python scripts/_canonicalize_v1111_followup.py
+          python scripts/_migrate_v1111_frontend_contract_tests.py
+
+      - name: Run frontend syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in frontend/static/*.js; do node --check "$file"; done
 
       - name: Run full backend suite and capture exact failures
         id: pytest
@@ -63,7 +70,7 @@ jobs:
             echo '## Auth canonicalization pytest diagnostics'
             echo
             echo '```text'
-            tail -n 220 auth-pytest-diagnostics.txt || true
+            tail -n 260 auth-pytest-diagnostics.txt || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
