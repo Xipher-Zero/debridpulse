@@ -38,6 +38,15 @@ def test_page_finalization_keeps_accepted_master_card_copy() -> None:
         assert text in source
 
 
+def test_page_finalization_uses_one_bounded_content_observer() -> None:
+    source = read("ui-page-finalization.js")
+    assert source.count("new MutationObserver") == 1
+    assert "document.getElementById('content')" in source
+    assert "observer.observe(content, {childList: true, subtree: true, characterData: true})" in source
+    assert "function observeView" not in source
+    assert ".forEach(observeView)" not in source
+
+
 def test_settings_and_help_keep_accepted_surface_hierarchy() -> None:
     source = read("ui-page-finalization.js")
     treatment = read("ui-panel-surface-treatment.css")

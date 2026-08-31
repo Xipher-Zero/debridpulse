@@ -1,14 +1,18 @@
-/* DebridPulse v1.0.11 final cross-page polish.
+/* DebridPulse v1.0.11 cross-page presentation finalization.
  *
  * This late, idempotent presentation layer applies the final reviewed master-card
  * copy, Settings/Help surface hierarchy, and Downloads bulk-strip placement.
  * It does not own application data, persistence, or transfer behavior.
+ *
+ * One bounded #content observer covers the presentation subtree. Individual page
+ * observers are intentionally avoided so cross-page finalization cannot multiply
+ * observer pressure as additional page owners are added.
  */
 (function () {
   'use strict';
 
   let scheduled = false;
-  const observers = [];
+  let observer = null;
 
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
@@ -110,16 +114,12 @@
     });
   }
 
-  function observeView(id) {
-    const view = document.getElementById(id);
-    if (!view) return;
-    const observer = new MutationObserver(scheduleApply);
-    observer.observe(view, {childList: true, subtree: true, characterData: true});
-    observers.push(observer);
-  }
-
   function bind() {
-    ['view-torrents', 'view-events', 'view-stats', 'view-settings', 'view-help'].forEach(observeView);
+    const content = document.getElementById('content');
+    if (content && !observer) {
+      observer = new MutationObserver(scheduleApply);
+      observer.observe(content, {childList: true, subtree: true, characterData: true});
+    }
     applyAll();
   }
 
