@@ -43,14 +43,14 @@ Purpose-based cross-page owners include:
 
 The deliberate page owners are:
 
-- Dashboard: `ui-dashboard.css` plus the retained calibration stack described below
+- Dashboard: `ui-dashboard.css`, the retained mixed calibration layers below, and final Dashboard owner `ui-dashboard-final.css`
 - Downloads: `ui-downloads-page.css`, `ui-downloads-desktop.css`, and `ui-downloads-runtime.js`
 - Activity Log: `ui-activity-log-page.css`
 - Statistics: `ui-statistics-page.css`, `ui-statistics.css`, and `ui-statistics.js`
 - Settings: clean-room `ui-settings-page.css` and `ui-settings-page.js`, with feature-specific Settings components loaded after it
 - Help: clean-room `ui-help-page.css` and `ui-help-page.js`, with Help chrome and local legal-document components
 
-`ui-page-finalization.css` and `ui-page-finalization.js` own accepted cross-page final details that are not yet rendered directly by every canonical page owner.
+`ui-page-finalization.css` and `ui-page-finalization.js` own accepted cross-page details that are not yet rendered directly by every canonical page owner. The runtime uses one bounded MutationObserver on `#content`; it no longer creates one observer per page subtree.
 
 ## Canonical component language
 
@@ -62,37 +62,53 @@ The application still contains legacy markup and generated HTML. `ui-universal-l
 
 `ui-accessibility-runtime.js` is a cross-cutting semantic layer for inherited markup that cannot yet be rebuilt without broader churn. It may add roles, ARIA state, focusability, and keyboard activation while delegating actual actions to established application handlers. It must not perform API calls, transfer mutations, polling, or backend work.
 
-## Retained live architecture debt
+## Retained RC1 browser-validation debt
 
-Two areas remain intentionally uncollapsed because source inspection alone cannot prove a neutral visual rewrite.
+The release-candidate gate distinguishes proven static/runtime cleanup from visual changes that require direct browser comparison. The following areas remain live by design for `1.0.11rc1` local testing.
 
-### Dashboard calibration stack
+### Dashboard mixed calibration stack
 
-The following layers are still live and order-sensitive:
+The following order-sensitive layers remain:
 
 - `ui-dashboard-batch5.css`
 - `ui-dashboard-polish.css`
 - `ui-dashboard-polish-final.css`
-- `ui-dashboard-consistency.css`
 
-They contain accepted final rendering rules mixed across Dashboard, shell, provider, and transfer presentation. Earlier Dashboard review layers were retired as their responsibilities became provably owned elsewhere. These four remain until browser-backed visual comparison can prove a further fold preserves the accepted dark/light and responsive baseline.
+They contain accepted rendering rules mixed across Dashboard, shell, provider, and transfer presentation. Earlier Dashboard review layers were retired and Dashboard structural ownership was folded into `ui-dashboard.css`. `ui-dashboard-final.css` is now a deliberate final Dashboard owner rather than migration debt.
+
+Further decomposition of these three mixed layers requires browser-backed comparison across dark/light and responsive layouts. RC1 local testing is the intended validation stage for that work.
 
 ### Settings Authentication sequence
 
-Authentication remains split across the base Authentication owner plus later OIDC, callback, and presentation layers. These layers are live, and prior MutationObserver regressions make speculative consolidation unsafe without direct browser verification.
+Authentication remains split across the base Authentication owner plus later presentation, OIDC, and callback layers. These layers are live and heavily regression-tested. Prior MutationObserver regressions make speculative consolidation inappropriate before the first local RC browser pass.
 
-### Cross-page finalization observer
+The clean-room `ui-settings-page.js` remains observer-free. Authentication layering may be consolidated after RC1 browser validation proves the accepted Settings behavior and layout are stable.
 
-`ui-page-finalization.js` preserves accepted copy, hierarchy, and Downloads bulk-strip placement. It still observes multiple page subtrees. This is known runtime architecture debt. It should be folded into canonical render owners only when the resulting DOM and behavior can be verified directly.
+### Cross-page finalization
+
+`ui-page-finalization.js` still owns accepted copy, hierarchy, and Downloads bulk-strip placement that are not rendered directly by each page owner. Its observer debt has been reduced from five page-subtree observers to one bounded `#content` observer. Direct ownership by each page remains a later cleanup opportunity, not an RC1 blocker.
+
+## RC1 version ownership
+
+`VERSION` is the authoritative release version source.
+
+- backend `/health`, `/version`, OpenAPI metadata, and `/api/stats` derive from `read_version()`
+- the main sidebar hydrates its visible version from `/api/stats`
+- the server-rendered login page renders `read_version()` directly
+- container build metadata reads `VERSION` and propagates it to the OCI version label
+
+No independent user-visible application version should be hardcoded in frontend presentation assets.
 
 ## Test policy
 
-Frontend tests protect final ownership, effective load order, user-visible behavior, accessibility semantics, safety boundaries, and accepted presentation contracts. Tests should not exist only to preserve retired batch filenames or migration ordering.
+Frontend tests protect final ownership, effective load order, user-visible behavior, accessibility semantics, safety boundaries, accepted presentation contracts, and release-version propagation. Tests should not exist only to preserve retired batch filenames or migration ordering.
 
-Where a live historical source layer must remain, tests should describe the accepted behavior it protects and explicitly identify the layer as retained debt rather than treating its historical name as architecture.
+Where a live historical source layer must remain, tests should describe the accepted behavior it protects and explicitly identify the layer as retained browser-validation debt rather than treating its historical name as architecture.
 
 ## Readiness interpretation
 
 A green qualification proves the candidate passes the repository's regression, security, syntax, container, and packaging gates. It does not prove pixel-level visual parity without browser automation.
 
-Until the retained Dashboard and Authentication stacks are browser-proven and folded, the architecture audit result is `REQUIRES ADDITIONAL FRONTEND REMEDIATION`. That recommendation describes architecture cleanliness only. It is not release authorization and does not advance `VERSION`.
+For `1.0.11rc1`, the remaining Dashboard and Authentication layers are accepted as explicit browser-validation debt because local RC testing is the mechanism for validating them. This permits RC advancement when the static/runtime audit and release qualification are green.
+
+The architecture recommendation remains `REQUIRES ADDITIONAL FRONTEND REMEDIATION` until those browser-sensitive layers are proven and folded. That recommendation does not by itself block the local RC candidate; it remains a gate for claiming final architectural cleanliness before the v1.0.11 release is finalized.
