@@ -43,6 +43,7 @@ jobs:
           python scripts/_canonicalize_settings_auth.py
           python scripts/_canonicalize_v1111_followup.py
           python scripts/_migrate_v1111_frontend_contract_tests.py
+          python scripts/_correct_v1111_contract_assertions.py
 
       - name: Run frontend syntax checks
         shell: bash
