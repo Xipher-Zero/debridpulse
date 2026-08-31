@@ -43,6 +43,18 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/_canonicalize_frontend_runtime_css.py
+          python - <<'PY'
+          from pathlib import Path
+          for name in (
+              'app.js',
+              'operator-title.js',
+              'ui-error-semantics.js',
+              'ui-accessibility-runtime.js',
+          ):
+              path = Path('frontend/static') / name
+              lines = path.read_text(encoding='utf-8').splitlines()
+              path.write_text('\n'.join(line.rstrip() for line in lines).rstrip() + '\n', encoding='utf-8')
+          PY
           git diff --check
       - name: Frontend JavaScript syntax
         shell: bash
