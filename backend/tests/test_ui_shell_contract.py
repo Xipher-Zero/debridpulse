@@ -17,6 +17,7 @@ V11_STYLE = STATIC / "style-v11.css"
 DASHBOARD_STYLE = STATIC / "ui-dashboard.css"
 STATISTICS_STYLE = STATIC / "ui-statistics-page.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
+SHELL_STRUCTURAL_STYLE = STATIC / "ui-shell-structural.css"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
 PULSE = STATIC / "icons" / "dp" / "shell-pulse.svg"
@@ -49,7 +50,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css?v=31",
         "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=20",
-        "/ui-shell-structural.css?v=26",
+        "/ui-shell-structural.css?v=27",
         "/ui-shell-provider-status.css?v=23",
         "/ui-shell-provider-status-v2.css?v=28",
         "/ui-dashboard.css?v=20",
@@ -80,7 +81,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "25",
-        "/ui-shell-structural.css": "26",
+        "/ui-shell-structural.css": "27",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-dashboard-control-polish.css": "23",
@@ -106,7 +107,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
     }
     assert unchanged_versions == {"20"}
 
-    # Old page-local material copies and the universal-last card guard must not
+    # Old page-local material copies and retired correction layers must not
     # return to the active cascade.
     for retired_import in (
         "ui-card-shell-final.css",
@@ -114,6 +115,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "ui-downloads-polish.css",
         "ui-downloads-consistency.css",
         "ui-downloads-shell-sync.css",
+        "ui-regression-fixes.css",
     ):
         assert retired_import not in overlay
 
@@ -153,6 +155,22 @@ def test_v11_bootstrap_cache_generation_is_coherent() -> None:
     assert '/ui-runtime.js?v=24' in operator
     assert '/ui-downloads-runtime.js?v=22' in operator
     assert '/style-v11.css?v=24' in runtime
+
+
+def test_structural_shell_owns_resolved_main_topbar_and_theme_geometry() -> None:
+    overlay = V11_STYLE.read_text(encoding="utf-8")
+    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
+    operator = SHELL_RUNTIME.read_text(encoding="utf-8")
+
+    assert "/ui-regression-fixes.css" not in overlay
+    assert "margin-left: 0 !important;" in css
+    assert "padding-right: var(--dp-shell-x) !important;" in css
+    assert "padding-right: 16px !important;" in css
+    assert "padding: 8px 16px 8px 12px !important;" in css
+    assert ".sidebar-theme-control.topbar-theme-control" in css
+    assert ".topbar-theme-control .theme-toggle" in css
+    assert "control.classList.add('topbar-theme-control')" in operator
+    assert "topbar.appendChild(control)" in operator
 
 
 def test_shell_matches_required_mockup_structure() -> None:
@@ -240,6 +258,7 @@ def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
         "ui-downloads-polish.css",
         "ui-downloads-consistency.css",
         "ui-downloads-shell-sync.css",
+        "ui-regression-fixes.css",
     )
     present = [name for name in junk if (STATIC / name).exists()]
     assert not present, f"temporary/retired migration files leaked into final tree: {present}"

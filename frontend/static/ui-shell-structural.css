@@ -175,7 +175,7 @@ body.dp-v11-structural #lbl-premium {
 }
 
 body.dp-v11-structural #main {
-  margin-left: var(--dp-shell-sidebar);
+  margin-left: 0 !important;
   min-width: 0;
   background: transparent;
 }
@@ -184,6 +184,7 @@ body.dp-v11-structural #topbar {
   height: var(--dp-shell-header);
   min-height: var(--dp-shell-header);
   padding: 27px 66px 14px var(--dp-shell-x);
+  padding-right: var(--dp-shell-x) !important;
   gap: 10px;
   align-items: flex-start;
   background: transparent;
@@ -276,6 +277,33 @@ body.dp-v11-structural .theme-toggle {
   border-color: rgba(116, 130, 194, .19);
 }
 
+/* operator-title.js moves the compatibility wrapper into #topbar. Resolve that
+   final shell geometry here instead of relying on a later correction layer. */
+body.dp-v11-structural .sidebar-theme-control.topbar-theme-control {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: 37px !important;
+  min-width: 37px !important;
+  height: 37px !important;
+  margin: 6px 0 0 0 !important;
+  padding: 0 !important;
+  flex: 0 0 37px !important;
+  align-self: flex-start !important;
+  pointer-events: auto !important;
+  z-index: 1 !important;
+}
+body.dp-v11-structural .topbar-theme-control .theme-toggle {
+  width: 37px !important;
+  min-width: 37px !important;
+  height: 37px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: auto !important;
+}
+
 /* The shell owns the ordinary content inset. Page layers may own geometry
    inside their .view, but they must not replace the shell material itself. */
 body.dp-v11-structural #content {
@@ -333,17 +361,33 @@ body.light.dp-v11-structural .theme-toggle {
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #main { margin-left: 0; }
-  body.dp-v11-structural #topbar { padding-left: 58px; }
+  body.dp-v11-structural #topbar {
+    padding-left: 58px;
+    padding-right: 16px !important;
+  }
   body.dp-v11-structural #sidebar { width: min(280px, 88vw); }
 }
 
 @media (max-width: 700px) {
   :root { --dp-shell-header: 88px; --dp-shell-x: 14px; }
-  body.dp-v11-structural #topbar { padding: 18px 56px 10px 52px; }
+  /* Preserve the accepted effective layout while removing its dependency on
+     the legacy <=700px !important topbar rule. */
+  body.dp-v11-structural #topbar { padding: 8px 16px 8px 12px !important; }
   body.dp-v11-structural #page-title { font-size: 23px; }
   body.dp-v11-structural #page-title::after { display: none; }
   .dp-page-subtitle { margin-top: 6px; font-size: 11.5px; }
   body.dp-v11-structural #topbar-actions { position: absolute; top: 91px; right: 14px; }
   body.dp-v11-structural #aria2-speed-badge { display: none !important; }
+  body.dp-v11-structural .sidebar-theme-control.topbar-theme-control {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    flex-basis: 36px !important;
+    margin-top: 0 !important;
+  }
+  body.dp-v11-structural .topbar-theme-control .theme-toggle {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+  }
 }
