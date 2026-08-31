@@ -5,6 +5,7 @@ on:
     branches: [1.0.11-hotfix1]
     paths:
       - scripts/_canonicalize_settings_auth.py
+      - scripts/_normalize_migrated_test_eofs.py
       - .github/workflows/frontend-canonicalize-auth.yml
   workflow_dispatch:
 
@@ -52,6 +53,7 @@ jobs:
             python scripts/_canonicalize_v1111_followup.py
             python scripts/_migrate_v1111_frontend_contract_tests.py
             python scripts/_correct_v1111_contract_assertions.py
+            python scripts/_normalize_migrated_test_eofs.py
           } > auth-canonicalize.log 2>&1
           code=$?
           git diff > auth-working-tree.diff
@@ -158,6 +160,7 @@ jobs:
             scripts/_canonicalize_v1111_followup.py \
             scripts/_migrate_v1111_frontend_contract_tests.py \
             scripts/_correct_v1111_contract_assertions.py \
+            scripts/_normalize_migrated_test_eofs.py \
             .github/workflows/frontend-canonicalize-auth.yml \
             .github/workflows/_diagnose-auth-pytest.yml \
             auth-canonicalize.log \
