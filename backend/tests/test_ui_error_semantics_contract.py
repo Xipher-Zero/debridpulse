@@ -56,7 +56,7 @@ def test_terminal_failure_progress_preserves_actual_percent_and_uses_error_rail(
     assert "setProperty('background', 'var(--dp-state-error)', 'important')" in runtime
     assert "setProperty('background-image', 'none', 'important')" in runtime
 
-    css = read("ui-live-review-batch.css")
+    css = read("ui-visual-accents.css")
     assert ".prog.dp-terminal-error-rail" in css
     assert "overflow: visible !important" in css
     assert "border-radius: 999px !important" in css
@@ -81,7 +81,7 @@ def test_error_semantics_has_no_unbounded_startup_spin():
 
 
 def test_dark_dashboard_cards_receive_subdued_colored_shadow():
-    css = read("ui-live-review-batch.css")
+    css = read("ui-visual-accents.css")
     assert "rgba(84, 38, 131, .18)" in css
     assert "rgba(167, 139, 250, .06)" in css
     assert "#view-dashboard .dash-hero-stat" in css
@@ -91,7 +91,7 @@ def test_dark_dashboard_cards_receive_subdued_colored_shadow():
 
 def test_details_scrollbar_has_no_increment_decrement_buttons():
     modal_css = read("ui-modal-contract.css")
-    review_css = read("ui-live-review-batch.css")
+    review_css = read("ui-visual-accents.css")
     assert ".modal-body::-webkit-scrollbar-button" in modal_css
     assert "@supports selector(::-webkit-scrollbar)" in review_css
     assert "::-webkit-scrollbar-button:vertical:decrement" in review_css

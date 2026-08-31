@@ -65,7 +65,7 @@ def test_routes_do_not_bypass_provider_gateway():
 
 def test_dockerfile_uses_current_v1_oci_identity():
     dockerfile = (Path(__file__).parents[2] / "Dockerfile").read_text()
-    assert 'org.opencontainers.image.title="DebridPulse — AllDebrid + aria2 Download Manager"' in dockerfile
+    assert 'org.opencontainers.image.title="DebridPulse: AllDebrid + aria2 Download Manager"' in dockerfile
     assert 'org.opencontainers.image.description="AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2"' in dockerfile
     assert "Multi-provider Debrid Download Manager" not in dockerfile
     assert "Multi-provider debrid download manager" not in dockerfile

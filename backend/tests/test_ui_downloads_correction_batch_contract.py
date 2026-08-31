@@ -18,7 +18,7 @@ def test_activity_document_keeps_51px_box_with_optical_padding_only() -> None:
 
 
 def test_downloads_refresh_uses_shared_recovery_control_and_exact_glyph() -> None:
-    controls = read("ui-dashboard-control-polish.css")
+    controls = read("ui-utility-controls.css")
     page = read("ui-downloads-page.css")
     downloads = read("ui-downloads-runtime.js")
     runtime = read("ui-runtime.js")
@@ -98,7 +98,7 @@ def test_batch_cache_generations_are_explicit() -> None:
     index = read("index.html")
     assert "/style-v11.css?v=24" in index
     assert "/ui-runtime.js?v=24" in operator
-    assert "/ui-dashboard-control-polish.css?v=23" in style
+    assert "/ui-utility-controls.css?v=23" in style
     assert "/ui-downloads-page.css?v=27" in style
     assert "/ui-feature-icon-contract.css?v=4" in style
     assert "/ui-transfer-contract.css?v=31" in style

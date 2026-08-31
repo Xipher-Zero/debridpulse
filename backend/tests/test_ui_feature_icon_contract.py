@@ -39,7 +39,7 @@ def test_kpi_and_isolated_glows_keep_distinct_color_ownership() -> None:
 
 def test_dashboard_recover_all_uses_exact_activity_refresh_utility_geometry() -> None:
     runtime = read("ui-runtime.js")
-    controls = read("ui-dashboard-control-polish.css")
+    controls = read("ui-utility-controls.css")
     assert "normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh');" in runtime
     assert "normalizeUtilityButton(refresh, 'refresh');" in runtime
     assert "normalizeDpButton(document.getElementById('btn-recover-all'), 'retry-borderless.svg');" not in runtime

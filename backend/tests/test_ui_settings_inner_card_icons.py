@@ -51,6 +51,6 @@ def test_settings_inner_card_runtime_reapplies_without_observing_its_own_mutatio
 
 
 def test_help_license_footer_actions_and_copy_are_centered_as_one_closing_block():
-    css = (STATIC / 'ui-help-final-balance.css').read_text()
+    css = (STATIC / 'ui-help-license-balance.css').read_text()
     assert '.dp-help-license-actions' in css and 'justify-content: center' in css
     assert '.dp-help-license-note' in css and 'text-align: center' in css

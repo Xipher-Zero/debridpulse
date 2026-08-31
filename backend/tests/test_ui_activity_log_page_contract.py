@@ -87,7 +87,7 @@ def test_activity_projected_level_filter_keeps_compact_reviewed_footprint() -> N
 
 
 def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:
-    controls = read("ui-dashboard-control-polish.css")
+    controls = read("ui-utility-controls.css")
 
     assert "#view-dashboard #btn-recover-all," in controls
     assert "#view-events .dp-activity-refresh" in controls
@@ -101,7 +101,7 @@ def test_activity_refresh_consumes_dashboard_recover_control_recipe() -> None:
 
 def test_transfer_row_actions_have_equal_footprint_and_shared_pause_material() -> None:
     transfer = read("ui-transfer-contract.css")
-    controls = read("ui-dashboard-control-polish.css")
+    controls = read("ui-utility-controls.css")
 
     assert "width: 72px !important;" in transfer
     assert "min-width: 72px !important;" in transfer
@@ -130,7 +130,7 @@ def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> Non
 
     shell = overlay.index("/ui-shell-structural.css?v=30")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
-    controls = overlay.index("/ui-dashboard-control-polish.css?v=23")
+    controls = overlay.index("/ui-utility-controls.css?v=23")
     stats = overlay.index("/ui-statistics-page.css?v=21")
     activity = overlay.index("/ui-activity-log-page.css?v=30")
     downloads = overlay.index("/ui-downloads-page.css?v=27")
