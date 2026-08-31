@@ -20,7 +20,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply patch
-        run: python .github/rc1-settings-contract-census.py
+        run: |
+          sed -i "s/Stats Snapshot Interval (minutes)/Statistics Snapshot Interval (minutes)/g; s/Stats Snapshot Retention (days)/Keep Statistics Snapshots (days)/g" .github/rc1-settings-contract-census.py
+          python .github/rc1-settings-contract-census.py
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
