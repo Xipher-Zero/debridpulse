@@ -1,0 +1,292 @@
+/* DebridPulse v1.0.11 universal dropdown contract.
+ *
+ * One application-wide presentation/interaction language for single-select
+ * controls. Native <select> elements remain the authoritative form controls
+ * and event sources; ui-accessibility-runtime.js projects them into themed
+ * triggers and a shared body-level menu so page/card overflow cannot clip the
+ * opened list.
+ */
+
+/* The native control remains in the DOM for form serialization, existing IDs,
+   labels and legacy JS, but it no longer paints the browser/OS popup. */
+select.dp-native-select--enhanced {
+  position: absolute !important;
+  width: 1px !important;
+  min-width: 1px !important;
+  max-width: 1px !important;
+  height: 1px !important;
+  min-height: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  white-space: nowrap !important;
+}
+
+.dp-dropdown-shell {
+  position: relative;
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.dp-dropdown__trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--dp-input-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-surface-input);
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-body-sm-size);
+  line-height: 1.3;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: none;
+  transition: background-color .14s ease, border-color .14s ease,
+              color .14s ease, box-shadow .14s ease;
+}
+
+.dp-dropdown__trigger:hover:not(:disabled) {
+  border-color: var(--dp-border-strong);
+  background: color-mix(in srgb, var(--dp-surface-input) 94%, var(--dp-accent-purple) 6%);
+}
+
+.dp-dropdown__trigger:focus-visible,
+.dp-dropdown__trigger[aria-expanded="true"] {
+  outline: none;
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong));
+  box-shadow: var(--dp-focus-ring);
+}
+
+.dp-dropdown__trigger:disabled {
+  color: var(--dp-text-disabled);
+  background: var(--dp-surface-2);
+  opacity: .72;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.dp-dropdown__value {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dp-dropdown__chevron {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin: -3px 2px 0 6px;
+  border-right: 1.8px solid currentColor;
+  border-bottom: 1.8px solid currentColor;
+  color: var(--dp-text-secondary);
+  transform: rotate(45deg);
+  transform-origin: 60% 60%;
+  transition: transform .14s ease, color .14s ease;
+}
+
+.dp-dropdown__trigger[aria-expanded="true"] .dp-dropdown__chevron {
+  color: var(--dp-accent-purple-bright);
+  transform: rotate(225deg);
+}
+
+/* Compact controls (pagination and operational quick controls) share the same
+   component without inheriting full form-field geometry. */
+.dp-dropdown-shell--compact .dp-dropdown__trigger {
+  min-height: 28px;
+  height: 28px;
+  padding: 3px 8px;
+  gap: 8px;
+  border-radius: var(--dp-radius-sm);
+  font-size: 12px;
+}
+
+/* One body-level listbox is reused by every projected select. Position and
+   exact trigger-matched width are supplied by the shared runtime. */
+.dp-dropdown-menu {
+  position: fixed;
+  z-index: 4200;
+  display: block;
+  min-width: 0;
+  max-height: min(320px, calc(100vh - 16px));
+  padding: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--dp-border-strong) 78%, var(--dp-accent-purple) 22%);
+  border-radius: var(--dp-radius-md);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 4.8%, transparent) 40%,
+      transparent 74%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 2.4%, transparent) 44%,
+      transparent 76%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.026) 0%,
+      transparent 38%,
+      color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 74%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 92%, var(--dp-surface-overlay) 8%);
+  color: var(--dp-text-primary);
+  box-shadow: var(--dp-shadow-raised), 0 3px 9px rgba(20,18,36,.16);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+body.light .dp-dropdown-menu {
+  border-color: color-mix(in srgb, var(--dp-border-strong) 82%, var(--dp-accent-purple) 18%);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 7.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 3.2%, transparent) 42%,
+      transparent 76%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 4.4%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 1.8%, transparent) 46%,
+      transparent 78%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.52) 0%,
+      transparent 42%,
+      rgba(105,90,145,.04) 76%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 86%, var(--dp-surface-2) 14%);
+  box-shadow: var(--dp-shadow-raised), 0 3px 10px rgba(45,61,96,.11);
+}
+
+.dp-dropdown-menu[hidden] { display: none !important; }
+
+.dp-dropdown__option {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--dp-radius-sm);
+  background: transparent;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-body-sm-size);
+  line-height: 1.25;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  transition: background-color .12s ease, color .12s ease;
+}
+
+.dp-dropdown__option:hover:not(:disabled),
+.dp-dropdown__option:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--dp-accent-purple) 10%, var(--dp-surface-2));
+  color: var(--dp-text-primary);
+}
+
+.dp-dropdown__option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--dp-accent-purple) 16%, var(--dp-surface-2));
+  color: var(--dp-accent-purple-bright);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dp-accent-purple-bright) 20%, transparent);
+}
+
+.dp-dropdown__option:disabled {
+  color: var(--dp-text-disabled);
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+.dp-dropdown__group {
+  padding: 8px 10px 4px;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-sans);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.dp-dropdown__empty {
+  padding: 9px 10px;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+}
+
+/* The speed-cap control is a richer popover rather than a simple select. Its
+   local wrapper must not become the positioning containing block; the existing
+   positioned #aria2-speed-badge owns the popover anchor so right:0 means the
+   complete operational widget's right edge, not the inner cap button. */
+body.dp-v11-structural #aria2-speed-badge .aria2-cap-control {
+  position: static;
+}
+
+body.dp-v11-structural .aria2-cap-menu {
+  right: 0 !important;
+  border-color: color-mix(in srgb, var(--dp-border-strong) 78%, var(--dp-accent-purple) 22%);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 11%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 4.8%, transparent) 40%,
+      transparent 74%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 6%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 2.4%, transparent) 44%,
+      transparent 76%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.026) 0%,
+      transparent 38%,
+      color-mix(in srgb, var(--dp-accent-purple) 4%, transparent) 74%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 92%, var(--dp-surface-overlay) 8%) !important;
+  box-shadow: var(--dp-shadow-raised), 0 3px 9px rgba(20,18,36,.16);
+}
+
+body.light.dp-v11-structural .aria2-cap-menu {
+  border-color: color-mix(in srgb, var(--dp-border-strong) 82%, var(--dp-accent-purple) 18%);
+  background:
+    radial-gradient(ellipse 108% 88% at 92% 96%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 7.2%, transparent) 0%,
+      color-mix(in srgb, var(--dp-accent-purple-bright) 3.2%, transparent) 42%,
+      transparent 76%),
+    radial-gradient(ellipse 82% 68% at 4% 76%,
+      color-mix(in srgb, var(--dp-state-active) 4.4%, transparent) 0%,
+      color-mix(in srgb, var(--dp-state-active) 1.8%, transparent) 46%,
+      transparent 78%),
+    linear-gradient(150deg,
+      rgba(255,255,255,.52) 0%,
+      transparent 42%,
+      rgba(105,90,145,.04) 76%,
+      transparent 100%),
+    color-mix(in srgb, var(--dp-panel-surface) 86%, var(--dp-surface-2) 14%) !important;
+  box-shadow: var(--dp-shadow-raised), 0 3px 10px rgba(45,61,96,.11);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-dropdown__trigger,
+  .dp-dropdown__chevron,
+  .dp-dropdown__option {
+    transition: none;
+  }
+}

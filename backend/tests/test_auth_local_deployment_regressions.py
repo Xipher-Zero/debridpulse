@@ -102,9 +102,36 @@ def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monke
     assert request_is_secure(request) is False
 
 
-def test_auth_pages_use_debridpulse_dark_theme_palette():
-    assert "--bg:#090812" in _AUTH_PAGE_STYLE
-    assert "--accent:#a67cff" in _AUTH_PAGE_STYLE
+def test_auth_pages_use_reviewed_debridpulse_login_palettes():
+    assert "--bg:#030612" in _AUTH_PAGE_STYLE
+    assert "--bg2:#081126" in _AUTH_PAGE_STYLE
+    assert "--card:rgba(10,16,33,.55)" in _AUTH_PAGE_STYLE
+    assert "--card2:rgba(7,12,27,.40)" in _AUTH_PAGE_STYLE
+    assert "--field:rgba(7,13,29,.52)" in _AUTH_PAGE_STYLE
+    assert "--text:#f7f8ff" in _AUTH_PAGE_STYLE
+    assert "--accent:#b45cff" in _AUTH_PAGE_STYLE
+    assert "--accent2:#3d94ff" in _AUTH_PAGE_STYLE
+    assert "--icon-accent:#b0a3ff" in _AUTH_PAGE_STYLE
+    assert "--glass-top:rgba(255,255,255,.13)" in _AUTH_PAGE_STYLE
+    assert "--glass-purple:rgba(180,92,255,.18)" in _AUTH_PAGE_STYLE
+    assert "--glass-blue:rgba(42,148,255,.15)" in _AUTH_PAGE_STYLE
+    assert ':root[data-theme="light"]' in _AUTH_PAGE_STYLE
+    assert "--bg:#f8f9ff" in _AUTH_PAGE_STYLE
+    assert "--bg2:#eef4ff" in _AUTH_PAGE_STYLE
+    assert "--card:rgba(255,255,255,.55)" in _AUTH_PAGE_STYLE
+    assert "--card2:rgba(249,251,255,.35)" in _AUTH_PAGE_STYLE
+    assert "--field:rgba(255,255,255,.50)" in _AUTH_PAGE_STYLE
+    assert "--text:#111a34" in _AUTH_PAGE_STYLE
+    assert "--accent:#9637f5" in _AUTH_PAGE_STYLE
+    assert "--accent2:#2f86ff" in _AUTH_PAGE_STYLE
+    assert "--icon-accent:#7868e4" in _AUTH_PAGE_STYLE
+    assert "--glass-top:rgba(255,255,255,.88)" in _AUTH_PAGE_STYLE
+    assert "--glass-purple:rgba(161,91,255,.13)" in _AUTH_PAGE_STYLE
+    assert "--glass-blue:rgba(66,150,255,.14)" in _AUTH_PAGE_STYLE
+    assert "backdrop-filter:blur(30px) saturate(165%)" in _AUTH_PAGE_STYLE
+    assert "border-radius:12px" in _AUTH_PAGE_STYLE
+    assert "body::before" in _AUTH_PAGE_STYLE
+    assert "body::after" in _AUTH_PAGE_STYLE
     assert "#f08a24" not in _AUTH_PAGE_STYLE
     response = _state_free_auth_page(message="Try again shortly.", status_code=429, retry_after=60)
     assert 'class="card"' in response.body.decode()
@@ -118,21 +145,21 @@ def test_baseline_referrer_policy_preserves_same_origin_form_origin():
 
 
 def test_auth_settings_present_external_base_as_general_security_setting():
-    source = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "auth-settings.js").read_text()
+    source = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "ui-settings-page.js").read_text()
     assert "External Base URL (Canonical Origin)" in source
     assert "reverse-proxy origin validation" in source
     assert "PUBLIC_BASE_URL environment variable" in source
 
 
-def test_authentication_ux_assets_are_packaged_and_loaded():
+def test_authentication_session_and_help_assets_are_packaged_without_settings_augmentation():
     static = Path(__file__).resolve().parents[2] / "frontend" / "static"
     bootstrap = (static / "auth.js").read_text()
-    ux_script = (static / "auth-ux.js").read_text()
+    settings = (static / "ui-settings-page.js").read_text()
     ux_style = (static / "auth-ux.css").read_text()
 
-    assert "/auth-ux.js?v=1" in bootstrap
+    assert "/auth-help.js?v=1" in bootstrap
     assert "/auth-ux.css?v=1" in bootstrap
-    assert "External Authentication Origin" in ux_script
-    assert "Authorization & Claim Mapping" in ux_script
-    assert "#settings-form .stab-panel.active" in ux_style
-    assert "max-width: none" in ux_style
+    assert "/auth-settings.js" not in bootstrap
+    assert "/auth-ux.js" not in bootstrap
+    assert "sidebar-bottom-stack" in ux_style
+    assert "window.DPSettingsPage = Object.freeze({load});" in settings

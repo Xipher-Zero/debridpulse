@@ -1,0 +1,202 @@
+/* DebridPulse v1.0.11 Data & Maintenance cards. */
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header,
+body.dp-v11-structural #view-settings .dp-settings-backups-retention-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.3fr) minmax(240px, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
+body.dp-v11-structural #view-settings .dp-settings-backups-retention-card > .card-header > .card-title {
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-header-copy,
+body.dp-v11-structural #view-settings .dp-settings-backups-header-copy {
+  justify-self: center;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* Backups & Retention */
+body.dp-v11-structural #view-settings .dp-settings-backups-header-toggle {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  width: auto;
+  margin: 0 !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-header-toggle .toggle-info {
+  display: flex;
+  align-items: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-header-toggle .tl {
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-header-toggle .toggle {
+  flex: 0 0 auto;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px 28px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-field-grid > .dp-settings-field {
+  min-width: 0;
+  margin: 0;
+}
+
+/* Match the established Sources / Downloads field sandwich: label and helper
+   copy share the input's 3px content datum, including wrapped helper lines. */
+body.dp-v11-structural #view-settings [data-panel="maintenance"] .dp-settings-field > .form-label,
+body.dp-v11-structural #view-settings [data-panel="maintenance"] .dp-settings-field > .form-hint {
+  position: relative;
+  inset-inline-start: 3px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-field-grid .form-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-field-grid .form-hint {
+  display: block;
+  margin-top: 7px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-backups-actions .btn {
+  width: auto;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-run-backup-success {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 25%, transparent);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-run-backup-success:hover {
+  background: color-mix(in srgb, var(--green) 22%, transparent);
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+}
+
+/* Database Reset Controls */
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-card .dp-settings-caution {
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.15fr) minmax(260px, .75fr) auto;
+  align-items: center;
+  justify-items: start;
+  gap: 28px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row > .dp-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row .toggle-info {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row .toggle-info .tl,
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row .toggle-info .td {
+  display: block;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-row .toggle {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-database-wipe-action .btn {
+  width: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header,
+  body.dp-v11-structural #view-settings .dp-settings-backups-retention-card > .card-header {
+    grid-template-columns: minmax(200px, 1fr) minmax(300px, 1.2fr) minmax(200px, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-backups-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-row {
+    grid-template-columns: minmax(320px, 1fr) minmax(240px, .8fr) auto;
+    gap: 22px;
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header,
+  body.dp-v11-structural #view-settings .dp-settings-backups-retention-card > .card-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
+  body.dp-v11-structural #view-settings .dp-settings-backups-retention-card > .card-header > .card-title,
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-header-copy,
+  body.dp-v11-structural #view-settings .dp-settings-backups-header-copy,
+  body.dp-v11-structural #view-settings .dp-settings-backups-header-toggle {
+    justify-self: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-database-wipe-action {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural #view-settings .dp-settings-backups-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

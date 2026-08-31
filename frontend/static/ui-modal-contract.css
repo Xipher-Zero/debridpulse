@@ -1,0 +1,341 @@
+/* DebridPulse v1.0.11 shared detail-modal scroll contract.
+ * The outer modal owns the rounded frame; only the body scrolls.
+ */
+
+body.dp-v11-structural #modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+
+body.dp-v11-structural #modal .modal-hdr {
+  flex: 0 0 auto;
+}
+
+body.dp-v11-structural #modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color:
+    color-mix(in srgb, var(--dp-text-muted) 58%, var(--dp-accent-purple) 42%)
+    color-mix(in srgb, var(--dp-surface-3) 82%, transparent);
+}
+
+/* Desktop pointer target: deliberately thicker than the browser's compact
+   scrollbar so it is easy to acquire with a mouse. The modal frame clips the
+   track inside its lower radius rather than allowing it to escape the panel. */
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+/* Chromium/WebKit may expose native increment/decrement buttons at either end
+   of the custom scrollbar. Details needs only the track + thumb. */
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-button,
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-button:single-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dp-surface-3) 82%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--dp-border-subtle) 72%, transparent);
+}
+
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--dp-text-muted) 58%, var(--dp-accent-purple) 42%),
+      color-mix(in srgb, var(--dp-text-muted) 58%, var(--dp-accent-purple) 42%)
+    ) padding-box;
+}
+
+body.dp-v11-structural #modal .modal-body::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--dp-text-secondary) 54%, var(--dp-accent-purple-bright) 46%),
+      color-mix(in srgb, var(--dp-text-secondary) 54%, var(--dp-accent-purple-bright) 46%)
+    ) padding-box;
+}
+
+/* ── Canonical Details card material / composition ───────────────────── */
+/* The Details overlay is a modal presentation of the same card language used
+   by Dashboard, Downloads and Activity. The universal dp-card primitives own
+   the material; this layer supplies only dialog geometry and scoped composition. */
+body.dp-v11-structural #overlay {
+  padding: 24px;
+  background: rgba(5, 8, 20, .74);
+  backdrop-filter: blur(8px) saturate(.92);
+}
+body.light.dp-v11-structural #overlay {
+  background: rgba(42, 34, 60, .28);
+  backdrop-filter: blur(8px) saturate(.88);
+}
+
+body.dp-v11-structural #modal.dp-detail-modal {
+  width: 90%;
+  max-width: 620px;
+  max-height: 82vh;
+  margin: 0;
+  border: 1px solid transparent !important;
+  border-radius: var(--dp-radius-lg) !important;
+  background: var(--dp-panel-surface) !important;
+  box-shadow:
+    var(--dp-panel-shadow),
+    0 24px 70px rgba(0, 0, 12, .42) !important;
+}
+body.light.dp-v11-structural #modal.dp-detail-modal {
+  box-shadow:
+    var(--dp-panel-shadow),
+    0 22px 58px rgba(45, 39, 68, .18) !important;
+}
+
+body.dp-v11-structural #modal .modal-hdr.dp-card__header {
+  min-height: 58px;
+  padding: 0 17px;
+  border-bottom-color: var(--dp-panel-header-border);
+  background: var(--dp-panel-header-surface);
+}
+body.dp-v11-structural #modal .modal-title.dp-card__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.dp-v11-structural #modal .dp-detail-close.btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--dp-text-secondary);
+}
+body.dp-v11-structural #modal .dp-detail-close .dp-utility-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+body.dp-v11-structural #modal .dp-detail-close:hover {
+  color: var(--dp-text-primary);
+}
+
+body.dp-v11-structural #modal .modal-body.dp-card__body {
+  padding: var(--dp-card-padding);
+  background: transparent;
+}
+body.dp-v11-structural #modal .detail-grid {
+  gap: 14px 22px;
+  margin-bottom: 18px;
+}
+body.dp-v11-structural #modal .dk {
+  margin-bottom: 4px;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .09em;
+}
+body.dp-v11-structural #modal .dv {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+body.dp-v11-structural #modal .dp-detail-section-card {
+  margin: 0 0 14px;
+}
+body.dp-v11-structural #modal .dp-detail-section-card:last-child {
+  margin-bottom: 0;
+}
+body.dp-v11-structural #modal .dp-detail-section-card > .card-header {
+  min-height: 44px;
+}
+body.dp-v11-structural #modal .dp-detail-section-card > .card-header .card-title {
+  font-size: 13px;
+  letter-spacing: .02em;
+}
+
+body.dp-v11-structural #modal .dp-detail-table-wrap {
+  overflow-x: auto;
+  background: transparent;
+}
+body.dp-v11-structural #modal .dp-detail-files-card .t-table {
+  background: transparent;
+}
+body.dp-v11-structural #modal .dp-detail-files-card .dp-detail-filename {
+  font-family: var(--dp-font-mono);
+  font-size: 11px;
+}
+
+body.dp-v11-structural #modal .dp-detail-events-list {
+  background: transparent;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .event-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  margin: 0;
+  padding: 9px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--dp-table-row-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dp-text-primary);
+  box-shadow: none;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .event-item:last-child {
+  border-bottom: 0;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .event-item:hover {
+  background: var(--dp-table-row-hover);
+}
+body.dp-v11-structural #modal .dp-detail-events-list .emsg {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+}
+body.dp-v11-structural #modal .dp-detail-events-list .etime {
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural #overlay { padding: 12px; }
+  body.dp-v11-structural #modal.dp-detail-modal { width: 100%; max-height: 90vh; }
+  body.dp-v11-structural #modal .detail-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Settings confirmation dialog ─────────────────────────────────────── */
+body.dp-settings-confirm-open {
+  overflow: hidden;
+}
+
+.dp-settings-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 8, 20, .74);
+  backdrop-filter: blur(8px) saturate(.92);
+}
+
+body.light .dp-settings-confirm-overlay {
+  background: rgba(42, 34, 60, .28);
+  backdrop-filter: blur(8px) saturate(.88);
+}
+
+.dp-settings-confirm-dialog {
+  width: min(520px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--dp-border-subtle);
+  border-radius: var(--dp-radius-lg);
+  background: var(--dp-panel-surface);
+  box-shadow: var(--dp-panel-shadow), 0 24px 70px rgba(0, 0, 12, .42);
+}
+
+body.light .dp-settings-confirm-dialog {
+  box-shadow: var(--dp-panel-shadow), 0 22px 58px rgba(45, 39, 68, .18);
+}
+
+.dp-settings-confirm-dialog[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--dp-state-caution) 48%, var(--dp-border-subtle));
+}
+
+.dp-settings-confirm-dialog[data-tone="danger"] {
+  border-color: color-mix(in srgb, var(--dp-state-error) 52%, var(--dp-border-subtle));
+}
+
+.dp-settings-confirm-header {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--dp-panel-header-border);
+  background: var(--dp-panel-header-surface);
+}
+
+.dp-settings-confirm-dialog[data-tone="warning"] .dp-settings-confirm-header {
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--dp-state-caution) 74%, transparent);
+}
+
+.dp-settings-confirm-dialog[data-tone="danger"] .dp-settings-confirm-header {
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--dp-state-error) 78%, transparent);
+}
+
+.dp-settings-confirm-title {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.dp-settings-confirm-body {
+  display: grid;
+  gap: 18px;
+  padding: 20px 20px 18px;
+}
+
+.dp-settings-confirm-message {
+  margin: 0;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.dp-settings-confirm-typed {
+  display: grid;
+  gap: 7px;
+}
+
+.dp-settings-confirm-typed[hidden] {
+  display: none;
+}
+
+.dp-settings-confirm-typed .input {
+  width: 100%;
+}
+
+.dp-settings-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--dp-border-subtle);
+}
+
+.dp-settings-confirm-footer .btn {
+  min-width: 104px;
+}
+
+@media (max-width: 620px) {
+  .dp-settings-confirm-overlay {
+    padding: 12px;
+  }
+
+  .dp-settings-confirm-footer {
+    flex-direction: column-reverse;
+  }
+
+  .dp-settings-confirm-footer .btn {
+    width: 100%;
+  }
+}

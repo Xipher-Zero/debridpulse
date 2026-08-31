@@ -5,10 +5,12 @@ on:
   push:
     branches:
       - main
+      - '1.0.11'
       - 'staging/**'
   pull_request:
     branches:
       - main
+      - '1.0.11'
       - 'staging/**'
   workflow_dispatch:
 
@@ -60,10 +62,32 @@ jobs:
         run: |
           node --check frontend/static/app.js
           node --check frontend/static/auth.js
-          node --check frontend/static/auth-settings.js
           node --check frontend/static/auth-help.js
-          node --check frontend/static/auth-ux.js
           node --check frontend/static/operator-title.js
+          node --check frontend/static/ui-runtime.js
+          node --check frontend/static/ui-downloads-runtime.js
+          node --check frontend/static/ui-accessibility-runtime.js
+          node --check frontend/static/ui-theme-bootstrap.js
+          node --check frontend/static/ui-presentation-loader.js
+          node --check frontend/static/ui-shell-runtime.js
+          node --check frontend/static/ui-help-page.js
+          node --check frontend/static/ui-help-chrome.js
+          node --check frontend/static/ui-help-license-documents.js
+          node --check frontend/static/ui-settings-page.js
+          node --check frontend/static/ui-settings-auth-resilience.js
+          node --check frontend/static/ui-settings-maintenance-wipe.js
+          node --check frontend/static/ui-settings-notifications.js
+          node --check frontend/static/ui-settings-authentication.js
+          node --check frontend/static/ui-settings-authentication-polish.js
+          node --check frontend/static/ui-settings-authentication-oidc.js
+          node --check frontend/static/ui-settings-authentication-callback.js
+          node --check frontend/static/ui-settings-downloads-completion.js
+          node --check frontend/static/ui-settings-aria2-live.js
+          node --check frontend/static/ui-settings-card-icons.js
+          node --check frontend/static/ui-visual-behavior-fixes.js
+          node --check frontend/static/ui-statistics.js
+          node --check frontend/static/ui-error-semantics.js
+          node --check frontend/static/ui-page-finalization.js
 
   security:
     runs-on: ubuntu-latest

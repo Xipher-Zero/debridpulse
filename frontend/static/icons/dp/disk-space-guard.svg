@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="32" height="32" viewBox="0 0 32 32"
+     fill="none">
+  <defs>
+    <linearGradient id="gold" x1="8" y1="6" x2="24" y2="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE44A"/>
+      <stop offset="0.38" stop-color="#F5C51A"/>
+      <stop offset="0.72" stop-color="#D99A08"/>
+      <stop offset="1" stop-color="#FFD94A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- upper housing -->
+  <path d="M10 18V10.2
+           C10 8.1 11.7 6.4 13.8 6.4
+           H18.2
+           C20.3 6.4 22 8.1 22 10.2
+           V18"
+        stroke="url(#gold)"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- inner '2' mark -->
+  <path d="M14 11.1
+           C14 10.2 14.8 9.6 16 9.6
+           C17.2 9.6 18 10.2 18 11.1
+           C18 12.1 17.2 12.6 16.1 13.2
+           L14.2 14.3
+           H18"
+        stroke="url(#gold)"
+        stroke-width="2.05"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- lower base -->
+  <path d="M8.5 18.2
+           H23.5
+           V24.6
+           H8.5
+           Z"
+        stroke="url(#gold)"
+        stroke-width="2.35"
+        stroke-linejoin="round"
+        fill="none"/>
+
+  <!-- base highlight -->
+  <path d="M9.6 22.8 H22.4"
+        stroke="url(#gold)"
+        stroke-width="1.7"
+        stroke-linecap="round"/>
+</svg>

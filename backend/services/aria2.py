@@ -174,10 +174,14 @@ class Aria2Service:
             return {"skipped": True, "reason": "external aria2 policy is read-only"}
         return await self._call("aria2.changeGlobalOption", [options])
 
-    async def purge_download_results(self) -> Any:
+    async def purge_download_results(self, *, force: bool = False) -> Any:
+        """Preserve bounded built-in result state unless an explicit purge is requested."""
         if not _is_builtin_mode():
             logger.warning("Blocked aria2.purgeDownloadResult for shared external daemon")
             return {"skipped": True, "reason": "external aria2 result history is daemon-owned"}
+        if not force:
+            logger.debug("Preserving bounded built-in aria2 result state")
+            return {"skipped": True, "reason": "bounded built-in aria2 result state is operator-visible"}
         return await self._call("aria2.purgeDownloadResult")
 
     async def get_memory_diagnostics(

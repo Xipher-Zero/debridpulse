@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from packaging.version import Version
+
 from core.branding import APP_METADATA_TITLE, APP_NAME, APP_SHORT_NAME, REPOSITORY_URL
 from core.config import AppSettings
 from main import app
@@ -152,6 +154,7 @@ def test_unified_submission_input_expands_to_five_lines():
     assert ".direct-link-input" in styles
     assert "overflow-y: hidden" in styles
 
+
 def test_release_workflow_accepts_public_v1_tags():
     workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()
     release_helper = (REPO_ROOT / "release.py").read_text()
@@ -159,8 +162,8 @@ def test_release_workflow_accepts_public_v1_tags():
     assert "startsWith(github.ref, 'refs/tags/v')" in workflow
     assert "DB_PATH=/app/data/debridpulse.db" in workflow
     version = (REPO_ROOT / "VERSION").read_text().strip()
-    parts = version.split(".")
-    assert len(parts) == 3 and all(part.isdigit() for part in parts)
+    parsed = Version(version)
+    assert parsed.release[:2] == (1, 0)
     assert 'tag = f"v{version}"' in release_helper
     assert "internal-v{version}" not in release_helper
 
@@ -403,7 +406,7 @@ def test_v102_minor_ui_cleanup_contract():
     assert 'overflow-wrap: anywhere' in styles.split('.aria2-job-name {', 1)[1].split('}', 1)[0]
     assert 'overflow-wrap: anywhere' in styles.split('.aria2-job-meta {', 1)[1].split('}', 1)[0]
     assert '/style.css?v=15' in index
-    assert '/app.js?v=14' in index
+    assert '/app.js?v=15' in index
 
 
 def test_inherited_file_preview_and_block_routes_are_hardened():

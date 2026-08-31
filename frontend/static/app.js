@@ -704,7 +704,12 @@ async function loadStats() {
       renderTopbarActions();
       setDot('api', 'ok', 'AllDebrid: online');
       // ── stat cards ─────────────────────────────────────────────────────
-      const total = Object.values(bs).reduce((a,b)=>a+b,0);
+      // Soft-deleted rows remain in /stats for diagnostics/duplicate revival,
+      // but they are intentionally absent from the normal All Downloads view.
+      // User-facing totals and Queue Health therefore use the same visible universe.
+      const total = Object.entries(bs)
+        .filter(([status]) => status !== 'deleted')
+        .reduce((sum, [, count]) => sum + (Number(count) || 0), 0);
       const completed = s.completed_count ?? bs.completed ?? 0;
       const queuePct = pct(completed, total || 0);
       document.getElementById('s-total').textContent = total;
@@ -1445,30 +1450,40 @@ async function showDetail(id) {
         ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
       ${t.files&&t.files.length?`
-        <div class="sec-label">Files (${t.files.length})</div>
-        <div class="card">
-          <table>
-            <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
-            <tbody>${t.files.map(f=>`<tr>
-              <td style="font-family:var(--mono);font-size:11px">${esc(f.filename)}
-                ${f.blocked
-                  ? `<span class="badge badge-error" style="font-size:9px;margin-left:6px">BLOCKED: ${esc(f.block_reason)}</span>`
-                  : (f.block_reason ? `<div style="font-size:10px;color:var(--red);margin-top:4px">${esc(f.block_reason)}</div>` : '')}
-              </td>
-              <td class="sz">${fmtSize(f.size_bytes)}</td>
-              <td>${badge(f.status)}</td>
-            </tr>`).join('')}</tbody>
-          </table>
+        <div class="card dp-detail-section-card dp-detail-files-card">
+          <div class="card-header">
+            <span class="card-title">Files (${t.files.length})</span>
+          </div>
+          <div class="dp-detail-table-wrap">
+            <table class="t-table">
+              <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
+              <tbody>${t.files.map(f=>`<tr>
+                <td class="dp-detail-filename">${esc(f.filename)}
+                  ${f.blocked
+                    ? `<span class="badge badge-error" style="font-size:9px;margin-left:6px">BLOCKED: ${esc(f.block_reason)}</span>`
+                    : (f.block_reason ? `<div style="font-size:10px;color:var(--red);margin-top:4px">${esc(f.block_reason)}</div>` : '')}
+                </td>
+                <td class="sz">${fmtSize(f.size_bytes)}</td>
+                <td>${badge(f.status)}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
         </div>
       `:''}
       ${t.events&&t.events.length?`
-        <div class="sec-label">Events</div>
-        ${t.events.map(ev=>`
-          <div class="event-item">
-            <div class="elevel ${esc(ev.level)}"></div>
-            <div class="emsg">${esc(ev.message)}</div>
-            <div class="etime">${fmtDate(ev.created_at)}</div>
-          </div>`).join('')}
+        <div class="card dp-detail-section-card dp-detail-events-card">
+          <div class="card-header">
+            <span class="card-title">Events</span>
+          </div>
+          <div class="dp-detail-events-list">
+            ${t.events.map(ev=>`
+              <div class="event-item">
+                <div class="elevel ${esc(ev.level)}"></div>
+                <div class="emsg">${esc(ev.message)}</div>
+                <div class="etime">${fmtDate(ev.created_at)}</div>
+              </div>`).join('')}
+          </div>
+        </div>
       `:''}
     `;
   } catch(e) {
@@ -1563,7 +1578,7 @@ function onCheckboxChange() {
   const cnt = document.getElementById('bulk-count');
   if (_selectedIds.size > 0) {
     bar.classList.add('visible');
-    cnt.textContent = _selectedIds.size + ' selected';
+    cnt.textContent = _selectedIds.size + ' Selected';
   } else {
     bar.classList.remove('visible');
   }

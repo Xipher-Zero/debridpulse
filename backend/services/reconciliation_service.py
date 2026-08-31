@@ -7,7 +7,7 @@ import logging
 
 from core.config import get_settings
 from core.performance import async_timer, increment
-from services.aria2_runtime import is_builtin_mode
+from services.aria2_runtime import is_builtin_mode  # compatibility seam for tests/adapters
 
 logger = logging.getLogger("debridpulse.reconciliation")
 _cycle_snapshot: ContextVar[tuple[asyncio.Task, list] | None] = ContextVar(
@@ -17,12 +17,13 @@ _cycle_active: ContextVar[bool] = ContextVar("debridpulse_reconcile_active", def
 
 
 class ReconciliationService:
-    def __init__(self, engine, repository, control, dispatch, ownership):
+    def __init__(self, engine, repository, control, dispatch, ownership, recovery=None):
         self.engine = engine
         self.repository = repository
         self.control = control
         self.dispatch = dispatch
         self.ownership = ownership
+        self.recovery = recovery
         self.confirmed_missing: set[str] = set()
 
     async def get_all(self):
@@ -114,18 +115,19 @@ class ReconciliationService:
                     await self.dispatch.dispatch_queue(snapshot)
                 async with async_timer("reconcile.ready_parent"):
                     await self.engine._schedule_ready_aria2_parents()
+                if self.recovery is not None:
+                    async with async_timer("reconcile.aria2_error_recovery"):
+                        await self.recovery.run()
         finally:
             _cycle_active.reset(active_token)
 
         async with async_timer("reconcile.deferred_provider"):
             await self.engine.resume_deferred_provider_submissions()
 
-        if is_builtin_mode():
-            try:
-                async with async_timer("reconcile.cleanup"):
-                    await self.engine._cleanup_aria2_orphans()
-            except Exception as exc:
-                logger.debug("aria2 orphan cleanup deferred: %s", exc)
+        # Stopped result objects are inert, bounded aria2 runtime state. Keep
+        # them available to the built-in engine escape hatch after DebridPulse
+        # has reconciled the durable transfer record. Active orphan recovery is
+        # handled by the normal sync/dispatch paths rather than result deletion.
 
     async def startup(self):
         await self.engine.reconcile_aria2_on_startup()

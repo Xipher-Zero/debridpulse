@@ -1,0 +1,487 @@
+/* DebridPulse v1.0.11 universal component language.
+ *
+ * Dashboard is the visual reference implementation. This layer owns the
+ * application defaults for reusable materials and is intentionally loaded
+ * BEFORE page-specific CSS. A page may override geometry or behavior when its
+ * workflow requires it, but it must not copy/redefine the base material merely
+ * to look consistent.
+ *
+ * The dp-* selectors are canonical. Legacy class aliases are temporary bridge
+ * selectors so existing static/runtime markup inherits the same defaults while
+ * it is migrated incrementally.
+ */
+
+/* ── Standard raised panels/cards ─────────────────────────────────────── */
+/* Shell roots are structural canvases, never raised content. Keep them outside
+   the migration-era card aliases so an accidental legacy class cannot turn the
+   application viewport into a card or acquire the universal painted frame. */
+body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card):not(#sidebar):not(#main):not(#topbar):not(#content) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--dp-radius-lg);
+  background: var(--dp-panel-surface);
+  box-shadow: var(--dp-panel-shadow);
+}
+
+/* Dashboard-derived painted frame: defined top edge, side edges dissolving
+   toward the bottom, no painted lower edge. Shell roots are excluded for the
+   same ownership reason as the base card material above. */
+body.dp-v11-structural :is(.dp-card, .card, .scard, .list-card):not(#sidebar):not(#main):not(#topbar):not(#content)::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 1px solid var(--dp-panel-frame);
+  border-bottom: 0;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%);
+  mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%);
+  pointer-events: none;
+}
+
+body.dp-v11-structural :is(
+  .dp-card__header,
+  .card > .card-header,
+  .scard > .scard-header,
+  .list-card > .card-header
+) {
+  position: relative;
+  z-index: 1;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 17px;
+  border-bottom: 1px solid var(--dp-panel-header-border);
+  background: var(--dp-panel-header-surface);
+  background-clip: padding-box;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+
+body.dp-v11-structural :is(.card, .list-card) > .card-header .card-title,
+body.dp-v11-structural .dp-card__title {
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+body.dp-v11-structural :is(.dp-card__body, .card-body, .scard-body, .list-card .card-body) {
+  padding: var(--dp-card-padding);
+}
+
+/* ── KPI / metric cards ───────────────────────────────────────────────── */
+/* The semantic color is local --c when supplied, otherwise DP purple. */
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi) {
+  --dp-metric-color: var(--c, var(--dp-accent-purple-bright));
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--dp-radius-lg);
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--dp-metric-color) 19%, transparent) 0%,
+      color-mix(in srgb, var(--dp-metric-color) 13%, transparent) 24%,
+      color-mix(in srgb, var(--dp-metric-color) 7%, transparent) 46%,
+      color-mix(in srgb, var(--dp-metric-color) 2.5%, transparent) 64%,
+      transparent 76%),
+    linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1));
+  box-shadow: var(--dp-panel-shadow);
+  transform: none;
+}
+
+body.light.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi) {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--dp-metric-color) 15%, transparent) 0%,
+      color-mix(in srgb, var(--dp-metric-color) 10%, transparent) 25%,
+      color-mix(in srgb, var(--dp-metric-color) 5.5%, transparent) 48%,
+      color-mix(in srgb, var(--dp-metric-color) 2%, transparent) 65%,
+      transparent 77%),
+    linear-gradient(180deg, #ffffff, var(--dp-surface-2));
+}
+
+/* Semantic top/left source used by Dashboard hero cards and reusable metrics. */
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi)::before {
+  display: block;
+  content: '';
+  position: absolute;
+  z-index: 6;
+  left: -1px;
+  top: -1px;
+  width: calc(100% - 13px);
+  height: 10px;
+  border: 0;
+  border-top: 3px solid var(--dp-metric-color);
+  border-left: 1.5px solid color-mix(in srgb, var(--dp-metric-color) 72%, transparent);
+  border-top-left-radius: 12px;
+  background: transparent;
+  box-shadow: 0 -1px 8px color-mix(in srgb, var(--dp-metric-color) 24%, transparent);
+  -webkit-mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%);
+  mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%);
+  pointer-events: none;
+}
+
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash-kpi)::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--dp-metric-color) 28%, var(--dp-panel-frame));
+  border-bottom: 0;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(180deg,
+    #000 0%, #000 42%, rgba(0,0,0,.94) 53%, rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%, rgba(0,0,0,.39) 85%, rgba(0,0,0,.18) 93%, transparent 98%);
+  mask-image: linear-gradient(180deg,
+    #000 0%, #000 42%, rgba(0,0,0,.94) 53%, rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%, rgba(0,0,0,.39) 85%, rgba(0,0,0,.18) 93%, transparent 98%);
+  pointer-events: none;
+}
+
+body.dp-v11-structural :is(.metric-value, .stat-value) {
+  color: var(--dp-metric-color, var(--dp-text-primary));
+  font-variant-numeric: tabular-nums;
+}
+
+body.dp-v11-structural :is(.metric-label, .stat-label) {
+  color: var(--dp-text-secondary);
+}
+
+body.dp-v11-structural :is(.metric-sub, .stat-sub) {
+  color: var(--dp-text-muted);
+}
+
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card)[data-c="orange"] { --c: var(--status-total); }
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card)[data-c="green"] { --c: var(--dp-state-success); }
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card)[data-c="blue"] { --c: var(--dp-state-active); }
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card)[data-c="yellow"] { --c: var(--dp-state-caution); }
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card)[data-c="red"] { --c: var(--dp-state-error); }
+body.dp-v11-structural :is(.dp-metric-card, .metric-card, .stat-card)[data-c="purple"] { --c: var(--dp-accent-purple-bright); }
+
+/* ── Fields / search / selects ───────────────────────────────────────── */
+body.dp-v11-structural :is(.dp-field, .input),
+body.dp-v11-structural select.input,
+body.dp-v11-structural textarea.input {
+  width: 100%;
+  min-height: var(--dp-input-height);
+  padding: 9px 12px;
+  border: 1px solid var(--dp-field-border);
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-field-surface);
+  color: var(--dp-field-text);
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-body-sm-size);
+  line-height: 1.35;
+  outline: none;
+  box-shadow: inset 0 1px rgba(255,255,255,.018);
+  transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
+}
+
+body.light.dp-v11-structural :is(.dp-field, .input),
+body.light.dp-v11-structural select.input,
+body.light.dp-v11-structural textarea.input {
+  box-shadow: inset 0 1px rgba(255,255,255,.85);
+}
+
+body.dp-v11-structural :is(.dp-field, .input):hover {
+  border-color: var(--dp-border-strong);
+}
+body.dp-v11-structural :is(.dp-field, .input):focus {
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong));
+  box-shadow: var(--dp-focus-ring);
+  background: var(--dp-field-surface);
+}
+body.dp-v11-structural :is(.dp-field, .input)::placeholder {
+  color: var(--dp-text-muted);
+  opacity: .78;
+}
+
+body.dp-v11-structural :is(.form-label, .dp-field-label) {
+  color: var(--dp-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+body.dp-v11-structural :is(.form-hint, .dp-field-help) {
+  color: var(--dp-text-muted);
+  font-size: 11px;
+}
+
+/* ── Tabs / segmented controls ───────────────────────────────────────── */
+body.dp-v11-structural :is(.dp-tabs, .filter-tabs, .stabs) {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: var(--dp-tab-height);
+  padding: 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--dp-segment-border);
+  border-radius: 9px;
+  background: var(--dp-segment-surface);
+  box-shadow: var(--dp-segment-shadow);
+  scrollbar-width: none;
+}
+body.dp-v11-structural :is(.dp-tabs, .filter-tabs, .stabs)::-webkit-scrollbar { display: none; }
+
+body.dp-v11-structural :is(.dp-tab, .ftab, .stab) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 13px;
+  border: 0;
+  border-right: 1px solid var(--dp-segment-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dp-segment-text);
+  font-family: var(--dp-font-sans);
+  font-size: 11.5px;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: none;
+  transform: none;
+  transition: color .14s ease, background .14s ease, box-shadow .14s ease;
+}
+body.dp-v11-structural :is(.dp-tab, .ftab, .stab):last-child { border-right: 0; }
+body.dp-v11-structural :is(.dp-tab, .ftab, .stab):hover:not(.active):not(.is-active):not([aria-selected="true"]) {
+  background: var(--dp-segment-hover);
+  color: var(--dp-segment-hover-text);
+}
+body.dp-v11-structural :is(.dp-tab, .ftab, .stab).active,
+body.dp-v11-structural :is(.dp-tab, .ftab, .stab).is-active,
+body.dp-v11-structural :is(.dp-tab, .ftab, .stab)[aria-selected="true"] {
+  position: relative;
+  z-index: 1;
+  border-radius: 6px;
+  background: var(--dp-segment-active-surface);
+  color: var(--dp-segment-active-text);
+  box-shadow: var(--dp-segment-active-shadow);
+}
+
+/* ── Buttons / action controls ───────────────────────────────────────── */
+body.dp-v11-structural :is(.dp-btn, .btn) {
+  min-height: var(--dp-control-height-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid var(--dp-secondary-border);
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-secondary-surface);
+  color: var(--dp-secondary-text);
+  font-family: var(--dp-font-sans);
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--dp-secondary-shadow);
+  transition: filter .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease, transform .06s ease;
+}
+
+body.dp-v11-structural :is(.dp-btn--primary, .btn-primary) {
+  border-color: var(--dp-primary-border);
+  background: var(--dp-primary-surface);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(41,20,71,.34);
+  box-shadow: var(--dp-primary-shadow);
+}
+body.dp-v11-structural :is(.dp-btn--primary, .btn-primary):hover:not(:disabled) {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+
+body.dp-v11-structural :is(.dp-btn--secondary, .dp-btn--ghost, .btn-ghost):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 28%, var(--dp-secondary-border));
+  color: var(--dp-text-primary);
+  filter: brightness(1.035);
+}
+
+body.dp-v11-structural :is(.btn-blue) {
+  border-color: color-mix(in srgb, var(--dp-state-active) 38%, var(--dp-secondary-border));
+  color: color-mix(in srgb, var(--dp-state-active) 78%, var(--dp-text-primary));
+}
+body.dp-v11-structural :is(.btn-danger, .dp-btn--danger) {
+  border-color: color-mix(in srgb, var(--dp-state-error) 34%, transparent);
+  background: var(--dp-state-error-bg);
+  color: var(--dp-state-error);
+  box-shadow: none;
+}
+body.dp-v11-structural :is(.btn-warn, .dp-btn--caution) {
+  border-color: color-mix(in srgb, var(--dp-state-caution) 34%, transparent);
+  background: var(--dp-state-caution-bg);
+  color: var(--dp-state-caution);
+  box-shadow: none;
+}
+body.dp-v11-structural :is(.btn-sm, .dp-btn--sm) {
+  min-height: var(--dp-control-height-sm);
+  padding-inline: 10px;
+  font-size: 12px;
+}
+body.dp-v11-structural :is(.dp-btn, .btn):disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+body.dp-v11-structural :is(.dp-btn, .btn):focus-visible {
+  outline: none;
+  box-shadow: var(--dp-focus-ring);
+}
+body.dp-v11-structural :is(.dp-btn, .btn):not(:disabled):active { transform: translateY(1px) scale(.985); }
+
+/* Canonical icon/pagination controls use the same neutral material. */
+body.dp-v11-structural :is(.dp-icon-btn, .dp-page-btn) {
+  border-color: var(--dp-secondary-border);
+  background: var(--dp-secondary-surface);
+  color: var(--dp-secondary-text);
+  box-shadow: var(--dp-secondary-shadow);
+}
+body.dp-v11-structural .dp-page-btn[aria-current="page"] {
+  border-color: var(--dp-segment-active-border);
+  background: var(--dp-segment-active-surface);
+  color: var(--dp-segment-active-text);
+  box-shadow: var(--dp-segment-active-shadow);
+}
+
+/* ── Operational tables ──────────────────────────────────────────────── */
+body.dp-v11-structural :is(.dp-table, .t-table) {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: 13px;
+}
+body.dp-v11-structural :is(.dp-table, .t-table) thead th {
+  height: var(--dp-table-head-height);
+  padding: 0 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--dp-table-head-border);
+  background: var(--dp-table-head-surface);
+  color: var(--dp-table-head-text);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+body.dp-v11-structural :is(.dp-table, .t-table) tbody tr {
+  border-bottom: 1px solid var(--dp-table-row-border);
+  background: transparent;
+  transition: background-color .12s ease;
+}
+body.dp-v11-structural :is(.dp-table, .t-table) tbody tr:last-child { border-bottom: 0; }
+body.dp-v11-structural :is(.dp-table, .t-table) tbody tr:hover { background: var(--dp-table-row-hover); }
+body.dp-v11-structural :is(.dp-table, .t-table) td {
+  padding: 8px 14px;
+  vertical-align: middle;
+}
+
+/* ── Status pills + compact progress ─────────────────────────────────── */
+body.dp-v11-structural .badge {
+  --dp-badge-color: var(--dp-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--dp-badge-color) 22%, transparent);
+  border-radius: var(--dp-radius-pill);
+  background: color-mix(in srgb, var(--dp-badge-color) 9%, transparent);
+  color: var(--dp-badge-color);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 650;
+  white-space: nowrap;
+}
+body.dp-v11-structural :is(.badge-completed) { --dp-badge-color: var(--dp-state-success); }
+body.dp-v11-structural :is(.badge-downloading, .badge-uploading) { --dp-badge-color: var(--dp-state-active); }
+body.dp-v11-structural :is(.badge-processing, .badge-extracting) { --dp-badge-color: var(--dp-state-processing); }
+body.dp-v11-structural :is(.badge-partial) { --dp-badge-color: var(--dp-state-caution); }
+body.dp-v11-structural :is(.badge-error) { --dp-badge-color: var(--dp-state-error); }
+body.dp-v11-structural :is(.badge-paused) { --dp-badge-color: var(--dp-state-paused); }
+body.dp-v11-structural :is(.badge-ready, .badge-queued, .badge-pending) { --dp-badge-color: var(--dp-state-ready); }
+
+body.dp-v11-structural .prog {
+  height: 3.5px;
+  min-width: 70px;
+  overflow: hidden;
+  border-radius: var(--dp-radius-pill);
+  background: var(--dp-progress-track);
+}
+body.dp-v11-structural .prog-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dp-progress-active);
+  transition: width .28s ease;
+}
+body.dp-v11-structural .prog-fill.done { background: var(--dp-progress-complete); }
+body.dp-v11-structural .prog-pct {
+  display: block;
+  margin-top: 3px;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Generic empty states ─────────────────────────────────────────────── */
+body.dp-v11-structural .empty {
+  color: var(--dp-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.dp-v11-structural :is(.dp-btn, .btn, .dp-tab, .ftab, .stab, .prog-fill) {
+    transition: none;
+  }
+  body.dp-v11-structural :is(.dp-btn, .btn):not(:disabled):active {
+    transform: none;
+  }
+}

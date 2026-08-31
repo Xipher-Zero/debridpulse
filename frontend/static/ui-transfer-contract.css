@@ -1,0 +1,161 @@
+/* DebridPulse v1.0.11 shared transfer-row contract.
+ *
+ * This is the effective application default for reusable transfer status,
+ * row actions, progress geometry and progress text. It is intentionally loaded
+ * after the migration-era Dashboard calibration layers so temporary experiments
+ * cannot override the universal transfer language on Dashboard or Downloads.
+ */
+
+/* ── Status tags ─────────────────────────────────────────────────────── */
+/* Dashboard, Downloads and Details consume one rectangular semantic badge
+   contract. The inline glyph itself is supplied by the canonical Lucide runtime;
+   CSS owns only geometry/material/color and never injects symbol-font content. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-height: 25px !important;
+  padding: 0 9px !important;
+  border-radius: 6px !important;
+  font-size: 10.5px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+  border-color: color-mix(in srgb, var(--dp-badge-color) 22%, transparent) !important;
+  background: color-mix(in srgb, var(--dp-badge-color) 9%, transparent) !important;
+  color: var(--dp-badge-color) !important;
+}
+
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge .dp-status-icon {
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px;
+  flex: 0 0 15px;
+  stroke-width: 2.15;
+}
+
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-downloading {
+  --dp-badge-color: var(--dp-state-success);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-uploading,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-queued {
+  --dp-badge-color: var(--dp-state-active);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-processing,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-extracting,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-imported {
+  --dp-badge-color: var(--dp-accent-purple-bright);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-paused,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-ready,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-partial {
+  --dp-badge-color: var(--dp-state-caution);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-completed {
+  --dp-badge-color: var(--dp-state-success);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-error {
+  --dp-badge-color: var(--dp-state-error);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-pending {
+  --dp-badge-color: var(--dp-state-ready);
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-deleted {
+  --dp-badge-color: var(--dp-text-muted);
+}
+
+/* ── Row action language ─────────────────────────────────────────────── */
+/* Active Items and Downloads use one fixed action-button footprint. 72×36 is
+   the existing Remove/Resume footprint; Retry/Pause and other row actions now
+   occupy the same box. Global/topbar controls are intentionally excluded. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .actions .btn {
+  width: 72px !important;
+  min-width: 72px !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+  font-size: 11.5px !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+
+/* Pause/Resume material is shared by both list implementations. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
+body.dp-v11-structural #view-torrents .dp-downloads-bulk-action--pause {
+  background: linear-gradient(135deg,
+    rgba(125, 91, 30, .91) 0%,
+    rgba(90, 69, 31, .94) 52%,
+    rgba(57, 49, 39, .97) 100%) !important;
+  border-color: rgba(242, 189, 63, .64) !important;
+  color: #ffd35b !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.06), 0 5px 15px rgba(113, 79, 20, .15) !important;
+}
+body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]),
+body.light.dp-v11-structural #view-torrents .dp-downloads-bulk-action--pause {
+  background: linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%) !important;
+  border-color: rgba(207,158,55,.62) !important;
+  color: #76560d !important;
+  text-shadow: none !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.72), 0 3px 8px -6px rgba(137,99,24,.18) !important;
+}
+body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="pauseT("], [onclick*="pauseTorrent("]):hover,
+body.light.dp-v11-structural #view-torrents .dp-downloads-bulk-action--pause:hover {
+  background: linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%) !important;
+  border-color: rgba(196,142,40,.72) !important;
+  color: #6d4e09 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.80), 0 3px 8px -6px rgba(137,99,24,.22) !important;
+}
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
+body.dp-v11-structural #view-torrents .dp-downloads-bulk-action--resume {
+  background: linear-gradient(135deg,
+    rgba(25, 117, 78, .84) 0%,
+    rgba(20, 86, 66, .91) 50%,
+    rgba(16, 54, 49, .95) 100%) !important;
+  border-color: rgba(73, 224, 145, .42) !important;
+  color: #9af0bf !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.05), 0 6px 18px rgba(16, 78, 53, .16) !important;
+}
+body.light.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="resumeT("], [onclick*="resumeTorrent("]),
+body.light.dp-v11-structural #view-torrents .dp-downloads-bulk-action--resume {
+  background: linear-gradient(135deg, #e4faec 0%, #c9f2da 52%, #afe7c7 100%) !important;
+  border-color: #83d3aa !important;
+  color: #176d46 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 16px rgba(30, 121, 78, .10) !important;
+}
+
+/* Retry is an information/recovery action. Match the translucent semantic
+   treatment used by the other secondary row actions instead of reading as a
+   filled primary control. Theme-aware state tokens keep the blue family intact. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) button:is([onclick*="retryT("], [onclick*="retryTorrent("]),
+body.dp-v11-structural #view-torrents .dp-downloads-bulk-action--reset {
+  background: var(--dp-state-active-bg) !important;
+  border-color: color-mix(in srgb, var(--dp-state-active) 34%, transparent) !important;
+  color: var(--dp-state-active) !important;
+  box-shadow: none !important;
+}
+
+/* ── Progress geometry ─────────────────────────────────────────────── */
+/* The track and active fill are one component and therefore one thickness.
+   Seven pixels is the approved active-transfer weight; the unfilled track
+   must never fall back to the old hairline geometry. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog-fill {
+  height: 7px !important;
+  border-radius: 999px !important;
+}
+
+/* ── Progress percentage ─────────────────────────────────────────────── */
+/* Preserve the original compact mono datum and add emphasis only through
+   weight. Semantic color belongs to the bar/status, not the percentage. */
+body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status] .prog-pct {
+  display: block !important;
+  margin-top: 3px !important;
+  font-family: var(--dp-font-mono) !important;
+  font-size: 10px !important;
+  line-height: normal !important;
+  font-weight: 700 !important;
+  letter-spacing: normal !important;
+  color: var(--dp-text-secondary) !important;
+  text-shadow: none !important;
+}

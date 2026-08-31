@@ -32,15 +32,30 @@
     const footer = document.querySelector('.sidebar-footer');
     if (!footer) return;
 
-    // Authentication now owns the bottom-left action position instead of the
-    // inherited provider/client convenience links.
     footer.querySelector('a[href="https://alldebrid.com"]')?.closest('.conn-row')?.remove();
     document.getElementById('aria2ng-row')?.remove();
 
     let row = document.getElementById('sidebar-auth-row');
+    let stack = document.getElementById('sidebar-bottom-stack');
     if (!data?.authenticated) {
       row?.remove();
+      if (stack) {
+        if (footer.parentElement === stack) {
+          stack.insertAdjacentElement('beforebegin', footer);
+        }
+        stack.remove();
+      }
       return;
+    }
+
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'sidebar-bottom-stack';
+      stack.className = 'sidebar-bottom-stack';
+      footer.insertAdjacentElement('beforebegin', stack);
+      stack.appendChild(footer);
+    } else if (footer.parentElement !== stack) {
+      stack.prepend(footer);
     }
 
     if (!row) {
@@ -81,12 +96,9 @@
         event.preventDefault();
         activate();
       });
-
-      // Keep the action full-width and visually identical to Dashboard,
-      // Settings, and the other primary sidebar choices while retaining the
-      // connection-status footer above it.
-      footer.insertAdjacentElement('afterend', row);
     }
+
+    if (row.parentElement !== stack) stack.appendChild(row);
   }
 
   async function refreshSession({force = false} = {}) {
@@ -167,9 +179,10 @@
   refreshSession().catch(() => {});
   window.setInterval(() => refreshSession({force: true}).catch(() => {}), 60000);
 
-  // Authentication-specific presentation stays additive to the inherited
-  // settings renderer. Load the stylesheet before the augmentation scripts so
-  // the first transformed render uses the final layout immediately.
+  // Authentication-specific Settings ownership now lives entirely in the
+  // clean-room ui-settings-page.js runtime. Keep only independent auth assets:
+  // auth-ux.css owns the authenticated sidebar stack and auth-help.js augments
+  // Help documentation. The retired Settings augmentation runtimes are not loaded.
   if (!document.querySelector('link[data-debridpulse-auth-ux]')) {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
@@ -178,13 +191,8 @@
     document.head.appendChild(style);
   }
 
-  // Authentication UI/help augmentations remain isolated from the inherited
-  // settings/index renderers. Dynamic loading keeps the 1.0.6 auth pass additive
-  // while the combined app.js bundle finishes defining the legacy application.
-  for (const source of ['/auth-settings.js?v=2', '/auth-help.js?v=1', '/auth-ux.js?v=1']) {
-    const script = document.createElement('script');
-    script.src = source;
-    script.async = false;
-    document.head.appendChild(script);
-  }
+  const script = document.createElement('script');
+  script.src = '/auth-help.js?v=1';
+  script.async = false;
+  document.head.appendChild(script);
 })();

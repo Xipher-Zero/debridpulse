@@ -1,0 +1,299 @@
+/* DebridPulse v1.0.11 Settings visual chrome.
+ *
+ * The clean Settings page owns structure in ui-settings-page.css. This layer is
+ * deliberately presentation-only: page-header artwork, centered tab chrome,
+ * section identity, and action glyphs. It does not redefine shared card/input
+ * material or the Settings scroll/layout contract.
+ */
+
+/* ── Master header identity and true-centered navigation ─────────────── */
+body.dp-v11-structural #view-settings .dp-settings-master-header {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-header-copy {
+  grid-column: 1;
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-tabs {
+  grid-column: 2;
+  justify-self: center;
+}
+
+/* The supplied Settings feature artwork owns its own rounded-square visual
+   frame. Render the complete asset at the shared 51px feature footprint; the
+   feature-icon contract supplies the same external glow as other page headers.
+   The query generation deliberately evicts the previously cached synthetic
+   Settings glyph without changing the authoritative asset path. */
+body.dp-v11-structural #view-settings .dp-settings-header-icon {
+  color: transparent;
+  font-size: 0;
+  background-image: url('/icons/dp/settings-header.svg?v=2');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 51px 51px;
+}
+
+/* Temporary copy marker requested for this review cycle. Final page copy is a
+   separate cleanup pass. */
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
+  font-size: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle::after {
+  content: 'To Be Determined';
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* ── Settings section tabs ───────────────────────────────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
+  --dp-settings-tab-color: var(--dp-accent-purple-bright);
+  position: relative;
+  gap: 7px;
+  padding-inline: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-tab-chip {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dp-settings-tab-color) 44%, #31313d);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dp-settings-tab-color) 20%, #111119);
+}
+
+/* Glow belongs to the Lucide artwork, not to the chip. Dark mode receives a
+   mild/moderate lift; light mode receives the stronger correction required to
+   keep the colored stroke alive against the pale Settings header. */
+body.dp-v11-structural #view-settings .dp-settings-tab-glyph {
+  width: 13px;
+  height: 13px;
+  display: block;
+  object-fit: contain;
+  filter:
+    saturate(1.5)
+    contrast(1.05)
+    drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-tab-color) 76%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-tab-color) 38%, transparent));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-tab-glyph {
+  filter:
+    saturate(2.15)
+    contrast(1.14)
+    drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-tab-color) 94%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-tab-color) 68%, transparent))
+    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-tab-color) 34%, transparent));
+}
+
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='sources'] {
+  --dp-settings-tab-color: #b866f5;
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='downloads'] {
+  --dp-settings-tab-color: #4c8fff;
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='extraction'] {
+  --dp-settings-tab-color: #e0a02b;
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='notifications'] {
+  --dp-settings-tab-color: #39c6e8;
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='authentication'] {
+  --dp-settings-tab-color: #48c77e;
+}
+body.dp-v11-structural #view-settings .dp-settings-tabs .stab[data-tab='maintenance'] {
+  --dp-settings-tab-color: #3ab8a8;
+}
+
+/* ── Sources & Providers / Download Engine identity ─────────────────── */
+body.dp-v11-structural #view-settings .dp-settings-card-title--with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Download Engine uses the supplied purple artwork directly. The artwork owns
+   its rounded-square frame; CSS adds only the same two-stage omnidirectional
+   glow used by the other custom Settings card header artwork. */
+body.dp-v11-structural #view-settings .dp-settings-download-engine-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-engine-icon img {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.78))
+    drop-shadow(0 0 9px rgba(184,102,245,.34));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-download-engine-icon img {
+  filter:
+    saturate(1.08)
+    contrast(1.04)
+    drop-shadow(0 0 4px rgba(184,102,245,.88))
+    drop-shadow(0 0 10px rgba(184,102,245,.44));
+}
+
+/* Debrid Services is a source-type master group. The supplied artwork already
+   owns its rounded-square frame, so CSS adds only layout and the established
+   omnidirectional purple artwork glow rather than inventing another chip. */
+body.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {
+  content: '';
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: block;
+  background: url('/icons/dp/debrid-services.svg?v=1') center / 34px 34px no-repeat;
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.78))
+    drop-shadow(0 0 9px rgba(184,102,245,.34));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {
+  filter:
+    drop-shadow(0 0 4px rgba(184,102,245,.88))
+    drop-shadow(0 0 10px rgba(184,102,245,.44));
+}
+
+/* Keep provider/engine disclosures visually subordinate to their primary rows:
+   labels are inset from the card datum, chevrons remain immediately after the
+   label, and revealed controls step in one level farther. */
+body.dp-v11-structural #view-settings .dp-settings-additional > summary {
+  justify-content: flex-start;
+  gap: 8px;
+  padding-left: 16px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional > summary::after {
+  margin-left: 2px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-additional-body {
+  padding: 8px 0 4px 28px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-chip--alldebrid {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid #dc9e0e;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #5f4306 0%, #8f6508 52%, #c68c0c 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,235,174,.34),
+    inset 0 -1px 0 rgba(65,41,0,.34),
+    0 1px 3px rgba(0,0,0,.18);
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-provider-chip--alldebrid {
+  border-color: #c88b08;
+  background: linear-gradient(145deg, #f2c14b 0%, #dc9e0e 54%, #b87905 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,251,224,.68),
+    inset 0 -1px 0 rgba(104,64,0,.22),
+    0 1px 3px rgba(65,45,0,.16);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-logo--alldebrid {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  transform: translateY(1px);
+  filter:
+    saturate(1.08)
+    drop-shadow(0 0 3px rgba(220,158,14,.92))
+    drop-shadow(0 0 7px rgba(220,158,14,.52));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-provider-logo--alldebrid {
+  filter:
+    saturate(1.12)
+    contrast(1.06)
+    drop-shadow(0 0 3px rgba(220,158,14,.96))
+    drop-shadow(0 0 8px rgba(220,158,14,.62));
+}
+
+/* The provider-test control uses the same chip-before-copy grammar as tabs,
+   but remains a secondary action beside Apply Settings. */
+body.dp-v11-structural #view-settings button[data-action='test-alldebrid'] {
+  --dp-settings-action-color: #b866f5;
+  position: relative;
+  gap: 7px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-action-chip {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dp-settings-action-color) 44%, #31313d);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dp-settings-action-color) 20%, #111119);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-action-glyph {
+  width: 13px;
+  height: 13px;
+  display: block;
+  object-fit: contain;
+  filter:
+    saturate(1.5)
+    contrast(1.05)
+    drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-action-color) 76%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-action-color) 38%, transparent));
+}
+
+body.light.dp-v11-structural #view-settings .dp-settings-action-glyph {
+  filter:
+    saturate(2.15)
+    contrast(1.14)
+    drop-shadow(0 0 2px color-mix(in srgb, var(--dp-settings-action-color) 94%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-settings-action-color) 68%, transparent))
+    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-action-color) 34%, transparent));
+}
+
+/* Same cache-eviction rule for the Test glyph: the SVG now carries the exact
+   Sources & Providers purple rather than the previous darker purple. */
+body.dp-v11-structural #view-settings button[data-action='test-alldebrid'] .dp-settings-action-glyph {
+  content: url('/icons/lucide/flask-conical.svg?v=2');
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-master-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-header-copy,
+  body.dp-v11-structural #view-settings .dp-settings-tabs {
+    grid-column: 1;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-tabs {
+    width: 100%;
+    justify-self: stretch;
+  }
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 16" fill="none" role="img" aria-label="DebridPulse waveform">
+  <defs>
+    <linearGradient id="pulse" x1="0" y1="8" x2="72" y2="8" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B45CFF" stop-opacity="0"/>
+      <stop offset="0.22" stop-color="#B45CFF"/>
+      <stop offset="0.62" stop-color="#7A4DFF"/>
+      <stop offset="1" stop-color="#3D94FF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M1 8h12l3-4 4 9 4-12 4 14 5-9 4 4 4-7 4 10 5-5h17" stroke="url(#pulse)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

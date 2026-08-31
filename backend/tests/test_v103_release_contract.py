@@ -1,15 +1,14 @@
 from pathlib import Path
 
+from packaging.version import Version
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_v103_staging_candidate_preserves_external_aria2_global_policy():
-    version = tuple(
-        int(part)
-        for part in (REPO_ROOT / "VERSION").read_text().strip().split(".")
-    )
-    assert version >= (1, 0, 3)
+    version = Version((REPO_ROOT / "VERSION").read_text().strip())
+    assert version >= Version("1.0.3")
 
     control = (REPO_ROOT / "backend/services/transfer_control.py").read_text()
     manager = (REPO_ROOT / "backend/services/manager_v2.py").read_text()

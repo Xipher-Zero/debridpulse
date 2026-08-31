@@ -4,7 +4,7 @@ WORKDIR /app
 
 ARG APP_VERSION=unknown
 ARG VCS_REF=unknown
-LABEL org.opencontainers.image.title="DebridPulse — AllDebrid + aria2 Download Manager"
+LABEL org.opencontainers.image.title="DebridPulse: AllDebrid + aria2 Download Manager"
 LABEL org.opencontainers.image.version="${APP_VERSION}"
 LABEL org.opencontainers.image.description="AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2"
 LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/debridpulse"
@@ -13,6 +13,7 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 
 # System deps + gosu (for PUID/PGID user-switching).
 # Debian's RAR codec is in non-free and plugs into the 7zip `7z` binary.
+# zstd is the exact outer decoder for .tar.zst/.tzst composite archives.
 # The slim base excludes most /usr/share/doc content, so explicitly re-include
 # the 7zip-rar notices needed to ship its licensing terms with the image. The
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
@@ -33,6 +34,7 @@ RUN printf '%s\n' \
     aria2 \
     curl \
     gosu \
+    zstd \
     7zip \
     7zip-rar && \
     rm -rf /var/lib/apt/lists/*
@@ -55,7 +57,7 @@ COPY docs/DEPENDENCY_LICENSES.md /app/docs/DEPENDENCY_LICENSES.md
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Directories — owned by nobody:users (65534:100) by default
+# Directories - owned by nobody:users (65534:100) by default
 # Override at runtime via PUID / PGID environment variables
 RUN mkdir -p /app/data /app/config /download && \
     chown -R 99:100 /app /download

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="76" height="76" viewBox="0 0 76 76" fill="none">
+  <defs>
+    <linearGradient id="clockStroke" x1="22" y1="21" x2="55" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8C8FF"/>
+      <stop offset=".48" stop-color="#B99BFF"/>
+      <stop offset="1" stop-color="#9270E7"/>
+    </linearGradient>
+
+    <filter id="clockGlow" x="11" y="11" width="54" height="54" filterUnits="userSpaceOnUse">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.15" result="blur"/>
+      <feFlood flood-color="#B69CFF" flood-opacity=".45" result="flood"/>
+      <feComposite in="flood" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Transparent background: clock icon only -->
+  <g filter="url(#clockGlow)"
+     fill="none"
+     stroke="url(#clockStroke)"
+     stroke-width="3.15"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <!-- Clock face -->
+    <circle cx="38" cy="38" r="18"/>
+
+    <!-- Hands -->
+    <path d="M38 27.5V39.2L46.7 44.5"/>
+  </g>
+</svg>

@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
+from api.settings_validation_routes import router as settings_validation_router
 from auth.middleware import enforce_authentication, enforce_general_web_security
 from auth.policy import (
     interactive_auth_enabled,
@@ -174,6 +175,9 @@ class RequestBodyLimitMiddleware:
             limit = min(self.max_bytes, 64 * 1024)
         elif path in {
             "/api/settings",
+            "/api/settings/validate-alldebrid",
+            "/api/settings/validate-aria2",
+            "/api/settings/validate-discord",
             "/api/auth/config",
             "/api/auth/oidc/verify-config",
             "/api/auth/api-token",
@@ -364,6 +368,19 @@ async def request_id_middleware(request: Request, call_next):
     # Origin on same-origin HTML form POSTs used by the password login flow.
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("X-Frame-Options", "DENY")
+
+    # Frontend migration assets must never rely on manually bumped ?v= values as
+    # their only coherence boundary. Keep normal conditional caching (ETag /
+    # Last-Modified) but force browser revalidation of executable/presentation
+    # resources so a new container cannot silently run an older JS/CSS/HTML mix.
+    path = request.url.path
+    static_frontend = (
+        request.method.upper() in {"GET", "HEAD"}
+        and (path == "/" or path.endswith((".html", ".js", ".css")))
+    )
+    existing_cache = response.headers.get("Cache-Control", "")
+    if static_frontend and "no-store" not in existing_cache.lower():
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
     return response
 
 
@@ -371,6 +388,7 @@ async def request_id_middleware(request: Request, call_next):
 # can become authoritative before the replacement application session is issued.
 app.include_router(auth_config_router)
 app.include_router(auth_router)
+app.include_router(settings_validation_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────

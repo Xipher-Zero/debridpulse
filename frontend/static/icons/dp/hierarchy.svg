@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="121" viewBox="0 0 112 121">
+  <defs>
+    <!-- Borderless purple tile -->
+    <linearGradient id="tileFill" x1="20" y1="23" x2="94" y2="103" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5A35A6"/>
+      <stop offset="0.52" stop-color="#47258B"/>
+      <stop offset="1" stop-color="#321965"/>
+    </linearGradient>
+
+    <radialGradient id="tileGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(51 43) rotate(48) scale(57 53)">
+      <stop offset="0" stop-color="#8558CF" stop-opacity=".48"/>
+      <stop offset=".62" stop-color="#6138AA" stop-opacity=".15"/>
+      <stop offset="1" stop-color="#2D175D" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Main lilac glyph -->
+    <linearGradient id="nodeFill" x1="39" y1="37" x2="68" y2="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D9C2FF"/>
+      <stop offset=".48" stop-color="#BE95FF"/>
+      <stop offset="1" stop-color="#9C6DE8"/>
+    </linearGradient>
+
+    <linearGradient id="nodeHighlight" x1="42" y1="39" x2="55" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F3E7FF" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#D8BEFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="tileShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4.4" flood-color="#070A16" flood-opacity=".58"/>
+    </filter>
+
+    <filter id="glyphGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#C2A2FF" flood-opacity=".50"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded tile, no border/stroke -->
+  <g filter="url(#tileShadow)">
+    <rect x="14" y="20" width="77" height="76" rx="15" fill="url(#tileFill)"/>
+    <rect x="14" y="20" width="77" height="76" rx="15" fill="url(#tileGlow)"/>
+  </g>
+
+  <!-- Hierarchy / sitemap glyph -->
+  <g filter="url(#glyphGlow)">
+    <!-- Top node -->
+    <rect x="40.5" y="35.5" width="21" height="19.5" rx="2.8" fill="url(#nodeFill)"/>
+    <rect x="40.5" y="35.5" width="21" height="19.5" rx="2.8" fill="url(#nodeHighlight)"/>
+
+    <!-- Connector trunk -->
+    <path d="M51 55
+             V62.5
+             M51 60.5
+             H36
+             M51 60.5
+             H66
+             M36 60.5
+             V65.5
+             M66 60.5
+             V65.5"
+          stroke="url(#nodeFill)"
+          stroke-width="4.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+
+    <!-- Lower left node -->
+    <rect x="28" y="64.5" width="16" height="12.5" rx="3.0" fill="url(#nodeFill)"/>
+    <rect x="28" y="64.5" width="16" height="12.5" rx="3.0" fill="url(#nodeHighlight)" opacity=".55"/>
+
+    <!-- Lower right node -->
+    <rect x="58" y="64.5" width="16" height="12.5" rx="3.0" fill="url(#nodeFill)"/>
+    <rect x="58" y="64.5" width="16" height="12.5" rx="3.0" fill="url(#nodeHighlight)" opacity=".55"/>
+
+    <!-- Small center nub visible in the reference -->
+    <rect x="47.3" y="61.8" width="7.4" height="7.4" rx="1.8" fill="url(#nodeFill)"/>
+  </g>
+</svg>

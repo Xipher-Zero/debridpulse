@@ -1,0 +1,360 @@
+/* DebridPulse v1.0.11 Statistics page contract.
+ *
+ * Statistics is a full-height analytical workspace using the same proven
+ * composition as Downloads and Activity Log: shared master card -> feature
+ * header -> bounded content viewport -> page-specific analytical sections.
+ * Reusable card/control material remains owned by the universal language.
+ */
+
+/* ── Master card / header ─────────────────────────────────────────────── */
+body.dp-v11-structural #view-stats.dp-statistics-master {
+  min-height: 0;
+  margin-bottom: 0 !important;
+}
+
+body.dp-v11-structural #view-stats > .dp-stats-master-header {
+  flex: 0 0 auto;
+  min-height: 72px;
+  margin: 0 !important;
+  padding: 9px 16px !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-master-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-stats .dp-statistics-title-icon {
+  width: var(--dp-feature-icon-size, 51px);
+  min-width: var(--dp-feature-icon-size, 51px);
+  height: var(--dp-feature-icon-size, 51px);
+  flex: 0 0 var(--dp-feature-icon-size, 51px);
+  object-fit: contain;
+  --dp-feature-icon-glow: #a646f4;
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-feature-icon-glow) 62%, transparent))
+    drop-shadow(0 0 11px color-mix(in srgb, var(--dp-feature-icon-glow) 27%, transparent));
+}
+
+body.light.dp-v11-structural #view-stats .dp-statistics-title-icon {
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--dp-feature-icon-glow) 70%, transparent))
+    drop-shadow(0 0 15px color-mix(in srgb, var(--dp-feature-icon-glow) 32%, transparent));
+}
+
+body.dp-v11-structural #view-stats .dp-stats-heading-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-heading {
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-subtitle {
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-period-label {
+  margin-left: auto;
+  color: var(--dp-text-muted) !important;
+  font-size: 11px !important;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-stats #stats-period-tabs {
+  flex: 0 0 auto;
+}
+
+/* ── Bounded Statistics body ──────────────────────────────────────────── */
+body.dp-v11-structural #view-stats > .dp-stats-master-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 12px 12px !important;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Primary period metrics remain one balanced row on normal desktop. */
+body.dp-v11-structural #view-stats #detail-stat-cards {
+  width: 100%;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body.dp-v11-structural #view-stats #detail-stat-cards .stat-card {
+  min-width: 0;
+  min-height: 96px;
+  padding: 13px 14px;
+}
+
+/* ── Historical KPI row ───────────────────────────────────────────────── */
+body.dp-v11-structural #view-stats .dp-stats-history-grid {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-sep {
+  display: none;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi {
+  min-width: 0;
+  min-height: 86px;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: 10px;
+  align-items: center;
+  text-align: left;
+}
+
+/* Semantic assignments are page content, not material definitions. The strip
+   alternates KPI nodes and separator nodes, hence the odd child positions. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(1) { --c: var(--dp-accent-purple-bright); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(3) { --c: var(--dp-state-active); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(5) { --c: var(--dp-accent-purple-bright); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(7) { --c: var(--dp-state-success); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(9) { --c: var(--dp-state-caution); }
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi:nth-child(11) { --c: var(--dp-state-active); }
+
+/* Statistics KPI chips deliberately remain dark in both palettes. Keeping the
+   chip material stable preserves contrast for the individual semantic glow and
+   prevents the light theme from washing the icons into the metric surface. */
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon {
+  --dp-icon-frame-size: 38px;
+  --dp-icon-frame-radius: var(--dp-radius-md);
+  --dp-icon-frame-bg: color-mix(in srgb, var(--dp-icon-frame-fg) 12%, #080b18);
+  --dp-icon-frame-border: color-mix(in srgb, var(--dp-icon-frame-fg) 34%, #10162a);
+  position: relative;
+  z-index: 8;
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  background: var(--dp-icon-frame-bg);
+  box-shadow:
+    0 0 6px color-mix(in srgb, var(--dp-icon-frame-fg) 50%, transparent),
+    0 0 14px color-mix(in srgb, var(--dp-icon-frame-fg) 26%, transparent),
+    0 0 24px color-mix(in srgb, var(--dp-icon-frame-fg) 12%, transparent);
+}
+
+body.light.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon {
+  --dp-icon-frame-bg: color-mix(in srgb, var(--dp-icon-frame-fg) 11%, #080b18);
+  --dp-icon-frame-border: color-mix(in srgb, var(--dp-icon-frame-fg) 32%, #10162a);
+  background: var(--dp-icon-frame-bg);
+  box-shadow:
+    0 0 6px color-mix(in srgb, var(--dp-icon-frame-fg) 48%, transparent),
+    0 0 14px color-mix(in srgb, var(--dp-icon-frame-fg) 24%, transparent),
+    0 0 22px color-mix(in srgb, var(--dp-icon-frame-fg) 11%, transparent);
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dp-kpi-icon > .dp-icon {
+  width: 22px;
+  height: 22px;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-val {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--dp-text-primary);
+  font-size: 18px;
+  line-height: 1.05;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-lbl {
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 3px;
+  color: var(--dp-text-secondary);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-history-grid .dash-kpi-sub {
+  grid-column: 2;
+  grid-row: 3;
+  margin-top: 2px;
+  color: var(--dp-text-muted);
+  font-size: 9.5px;
+  line-height: 1.2;
+}
+
+/* ── Completion chart ─────────────────────────────────────────────────── */
+body.dp-v11-structural #view-stats .dp-stats-chart {
+  flex: 1 1 240px;
+  min-height: 228px;
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart .scard-header {
+  flex: 0 0 auto;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0;
+}
+
+/* Replace the inherited chart emoji with the approved DebridPulse download
+   artwork without changing the legacy chart-title data node. */
+body.dp-v11-structural #view-stats .dp-stats-chart .scard-header::before {
+  content: '';
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  background: url('/icons/dp/card-download.svg') center / contain no-repeat;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--dp-accent-purple-bright) 34%, transparent));
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart #chart-title {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart > .scard-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  padding: 10px 12px 12px !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart .chart-wrap {
+  width: 100%;
+  height: auto !important;
+  min-height: 180px;
+  flex: 1 1 auto;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-chart .chart-wrap > canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── Four analytical breakdowns: one desktop row ─────────────────────── */
+body.dp-v11-structural #view-stats .dp-stats-breakdown-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* Five compact result rows fit without making the analytical cards dominate
+   the page. Empty/short datasets simply retain the same stable geometry. */
+body.dp-v11-structural #view-stats .dp-stats-breakdown-grid > .list-card {
+  min-width: 0;
+  min-height: 170px;
+  margin: 0 !important;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-breakdown-grid > .list-card > .card-header {
+  min-height: 42px;
+  padding-inline: 14px;
+}
+
+body.dp-v11-structural #view-stats .dp-stats-breakdown-grid > .list-card > .card-body {
+  min-height: 122px;
+  padding: 9px 14px 10px;
+}
+
+/* ── Full-height desktop workspace ───────────────────────────────────── */
+@media (min-width: 901px) {
+  body.dp-v11-structural #content:has(#view-stats.active) {
+    overflow-y: hidden;
+  }
+
+  body.dp-v11-structural #view-stats.active.dp-statistics-master {
+    display: flex !important;
+    flex-direction: column;
+    height: 100% !important;
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 1439px) {
+  body.dp-v11-structural #view-stats #detail-stat-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-history-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-breakdown-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 899px) {
+  body.dp-v11-structural #view-stats > .dp-stats-master-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-period-label {
+    margin-left: 0;
+  }
+
+  body.dp-v11-structural #view-stats #stats-period-tabs {
+    max-width: 100%;
+  }
+
+  body.dp-v11-structural #view-stats #detail-stat-cards,
+  body.dp-v11-structural #view-stats .dp-stats-history-grid,
+  body.dp-v11-structural #view-stats .dp-stats-breakdown-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.dp-v11-structural #view-stats > .dp-stats-master-body {
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-stats .dp-stats-chart {
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 640px) {
+  body.dp-v11-structural #view-stats #detail-stat-cards,
+  body.dp-v11-structural #view-stats .dp-stats-history-grid,
+  body.dp-v11-structural #view-stats .dp-stats-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}

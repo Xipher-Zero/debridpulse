@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 420" fill="none" role="img" aria-label="DebridPulse sidebar wave field">
+  <defs>
+    <linearGradient id="waveA" x1="0" y1="330" x2="240" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6D4BFF" stop-opacity="0.07"/>
+      <stop offset="0.38" stop-color="#8B5CF6" stop-opacity="0.46"/>
+      <stop offset="0.70" stop-color="#7C3AED" stop-opacity="0.74"/>
+      <stop offset="1" stop-color="#4F7DFF" stop-opacity="0.14"/>
+    </linearGradient>
+    <linearGradient id="waveB" x1="0" y1="354" x2="240" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B7CFF" stop-opacity="0.05"/>
+      <stop offset="0.44" stop-color="#7C3AED" stop-opacity="0.28"/>
+      <stop offset="0.75" stop-color="#A855F7" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#4F7DFF" stop-opacity="0.08"/>
+    </linearGradient>
+    <radialGradient id="node" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) scale(5)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.24" stop-color="#D8B4FE" stop-opacity="0.90"/>
+      <stop offset="0.58" stop-color="#A855F7" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#7C3AED" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <g stroke-linecap="round">
+    <path d="M-26 302C23 248 66 330 116 286C161 247 178 164 262 178" stroke="url(#waveA)" stroke-width="1.65"/>
+    <path d="M-28 318C20 264 70 340 121 296C165 258 184 176 262 188" stroke="url(#waveA)" stroke-width="1.15" opacity="0.78"/>
+    <path d="M-24 286C27 232 69 312 119 271C163 234 181 151 260 165" stroke="url(#waveA)" stroke-width="0.95" opacity="0.70"/>
+    <path d="M-26 338C23 286 74 354 126 311C171 274 193 198 261 205" stroke="url(#waveB)" stroke-width="0.92" opacity="0.64"/>
+    <path d="M-22 268C31 215 72 294 122 254C166 220 185 136 258 151" stroke="url(#waveB)" stroke-width="0.78" opacity="0.58"/>
+    <path d="M-18 358C33 309 80 370 132 330C178 295 201 224 259 222" stroke="url(#waveB)" stroke-width="0.68" opacity="0.46"/>
+
+    <!-- Secondary traces distribute the field vertically without creating clutter. -->
+    <path d="M-18 232C35 184 77 255 126 220C171 188 190 111 258 126" stroke="url(#waveB)" stroke-width="0.58" opacity="0.34"/>
+    <path d="M-12 202C39 159 84 224 132 191C175 161 195 91 255 104" stroke="url(#waveB)" stroke-width="0.48" opacity="0.27"/>
+    <path d="M-20 380C30 337 84 392 138 353C183 321 207 255 260 247" stroke="url(#waveB)" stroke-width="0.52" opacity="0.31"/>
+    <path d="M-12 398C38 359 92 408 145 372C188 342 213 282 258 271" stroke="url(#waveB)" stroke-width="0.44" opacity="0.22"/>
+  </g>
+
+  <g fill="#9A63FF">
+    <circle cx="25" cy="250" r="0.8" opacity="0.20"/>
+    <circle cx="39" cy="294" r="1.05" opacity="0.31"/>
+    <circle cx="54" cy="315" r="0.75" opacity="0.22"/>
+    <circle cx="70" cy="288" r="1.0" opacity="0.38"/>
+    <circle cx="88" cy="325" r="0.7" opacity="0.23"/>
+    <circle cx="106" cy="277" r="1.1" opacity="0.44"/>
+    <circle cx="124" cy="259" r="0.78" opacity="0.27"/>
+    <circle cx="142" cy="225" r="1.0" opacity="0.39"/>
+    <circle cx="156" cy="202" r="0.72" opacity="0.27"/>
+    <circle cx="171" cy="177" r="1.08" opacity="0.48"/>
+    <circle cx="186" cy="161" r="0.78" opacity="0.32"/>
+    <circle cx="201" cy="156" r="0.95" opacity="0.40"/>
+    <circle cx="216" cy="164" r="0.68" opacity="0.24"/>
+    <circle cx="229" cy="190" r="0.82" opacity="0.26"/>
+
+    <circle cx="50" cy="219" r="0.62" opacity="0.16"/>
+    <circle cx="86" cy="198" r="0.68" opacity="0.19"/>
+    <circle cx="132" cy="184" r="0.66" opacity="0.18"/>
+    <circle cx="151" cy="337" r="0.68" opacity="0.18"/>
+    <circle cx="185" cy="302" r="0.72" opacity="0.19"/>
+    <circle cx="214" cy="274" r="0.62" opacity="0.15"/>
+  </g>
+
+  <g opacity="0.78">
+    <circle cx="169" cy="184" r="5" fill="url(#node)"/>
+    <circle cx="169" cy="184" r="1" fill="#F7EDFF"/>
+    <circle cx="201" cy="157" r="3.6" fill="url(#node)" opacity="0.58"/>
+    <circle cx="112" cy="278" r="3.2" fill="url(#node)" opacity="0.38"/>
+  </g>
+</svg>

@@ -1,0 +1,800 @@
+/* DebridPulse v1.0.11 Dashboard presentation. */
+
+#content.dashboard-active {
+  overflow-y: hidden;
+}
+
+#view-dashboard.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Primary dashboard metrics ─────────────────────────────────────────── */
+#view-dashboard .dash-hero {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--dp-card-gap);
+  margin: 0 0 var(--dp-section-gap);
+  flex: 0 0 auto;
+}
+
+#view-dashboard .dash-hero-stat {
+  --c: var(--dp-accent-purple-bright);
+  min-width: 0;
+  min-height: var(--dp-metric-card-min-height);
+  padding: 17px 18px 15px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-lg);
+  background:
+    radial-gradient(circle at 10% 12%, color-mix(in srgb, var(--c) 7%, transparent), transparent 45%),
+    linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1));
+  box-shadow: var(--dp-shadow-card);
+  transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+}
+
+#view-dashboard .dash-hero-stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--c);
+  opacity: .92;
+}
+
+#view-dashboard .dash-hero-stat[data-c="orange"] { --c: var(--dp-accent-purple-bright); }
+#view-dashboard .dash-hero-stat[data-c="green"] { --c: var(--dp-state-success); }
+#view-dashboard .dash-hero-stat[data-c="blue"] { --c: var(--dp-state-active); }
+#view-dashboard .dash-hero-stat[data-c="yellow"] { --c: var(--dp-state-processing); }
+#view-dashboard .dash-hero-stat[data-c="red"] { --c: var(--dp-state-error); }
+#view-dashboard .dash-hero-stat[data-c="purple"] { --c: var(--dp-accent-blue-bright); }
+
+#view-dashboard .dash-hero-stat:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--c) 32%, var(--dp-border-default));
+  box-shadow: var(--dp-shadow-card), 0 0 22px color-mix(in srgb, var(--c) 7%, transparent);
+}
+
+#view-dashboard .dhs-icon {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  opacity: 1;
+  line-height: 1;
+  font-size: 0;
+}
+#view-dashboard .dhs-icon .dp-icon {
+  width: 48px;
+  height: 48px;
+}
+
+#view-dashboard .dhs-body { min-width: 0; }
+#view-dashboard .dhs-val {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-metric-value-size);
+  line-height: var(--dp-type-metric-value-line);
+  font-weight: var(--dp-type-metric-value-weight);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
+}
+#view-dashboard .dhs-val--sm { font-size: 20px; }
+#view-dashboard .dhs-label {
+  margin-top: 6px;
+  color: var(--dp-text-secondary);
+  font-size: var(--dp-type-metric-label-size);
+  line-height: var(--dp-type-metric-label-line);
+  font-weight: var(--dp-type-metric-label-weight);
+  letter-spacing: var(--dp-type-metric-label-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+#view-dashboard .dhs-sub {
+  margin-top: 3px;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 9.5px;
+  line-height: 1.25;
+}
+
+/* The former second Dashboard KPI row is physically moved into Statistics by
+   ui-runtime.js. If the runtime has not initialized yet, avoid a flash of the
+   old dense Dashboard arrangement. */
+#view-dashboard .dash-kpi-strip--dashboard {
+  display: none !important;
+}
+
+/* ── Quick Add ─────────────────────────────────────────────────────────── */
+#view-dashboard .dp-dashboard-quick-add {
+  flex: 0 0 auto;
+  margin: 0 0 var(--dp-section-gap) !important;
+  overflow: visible;
+  border-color: color-mix(in srgb, var(--dp-accent-purple) 22%, var(--dp-border-default));
+  background:
+    radial-gradient(circle at 4% 0%, rgba(var(--dp-accent-rgb), .065), transparent 30%),
+    linear-gradient(180deg, var(--dp-surface-2), var(--dp-surface-1));
+}
+
+#view-dashboard .dp-dashboard-quick-add .card-header,
+#view-dashboard .dp-dashboard-activity .card-header {
+  min-height: 50px;
+  padding: 0 var(--dp-card-padding);
+  border-bottom: 1px solid var(--dp-border-subtle);
+}
+
+#view-dashboard .dp-dashboard-quick-add .card-title,
+#view-dashboard .dp-dashboard-activity .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: var(--dp-type-card-title-size);
+  font-weight: 600;
+}
+
+#view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+#view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  width: 28px;
+  height: 28px;
+}
+
+#view-dashboard .dp-dashboard-quick-add > div:last-child {
+  padding: 14px 16px 16px !important;
+}
+
+#view-dashboard .direct-link-entry {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+#view-dashboard .direct-link-input {
+  min-height: var(--dp-input-height);
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-surface-input);
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+}
+#view-dashboard .direct-link-input::placeholder { color: var(--dp-text-muted); }
+#view-dashboard .direct-link-input:hover { border-color: var(--dp-border-strong); }
+#view-dashboard .direct-link-input:focus {
+  outline: none;
+  border-color: var(--dp-accent-purple);
+  box-shadow: var(--dp-focus-ring);
+}
+#view-dashboard #btn-add-transfer {
+  height: var(--dp-input-height);
+  min-width: 92px;
+  padding: 0 20px !important;
+  justify-content: center;
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-gradient-primary);
+  color: var(--dp-text-inverse);
+  box-shadow: 0 7px 18px rgba(var(--dp-accent-rgb), .16);
+}
+#view-dashboard #btn-add-transfer:hover {
+  background: var(--dp-gradient-primary-hover);
+  box-shadow: 0 8px 22px rgba(var(--dp-accent-rgb), .24);
+}
+#view-dashboard #btn-recover-all .dp-icon { width: 15px; height: 15px; }
+
+/* ── Recent Activity ───────────────────────────────────────────────────── */
+#view-dashboard .dp-dashboard-activity {
+  flex: 1 1 auto;
+  min-height: 270px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--dp-surface-2), var(--dp-surface-1));
+}
+
+#view-dashboard .dash-activity-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+#view-dashboard .t-table {
+  width: 100%;
+  min-width: 720px !important;
+  border-collapse: collapse;
+  font-size: var(--dp-type-table-body-size);
+}
+#view-dashboard .t-table thead th {
+  height: var(--dp-table-head-height);
+  padding: 0 14px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid var(--dp-border-default);
+  background: color-mix(in srgb, var(--dp-surface-2) 94%, transparent);
+  color: var(--dp-text-muted);
+  font-size: var(--dp-type-table-head-size);
+  font-weight: var(--dp-type-table-head-weight);
+  letter-spacing: var(--dp-type-table-head-tracking);
+  text-transform: uppercase;
+}
+#view-dashboard .t-table tbody tr {
+  min-height: var(--dp-table-row-height);
+  border-bottom: 1px solid var(--dp-border-subtle);
+  transition: background .12s ease;
+}
+#view-dashboard .t-table tbody tr:hover { background: rgba(var(--dp-accent-rgb), .035); }
+#view-dashboard .t-table td {
+  height: var(--dp-table-row-height);
+  padding: 8px 14px;
+  color: var(--dp-text-secondary);
+}
+#view-dashboard .t-table tbody tr:last-child { border-bottom: 0; }
+
+/* ── Light-theme adjustments ───────────────────────────────────────────── */
+body.light #view-dashboard .dash-hero-stat,
+body.light #view-dashboard .dp-dashboard-quick-add,
+body.light #view-dashboard .dp-dashboard-activity {
+  background: linear-gradient(180deg, #ffffff, var(--dp-surface-2));
+  box-shadow: var(--dp-shadow-card);
+}
+body.light #view-dashboard .direct-link-input { background: #fbfcff; }
+body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
+
+/* ── Responsive dashboard ──────────────────────────────────────────────── */
+@media (max-width: 1439px) {
+  #view-dashboard .dash-hero { gap: 10px; }
+  #view-dashboard .dash-hero-stat { padding-inline: 14px; gap: 10px; }
+  #view-dashboard .dhs-icon,
+  #view-dashboard .dhs-icon .dp-icon { width: 42px; min-width: 42px; height: 42px; }
+  #view-dashboard .dhs-val { font-size: 24px; }
+  #view-dashboard .dhs-val--sm { font-size: 17px; }
+}
+
+@media (max-width: 1179px) {
+  #content.dashboard-active { overflow-y: auto; }
+  #view-dashboard.active { height: auto; overflow: visible; }
+  #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #view-dashboard .dp-dashboard-activity { min-height: 420px; }
+}
+
+@media (max-width: 899px) {
+  #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  #view-dashboard .dash-hero { grid-template-columns: 1fr; }
+  #view-dashboard .direct-link-entry { align-items: stretch; flex-direction: column; }
+  #view-dashboard #btn-add-transfer { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-dashboard .dash-hero-stat,
+  #view-dashboard .t-table tbody tr { transition: none; }
+  #view-dashboard .dash-hero-stat:hover { transform: none; }
+}
+
+/* Canonical Dashboard structural calibration. The rules below previously lived
+   in an adjacent migration stylesheet. They remain in the same source order. */
+
+body.dp-v11-structural #content.dashboard-active { overflow-y: auto; }
+body.dp-v11-structural #view-dashboard.active {
+  display: flex !important;
+  flex-direction: column;
+  height: auto;
+  min-height: calc(100vh - var(--dp-shell-header) - 24px);
+  overflow: visible;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 15px;
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  min-height: 130px;
+  padding: 20px 17px 30px;
+  gap: 14px;
+  align-items: flex-start;
+  border-radius: 12px;
+  border: 1px solid rgba(105, 119, 181, .23);
+  background:
+    radial-gradient(circle at 92% 10%, color-mix(in srgb, var(--c) 8%, transparent), transparent 44%),
+    linear-gradient(145deg, rgba(17, 22, 51, .96), rgba(9, 14, 35, .98));
+  box-shadow: inset 0 1px rgba(255,255,255,.02), 0 10px 27px rgba(0,0,12,.11);
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat::before {
+  height: 3px;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c) 24%, transparent);
+}
+body.dp-v11-structural #view-dashboard .dhs-icon {
+  width: 51px;
+  min-width: 51px;
+  height: 51px;
+  margin-top: 1px;
+}
+body.dp-v11-structural #view-dashboard .dhs-icon .dp-icon {
+  width: 51px;
+  height: 51px;
+}
+body.dp-v11-structural #view-dashboard .dhs-body {
+  padding-top: 5px;
+  position: relative;
+  z-index: 2;
+}
+body.dp-v11-structural #view-dashboard .dhs-val {
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 750;
+  color: #fbfbff;
+}
+body.dp-v11-structural #view-dashboard .dhs-val--sm { font-size: 23px; }
+body.dp-v11-structural #view-dashboard .dhs-label {
+  margin-top: 7px;
+  color: #bec3dc;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .045em;
+}
+body.dp-v11-structural #view-dashboard .dhs-sub {
+  position: absolute;
+  left: 0;
+  top: 46px;
+  white-space: nowrap;
+  font-size: 8px;
+  opacity: .66;
+}
+
+.dp-card-spark {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 7px;
+  width: calc(100% - 20px);
+  height: 31px;
+  color: var(--c);
+  opacity: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+.dp-card-spark .dp-card-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.55;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+.dp-card-spark .dp-card-spark-point {
+  fill: currentColor;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+body.dp-v11-structural #view-dashboard .dash-kpi-strip--dashboard { display: none !important; }
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  border: 1px solid rgba(105, 119, 181, .22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 19, 44, .94), rgba(8, 13, 31, .98));
+  box-shadow: inset 0 1px rgba(255,255,255,.018), 0 10px 28px rgba(0,0,10,.08);
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add { margin: 0 0 14px !important; }
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header {
+  min-height: 78px;
+  padding: 0 17px;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title {
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f4f2ff;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  width: 38px;
+  height: 38px;
+}
+.dp-card-heading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.dp-card-subtitle {
+  color: #9ea4c2;
+  font-size: 11.5px;
+  line-height: 1.25;
+  font-weight: 400;
+}
+.dp-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+body.dp-v11-structural #view-dashboard #btn-import-existing,
+body.dp-v11-structural #view-dashboard #btn-recover-all,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .btn {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(111, 126, 187, .22);
+  background: rgba(11, 16, 38, .72);
+  color: #d7d9eb;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+body.dp-v11-structural #view-dashboard #btn-recover-all {
+  border-color: rgba(245, 178, 45, .35);
+  color: #f5c144;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add > div:last-child {
+  padding: 13px 16px 15px !important;
+  border-top: 1px solid rgba(105, 119, 181, .12);
+}
+body.dp-v11-structural #view-dashboard .direct-link-entry { gap: 13px; }
+body.dp-v11-structural #view-dashboard .direct-link-input {
+  min-height: 59px;
+  max-height: 112px;
+  padding: 12px 13px;
+  resize: none;
+  border-radius: 8px;
+  border-color: rgba(110, 124, 184, .25);
+  background: rgba(8, 13, 31, .73);
+  color: #dfe2f2;
+  font-size: 11.5px;
+  line-height: 18px;
+}
+body.dp-v11-structural #view-dashboard #btn-add-transfer {
+  align-self: stretch;
+  height: auto;
+  min-height: 59px;
+  min-width: 96px;
+  border-radius: 8px;
+  border: 1px solid rgba(164, 92, 255, .42);
+  background: linear-gradient(135deg, #8b2ee8 0%, #6840f1 52%, #3477f5 100%);
+  box-shadow: 0 8px 22px rgba(94, 55, 235, .20), inset 0 1px rgba(255,255,255,.12);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  flex: 1 0 auto;
+  min-height: 315px;
+  overflow: hidden;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  min-height: 70px;
+  padding: 0 17px;
+  border-bottom: 1px solid rgba(105, 119, 181, .15);
+}
+body.dp-v11-structural #view-dashboard #dash-activity-count {
+  display: block !important;
+  color: #9ea4c2 !important;
+  font-size: 10.5px !important;
+}
+body.dp-v11-structural #view-dashboard .dash-activity-table-wrap { overflow: hidden auto; }
+body.dp-v11-structural #view-dashboard .t-table { min-width: 760px !important; }
+body.dp-v11-structural #view-dashboard .t-table thead th {
+  height: 33px;
+  padding: 0 14px;
+  background: rgba(16, 21, 48, .88);
+  border-bottom: 1px solid rgba(105, 119, 181, .14);
+  color: #9ca2bf;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .05em;
+}
+body.dp-v11-structural #view-dashboard .t-table tbody tr { border-bottom: 1px solid rgba(105, 119, 181, .11); }
+body.dp-v11-structural #view-dashboard .t-table td {
+  height: 57px;
+  padding: 8px 14px;
+  color: #d0d4e7;
+  font-size: 11.5px;
+}
+body.dp-v11-structural #view-dashboard .t-table tbody tr:hover { background: rgba(124, 58, 237, .035); }
+body.dp-v11-structural #view-dashboard .badge {
+  min-height: 25px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+body.dp-v11-structural #view-dashboard .badge-completed {
+  background: rgba(15, 159, 89, .15);
+  color: #44dc8d;
+}
+body.dp-v11-structural #view-dashboard .badge-completed::before {
+  content: '✓';
+  margin-right: 5px;
+  font-weight: 800;
+}
+body.dp-v11-structural #view-dashboard .badge-partial,
+body.dp-v11-structural #view-dashboard .badge-processing,
+body.dp-v11-structural #view-dashboard .badge-extracting {
+  background: rgba(217, 154, 30, .14);
+  color: #f2bd43;
+}
+body.dp-v11-structural #view-dashboard .badge-error {
+  background: rgba(226, 62, 82, .14);
+  color: #f56a79;
+}
+body.dp-v11-structural #view-dashboard .prog-bg,
+body.dp-v11-structural #view-dashboard .progress-track {
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(112, 125, 177, .13);
+}
+body.dp-v11-structural #view-dashboard .prog-fill,
+body.dp-v11-structural #view-dashboard .progress-fill {
+  border-radius: inherit;
+  background: #31d57b;
+  box-shadow: 0 0 7px rgba(49, 213, 123, .22);
+}
+
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  background: linear-gradient(180deg, #ffffff, #f8f9fd);
+  border-color: #dce1ef;
+  box-shadow: 0 8px 22px rgba(62, 71, 106, .07);
+}
+body.light.dp-v11-structural #view-dashboard .dhs-val,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title { color: #191c30; }
+body.light.dp-v11-structural #view-dashboard .dhs-label { color: #666d89; }
+body.light.dp-v11-structural .dp-card-subtitle,
+body.light.dp-v11-structural #view-dashboard #dash-activity-count { color: #777e98 !important; }
+body.light.dp-v11-structural #view-dashboard .direct-link-input {
+  background: #fbfcff;
+  border-color: #d9dfed;
+  color: #30354e;
+}
+body.light.dp-v11-structural #view-dashboard .t-table thead th { background: #f5f7fc; color: #777e98; }
+body.light.dp-v11-structural #view-dashboard .t-table td { color: #454b67; }
+
+@media (max-width: 1450px) {
+  body.dp-v11-structural #view-dashboard .dash-hero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-dashboard .dash-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  body.dp-v11-structural #view-dashboard .dash-hero { grid-template-columns: 1fr; }
+  body.dp-v11-structural #view-dashboard .direct-link-entry { flex-direction: column; align-items: stretch; }
+  body.dp-v11-structural #view-dashboard #btn-add-transfer { min-height: 42px; }
+  .dp-card-header-actions { width: 100%; margin: 8px 0 0; }
+}
+
+/* Canonical Dashboard geometry retained from the accepted second review. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  overflow: hidden;
+}
+body.dp-v11-structural #view-dashboard .dp-card-spark {
+  left: -1px !important;
+  right: -1px !important;
+  width: calc(100% + 2px) !important;
+  bottom: -1px !important;
+}
+body.dp-v11-structural #view-dashboard .dp-card-spark-fill {
+  opacity: .88 !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-card-spark-fill {
+  opacity: .72 !important;
+}
+body.dp-v11-structural #view-dashboard .dhs-icon,
+body.dp-v11-structural #view-dashboard .dhs-icon .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  width: 51px !important;
+  min-width: 51px !important;
+  height: 51px !important;
+  flex: 0 0 51px !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  object-fit: contain;
+  padding: 1px;
+}
+
+/* Canonical Dashboard card framing retained from the accepted review state.
+   Later final layers may tune controls without owning this base framing. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  position: relative;
+  border-color: transparent !important;
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 1px solid rgba(111, 125, 184, .26);
+  border-bottom: 0;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
+  pointer-events: none;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  border-color: rgba(161, 170, 203, .42);
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.024),
+    -6px 8px 14px -8px rgba(0,0,0,.66),
+    0 5px 11px -8px rgba(0,0,0,.46) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.78),
+    -6px 8px 14px -8px rgba(35, 41, 66, .40),
+    0 5px 11px -8px rgba(41, 47, 72, .25) !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  background: linear-gradient(90deg,
+    rgba(95, 48, 174, .26) 0%,
+    rgba(78, 43, 143, .15) 24%,
+    rgba(56, 39, 103, .065) 48%,
+    rgba(14, 19, 44, .00) 76%) !important;
+  border-bottom-color: rgba(113, 126, 184, .18) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  background: linear-gradient(90deg,
+    rgba(142, 92, 225, .14) 0%,
+    rgba(154, 112, 224, .085) 25%,
+    rgba(170, 143, 222, .038) 48%,
+    rgba(255,255,255,0) 76%) !important;
+  border-bottom-color: rgba(159, 168, 201, .34) !important;
+}
+
+/* Empty Recent Activity is one continuous quiet surface. */
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]),
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]):hover {
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) td {
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) .empty {
+  background: transparent !important;
+}
+
+/* Canonical Dashboard surface calibration retained from the accepted review. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat::before {
+  display: block !important;
+  content: '';
+  position: absolute !important;
+  z-index: 6 !important;
+  left: -1px !important;
+  top: -1px !important;
+  width: calc(100% - 13px) !important;
+  height: 10px !important;
+  border: 0 !important;
+  border-top: 3px solid var(--c) !important;
+  border-left: 1.5px solid color-mix(in srgb, var(--c) 72%, transparent) !important;
+  border-top-left-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: 0 -1px 8px color-mix(in srgb, var(--c) 24%, transparent) !important;
+  -webkit-mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%) !important;
+  mask-image: linear-gradient(90deg,
+    #000 0%,
+    #000 74%,
+    rgba(0,0,0,.94) 81%,
+    rgba(0,0,0,.78) 87%,
+    rgba(0,0,0,.57) 92%,
+    rgba(0,0,0,.31) 96.5%,
+    transparent 100%) !important;
+  pointer-events: none;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--c) 19%, transparent) 0%,
+      color-mix(in srgb, var(--c) 13%, transparent) 24%,
+      color-mix(in srgb, var(--c) 7%, transparent) 46%,
+      color-mix(in srgb, var(--c) 2.5%, transparent) 64%,
+      transparent 76%),
+    linear-gradient(155deg, var(--dp-surface-2), var(--dp-surface-1)) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat {
+  background:
+    radial-gradient(ellipse 105% 88% at 1% -8%,
+      color-mix(in srgb, var(--c) 15%, transparent) 0%,
+      color-mix(in srgb, var(--c) 10%, transparent) 25%,
+      color-mix(in srgb, var(--c) 5.5%, transparent) 48%,
+      color-mix(in srgb, var(--c) 2%, transparent) 65%,
+      transparent 77%),
+    linear-gradient(180deg, #ffffff, var(--dp-surface-2)) !important;
+}
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  overflow: hidden !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  border-radius: var(--dp-radius-lg) var(--dp-radius-lg) 0 0 !important;
+  background-clip: padding-box !important;
+}
+
+body.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  -webkit-mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%) !important;
+  mask-image: linear-gradient(180deg,
+    #000 0%,
+    #000 42%,
+    rgba(0,0,0,.94) 53%,
+    rgba(0,0,0,.80) 65%,
+    rgba(0,0,0,.61) 76%,
+    rgba(0,0,0,.39) 85%,
+    rgba(0,0,0,.18) 93%,
+    transparent 98%) !important;
+}
+
+body.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #1d1930 0%, #171528 100%) !important;
+  border-bottom-color: rgba(137, 119, 174, .26) !important;
+}
+body.light.dp-v11-structural #view-dashboard .t-table thead th {
+  background: linear-gradient(180deg, #f2eff8 0%, #ebe8f3 100%) !important;
+  border-bottom-color: #dcd6e8 !important;
+}
+
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon {
+  width: 38px !important;
+  height: 38px !important;
+  margin: 0 auto 8px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  background: url('/icons/dp/card-download.svg?v=11') center / contain no-repeat !important;
+  opacity: .78;
+  filter: saturate(.92) drop-shadow(0 3px 7px rgba(116, 56, 196, .18));
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon {
+  opacity: .72;
+  filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
+}

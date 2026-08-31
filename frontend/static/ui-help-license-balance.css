@@ -1,0 +1,13 @@
+/* DebridPulse v1.0.11 final Help License footer balance. */
+body.dp-v11-structural #view-help .dp-help-license-actions {
+  justify-content: center;
+}
+
+body.dp-v11-structural #view-help .dp-help-license-note {
+  text-align: center;
+}
+
+body.dp-v11-structural #view-help .dp-help-license-note > p {
+  margin-left: auto;
+  margin-right: auto;
+}

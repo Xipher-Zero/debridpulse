@@ -1,9 +1,9 @@
-# DebridPulse — AllDebrid download manager
+# DebridPulse: AllDebrid download manager
 # Generic bridge-network example. Adapt host paths, UID/GID and timezone.
 
 services:
   debridpulse:
-    image: ghcr.io/xipher-zero/debridpulse:v1.0.10
+    image: ghcr.io/xipher-zero/debridpulse:v1.0.11
     build: .
     container_name: debridpulse
     restart: unless-stopped

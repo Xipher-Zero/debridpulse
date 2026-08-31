@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Statistics">
+  <defs>
+    <linearGradient id="tile" x1="84" y1="56" x2="432" y2="458" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6a19c6"/>
+      <stop offset="0.36" stop-color="#3a117d"/>
+      <stop offset="0.78" stop-color="#17074c"/>
+      <stop offset="1" stop-color="#070022"/>
+    </linearGradient>
+    <linearGradient id="tileEdge" x1="45" y1="34" x2="462" y2="482" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b85cff"/>
+      <stop offset="0.36" stop-color="#7d22ea"/>
+      <stop offset="0.74" stop-color="#3c1597"/>
+      <stop offset="1" stop-color="#1c0a60"/>
+    </linearGradient>
+    <linearGradient id="axis" x1="97" y1="95" x2="411" y2="419" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dba2ff"/>
+      <stop offset="0.12" stop-color="#b65aff"/>
+      <stop offset="0.55" stop-color="#7c1dff"/>
+      <stop offset="1" stop-color="#4a0fc6"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2c5ff"/>
+      <stop offset="0.17" stop-color="#d878ff"/>
+      <stop offset="0.48" stop-color="#922cff"/>
+      <stop offset="0.76" stop-color="#6c16e8"/>
+      <stop offset="1" stop-color="#3d0aaa"/>
+    </linearGradient>
+    <linearGradient id="barDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d69aff"/>
+      <stop offset="0.28" stop-color="#a43dff"/>
+      <stop offset="0.67" stop-color="#7616e7"/>
+      <stop offset="1" stop-color="#351092"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".88"/>
+      <stop offset="0.26" stop-color="#ffffff" stop-opacity=".32"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="19" y="18" width="474" height="474" rx="101" fill="url(#tileEdge)"/>
+  <rect x="25" y="24" width="462" height="462" rx="94" fill="url(#tile)" stroke="#7a2ee8" stroke-width="3"/>
+  <path d="M49 133C95 76 166 73 242 48c57-19 135-21 203-6 15 4 26 10 35 17-13-19-33-30-58-34H112c-42 7-75 31-93 67 6 24 14 37 30 41Z" fill="#8425e8" opacity=".28"/>
+  <path d="M38 420c18 31 47 55 81 63h292c32-8 58-26 78-52-29 29-63 45-104 47H122c-34-3-61-20-84-58Z" fill="#4f15bd" opacity=".38"/>
+  <path d="M40 92C55 57 82 35 117 27" fill="none" stroke="#d697ff" stroke-width="4" stroke-linecap="round" opacity=".78"/>
+  <path d="M469 424c-11 27-32 45-60 55" fill="none" stroke="#9a41ff" stroke-width="4" stroke-linecap="round" opacity=".55"/>
+
+  <g filter="url(#softGlow)">
+    <path d="M108 103v306h305" fill="none" stroke="#4e0ebf" stroke-width="21" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
+    <path d="M108 103v306h305" fill="none" stroke="url(#axis)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M105 100v303h305" fill="none" stroke="#f3c9ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".75"/>
+
+    <g stroke="#5a0fbf" stroke-width="8">
+      <rect x="120" y="282" width="52" height="117" rx="14" fill="url(#bar)"/>
+      <rect x="177" y="184" width="55" height="215" rx="14" fill="url(#barDark)"/>
+      <rect x="238" y="248" width="56" height="151" rx="14" fill="url(#bar)"/>
+      <rect x="301" y="129" width="59" height="270" rx="14" fill="url(#barDark)"/>
+      <rect x="368" y="201" width="52" height="198" rx="14" fill="url(#bar)"/>
+    </g>
+    <g fill="none" stroke="#eabaff" stroke-width="2.3" opacity=".84">
+      <rect x="123" y="285" width="46" height="111" rx="11"/>
+      <rect x="180" y="187" width="49" height="209" rx="11"/>
+      <rect x="241" y="251" width="50" height="145" rx="11"/>
+      <rect x="304" y="132" width="53" height="264" rx="11"/>
+      <rect x="371" y="204" width="46" height="192" rx="11"/>
+    </g>
+    <g opacity=".72">
+      <path d="M126 289h38a10 10 0 0 1 10 10v19c-14 7-27 19-39 35-5 7-9 15-12 23v-77a10 10 0 0 1 3-10Z" fill="url(#shine)"/>
+      <path d="M183 191h39a10 10 0 0 1 10 10v38c-20 14-37 33-52 55V201a10 10 0 0 1 3-10Z" fill="url(#shine)"/>
+      <path d="M244 255h40a10 10 0 0 1 10 10v31c-18 12-35 31-53 58v-89a10 10 0 0 1 3-10Z" fill="url(#shine)"/>
+      <path d="M307 136h43a10 10 0 0 1 10 10v36c-24 20-41 43-56 68V146a10 10 0 0 1 3-10Z" fill="url(#shine)"/>
+      <path d="M374 208h37a10 10 0 0 1 10 10v30c-20 16-36 35-50 57v-87a10 10 0 0 1 3-10Z" fill="url(#shine)"/>
+    </g>
+  </g>
+</svg>

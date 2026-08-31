@@ -1,0 +1,24 @@
+/* DebridPulse v1.0.11 first-paint topbar contract.
+ *
+ * The aria2 operational block is shell structure, not data-dependent structure.
+ * Desktop therefore paints it immediately with neutral values while the runtime
+ * hydrates authoritative aria2 state asynchronously. Once hydration completes,
+ * app.js regains sole display authority (including hiding a stopped builtin
+ * daemon). Mobile retains the existing compact-shell rule that omits the block.
+ */
+@media (min-width: 900px) {
+  body.dp-v11-structural:not(.dp-aria2-hydrated) #aria2-speed-badge {
+    display: flex !important;
+  }
+
+  /* index.html historically ships an em dash for the unknown max-concurrency
+     value. Present the requested neutral zero until runtime data replaces it. */
+  body.dp-v11-structural:not(.dp-aria2-hydrated) #aria2-badge-max {
+    font-size: 0 !important;
+  }
+
+  body.dp-v11-structural:not(.dp-aria2-hydrated) #aria2-badge-max::after {
+    content: '0';
+    font-size: 10.5px;
+  }
+}

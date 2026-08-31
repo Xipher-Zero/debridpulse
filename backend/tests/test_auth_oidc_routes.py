@@ -78,7 +78,7 @@ async def test_unified_login_shows_password_and_oidc_when_both_enabled(monkeypat
     assert response.status_code == 200
     assert 'name="username"' in body
     assert 'name="password"' in body
-    assert "Continue with Authentik" in body
+    assert "Sign in with Authentik" in body
     assert "/auth/oidc/start?next=%2Fstats" in body
 
 
@@ -90,7 +90,7 @@ async def test_oidc_only_uses_local_landing_page_without_password_or_auto_redire
     response = await auth_routes.login_page(request, next="/")
     body = response.body.decode()
     assert response.status_code == 200
-    assert "Continue with Authentik" in body
+    assert "Sign in with Authentik" in body
     assert 'name="username"' not in body
     assert 'name="password"' not in body
     assert "location" not in response.headers

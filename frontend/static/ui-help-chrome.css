@@ -1,0 +1,184 @@
+/* DebridPulse v1.0.11 Help presentation chrome.
+ *
+ * Mirrors the approved Settings master-header and section-selector language
+ * while retaining Help-specific labels, colors, and content cards.
+ */
+
+/* ── Settings master-header geometry ────────────────────────────────── */
+body.dp-v11-structural #view-help .dp-help-master-header {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+body.dp-v11-structural #view-help .dp-help-header-copy {
+  grid-column: 1;
+  justify-self: start;
+}
+
+body.dp-v11-structural #view-help .dp-help-header-text {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-header-subtitle {
+  margin-top: 4px;
+  max-width: 560px;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+body.dp-v11-structural #view-help .dp-help-tabs {
+  grid-column: 2;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  justify-self: center;
+}
+
+/* ── Settings section-selector geometry and emphasis ────────────────── */
+body.dp-v11-structural #view-help .dp-help-tab {
+  --dp-help-tab-color: var(--dp-accent-purple-bright);
+  appearance: none;
+  position: relative;
+  min-height: 32px;
+  flex: 0 0 auto;
+  gap: 7px;
+  padding-inline: 10px;
+  border: 0;
+  font: inherit;
+}
+
+body.dp-v11-structural #view-help .dp-help-tab-chip {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dp-help-tab-color) 44%, #31313d);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dp-help-tab-color) 20%, #111119);
+}
+
+body.dp-v11-structural #view-help .dp-help-tab-glyph {
+  width: 13px;
+  height: 13px;
+  display: block;
+  object-fit: contain;
+  filter:
+    saturate(1.5)
+    contrast(1.05)
+    drop-shadow(0 0 2px color-mix(in srgb, var(--dp-help-tab-color) 76%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-help-tab-color) 38%, transparent));
+}
+
+body.light.dp-v11-structural #view-help .dp-help-tab-glyph {
+  filter:
+    saturate(2.15)
+    contrast(1.14)
+    drop-shadow(0 0 2px color-mix(in srgb, var(--dp-help-tab-color) 94%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--dp-help-tab-color) 68%, transparent))
+    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-help-tab-color) 34%, transparent));
+}
+
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='quickstart'] {
+  --dp-help-tab-color: #b866f5;
+}
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='howitworks'] {
+  --dp-help-tab-color: #39c6e8;
+}
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='aria2'] {
+  --dp-help-tab-color: #4c8fff;
+}
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='integrations'] {
+  --dp-help-tab-color: #3ab8a8;
+}
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='settings'] {
+  --dp-help-tab-color: #e0a02b;
+}
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='trouble'] {
+  --dp-help-tab-color: #f27f5b;
+}
+body.dp-v11-structural #view-help .dp-help-tab[data-tab='license'] {
+  --dp-help-tab-color: #48c77e;
+}
+
+/* ── Settings-style full-width tab content cards ────────────────────── */
+body.dp-v11-structural #view-help .dp-help-panels {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 12px 16px;
+}
+
+body.dp-v11-structural #view-help .dp-help-panel {
+  width: 100%;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-document.dp-help-section-card {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  display: block;
+  gap: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-card-header {
+  min-height: 50px;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-card-header .dp-help-section-heading {
+  width: 100%;
+  min-width: 0;
+  gap: 3px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-card-header .dp-help-section-heading h2 {
+  margin: 0;
+  color: var(--dp-text-primary);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-card-header .dp-help-section-heading p {
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-card-body {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+body.dp-v11-structural #view-help .dp-help-section-card-body > a {
+  color: var(--dp-accent-purple-bright);
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-help .dp-help-master-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-help .dp-help-header-copy,
+  body.dp-v11-structural #view-help .dp-help-tabs {
+    grid-column: 1;
+  }
+
+  body.dp-v11-structural #view-help .dp-help-tabs {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #view-help .dp-help-panels {
+    padding: 10px 10px 14px;
+  }
+}

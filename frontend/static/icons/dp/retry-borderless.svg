@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 45" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="14" y1="8" x2="37" y2="36" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFDC4B"/>
+      <stop offset=".48" stop-color="#F0BC2E"/>
+      <stop offset="1" stop-color="#D69817"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(20 12) rotate(45) scale(18 14)">
+      <stop offset="0" stop-color="#FFF294" stop-opacity=".64"/>
+      <stop offset=".48" stop-color="#FFD84C" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#FFD84C" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="5" y="1" width="40" height="42" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation=".8" result="b"/>
+      <feFlood flood-color="#F0B82B" flood-opacity=".30" result="f"/>
+      <feComposite in="f" in2="b" operator="in" result="g"/>
+      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#glow)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M37.7 13.2A16.3 16.3 0 1 0 39.8 27.1" stroke="url(#gold)" stroke-width="7.2"/>
+    <path d="M36.9 7.7L39.2 14.8L31.8 13.3" fill="url(#gold)" stroke="url(#gold)" stroke-width="2.1"/>
+    <path d="M37.7 13.2A16.3 16.3 0 1 0 39.8 27.1" stroke="url(#shine)" stroke-width="5.1" opacity=".75"/>
+  </g>
+</svg>

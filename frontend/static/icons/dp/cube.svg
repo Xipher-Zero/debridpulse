@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="76" height="76" viewBox="0 0 76 76" fill="none">
+  <defs>
+    <linearGradient id="cubeStroke" x1="23" y1="20" x2="55" y2="57" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8C8FF"/>
+      <stop offset=".48" stop-color="#B99BFF"/>
+      <stop offset="1" stop-color="#9270E7"/>
+    </linearGradient>
+
+    <radialGradient id="dotFill" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(47.5 40.3) rotate(45) scale(4.4)">
+      <stop offset="0" stop-color="#E7DAFF"/>
+      <stop offset=".55" stop-color="#B99BFF"/>
+      <stop offset="1" stop-color="#8F6BE0"/>
+    </radialGradient>
+
+    <filter id="cubeGlow" x="10" y="10" width="56" height="56" filterUnits="userSpaceOnUse">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.15" result="blur"/>
+      <feFlood flood-color="#B69CFF" flood-opacity=".45" result="flood"/>
+      <feComposite in="flood" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Transparent background -->
+  <g filter="url(#cubeGlow)"
+     fill="none"
+     stroke="url(#cubeStroke)"
+     stroke-width="3.15"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <path d="M38 19.8
+             L54.2 29.1
+             V47.4
+             L38 56.8
+             L21.8 47.4
+             V29.1
+             Z"/>
+
+    <path d="M21.8 29.1L38 38.5L54.2 29.1"/>
+    <path d="M38 38.5V56.8"/>
+  </g>
+
+  <!-- Small dot on the right face, matching the reference -->
+  <circle cx="47.6" cy="40.7" r="2.35" fill="url(#dotFill)"/>
+</svg>

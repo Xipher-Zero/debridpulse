@@ -2,27 +2,27 @@
   <title id="title">DebridPulse</title>
   <desc id="desc">A violet and blue download arrow entering a bucket on a charcoal rounded square.</desc>
   <defs>
-    <linearGradient id="field" x1="82" y1="58" x2="430" y2="454" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#211f31"/>
-      <stop offset=".52" stop-color="#151522"/>
-      <stop offset="1" stop-color="#0d101a"/>
+    <linearGradient id="dp-outline" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a62cff"/>
+      <stop offset="1" stop-color="#208cff"/>
     </linearGradient>
-    <linearGradient id="mark" x1="164" y1="112" x2="370" y2="430" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#b42cff"/>
-      <stop offset=".48" stop-color="#4f67ff"/>
-      <stop offset="1" stop-color="#00d4ee"/>
+    <linearGradient id="dp-arrow" x1="64" y1="24" x2="64" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b532ff"/>
+      <stop offset=".48" stop-color="#7855ff"/>
+      <stop offset="1" stop-color="#08a8ff"/>
     </linearGradient>
-    <radialGradient id="softGlow" cx="50%" cy="49%" r="58%">
-      <stop offset="0" stop-color="#6674ff" stop-opacity=".14"/>
-      <stop offset="1" stop-color="#6674ff" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
-      <feDropShadow dx="0" dy="10" stdDeviation="13" flood-color="#02030a" flood-opacity=".54"/>
+    <linearGradient id="dp-tray" x1="28" y1="86" x2="101" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9b32ff"/>
+      <stop offset="1" stop-color="#149fff"/>
+    </linearGradient>
+    <filter id="dp-glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="2.4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
-  <rect x="18" y="18" width="476" height="476" rx="112" fill="#05070d" filter="url(#shadow)"/>
-  <rect x="31" y="31" width="450" height="450" rx="100" fill="url(#field)" stroke="#252a3a" stroke-width="3"/>
-  <rect x="31" y="31" width="450" height="450" rx="100" fill="url(#softGlow)"/>
-  <path fill="url(#mark)" d="M220 119c0-18 14-32 32-32h8c18 0 32 14 32 32v111h55c13 0 20 15 12 25l-84 105c-10 13-28 13-38 0l-84-105c-8-10-1-25 12-25h55V119Z"/>
-  <path d="M119 349v54c0 20 16 36 36 36h202c20 0 36-16 36-36v-54" fill="none" stroke="url(#mark)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="scale(4)">
+    <rect x="14" y="13" width="100" height="102" rx="23" fill="#080b18" stroke="url(#dp-outline)" stroke-width="2.5"/>
+    <path d="M55 30c0-2.8 2.2-5 5-5h8c2.8 0 5 2.2 5 5v27h10.2c3.8 0 5.8 4.5 3.2 7.2L67.2 84.8a4.4 4.4 0 0 1-6.4 0L41.6 64.2c-2.6-2.7-.6-7.2 3.2-7.2H55V30z" fill="url(#dp-arrow)" filter="url(#dp-glow)"/>
+    <path d="M28 79v12.5c0 5 4 9 9 9h54c5 0 9-4 9-9V79" fill="none" stroke="url(#dp-tray)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#dp-glow)"/>
+  </g>
 </svg>

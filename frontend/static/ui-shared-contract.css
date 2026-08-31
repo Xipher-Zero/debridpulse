@@ -1,0 +1,82 @@
+/* DebridPulse v1.0.11 shared frontend contract corrections.
+ *
+ * This layer owns cross-cutting presentation that must not be created from
+ * JavaScript or owned by a page-specific stylesheet. It is intentionally
+ * small: broadly reusable component material remains in
+ * ui-universal-language.css and shell geometry remains in the shell layers.
+ */
+
+/* Duplicate is a caution/status presentation, not runtime-generated CSS. */
+body.dp-v11-structural .badge-duplicate {
+  background: var(--dp-state-caution-bg);
+  color: var(--dp-state-caution);
+  text-transform: capitalize;
+}
+
+/* Legacy Downloads pagination is still emitted as .dp-pager-btn by the
+   presentation shim. Bridge that legacy class to the canonical DP page-button
+   material until the runtime markup is retired; Downloads may still own the
+   hit-target geometry in its page layer. */
+body.dp-v11-structural .dp-pager-btn {
+  min-width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--dp-secondary-border);
+  border-radius: var(--dp-radius-xs);
+  background: var(--dp-secondary-surface);
+  color: var(--dp-secondary-text);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--dp-secondary-shadow);
+  transition: filter .14s ease, border-color .14s ease, color .14s ease,
+              box-shadow .14s ease, transform .06s ease, opacity .14s ease;
+}
+body.dp-v11-structural .dp-pager-btn:hover:not(:disabled):not([aria-current="page"]) {
+  border-color: var(--dp-border-strong);
+  filter: brightness(1.045);
+}
+body.dp-v11-structural .dp-pager-btn[aria-current="page"] {
+  border-color: var(--dp-segment-active-border);
+  background: var(--dp-segment-active-surface);
+  color: var(--dp-segment-active-text);
+  box-shadow: var(--dp-segment-active-shadow);
+}
+body.dp-v11-structural .dp-pager-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+body.dp-v11-structural .dp-pager-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--dp-focus-ring);
+}
+body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
+  transform: translateY(1px) scale(.985);
+}
+
+/* Legacy interactive surfaces that are progressively normalized by the
+   accessibility runtime need the same visible keyboard focus as DP-native
+   controls. Outline is used so existing selected/semantic box-shadows remain
+   untouched. */
+body.dp-v11-structural .nav-item[role="button"]:focus-visible,
+body.dp-v11-structural .ftab[role="button"]:focus-visible,
+body.dp-v11-structural .stab[role="tab"]:focus-visible,
+body.dp-v11-structural .modal-close[role="button"]:focus-visible,
+body.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dp-accent-purple-bright) 82%, white 18%);
+  outline-offset: 2px;
+}
+
+body.light.dp-v11-structural .nav-item[role="button"]:focus-visible,
+body.light.dp-v11-structural .ftab[role="button"]:focus-visible,
+body.light.dp-v11-structural .stab[role="tab"]:focus-visible,
+body.light.dp-v11-structural .modal-close[role="button"]:focus-visible,
+body.light.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
+  outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
+}

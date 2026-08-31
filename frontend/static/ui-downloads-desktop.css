@@ -1,0 +1,40 @@
+/* DebridPulse v1.0.11 Downloads desktop composition refinements.
+ * Desktop-only geometry. Universal table/filter/button material remains shared.
+ */
+
+@media (min-width: 901px) {
+  /* Reclaim Source / Label slack for long transfer states while preserving the
+     reviewed Name, Progress and trailing control geometry. */
+  body.dp-v11-structural #view-torrents .t-table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(1) { width: 36px; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(3) { width: 8%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(4) { width: 13%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(5) { width: 25%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(6) { width: 6%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(7) { width: 8%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(8) { width: 190px; }
+
+  body.dp-v11-structural #view-torrents .t-table td:nth-child(8) .actions {
+    justify-content: flex-start;
+    gap: 7px;
+    white-space: nowrap;
+  }
+
+  /* Desktop is the current viewport contract. Do not compress the seven-state
+     filter rail to accommodate tablet/mobile; those contexts will be designed
+     separately. */
+  body.dp-v11-structural #view-torrents .filter-tabs {
+    max-width: none;
+    overflow: visible;
+  }
+
+  body.dp-v11-structural #view-torrents .filter-tabs .ftab {
+    min-width: 64px;
+    padding-inline: 14px;
+  }
+}

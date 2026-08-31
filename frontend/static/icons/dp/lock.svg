@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="32" height="32" viewBox="0 0 32 32"
+     fill="none">
+  <defs>
+    <linearGradient id="lockGold" x1="10" y1="6" x2="22" y2="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE94D"/>
+      <stop offset="0.42" stop-color="#FFD11C"/>
+      <stop offset="0.78" stop-color="#F0AC08"/>
+      <stop offset="1" stop-color="#D99200"/>
+    </linearGradient>
+  </defs>
+
+  <!-- shackle -->
+  <path d="M11 13V10.2
+           C11 7.35 13.25 5.1 16 5.1
+           C18.75 5.1 21 7.35 21 10.2
+           V13"
+        stroke="url(#lockGold)"
+        stroke-width="2.7"
+        stroke-linecap="round"
+        fill="none"/>
+
+  <!-- lock body -->
+  <rect x="8.2" y="12" width="15.6" height="14.2" rx="2.2"
+        fill="url(#lockGold)"/>
+
+  <!-- keyhole -->
+  <circle cx="16" cy="18.2" r="1.65" fill="#17203B"/>
+  <path d="M15.1 19.3h1.8l-.45 3.45h-.9L15.1 19.3Z"
+        fill="#17203B"/>
+</svg>

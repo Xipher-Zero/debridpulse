@@ -1,0 +1,139 @@
+/* DebridPulse v1.0.11 Provider Status shell composition.
+ *
+ * Provider Status is a shell-owned, three-zone status panel:
+ * title -> provider subscription state -> connection/exception state.
+ * Page styles must not own this alignment.
+ */
+
+/* Canonical shell-owned title and provider semantics retained from the
+   accepted Dashboard review. */
+body.dp-v11-structural #sidebar .sidebar-footer::before {
+  content: 'Provider Status';
+  display: block;
+  margin: 0 0 9px;
+  color: #9da3bf;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .085em;
+  text-transform: uppercase;
+  text-align: center !important;
+}
+body.light.dp-v11-structural #sidebar .sidebar-footer::before {
+  color: #777e99;
+}
+
+/* The crown source belongs to Provider Status. Later shell calibration owns
+   its final size, placement and glow without redefining the asset itself. */
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
+  content: '';
+  background: url('/icons/dp/crown.svg?v=11') center / contain no-repeat;
+}
+
+/* Healthy provider copy is normalized independently of the username returned
+   by transient connection checks. */
+body.dp-v11-structural #sidebar .sidebar-footer #dot-api.ok + #lbl-api {
+  font-size: 0;
+}
+body.dp-v11-structural #sidebar .sidebar-footer #dot-api.ok + #lbl-api::after {
+  content: 'AllDebrid: Connected';
+  font-size: 11px;
+  color: inherit;
+}
+
+/* aria2 and DB are exception-only in Provider Status. Healthy/checking states
+   stay out of the normal panel; warnings and errors surface below a separator. */
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db) {
+  display: none !important;
+}
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.warn),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
+  display: flex !important;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(118, 131, 185, .15);
+}
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.warn),
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
+  border-top-color: rgba(120, 131, 171, .18);
+}
+
+/* Respect the application's explicit hidden state. Earlier Dashboard
+   calibration used display:grid!important, which could otherwise resurrect
+   the premium row when the provider reports a non-premium account. */
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display:none"],
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display: none"] {
+  display: none !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row:not([style*="display:none"]):not([style*="display: none"]) {
+  display: flex !important;
+  width: 100%;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  margin: 0 0 6px !important;
+  padding: 0 0 9px !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
+  position: static !important;
+  grid-column: auto !important;
+  justify-self: auto !important;
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  top: auto !important;
+  background-size: 36px 36px !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium {
+  grid-column: auto !important;
+  display: flex !important;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  max-width: 156px !important;
+  margin: 0 !important;
+  white-space: normal !important;
+  text-align: center !important;
+  font-size: 10.5px !important;
+  line-height: 1.38 !important;
+  letter-spacing: -.012em !important;
+}
+
+/* The presentation runtime owns the complete visible copy so the two-line
+   subscription state is deterministic. Suppress the older CSS prefix. */
+body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium::before {
+  content: none !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-until,
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-days {
+  display: block;
+  white-space: nowrap;
+}
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-days {
+  margin-top: 1px;
+}
+
+/* Provider connectivity is a centered status element, not a left-anchored
+   sidebar list row. Internal operational rows remain exception-only under the
+   existing shell contract, but center when they surface a warning/failure. */
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-api),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.warn),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
+  width: 100%;
+  justify-content: center !important;
+  align-items: center !important;
+}

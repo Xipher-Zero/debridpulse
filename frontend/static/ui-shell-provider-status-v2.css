@@ -1,0 +1,52 @@
+/* DebridPulse v1.0.11 Provider Status centered subscription composition.
+ * Crown visible art + two-line subscription copy are one centered visual unit.
+ */
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display:none"],
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display: none"] {
+  display: none !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row:not([style*="display:none"]):not([style*="display: none"]) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin: 0 auto 6px !important;
+  padding: 0 0 9px !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  margin: 0 -8px !important;
+  background-position: center !important;
+  background-size: 36px 36px !important;
+  background-repeat: no-repeat !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content !important;
+  max-width: none !important;
+  margin: 0 !important;
+  text-align: center !important;
+  white-space: normal !important;
+}
+
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-until,
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-days {
+  display: block !important;
+  white-space: nowrap !important;
+}

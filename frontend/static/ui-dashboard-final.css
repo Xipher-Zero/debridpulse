@@ -1,0 +1,50 @@
+/* DebridPulse v1.0.11 final Dashboard overrides.
+ *
+ * These rules remove stale Dashboard calibration divergences from the shared
+ * language while retaining only genuine Dashboard-specific geometry here.
+ */
+
+/* Recent Activity and Downloads use the same 76px empty-download artwork.
+   This selector intentionally outranks the older batch-4 38px calibration. */
+body.dp-v11-structural #view-dashboard #dash-activity-card.dp-dashboard-activity .empty-icon {
+  width: 76px !important;
+  height: 76px !important;
+  margin: 0 auto 12px !important;
+}
+
+/* Quick Add already carries the universal .input class. Preserve its textarea
+   geometry/mono typography, but reset the material and focus behavior to the
+   canonical field contract so focus adds a lavender ring without visually
+   replacing the field perimeter. */
+body.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+  border-color: var(--dp-field-border) !important;
+  background: var(--dp-field-surface) !important;
+  color: var(--dp-field-text) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.018) !important;
+}
+body.light.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+  box-shadow: inset 0 1px rgba(255,255,255,.85) !important;
+}
+body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:hover {
+  border-color: var(--dp-border-strong) !important;
+}
+body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:focus {
+  outline: none !important;
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong)) !important;
+  background: var(--dp-field-surface) !important;
+  box-shadow: var(--dp-focus-ring) !important;
+}
+
+/* Recent Activity alone had its trailing Action column pushed against the
+   right edge by the wide-table calibration. Reclaim only unused Added-column
+   width: the first four columns and the Added start position remain untouched. */
+@media (min-width: 1440px) {
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+    width: 8% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+    width: 9% !important;
+  }
+}

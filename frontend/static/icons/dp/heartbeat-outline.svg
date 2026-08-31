@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="76" height="76" viewBox="0 0 76 76" fill="none">
+  <defs>
+    <linearGradient id="iconStroke" x1="20" y1="23" x2="56" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8C8FF"/>
+      <stop offset=".46" stop-color="#B99BFF"/>
+      <stop offset="1" stop-color="#9270E7"/>
+    </linearGradient>
+
+    <filter id="iconGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.2" flood-color="#B69CFF" flood-opacity=".48"/>
+    </filter>
+  </defs>
+
+  <!-- Transparent background: icon only -->
+  <g filter="url(#iconGlow)"
+     fill="none"
+     stroke="url(#iconStroke)"
+     stroke-width="3.1"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <path d="M20.5 34.0
+             C20.5 27.8 25.2 23.2 31.1 23.2
+             C34.4 23.2 37.0 24.8 38.5 27.2
+             C40.0 24.8 42.7 23.2 46.0 23.2
+             C51.9 23.2 56.5 27.8 56.5 34.0
+             C56.5 39.8 52.7 44.0 48.4 47.9
+             L38.5 56.0
+             L28.6 47.9
+             C26.8 46.3 25.1 44.6 23.8 42.7"/>
+
+    <path d="M18.0 40.1
+             H28.2
+             L32.0 34.4
+             L37.0 46.3
+             L42.0 37.5
+             L46.0 40.1
+             H58.0"/>
+  </g>
+</svg>

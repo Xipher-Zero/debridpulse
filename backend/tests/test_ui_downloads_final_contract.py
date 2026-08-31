@@ -1,0 +1,153 @@
+"""Final desktop Downloads consistency contracts."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+STATIC = ROOT / "frontend" / "static"
+
+
+def read(name: str) -> str:
+    return (STATIC / name).read_text(encoding="utf-8")
+
+
+def test_downloads_rows_use_row_level_details_and_retire_drag_semantics() -> None:
+    runtime = read("ui-downloads-runtime.js")
+    required = (
+        "row.classList.add('dp-downloads-detail-row')",
+        "row.removeAttribute(attribute)",
+        "['draggable', 'ondragstart', 'ondragover', 'ondragleave', 'ondrop']",
+        "row.addEventListener('click'",
+        "window.showDetail(id)",
+        "rowTargetIsInteractive",
+        "row.tabIndex = 0",
+    )
+    missing = [fragment for fragment in required if fragment not in runtime]
+    assert not missing, f"row detail contract is missing: {missing}"
+
+
+def test_downloads_rows_normalize_status_and_action_language() -> None:
+    runtime = read("ui-downloads-runtime.js")
+    transfer = read("ui-transfer-contract.css")
+    desktop = read("ui-downloads-desktop.css")
+
+    # Downloads uses the same explicit text action language as Recent Activity.
+    for fragment in (
+        "onclick.includes('pauseT(')",
+        "onclick.includes('resumeT(')",
+        "onclick.includes('deleteT(')",
+        "onclick.includes('retryT(')",
+        "label = 'Pause'",
+        "label = 'Resume'",
+        "label = 'Remove'",
+        "label = 'Retry'",
+        "button.dataset.defaultLabel = label",
+        "button.dataset.pending === '1'",
+        "button.getAttribute('aria-busy') === 'true'",
+    ):
+        assert fragment in runtime
+    for obsolete in ("label = '⏸ Pause'", "label = '▶ Resume'", "label = '✕ Remove'", "label = '↻ Retry'"):
+        assert obsolete not in runtime
+
+    # Retry is a real runtime text action. The desktop geometry layer must not
+    # hide the glyph and synthesize a pseudo-label; semantic blue material lives
+    # in the final shared transfer contract and pending feedback remains runtime-owned.
+    assert 'button[onclick*="retryT("]' not in desktop
+    assert "font-size: 0 !important" not in desktop
+    assert "content: 'Retry'" not in desktop
+    assert '[onclick*="retryT("]' in transfer
+    assert "background: var(--dp-state-active-bg) !important" in transfer
+    assert "border-color: color-mix(in srgb, var(--dp-state-active) 34%, transparent) !important" in transfer
+    assert "color: var(--dp-state-active) !important" in transfer
+    assert "box-shadow: none !important" in transfer
+
+    assert "replace(/^[^A-Za-z0-9]+/" in runtime
+    assert "badge.classList.contains('badge-completed') ? 'Done'" in runtime
+
+    required_geometry = (
+        "min-height: 25px !important",
+        "padding: 0 9px !important",
+        "border-radius: 6px !important",
+        "font-size: 10.5px !important",
+        "width: 72px !important",
+        "min-width: 72px !important",
+        "min-height: 36px !important",
+        "height: 36px !important",
+        "padding: 0 8px !important",
+        "border-radius: 8px !important",
+        "font-size: 11.5px !important",
+    )
+    missing = [fragment for fragment in required_geometry if fragment not in transfer]
+    assert not missing, f"shared row language is missing: {missing}"
+    assert '[onclick*="pauseT("]' in transfer
+    assert '[onclick*="resumeT("]' in transfer
+
+
+def test_downloads_footer_language_tracks_selected_filter() -> None:
+    runtime = read("ui-downloads-runtime.js")
+    matrix = (
+        "No Items Added Yet",
+        "Showing 1 Added Item",
+        "Showing ' + total + ' Added Items",
+        "No Active Downloads",
+        "1 Active Download",
+        "Active Downloads",
+        "No Paused Downloads",
+        "1 Paused Download",
+        "Paused Downloads",
+        "No Downloads Currently Processing",
+        "1 Download Currently Processing",
+        "Downloads Currently Processing",
+        "No Downloads in Ready State",
+        "1 Download in Ready State",
+        "Downloads in Ready State",
+        "No Downloads Completed Yet",
+        "1 Download Completed",
+        "Downloads Completed",
+        "No Downloads Have Errors",
+        "1 Download Has Errors",
+        "Downloads Have Errors",
+    )
+    missing = [fragment for fragment in matrix if fragment not in runtime]
+    assert not missing, f"filter footer language is missing: {missing}"
+    assert "filterPaginationSummary(activeFilterStatus(), total)" in runtime
+
+
+def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
+    runtime = read("ui-downloads-runtime.js")
+    assert "/icons/dp/card-download.svg?v=11" in runtime
+    assert "card-document-stack.svg" not in runtime
+
+
+def test_downloads_desktop_columns_make_room_for_status_and_rectangular_actions() -> None:
+    css = read("ui-downloads-desktop.css")
+    expected = (
+        "nth-child(2) { width: 25%; }",
+        "nth-child(3) { width: 8%; }",
+        "nth-child(4) { width: 13%; }",
+        "nth-child(5) { width: 25%; }",
+        "nth-child(6) { width: 6%; }",
+        "nth-child(7) { width: 8%; }",
+        "nth-child(8) { width: 190px; }",
+        "gap: 7px;",
+    )
+    for fragment in expected:
+        assert fragment in css
+
+
+def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> None:
+    css = read("ui-downloads-page.css")
+    assert "height: 100% !important" in css
+    assert "margin-bottom: 0 !important" in css
+    assert "calc(100vh - var(--dp-shell-header)" not in css
+
+
+def test_final_downloads_corrections_use_targeted_cache_generations() -> None:
+    overlay = read("style-v11.css")
+    downloads = overlay.index("/ui-downloads-page.css?v=27")
+    desktop = overlay.index("/ui-downloads-desktop.css?v=28")
+    help_page = overlay.index("/ui-help-page.css?v=22")
+    transfer = overlay.index("/ui-transfer-contract.css?v=31")
+    assert downloads < desktop < help_page < transfer

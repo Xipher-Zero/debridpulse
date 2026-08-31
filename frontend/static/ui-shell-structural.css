@@ -1,0 +1,555 @@
+/* DebridPulse v1.0.11 structural shell calibration.
+   This layer intentionally changes composition, not just color. */
+
+:root {
+  --dp-shell-sidebar: 240px;
+  --dp-shell-header: 102px;
+  --dp-shell-x: 30px;
+}
+
+html, body {
+  min-height: 100%;
+  background: #050817;
+}
+
+body.dp-v11-structural {
+  background:
+    radial-gradient(900px 520px at 78% -15%, rgba(45, 75, 190, .09), transparent 64%),
+    radial-gradient(760px 500px at 34% 12%, rgba(123, 58, 237, .055), transparent 70%),
+    #050817;
+}
+
+body.dp-v11-structural #sidebar {
+  width: var(--dp-shell-sidebar);
+  min-width: var(--dp-shell-sidebar);
+  background:
+    radial-gradient(480px 400px at 92% 38%, rgba(59, 130, 246, .055), transparent 68%),
+    linear-gradient(180deg, #070a1b 0%, #060918 55%, #050817 100%);
+  border-right: 1px solid rgba(116, 130, 194, .15);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+body.dp-v11-structural #sidebar::before {
+  content: '';
+  position: absolute;
+  left: -72px;
+  right: -45px;
+  bottom: 280px;
+  height: 210px;
+  opacity: .34;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 56% 48%, rgba(146, 71, 255, .34) 0 1px, transparent 1.8px) 0 0 / 19px 19px,
+    radial-gradient(ellipse at 45% 54%, transparent 0 46%, rgba(124, 58, 237, .16) 46.5% 47%, transparent 47.5%),
+    radial-gradient(ellipse at 55% 58%, transparent 0 49%, rgba(43, 116, 255, .14) 49.5% 50%, transparent 50.5%);
+  transform: rotate(-7deg);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 20%, #000 80%, transparent 100%);
+}
+
+body.dp-v11-structural .logo {
+  height: 92px;
+  min-height: 92px;
+  padding: 18px 22px;
+  gap: 13px;
+  border-bottom: 1px solid rgba(116, 130, 194, .13);
+  background: transparent;
+}
+
+body.dp-v11-structural .logo-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  box-shadow: 0 0 22px rgba(117, 72, 255, .19);
+}
+
+body.dp-v11-structural .logo-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+body.dp-v11-structural .logo-name span { color: #a45cff; }
+body.light.dp-v11-structural .logo-name { color: #181b2f; }
+body.light.dp-v11-structural .logo-name span { color: #7c3aed; }
+
+body.dp-v11-structural #sidebar nav {
+  padding: 10px 0 12px;
+  position: relative;
+  z-index: 2;
+}
+body.dp-v11-structural .nav-group {
+  padding: 13px 23px 7px;
+  margin: 0;
+  color: #858aa8;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+}
+body.dp-v11-structural .nav-group:not(:first-child) { margin-top: 5px; }
+
+body.dp-v11-structural .nav-item {
+  min-height: 46px;
+  margin: 0;
+  padding: 0 23px;
+  gap: 14px;
+  border-radius: 0;
+  color: #bec3da;
+  font-size: 13px;
+  font-weight: 450;
+  background: transparent;
+}
+body.dp-v11-structural .nav-item::before {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 0;
+}
+body.dp-v11-structural .nav-item:hover {
+  color: #f3f4ff;
+  background: rgba(124, 58, 237, .07);
+}
+body.dp-v11-structural .nav-item.active {
+  color: #fff;
+  font-weight: 600;
+  background:
+    linear-gradient(90deg, rgba(124, 58, 237, .42), rgba(124, 58, 237, .19) 78%, rgba(124, 58, 237, .05));
+  box-shadow: inset 0 1px rgba(164, 92, 255, .12), inset 0 -1px rgba(124, 58, 237, .08);
+}
+body.dp-v11-structural .nav-item.active::before {
+  background: #b960ff;
+  box-shadow: 0 0 13px rgba(185, 96, 255, .92);
+}
+body.dp-v11-structural .nav-item .icon,
+body.dp-v11-structural .nav-item .icon svg {
+  width: 20px;
+  height: 20px;
+}
+body.dp-v11-structural .nav-item.active .icon { color: #c9a3ff; }
+
+body.dp-v11-structural .sidebar-footer {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 14px 14px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(119, 132, 190, .19);
+  background: rgba(8, 12, 31, .82);
+  box-shadow: 0 14px 35px rgba(0, 0, 10, .18);
+  backdrop-filter: blur(10px);
+}
+body.dp-v11-structural .sidebar-footer::before {
+  text-align: center !important;
+}
+/* Desktop shell owns one lower datum for every page. The compact/mobile
+   sidebar retains the inherited 12px inset below 901px. */
+@media (min-width: 901px) {
+  body.dp-v11-structural .sidebar-footer {
+    bottom: 24px !important;
+  }
+}
+body.dp-v11-structural .conn-row {
+  min-height: 22px;
+  margin: 0;
+  gap: 8px;
+  color: #c4c8dc;
+  font-size: 11px;
+}
+body.dp-v11-structural .conn-row .dot {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 9px currentColor;
+}
+body.dp-v11-structural #premium-row {
+  margin-bottom: 5px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(119, 132, 190, .11);
+}
+body.dp-v11-structural #lbl-premium {
+  color: #b86cff !important;
+  font-size: 10px !important;
+}
+
+body.dp-v11-structural #main {
+  margin-left: 0 !important;
+  min-width: 0;
+  background: transparent;
+}
+
+body.dp-v11-structural #topbar {
+  height: var(--dp-shell-header);
+  min-height: var(--dp-shell-header);
+  padding: 27px 66px 14px var(--dp-shell-x);
+  padding-right: var(--dp-shell-x) !important;
+  gap: 10px;
+  align-items: flex-start;
+  background: transparent;
+  border-bottom: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.dp-page-heading {
+  min-width: 300px;
+  flex: 1 1 auto;
+}
+body.dp-v11-structural #page-title {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+  margin: 0;
+  color: #fafaff;
+  font-size: 28px;
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -.03em;
+}
+body.dp-v11-structural #page-title::after {
+  width: 105px;
+  height: 19px;
+  margin-left: 17px;
+  opacity: .85;
+  filter: saturate(1.15) drop-shadow(0 0 6px rgba(155, 78, 255, .34));
+}
+.dp-page-subtitle {
+  margin: 9px 0 0;
+  color: #a9aec8;
+  font-size: 12.5px;
+  line-height: 1.35;
+  font-weight: 400;
+}
+
+body.dp-v11-structural #topbar-actions {
+  margin-top: 6px;
+  gap: 9px;
+}
+body.dp-v11-structural #topbar-actions .btn,
+body.dp-v11-structural #aria2-speed-badge,
+body.dp-v11-structural #update-badge {
+  height: 37px;
+  min-height: 37px;
+  border-radius: 8px !important;
+  background: rgba(14, 19, 45, .86) !important;
+  border: 1px solid rgba(116, 130, 194, .19) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.025), 0 4px 14px rgba(0,0,12,.09);
+}
+body.dp-v11-structural #topbar-actions .btn {
+  padding: 0 13px;
+  color: #d9d2ff;
+}
+body.dp-v11-structural #btn-pause-all,
+body.dp-v11-structural #btn-resume-all,
+body.dp-v11-structural #btn-resume-paused {
+  border-color: rgba(139, 92, 246, .28) !important;
+}
+body.dp-v11-structural #aria2-speed-badge {
+  margin-top: 6px;
+  padding: 0 12px !important;
+  color: #bec3da !important;
+}
+body.dp-v11-structural #aria2-speed-badge.external-control {
+  color: #e2e4f1 !important;
+  border-color: rgba(52, 166, 255, .26) !important;
+}
+body.dp-v11-structural #aria2-speed-badge.external-control::before {
+  content: '◉';
+  margin-right: 2px;
+  color: #38bdf8;
+  text-shadow: 0 0 8px rgba(56, 189, 248, .55);
+}
+
+body.dp-v11-structural .sidebar-theme-control {
+  top: 29px;
+  right: 18px;
+  width: 37px;
+  height: 37px;
+}
+body.dp-v11-structural .theme-toggle {
+  width: 37px;
+  height: 37px;
+  border-radius: 8px;
+  background: rgba(14, 19, 45, .86);
+  border-color: rgba(116, 130, 194, .19);
+}
+
+/* operator-title.js moves the compatibility wrapper into #topbar. Resolve that
+   final shell geometry here instead of relying on a later correction layer. */
+body.dp-v11-structural .sidebar-theme-control.topbar-theme-control {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: 37px !important;
+  min-width: 37px !important;
+  height: 37px !important;
+  margin: 6px 0 0 0 !important;
+  padding: 0 !important;
+  flex: 0 0 37px !important;
+  align-self: flex-start !important;
+  pointer-events: auto !important;
+  z-index: 1 !important;
+}
+body.dp-v11-structural .topbar-theme-control .theme-toggle {
+  width: 37px !important;
+  min-width: 37px !important;
+  height: 37px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: auto !important;
+}
+
+/* The shell owns the ordinary content inset. Page layers may own geometry
+   inside their .view, but they must not replace the shell material itself. */
+body.dp-v11-structural #content {
+  padding: 0 var(--dp-shell-x) 24px;
+  background: transparent;
+}
+
+/* Legacy app.js still toggles settings-active during navigation. Inherited
+   style.css historically used that state to turn Settings into a different
+   shell viewport. Neutralize only that obsolete behavior here so Settings
+   resolves to the same normal #content scrolling contract as other pages.
+   Remove this bridge when the legacy navigation class is pruned. */
+body.dp-v11-structural #content.settings-active {
+  overflow-y: auto;
+}
+
+body.light.dp-v11-structural {
+  background:
+    radial-gradient(900px 520px at 76% -12%, rgba(69, 93, 235, .08), transparent 65%),
+    #f3f5fb;
+}
+body.light.dp-v11-structural #sidebar {
+  background: linear-gradient(180deg, #fbfbff, #f6f7fc);
+  border-right-color: #dde1ef;
+}
+body.light.dp-v11-structural .nav-item { color: #555b78; }
+body.light.dp-v11-structural .nav-item:hover { color: #1c2037; background: #f0edff; }
+body.light.dp-v11-structural .nav-item.active {
+  color: #24184a;
+  background: linear-gradient(90deg, #e9deff, #f3edff 82%, #f8f6ff);
+}
+body.light.dp-v11-structural .sidebar-footer {
+  background: rgba(255,255,255,.86);
+  border-color: #dfe3f0;
+  box-shadow: 0 12px 32px rgba(72, 79, 112, .08);
+}
+body.light.dp-v11-structural .conn-row { color: #515772; }
+body.light.dp-v11-structural #page-title { color: #171a2c; }
+body.light.dp-v11-structural .dp-page-subtitle { color: #707691; }
+body.light.dp-v11-structural #topbar-actions .btn,
+body.light.dp-v11-structural #aria2-speed-badge,
+body.light.dp-v11-structural #update-badge,
+body.light.dp-v11-structural .theme-toggle {
+  background: rgba(255,255,255,.90) !important;
+  border-color: #d9deed !important;
+  color: #4c526d !important;
+  box-shadow: 0 4px 15px rgba(62, 70, 104, .07);
+}
+
+@media (max-width: 1180px) {
+  :root { --dp-shell-sidebar: 220px; --dp-shell-x: 22px; }
+  body.dp-v11-structural .logo { padding-left: 18px; }
+  body.dp-v11-structural .nav-item { padding: 0 18px; }
+  body.dp-v11-structural .nav-group { padding-left: 18px; }
+}
+
+@media (max-width: 900px) {
+  body.dp-v11-structural #topbar {
+    padding-left: 58px;
+    padding-right: 16px !important;
+  }
+  body.dp-v11-structural #sidebar { width: min(280px, 88vw); }
+}
+
+@media (max-width: 700px) {
+  :root { --dp-shell-header: 88px; --dp-shell-x: 14px; }
+  /* Preserve the accepted effective layout while removing its dependency on
+     the legacy <=700px !important topbar rule. */
+  body.dp-v11-structural #topbar { padding: 8px 16px 8px 12px !important; }
+  body.dp-v11-structural #page-title { font-size: 23px; }
+  body.dp-v11-structural #page-title::after { display: none; }
+  .dp-page-subtitle { margin-top: 6px; font-size: 11.5px; }
+  body.dp-v11-structural #topbar-actions { position: absolute; top: 91px; right: 14px; }
+  body.dp-v11-structural #aria2-speed-badge { display: none !important; }
+  body.dp-v11-structural .sidebar-theme-control.topbar-theme-control {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    flex-basis: 36px !important;
+    margin-top: 0 !important;
+  }
+  body.dp-v11-structural .topbar-theme-control .theme-toggle {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+  }
+}
+
+/* Canonical selected-navigation and shell depth retained from the accepted Dashboard review. */
+body.dp-v11-structural .nav-item.active {
+  background: linear-gradient(90deg,
+    rgba(126, 48, 239, .58) 0%,
+    rgba(119, 45, 229, .39) 34%,
+    rgba(111, 44, 214, .22) 64%,
+    rgba(102, 43, 201, .08) 88%,
+    rgba(96, 43, 193, .035) 100%) !important;
+  box-shadow:
+    inset 0 1px rgba(190, 117, 255, .16),
+    inset 0 -1px rgba(126, 58, 237, .12) !important;
+}
+body.dp-v11-structural .nav-item.active::after {
+  content: '';
+  position: absolute;
+}
+body.light.dp-v11-structural .nav-item.active {
+  background: linear-gradient(90deg,
+    rgba(137, 65, 239, .31) 0%,
+    rgba(133, 67, 234, .21) 36%,
+    rgba(128, 72, 222, .12) 67%,
+    rgba(122, 77, 207, .045) 100%) !important;
+}
+body.light.dp-v11-structural .nav-item.active::before {
+  background: linear-gradient(180deg, #bd7aff, #9844ef 56%, #7c3aed) !important;
+  box-shadow:
+    0 0 5px rgba(169, 76, 255, .62),
+    0 0 11px rgba(137, 63, 235, .36) !important;
+}
+body.dp-v11-structural #sidebar {
+  position: relative;
+  z-index: 3;
+  border-right-color: rgba(116, 130, 194, .10) !important;
+}
+body.light.dp-v11-structural #sidebar {
+  border-right-color: rgba(113, 124, 170, .13) !important;
+}
+body.dp-v11-structural #main {
+  position: relative;
+  z-index: 1;
+}
+body.light.dp-v11-structural #page-title {
+  text-shadow:
+    0 2px 5px rgba(58, 64, 96, .17),
+    0 1px 0 rgba(255,255,255,.78);
+}
+body.light.dp-v11-structural #page-title::after {
+  filter:
+    saturate(1.16)
+    drop-shadow(0 2px 3px rgba(103, 67, 205, .18))
+    drop-shadow(0 0 7px rgba(156, 78, 255, .25)) !important;
+}
+
+/* Canonical viewport canvas and selected-rail base retained from Dashboard
+   live review. Later shell calibration continues to own the final selected
+   row fill, endpoint energy and sidebar wave geometry. */
+body.dp-v11-structural {
+  background:
+    radial-gradient(920px 540px at 36% 4%, rgba(110, 68, 220, .065), transparent 68%),
+    radial-gradient(860px 520px at 88% 72%, rgba(55, 103, 225, .045), transparent 72%),
+    #050817 !important;
+}
+body.light.dp-v11-structural {
+  background:
+    radial-gradient(980px 560px at 38% 2%, rgba(117, 78, 224, .060), transparent 68%),
+    radial-gradient(920px 580px at 88% 76%, rgba(72, 111, 225, .040), transparent 72%),
+    #f7f7fb !important;
+}
+body.dp-v11-structural #main,
+body.dp-v11-structural #content {
+  background: transparent !important;
+}
+body.dp-v11-structural #sidebar::before {
+  z-index: 0;
+  left: 0;
+  right: 0;
+  transform: none !important;
+}
+body.dp-v11-structural .nav-item.active::before {
+  width: 6px !important;
+  background: linear-gradient(180deg, #d49dff 0%, #ad48ff 48%, #7b35f3 100%) !important;
+  box-shadow:
+    0 0 6px rgba(205, 139, 255, .92),
+    0 0 12px rgba(153, 66, 255, .48) !important;
+}
+
+/* Canonical selected-navigation icon treatment retained from the accepted review. */
+body.dp-v11-structural .nav-item.active .icon,
+body.dp-v11-structural .nav-item.active .icon svg {
+  color: #d7adff !important;
+  opacity: 1 !important;
+  stroke-width: 2.25 !important;
+  filter: drop-shadow(0 0 4px rgba(190, 105, 255, .45));
+}
+body.light.dp-v11-structural .nav-item.active .icon,
+body.light.dp-v11-structural .nav-item.active .icon svg {
+  color: #9d4ce8 !important;
+  filter: drop-shadow(0 0 3px rgba(142, 63, 224, .28));
+}
+
+/* Canonical masthead depth retained from the accepted review. */
+body.dp-v11-structural .logo {
+  position: relative !important;
+  isolation: isolate;
+  border-bottom-color: transparent !important;
+  background:
+    linear-gradient(90deg,
+      rgba(151,81,244,.24) 0%,
+      rgba(120,78,221,.10) 42%,
+      transparent 84%) bottom / 100% 1px no-repeat,
+    radial-gradient(ellipse 130% 110% at 12% 18%,
+      rgba(131,72,236,.15) 0%,
+      rgba(108,72,222,.07) 35%,
+      transparent 66%),
+    radial-gradient(ellipse 88% 92% at 48% 22%,
+      rgba(66,122,255,.075) 0%,
+      transparent 66%),
+    linear-gradient(180deg, rgba(12,15,36,.96), rgba(7,10,27,.94)) !important;
+}
+body.light.dp-v11-structural .logo {
+  background:
+    linear-gradient(90deg,
+      rgba(139,74,232,.20) 0%,
+      rgba(115,76,214,.075) 42%,
+      transparent 84%) bottom / 100% 1px no-repeat,
+    radial-gradient(ellipse 130% 110% at 12% 18%,
+      rgba(127,77,225,.115) 0%,
+      rgba(116,83,220,.052) 35%,
+      transparent 66%),
+    radial-gradient(ellipse 88% 92% at 48% 22%,
+      rgba(65,114,226,.055) 0%,
+      transparent 66%),
+    linear-gradient(180deg, #ffffff 0%, #fbfaff 100%) !important;
+}
+body.dp-v11-structural .logo-icon {
+  box-shadow:
+    0 5px 12px rgba(0,0,0,.18),
+    0 0 27px rgba(117,72,255,.25) !important;
+}
+body.light.dp-v11-structural .logo-icon {
+  box-shadow:
+    0 5px 12px rgba(47,42,70,.16),
+    0 0 25px rgba(117,72,255,.19) !important;
+}
+body.dp-v11-structural .logo-name {
+  text-shadow: 0 1px 1px rgba(0,0,0,.20);
+}
+body.light.dp-v11-structural .logo-name {
+  text-shadow: 0 1px 1px rgba(37,30,58,.10);
+}
+body.dp-v11-structural .logo-name span {
+  text-shadow:
+    0 1px 1px rgba(0,0,0,.16),
+    0 0 11px rgba(164,92,255,.27);
+}
+body.light.dp-v11-structural .logo-name span {
+  text-shadow:
+    0 1px 1px rgba(48,35,73,.08),
+    0 0 10px rgba(124,58,237,.18);
+}
+body.dp-v11-structural .logo-ver { opacity: .78; }
