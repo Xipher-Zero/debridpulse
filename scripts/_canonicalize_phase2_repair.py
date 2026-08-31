@@ -20,10 +20,12 @@ if observer in text:
     text = text.replace(observer, '', 1)
 write(path, text)
 
-# These five modules all end with a Settings-root correction observer. The body
-# before that point is preserved exactly; only the observer tail becomes the
-# explicit canonical-render lifecycle emitted by ui-settings-page.js.
-view_marker = "\n  const view = document.getElementById('view-settings');"
+# These modules use terminal Settings-root observers only to re-run static
+# correction work. The earlier resume pass can partially reshape those tails,
+# so identify the terminal observer itself rather than depending on one exact
+# pre-transform view declaration. Preserve every function and initial schedule
+# call above it, remove only the observer tail, and bind to the owner's explicit
+# settings-rendered lifecycle instead.
 for rel in (
     'frontend/static/ui-settings-authentication.js',
     'frontend/static/ui-settings-authentication-polish.js',
@@ -32,14 +34,21 @@ for rel in (
     'frontend/static/ui-settings-notifications.js',
 ):
     text = read(rel)
-    if 'MutationObserver' not in text:
+    observer_pos = text.rfind('new MutationObserver')
+    if observer_pos < 0:
         continue
-    cut = text.rfind(view_marker)
-    if cut < 0:
-        raise RuntimeError(f'Settings observer marker missing in {rel}')
     if not text.rstrip().endswith('})();'):
         raise RuntimeError(f'unexpected Settings module tail in {rel}')
-    text = text[:cut] + "\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n"
+
+    view_cut = text.rfind('\n  const view', 0, observer_pos)
+    observer_cut = text.rfind('\n    const observer', 0, observer_pos)
+    if observer_cut < 0:
+        observer_cut = text.rfind('\n  const observer', 0, observer_pos)
+    cut = view_cut if view_cut >= 0 else observer_cut
+    if cut < 0:
+        raise RuntimeError(f'cannot locate terminal observer block start in {rel}')
+
+    text = text[:cut].rstrip() + "\n\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n"
     write(rel, text)
 
 # Re-run the complete targeted observer inventory.
