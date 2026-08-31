@@ -1,4 +1,4 @@
-"""Contracts for the final v1.0.11 progress-line weight refinement."""
+"""Final-state contracts for shared transfer progress geometry."""
 
 from __future__ import annotations
 
@@ -8,36 +8,29 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
-PROGRESS = STATIC / "ui-dashboard-progress-weight.css"
+TRANSFER = STATIC / "ui-transfer-contract.css"
+HISTORICAL = STATIC / "ui-dashboard-progress-weight.css"
 
 
-def test_progress_weight_layer_finishes_dashboard_calibration_before_pages() -> None:
+def test_superseded_dashboard_progress_weight_layer_is_not_shipped() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    control = "/ui-dashboard-control-polish.css?v=23"
-    progress = "/ui-dashboard-progress-weight.css?v=20"
-    statistics = "/ui-statistics-page.css?v=21"
+    assert "/ui-dashboard-progress-weight.css" not in overlay
+    assert not HISTORICAL.exists()
+
+
+def test_shared_transfer_contract_is_final_progress_geometry_owner() -> None:
+    overlay = STYLE.read_text(encoding="utf-8")
+    transfer_path = "/ui-transfer-contract.css?v=31"
+    dashboard_consistency = "/ui-dashboard-consistency.css?v=23"
     downloads = "/ui-downloads-page.css?v=27"
-    help_page = "/ui-help-page.css?v=22"
-    for layer in (control, progress, statistics, downloads, help_page):
+
+    for layer in (dashboard_consistency, downloads, transfer_path):
         assert layer in overlay
-    assert (
-        overlay.index(control)
-        < overlay.index(progress)
-        < overlay.index(statistics)
-        < overlay.index(downloads)
-        < overlay.index(help_page)
-    )
+    assert overlay.index(dashboard_consistency) < overlay.index(downloads) < overlay.index(transfer_path)
 
-
-def test_progress_weight_refinement_changes_only_physical_height() -> None:
-    css = PROGRESS.read_text(encoding="utf-8")
-    required = (
-        "#dash-tbody .prog",
-        "#t-tbody .prog",
-        "height: 3.5px !important",
-    )
-    missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"progress-weight contract is missing: {missing}"
-    assert "box-shadow" not in css
-    assert "filter" not in css
-    assert ".prog-fill" not in css
+    css = TRANSFER.read_text(encoding="utf-8")
+    assert "body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog," in css
+    assert "body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog-fill" in css
+    assert "height: 7px !important" in css
+    assert "border-radius: 999px !important" in css
+    assert "height: 3.5px !important" not in css

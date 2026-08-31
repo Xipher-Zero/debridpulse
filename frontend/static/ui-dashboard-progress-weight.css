@@ -1,7 +1,0 @@
-/* DebridPulse v1.0.11 progress-weight refinement.
-   Presentation-only override. Preserve the approved semantic glow and reduce
-   only the physical progress track/fill height. */
-body.dp-v11-structural #dash-tbody .prog,
-body.dp-v11-structural #t-tbody .prog {
-  height: 3.5px !important;
-}
