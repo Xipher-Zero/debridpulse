@@ -10,7 +10,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
-VERSION = ROOT / "VERSION"
 STATS_ICON = STATIC / "icons" / "dp" / "statistics.svg"
 ICON_MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 
@@ -227,7 +226,3 @@ def test_statistics_supplied_feature_art_is_true_vector_and_registered() -> None
     assert "<image" not in lowered
     assert "data:image" not in lowered
     assert manifest["icons"]["statistics"] == "statistics.svg"
-
-
-def test_statistics_contract_keeps_backend_version_frozen() -> None:
-    assert read(VERSION).strip() == "1.0.10"

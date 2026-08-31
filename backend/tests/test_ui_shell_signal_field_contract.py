@@ -7,7 +7,6 @@ STATIC = ROOT / "frontend" / "static"
 OVERLAY = STATIC / "style-v11.css"
 SIGNAL = STATIC / "ui-shell-signal-field.css"
 WAVE = STATIC / "icons" / "dp" / "sidebar-wave-accent.svg"
-VERSION = ROOT / "VERSION"
 
 
 def read(path: Path) -> str:
@@ -55,7 +54,3 @@ def test_sidebar_signal_field_keeps_accepted_vector_geometry() -> None:
     assert 'linearGradient id="purple"' in wave
     assert 'linearGradient id="blue"' in wave
     assert 'filter id="nodeGlow"' in wave
-
-
-def test_ui_track_keeps_backend_version_frozen() -> None:
-    assert read(VERSION).strip() == "1.0.10"

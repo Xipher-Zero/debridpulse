@@ -65,7 +65,3 @@ def test_cleanup_cache_generations_are_explicit() -> None:
     assert "/ui-downloads-page.css?v=27" in style
     assert "/ui-runtime.js?v=24" in operator
     assert "/ui-downloads-runtime.js?v=22" in operator
-
-
-def test_backend_version_remains_frozen() -> None:
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.0.10"

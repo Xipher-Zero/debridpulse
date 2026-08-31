@@ -11,7 +11,6 @@ from api import auth_routes
 ROOT = Path(__file__).resolve().parents[2]
 AUTH_ROUTES = ROOT / "backend" / "api" / "auth_routes.py"
 OIDC_MARK = ROOT / "frontend" / "static" / "authentik-oidc.svg"
-VERSION = ROOT / "VERSION"
 
 
 def read(path: Path) -> str:
@@ -141,7 +140,7 @@ def test_login_interaction_script_is_exact_hash_pinned_and_narrow() -> None:
         assert forbidden not in script
 
 
-def test_login_uses_exact_reviewed_oidc_artwork_and_keeps_version_frozen() -> None:
+def test_login_uses_exact_reviewed_oidc_artwork() -> None:
     source = read(AUTH_ROUTES)
     assert OIDC_MARK.is_file()
     assert hashlib.sha256(OIDC_MARK.read_bytes()).hexdigest() == (
@@ -149,4 +148,3 @@ def test_login_uses_exact_reviewed_oidc_artwork_and_keeps_version_frozen() -> No
     )
     assert '_static_asset("logo-128.png")' in source
     assert '_static_asset("favicon.svg")' in source
-    assert VERSION.read_text(encoding="utf-8").strip() == "1.0.10"

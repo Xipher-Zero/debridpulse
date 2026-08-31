@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from packaging.version import Version
 from services.aria2 import Aria2Service
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -10,7 +11,7 @@ def source(rel):
 
 
 def test_v105_version_and_instrumentation():
-    assert (ROOT / "VERSION").read_text().strip() == "1.0.10"
+    assert Version((ROOT / "VERSION").read_text().strip()) >= Version("1.0.5")
     perf = source("backend/core/performance.py")
     assert "def snapshot()" in perf and "def observe(" in perf
 

@@ -152,7 +152,7 @@ Fork-owned images are published to GHCR.
 Versioned V1 images use the release tag:
 
 ```text
-ghcr.io/xipher-zero/debridpulse:v1.0.10
+ghcr.io/xipher-zero/debridpulse:v1.0.11rc1
 ```
 
 Example:
@@ -170,7 +170,7 @@ docker run -d \
   -v /path/to/debridpulse/config:/app/config \
   -v /path/to/debridpulse/data:/app/data \
   -v /path/to/downloads:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.10
+  ghcr.io/xipher-zero/debridpulse:v1.0.11rc1
 ```
 
 Adjust the paths and UID/GID for your system.
@@ -401,7 +401,7 @@ frontend/static/
   index.html
   app.js
   auth.js
-  auth-settings.js
+  ui-settings-page.js
   auth-help.js
   style.css
 ```
