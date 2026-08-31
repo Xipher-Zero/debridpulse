@@ -152,7 +152,7 @@ Fork-owned images are published to GHCR.
 Versioned V1 images use the release tag:
 
 ```text
-ghcr.io/xipher-zero/debridpulse:v1.0.11rc1
+ghcr.io/xipher-zero/debridpulse:v1.0.11
 ```
 
 Example:
@@ -170,7 +170,7 @@ docker run -d \
   -v /path/to/debridpulse/config:/app/config \
   -v /path/to/debridpulse/data:/app/data \
   -v /path/to/downloads:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.11rc1
+  ghcr.io/xipher-zero/debridpulse:v1.0.11
 ```
 
 Adjust the paths and UID/GID for your system.
@@ -214,7 +214,7 @@ Configure:
 - built-in or external aria2 mode;
 - external aria2 URL and authentication when applicable;
 - DebridPulse download concurrency;
-- download filtering and limits.
+- download concurrency, limits, and recovery behavior.
 
 ### Extract
 

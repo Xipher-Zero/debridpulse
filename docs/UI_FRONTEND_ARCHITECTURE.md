@@ -75,7 +75,7 @@ The application still contains inherited markup and generated HTML. `ui-universa
 
 `ui-accessibility-runtime.js` is a cross-cutting semantic layer for inherited markup that cannot yet be rebuilt without broader churn. It may add roles, ARIA state, focusability, and keyboard activation while delegating actual actions to established application handlers. It must not perform API calls, transfer mutations, polling, or backend work.
 
-## RC1 browser validation
+## 1.0.11 release browser validation
 
 The consolidated candidate `dd6984c940ee9dcffd20d8566f568d6eec9cbd3d` was browser-validated after consolidation against the previously accepted local build. The user-visible application was reported as visually and behaviorally indistinguishable from that accepted baseline.
 
@@ -119,7 +119,7 @@ A frontend source is eligible for deletion only after the full reachability clos
 
 Historical naming is not evidence that a file is dead. Conversely, an unreachable byte-for-byte duplicate such as the retired `style-legacy.css` is not retained merely because it existed during implementation.
 
-## RC1 version ownership
+## 1.0.11 version ownership
 
 `VERSION` is the authoritative release version source.
 
@@ -140,4 +140,4 @@ Live historical layers may be named in tests only when their presence/order is i
 
 A green qualification proves the candidate passes the repository's regression, security, syntax, container, and packaging gates. Browser validation independently establishes user-visible parity for the tested candidate.
 
-The remaining Dashboard, Settings, and cross-page calibration layers are structural debt, but they are live and browser-validated. They are not classified as dead code and should not be deleted during release cleanup. Any further consolidation creates a new candidate boundary and requires the same qualification and browser comparison discipline used for RC1.
+The remaining Dashboard, Settings, and cross-page calibration layers are structural debt, but they are live and browser-validated. They are not classified as dead code and should not be deleted during release cleanup. Any further consolidation creates a new candidate boundary and requires the same qualification and browser comparison discipline used for the 1.0.11 release candidate.

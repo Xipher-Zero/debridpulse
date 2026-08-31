@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.11] — 2026-08-31
+
+### UI overhaul and release consolidation
+
+- Completed the application-wide UI overhaul across Dashboard, Downloads, Statistics, Activity Log, Help, Login, and Settings while preserving the accepted dark/light presentation and responsive behavior through consolidation.
+- Consolidated frontend ownership, removed unreachable duplicate/dead presentation code, and retained only browser-validated live calibration layers where folding them would create unnecessary release risk.
+- Completed an exhaustive Settings UI-to-runtime census, corrected UI/backend bounds and zero-value retry semantics, and physically retired the hidden automatic File Filters policy while preserving explicit per-file blocking and download labels.
+
+### Adversarial release hardening
+
+- Corrected aria2 error-recovery accounting and delay enforcement so retry claims are persisted before restart attempts, failed restart attempts consume budget, and configured retry ceilings cannot be bypassed.
+- Added prerelease-aware version ordering and centralized release-version ownership so backend APIs, login/sidebar UI, deployment examples, and OCI metadata derive from the authoritative `VERSION` file.
+- Removed broad 7-Zip parser selection from automatic `.tar.zst`, `.tzst`, and `.tar.lzma` composite extraction; exact outer decoders now feed the validated TAR safety path with decompression budgets.
+- Preserved non-root runtime validation, external-aria2 ownership boundaries, transfer-integrity protections, extraction limits, and fail-closed maintenance/backup behavior through the final security and adversarial qualification passes.
+
+
 ## [1.0.10] — 2026-08-24
 
 ### Semantic transfer integrity and audit remediation

@@ -220,5 +220,5 @@ def test_ci_syntax_checks_every_runtime_in_the_effective_load_graph() -> None:
     assert not missing, f"Loaded first-party runtimes missing node --check coverage: {missing}"
 
 
-def test_ui_track_is_the_1_0_11_rc1_candidate() -> None:
-    assert read(VERSION).strip() == "1.0.11rc1"
+def test_ui_track_is_the_1_0_11_release() -> None:
+    assert read(VERSION).strip() == "1.0.11"
