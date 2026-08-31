@@ -91,7 +91,6 @@ for token in (
     "blocked_items",
     "blocked_count",
     "filtered/blocked",
-    "filtered\")",
     "_send_partial_summary",
 ):
     if token in text:
@@ -105,7 +104,13 @@ text = replace_once(
     text,
     '''from services.manager_v2 import (\n    DIRECT_LINK_SOURCE,\n    READY_CODE,\n    extract_hash,\n    is_blocked,\n    safe_name,\n    safe_rel_path,\n)\n''',
     '''from services.manager_v2 import (\n    DIRECT_LINK_SOURCE,\n    READY_CODE,\n    extract_hash,\n    safe_name,\n    safe_rel_path,\n)\n''',
-    "remove unused retired filter import from runtime guard",
+    "remove retired filter import from runtime guard",
+)
+text = replace_once(
+    text,
+    '''            file_size = int(file_info.get("size", 0) or 0)\n            blocked, _reason = is_blocked(display_name, cfg, file_size)\n            if blocked:\n                continue\n\n            relative_target = safe_rel_path(display_name)\n''',
+    '''            file_size = int(file_info.get("size", 0) or 0)\n\n            relative_target = safe_rel_path(display_name)\n''',
+    "make every provider file participate in path collision validation",
 )
 if "is_blocked" in text:
     raise SystemExit("retired is_blocked reference remains in transfer_runtime_guard.py")
