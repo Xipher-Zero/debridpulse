@@ -32,7 +32,6 @@ from services.manager_v2 import (
     DIRECT_LINK_SOURCE,
     READY_CODE,
     extract_hash,
-    is_blocked,
     safe_name,
     safe_rel_path,
 )
@@ -417,9 +416,6 @@ class GuardedTransferIntegrityManager(TransferIntegrityManager):
                 PurePosixPath(str(relative_path).replace("\\", "/"))
             )
             file_size = int(file_info.get("size", 0) or 0)
-            blocked, _reason = is_blocked(display_name, cfg, file_size)
-            if blocked:
-                continue
 
             relative_target = safe_rel_path(display_name)
             if relative_target.parts and relative_target.parts[0] == torrent_root:

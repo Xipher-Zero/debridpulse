@@ -36,7 +36,6 @@ from services.aria2_runtime import effective_rpc_config, is_builtin_mode
 from services.manager_v2 import (
     TorrentManager,
     _size_sum,
-    is_blocked,
     safe_name,
     safe_rel_path,
 )
@@ -255,7 +254,6 @@ class TransferIntegrityManager(TorrentManager):
 
         destination_root = Path(cfg.download_folder) / safe_name(name)
         provider_file_count = len(flat_files)
-        blocked_items: List[dict] = []
         existing_items: List[dict] = []
         queued_items: List[dict] = []
         failed_items: List[dict] = []
@@ -271,7 +269,6 @@ class TransferIntegrityManager(TorrentManager):
             )
             display_name = str(PurePosixPath(relative_path.replace("\\", "/")))
             file_size = int(file_info.get("size", 0) or 0)
-            blocked, reason = is_blocked(display_name, cfg, file_size)
             source_link = file_info["link"]
 
             relative_target = safe_rel_path(display_name)
@@ -293,30 +290,6 @@ class TransferIntegrityManager(TorrentManager):
                 )
                 continue
             seen_queue_keys.add(dedupe_key)
-
-            if blocked:
-                blocked_items.append(
-                    {
-                        "filename": display_name,
-                        "size_bytes": file_size,
-                        "reason": reason,
-                    }
-                )
-                manifest_rows.append(
-                    (
-                        torrent_id,
-                        display_name,
-                        file_size,
-                        source_link,
-                        source_link,
-                        str(local_path),
-                        "blocked",
-                        client_name,
-                        1,
-                        reason,
-                    )
-                )
-                continue
 
             item = {
                 "filename": display_name,
@@ -399,27 +372,21 @@ class TransferIntegrityManager(TorrentManager):
                 )
             existing_items = stable_items
 
-        blocked_count = len(blocked_items)
         failed_count = len(failed_items)
         completed_count = len(existing_items)
         queued_count = len(queued_items)
         manifest_count = len(manifest_rows)
-        accounted_count = (
-            blocked_count + failed_count + completed_count + queued_count
-        )
-        total_size_bytes = _size_sum(
-            blocked_items + existing_items + queued_items + failed_items
-        )
+        accounted_count = failed_count + completed_count + queued_count
+        total_size_bytes = _size_sum(existing_items + queued_items + failed_items)
 
         logger.info(
             "integrity materializer: torrent %s provider=%d manifest=%d existing=%d "
-            "queued=%d blocked=%d failed=%d duplicates=%d",
+            "queued=%d failed=%d duplicates=%d",
             torrent_id,
             provider_file_count,
             manifest_count,
             completed_count,
             queued_count,
-            blocked_count,
             failed_count,
             duplicate_entries,
         )
@@ -436,13 +403,11 @@ class TransferIntegrityManager(TorrentManager):
                 manifest_count,
                 accounted_count,
             )
-        elif blocked_count == manifest_count and failed_count == 0:
-            final_status = "completed"
         elif queued_count > 0:
             final_status = "queued"
         elif failed_count > 0:
             final_status = "error"
-        elif completed_count + blocked_count == manifest_count and completed_count > 0:
+        elif completed_count == manifest_count and completed_count > 0:
             final_status = "completed"
         else:
             final_status = "error"
@@ -474,13 +439,7 @@ class TransferIntegrityManager(TorrentManager):
                     (torrent_id,),
                 )
 
-            if blocked_count == manifest_count and manifest_count > 0:
-                event_message = (
-                    f"All {blocked_count} file(s) filtered/blocked — marked completed, "
-                    "removed from AllDebrid"
-                )
-                event_level = "info"
-            elif final_status == "completed" and completed_count > 0:
+            if final_status == "completed" and completed_count > 0:
                 event_message = (
                     f"Verified {completed_count} existing local file(s) against the "
                     "provider manifest; no aria2 transfer required"
@@ -490,8 +449,6 @@ class TransferIntegrityManager(TorrentManager):
                 details = [f"{queued_count} file(s) prepared for aria2"]
                 if completed_count:
                     details.append(f"{completed_count} existing file(s) verified")
-                if blocked_count:
-                    details.append(f"{blocked_count} filtered")
                 if failed_count:
                     details.append(f"{failed_count} failed")
                 event_message = f"Download {final_status}: " + ", ".join(details)
@@ -506,25 +463,12 @@ class TransferIntegrityManager(TorrentManager):
             )
             await db.commit()
 
-        await self._send_partial_summary(
-            torrent_id,
-            name,
-            flat_files,
-            blocked_items,
-            existing_items + queued_items,
-            failed_items,
-        )
-
         if final_status == "completed":
             await self._delete_magnet_after_completion(
                 torrent_id, ad_id, transfer_source
             )
             await self._mark_finished(torrent_id, name=name)
-            if (
-                cfg.discord_notify_finished
-                and blocked_count < manifest_count
-                and completed_count > 0
-            ):
+            if cfg.discord_notify_finished and completed_count > 0:
                 await self.notify().send_complete(
                     name,
                     file_count=completed_count,
