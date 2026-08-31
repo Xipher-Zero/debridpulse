@@ -5,8 +5,61 @@
  * Page styles must not own this alignment.
  */
 
+/* Canonical shell-owned title and provider semantics retained from the
+   accepted Dashboard review. */
 body.dp-v11-structural #sidebar .sidebar-footer::before {
+  content: 'Provider Status';
+  display: block;
+  margin: 0 0 9px;
+  color: #9da3bf;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .085em;
+  text-transform: uppercase;
   text-align: center !important;
+}
+body.light.dp-v11-structural #sidebar .sidebar-footer::before {
+  color: #777e99;
+}
+
+/* The crown source belongs to Provider Status. Later shell calibration owns
+   its final size, placement and glow without redefining the asset itself. */
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
+  content: '';
+  background: url('/icons/dp/crown.svg?v=11') center / contain no-repeat;
+}
+
+/* Healthy provider copy is normalized independently of the username returned
+   by transient connection checks. */
+body.dp-v11-structural #sidebar .sidebar-footer #dot-api.ok + #lbl-api {
+  font-size: 0;
+}
+body.dp-v11-structural #sidebar .sidebar-footer #dot-api.ok + #lbl-api::after {
+  content: 'AllDebrid: Connected';
+  font-size: 11px;
+  color: inherit;
+}
+
+/* aria2 and DB are exception-only in Provider Status. Healthy/checking states
+   stay out of the normal panel; warnings and errors surface below a separator. */
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db) {
+  display: none !important;
+}
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.warn),
+body.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
+  display: flex !important;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(118, 131, 185, .15);
+}
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.warn),
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-aria2.error),
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.warn),
+body.light.dp-v11-structural #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
+  border-top-color: rgba(120, 131, 171, .18);
 }
 
 /* Respect the application's explicit hidden state. Earlier Dashboard

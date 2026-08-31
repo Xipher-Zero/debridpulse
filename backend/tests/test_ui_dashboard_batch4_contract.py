@@ -1,4 +1,4 @@
-"""Contracts for the fourth v1.0.11 live Dashboard visual-review batch."""
+"""Contracts for the fourth v1.0.11 live Dashboard visual-review layer."""
 
 from __future__ import annotations
 
@@ -13,12 +13,14 @@ BATCH = STATIC / "ui-dashboard-batch4.css"
 WAVE = STATIC / "icons" / "dp" / "sidebar-wave.svg"
 
 
-def test_batch4_follows_batch3_in_current_cache_generation() -> None:
+def test_batch4_follows_canonical_dashboard_structure() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard-batch4.css?v=20" in overlay
-    assert overlay.rfind("/ui-dashboard-batch4.css?v=20") > overlay.rfind(
-        "/ui-dashboard-batch3.css?v=20"
-    )
+    structural = "/ui-dashboard-structural.css?v=23"
+    batch4 = "/ui-dashboard-batch4.css?v=20"
+    assert structural in overlay
+    assert batch4 in overlay
+    assert "/ui-dashboard-batch3.css" not in overlay
+    assert overlay.index(structural) < overlay.index(batch4)
 
 
 def test_batch4_captures_reviewed_dashboard_refinements() -> None:

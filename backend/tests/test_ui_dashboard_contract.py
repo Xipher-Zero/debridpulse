@@ -17,12 +17,13 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-dashboard-structural.css?v=22" in entry
+    assert "/ui-dashboard-structural.css?v=23" in entry
     assert "/ui-shell.css?v=21" in entry
     for retired in (
         "ui-dashboard-batch1.css",
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
+        "ui-dashboard-batch3.css",
     ):
         assert retired not in entry
         assert not (STATIC / retired).exists()
@@ -46,6 +47,17 @@ def test_dashboard_structural_owner_keeps_reviewed_header_and_sparkline_geometry
     assert "opacity: .72 !important;" in css
     assert ".dp-dashboard-quick-add .card-title > .dp-icon" in css
     assert "flex: 0 0 51px !important;" in css
+
+
+def test_dashboard_structural_owner_keeps_reviewed_card_framing_and_empty_state() -> None:
+    css = DASHBOARD_STRUCTURAL_CSS.read_text(encoding="utf-8")
+
+    assert "border-color: transparent !important;" in css
+    assert "border-bottom: 0;" in css
+    assert "-6px 8px 14px -8px rgba(0,0,0,.66)" in css
+    assert "rgba(95, 48, 174, .26)" in css
+    assert "#dash-tbody tr:not([data-torrent-id])" in css
+    assert "background: transparent !important;" in css
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:

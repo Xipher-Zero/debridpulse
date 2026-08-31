@@ -321,3 +321,78 @@ body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-
   object-fit: contain;
   padding: 1px;
 }
+
+/* Canonical Dashboard card framing retained from the accepted third review.
+   Batch 4 and later layers continue to tune the mask, material and controls. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  position: relative;
+  border-color: transparent !important;
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 1px solid rgba(111, 125, 184, .26);
+  border-bottom: 0;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 58%, rgba(0,0,0,.72) 69%, transparent 80%);
+  pointer-events: none;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat::after,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add::after,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity::after {
+  border-color: rgba(161, 170, 203, .42);
+}
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.024),
+    -6px 8px 14px -8px rgba(0,0,0,.66),
+    0 5px 11px -8px rgba(0,0,0,.46) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.78),
+    -6px 8px 14px -8px rgba(35, 41, 66, .40),
+    0 5px 11px -8px rgba(41, 47, 72, .25) !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  background: linear-gradient(90deg,
+    rgba(95, 48, 174, .26) 0%,
+    rgba(78, 43, 143, .15) 24%,
+    rgba(56, 39, 103, .065) 48%,
+    rgba(14, 19, 44, .00) 76%) !important;
+  border-bottom-color: rgba(113, 126, 184, .18) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-header,
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header {
+  background: linear-gradient(90deg,
+    rgba(142, 92, 225, .14) 0%,
+    rgba(154, 112, 224, .085) 25%,
+    rgba(170, 143, 222, .038) 48%,
+    rgba(255,255,255,0) 76%) !important;
+  border-bottom-color: rgba(159, 168, 201, .34) !important;
+}
+
+/* Empty Recent Activity is one continuous quiet surface. */
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]),
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]):hover {
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) td {
+  border-bottom: 0 !important;
+}
+body.dp-v11-structural #view-dashboard #dash-tbody tr:not([data-torrent-id]) .empty {
+  background: transparent !important;
+}

@@ -18,6 +18,7 @@ DASHBOARD_STYLE = STATIC / "ui-dashboard.css"
 STATISTICS_STYLE = STATIC / "ui-statistics-page.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
 SHELL_STRUCTURAL_STYLE = STATIC / "ui-shell-structural.css"
+SHELL_PROVIDER_STYLE = STATIC / "ui-shell-provider-status.css"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
 PULSE = STATIC / "icons" / "dp" / "shell-pulse.svg"
@@ -50,15 +51,15 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css?v=31",
         "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=21",
-        "/ui-shell-structural.css?v=28",
-        "/ui-shell-provider-status.css?v=23",
+        "/ui-shell-structural.css?v=29",
+        "/ui-shell-provider-status.css?v=24",
         "/ui-shell-provider-status-v2.css?v=28",
         "/ui-dashboard.css?v=20",
-        "/ui-dashboard-structural.css?v=22",
+        "/ui-dashboard-structural.css?v=23",
         "/ui-dashboard-control-polish.css?v=23",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=21",
-        "/ui-activity-log-page.css?v=29",
+        "/ui-activity-log-page.css?v=30",
         "/ui-downloads-page.css?v=27",
         "/ui-downloads-desktop.css?v=28",
         "/ui-settings-page.css?v=2",
@@ -82,14 +83,14 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "25",
         "/ui-shell.css": "21",
-        "/ui-shell-structural.css": "28",
-        "/ui-shell-provider-status.css": "23",
+        "/ui-shell-structural.css": "29",
+        "/ui-shell-provider-status.css": "24",
         "/ui-shell-provider-status-v2.css": "28",
-        "/ui-dashboard-structural.css": "22",
+        "/ui-dashboard-structural.css": "23",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-statistics-page.css": "21",
-        "/ui-activity-log-page.css": "29",
+        "/ui-activity-log-page.css": "30",
         "/ui-downloads-page.css": "27",
         "/ui-downloads-desktop.css": "28",
         "/ui-settings-page.css": "2",
@@ -121,6 +122,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "ui-dashboard-batch1.css",
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
+        "ui-dashboard-batch3.css",
     ):
         assert retired_import not in overlay
 
@@ -194,6 +196,32 @@ def test_structural_shell_owns_selected_navigation_and_title_depth() -> None:
     assert "text-shadow:" in css
     assert "body.light.dp-v11-structural #page-title::after" in css
     assert "drop-shadow(0 2px 3px rgba(103, 67, 205, .18))" in css
+
+
+def test_structural_shell_owns_reviewed_canvas_and_selected_rail_base() -> None:
+    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
+
+    assert "radial-gradient(920px 540px at 36% 4%" in css
+    assert "#f7f7fb !important" in css
+    assert "transform: none !important;" in css
+    assert "width: 6px !important;" in css
+    assert "#d49dff" in css
+
+
+def test_provider_status_shell_owns_title_asset_copy_and_exception_visibility() -> None:
+    css = SHELL_PROVIDER_STYLE.read_text(encoding="utf-8")
+
+    assert "content: 'Provider Status';" in css
+    assert "/icons/dp/crown.svg?v=11" in css
+    assert "content: 'AllDebrid: Connected';" in css
+    assert ".conn-row:has(#dot-aria2)" in css
+    assert ".conn-row:has(#dot-db)" in css
+    assert "display: none !important;" in css
+    assert ".conn-row:has(#dot-aria2.warn)" in css
+    assert ".conn-row:has(#dot-db.error)" in css
+    assert "display: flex !important;" in css
+    assert "#lbl-premium::before" in css
+    assert "content: none !important;" in css
 
 
 def test_shell_matches_required_mockup_structure() -> None:
@@ -288,6 +316,7 @@ def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
         "ui-dashboard-batch1.css",
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
+        "ui-dashboard-batch3.css",
     )
     present = [name for name in junk if (STATIC / name).exists()]
     assert not present, f"temporary/retired migration files leaked into final tree: {present}"

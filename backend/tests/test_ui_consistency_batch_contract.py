@@ -77,7 +77,7 @@ def test_consistency_layers_remain_in_correct_ownership_order() -> None:
 
     shared = overlay.index("/ui-shared-contract.css?v=31")
     shell = overlay.index("/ui-shell.css?v=21")
-    provider = overlay.index("/ui-shell-provider-status.css?v=23")
+    provider = overlay.index("/ui-shell-provider-status.css?v=24")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     dashboard_fix = overlay.index("/ui-dashboard-consistency.css?v=23")
     downloads = overlay.index("/ui-downloads-page.css?v=27")

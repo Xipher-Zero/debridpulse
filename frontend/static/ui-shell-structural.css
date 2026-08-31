@@ -444,3 +444,36 @@ body.light.dp-v11-structural #page-title::after {
     drop-shadow(0 2px 3px rgba(103, 67, 205, .18))
     drop-shadow(0 0 7px rgba(156, 78, 255, .25)) !important;
 }
+
+/* Canonical viewport canvas and selected-rail base retained from Dashboard
+   live review. Later shell calibration continues to own the final selected
+   row fill, endpoint energy and sidebar wave geometry. */
+body.dp-v11-structural {
+  background:
+    radial-gradient(920px 540px at 36% 4%, rgba(110, 68, 220, .065), transparent 68%),
+    radial-gradient(860px 520px at 88% 72%, rgba(55, 103, 225, .045), transparent 72%),
+    #050817 !important;
+}
+body.light.dp-v11-structural {
+  background:
+    radial-gradient(980px 560px at 38% 2%, rgba(117, 78, 224, .060), transparent 68%),
+    radial-gradient(920px 580px at 88% 76%, rgba(72, 111, 225, .040), transparent 72%),
+    #f7f7fb !important;
+}
+body.dp-v11-structural #main,
+body.dp-v11-structural #content {
+  background: transparent !important;
+}
+body.dp-v11-structural #sidebar::before {
+  z-index: 0;
+  left: 0;
+  right: 0;
+  transform: none !important;
+}
+body.dp-v11-structural .nav-item.active::before {
+  width: 6px !important;
+  background: linear-gradient(180deg, #d49dff 0%, #ad48ff 48%, #7b35f3 100%) !important;
+  box-shadow:
+    0 0 6px rgba(205, 139, 255, .92),
+    0 0 12px rgba(153, 66, 255, .48) !important;
+}

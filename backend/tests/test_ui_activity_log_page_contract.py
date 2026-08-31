@@ -23,6 +23,9 @@ def test_activity_log_keeps_approved_content_but_uses_structural_runtime() -> No
     assert "Recent transfer activity, decisions, warnings, and errors." in runtime
     assert "Refresh activity log" in runtime
     assert '"document": "document.svg"' in manifest
+    assert '.nav-item[data-view="events"] .nav-label' in css
+    assert "content: 'Activity Log';" in css
+    assert "Recent transfer activity, decisions, warnings, and errors." in css
 
     required = (
         ".dp-activity-card",
@@ -125,11 +128,11 @@ def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
 def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> None:
     overlay = read("style-v11.css")
 
-    shell = overlay.index("/ui-shell-structural.css?v=28")
+    shell = overlay.index("/ui-shell-structural.css?v=29")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     controls = overlay.index("/ui-dashboard-control-polish.css?v=23")
     stats = overlay.index("/ui-statistics-page.css?v=21")
-    activity = overlay.index("/ui-activity-log-page.css?v=29")
+    activity = overlay.index("/ui-activity-log-page.css?v=30")
     downloads = overlay.index("/ui-downloads-page.css?v=27")
     transfer = overlay.index("/ui-transfer-contract.css?v=31")
 

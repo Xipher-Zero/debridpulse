@@ -220,3 +220,43 @@ body.dp-v11-structural #view-events .dp-activity-list > .empty {
     max-height: 62vh;
   }
 }
+
+/* Canonical user-facing Activity Log naming retained from the accepted review.
+   Internal events identifiers remain unchanged. */
+body.dp-v11-structural .nav-item[data-view="events"] .nav-label {
+  font-size: 0 !important;
+}
+body.dp-v11-structural .nav-item[data-view="events"] .nav-label::after {
+  content: 'Activity Log';
+  font-size: 13px;
+  color: inherit;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title {
+  font-size: 0 !important;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::before {
+  content: 'Activity Log';
+  font-size: 28px;
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  color: inherit;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle {
+  font-size: 0 !important;
+}
+body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle::before {
+  content: 'Recent transfer activity, decisions, warnings, and errors.';
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: inherit;
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::before {
+    font-size: 23px;
+  }
+  body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle::before {
+    font-size: 11.5px;
+  }
+}
