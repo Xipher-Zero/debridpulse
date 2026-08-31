@@ -70,6 +70,9 @@ def test_settings_subtitle_and_help_icon_keep_accepted_presentation() -> None:
     assert "--dp-feature-icon-glow: #4c8fff" in css
     assert "drop-shadow(0 0 5px" in css
     assert "drop-shadow(0 0 11px" in css
+    assert "#a646f4" not in css
+    segment = css.split("#view-help .dp-help-title-icon", 1)[1].split("}", 1)[0]
+    assert "width:" not in segment
 
 
 def test_settings_icon_replacement_does_not_recreate_legacy_icons() -> None:

@@ -29,6 +29,10 @@ def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_sta
     assert "setRowVisibility(previous, previousIndex, false);" in activate
     assert activate.index("commitPasswordLine") < activate.index("setRowVisibility(previous, previousIndex, false);")
 
+    render = runtime.split("function renderPasswordRows", 1)[1].split("async function loadExtractionPasswords", 1)[0]
+    assert "setRowVisibility(" in render
+    assert "input.value = extractionPasswords.revealAll || index === extractionPasswords.activeIndex" not in render
+
 
 def test_settings_secret_fields_and_extraction_controls_keep_accepted_geometry() -> None:
     css = source(LAYOUT)
@@ -69,3 +73,4 @@ def test_form_layout_loads_after_settings_completion_style() -> None:
     assert loader.index("/ui-settings-downloads-completion.css?v=4") < loader.index(
         "/ui-settings-form-layout.css?v=1"
     )
+    assert "/ui-settings-downloads-completion.js?v=4&statefix=1" in loader
