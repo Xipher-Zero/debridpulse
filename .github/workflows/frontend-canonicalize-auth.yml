@@ -47,7 +47,12 @@ jobs:
         shell: bash
         run: |
           set +e
-          python scripts/_canonicalize_settings_auth.py > auth-canonicalize.log 2>&1
+          {
+            python scripts/_canonicalize_settings_auth.py
+            python scripts/_canonicalize_v1111_followup.py
+            python scripts/_migrate_v1111_frontend_contract_tests.py
+            python scripts/_correct_v1111_contract_assertions.py
+          } > auth-canonicalize.log 2>&1
           code=$?
           git diff > auth-working-tree.diff
           cat auth-canonicalize.log
@@ -65,8 +70,13 @@ jobs:
             frontend/static/ui-settings-page.js
             frontend/static/ui-settings-authentication.css
             frontend/static/ui-settings-authentication-oidc.css
+            frontend/static/ui-statistics.js
             frontend/static/index.html
             frontend/static/style-v11.css
+            backend/tests/test_v1111_canonical_frontend_contract.py
+            README.md
+            index.html
+            docker-compose.yml
           if-no-files-found: error
 
       - name: Require successful transformation
@@ -103,11 +113,19 @@ jobs:
           git diff --check
           test "$(cat VERSION)" = "1.0.11.1"
           for retired in \
+            ui-presentation-loader.js \
+            ui-shell-runtime.js \
+            ui-page-finalization.js \
+            ui-page-finalization.css \
+            ui-visual-behavior-fixes.js \
+            ui-help-chrome.js \
             ui-settings-auth-resilience.js \
             ui-settings-authentication.js \
             ui-settings-authentication-polish.js \
+            ui-settings-authentication-polish.css \
             ui-settings-authentication-oidc.js \
             ui-settings-authentication-callback.js; do
+            test ! -e "frontend/static/$retired"
             ! grep -q "$retired" frontend/static/index.html
           done
           ! grep -q "ui-settings-authentication-polish.css" frontend/static/style-v11.css
@@ -115,6 +133,12 @@ jobs:
           grep -q 'data-action="copy-oidc-callback"' frontend/static/ui-settings-page.js
           grep -q 'function fallbackAuthFromSettings(settings)' frontend/static/ui-settings-page.js
           grep -q 'function probeOidcRuntime(auth, generation)' frontend/static/ui-settings-page.js
+          grep -q 'debridpulse:settings-rendered' frontend/static/ui-settings-page.js
+          grep -q 'statisticsPurpleGradient' frontend/static/ui-statistics.js
+          grep -q 'Because vibes are not a performance metric.' frontend/static/ui-statistics.js
+          grep -q 'ghcr.io/xipher-zero/debridpulse:v1.0.11.1' docker-compose.yml
+          grep -q 'ghcr.io/xipher-zero/debridpulse:v1.0.11.1' README.md
+          grep -q 'ghcr.io/xipher-zero/debridpulse:v1.0.11.1' index.html
           python - <<'PY'
           from pathlib import Path
           import re
@@ -129,10 +153,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/_canonicalize_settings_auth.py .github/workflows/frontend-canonicalize-auth.yml auth-canonicalize.log auth-working-tree.diff
+          rm -f \
+            scripts/_canonicalize_settings_auth.py \
+            scripts/_canonicalize_v1111_followup.py \
+            scripts/_migrate_v1111_frontend_contract_tests.py \
+            scripts/_correct_v1111_contract_assertions.py \
+            .github/workflows/frontend-canonicalize-auth.yml \
+            .github/workflows/_diagnose-auth-pytest.yml \
+            auth-canonicalize.log \
+            auth-working-tree.diff
           git config user.name "Xipher-Zero"
           git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
           git add -A
           git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
           git commit -m "refactor: make settings authentication canonical"
           git push origin HEAD:1.0.11-hotfix1
