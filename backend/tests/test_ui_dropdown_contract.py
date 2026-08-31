@@ -14,7 +14,7 @@ def test_universal_dropdown_contract_is_loaded_before_page_layers():
     dropdown_import = "@import url('/ui-dropdown-contract.css?v=20');"
     assert dropdown_import in style
     assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=2');")
-    assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=29');")
+    assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=30');")
 
 
 def test_single_selects_are_upgraded_globally_not_per_page():
