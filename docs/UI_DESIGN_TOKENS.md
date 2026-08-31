@@ -1,27 +1,25 @@
 # DebridPulse v1.0.11 Design Token Contract
 
-This document is the visual source of truth for color, surfaces, semantic states, shadows, glows, and gradient use in the v1.0.11 UI overhaul. The target is approximately 95% visual consistency with the approved dark/light mockups while keeping the implementation coherent and maintainable.
-
-The canonical CSS values live in `frontend/static/design-tokens.css`.
+This document is the visual source of truth for color, surfaces, semantic states, shadows, glows, and gradient use in the v1.0.11 interface. The canonical CSS values live in `frontend/static/design-tokens.css`.
 
 ## Reconstruction policy
 
-The mockups are flattened raster references, so exact original source hex values, blur radii, and opacity recipes cannot be recovered with certainty. The values in `design-tokens.css` are deliberate reconstructions chosen to preserve the visible relationships across all supplied screens rather than literal samples from individual antialiased pixels.
+The original design references are flattened raster images, so exact source hex values, blur radii, and opacity recipes cannot be recovered with certainty. The values in `design-tokens.css` are deliberate reconstructions chosen to preserve visible relationships across the accepted dark/light UI rather than literal samples from individual antialiased pixels.
 
-When implementation differs from the mockup, prefer the token contract unless a visual test demonstrates that a token needs global adjustment. Do not fix palette mismatches by adding one-off page-local colors.
+When implementation differs from the accepted UI, prefer the token contract unless browser comparison demonstrates that a token needs global adjustment. Do not fix palette mismatches by adding one-off page-local colors.
 
 ## Core visual language
 
 ### Dark theme
 
 - Near-black navy application canvas rather than pure black.
-- Sidebar remains slightly differentiated from the main canvas but does not become a separate gray slab.
+- Sidebar remains slightly differentiated from the main canvas without becoming a separate gray slab.
 - Cards use dark blue/navy surfaces with subtle borders and restrained elevation.
 - Primary text is cool white; secondary and metadata text use blue-lavender slate.
 - Purple is the DebridPulse identity/accent color.
 - Blue supports active/download concepts and forms the cool end of primary gradients.
 - Cyan is reserved for connectivity/external-control semantics.
-- Semantic green, amber, and red are saturated enough to remain immediately legible on dark surfaces.
+- Semantic green, amber, and red remain immediately legible on dark surfaces.
 
 ### Light theme
 
@@ -30,14 +28,12 @@ When implementation differs from the mockup, prefer the token contract unless a 
 - Primary cards remain white or nearly white.
 - Surface separation comes from subtle borders plus restrained shadow rather than broad blue tinting.
 - Text remains dark navy instead of black.
-- Purple remains the primary identity/accent color. It must not be replaced by generic enterprise blue merely because the theme is light.
-- Semantic colors are slightly darker than their dark-theme equivalents to maintain contrast on white.
+- Purple remains the primary identity/accent color.
+- Semantic colors are adjusted for contrast on light surfaces.
 
-The light-theme card shadow is intentionally a little stronger than the rendered mockup bloom. This is a pragmatic real-display adjustment: the mockup's white-on-white separation is partly created by image-generation bloom and would otherwise disappear on many displays.
+The light-theme card shadow is intentionally strong enough to preserve card boundaries on ordinary displays.
 
 ## Semantic state mapping
-
-The following meanings are fixed across the application:
 
 | State | Token | Meaning |
 |---|---|---|
@@ -57,57 +53,39 @@ The following meanings are fixed across the application:
 
 ## Brand accents and gradients
 
-The approved mockups use a purple-to-electric-blue identity gradient. It is intentionally limited.
+The accepted design uses a purple-to-electric-blue identity gradient. It is intentionally limited.
 
-Gradient is appropriate for:
+Gradient is appropriate for primary CTAs, brand/pulse accents, selected high-emphasis decorative treatments, and the login waveform language where called for by the accepted UI.
 
-- primary CTA buttons;
-- DebridPulse brand/pulse accents;
-- selected/high-emphasis decorative pulse treatments;
-- the login/background waveform language where called for by the mockup.
-
-Gradient should generally not be applied to:
-
-- every card;
-- routine secondary buttons;
-- table rows;
-- status badges whose semantic color already carries meaning;
-- ordinary Lucide navigation glyphs.
-
-This restraint is necessary to preserve the mockups' visual hierarchy.
+Gradient should generally not be applied to every card, routine secondary buttons, table rows, semantic status badges, or ordinary Lucide navigation glyphs.
 
 ## Navigation states
 
 - Normal navigation is neutral/slate.
 - Hover receives a very low-opacity purple tint.
 - Selected navigation uses the purple/blue family with a bright purple left rail and mild glow/tint.
-- Selected navigation must remain visually strong in both themes without becoming a solid neon block.
-
-The theme toggle is globally accessible in the upper-right application chrome during the shell overhaul. It should not remain a permanent sidebar control simply because the pre-overhaul CSS currently places it there.
+- Selected navigation remains visually strong in both themes without becoming a solid neon block.
+- The theme toggle is globally accessible in the upper-right application chrome.
 
 ## Focus, hover, pressed, and disabled states
 
-These states are not directly shown in the static mockups and are therefore standardized as follows:
-
 - **Focus:** accessible purple ring derived from `--dp-focus-ring`.
 - **Hover:** slight surface/border lift or accent strengthening; no large movement.
-- **Pressed:** subtle 1 px/downscale feedback is acceptable for buttons, but avoid cartoonish movement.
+- **Pressed:** subtle compression is acceptable for buttons.
 - **Disabled:** lower contrast/opacity while preserving readable labels.
 - **Reduced motion:** honor `prefers-reduced-motion`; interaction meaning must not depend on animation.
 
 ## Motion policy
 
-Decorative pulse/waveform artwork is **static by default**. It may be visually energetic, but it should not continuously animate merely because the product is named DebridPulse. Motion is reserved for meaningful state changes, progress, short interaction feedback, or loading.
-
-This keeps the finished application closer to the supplied static mockups and avoids unnecessary visual noise.
+Decorative pulse/waveform artwork is static by default. Motion is reserved for meaningful state changes, progress, short interaction feedback, or loading.
 
 ## Shadows and glows
 
 Dark theme uses border/surface contrast first and shadow second. Purple glow is restrained and reserved for selected/brand emphasis.
 
-Light theme uses slightly stronger real CSS elevation than the raster references so card boundaries survive ordinary display conditions. Do not add heavy gray drop shadows around every surface.
+Light theme uses enough elevation for card boundaries to survive ordinary display conditions. Do not add heavy gray drop shadows around every surface.
 
-Semantic glows exist for icon/status emphasis but are intentionally low opacity.
+Semantic glows exist for icon/status emphasis but remain low opacity.
 
 ## Progress language
 
@@ -118,11 +96,11 @@ Semantic glows exist for icon/status emphasis but are intentionally low opacity.
 - Error → red.
 - Track → subdued theme-appropriate neutral.
 
-Unknown/indeterminate progress may animate at the component layer, but the semantic color remains tied to the current state.
+Unknown/indeterminate progress may animate at the component layer, but semantic color remains tied to current state.
 
 ## Surface hierarchy
 
-Use the semantic surface tokens rather than arbitrary background values:
+Use semantic surface tokens rather than arbitrary background values:
 
 - `--dp-bg-app` / `--dp-bg-app-alt`: application canvas.
 - `--dp-bg-sidebar`: navigation shell.
@@ -134,24 +112,27 @@ Use the semantic surface tokens rather than arbitrary background values:
 
 Likewise use the `--dp-border-*` and `--dp-text-*` hierarchy rather than selecting literal colors locally.
 
-## Compatibility / migration
+## Release-state compatibility
 
-The current frontend predates the v1.0.11 token architecture and uses legacy variables such as `--bg`, `--surface`, `--accent`, `--green`, and `--red`. `design-tokens.css` supplies compatibility aliases so pages can be migrated incrementally.
+The application still contains inherited markup and the canonical `style.css` compatibility stylesheet. `design-tokens.css` supplies compatibility aliases such as `--bg`, `--surface`, `--accent`, `--green`, and `--red` because live inherited selectors still consume them.
 
-During the actual UI overhaul:
+For v1.0.11 maintenance:
 
-1. Load `design-tokens.css` after the legacy stylesheet so its semantic values become authoritative.
-2. Migrate new/reworked components to `--dp-*` tokens directly.
-3. Remove page-local color literals when the page is rebuilt.
-4. Do not break backend state semantics merely to fit presentation categories.
-5. After the last page is migrated, remove compatibility aliases only after a repository-wide usage audit.
+1. `style.css` remains the single compatibility stylesheet loaded before `style-v11.css`.
+2. `design-tokens.css` remains authoritative for shared semantic values.
+3. New or deliberately rebuilt components use `--dp-*` tokens directly.
+4. Page-local literal colors are removed when ownership is intentionally refactored, not through speculative release cleanup.
+5. Compatibility aliases are removed only after a repository-wide live-usage audit proves no accepted runtime depends on them.
+6. The retired `style-legacy.css` duplicate must not be reintroduced; it was byte-identical to `style.css` and unreachable from the production bootstrap graph.
 
 ## Relationship to icon system
 
-`frontend/static/icon-system.css` must derive its semantic frames from these token colors. Custom SVG artwork can contain its own approved internal gradients, but UI-created frames, borders, glows, and Lucide colors must use the shared token language.
+`frontend/static/icon-system.css` derives semantic frames from these token colors. Custom SVG artwork can contain its approved internal gradients, but UI-created frames, borders, glows, and Lucide colors use the shared token language.
 
-See `docs/UI_ICON_SYSTEM.md` for the custom-vs-Lucide boundary and the true-vector SVG requirements.
+See `docs/UI_ICON_SYSTEM.md` for the custom-vs-Lucide boundary and true-vector SVG requirements.
 
 ## Visual acceptance
 
-The final pass is judged against the approved mockups, not against the pre-v1.0.11 UI. Adjust a shared token when the same mismatch appears across several screens. Use component-specific overrides only when the mockup clearly establishes a genuinely different role.
+The consolidated `1.0.11rc1` candidate was browser-compared with the accepted pre-consolidation local build and found visually/behaviorally equivalent from the user perspective. That comparison validates the current token/cascade output; it does not make live calibration layers dead source.
+
+When future maintenance changes a shared token or folds a live calibration layer, repeat browser validation in both themes and relevant responsive layouts before accepting the new candidate boundary.
