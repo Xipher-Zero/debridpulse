@@ -65,3 +65,7 @@ def test_release_container_metadata_uses_authoritative_version_file() -> None:
     for workflow_name in ("tests.yml", "container-security.yml", "fork-image.yml", "codeql.yml"):
         workflow_text = read(ROOT / ".github" / "workflows" / workflow_name)
         assert release_branch in workflow_text
+
+    # Normal end-user deployments track the promoted main image via latest,
+    # while staging/release branches retain immutable SHA publication only.
+    assert "type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}" in workflow
