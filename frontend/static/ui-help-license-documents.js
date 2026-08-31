@@ -7,49 +7,6 @@
 (function () {
   'use strict';
 
-  const DOCUMENT_PATHS = Object.freeze([
-    ['/LICENSE', 'gpl'],
-    ['/NOTICE', 'notice'],
-    ['/LICENSES/MIT.txt', 'upstream-mit'],
-    ['/SOURCE_OFFER.md', 'source-offer'],
-    ['/docs/DEPENDENCY_LICENSES.md', 'third-party'],
-  ]);
-
-  let activeBackdrop = null;
-  let activeOpener = null;
-
-  function helpRoot() {
-    return document.getElementById('view-help');
-  }
-
-  function documentIdForAnchor(anchor) {
-    let path = '';
-    try {
-      path = new URL(anchor.href, window.location.href).pathname;
-    } catch (_error) {
-      return '';
-    }
-    const match = DOCUMENT_PATHS.find(function (entry) {
-      return path.endsWith(entry[0]);
-    });
-    return match ? match[1] : '';
-  }
-
-  function convertLicenseActions(view) {
-    view.querySelectorAll('.dp-help-license-actions a[href]').forEach(function (anchor) {
-      const documentId = documentIdForAnchor(anchor);
-      if (!documentId) return;
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = anchor.className;
-      button.textContent = String(anchor.textContent || '').trim();
-      button.dataset.legalDocument = documentId;
-      button.classList.add('dp-help-local-document-button');
-      anchor.replaceWith(button);
-    });
-  }
-
   function focusableElements(dialog) {
     return Array.from(dialog.querySelectorAll(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
@@ -312,7 +269,6 @@
   function enhance() {
     const view = helpRoot();
     if (!view || !view.querySelector('.dp-help-license-actions')) return false;
-    convertLicenseActions(view);
     bindEvents(view);
     view.dataset.dpHelpLegalDocumentsReady = '1';
     return true;

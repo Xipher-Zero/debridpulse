@@ -608,7 +608,76 @@ async function loadDetailedStatsData(period) {
     });
   }
 
+  function ensureStatisticsArchitecture() {
+    const view = document.getElementById('view-stats');
+    const cards = document.getElementById('detail-stat-cards');
+    const chart = document.getElementById('daily-chart');
+    if (!view || !cards || !chart) return false;
+
+    const chartCard = chart.closest('.dp-stats-chart');
+    const breakdownCards = BREAKDOWNS.map(function (definition) {
+      const body = document.getElementById(definition.id);
+      return body && body.closest('.list-card');
+    }).filter(Boolean);
+    if (!chartCard || breakdownCards.length !== BREAKDOWNS.length) return false;
+
+    let master = view.querySelector(':scope > .dp-statistics-master');
+    if (!master) {
+      master = document.createElement('section');
+      master.className = 'card dp-statistics-master dp-list-workspace-surface';
+      master.innerHTML =
+        '<div class="card-header dp-statistics-master-header">' +
+          '<div class="dp-statistics-header-copy">' +
+            '<img class="dp-statistics-title-icon" src="/icons/dp/card-statistics.svg" alt="" aria-hidden="true">' +
+            '<div><div class="dp-statistics-header-title">By the Numbers</div>' +
+            '<div class="dp-statistics-header-subtitle">Because vibes are not a performance metric.</div></div>' +
+          '</div>' +
+          '<div class="dp-statistics-header-tabs"></div>' +
+        '</div>' +
+        '<div class="card-body dp-statistics-master-body"></div>';
+      view.prepend(master);
+    }
+
+    const tabsHost = master.querySelector('.dp-statistics-header-tabs');
+    const periodTabs = document.getElementById('stats-period-tabs');
+    if (tabsHost && periodTabs && periodTabs.parentElement !== tabsHost) tabsHost.appendChild(periodTabs);
+
+    const body = master.querySelector('.dp-statistics-master-body');
+    let top = body.querySelector(':scope > .dp-statistics-top');
+    if (!top) {
+      top = document.createElement('div');
+      top.className = 'dp-statistics-top';
+      body.appendChild(top);
+    }
+    if (cards.parentElement !== top) top.appendChild(cards);
+    if (chartCard.parentElement !== top) top.appendChild(chartCard);
+
+    let breakdown = body.querySelector(':scope > .dp-statistics-breakdown-grid');
+    if (!breakdown) {
+      breakdown = document.createElement('div');
+      breakdown.className = 'dp-statistics-breakdown-grid';
+      body.appendChild(breakdown);
+    }
+    breakdownCards.forEach(function (card) {
+      card.classList.add('dp-large-panel-surface');
+      if (card.parentElement !== breakdown) breakdown.appendChild(card);
+    });
+    return true;
+  }
+
+  function applyChartPalette() {
+    const chart = document.getElementById('daily-chart')?._ci;
+    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) return;
+    const styles = getComputedStyle(document.body);
+    const accent = styles.getPropertyValue('--accent').trim() || '#a855f7';
+    chart.data.datasets[0].borderColor = accent;
+    chart.data.datasets[0].backgroundColor = accent;
+    chart.data.datasets[0].fill = true;
+    chart.update('none');
+  }
+
   function applyPresentation(period) {
+    ensureStatisticsArchitecture();
     normalizePrimaryMetrics(period);
     normalizeBreakdowns();
     applyAdaptiveBreakdowns();
@@ -617,6 +686,7 @@ async function loadDetailedStatsData(period) {
     normalizeSuccessRateCopy(period);
     decorateChartHeader(period);
     applySharedSurfaceClass();
+    applyChartPalette();
   }
 
   async function loadDetailedStats(period) {
@@ -640,6 +710,10 @@ async function loadDetailedStatsData(period) {
   window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});
 
   install();
+  document.addEventListener('debridpulse:theme-changed', applyChartPalette);
+  document.addEventListener('debridpulse:navigation', function (event) {
+    if (event.detail && event.detail.view === 'stats') applyPresentation(selectedPeriod());
+  });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize, {once: true});
   } else {

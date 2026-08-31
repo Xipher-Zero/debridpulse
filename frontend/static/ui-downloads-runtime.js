@@ -85,8 +85,6 @@
     bar.replaceChildren(header);
     bar.dataset.dpDownloadsBulk = '1';
     syncBulkButtonPresentation(bar);
-    new MutationObserver(function () { syncBulkButtonPresentation(bar); })
-      .observe(header, {childList: true, subtree: true, characterData: true});
   }
 
   function filterStatusFromTab(tab) {
@@ -441,4 +439,7 @@
   document.addEventListener('debridpulse:downloads-rendered', initializeDownloadsPresentation);
   document.addEventListener('debridpulse:dashboard-recent-rendered', decorateEmptyStates);
   document.addEventListener('debridpulse:dashboard-stats-rendered', decorateDownloadsHeader);
+  document.addEventListener('debridpulse:downloads-bulk-action-settled', function () {
+    syncBulkButtonPresentation(document.getElementById('bulk-bar'));
+  });
 })();

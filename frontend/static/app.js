@@ -1415,7 +1415,7 @@ function updateThemeToggle(isLight) {
   const btn = document.getElementById('theme-toggle');
   if (!btn) return;
   const action = isLight ? 'Switch to dark mode' : 'Switch to light mode';
-  btn.textContent = isLight ? '☀︎' : '☾';
+  btn.textContent = isLight ? '☾' : '☀︎';
   btn.title = action;
   btn.setAttribute('aria-label', action);
   const chart = document.getElementById('daily-chart')?._ci;
@@ -1542,6 +1542,7 @@ async function bulkAction(action, button) {
     toast(e.message, 'error');
   } finally {
     setButtonPending(button, false);
+    document.dispatchEvent(new CustomEvent('debridpulse:downloads-bulk-action-settled', {detail:{action}}));
   }
 }
 
@@ -1575,7 +1576,11 @@ function filterEvents() {
     return (ev.message||'').toLowerCase().includes(q) ||
            (ev.torrent_name||'').toLowerCase().includes(q);
   });
-  if (!evs.length) { el.innerHTML='<div class="empty">No events match the filter.</div>'; return; }
+  if (!evs.length) {
+    el.innerHTML='<div class="empty">No events match the filter.</div>';
+    document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));
+    return;
+  }
   el.innerHTML = evs.map(ev=>`
     <div class="event-item">
       <div class="elevel ${esc(ev.level)}"></div>
@@ -2102,6 +2107,7 @@ async function aria2DownloadAction(gid, action, button) {
     );
   } finally {
     setButtonPending(button, false);
+    document.dispatchEvent(new CustomEvent('debridpulse:aria2-engine-action-settled', {detail:{gid, action}}));
   }
 }
 

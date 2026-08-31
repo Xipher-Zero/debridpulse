@@ -20,8 +20,6 @@
   const POLL_MS = 5000;
   const QUEUE_TIMEOUT_MS = 20000;
   const QUEUE_ID = 'dp-settings-aria2-downloads';
-
-  let observer = null;
   let scheduled = false;
   let pollTimer = null;
   let refreshRunning = null;
@@ -395,33 +393,11 @@
     syncCardForMode(downloadsPanel());
   }
 
-  function observe(view) {
-    if (!observer || !view) return;
-    /* The clean Settings renderer replaces the root's direct child on render.
-       Queue updates happen deeper in the subtree and must not retrigger this
-       structural observer every five seconds. */
-    observer.observe(view, {childList: true, subtree: false});
-  }
 
-  function applyWithoutSelfObservation() {
-    const view = root();
-    if (!view) return;
-    if (observer) observer.disconnect();
-    try {
-      apply();
-    } finally {
-      observe(view);
-    }
-  }
 
-  function scheduleApply() {
-    if (scheduled) return;
-    scheduled = true;
-    queueMicrotask(() => {
-      scheduled = false;
-      applyWithoutSelfObservation();
-    });
-  }
+
+
+
 
   function bindInteractions(view) {
     if (!view || view.dataset.dpSettingsAria2LiveBound === '1') return;
@@ -440,33 +416,21 @@
     });
   }
 
-  function wrapEngineActionRefresh() {
-    if (document.documentElement.dataset.dpAria2LiveActionWrapped === '1') return;
-    if (typeof aria2DownloadAction !== 'function') return;
 
-    const original = aria2DownloadAction;
-    window.aria2DownloadAction = async function (...args) {
-      const result = await original.apply(this, args);
-      if (shouldRunLiveQueue()) {
-        await refreshQueue(false);
-        schedulePoll(POLL_MS);
-      }
-      return result;
-    };
-    document.documentElement.dataset.dpAria2LiveActionWrapped = '1';
-  }
 
   function attach() {
     const view = root();
     if (!view) return;
-
     bindInteractions(view);
-    wrapEngineActionRefresh();
+    apply();
 
-    if (!observer) observer = new MutationObserver(scheduleApply);
-    observe(view);
-    applyWithoutSelfObservation();
-
+    document.addEventListener('debridpulse:settings-rendered', apply);
+    document.addEventListener('debridpulse:aria2-engine-action-settled', function () {
+      if (shouldRunLiveQueue()) {
+        void refreshQueue(false);
+        schedulePoll(POLL_MS);
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) stopPolling();
       else startVisibleQueue();

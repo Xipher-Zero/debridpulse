@@ -8,19 +8,17 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=15">
 <link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=24" data-dp-v11-styles="1">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 </head>
 <body class="dp-v11-structural">
 <script src="/ui-theme-bootstrap.js?v=21"></script>
 
 <aside id="sidebar">
   <div class="logo">
-    <img class="logo-icon" src="/logo.svg?v=4" alt="DebridPulse logo">
+    <img class="logo-icon" src="/logo.svg?v=7" alt="DebridPulse logo">
     <div class="logo-text">
       <div class="logo-name logo-name-full" title="DebridPulse">Debrid<span>Pulse</span></div>
-      <div class="logo-ver" id="sidebar-version">v…</div>
     </div>
   </div>
   <nav>
@@ -87,7 +85,10 @@
 <div id="main">
   <div id="topbar">
     <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Menu">☰</button>
-    <h1 id="page-title">Dashboard</h1>
+    <div class="dp-page-heading">
+      <h1 id="page-title">Dashboard</h1>
+      <p id="page-subtitle" class="dp-page-subtitle">Overview of your download activities and system status.</p>
+    </div>
     <a id="update-badge" href="https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md"
        target="_blank" rel="noopener" aria-label="Open the DebridPulse changelog"
        style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--accent);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:none"
@@ -523,10 +524,8 @@
 <script src="/ui-runtime.js?v=25" defer data-dp-ui-runtime="1"></script>
 <script src="/ui-downloads-runtime.js?v=23" defer data-dp-downloads-runtime="1"></script>
 <script src="/ui-accessibility-runtime.js?v=21" defer></script>
-<script src="/ui-shell-runtime.js?v=2" defer></script>
 <script src="/ui-statistics.js?v=2" defer></script>
 <script src="/ui-help-page.js?v=2" defer></script>
-<script src="/ui-help-chrome.js?v=2" defer></script>
 <script src="/ui-help-license-documents.js?v=2" defer></script>
 <script src="/ui-settings-page.js?v=2" defer></script>
 <script src="/ui-settings-auth-resilience.js?v=2" defer></script>
@@ -540,7 +539,7 @@
 <script src="/ui-settings-aria2-live.js?v=2" defer></script>
 <script src="/ui-settings-card-icons.js?v=2" defer></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
-<script src="/ui-page-finalization.js?v=2" defer></script>
+<div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version">v…</div>
 <div id="mobile-overlay" onclick="closeSidebar()"></div>
 </body>
 </html>

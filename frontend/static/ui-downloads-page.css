@@ -336,3 +336,23 @@ body.dp-v11-structural #view-torrents .dp-pager-ellipsis {
     justify-self: center;
   }
 }
+
+
+/* Canonical integrated multi-selection strip. */
+body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.dp-downloads-bulk-integrated {
+  margin: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-top: 0 !important;
+  border-bottom: 1px solid var(--dp-divider) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.dp-downloads-bulk-integrated > .dp-downloads-bulk-toolbar {
+  min-height: 54px;
+  border-radius: 0 !important;
+}
+body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.dp-downloads-bulk-integrated.visible {
+  display: block !important;
+}

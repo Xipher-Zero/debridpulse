@@ -11,8 +11,8 @@
     ['sources', 'Sources & Providers', 'zap'],
     ['downloads', 'Downloads', 'download'],
     ['extraction', 'Extraction', 'package-open'],
-    ['notifications', 'Notifications', 'bell'],
     ['authentication', 'Authentication', 'shield-check'],
+    ['notifications', 'Notifications', 'bell'],
     ['maintenance', 'Data & Maintenance', 'database-backup'],
   ]);
 
@@ -339,7 +339,7 @@
       ? `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`
       : html(title);
     return `
-      <section class="card dp-settings-card ${options.className || ''}">
+      <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
           <span class="${titleClass}">${titleMarkup}</span>
           ${options.headerCenter ? `<div class="dp-settings-card-header-center">${options.headerCenter}</div>` : ''}
@@ -351,7 +351,7 @@
 
   function groupCard(title, body, options = {}) {
     return `
-      <section class="card dp-settings-group-card ${options.className || ''}">
+      <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
           <span class="card-title">${html(title)}</span>
           ${options.action || ''}
@@ -883,8 +883,8 @@
           <div class="dp-settings-header-copy">
             <div class="dp-settings-header-icon" aria-hidden="true"></div>
             <div>
-              <div class="dp-settings-header-title">Settings</div>
-              <div class="dp-settings-header-subtitle">Configure providers, downloads, automation, authentication, and maintenance.</div>
+              <div class="dp-settings-header-title">Tuning Deck</div>
+              <div class="dp-settings-header-subtitle">Your rules, your defaults.</div>
             </div>
           </div>
           <div class="stabs dp-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
@@ -922,6 +922,7 @@
     activateTab(state.activeTab);
     bindEvents(view);
     updateModeState();
+    document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
   function activateTab(name) {
@@ -1427,7 +1428,7 @@
       state.auth.api_token_configured = false;
       state.oneTimeToken = '';
       renderPreservingViewport();
-      notify('API token cleared', 'success');
+      notify('API token revoked', 'success');
     } catch (error) {
       notify(error.message, 'error');
     } finally {

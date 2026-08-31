@@ -462,3 +462,15 @@ body.dp-v11-structural #view-help .dp-help-license-note p:last-child {
     transition: none;
   }
 }
+
+
+/* Canonical Help master icon glow. */
+body.dp-v11-structural #view-help .dp-help-title-icon {
+  --dp-feature-icon-glow: #4c8fff;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--dp-feature-icon-glow) 62%, transparent))
+          drop-shadow(0 0 11px color-mix(in srgb, var(--dp-feature-icon-glow) 27%, transparent));
+}
+body.light.dp-v11-structural #view-help .dp-help-title-icon {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--dp-feature-icon-glow) 70%, transparent))
+          drop-shadow(0 0 15px color-mix(in srgb, var(--dp-feature-icon-glow) 32%, transparent));
+}
