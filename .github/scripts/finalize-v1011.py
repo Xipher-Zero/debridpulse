@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SELF = Path(__file__).resolve()
+AUDIT_WORKFLOW = (ROOT / ".github/workflows/audit-version-census.yml").resolve()
 RC = "1.0.11rc1"
 FINAL = "1.0.11"
 RC_IMAGE = f"ghcr.io/xipher-zero/debridpulse:v{RC}"
@@ -123,8 +124,8 @@ if not changelog.startswith(header) or "## [1.0.11]" in changelog:
 entry = '''\n## [1.0.11] — 2026-08-31\n\n### UI overhaul and release consolidation\n\n- Completed the application-wide UI overhaul across Dashboard, Downloads, Statistics, Activity Log, Help, Login, and Settings while preserving the accepted dark/light presentation and responsive behavior through consolidation.\n- Consolidated frontend ownership, removed unreachable duplicate/dead presentation code, and retained only browser-validated live calibration layers where folding them would create unnecessary release risk.\n- Completed an exhaustive Settings UI-to-runtime census, corrected UI/backend bounds and zero-value retry semantics, and physically retired the hidden automatic File Filters policy while preserving explicit per-file blocking and download labels.\n\n### Adversarial release hardening\n\n- Corrected aria2 error-recovery accounting and delay enforcement so retry claims are persisted before restart attempts, failed restart attempts consume budget, and configured retry ceilings cannot be bypassed.\n- Added prerelease-aware version ordering and centralized release-version ownership so backend APIs, login/sidebar UI, deployment examples, and OCI metadata derive from the authoritative `VERSION` file.\n- Removed broad 7-Zip parser selection from automatic `.tar.zst`, `.tzst`, and `.tar.lzma` composite extraction; exact outer decoders now feed the validated TAR safety path with decompression budgets.\n- Preserved non-root runtime validation, external-aria2 ownership boundaries, transfer-integrity protections, extraction limits, and fail-closed maintenance/backup behavior through the final security and adversarial qualification passes.\n\n'''
 write("CHANGELOG.md", header + entry + changelog[len(header):])
 
-# Final invariant: no stale RC1 naming survives outside intentional version-order tests or this disposable script.
-allowed = {ROOT / "backend/tests/test_version_utils.py", SELF}
+# Final invariant: no stale RC1 naming survives outside intentional version-order tests or disposable audit scaffolding.
+allowed = {ROOT / "backend/tests/test_version_utils.py", SELF, AUDIT_WORKFLOW}
 for path in ROOT.rglob("*"):
     if not path.is_file() or ".git" in path.parts or path.resolve() in allowed:
         continue
