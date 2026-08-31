@@ -54,7 +54,7 @@ jobs:
           tags: |
             type=sha,prefix=sha-,format=short
           labels: |
-            org.opencontainers.image.title=DebridPulse — AllDebrid + aria2 Download Manager
+            org.opencontainers.image.title=DebridPulse: AllDebrid + aria2 Download Manager
             org.opencontainers.image.description=AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -115,7 +115,7 @@ jobs:
           fi
 
           expected_version="${{ steps.version.outputs.version }}"
-          expected_title="DebridPulse — AllDebrid + aria2 Download Manager"
+          expected_title="DebridPulse: AllDebrid + aria2 Download Manager"
           image_ref="local/debridpulse:${GITHUB_SHA}"
 
           image_version="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
@@ -232,7 +232,7 @@ jobs:
             type=sha,prefix=sha-,format=short,enable=${{ !startsWith(github.ref, 'refs/tags/') }}
             type=ref,event=tag,enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/internal-v') }}
           labels: |
-            org.opencontainers.image.title=DebridPulse — AllDebrid + aria2 Download Manager
+            org.opencontainers.image.title=DebridPulse: AllDebrid + aria2 Download Manager
             org.opencontainers.image.description=AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -247,7 +247,7 @@ jobs:
           set -euo pipefail
 
           expected_version="${{ steps.version.outputs.version }}"
-          expected_title="DebridPulse — AllDebrid + aria2 Download Manager"
+          expected_title="DebridPulse: AllDebrid + aria2 Download Manager"
           generated_version="$(jq -r '.labels["org.opencontainers.image.version"] // empty' <<< "$METADATA_JSON")"
           generated_title="$(jq -r '.labels["org.opencontainers.image.title"] // empty' <<< "$METADATA_JSON")"
           generated_license="$(jq -r '.labels["org.opencontainers.image.licenses"] // empty' <<< "$METADATA_JSON")"
