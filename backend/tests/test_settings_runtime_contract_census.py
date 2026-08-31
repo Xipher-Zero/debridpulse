@@ -1,48 +1,4 @@
-from pathlib import Path
-
-
-def replace_once(path: str, old: str, new: str) -> None:
-    target = Path(path)
-    text = target.read_text(encoding="utf-8")
-    count = text.count(old)
-    if count != 1:
-        raise SystemExit(f"{path}: expected exactly one match, found {count}: {old!r}")
-    target.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-
-replace_once(
-    "backend/services/manager_v2.py",
-    '        max_retries = max(0, int(getattr(cfg, "upload_fail_retry_count", 3) or 3))\n        delay_minutes = max(0, int(getattr(cfg, "upload_fail_retry_delay_minutes", 5) or 5))',
-    '        retry_setting = getattr(cfg, "upload_fail_retry_count", 3)\n        delay_setting = getattr(cfg, "upload_fail_retry_delay_minutes", 5)\n        max_retries = max(0, int(3 if retry_setting is None else retry_setting))\n        delay_minutes = max(0, int(5 if delay_setting is None else delay_setting))',
-)
-
-replace_once(
-    "frontend/static/ui-settings-page.js",
-    "          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {\n            type: 'number', min: 1, max: 100,",
-    "          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {\n            type: 'number', min: 1, max: 20,",
-)
-replace_once(
-    "frontend/static/ui-settings-page.js",
-    "            ${input('aria2_max_connection_per_server', 'Connections per Server', s.aria2_max_connection_per_server ?? 16, {\n              type: 'number', min: 1, max: 64,",
-    "            ${input('aria2_max_connection_per_server', 'Connections per Server', s.aria2_max_connection_per_server ?? 16, {\n              type: 'number', min: 1, max: 32,",
-)
-replace_once(
-    "frontend/static/ui-settings-page.js",
-    "      ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', s.stuck_download_timeout_hours ?? 6, {\n        type: 'number', min: 0, hint: '0 disables automatic stalled-download recovery.'",
-    "      ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', s.stuck_download_timeout_hours ?? 6, {\n        type: 'number', min: 0, max: 168, hint: '0 disables automatic stalled-download recovery.'",
-)
-replace_once(
-    "frontend/static/ui-settings-page.js",
-    "      ${input('stats_snapshot_interval_minutes', 'Stats Snapshot Interval (minutes)', s.stats_snapshot_interval_minutes ?? 60, {type: 'number', min: 1})}",
-    "      ${input('stats_snapshot_interval_minutes', 'Stats Snapshot Interval (minutes)', s.stats_snapshot_interval_minutes ?? 60, {\n        type: 'number', min: 0, max: 1440, hint: '0 disables automatic statistics snapshots.'\n      })}",
-)
-replace_once(
-    "frontend/static/ui-settings-page.js",
-    "      ${input('stats_snapshot_keep_days', 'Stats Snapshot Retention (days)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1})}",
-    "      ${input('stats_snapshot_keep_days', 'Stats Snapshot Retention (days)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1, max: 365})}",
-)
-
-Path("backend/tests/test_settings_runtime_contract_census.py").write_text(r'''from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -173,4 +129,3 @@ def test_effective_settings_numeric_limits_match_server_contract():
 
     retention = field("stats_snapshot_keep_days")
     assert "max: 365" in retention
-''', encoding="utf-8")
