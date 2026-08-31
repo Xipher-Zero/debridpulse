@@ -18,7 +18,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== exact 1.0.11rc1 occurrences ==='
-          grep -RIn --exclude-dir=.git --exclude='audit-version-census.yml' '1\.0\.11rc1' . || true
-          echo '=== exact v1.0.11rc1 occurrences ==='
-          grep -RIn --exclude-dir=.git --exclude='audit-version-census.yml' 'v1\.0\.11rc1' . || true
+          echo '=== all rc1 occurrences ==='
+          grep -RIni --exclude-dir=.git --exclude='audit-version-census.yml' 'rc1' . || true
