@@ -129,3 +129,66 @@ def test_effective_settings_numeric_limits_match_server_contract():
 
     retention = field("stats_snapshot_keep_days")
     assert "max: 365" in retention
+
+
+def test_retired_file_filter_policy_is_physically_pruned_but_manual_blocking_and_labels_remain():
+    from core.config import AppSettings, _build_effective_settings
+
+    root = Path(__file__).resolve().parents[2]
+    retired = {
+        "filters_enabled",
+        "blocked_extensions",
+        "blocked_keywords",
+        "min_file_size_mb",
+        "block_samples",
+        "block_extras",
+        "torrent_labels",
+    }
+
+    assert retired.isdisjoint(AppSettings.model_fields)
+
+    legacy = {
+        "download_folder": "/download",
+        "filters_enabled": True,
+        "blocked_extensions": [".nfo"],
+        "blocked_keywords": ["sample"],
+        "min_file_size_mb": 100,
+        "block_samples": True,
+        "block_extras": True,
+        "torrent_labels": ["legacy"],
+    }
+    upgraded = _build_effective_settings(legacy)
+    assert upgraded.download_folder == "/download"
+    assert retired.isdisjoint(upgraded.model_dump())
+
+    manager = (root / "backend/services/manager_v2.py").read_text(encoding="utf-8")
+    assert "def is_blocked(" not in manager
+    assert "blocked_items" not in manager
+    assert "Filtered files were skipped" not in manager
+
+    routes = (root / "backend/api/routes.py").read_text(encoding="utf-8")
+    assert '@router.post("/torrents/{torrent_id}/files/{file_id}/block")' in routes
+    assert '@router.put("/torrents/{torrent_id}/label")' in routes
+    assert "SET status='blocked', blocked=1" in manager
+
+
+def test_active_settings_runtime_contains_no_retired_file_filter_surface():
+    root = Path(__file__).resolve().parents[2]
+    page = (root / "frontend/static/ui-settings-page.js").read_text(encoding="utf-8")
+    completion = (root / "frontend/static/ui-settings-downloads-completion.js").read_text(encoding="utf-8")
+    completion_css = (root / "frontend/static/ui-settings-downloads-completion.css").read_text(encoding="utf-8")
+
+    for token in (
+        "File Filters",
+        "filters_enabled",
+        "blocked_extensions",
+        "blocked_keywords",
+        "min_file_size_mb",
+        "block_samples",
+        "block_extras",
+        "torrent_labels_raw",
+    ):
+        assert token not in page
+
+    assert "dp-settings-file-filters-retired" not in completion
+    assert "dp-settings-file-filters-retired" not in completion_css

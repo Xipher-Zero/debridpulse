@@ -266,11 +266,6 @@ body.dp-v11-structural #view-settings [data-panel="sources"] .dp-settings-provid
   width: 100%;
 }
 
-/* File Filters is retired from the v1.0.11 Downloads presentation. */
-body.dp-v11-structural #view-settings .dp-settings-file-filters-retired {
-  display: none !important;
-}
-
 /* ── Automatic Extraction ───────────────────────────────────────────── */
 /* Match Download Engine's three-part card-header grammar: identity left,
    explanatory copy true-centered, and the master enable control at right. */

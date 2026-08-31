@@ -197,36 +197,6 @@ def direct_link_collection_name(
     return safe_name(f"{fallback} + {total - 1} more")
 
 
-def is_blocked(filename: str, cfg: AppSettings, size_bytes: int = 0) -> Tuple[bool, str]:
-    if not cfg.filters_enabled:
-        return False, ""
-    ext = Path(filename).suffix.lower()
-    if ext in [entry.lower() for entry in cfg.blocked_extensions]:
-        return True, f"extension {ext}"
-    for keyword in cfg.blocked_keywords:
-        if keyword.lower() in filename.lower():
-            return True, f"keyword '{keyword}'"
-    if cfg.min_file_size_mb > 0 and size_bytes > 0 and size_bytes < cfg.min_file_size_mb * 1024 * 1024:
-        return True, f"smaller than {cfg.min_file_size_mb} MB"
-    # Smart File Selection: block common sample patterns
-    if getattr(cfg, "block_samples", False):
-        _sample_patterns = ["sample", "-sample.", ".sample.", "_sample_", "trailer", "-trailer.", "teaser"]
-        fname_lower = filename.lower()
-        if any(p in fname_lower for p in _sample_patterns):
-            return True, "sample/trailer file"
-    # Smart File Selection: block extras / featurettes
-    if getattr(cfg, "block_extras", False):
-        _extras_patterns = [
-            "/extras/", "/featurettes/", "/behind the scenes/", "/deleted scenes/",
-            "/interviews/", "/scenes/", "/shorts/", "/trailers/", "/specials/",
-            "\\extras\\", "\\featurettes\\",
-        ]
-        fname_lower = filename.lower()
-        if any(p in fname_lower for p in _extras_patterns):
-            return True, "extras/featurette"
-    return False, ""
-
-
 def fmt_bytes(size: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB"]
     value = float(size or 0)
@@ -3010,22 +2980,19 @@ class TorrentManager:
         destination_root = Path(cfg.download_folder) / safe_name(name)
         # Directory creation is left to aria2
 
-        total_files = len(flat_files)
-        blocked_items: List[dict] = []
         transferred_items: List[dict] = []
         queued_items: List[dict] = []
         failed_items: List[dict] = []
         seen_queue_keys: Set[Tuple[str, str]] = set()
 
         # ── Dedupe and categorise files ───────────────────────────────────────
-        # Build work list: filter out duplicates and immediately-blocked files
+        # Build work list while collapsing duplicate provider entries.
         work_items: List[Dict] = []
         manifest_rows: List[tuple] = []
         for file_info in flat_files:
             relative_path = file_info.get("path") or file_info.get("name") or "download.bin"
             display_name = str(PurePosixPath(relative_path.replace("\\", "/")))
             file_size = int(file_info.get("size", 0) or 0)
-            blocked, reason = is_blocked(display_name, cfg, file_size)
             source_link = file_info["link"]
 
             # AllDebrid commonly returns paths already rooted beneath the
@@ -3049,24 +3016,6 @@ class TorrentManager:
                 logger.info("Skipping duplicate AllDebrid file entry for %s", display_name)
                 continue
             seen_queue_keys.add(dedupe_key)
-
-            if blocked:
-                blocked_items.append({"filename": display_name, "size_bytes": file_size, "reason": reason})
-                manifest_rows.append(
-                    (
-                        torrent_id,
-                        display_name,
-                        file_size,
-                        source_link,
-                        source_link,
-                        str(local_path),
-                        "blocked",
-                        client_name,
-                        1,
-                        reason,
-                    )
-                )
-                continue
 
             work_items.append({
                 "display_name": display_name,
@@ -3136,22 +3085,16 @@ class TorrentManager:
                 )
                 await db.commit()
 
-        blocked_count = len(blocked_items)
         failed_count = len(failed_items)
         completed_count = len(transferred_items)
         queued_count = len(queued_items)
-        downloadable_count = total_files - blocked_count
 
         # Compute total size from all processed files — more reliable than the
         # AllDebrid magnet-status value which is often 0 until the torrent is ready.
-        total_size_bytes = _size_sum(blocked_items + transferred_items + queued_items + failed_items)
+        total_size_bytes = _size_sum(transferred_items + queued_items + failed_items)
 
-        # All files go through aria2 — final_status is queued or error
-        if blocked_count == total_files and total_files > 0 and failed_count == 0:
-            # ALL files filtered — nothing to download; treat as completed so
-            # the torrent is removed from AllDebrid and counted in statistics.
-            final_status = "completed"
-        elif queued_count > 0:
+        # All provider files now enter the normal aria2 materialization path.
+        if queued_count > 0:
             # Permit successfully prepared files to proceed even when individual
             # AllDebrid links fail. Failed files remain recorded as errors for
             # inspection, but do not block valid HTTP(S) downloads.
@@ -3186,37 +3129,18 @@ class TorrentManager:
             )
             if final_status == "completed":
                 await db.execute("UPDATE torrents SET completed_at=CURRENT_TIMESTAMP WHERE id=?", (torrent_id,))
-            # Build a descriptive event message
-            if blocked_count == total_files and total_files > 0:
-                _evt_msg = f"All {blocked_count} file(s) filtered/blocked — marked completed, removed from AllDebrid"
-                _evt_lvl = "info"
-            elif blocked_count > 0:
-                _evt_msg = f"Download {final_status}: {completed_count + queued_count} files prepared, {blocked_count} filtered"
-                _evt_lvl = "info" if final_status in {"completed", "queued", "paused"} else "warn"
-            else:
-                _evt_msg = f"Download {final_status}: {completed_count + queued_count} files prepared"
-                _evt_lvl = "info" if final_status in {"completed", "queued", "paused"} else "warn"
+            _evt_msg = f"Download {final_status}: {completed_count + queued_count} files prepared"
+            _evt_lvl = "info" if final_status in {"completed", "queued", "paused"} else "warn"
             await db.execute(
                 "INSERT INTO events (torrent_id, level, message) VALUES (?, ?, ?)",
                 (torrent_id, _evt_lvl, _evt_msg),
             )
             await db.commit()
 
-        await self._send_partial_summary(
-            torrent_id,
-            name,
-            flat_files,
-            blocked_items,
-            transferred_items + queued_items,
-            failed_items,
-        )
-
         if final_status == "completed":
             await self._delete_magnet_after_completion(torrent_id, ad_id, transfer_source)
             await self._mark_finished(torrent_id, name=name)
-            # For all-blocked torrents: partial notification already sent above;
-            # skip the completed notification to avoid a confusing "0 files" message.
-            if cfg.discord_notify_finished and blocked_count < total_files:
+            if cfg.discord_notify_finished:
                 await self.notify().send_complete(name, file_count=completed_count, destination=str(destination_root), download_client="aria2")
         elif final_status in {"queued", "paused"}:
             await self._log_event(
@@ -4797,22 +4721,6 @@ class TorrentManager:
                     sanitize_exception(exc),
                 )
         return {"resumed": resumed, "failed": failed}
-
-    async def _send_partial_summary(self, torrent_id: int, torrent_name: str, flat_files: List[Dict], blocked_items: List[dict], transferred_items: List[dict], failed_items: List[dict]):
-        if not blocked_items:
-            return
-        total_size = _size_sum([{"size_bytes": int(item.get("size", 0) or 0)} for item in flat_files])
-        downloaded_size = _size_sum(transferred_items)
-        await self._log_event(torrent_id, "warn", "Filtered files were skipped while the remaining files continued normally")
-        if get_settings().discord_webhook_url:
-            await self.notify().send_partial(
-                name=torrent_name,
-                total_files=len(flat_files),
-                downloaded_files=len(transferred_items),
-                blocked_files=len(blocked_items) + len(failed_items),
-                total_size=total_size,
-                downloaded_size=downloaded_size,
-            )
 
     # Direct download mode removed — aria2 handles all transfers
 

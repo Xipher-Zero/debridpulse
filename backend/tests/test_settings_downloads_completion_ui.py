@@ -89,22 +89,25 @@ def test_download_safety_recovery_has_vector_header_artwork_and_established_glow
     assert "data:image" not in icon.lower()
 
 
-def test_file_filters_are_retired_from_presentation_without_destructive_ui_pass_rewrite():
+def test_file_filters_are_physically_retired_from_active_settings_runtime():
     runtime = read("ui-settings-downloads-completion.js")
     css = read("ui-settings-downloads-completion.css")
     page = read("ui-settings-page.js")
 
-    assert "cardByTitle(panel, 'File Filters')" in runtime
-    assert "dp-settings-file-filters-retired" in runtime
-    assert ".dp-settings-file-filters-retired" in css
-    assert "display: none !important;" in css
+    assert "File Filters" not in page
+    for key in (
+        "filters_enabled",
+        "blocked_extensions",
+        "blocked_keywords",
+        "min_file_size_mb",
+        "block_samples",
+        "block_extras",
+        "torrent_labels_raw",
+    ):
+        assert key not in page
 
-    # This is intentionally a UI-only retirement. Keeping the legacy controls
-    # rendered but hidden preserves their loaded values when Apply Settings is
-    # used; physical config/backend pruning happens in the later cleanup pass.
-    assert "filters_enabled" in page
-    assert "blocked_extensions" in page
-    assert "torrent_labels_raw" in page
+    assert "dp-settings-file-filters-retired" not in runtime
+    assert ".dp-settings-file-filters-retired" not in css
 
 
 def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():

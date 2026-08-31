@@ -564,21 +564,7 @@
       })}
     `);
 
-    const filters = card('File Filters', `
-      ${toggle('filters_enabled', 'Enable File Filters', 'Apply extension, keyword, sample, extras, and size rules.', s.filters_enabled)}
-      <div class="dp-settings-filter-fields ${s.filters_enabled ? '' : 'is-disabled'}">
-        ${textarea('blocked_extensions', 'Blocked Extensions (one per line)', (s.blocked_extensions || []).join('\n'), {rows: 5})}
-        ${textarea('blocked_keywords', 'Blocked Keywords (one per line)', (s.blocked_keywords || []).join('\n'), {rows: 3})}
-        ${input('min_file_size_mb', 'Minimum File Size (MB)', s.min_file_size_mb ?? 0, {type: 'number', min: 0})}
-        ${toggle('block_samples', 'Block Samples / Trailers', 'Skip sample, trailer, and teaser files.', s.block_samples)}
-        ${toggle('block_extras', 'Block Extras / Featurettes', 'Skip common extras and featurette folders.', s.block_extras)}
-      </div>
-      ${input('torrent_labels_raw', 'Download Labels', (s.torrent_labels || []).join(', '), {
-        hint: 'Comma-separated labels available for downloads.'
-      })}
-    `);
-
-    return delivery + recovery + filters;
+    return delivery + recovery;
   }
 
   function extractionPanel(s) {
@@ -927,7 +913,6 @@
     activateTab(state.activeTab);
     bindEvents(view);
     updateModeState();
-    updateFilterState();
   }
 
   function activateTab(name) {
@@ -970,7 +955,6 @@
 
     view.addEventListener('change', event => {
       if (event.target.matches(`[data-setting="aria2_mode"]`)) updateModeState();
-      if (event.target.matches(`[data-setting="filters_enabled"]`)) updateFilterState();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
     });
@@ -1016,16 +1000,6 @@
     });
   }
 
-  function updateFilterState() {
-    const enabled = boolOf('filters_enabled');
-    root()?.querySelectorAll('.dp-settings-filter-fields').forEach(el => {
-      el.classList.toggle('is-disabled', !enabled);
-      el.querySelectorAll('input, textarea, select').forEach(control => {
-        control.disabled = !enabled;
-      });
-    });
-  }
-
   function fieldFor(key) {
     return byId(fieldId(key));
   }
@@ -1051,10 +1025,6 @@
 
   function boolOf(key) {
     return !!fieldFor(key)?.checked;
-  }
-
-  function linesOf(key) {
-    return valueOf(key).split('\n').map(item => item.trim()).filter(Boolean);
   }
 
   function clearSecrets() {
@@ -1088,14 +1058,6 @@
       stuck_download_timeout_hours: intOf('stuck_download_timeout_hours', 6),
       aria2_error_retry_count: intOf('aria2_error_retry_count', 3),
       aria2_error_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', 60),
-      filters_enabled: boolOf('filters_enabled'),
-      blocked_extensions: linesOf('blocked_extensions'),
-      blocked_keywords: linesOf('blocked_keywords'),
-      min_file_size_mb: intOf('min_file_size_mb', 0),
-      block_samples: boolOf('block_samples'),
-      block_extras: boolOf('block_extras'),
-      torrent_labels: valueOf('torrent_labels_raw').split(',').map(item => item.trim()).filter(Boolean),
-
       extract_enabled: boolOf('extract_enabled'),
       extract_delete_archive: boolOf('extract_delete_archive'),
       extract_max_concurrent: intOf('extract_max_concurrent', 1),
