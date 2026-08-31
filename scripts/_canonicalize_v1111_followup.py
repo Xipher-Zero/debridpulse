@@ -109,8 +109,8 @@ index = replace_once(
 write(index_path, index)
 
 
-# Release/install example follows VERSION. This is a real release surface, not
-# an architecture-test accommodation.
+# Release/install examples follow VERSION. These are real release surfaces, not
+# architecture-test accommodations.
 compose_path = 'docker-compose.yml'
 compose = read(compose_path)
 compose = replace_once(
@@ -120,5 +120,14 @@ compose = replace_once(
     'compose image version',
 )
 write(compose_path, compose)
+
+readme_path = 'README.md'
+readme = read(readme_path)
+old_image = 'ghcr.io/xipher-zero/debridpulse:v1.0.11'
+new_image = 'ghcr.io/xipher-zero/debridpulse:v1.0.11.1'
+count = readme.count(old_image)
+if count != 2:
+    raise RuntimeError(f'README image version: expected two matches, found {count}')
+write(readme_path, readme.replace(old_image, new_image))
 
 print('Applied v1.0.11.1 corrective follow-up')
