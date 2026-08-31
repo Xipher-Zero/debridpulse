@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -18,27 +18,36 @@ jobs:
         with:
           ref: 1.0.11-hotfix1
           fetch-depth: 0
-      - name: Frontend architecture census
+      - name: Persist frontend architecture census
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== HEAD ==='
-          git rev-parse HEAD
-          echo '=== FRONTEND STATIC FILES ==='
-          find frontend/static -maxdepth 1 -type f -printf '%f\n' | sort
-          echo '=== MUTATION OBSERVERS ==='
-          grep -RIn --include='*.js' 'MutationObserver' frontend/static || true
-          echo '=== WINDOW ASSIGNMENTS ==='
-          grep -RInE --include='*.js' 'window\.[A-Za-z_$][A-Za-z0-9_$]*[[:space:]]*=' frontend/static || true
-          echo '=== POSSIBLE WRAPPER/ORIGINAL OWNER PATTERNS ==='
-          grep -RInE --include='*.js' '(original|previous|prior|legacy|wrapped|wrapper)[A-Za-z0-9_$]*[[:space:]]*=|\.bind\(window\)|\.apply\(window|\.call\(window' frontend/static || true
-          echo '=== HISTORICAL PRESENTATION FILENAMES ==='
-          find frontend/static -maxdepth 1 -type f | grep -Ei '(batch|polish|finalization|final\.|-final|correction|fixes)' | sort || true
-          echo '=== STYLE-V11 IMPORT ORDER ==='
-          grep -n '@import' frontend/static/style-v11.css || true
-          echo '=== HISTORICAL CSS IMPORTS ==='
-          grep -nEi '@import.*(batch|polish|finalization|final|correction|fixes)' frontend/static/style-v11.css || true
-          echo '=== PAGE/SHELL LIFECYCLE EVENTS ==='
-          grep -RIn --include='*.js' 'debridpulse:' frontend/static | sort || true
-          echo '=== RETIRED OWNER NAMES STILL REFERENCED ==='
-          grep -RInE '(ui-presentation-loader|ui-page-finalization|ui-visual-behavior-fixes|ui-help-chrome|ui-settings-authentication-polish|ui-settings-authentication-oidc|ui-settings-auth-resilience)' frontend/static backend/tests || true
+          {
+            echo '=== HEAD ==='
+            git rev-parse HEAD
+            echo '=== FRONTEND STATIC FILES ==='
+            find frontend/static -maxdepth 1 -type f -printf '%f\n' | sort
+            echo '=== MUTATION OBSERVERS ==='
+            grep -RIn --include='*.js' 'MutationObserver' frontend/static || true
+            echo '=== WINDOW ASSIGNMENTS ==='
+            grep -RInE --include='*.js' 'window\.[A-Za-z_$][A-Za-z0-9_$]*[[:space:]]*=' frontend/static || true
+            echo '=== POSSIBLE WRAPPER/ORIGINAL OWNER PATTERNS ==='
+            grep -RInE --include='*.js' '(original|previous|prior|legacy|wrapped|wrapper)[A-Za-z0-9_$]*[[:space:]]*=|\.bind\(window\)|\.apply\(window|\.call\(window' frontend/static || true
+            echo '=== HISTORICAL PRESENTATION FILENAMES ==='
+            find frontend/static -maxdepth 1 -type f | grep -Ei '(batch|polish|finalization|final\.|-final|correction|fixes)' | sort || true
+            echo '=== STYLE-V11 IMPORT ORDER ==='
+            grep -n '@import' frontend/static/style-v11.css || true
+            echo '=== HISTORICAL CSS IMPORTS ==='
+            grep -nEi '@import.*(batch|polish|finalization|final|correction|fixes)' frontend/static/style-v11.css || true
+            echo '=== PAGE/SHELL LIFECYCLE EVENTS ==='
+            grep -RIn --include='*.js' 'debridpulse:' frontend/static | sort || true
+            echo '=== RETIRED OWNER NAMES STILL REFERENCED ==='
+            grep -RInE '(ui-presentation-loader|ui-page-finalization|ui-visual-behavior-fixes|ui-help-chrome|ui-settings-authentication-polish|ui-settings-authentication-oidc|ui-settings-auth-resilience)' frontend/static backend/tests || true
+          } > v1111-frontend-census.txt
+          cat v1111-frontend-census.txt
+          git config user.name "Xipher-Zero"
+          git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
+          git add v1111-frontend-census.txt
+          git diff --cached --check
+          git commit -m "chore: persist frontend canonicalization census"
+          git push origin HEAD:1.0.11-hotfix1
