@@ -142,7 +142,16 @@
     if (!value) return;
 
     const presentation = oidcStatePresentation?.resolve?.(auth, available);
-    if (!presentation) return;
+    if (!presentation) {
+      // Normal-state copy remains exclusively owned by the Settings resolver.
+      // Keep only the resilience-critical provider-unavailable fallback here so
+      // a missing presentation asset cannot make an unavailable runtime look healthy.
+      if (available === false) {
+        value.textContent = auth.oidc_verified ? 'Verified · Runtime Unavailable' : 'Runtime Unavailable';
+        kpi.dataset.c = 'red';
+      }
+      return;
+    }
     renderOidcKpiValue(value, presentation);
     kpi.dataset.c = presentation.tone;
   }
