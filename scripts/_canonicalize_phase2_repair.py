@@ -51,6 +51,16 @@ for rel in (
     text = text[:cut].rstrip() + "\n\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n"
     write(rel, text)
 
+# The final Settings geometry layer exists as ui-settings-form-layout.css. An
+# obsolete import name survived the iterative UI pass and left that accepted
+# layer orphaned. Restore the canonical file to the exact same cascade position.
+style = read('frontend/static/style-v11.css')
+legacy_form_import = "@import url('/ui-settings-form-consistency.css?v=2');"
+canonical_form_import = "@import url('/ui-settings-form-layout.css?v=2');"
+if legacy_form_import in style:
+    style = style.replace(legacy_form_import, canonical_form_import, 1)
+write('frontend/static/style-v11.css', style)
+
 # Re-run the complete targeted executable-observer inventory. Comments that
 # document the retired MutationObserver behavior are not runtime scaffolding.
 for rel in (
