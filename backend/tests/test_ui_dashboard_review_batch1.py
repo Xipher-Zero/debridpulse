@@ -13,11 +13,14 @@ RUNTIME = STATIC / "ui-runtime.js"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 
 
-def test_review_batch_is_loaded_after_regression_layer() -> None:
+def test_review_batch_follows_canonical_shell_owner() -> None:
     entry = ENTRY.read_text(encoding="utf-8")
-    regression = entry.index("/ui-regression-fixes.css?v=20")
+    shell = entry.index("/ui-shell-structural.css?v=27")
+    dashboard = entry.index("/ui-dashboard.css?v=20")
     batch = entry.index("/ui-dashboard-batch1.css?v=20")
-    assert batch > regression
+
+    assert shell < dashboard < batch
+    assert "/ui-regression-fixes.css" not in entry
 
 
 def test_speed_cap_hover_keeps_surface_and_reuses_green_arrow() -> None:
