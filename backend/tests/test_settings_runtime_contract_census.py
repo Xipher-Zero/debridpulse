@@ -162,9 +162,15 @@ def test_retired_file_filter_policy_is_physically_pruned_but_manual_blocking_and
     assert retired.isdisjoint(upgraded.model_dump())
 
     manager = (root / "backend/services/manager_v2.py").read_text(encoding="utf-8")
-    assert "def is_blocked(" not in manager
+    integrity = (root / "backend/services/transfer_integrity.py").read_text(encoding="utf-8")
+    runtime_guard = (root / "backend/services/transfer_runtime_guard.py").read_text(encoding="utf-8")
+    for owner in (manager, integrity, runtime_guard):
+        assert "is_blocked" not in owner
     assert "blocked_items" not in manager
+    assert "blocked_items" not in integrity
     assert "Filtered files were skipped" not in manager
+    assert "filtered/blocked" not in integrity
+    assert "_send_partial_summary" not in integrity
 
     routes = (root / "backend/api/routes.py").read_text(encoding="utf-8")
     assert '@router.post("/torrents/{torrent_id}/files/{file_id}/block")' in routes
