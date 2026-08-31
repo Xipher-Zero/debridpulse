@@ -21,12 +21,12 @@ def test_superseded_dashboard_progress_weight_layer_is_not_shipped() -> None:
 def test_shared_transfer_contract_is_final_progress_geometry_owner() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     transfer_path = "/ui-transfer-contract.css?v=31"
-    dashboard_consistency = "/ui-dashboard-consistency.css?v=23"
+    dashboard_final = "/ui-dashboard-final.css?v=23"
     downloads = "/ui-downloads-page.css?v=27"
 
-    for layer in (dashboard_consistency, downloads, transfer_path):
+    for layer in (dashboard_final, downloads, transfer_path):
         assert layer in overlay
-    assert overlay.index(dashboard_consistency) < overlay.index(downloads) < overlay.index(transfer_path)
+    assert overlay.index(dashboard_final) < overlay.index(downloads) < overlay.index(transfer_path)
 
     css = TRANSFER.read_text(encoding="utf-8")
     assert "body.dp-v11-structural :is(#dash-tbody, #t-tbody) .prog," in css
