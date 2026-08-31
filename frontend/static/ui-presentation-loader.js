@@ -22,15 +22,13 @@
     {href: '/ui-settings-authentication-oidc.css?v=1', marker: 'data-dp-settings-authentication-oidc-style'},
     {href: '/ui-settings-card-icons.css?v=2', marker: 'data-dp-settings-card-icons-style'},
     {href: '/ui-final-polish.css?v=1', marker: 'data-dp-final-polish-style'},
+    {href: '/ui-statistics.css?v=1', marker: 'data-dp-statistics-style'},
   ]);
 
   const RUNTIMES = Object.freeze([
     {src: '/ui-shell-runtime.js?v=1', marker: 'data-dp-shell-runtime'},
     {src: '/ui-visual-behavior-fixes.js?v=23', marker: 'data-dp-visual-behavior-fixes'},
-    {src: '/ui-statistics-orchestrator.js?v=1', marker: 'data-dp-statistics-orchestrator'},
-    {src: '/ui-statistics-batch3.js?v=3', marker: 'data-dp-statistics-batch3'},
-    {src: '/ui-statistics-batch4.js?v=2', marker: 'data-dp-statistics-batch4'},
-    {src: '/ui-statistics-batch5.js?v=7', marker: 'data-dp-statistics-batch5'},
+    {src: '/ui-statistics.js?v=1', marker: 'data-dp-statistics'},
     {src: '/ui-help-page.js?v=1', marker: 'data-dp-help-page'},
     {src: '/ui-help-chrome.js?v=2', marker: 'data-dp-help-chrome'},
     {src: '/ui-help-license-documents.js?v=2', marker: 'data-dp-help-license-documents'},

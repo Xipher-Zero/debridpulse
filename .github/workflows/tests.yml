@@ -85,10 +85,7 @@ jobs:
           node --check frontend/static/ui-settings-aria2-live.js
           node --check frontend/static/ui-settings-card-icons.js
           node --check frontend/static/ui-visual-behavior-fixes.js
-          node --check frontend/static/ui-statistics-orchestrator.js
-          node --check frontend/static/ui-statistics-batch3.js
-          node --check frontend/static/ui-statistics-batch4.js
-          node --check frontend/static/ui-statistics-batch5.js
+          node --check frontend/static/ui-statistics.js
           node --check frontend/static/ui-error-semantics.js
           node --check frontend/static/ui-final-polish.js
 

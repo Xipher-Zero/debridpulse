@@ -58,13 +58,40 @@ def test_statistics_detail_endpoint_has_one_frontend_io_owner() -> None:
     assert len(owners) == 1, f"Statistics detail I/O has multiple owners: {owners}"
 
 
-def test_statistics_render_wrapper_has_at_most_one_owner() -> None:
-    owners = {
-        path.name: path.read_text(encoding="utf-8").count("window.loadDetailedStats = wrapped")
+def test_statistics_has_one_canonical_presentation_owner() -> None:
+    loader = read("ui-presentation-loader.js")
+    source = read("ui-statistics.js")
+
+    assert "/ui-statistics.css?v=1" in loader
+    assert "data-dp-statistics-style" in loader
+    assert "/ui-statistics.js?v=1" in loader
+    assert "data-dp-statistics'" in loader
+    assert "window.loadDetailedStats = wrapped" in source
+    assert "debridpulse:statistics-rendered" in source
+    assert "document.addEventListener(EVENT_NAME" in source
+    assert "document.createElement('link')" not in source
+
+    historical = (
+        "ui-statistics-orchestrator.js",
+        "ui-statistics-batch3.js",
+        "ui-statistics-batch3.css",
+        "ui-statistics-batch4.js",
+        "ui-statistics-batch4.css",
+        "ui-statistics-batch5.js",
+        "ui-statistics-batch5.css",
+    )
+    for name in historical:
+        assert name not in loader
+        assert not (STATIC / name).exists()
+
+
+def test_statistics_render_wrapper_is_owned_only_by_canonical_runtime() -> None:
+    owners = [
+        path.name
         for path in all_js_files()
-    }
-    active = {name: count for name, count in owners.items() if count}
-    assert sum(active.values()) <= 1, f"Statistics render wrapper has multiple owners: {active}"
+        if "window.loadDetailedStats = wrapped" in path.read_text(encoding="utf-8")
+    ]
+    assert owners == ["ui-statistics.js"]
 
 
 def test_settings_page_is_authoritative_clean_room_owner() -> None:
