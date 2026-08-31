@@ -45,6 +45,37 @@
   const checked = value => value ? 'checked' : '';
   const selected = (value, expected) => String(value) === String(expected) ? 'selected' : '';
 
+  function oidcStatePresentation(auth, available = auth?.oidc_available) {
+    if (!auth?.oidc_configured) {
+      return auth?.oidc_enabled
+        ? {primary: 'Configuration Error', secondary: '', tone: 'red'}
+        : {primary: 'Disabled', secondary: '', tone: 'neutral'};
+    }
+    if (!auth?.oidc_enabled) {
+      return {primary: 'Configured', secondary: '', tone: 'yellow'};
+    }
+    if (available === false) {
+      return {
+        primary: auth?.oidc_verified ? 'Verified · Runtime Unavailable' : 'Runtime Unavailable',
+        secondary: '',
+        tone: 'red',
+      };
+    }
+    if (auth?.oidc_verified) {
+      return {primary: 'Enabled', secondary: '', tone: 'green'};
+    }
+    if (auth?.oidc_ready) {
+      return {
+        primary: 'Configured & Enabled',
+        secondary: '(Untested)',
+        tone: 'yellow',
+      };
+    }
+    return {primary: 'Configuration Error', secondary: '', tone: 'red'};
+  }
+
+  window.DPSettingsOidcStatePresentation = Object.freeze({resolve: oidcStatePresentation});
+
   function notify(message, kind = 'info') {
     if (typeof toast === 'function') {
       toast(String(message), kind);
@@ -671,29 +702,7 @@
       passwordTone = 'red';
     }
 
-    let oidcValue = 'Not Configured';
-    let oidcTone = 'neutral';
-    if (a.oidc_configured) {
-      if (!a.oidc_enabled) {
-        oidcValue = 'Configured';
-        oidcTone = 'yellow';
-      } else if (a.oidc_available === false) {
-        oidcValue = a.oidc_verified ? 'Verified · Runtime Unavailable' : 'Runtime Unavailable';
-        oidcTone = 'red';
-      } else if (a.oidc_verified) {
-        oidcValue = 'Enabled & Verified';
-        oidcTone = 'green';
-      } else if (a.oidc_ready) {
-        oidcValue = 'Configured & Enabled';
-        oidcTone = 'yellow';
-      } else {
-        oidcValue = 'Configuration Error';
-        oidcTone = 'red';
-      }
-    } else if (a.oidc_enabled) {
-      oidcValue = 'Configuration Error';
-      oidcTone = 'red';
-    }
+    const oidcState = oidcStatePresentation(a);
 
     let tokenValue = 'Not Configured';
     let tokenTone = 'neutral';
@@ -713,16 +722,16 @@
     const items = [
       ['Authentication Mode', modeValue, modeTone],
       ['Username & Password', passwordValue, passwordTone],
-      ['OIDC State', oidcValue, oidcTone],
+      ['OIDC State', oidcState.primary, oidcState.tone, oidcState.secondary],
       ['API Token', tokenValue, tokenTone],
     ];
     return card('Authentication Status', `
       <div class="dp-settings-status-grid dp-settings-auth-kpi-grid">
-        ${items.map(([label, value, tone]) => `
+        ${items.map(([label, value, tone, secondary = '']) => `
           <div class="dash-hero-stat dp-settings-auth-kpi" data-c="${html(tone)}">
             <div class="dhs-body">
               <div class="dhs-label">${html(label)}</div>
-              <div class="dhs-val">${html(value)}</div>
+              <div class="dhs-val">${html(value)}${secondary ? `<br><span class="dp-settings-auth-kpi-secondary">${html(secondary)}</span>` : ''}</div>
             </div>
           </div>`).join('')}
       </div>

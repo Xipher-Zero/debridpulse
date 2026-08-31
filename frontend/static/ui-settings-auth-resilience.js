@@ -18,6 +18,7 @@
   let latestAuth = null;
 
   const text = value => String(value ?? '');
+  const oidcStatePresentation = window.DPSettingsOidcStatePresentation;
 
   function settingsActive() {
     return document.getElementById('view-settings')?.classList.contains('active') === true;
@@ -121,6 +122,16 @@
     notice.append(title, detail);
   }
 
+  function renderOidcKpiValue(value, presentation) {
+    value.replaceChildren(document.createTextNode(presentation.primary));
+    if (!presentation.secondary) return;
+    value.appendChild(document.createElement('br'));
+    const secondary = document.createElement('span');
+    secondary.className = 'dp-settings-auth-kpi-secondary';
+    secondary.textContent = presentation.secondary;
+    value.appendChild(secondary);
+  }
+
   function applyOidcRuntimeStatus(auth, available) {
     if (!settingsActive() || !auth?.oidc_enabled || !auth?.oidc_configured) return;
     const kpi = Array.from(document.querySelectorAll('#view-settings .dp-settings-auth-kpi')).find(node => {
@@ -130,20 +141,10 @@
     const value = kpi.querySelector('.dhs-val');
     if (!value) return;
 
-    if (available === false) {
-      value.textContent = auth.oidc_verified ? 'Verified · Runtime Unavailable' : 'Runtime Unavailable';
-      kpi.dataset.c = 'red';
-      return;
-    }
-    if (available === true) {
-      if (auth.oidc_verified) {
-        value.textContent = 'Enabled & Verified';
-        kpi.dataset.c = 'green';
-      } else if (auth.oidc_ready) {
-        value.textContent = 'Configured & Enabled';
-        kpi.dataset.c = 'yellow';
-      }
-    }
+    const presentation = oidcStatePresentation?.resolve?.(auth, available);
+    if (!presentation) return;
+    renderOidcKpiValue(value, presentation);
+    kpi.dataset.c = presentation.tone;
   }
 
   async function probeOidcRuntime(auth, generation) {
