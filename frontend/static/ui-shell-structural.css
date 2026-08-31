@@ -391,3 +391,56 @@ body.light.dp-v11-structural .theme-toggle {
     height: 36px !important;
   }
 }
+
+/* Canonical selected-navigation and shell depth retained from the accepted Dashboard review. */
+body.dp-v11-structural .nav-item.active {
+  background: linear-gradient(90deg,
+    rgba(126, 48, 239, .58) 0%,
+    rgba(119, 45, 229, .39) 34%,
+    rgba(111, 44, 214, .22) 64%,
+    rgba(102, 43, 201, .08) 88%,
+    rgba(96, 43, 193, .035) 100%) !important;
+  box-shadow:
+    inset 0 1px rgba(190, 117, 255, .16),
+    inset 0 -1px rgba(126, 58, 237, .12) !important;
+}
+body.dp-v11-structural .nav-item.active::after {
+  content: '';
+  position: absolute;
+}
+body.light.dp-v11-structural .nav-item.active {
+  background: linear-gradient(90deg,
+    rgba(137, 65, 239, .31) 0%,
+    rgba(133, 67, 234, .21) 36%,
+    rgba(128, 72, 222, .12) 67%,
+    rgba(122, 77, 207, .045) 100%) !important;
+}
+body.light.dp-v11-structural .nav-item.active::before {
+  background: linear-gradient(180deg, #bd7aff, #9844ef 56%, #7c3aed) !important;
+  box-shadow:
+    0 0 5px rgba(169, 76, 255, .62),
+    0 0 11px rgba(137, 63, 235, .36) !important;
+}
+body.dp-v11-structural #sidebar {
+  position: relative;
+  z-index: 3;
+  border-right-color: rgba(116, 130, 194, .10) !important;
+}
+body.light.dp-v11-structural #sidebar {
+  border-right-color: rgba(113, 124, 170, .13) !important;
+}
+body.dp-v11-structural #main {
+  position: relative;
+  z-index: 1;
+}
+body.light.dp-v11-structural #page-title {
+  text-shadow:
+    0 2px 5px rgba(58, 64, 96, .17),
+    0 1px 0 rgba(255,255,255,.78);
+}
+body.light.dp-v11-structural #page-title::after {
+  filter:
+    saturate(1.16)
+    drop-shadow(0 2px 3px rgba(103, 67, 205, .18))
+    drop-shadow(0 0 7px rgba(156, 78, 255, .25)) !important;
+}

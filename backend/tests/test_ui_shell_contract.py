@@ -50,11 +50,11 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css?v=31",
         "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=21",
-        "/ui-shell-structural.css?v=27",
+        "/ui-shell-structural.css?v=28",
         "/ui-shell-provider-status.css?v=23",
         "/ui-shell-provider-status-v2.css?v=28",
         "/ui-dashboard.css?v=20",
-        "/ui-dashboard-structural.css?v=21",
+        "/ui-dashboard-structural.css?v=22",
         "/ui-dashboard-control-polish.css?v=23",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=21",
@@ -82,10 +82,10 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "25",
         "/ui-shell.css": "21",
-        "/ui-shell-structural.css": "27",
+        "/ui-shell-structural.css": "28",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "28",
-        "/ui-dashboard-structural.css": "21",
+        "/ui-dashboard-structural.css": "22",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-statistics-page.css": "21",
@@ -119,6 +119,8 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "ui-downloads-shell-sync.css",
         "ui-regression-fixes.css",
         "ui-dashboard-batch1.css",
+        "ui-dashboard-batch2.css",
+        "ui-dashboard-batch2-final.css",
     ):
         assert retired_import not in overlay
 
@@ -174,6 +176,24 @@ def test_structural_shell_owns_resolved_main_topbar_and_theme_geometry() -> None
     assert ".topbar-theme-control .theme-toggle" in css
     assert "control.classList.add('topbar-theme-control')" in operator
     assert "topbar.appendChild(control)" in operator
+
+
+def test_structural_shell_owns_selected_navigation_and_title_depth() -> None:
+    css = SHELL_STRUCTURAL_STYLE.read_text(encoding="utf-8")
+
+    assert "rgba(126, 48, 239, .58)" in css
+    assert "body.dp-v11-structural .nav-item.active::after" in css
+    assert "position: absolute;" in css
+    assert "body.light.dp-v11-structural .nav-item.active::before" in css
+    assert "#bd7aff" in css
+    assert "body.dp-v11-structural #sidebar" in css
+    assert "z-index: 3;" in css
+    assert "body.dp-v11-structural #main" in css
+    assert "z-index: 1;" in css
+    assert "body.light.dp-v11-structural #page-title" in css
+    assert "text-shadow:" in css
+    assert "body.light.dp-v11-structural #page-title::after" in css
+    assert "drop-shadow(0 2px 3px rgba(103, 67, 205, .18))" in css
 
 
 def test_shell_matches_required_mockup_structure() -> None:
@@ -266,6 +286,8 @@ def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
         "ui-downloads-shell-sync.css",
         "ui-regression-fixes.css",
         "ui-dashboard-batch1.css",
+        "ui-dashboard-batch2.css",
+        "ui-dashboard-batch2-final.css",
     )
     present = [name for name in junk if (STATIC / name).exists()]
     assert not present, f"temporary/retired migration files leaked into final tree: {present}"

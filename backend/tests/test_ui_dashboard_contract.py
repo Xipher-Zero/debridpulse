@@ -17,10 +17,15 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-dashboard-structural.css?v=21" in entry
+    assert "/ui-dashboard-structural.css?v=22" in entry
     assert "/ui-shell.css?v=21" in entry
-    assert "/ui-dashboard-batch1.css" not in entry
-    assert not (STATIC / "ui-dashboard-batch1.css").exists()
+    for retired in (
+        "ui-dashboard-batch1.css",
+        "ui-dashboard-batch2.css",
+        "ui-dashboard-batch2-final.css",
+    ):
+        assert retired not in entry
+        assert not (STATIC / retired).exists()
 
 
 def test_dashboard_structural_owner_keeps_reviewed_header_and_sparkline_geometry() -> None:
@@ -35,6 +40,12 @@ def test_dashboard_structural_owner_keeps_reviewed_header_and_sparkline_geometry
     assert "min-height: 78px;" in css
     assert ".dp-dashboard-activity .card-header" in css
     assert "min-height: 70px;" in css
+    assert "width: calc(100% + 2px) !important;" in css
+    assert ".dp-card-spark-fill" in css
+    assert "opacity: .88 !important;" in css
+    assert "opacity: .72 !important;" in css
+    assert ".dp-dashboard-quick-add .card-title > .dp-icon" in css
+    assert "flex: 0 0 51px !important;" in css
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:

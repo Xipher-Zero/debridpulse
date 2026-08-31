@@ -291,3 +291,33 @@ body.light.dp-v11-structural #view-dashboard .t-table td { color: #454b67; }
   body.dp-v11-structural #view-dashboard #btn-add-transfer { min-height: 42px; }
   .dp-card-header-actions { width: 100%; margin: 8px 0 0; }
 }
+
+/* Canonical Dashboard geometry retained from the accepted second review. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat {
+  overflow: hidden;
+}
+body.dp-v11-structural #view-dashboard .dp-card-spark {
+  left: -1px !important;
+  right: -1px !important;
+  width: calc(100% + 2px) !important;
+  bottom: -1px !important;
+}
+body.dp-v11-structural #view-dashboard .dp-card-spark-fill {
+  opacity: .88 !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-card-spark-fill {
+  opacity: .72 !important;
+}
+body.dp-v11-structural #view-dashboard .dhs-icon,
+body.dp-v11-structural #view-dashboard .dhs-icon .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add .card-title > .dp-icon,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  width: 51px !important;
+  min-width: 51px !important;
+  height: 51px !important;
+  flex: 0 0 51px !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-title > .dp-icon {
+  object-fit: contain;
+  padding: 1px;
+}
