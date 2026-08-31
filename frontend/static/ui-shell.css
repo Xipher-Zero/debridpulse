@@ -215,7 +215,7 @@ body {
   display: inline-block;
   width: 68px;
   height: 14px;
-  margin-left: 13px;
+  margin-left: 8px;
   vertical-align: -1px;
   opacity: .52;
   background: url('/icons/dp/shell-pulse.svg') center / contain no-repeat;
@@ -270,6 +270,22 @@ body {
 #aria2-cap-toggle { font-size: 10.5px; }
 #aria2-cap-toggle[aria-disabled="true"] { color: var(--dp-state-connectivity); }
 #aria2-cap-toggle svg { width: 13px; height: 13px; }
+#aria2-cap-toggle .dp-speedcap-arrow {
+  display: inline-block;
+  color: var(--green);
+  font-size: 9px;
+  line-height: 1;
+  transform: translateY(-1px);
+  text-shadow: 0 0 7px color-mix(in srgb, var(--green) 42%, transparent);
+}
+
+body.dp-v11-structural .aria2-cap-options button:hover,
+body.dp-v11-structural .aria2-cap-options button:focus-visible {
+  background: var(--surface2) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  font-weight: 600;
+}
 
 .aria2-cap-menu {
   margin-top: 4px;

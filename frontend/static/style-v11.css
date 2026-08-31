@@ -21,7 +21,7 @@
 @import url('/ui-modal-contract.css?v=25');
 
 /* Shared application shell. */
-@import url('/ui-shell.css?v=20');
+@import url('/ui-shell.css?v=21');
 @import url('/ui-shell-structural.css?v=27');
 @import url('/ui-shell-provider-status.css?v=23');
 @import url('/ui-shell-provider-status-v2.css?v=28');
@@ -31,8 +31,7 @@
    intentionally page-specific where they tune Dashboard composition itself;
    generic material extracted from them now lives above. */
 @import url('/ui-dashboard.css?v=20');
-@import url('/ui-dashboard-structural.css?v=20');
-@import url('/ui-dashboard-batch1.css?v=20');
+@import url('/ui-dashboard-structural.css?v=21');
 @import url('/ui-dashboard-batch2.css?v=20');
 @import url('/ui-dashboard-batch2-final.css?v=20');
 @import url('/ui-dashboard-batch3.css?v=20');

@@ -8,16 +8,18 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 STYLE = (STATIC / "style-v11.css").read_text(encoding="utf-8")
-BATCH1 = (STATIC / "ui-dashboard-batch1.css").read_text(encoding="utf-8")
+SHELL = (STATIC / "ui-shell.css").read_text(encoding="utf-8")
+DASHBOARD_STRUCTURAL = (STATIC / "ui-dashboard-structural.css").read_text(encoding="utf-8")
 BATCH2 = (STATIC / "ui-dashboard-batch2.css").read_text(encoding="utf-8")
 LINK_ICON = (STATIC / "icons" / "dp" / "card-link.svg").read_text(encoding="utf-8")
 DOWNLOAD_ICON = (STATIC / "icons" / "dp" / "card-download.svg").read_text(encoding="utf-8")
 
 
-def test_second_review_batch_is_loaded_after_first_review_batch() -> None:
-    first = STYLE.index("/ui-dashboard-batch1.css?v=20")
+def test_second_review_batch_follows_canonical_dashboard_owner() -> None:
+    dashboard = STYLE.index("/ui-dashboard-structural.css?v=21")
     second = STYLE.index("/ui-dashboard-batch2.css?v=20")
-    assert first < second
+    assert dashboard < second
+    assert "/ui-dashboard-batch1.css" not in STYLE
 
 
 def test_pause_and_resume_all_are_semantic_gradients() -> None:
@@ -84,7 +86,9 @@ def test_light_page_title_and_flair_gain_depth_without_subtitle_shadow() -> None
     assert ".dp-page-subtitle" not in BATCH2
 
 
-def test_batch2_preserves_first_batch_speedcap_contract() -> None:
-    assert ".aria2-cap-options button:hover" in BATCH1
-    assert "background: var(--surface2) !important" in BATCH1
-    assert "#aria2-cap-toggle .dp-speedcap-arrow" in BATCH1
+def test_speedcap_contract_is_owned_by_shell() -> None:
+    assert ".aria2-cap-options button:hover" in SHELL
+    assert "background: var(--surface2) !important" in SHELL
+    assert "#aria2-cap-toggle .dp-speedcap-arrow" in SHELL
+    assert "margin-left: 8px" in SHELL
+    assert "height: 31px;" in DASHBOARD_STRUCTURAL

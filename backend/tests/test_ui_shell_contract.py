@@ -49,12 +49,12 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-universal-language.css?v=20",
         "/ui-shared-contract.css?v=31",
         "/ui-modal-contract.css?v=25",
-        "/ui-shell.css?v=20",
+        "/ui-shell.css?v=21",
         "/ui-shell-structural.css?v=27",
         "/ui-shell-provider-status.css?v=23",
         "/ui-shell-provider-status-v2.css?v=28",
         "/ui-dashboard.css?v=20",
-        "/ui-dashboard-structural.css?v=20",
+        "/ui-dashboard-structural.css?v=21",
         "/ui-dashboard-control-polish.css?v=23",
         "/ui-dashboard-consistency.css?v=23",
         "/ui-statistics-page.css?v=21",
@@ -81,9 +81,11 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "/ui-language-tokens.css": "21",
         "/ui-shared-contract.css": "31",
         "/ui-modal-contract.css": "25",
+        "/ui-shell.css": "21",
         "/ui-shell-structural.css": "27",
         "/ui-shell-provider-status.css": "23",
         "/ui-shell-provider-status-v2.css": "28",
+        "/ui-dashboard-structural.css": "21",
         "/ui-dashboard-control-polish.css": "23",
         "/ui-dashboard-consistency.css": "23",
         "/ui-statistics-page.css": "21",
@@ -116,6 +118,7 @@ def test_v11_stylesheet_stack_preserves_legacy_contract_and_uses_universal_base(
         "ui-downloads-consistency.css",
         "ui-downloads-shell-sync.css",
         "ui-regression-fixes.css",
+        "ui-dashboard-batch1.css",
     ):
         assert retired_import not in overlay
 
@@ -181,8 +184,11 @@ def test_shell_matches_required_mockup_structure() -> None:
         "position: fixed",
         "right: 20px",
         "#page-title::after",
+        "margin-left: 8px",
         "/icons/dp/shell-pulse.svg",
         "#aria2-speed-badge.external-control",
+        "#aria2-cap-toggle .dp-speedcap-arrow",
+        ".aria2-cap-options button:hover",
         "var(--dp-state-connectivity)",
         "@media (max-width: 1439px)",
         "@media (max-width: 1179px)",
@@ -259,6 +265,7 @@ def test_temporary_or_retired_stylesheet_layers_are_not_shipped() -> None:
         "ui-downloads-consistency.css",
         "ui-downloads-shell-sync.css",
         "ui-regression-fixes.css",
+        "ui-dashboard-batch1.css",
     )
     present = [name for name in junk if (STATIC / name).exists()]
     assert not present, f"temporary/retired migration files leaked into final tree: {present}"

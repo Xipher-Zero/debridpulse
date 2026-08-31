@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 V11_STYLE = STATIC / "style-v11.css"
 DASHBOARD_CSS = STATIC / "ui-dashboard.css"
+DASHBOARD_STRUCTURAL_CSS = STATIC / "ui-dashboard-structural.css"
 STATISTICS_CSS = STATIC / "ui-statistics-page.css"
 RUNTIME = STATIC / "ui-runtime.js"
 
@@ -16,7 +17,24 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-shell.css?v=20" in entry
+    assert "/ui-dashboard-structural.css?v=21" in entry
+    assert "/ui-shell.css?v=21" in entry
+    assert "/ui-dashboard-batch1.css" not in entry
+    assert not (STATIC / "ui-dashboard-batch1.css").exists()
+
+
+def test_dashboard_structural_owner_keeps_reviewed_header_and_sparkline_geometry() -> None:
+    css = DASHBOARD_STRUCTURAL_CSS.read_text(encoding="utf-8")
+
+    assert "height: 31px;" in css
+    assert "opacity: 1;" in css
+    assert "stroke-width: 1.55;" in css
+    assert ".dp-card-spark .dp-card-spark-point" in css
+    assert "filter: drop-shadow(0 0 3px currentColor);" in css
+    assert ".dp-dashboard-quick-add .card-header" in css
+    assert "min-height: 78px;" in css
+    assert ".dp-dashboard-activity .card-header" in css
+    assert "min-height: 70px;" in css
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:
