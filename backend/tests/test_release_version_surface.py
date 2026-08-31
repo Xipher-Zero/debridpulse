@@ -1,4 +1,4 @@
-"""Release-candidate version surface contract."""
+"""Final release version surface contract."""
 
 from pathlib import Path
 
@@ -11,8 +11,8 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_rc1_version_is_authoritative_and_user_visible_surfaces_follow_it() -> None:
-    expected = "1.0.11rc1"
+def test_release_version_is_authoritative_and_user_visible_surfaces_follow_it() -> None:
+    expected = "1.0.11"
     expected_image = f"ghcr.io/xipher-zero/debridpulse:v{expected}"
     assert read(ROOT / "VERSION").strip() == expected
 
@@ -42,7 +42,7 @@ def test_rc1_version_is_authoritative_and_user_visible_surfaces_follow_it() -> N
     assert "const versionEl = document.getElementById('sidebar-version');" in app
     assert "versionEl.textContent = s.version ? `v${s.version}` : 'v—';" in app
 
-    # Release-facing deployment examples must advance with the candidate too.
+    # Release-facing deployment examples must match the final release.
     assert expected_image in compose
     assert readme.count(expected_image) >= 2
     assert project_page.count(expected_image) >= 2
@@ -51,7 +51,7 @@ def test_rc1_version_is_authoritative_and_user_visible_surfaces_follow_it() -> N
         assert "1.0.10" not in source
 
 
-def test_rc1_container_metadata_uses_authoritative_version_file() -> None:
+def test_release_container_metadata_uses_authoritative_version_file() -> None:
     workflow = read(ROOT / ".github" / "workflows" / "fork-image.yml")
     dockerfile = read(ROOT / "Dockerfile")
 
@@ -60,3 +60,8 @@ def test_rc1_container_metadata_uses_authoritative_version_file() -> None:
     assert "APP_VERSION=${{ steps.version.outputs.version }}" in workflow
     assert 'ARG APP_VERSION=unknown' in dockerfile
     assert 'org.opencontainers.image.version="${APP_VERSION}"' in dockerfile
+
+    release_branch = "1.0.11"
+    for workflow_name in ("tests.yml", "container-security.yml", "fork-image.yml", "codeql.yml"):
+        workflow_text = read(ROOT / ".github" / "workflows" / workflow_name)
+        assert release_branch in workflow_text

@@ -133,6 +133,6 @@ See `docs/UI_ICON_SYSTEM.md` for the custom-vs-Lucide boundary and true-vector S
 
 ## Visual acceptance
 
-The consolidated `1.0.11rc1` candidate was browser-compared with the accepted pre-consolidation local build and found visually/behaviorally equivalent from the user perspective. That comparison validates the current token/cascade output; it does not make live calibration layers dead source.
+The consolidated pre-release candidate for `1.0.11` was browser-compared with the accepted pre-consolidation local build and found visually/behaviorally equivalent from the user perspective. That comparison validates the current token/cascade output; it does not make live calibration layers dead source.
 
 When future maintenance changes a shared token or folds a live calibration layer, repeat browser validation in both themes and relevant responsive layouts before accepting the new candidate boundary.

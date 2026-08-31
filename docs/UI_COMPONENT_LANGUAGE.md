@@ -154,4 +154,4 @@ The approved static references do not directly specify every hover, pressed, foc
 
 The shell and all v1.0.11 pages now consume this language through the canonical shared sources plus explicitly documented live compatibility/calibration layers. `style-v11.css` is the stylesheet import root and `ui-presentation-loader.js` owns deterministic post-core presentation runtime sequencing.
 
-The browser-validated RC1 output is the acceptance boundary. Cleanup may remove unreachable duplicates, but a live layer is not deleted or reordered solely because its filename reflects an earlier implementation batch. Consolidating live calibration into a canonical owner is a separate behavior-preserving refactor and requires renewed qualification and browser comparison.
+The browser-validated 1.0.11 pre-release output is the acceptance boundary. Cleanup may remove unreachable duplicates, but a live layer is not deleted or reordered solely because its filename reflects an earlier implementation batch. Consolidating live calibration into a canonical owner is a separate behavior-preserving refactor and requires renewed qualification and browser comparison.
