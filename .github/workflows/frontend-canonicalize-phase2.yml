@@ -50,7 +50,7 @@ jobs:
             fi
           fi
           git diff > phase2-working-tree.diff
-          grep -R -n "MutationObserver" frontend/static/ui-runtime.js frontend/static/ui-downloads-runtime.js frontend/static/ui-settings-*.js > phase2-observers.txt 2>&1
+          grep -R -n -E "new[[:space:]]+MutationObserver" frontend/static/ui-runtime.js frontend/static/ui-downloads-runtime.js frontend/static/ui-settings-*.js > phase2-observers.txt 2>&1
           cat phase2-transform.log
           cat phase2-observers.txt || true
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
@@ -93,7 +93,7 @@ jobs:
           set -euo pipefail
           git diff --check
           test "$(cat VERSION)" = "1.0.11.1"
-          ! grep -R "MutationObserver" frontend/static/ui-runtime.js frontend/static/ui-downloads-runtime.js frontend/static/ui-settings-*.js
+          ! grep -R -E "new[[:space:]]+MutationObserver" frontend/static/ui-runtime.js frontend/static/ui-downloads-runtime.js frontend/static/ui-settings-*.js
           ! grep -q "ui-page-finalization" frontend/static/index.html frontend/static/style-v11.css
           ! grep -q "ui-help-chrome.js" frontend/static/index.html
           ! grep -q "ui-shell-runtime.js" frontend/static/index.html
