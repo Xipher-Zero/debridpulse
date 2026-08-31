@@ -1,4 +1,4 @@
-"""Structural contract for the v1.0.11 Dashboard migration."""
+"""Final-state structural contract for the v1.0.11 Dashboard."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 V11_STYLE = STATIC / "style-v11.css"
 DASHBOARD_CSS = STATIC / "ui-dashboard.css"
-DASHBOARD_STRUCTURAL_CSS = STATIC / "ui-dashboard-structural.css"
 STATISTICS_CSS = STATIC / "ui-statistics-page.css"
 RUNTIME = STATIC / "ui-runtime.js"
 
@@ -17,9 +16,11 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-dashboard-structural.css?v=24" in entry
+    assert "/ui-dashboard-final.css?v=23" in entry
     assert "/ui-shell.css?v=21" in entry
     for retired in (
+        "ui-dashboard-structural.css",
+        "ui-dashboard-consistency.css",
         "ui-dashboard-batch1.css",
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
@@ -30,8 +31,8 @@ def test_dashboard_stylesheet_is_active() -> None:
         assert not (STATIC / retired).exists()
 
 
-def test_dashboard_structural_owner_keeps_reviewed_header_and_sparkline_geometry() -> None:
-    css = DASHBOARD_STRUCTURAL_CSS.read_text(encoding="utf-8")
+def test_dashboard_canonical_owner_keeps_reviewed_header_and_sparkline_geometry() -> None:
+    css = DASHBOARD_CSS.read_text(encoding="utf-8")
 
     assert "height: 31px;" in css
     assert "opacity: 1;" in css
@@ -50,8 +51,8 @@ def test_dashboard_structural_owner_keeps_reviewed_header_and_sparkline_geometry
     assert "flex: 0 0 51px !important;" in css
 
 
-def test_dashboard_structural_owner_keeps_reviewed_card_framing_and_empty_state() -> None:
-    css = DASHBOARD_STRUCTURAL_CSS.read_text(encoding="utf-8")
+def test_dashboard_canonical_owner_keeps_reviewed_card_framing_and_empty_state() -> None:
+    css = DASHBOARD_CSS.read_text(encoding="utf-8")
 
     assert "border-color: transparent !important;" in css
     assert "border-bottom: 0;" in css
@@ -61,8 +62,8 @@ def test_dashboard_structural_owner_keeps_reviewed_card_framing_and_empty_state(
     assert "background: transparent !important;" in css
 
 
-def test_dashboard_structural_owner_keeps_reviewed_surface_calibration() -> None:
-    css = DASHBOARD_STRUCTURAL_CSS.read_text(encoding="utf-8")
+def test_dashboard_canonical_owner_keeps_reviewed_surface_calibration() -> None:
+    css = DASHBOARD_CSS.read_text(encoding="utf-8")
 
     required = (
         "width: calc(100% - 13px) !important",
@@ -76,7 +77,7 @@ def test_dashboard_structural_owner_keeps_reviewed_surface_calibration() -> None
         "card-download.svg?v=11",
     )
     missing = [fragment for fragment in required if fragment not in css]
-    assert not missing, f"Dashboard structural surface contract is missing: {missing}"
+    assert not missing, f"Dashboard canonical surface contract is missing: {missing}"
 
 
 def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:
@@ -113,7 +114,7 @@ def test_dashboard_uses_canonical_custom_semantic_assets() -> None:
         "cube.svg",
     )
     missing = [asset for asset in expected if asset not in runtime]
-    assert not missing, f"Dashboard migration is missing canonical assets: {missing}"
+    assert not missing, f"Dashboard is missing canonical assets: {missing}"
 
 
 def test_quick_add_preserves_existing_functional_controls() -> None:

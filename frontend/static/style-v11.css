@@ -26,16 +26,17 @@
 @import url('/ui-shell-provider-status-v2.css?v=28');
 @import url('/ui-topbar-first-paint.css?v=20');
 
-/* Dashboard remains the accepted visual reference. The remaining calibration
-   layers are live and intentionally retained until a browser-proven fold can
-   preserve the accepted rendering. */
+/* Canonical Dashboard presentation owns base and structural geometry directly.
+   The remaining batch/polish files are live mixed calibration layers because
+   they still contain shell and transfer responsibilities. The final Dashboard
+   override remains late so its accepted precedence over those mixed layers and
+   shared utility controls is preserved. */
 @import url('/ui-dashboard.css?v=20');
-@import url('/ui-dashboard-structural.css?v=24');
 @import url('/ui-dashboard-batch5.css?v=20');
 @import url('/ui-dashboard-polish.css?v=20');
 @import url('/ui-dashboard-polish-final.css?v=20');
 @import url('/ui-utility-controls.css?v=23');
-@import url('/ui-dashboard-consistency.css?v=23');
+@import url('/ui-dashboard-final.css?v=23');
 
 /* Page layers contain page-specific geometry, behavior, and content details. */
 @import url('/ui-statistics-page.css?v=21');

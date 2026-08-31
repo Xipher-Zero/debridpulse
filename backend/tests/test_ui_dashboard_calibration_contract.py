@@ -1,8 +1,9 @@
-"""Final-state contracts for the retained Dashboard calibration stack.
+"""Final-state contracts for the retained mixed Dashboard calibration stack.
 
-The source stack remains live because browser-backed visual proof is required
-before it can be folded safely. These tests protect accepted behavior, not the
-historical reason each layer was created.
+The canonical Dashboard owner now includes its structural geometry directly.
+The remaining batch and polish layers stay live because they still mix Dashboard,
+shell, and transfer responsibilities. These tests protect accepted behavior and
+explicit ownership boundaries rather than implementation history.
 """
 
 from pathlib import Path
@@ -14,7 +15,7 @@ BATCH5 = STATIC / "ui-dashboard-batch5.css"
 POLISH = STATIC / "ui-dashboard-polish.css"
 FINAL = STATIC / "ui-dashboard-polish-final.css"
 UTILITY = STATIC / "ui-utility-controls.css"
-CONSISTENCY = STATIC / "ui-dashboard-consistency.css"
+DASHBOARD_FINAL = STATIC / "ui-dashboard-final.css"
 
 
 def read(path: Path) -> str:
@@ -30,17 +31,19 @@ def test_retained_dashboard_calibration_order_is_explicit() -> None:
     overlay = read(STYLE)
     layers = (
         "/ui-universal-language.css?v=20",
-        "/ui-dashboard-structural.css?v=24",
+        "/ui-dashboard.css?v=20",
         "/ui-dashboard-batch5.css?v=20",
         "/ui-dashboard-polish.css?v=20",
         "/ui-dashboard-polish-final.css?v=20",
         "/ui-utility-controls.css?v=23",
-        "/ui-dashboard-consistency.css?v=23",
+        "/ui-dashboard-final.css?v=23",
     )
     for layer in layers:
         assert layer in overlay
     assert [overlay.index(layer) for layer in layers] == sorted(overlay.index(layer) for layer in layers)
     for retired in (
+        "ui-dashboard-structural.css",
+        "ui-dashboard-consistency.css",
         "ui-dashboard-batch1.css",
         "ui-dashboard-batch2.css",
         "ui-dashboard-batch2-final.css",
@@ -49,6 +52,7 @@ def test_retained_dashboard_calibration_order_is_explicit() -> None:
         "ui-dashboard-control-polish.css",
     ):
         assert retired not in overlay
+        assert not (STATIC / retired).exists()
 
 
 def test_retained_stage_keeps_provider_and_spotlight_geometry() -> None:
@@ -319,8 +323,8 @@ def test_shared_utility_controls_keep_light_pause_all_treatment() -> None:
     )
 
 
-def test_dashboard_consistency_keeps_empty_state_and_field_focus_contracts() -> None:
-    css = read(CONSISTENCY)
+def test_dashboard_final_owner_keeps_empty_state_and_field_focus_contracts() -> None:
+    css = read(DASHBOARD_FINAL)
     assert "#dash-activity-card.dp-dashboard-activity .empty-icon" in css
     assert "width: 76px !important" in css
     assert "height: 76px !important" in css

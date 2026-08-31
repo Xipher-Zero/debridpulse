@@ -11,7 +11,7 @@ def read_static(name: str) -> str:
 
 
 def test_recent_activity_empty_icon_matches_downloads_size() -> None:
-    dashboard = read_static("ui-dashboard-consistency.css")
+    dashboard = read_static("ui-dashboard-final.css")
     downloads = read_static("ui-downloads-page.css")
     assert "#dash-activity-card.dp-dashboard-activity .empty-icon" in dashboard
     assert "width: 76px !important" in dashboard
@@ -56,7 +56,7 @@ def test_provider_status_is_three_centered_shell_zones() -> None:
 
 
 def test_quick_add_focus_resets_to_universal_field_language() -> None:
-    dashboard = read_static("ui-dashboard-consistency.css")
+    dashboard = read_static("ui-dashboard-final.css")
     assert "textarea.input.direct-link-input" in dashboard
     assert "var(--dp-field-border)" in dashboard
     assert "var(--dp-field-surface)" in dashboard
@@ -70,9 +70,9 @@ def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
     shell = overlay.index("/ui-shell.css?v=21")
     provider = overlay.index("/ui-shell-provider-status.css?v=24")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
-    dashboard_fix = overlay.index("/ui-dashboard-consistency.css?v=23")
+    dashboard_final = overlay.index("/ui-dashboard-final.css?v=23")
     downloads = overlay.index("/ui-downloads-page.css?v=27")
     transfer = overlay.index("/ui-transfer-contract.css?v=31")
     visual = overlay.index("/ui-visual-accents.css?v=21")
     signal = overlay.index("/ui-shell-signal-field.css?v=20")
-    assert shared < shell < provider < dashboard < dashboard_fix < downloads < transfer < visual < signal
+    assert shared < shell < provider < dashboard < dashboard_final < downloads < transfer < visual < signal
