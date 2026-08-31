@@ -50,7 +50,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/rc1-settings-contract-census.yml .github/rc1-settings-contract-census.py
+          git rm -f .github/workflows/rc1-settings-contract-census.yml .github/rc1-settings-contract-census.py
           git add backend/services/manager_v2.py frontend/static/ui-settings-page.js backend/tests/test_settings_runtime_contract_census.py
           git diff --cached --check
           git commit -m 'audit: align exposed settings runtime contracts'
