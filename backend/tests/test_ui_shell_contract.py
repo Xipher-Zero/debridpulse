@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
 STYLE_ENTRY = STATIC / "style.css"
-LEGACY_STYLE = STATIC / "style-legacy.css"
 V11_STYLE = STATIC / "style-v11.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
 SHELL_STRUCTURAL = STATIC / "ui-shell-structural.css"
@@ -29,7 +28,13 @@ def read(path: Path) -> str:
 
 
 def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
-    assert read(STYLE_ENTRY) == read(LEGACY_STYLE)
+    assert STYLE_ENTRY.is_file()
+    assert not (STATIC / "style-legacy.css").exists()
+    index = read(INDEX)
+    assert "/style.css?v=15" in index
+    assert "/style-v11.css?v=24" in index
+    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=24")
+
     overlay = read(V11_STYLE)
     imports = (
         "/design-tokens.css?v=20",
