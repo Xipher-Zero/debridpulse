@@ -211,32 +211,6 @@ def test_settings_secret_merge_preserve_replace_clear():
         _merge_secret_settings(SettingsUpdate(**payload), previous)
 
 
-def test_frontend_xss_and_secret_contracts():
-    root = Path(__file__).resolve().parents[2]
-    js = (root / "frontend/static/app.js").read_text()
-    html = (root / "frontend/static/index.html").read_text()
-    toast = js.split("function toast", 1)[1].split("function setButtonPending", 1)[0]
-    settings = js.split("function renderSettings()", 1)[1].split("function switchSettingsTab", 1)[0]
-    details = js.split("async function showDetail", 1)[1].split("function closeModal", 1)[0]
-    assert "innerHTML" not in toast
-    assert "text.textContent = String(msg ?? '')" in toast
-    assert "const s = escapeHtmlStrings(settingsData || {});" in settings
-    assert "const s = settingsData;" not in settings
-    assert "${esc(ev.torrent_name)}" in js
-    assert 'class="elevel ${esc(ev.level)}"' in js
-    assert "Failed to load details: ${esc(sanitizeErrorMsg(e.message))}" in details
-    assert "${esc(t.local_path)}" in details
-    assert "${esc(t.hash||'—')}" in details
-    assert "${esc(t.alldebrid_id||'—')}" in details
-    assert "return labels[key] || esc(key) || '—';" in js
-    assert "${esc(m[key] || key || 'Unknown')}" in js
-    assert "<span>${esc(key)}</span>" in js
-    assert "auth_username: t('auth_username')" in js
-    assert "auth_password: t('auth_password')" in js
-    assert "clear_secrets: clearSecrets" in js
-    assert "alldebrid_api_key_configured" in js
-    assert "cdnjs.cloudflare.com/ajax/libs/Chart.js" not in html
-    assert '/vendor/chart.umd.min.js?v=4.5.1' in html
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js not installed")

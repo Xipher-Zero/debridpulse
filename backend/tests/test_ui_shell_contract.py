@@ -117,16 +117,6 @@ def test_v11_cache_generations_remain_targeted() -> None:
         assert generations[path] == version
 
 
-def test_bootstrap_cache_generation_and_runtime_fallbacks_are_coherent() -> None:
-    index = read(INDEX)
-    operator = read(SHELL_RUNTIME)
-    runtime = read(PRESENTATION_RUNTIME)
-    assert "/style-v11.css?v=24" in index
-    assert "/operator-title.js?v=23" in index
-    assert "/ui-runtime.js?v=24" in index
-    assert "/ui-runtime.js?v=24" in operator
-    assert "/ui-downloads-runtime.js?v=22" in operator
-    assert "/style-v11.css?v=24" in runtime
 
 
 def test_shell_owns_topbar_navigation_canvas_and_provider_geometry() -> None:

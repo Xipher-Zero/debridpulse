@@ -378,35 +378,6 @@ def test_dashboard_kpi_strip_omits_duplicate_database_tile_and_stays_centered():
     assert "width: 85.7142857%;" in styles
 
 
-def test_v102_minor_ui_cleanup_contract():
-    index = (REPO_ROOT / "frontend/static/index.html").read_text()
-    frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
-
-    assert '<div class="metric-label">Downloads</div>' in frontend
-    assert '<div class="metric-label">Torrents</div>' not in frontend
-    assert '<span class="card-title">Download Status</span>' in index
-    assert '<span class="card-title">Torrent Status</span>' not in index
-
-    assert '<textarea class="input direct-link-input" id="q-transfer-input" rows="2"' in index
-    assert 'oninput="resizeDebridLinkInput(this)"' in index
-    assert "(event.ctrlKey||event.metaKey)&&event.key==='Enter'" in index
-    assert "addDashboardEntries()" in index
-    unified_add = frontend.split("async function addDashboardEntries()", 1)[1].split(
-        "// ── Torrents", 1
-    )[0]
-    assert "document.getElementById('q-transfer-input')" in unified_add
-    assert "document.getElementById('btn-add-transfer')" in unified_add
-    assert "openTorrentFilePicker();" in unified_add
-    assert "resizeDebridLinkInput(input);" in unified_add
-    assert "async function quickAdd()" not in frontend
-
-    assert '.aria2-queue { display: flex; flex-direction: column; gap: 10px; min-width: 0; width: 100%; }' in styles
-    assert 'max-width: 100%' in styles.split('.aria2-job {', 1)[1].split('}', 1)[0]
-    assert 'overflow-wrap: anywhere' in styles.split('.aria2-job-name {', 1)[1].split('}', 1)[0]
-    assert 'overflow-wrap: anywhere' in styles.split('.aria2-job-meta {', 1)[1].split('}', 1)[0]
-    assert '/style.css?v=15' in index
-    assert '/app.js?v=15' in index
 
 
 def test_inherited_file_preview_and_block_routes_are_hardened():

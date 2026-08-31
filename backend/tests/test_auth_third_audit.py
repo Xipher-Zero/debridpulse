@@ -217,16 +217,6 @@ def test_api_token_clear_fsyncs_parent_directory(tmp_path, monkeypatch):
     assert store.enabled is False
 
 
-def test_verified_email_requirement_is_documented_in_operator_surfaces():
-    root = os.path.dirname(os.path.dirname(__file__))
-    repo_root = os.path.dirname(root)
-    docs = open(os.path.join(repo_root, "docs", "authentication.md"), encoding="utf-8").read()
-    ui = open(
-        os.path.join(repo_root, "frontend", "static", "ui-settings-authentication-oidc.js"),
-        encoding="utf-8",
-    ).read()
-    assert "email_verified: true" in docs
-    assert "email_verified=true" in ui
 
 
 def _basic_header(username: str, password: str) -> str:

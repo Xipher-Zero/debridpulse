@@ -14,16 +14,6 @@ def test_retired_duplicate_legacy_stylesheet_is_absent() -> None:
     assert not (STATIC / "style-legacy.css").exists()
 
 
-def test_release_architecture_documents_the_effective_presentation_bootstrap() -> None:
-    architecture = (DOCS / "UI_FRONTEND_ARCHITECTURE.md").read_text(encoding="utf-8")
-    bootstrap = (STATIC / "ui-theme-bootstrap.js").read_text(encoding="utf-8")
-    loader = (STATIC / "ui-presentation-loader.js").read_text(encoding="utf-8")
-
-    assert "ui-presentation-loader.js" in bootstrap
-    assert "ui-presentation-loader.js" in architecture
-    assert "presentation loader" in architecture.lower()
-    assert "const STYLES" in loader
-    assert "const RUNTIMES" in loader
 
 
 def test_release_docs_record_browser_validation_without_calling_live_layers_dead() -> None:

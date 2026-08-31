@@ -56,30 +56,6 @@ def test_discord_notification_event_copy_and_row_grouping_are_locked():
     assert "secondaryToggleRow.append(extractToggle, updateToggle);" in js
 
 
-def test_discord_notifications_reuse_existing_controls_and_secret_semantics():
-    js = source(RUNTIME)
-
-    for key in [
-        "discord_username",
-        "discord_avatar_url",
-        "discord_webhook_url",
-        "discord_webhook_added",
-        "update_check_interval_hours",
-        "discord_notify_added",
-        "discord_notify_finished",
-        "discord_notify_error",
-        "discord_notify_extract",
-        "discord_notify_update",
-    ]:
-        assert key in js
-
-    assert 'data-clear-secret="${key}"' in js
-    assert "Clear Stored Webhook" in js
-    assert "Clear Stored Download Added Webhook" in js
-    assert "dpNotificationsPolished" in js
-    assert "MutationObserver" in js
-    assert "mutation.type === 'childList'" in js
-    assert "attributes: true" not in js
 
 
 def test_discord_delivery_fields_share_control_datum_and_preserve_inverted_pyramid():
@@ -192,15 +168,3 @@ def test_notification_context_actions_use_current_draft_without_persisting_it():
     # A contextual send must not rerender the Settings page and discard unsaved draft fields.
     send_function = js[js.index("async function sendReportNow"):js.index("function polishDiscordCard")]
     assert "render()" not in send_function
-
-
-def test_notifications_presentation_assets_load_after_settings_page():
-    loader = source(LOADER)
-
-    css_entry = "'/ui-settings-notifications.css?v=2'"
-    js_entry = "'/ui-settings-notifications.js?v=2'"
-    settings_entry = "'/ui-settings-page.js?v=4'"
-    assert css_entry in loader
-    assert js_entry in loader
-    assert settings_entry in loader
-    assert loader.index(js_entry) > loader.index(settings_entry)

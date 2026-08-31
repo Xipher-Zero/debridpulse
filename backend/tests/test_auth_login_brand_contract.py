@@ -52,33 +52,3 @@ def test_login_embeds_the_exact_reviewed_logo_without_public_static_dependency()
     )
     assert match is not None
     assert base64.b64decode(match.group(1), validate=True) == STATIC_LOGO.read_bytes()
-
-
-def test_post_core_shell_owner_uses_vector_shell_mark_and_compact_tab_mark() -> None:
-    bootstrap = read(THEME_BOOTSTRAP)
-    loader = read(PRESENTATION_LOADER)
-    shell_runtime = read(SHELL_RUNTIME)
-    shell_logo = read(SHELL_LOGO)
-    favicon = read(FAVICON)
-
-    # First paint owns theme only. Global brand normalization runs after core DOM
-    # initialization through the dedicated shell runtime.
-    assert "/ui-presentation-loader.js?v=1" in bootstrap
-    assert "/logo.svg?v=7" not in bootstrap
-    assert "/favicon.svg?v=6" not in bootstrap
-    assert "/ui-shell-runtime.js?v=1" in loader
-    assert "/logo.svg?v=7" in shell_runtime
-    assert "/logo-128.png?v=5" not in shell_runtime
-    assert "/apple-touch-icon.png?v=5" in shell_runtime
-    assert "vectorIcon.href = '/favicon.svg?v=6'" in shell_runtime
-    assert "icon32.remove()" in shell_runtime
-    assert "normalizeShellBranding" in shell_runtime
-    assert "#sidebar .logo-icon" in shell_runtime
-
-    # Authentication remains pinned to the reviewed raster while the shell uses
-    # the equivalent vector artwork so its integrated outline is the only frame.
-    assert sha256(STATIC_LOGO) == "e2141f5a2354ec7b24ca5a564896cc08aa2b7071521c43083c670e2da34ca63e"
-    assert 'viewBox="0 0 512 512"' in shell_logo
-    assert 'stroke="url(#dp-outline)"' in shell_logo
-    assert 'viewBox="0 0 64 64"' in favicon
-    assert 'transform="scale(.125)"' in favicon

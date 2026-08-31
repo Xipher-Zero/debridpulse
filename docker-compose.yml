@@ -3,7 +3,7 @@
 
 services:
   debridpulse:
-    image: ghcr.io/xipher-zero/debridpulse:v1.0.11
+    image: ghcr.io/xipher-zero/debridpulse:v1.0.11.1
     build: .
     container_name: debridpulse
     restart: unless-stopped

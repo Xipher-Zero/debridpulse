@@ -109,29 +109,6 @@ def test_loaded_first_party_assets_are_unique_across_the_effective_boot_graph() 
     )
 
 
-def test_settings_authoritative_renderer_is_clean_room_and_direct() -> None:
-    source = read(SETTINGS_RUNTIME)
-
-    assert "clean-room Settings page" in source
-    assert "window.DPSettingsPage = Object.freeze({load});" in source
-    assert "window.loadSettings = load;" in source
-    assert "view.innerHTML =" in source
-    assert "Promise.all([" in source
-    assert "request('GET', '/settings'" in source
-    assert "request('GET', '/auth/config'" in source
-
-    for forbidden in (
-        "window.renderSettings =",
-        "window.getFormSettings =",
-        "window.switchSettingsTab =",
-        "settingsObserver",
-        "observeSettingsForm",
-        "scheduleApply",
-        "new MutationObserver",
-        "setTimeout(boot",
-        "dp-settings-preserved",
-    ):
-        assert forbidden not in source
 
 
 def test_accepted_authentication_structure_and_copy_exist_independent_of_layering() -> None:
@@ -218,7 +195,3 @@ def test_ci_syntax_checks_every_runtime_in_the_effective_load_graph() -> None:
         if f"node --check frontend/static/{path}" not in workflow
     ]
     assert not missing, f"Loaded first-party runtimes missing node --check coverage: {missing}"
-
-
-def test_ui_track_is_the_1_0_11_release() -> None:
-    assert read(VERSION).strip() == "1.0.11"

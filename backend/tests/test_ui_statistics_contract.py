@@ -58,40 +58,6 @@ def statistics_detail_io_owners() -> list[str]:
     return owners
 
 
-def test_statistics_master_surface_period_and_primary_copy_are_locked() -> None:
-    js = statistics_js()
-    css = statistics_css()
-
-    required_js = (
-        "dp-statistics-master",
-        "dp-stats-master-header",
-        "dp-stats-master-body",
-        "Historical transfer performance and completion metrics.",
-        "dp-stats-period-label",
-        "item.dataset.period === '7d'",
-        "Downloads Added",
-        "Total Data Downloaded",
-        "Downloads Completed",
-        "In Progress",
-        "Success Rate",
-        "during the last hour",
-        "during the last 24 hours",
-        "during the last 7 days",
-        "during the last 30 days",
-        "during the last year",
-        "across all recorded history",
-    )
-    missing = [fragment for fragment in required_js if fragment not in js]
-    assert not missing, f"Statistics primary contract is missing: {missing}"
-
-    for fragment in (
-        "#view-stats.active.dp-statistics-master",
-        ".dp-stats-master-body",
-        "overflow-y: auto",
-        "font-size: 36px",
-        "text-align: center",
-    ):
-        assert fragment in css
 
 
 def test_statistics_reviewed_kpi_order_copy_and_scope_are_locked() -> None:

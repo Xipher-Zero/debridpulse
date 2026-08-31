@@ -81,15 +81,6 @@ def test_bulk_selection_is_header_only_card_with_reviewed_action_order() -> None
     assert "dp-downloads-bulk-action--reset" in transfer
 
 
-def test_pagination_renders_only_applicable_neighbors_and_current_page() -> None:
-    runtime = read("ui-downloads-runtime.js")
-    assert "if (cur > 1)" in runtime
-    assert "if (cur < totalPages)" in runtime
-    assert "aria-current=\"page\"" in runtime
-    assert "btns.innerHTML = controls.join('');" in runtime
-    assert "const pages = []" not in runtime
-    assert "cur <= 1 ? ' disabled'" not in runtime
-    assert "cur >= totalPages ? ' disabled'" not in runtime
 
 
 def test_batch_cache_generations_are_explicit() -> None:

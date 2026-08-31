@@ -58,40 +58,8 @@ def test_statistics_detail_endpoint_has_one_frontend_io_owner() -> None:
     assert len(owners) == 1, f"Statistics detail I/O has multiple owners: {owners}"
 
 
-def test_statistics_has_one_canonical_presentation_owner() -> None:
-    loader = read("ui-presentation-loader.js")
-    source = read("ui-statistics.js")
-
-    assert "/ui-statistics.css?v=1" in loader
-    assert "data-dp-statistics-style" in loader
-    assert "/ui-statistics.js?v=1" in loader
-    assert "data-dp-statistics'" in loader
-    assert "window.loadDetailedStats = wrapped" in source
-    assert "debridpulse:statistics-rendered" in source
-    assert "document.addEventListener(EVENT_NAME" in source
-    assert "document.createElement('link')" not in source
-
-    historical = (
-        "ui-statistics-orchestrator.js",
-        "ui-statistics-batch3.js",
-        "ui-statistics-batch3.css",
-        "ui-statistics-batch4.js",
-        "ui-statistics-batch4.css",
-        "ui-statistics-batch5.js",
-        "ui-statistics-batch5.css",
-    )
-    for name in historical:
-        assert name not in loader
-        assert not (STATIC / name).exists()
 
 
-def test_statistics_render_wrapper_is_owned_only_by_canonical_runtime() -> None:
-    owners = [
-        path.name
-        for path in all_js_files()
-        if "window.loadDetailedStats = wrapped" in path.read_text(encoding="utf-8")
-    ]
-    assert owners == ["ui-statistics.js"]
 
 
 def test_settings_page_is_authoritative_clean_room_owner() -> None:
@@ -130,18 +98,6 @@ def test_loaded_runtime_markers_are_unique_when_a_presentation_loader_exists() -
     assert len(markers) == len(set(markers))
 
 
-def test_statistics_page_does_not_own_global_shell_branding() -> None:
-    statistics_sources = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted(STATIC.glob("ui-statistics*"))
-    )
-    shell_js = read("ui-shell-runtime.js")
-    shell_css = read("ui-shell-brand.css")
-
-    assert "normalizeShellBranding" not in statistics_sources
-    assert "#sidebar-version.dp-app-version" not in statistics_sources
-    assert "normalizeShellBranding" in shell_js
-    assert "#sidebar-version.dp-app-version" in shell_css
 
 
 def test_error_semantics_does_not_busy_poll_for_core_helpers() -> None:

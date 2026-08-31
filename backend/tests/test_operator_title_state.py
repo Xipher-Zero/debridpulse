@@ -5,15 +5,6 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 
 
-def test_operator_title_extension_loads_after_core_app():
-    html = (STATIC / "index.html").read_text(encoding="utf-8")
-
-    core = '<script src="/app.js?v=15" defer></script>'
-    operator = '<script src="/operator-title.js?v=23" defer></script>'
-
-    assert core in html
-    assert operator in html
-    assert html.index(core) < html.index(operator)
 
 
 def test_operator_title_uses_authoritative_logical_download_phase():

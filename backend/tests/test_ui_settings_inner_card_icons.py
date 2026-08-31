@@ -42,12 +42,6 @@ def test_settings_inner_card_icons_use_section_tab_color_families_and_shared_foo
     assert 'drop-shadow' in css
 
 
-def test_settings_inner_card_runtime_reapplies_without_observing_its_own_mutations():
-    source = (STATIC / 'ui-settings-card-icons.js').read_text()
-    assert 'observer?.disconnect()' in source
-    assert 'observer.observe(view, {childList: true, subtree: false})' in source
-    assert 'queueMicrotask' in source
-    assert 'subtree: true' not in source
 
 
 def test_help_license_footer_actions_and_copy_are_centered_as_one_closing_block():

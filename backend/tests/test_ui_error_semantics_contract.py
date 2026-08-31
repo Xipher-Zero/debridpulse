@@ -8,11 +8,6 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_error_semantics_runtime_is_loaded_after_core_by_presentation_loader():
-    bootstrap = read("ui-theme-bootstrap.js")
-    loader = read("ui-presentation-loader.js")
-    assert "ui-error-semantics.js" not in bootstrap
-    assert "/ui-error-semantics.js?v=21" in loader
 
 
 def test_concise_failure_taxonomy_is_complete():

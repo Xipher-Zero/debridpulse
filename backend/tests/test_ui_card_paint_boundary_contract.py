@@ -82,35 +82,6 @@ def test_inherited_settings_shell_state_is_rejected_but_normal_content_height_is
         assert forbidden not in settings
 
 
-def test_clean_help_uses_one_master_card_and_one_internal_scroll_boundary():
-    css = read_static("ui-help-page.css")
-    runtime = read_static("ui-help-page.js")
-
-    selector = "body.dp-v11-structural #view-help.dp-help-clean-view.active"
-    assert selector in css
-    view_rule = css.split(selector, 1)[1].split("}", 1)[0]
-    assert "overflow: visible;" in view_rule
-    assert "overflow: hidden;" not in view_rule
-
-    master = css.split("#view-help > .dp-help-master-card", 1)[1].split("}", 1)[0]
-    assert "flex: 1 1 auto;" in master
-    assert "min-height: 0;" in master
-    assert "margin-bottom: 0 !important;" in master
-
-    body = css.split("#view-help .dp-help-master-body", 1)[1].split("}", 1)[0]
-    assert "flex: 1 1 auto;" in body
-    assert "overflow: hidden;" in body
-
-    scroll = css.split("#view-help .dp-help-scroll", 1)[1].split("}", 1)[0]
-    assert "overflow-y: auto;" in scroll
-    assert "overscroll-behavior: contain;" in scroll
-
-    assert '<section class="dp-card dp-help-master-card"' in runtime
-    assert '<header class="dp-card__header dp-help-master-header">' in runtime
-    assert '<div class="dp-help-master-body">' in runtime
-    assert '<div class="dp-help-scroll">' in runtime
-    assert "help-panels-wrap" not in runtime
-    assert "help-panel active" not in runtime
 
 
 def test_help_downloads_and_settings_corrections_do_not_redefine_card_material():

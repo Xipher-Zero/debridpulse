@@ -123,7 +123,7 @@ def test_settings_authentication_renders_final_cards_directly() -> None:
         "Test OIDC Sign-In",
         "dp-settings-auth-header-enable",
         "dp-settings-auth-credentials-row",
-        "dp-settings-authentication-status-card",
+        "dp-settings-auth-status-card",
     ):
         assert fragment in source
     assert "renderSettingsWithAuthentication" not in source
@@ -153,7 +153,7 @@ def test_oidc_origin_callback_and_verified_email_policy_are_owned_by_settings() 
         "function updateOidcCallbackPreview()",
         "function copyOidcCallback()",
         "id=\"dp-auth-public-base-url\"",
-        "id=\"dp-auth-oidc-callback-url\"",
+        "id=\"dp-auth-oidc-callback\"",
         "readonly",
         "Requires email_verified=true.",
         "oidc_allowed_emails",

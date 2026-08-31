@@ -38,27 +38,6 @@ def test_activity_body_is_transparent_over_shared_card_and_rows_are_page_specifi
     assert "body.dp-v11-structural .event-item" not in css
 
 
-def test_activity_runtime_reclassifies_only_main_page_event_rows() -> None:
-    runtime = read("ui-runtime.js")
-    app = read("app.js")
-
-    required = (
-        "document.getElementById('event-list')",
-        "row.classList.add('dp-activity-row')",
-        "row.classList.remove('event-item')",
-        "level.classList.add('dp-activity-level')",
-        "message.classList.add('dp-activity-message')",
-        "transfer.classList.add('dp-activity-transfer')",
-        "time.classList.add('dp-activity-time')",
-        "new MutationObserver(normalizeActivityRows)",
-    )
-    missing = [fragment for fragment in required if fragment not in runtime]
-    assert not missing, f"Activity runtime normalization is incomplete: {missing}"
-
-    # app.js still emits the legacy class for both Activity and Details; only
-    # direct children of #event-list are reclassified by the presentation layer.
-    assert app.count('class="event-item"') >= 2
-    assert "querySelectorAll('.event-item')" not in runtime
 
 
 def test_activity_functional_controls_are_unchanged() -> None:

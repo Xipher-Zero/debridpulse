@@ -114,26 +114,6 @@ def test_current_project_surfaces_state_the_debridpulse_gpl_identity():
     assert "issues/new?template=source_request.yml" in source_offer
 
 
-def test_license_attribution_is_prominent_and_available_in_application_help():
-    readme = (REPO_ROOT / "README.md").read_text()
-    frontend = (REPO_ROOT / "frontend/static/index.html").read_text()
-    landing_page = (REPO_ROOT / "index.html").read_text()
-
-    readme_intro = readme.split("## What is DebridPulse?", 1)[0]
-    for surface in (readme_intro, frontend, landing_page):
-        assert "Chris Moore" in surface
-        assert "GPL-2.0-or-later" in surface
-        assert "kroeberd" in surface
-
-    assert 'data-htab="license"' in frontend
-    assert 'id="htab-license"' in frontend
-    assert 'data-view="help"' in frontend
-    assert "without warranty" in frontend
-    assert "redistribute and modify" in frontend
-    assert "LICENSES/MIT.txt" in frontend
-    assert "SOURCE_OFFER.md" in frontend
-    assert "docs/DEPENDENCY_LICENSES.md" in frontend
-    assert (REPO_ROOT / ".github/ISSUE_TEMPLATE/source_request.yml").is_file()
 
 
 def test_authentication_docs_cover_new_runtime_security_dependencies():

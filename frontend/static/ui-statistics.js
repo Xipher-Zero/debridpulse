@@ -7,7 +7,7 @@
   'use strict';
 
 async function loadDetailedStatsData(period) {
-  period = period || (document.querySelector('#stats-period-tabs .ftab.active')||{}).dataset?.period || '24h';
+  period = period || (document.querySelector('#stats-period-tabs .ftab.active')||{}).dataset?.period || '7d';
 
   // Chart-Titel Mapping
   var chartTitles = {
@@ -665,15 +665,41 @@ async function loadDetailedStatsData(period) {
     return true;
   }
 
+  function statisticsPurpleGradient(chart) {
+    const isLight = document.body.classList.contains('light');
+    if (!chart || !chart.ctx || !chart.chartArea) {
+      return isLight ? 'rgba(139, 91, 203, .46)' : 'rgba(100, 39, 165, .64)';
+    }
+
+    const area = chart.chartArea;
+    const gradient = chart.ctx.createLinearGradient(0, area.bottom, 0, area.top);
+    if (isLight) {
+      gradient.addColorStop(0, 'rgba(210, 195, 239, .28)');
+      gradient.addColorStop(0.52, 'rgba(171, 137, 221, .42)');
+      gradient.addColorStop(1, 'rgba(139, 91, 203, .58)');
+    } else {
+      gradient.addColorStop(0, 'rgba(45, 19, 84, .46)');
+      gradient.addColorStop(0.52, 'rgba(91, 38, 151, .60)');
+      gradient.addColorStop(1, 'rgba(166, 70, 244, .72)');
+    }
+    return gradient;
+  }
+
   function applyChartPalette() {
     const chart = document.getElementById('daily-chart')?._ci;
-    if (!chart || !chart.data || !chart.data.datasets || !chart.data.datasets[0]) return;
-    const styles = getComputedStyle(document.body);
-    const accent = styles.getPropertyValue('--accent').trim() || '#a855f7';
-    chart.data.datasets[0].borderColor = accent;
-    chart.data.datasets[0].backgroundColor = accent;
-    chart.data.datasets[0].fill = true;
-    chart.update('none');
+    const dataset = chart && chart.data && chart.data.datasets && chart.data.datasets[0];
+    if (!dataset) return;
+
+    const isLight = document.body.classList.contains('light');
+    dataset.backgroundColor = function (context) {
+      return statisticsPurpleGradient(context.chart);
+    };
+    dataset.borderColor = isLight
+      ? 'rgba(126, 75, 187, .72)'
+      : 'rgba(166, 70, 244, .84)';
+    dataset.borderWidth = 1;
+    dataset.fill = true;
+    if (typeof chart.update === 'function') chart.update('none');
   }
 
   function applyPresentation(period) {

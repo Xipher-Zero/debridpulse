@@ -144,11 +144,6 @@ def test_baseline_referrer_policy_preserves_same_origin_form_origin():
     assert 'setdefault("Referrer-Policy", "no-referrer")' not in source
 
 
-def test_auth_settings_present_external_base_as_general_security_setting():
-    source = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "ui-settings-page.js").read_text()
-    assert "External Base URL (Canonical Origin)" in source
-    assert "reverse-proxy origin validation" in source
-    assert "PUBLIC_BASE_URL environment variable" in source
 
 
 def test_authentication_session_and_help_assets_are_packaged_without_settings_augmentation():

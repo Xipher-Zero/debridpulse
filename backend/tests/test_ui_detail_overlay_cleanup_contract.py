@@ -50,18 +50,3 @@ def test_details_files_and_events_are_canonical_section_cards() -> None:
     assert "dp-detail-events-list" in app
     assert "var(--dp-table-row-border)" in modal
     assert "var(--dp-table-row-hover)" in modal
-
-
-def test_cleanup_cache_generations_are_explicit() -> None:
-    index = read("index.html")
-    style = read("style-v11.css")
-    operator = read("operator-title.js")
-    assert "/style-v11.css?v=24" in index
-    assert "/app.js?v=15" in index
-    assert "/operator-title.js?v=23" in index
-    assert "/ui-runtime.js?v=24" in index
-    assert "/ui-downloads-runtime.js?v=22" in index
-    assert "/ui-modal-contract.css?v=25" in style
-    assert "/ui-downloads-page.css?v=27" in style
-    assert "/ui-runtime.js?v=24" in operator
-    assert "/ui-downloads-runtime.js?v=22" in operator

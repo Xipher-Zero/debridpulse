@@ -88,4 +88,3 @@ def test_global_toast_uses_one_footer_safe_anchor_across_pages() -> None:
     assert "--dp-toast-bottom-offset: 160px;" in toast
     assert "#view-settings" not in toast
     assert ".active" not in toast
-

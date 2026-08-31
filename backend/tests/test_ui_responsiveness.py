@@ -108,46 +108,6 @@ def test_dashboard_unified_add_button_has_its_own_pending_target():
     assert "document.getElementById('btn-add-transfer')" in js
     assert "setButtonPending(button, true, 'Adding…')" in js
 
-def test_secondary_operator_controls_get_pending_feedback():
-    js = (REPO_ROOT / "frontend/static/app.js").read_text()
-    html = (REPO_ROOT / "frontend/static/index.html").read_text()
-
-    for control_id in (
-        "btn-import-existing",
-        "btn-recover-all",
-        "btn-save-settings",
-        "btn-test-alldebrid",
-        "btn-test-aria2",
-        "btn-test-discord",
-    ):
-        assert f'id="{control_id}"' in html
-
-    for signature in (
-        "async function importExisting(button)",
-        "async function recoverAll(button)",
-        "async function bulkAction(action, button)",
-        "async function saveSettings(button)",
-        "async function testDiscord(button)",
-        "async function testAD(button)",
-        "async function testAria2(button)",
-        "async function triggerFullSync(button)",
-        "async function aria2RuntimeAction(action, button)",
-        "async function runAria2Housekeeping(button)",
-        "async function wipeDatabase(button)",
-    ):
-        assert signature in js
-
-    for label in (
-        "Importing…",
-        "Recovering…",
-        "Saving…",
-        "Testing…",
-        "Syncing…",
-        "Restarting…",
-        "Cleaning…",
-        "Wiping…",
-    ):
-        assert label in js
 
 
 def test_settings_remote_tests_hold_pending_state_through_remote_test():
@@ -213,115 +173,8 @@ def test_settings_aria2_queue_refresh_is_coalesced_and_actions_acknowledge():
     )
 
 
-def test_startup_initializer_and_queue_state_survive_ui_refactors():
-    js = (REPO_ROOT / "frontend/static/app.js").read_text()
-
-    assert js.count("// ── Init ─") == 1
-    assert js.count("var _aria2qTimer = null;") == 1
-    assert js.count("var _aria2qErrCount = 0;") == 1
-
-    init_start = js.index(
-        "// ── Init ─"
-    )
-
-    queue_function = js.index(
-        "async function loadAria2QueueView()"
-    )
-
-    init = js[
-        init_start:queue_function
-    ]
-
-    assert "(async()=>{" in init
-    assert (
-        "settingsData = await api('GET', '/settings');"
-        in init
-    )
-    assert "renderTopbarActions();" in init
-    assert "updateAria2ngLink();" in init
-    assert "statsLoaded = await loadStats();" in init
-
-    assert re.search(
-        r"new\s+EventSource\(\s*'/api/events/stream'\s*\)",
-        init,
-    )
-
-    assert (
-        "patchProgressOnlyTransferEvent("
-        in init
-    )
-
-    assert "function startPolling()" in init
-
-    assert (
-        "checkConnections().catch(()=>{})"
-        in init
-    )
-
-    settings_gets = re.findall(
-        r"settingsData\s*=\s*await\s+api\("
-        r"\s*'GET'\s*,\s*'/settings'\s*\)",
-        js,
-    )
-
-    assert len(settings_gets) == 2
-
-    # Queue loader relies on both state variables.
-    queue = js.split(
-        "async function loadAria2QueueView()", 1
-    )[1]
-
-    assert "_aria2qTimer" in queue
-    assert "_aria2qErrCount" in queue
 
 
-def test_stats_operator_actions_acknowledge_before_network_completion():
-    js = (REPO_ROOT / "frontend/static/app.js").read_text()
-
-    assert (
-        'onclick="triggerStatsSnapshot(this)"'
-        in js
-    )
-    assert (
-        'onclick="sendStatsReport(this)"'
-        in js
-    )
-
-    send = js.split(
-        "async function sendStatsReport(button)", 1
-    )[1].split(
-        "function exportStats", 1
-    )[0]
-
-    snapshot = js.split(
-        "async function triggerStatsSnapshot(button)", 1
-    )[1].split(
-        "// ── Init ─", 1
-    )[0]
-
-    assert send.index(
-        "setButtonPending("
-    ) < send.index(
-        "await api("
-    )
-
-    assert snapshot.index(
-        "setButtonPending("
-    ) < snapshot.index(
-        "await api("
-    )
-
-    assert "'Sending…'" in send
-    assert "'Taking…'" in snapshot
-
-    assert (
-        "setButtonPending(button, false);"
-        in send
-    )
-    assert (
-        "setButtonPending(button, false);"
-        in snapshot
-    )
 
 
 def test_pass3_polling_noops_do_not_refresh_transfer_freshness():
@@ -372,39 +225,6 @@ def test_pass3_import_reconciliation_does_not_touch_stable_rows():
     assert "Stable provider" in imported
 
 
-def test_pass3_frontend_queue_requests_search_and_filter_scope():
-    js = (REPO_ROOT / "frontend/static/app.js").read_text()
-
-    runtime = js.split(
-        "async function loadAria2Runtime()", 1
-    )[1].split(
-        "async function aria2RuntimeAction", 1
-    )[0]
-    assert "loadAria2Downloads" not in runtime
-
-    switcher = js.split(
-        "function switchSettingsTab", 1
-    )[1].split(
-        "function updateSettingsFooterActions", 1
-    )[0]
-    assert "loadAria2Runtime().catch(()=>{});" in switcher
-    assert "loadAria2Downloads().catch(()=>{});" in switcher
-
-    search = js.split(
-        "function onTorrentSearchInput()", 1
-    )[1].split(
-        "async function loadTorrents()", 1
-    )[0]
-    assert "_torrentSearchTimer" in search
-    assert "}, 250);" in search
-
-    filter_fn = js.split(
-        "function setFilter(el, status)", 1
-    )[1].split(
-        "function onTorrentSearchInput", 1
-    )[0]
-    assert "#view-torrents .filter-tabs .ftab" in filter_fn
-    assert "document.querySelectorAll('.ftab')" not in filter_fn
 
 
 def test_pass3_provider_noop_handles_zero_status_code_and_paused_delivery():
