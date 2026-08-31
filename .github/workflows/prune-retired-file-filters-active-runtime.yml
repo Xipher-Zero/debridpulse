@@ -1,0 +1,96 @@
+name: Retired File Filters Active Runtime Prune
+
+on:
+  push:
+    branches:
+      - audit/retire-file-filters-active-runtime-20260831
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: "${{ github.event.head_commit.message != 'audit: apply active-runtime File Filters prune' }}"
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Apply active-runtime retirement patch
+        run: python .github/scripts/prune_retired_file_filters_active_runtime.py
+
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+          pip install ruff
+
+      - name: Run complete test suite
+        run: |
+          cd backend
+          ruff check api auth core db services main.py --select F821,F822,F823
+          python -m pytest tests/ -v --tb=short
+          python -m compileall -q .
+
+      - name: Check effective frontend JavaScript syntax
+        run: |
+          node --check frontend/static/app.js
+          node --check frontend/static/auth.js
+          node --check frontend/static/auth-help.js
+          node --check frontend/static/operator-title.js
+          node --check frontend/static/ui-runtime.js
+          node --check frontend/static/ui-downloads-runtime.js
+          node --check frontend/static/ui-accessibility-runtime.js
+          node --check frontend/static/ui-theme-bootstrap.js
+          node --check frontend/static/ui-presentation-loader.js
+          node --check frontend/static/ui-shell-runtime.js
+          node --check frontend/static/ui-help-page.js
+          node --check frontend/static/ui-help-chrome.js
+          node --check frontend/static/ui-help-license-documents.js
+          node --check frontend/static/ui-settings-page.js
+          node --check frontend/static/ui-settings-auth-resilience.js
+          node --check frontend/static/ui-settings-maintenance-wipe.js
+          node --check frontend/static/ui-settings-notifications.js
+          node --check frontend/static/ui-settings-authentication.js
+          node --check frontend/static/ui-settings-authentication-polish.js
+          node --check frontend/static/ui-settings-authentication-oidc.js
+          node --check frontend/static/ui-settings-authentication-callback.js
+          node --check frontend/static/ui-settings-downloads-completion.js
+          node --check frontend/static/ui-settings-aria2-live.js
+          node --check frontend/static/ui-settings-card-icons.js
+          node --check frontend/static/ui-visual-behavior-fixes.js
+          node --check frontend/static/ui-statistics.js
+          node --check frontend/static/ui-error-semantics.js
+          node --check frontend/static/ui-page-finalization.js
+          git diff --check
+
+      - name: Assert automatic policy is absent and explicit controls remain
+        run: |
+          ! git grep -nE 'is_blocked|blocked_items|filtered/blocked|_send_partial_summary' -- \
+            backend/services/manager_v2.py \
+            backend/services/transfer_integrity.py \
+            backend/services/transfer_runtime_guard.py
+          git grep -nE '/torrents/\{torrent_id\}/files/\{file_id\}/block|/torrents/\{torrent_id\}/label' -- backend/api/routes.py
+          git grep -n "SET status='blocked', blocked=1" -- backend/services/manager_v2.py
+
+      - name: Commit disposable candidate
+        run: |
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add \
+            backend/services/transfer_integrity.py \
+            backend/services/transfer_runtime_guard.py \
+            backend/tests/test_settings_runtime_contract_census.py
+          git commit -m 'audit: apply active-runtime File Filters prune'
+          git push origin HEAD:audit/retire-file-filters-active-runtime-20260831
