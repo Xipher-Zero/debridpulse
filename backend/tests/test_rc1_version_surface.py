@@ -38,7 +38,9 @@ def test_rc1_version_is_authoritative_and_user_visible_surfaces_follow_it() -> N
     # The main shell starts with a neutral placeholder and is hydrated from
     # /api/stats, whose version value is provided by read_version().
     assert 'id="sidebar-version">v…</div>' in index
-    assert "sidebarVer.textContent = `v${stats.version}`" in app
+    assert "const s = await api('GET', '/stats');" in app
+    assert "const versionEl = document.getElementById('sidebar-version');" in app
+    assert "versionEl.textContent = s.version ? `v${s.version}` : 'v—';" in app
 
     # Release-facing deployment examples must advance with the candidate too.
     assert expected_image in compose
