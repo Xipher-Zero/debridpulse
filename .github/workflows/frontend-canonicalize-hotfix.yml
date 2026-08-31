@@ -1,0 +1,46 @@
+name: Frontend canonicalization hotfix
+
+on:
+  push:
+    branches:
+      - '1.0.11-hotfix1'
+    paths:
+      - 'scripts/_canonicalize_phase1.py'
+      - '.github/workflows/frontend-canonicalize-hotfix.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout corrective branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 1.0.11-hotfix1
+          fetch-depth: 0
+
+      - name: Apply ownership transfer
+        run: python scripts/_canonicalize_phase1.py
+
+      - name: Frontend syntax guard
+        run: |
+          node --check frontend/static/app.js
+          node --check frontend/static/ui-statistics.js
+          node --check frontend/static/ui-downloads-runtime.js
+          node --check frontend/static/ui-theme-bootstrap.js
+          git diff --check
+
+      - name: Commit canonicalized phase
+        run: |
+          rm -f scripts/_canonicalize_phase1.py .github/workflows/frontend-canonicalize-hotfix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor: establish canonical frontend page ownership'
+          git push origin HEAD:1.0.11-hotfix1
+          echo "CANONICAL_SHA=$(git rev-parse HEAD)"
