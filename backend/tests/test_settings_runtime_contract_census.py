@@ -169,6 +169,7 @@ def test_retired_file_filter_policy_is_physically_pruned_but_manual_blocking_and
     assert "blocked_items" not in manager
     assert "blocked_items" not in integrity
     assert "Filtered files were skipped" not in manager
+    assert "filtered/blocked" not in manager
     assert "filtered/blocked" not in integrity
     assert "_send_partial_summary" not in integrity
 

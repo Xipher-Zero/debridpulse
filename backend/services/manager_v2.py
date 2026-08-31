@@ -4422,9 +4422,9 @@ class TorrentManager:
                 # Preserve the parent missing/error state established during unlock.
                 return
             elif required_count == 0:
-                # All files were filtered/blocked — nothing to download
+                # All files were blocked — nothing remains to download
                 should_complete = True
-                event_msg = "All files were filtered/blocked — marked completed"
+                event_msg = "All files were blocked — marked completed"
             elif required_count > 0 and completed_count == required_count and error_count == 0 and active_count == 0:
                 should_complete = True
                 event_msg = (
