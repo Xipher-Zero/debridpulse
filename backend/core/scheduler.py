@@ -6,7 +6,7 @@ from core.branding import REPOSITORY_API_URL
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.performance import async_timer
-from core.version import normalize_version_tag
+from core.version import is_version_newer, normalize_version_tag
 from services.transfer_service import transfer_service
 
 logger = logging.getLogger("alldebrid.scheduler")
@@ -115,11 +115,10 @@ async def sync_download_clients_loop():
 
 
 async def deep_sync_loop():
-    """
-    Periodically runs a filesystem-based deep sync to catch aria2 downloads
-    that have completed on disk but whose GID/status is stale or missing.
-    Interval configured via aria2_deep_sync_interval_minutes (default 10).
-    0 = disabled.
+    """Run a slower supplemental pass through canonical aria2 recovery.
+
+    Normal reconciliation owns retry timing/accounting on every aria2 poll.
+    ``aria2_deep_sync_interval_minutes=0`` disables this compatibility cadence.
     """
     while True:
         cfg = get_settings()
@@ -149,7 +148,7 @@ async def backup_loop():
 
 
 async def aria2_housekeeping_loop():
-    """Periodically purges aria2 stopped results and reapplies memory-relevant global options."""
+    """Periodically reapply built-in aria2 memory tuning without deleting result history."""
     await asyncio.sleep(90)
     while True:
         cfg = get_settings()
@@ -270,13 +269,7 @@ async def update_check_loop() -> None:
 
             latest = normalize_version_tag(rel.get("tag_name") or "")
 
-            def _v(s: str):
-                try:
-                    return tuple(int(x) for x in s.split("."))
-                except ValueError:
-                    return (0, 0, 0)
-
-            if latest and _v(latest) > _v(current) and latest != _last_notified:
+            if latest and is_version_newer(latest, current) and latest != _last_notified:
                 logger.info("Update available: %s → %s", current, latest)
                 await transfer_service.notifications.client().send_update(
                     current_version=current,

@@ -10,6 +10,7 @@ from services.direct_link_retry_guard import manager as engine
 from services.provider_gateway import ProviderGateway
 from services.transfer_repository import TransferRepository
 from services.aria2_gateway import Aria2Gateway
+from services.aria2_error_recovery import Aria2ErrorRecovery
 from services.ownership_ledger import OwnershipLedger
 from services.transfer_state_machine import TransferStateMachine
 from services.transfer_control_service import TransferControlService
@@ -26,13 +27,25 @@ class TransferService:
         self.repository = TransferRepository()
         self.provider = ProviderGateway(materialization_engine)
         self.ownership = OwnershipLedger(materialization_engine)
-        self.aria2 = Aria2Gateway(materialization_engine, self.ownership)
+        self.aria2_error_recovery = Aria2ErrorRecovery(
+            materialization_engine, self.ownership
+        )
+        self.aria2 = Aria2Gateway(
+            materialization_engine,
+            self.ownership,
+            self.aria2_error_recovery,
+        )
         self.state_machine = TransferStateMachine(materialization_engine, self.repository)
         self.control = TransferControlService(materialization_engine, self.repository, self.state_machine)
         self.state_machine.bind_control(self.control)
         self.dispatch = DispatchCoordinator(materialization_engine, self.control, self.ownership)
         self.reconciliation = ReconciliationService(
-            materialization_engine, self.repository, self.control, self.dispatch, self.ownership
+            materialization_engine,
+            self.repository,
+            self.control,
+            self.dispatch,
+            self.ownership,
+            self.aria2_error_recovery,
         )
         self.extraction = ExtractionService()
         self.notifications = NotificationService()

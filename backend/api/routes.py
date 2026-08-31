@@ -30,7 +30,7 @@ from core.config import (
 )
 from core.config_validator import validate_and_sanitise
 from core.logging_utils import sanitize_exception, sanitize_log_value
-from core.version import normalize_version_tag, read_version
+from core.version import is_version_newer, normalize_version_tag, read_version
 from auth.models import AuthMechanism
 from auth.oidc_version import oidc_configuration_version
 from auth.passwords import basic_verification_cache, password_credential_version
@@ -225,11 +225,8 @@ _update_check_cache: dict = {}
 
 
 def _version_gt(a: str, b: str) -> bool:
-    """True if semver a > b."""
-    def _t(v: str):
-        try: return tuple(int(x) for x in normalize_version_tag(v).split("."))
-        except ValueError: return (0, 0, 0)
-    return _t(a) > _t(b)
+    """True when candidate release ``a`` is newer than running release ``b``."""
+    return is_version_newer(a, b)
 
 
 @router.get("/version/check")

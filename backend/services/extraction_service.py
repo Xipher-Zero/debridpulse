@@ -6,13 +6,14 @@ from pathlib import Path
 from core.config import get_settings
 from db.database import get_db
 from services.event_bus import publish
-from services.extractor import archive_paths_from_downloads, get_extractor
+from services.extractor import archive_paths_from_downloads
+from services.extractor_secure import get_secure_extractor
 from services.notifications import NotificationService
 
 
 class ExtractionService:
     async def extract_archive(self, *args, **kwargs):
-        return await get_extractor().extract_archive(*args, **kwargs)
+        return await get_secure_extractor().extract_archive(*args, **kwargs)
 
     async def _publish_state(
         self,
@@ -109,7 +110,7 @@ class ExtractionService:
 
         await self._publish_state(torrent_id, name, "extracting")
 
-        extractor = get_extractor()
+        extractor = get_secure_extractor()
         extractor.update_max_concurrent(
             max(1, int(getattr(cfg, "extract_max_concurrent", 1) or 1))
         )

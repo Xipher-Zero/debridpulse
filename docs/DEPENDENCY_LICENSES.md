@@ -66,12 +66,15 @@ recorded in the image's SBOM attestation.
 | aria2 | GPL-2.0-or-later |
 | curl | curl |
 | gosu | Apache-2.0 |
+| zstd | BSD-3-Clause |
 | 7zip | LGPL-2.1-or-later and package-specific component terms |
 | 7zip-rar | Debian non-free RAR codec; UnRAR restricted freeware terms |
 
 Package copyright files and common license texts remain installed in the
 image. `SOURCE_OFFER.md` explains how to request corresponding source for
 copyleft-covered binaries.
+
+`zstd` is installed as the exact outer decoder for `.tar.zst`/`.tzst`; the resulting TAR stream is validated by DebridPulse before extraction.
 
 `7zip-rar` is installed from Debian's `non-free` component solely to provide
 RAR extraction through the external `7z` process. Because the slim base filters

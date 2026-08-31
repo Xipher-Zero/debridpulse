@@ -101,7 +101,7 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
         "aria2_split":                    (1, 64),
         "aria2_max_connection_per_server":(1, 32),
         "aria2_error_retry_count":        (0, 20),
-        "aria2_error_retry_delay_seconds":(1, 3600),
+        "aria2_error_retry_delay_seconds":(0, 3600),
         "aria2_deep_sync_interval_minutes":(0, 1440),
         "poll_interval_seconds":          (5, 3600),
         "alldebrid_rate_limit_per_minute":(0, 600),

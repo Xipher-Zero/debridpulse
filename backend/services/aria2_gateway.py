@@ -10,9 +10,10 @@ from services.aria2_runtime import is_builtin_mode
 
 
 class Aria2Gateway:
-    def __init__(self, engine, ownership):
+    def __init__(self, engine, ownership, recovery=None):
         self.engine = engine
         self.ownership = ownership
+        self.recovery = recovery
 
     async def _require_owned_mutation(self, gid: str) -> str:
         normalized = str(gid or "").strip()
@@ -86,7 +87,11 @@ class Aria2Gateway:
         }
 
     async def deep_sync(self):
-        return await self.engine.deep_sync_aria2_finished()
+        """Run the same bounded retry owner used by normal reconciliation."""
+        if self.recovery is None:
+            return await self.engine.deep_sync_aria2_finished()
+        async with self.engine._aria2_state_lock:
+            return await self.recovery.run()
 
     async def disk_guard(self):
         return await self.engine.check_disk_space_guard()

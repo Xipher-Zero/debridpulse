@@ -17,12 +17,13 @@ _cycle_active: ContextVar[bool] = ContextVar("debridpulse_reconcile_active", def
 
 
 class ReconciliationService:
-    def __init__(self, engine, repository, control, dispatch, ownership):
+    def __init__(self, engine, repository, control, dispatch, ownership, recovery=None):
         self.engine = engine
         self.repository = repository
         self.control = control
         self.dispatch = dispatch
         self.ownership = ownership
+        self.recovery = recovery
         self.confirmed_missing: set[str] = set()
 
     async def get_all(self):
@@ -114,6 +115,9 @@ class ReconciliationService:
                     await self.dispatch.dispatch_queue(snapshot)
                 async with async_timer("reconcile.ready_parent"):
                     await self.engine._schedule_ready_aria2_parents()
+                if self.recovery is not None:
+                    async with async_timer("reconcile.aria2_error_recovery"):
+                        await self.recovery.run()
         finally:
             _cycle_active.reset(active_token)
 
