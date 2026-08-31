@@ -19,7 +19,7 @@ jobs:
         run: python3 .github/scripts/finalize-v1011.py
 
       - name: Install test dependencies
-        run: python3 -m pip install -r backend/requirements-dev.txt
+        run: python3 -m pip install -r backend/requirements-dev.txt ruff
 
       - name: Full Python test suite
         working-directory: backend
