@@ -5,6 +5,7 @@ on:
     branches: [1.0.11-hotfix1]
     paths:
       - scripts/_canonicalize_phase2.py
+      - scripts/_canonicalize_phase2_resume.py
       - .github/workflows/frontend-canonicalize-phase2.yml
   workflow_dispatch:
 
@@ -34,7 +35,14 @@ jobs:
         run: |
           set +e
           python scripts/_canonicalize_phase2.py > phase2-transform.log 2>&1
-          code=$?
+          first=$?
+          if [ "$first" -ne 0 ]; then
+            echo "phase2 checkpoint exit=$first; resuming from validated checkpoint" >> phase2-transform.log
+            python scripts/_canonicalize_phase2_resume.py >> phase2-transform.log 2>&1
+            code=$?
+          else
+            code=0
+          fi
           cat phase2-transform.log
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
@@ -75,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/_canonicalize_phase2.py .github/workflows/frontend-canonicalize-phase2.yml phase2-transform.log
+          rm -f scripts/_canonicalize_phase2.py scripts/_canonicalize_phase2_resume.py .github/workflows/frontend-canonicalize-phase2.yml phase2-transform.log
           git config user.name "Xipher-Zero"
           git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
           git add -A
