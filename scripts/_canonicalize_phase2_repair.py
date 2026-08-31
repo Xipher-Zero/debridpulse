@@ -10,18 +10,41 @@ def read(path):
 def write(path, text):
     (ROOT / path).write_text(text)
 
+# Downloads bulk state now has an explicit bulkAction completion lifecycle.
 path = 'frontend/static/ui-downloads-runtime.js'
 text = read(path)
 observer = """    new MutationObserver(function () { syncBulkButtonPresentation(bar); })
       .observe(header, {childList: true, subtree: true, characterData: true});
 """
-if text.count(observer) != 1:
-    raise RuntimeError(f'expected one Downloads bulk observer, found {text.count(observer)}')
-text = text.replace(observer, '', 1)
+if observer in text:
+    text = text.replace(observer, '', 1)
 write(path, text)
 
-# The preceding resume pass completed all remaining transformations before its
-# final observer inventory guard. Re-run that complete inventory here.
+# The Settings correction files had slightly different observer-tail shapes.
+# If a resume transform left one of those tails intact, replace the whole tail
+# with the explicit Settings-rendered lifecycle rather than widening a DOM watch.
+for rel in (
+    'frontend/static/ui-settings-authentication.js',
+    'frontend/static/ui-settings-authentication-polish.js',
+    'frontend/static/ui-settings-authentication-oidc.js',
+    'frontend/static/ui-settings-maintenance-wipe.js',
+    'frontend/static/ui-settings-notifications.js',
+):
+    text = read(rel)
+    if 'MutationObserver' not in text:
+        continue
+    text, count = re.subn(
+        r"\n\s*const view = document\.getElementById\('view-settings'\);.*?\n\s*\}\n\}\)\(\);\s*$",
+        "\n  document.addEventListener('debridpulse:settings-rendered', schedule);\n})();\n",
+        text,
+        count=1,
+        flags=re.S,
+    )
+    if count != 1:
+        raise RuntimeError(f'unrecognized Settings observer tail in {rel}')
+    write(rel, text)
+
+# Re-run the complete targeted observer inventory.
 for rel in (
     'frontend/static/ui-runtime.js',
     'frontend/static/ui-downloads-runtime.js',
