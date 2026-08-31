@@ -17,10 +17,6 @@
   ];
 
   let lastTrackedTotal = 0;
-  let titleObserver = null;
-  let statsObserver = null;
-  let downloadsEmptyObserver = null;
-  let recentEmptyObserver = null;
 
   function utilitySvg(name) {
     return window.DPIcons && typeof window.DPIcons.svg === 'function'
@@ -398,98 +394,39 @@
     return filterPaginationSummary(activeFilterStatus(), total);
   }
 
-  function installPaginationRenderer() {
-    if (typeof window.renderTorrentPagination !== 'function' || window.renderTorrentPagination.dpDownloadsV11) return;
-
-    window.renderTorrentPagination = function renderTorrentPaginationV11(total, limit, offset) {
-      const normalizedTotal = Math.max(0, Number(total) || 0);
-      const normalizedLimit = Math.max(1, Number(limit) || 25);
-      const normalizedOffset = Math.max(0, Number(offset) || 0);
-      const totalPages = Math.max(1, Math.ceil(normalizedTotal / normalizedLimit));
-      const cur = Math.min(totalPages, Math.floor(normalizedOffset / normalizedLimit) + 1);
-
-      try { torrentPage = cur; } catch (_) {}
-
-      const info = document.getElementById('torrent-page-info');
-      const btns = document.getElementById('torrent-page-btns');
-      if (!info || !btns) return;
-
-      const from = normalizedTotal === 0 ? 0 : normalizedOffset + 1;
-      const to = Math.min(normalizedOffset + normalizedLimit, normalizedTotal);
-      info.textContent = paginationSummary(normalizedTotal, from, to);
-
-      const controls = [];
-      if (cur > 1) {
-        controls.push(
-          '<button type="button" class="dp-pager-btn" aria-label="Previous page"' +
-          ' onclick="goToTorrentPage(' + (cur - 1) + ')">' + utilitySvg('chevronLeft') + '</button>'
-        );
-      }
-      controls.push(
-        '<button type="button" class="dp-pager-btn dp-pager-current" aria-current="page"' +
-        ' aria-label="Page ' + cur + ', current page">' + cur + '</button>'
-      );
-      if (cur < totalPages) {
-        controls.push(
-          '<button type="button" class="dp-pager-btn" aria-label="Next page"' +
-          ' onclick="goToTorrentPage(' + (cur + 1) + ')">' + utilitySvg('chevronRight') + '</button>'
-        );
-      }
-      btns.innerHTML = controls.join('');
-    };
-
-    window.renderTorrentPagination.dpDownloadsV11 = true;
+  function renderTorrentPagination(total, limit, offset) {
+    const normalizedTotal=Math.max(0,Number(total)||0);
+    const normalizedLimit=Math.max(1,Number(limit)||25);
+    const normalizedOffset=Math.max(0,Number(offset)||0);
+    const totalPages=Math.max(1,Math.ceil(normalizedTotal/normalizedLimit));
+    const cur=Math.min(totalPages,Math.floor(normalizedOffset/normalizedLimit)+1);
+    try { torrentPage=cur; } catch (_) {}
+    const info=document.getElementById('torrent-page-info');
+    const btns=document.getElementById('torrent-page-btns');
+    if(!info||!btns)return;
+    const from=normalizedTotal===0?0:normalizedOffset+1;
+    const to=Math.min(normalizedOffset+normalizedLimit,normalizedTotal);
+    info.textContent=paginationSummary(normalizedTotal,from,to);
+    const controls=[];
+    if(cur>1)controls.push('<button type="button" class="dp-pager-btn" aria-label="Previous page" onclick="goToTorrentPage('+(cur-1)+')">'+utilitySvg('chevronLeft')+'</button>');
+    controls.push('<button type="button" class="dp-pager-btn dp-pager-current" aria-current="page" aria-label="Page '+cur+', current page">'+cur+'</button>');
+    if(cur<totalPages)controls.push('<button type="button" class="dp-pager-btn" aria-label="Next page" onclick="goToTorrentPage('+(cur+1)+')">'+utilitySvg('chevronRight')+'</button>');
+    btns.innerHTML=controls.join('');
   }
+  window.renderTorrentPagination=renderTorrentPagination;
 
-  function installFilterWrapper() {
-    if (typeof window.setFilter !== 'function' || window.setFilter.dpDownloadsV11) return;
-    const legacySetFilter = window.setFilter;
-    window.setFilter = function setFilterV11(el, status) {
-      const result = legacySetFilter.apply(this, arguments);
-      syncFilterState();
-      return result;
-    };
-    window.setFilter.dpDownloadsV11 = true;
+  function setFilter(el,status) {
+    document.querySelectorAll('#view-torrents .filter-tabs .ftab').forEach(tab=>tab.classList.remove('active'));
+    if(el)el.classList.add('active');
+    try { currentFilter=status; torrentPage=1; } catch (_) {}
+    if(typeof loadTorrents==='function')loadTorrents();
+    syncFilterState();
   }
+  window.setFilter=setFilter;
 
-  function observeDynamicCounts() {
-    const title = document.getElementById('torrent-card-title');
-    if (title && !titleObserver) {
-      titleObserver = new MutationObserver(function () {
-        if (!title.querySelector('.dp-downloads-heading')) decorateDownloadsHeader();
-      });
-      titleObserver.observe(title, {childList: true, subtree: true, characterData: true});
-    }
 
-    const dashboardTotal = document.getElementById('s-total');
-    if (dashboardTotal && !statsObserver) {
-      statsObserver = new MutationObserver(function () {
-        decorateDownloadsHeader();
-      });
-      statsObserver.observe(dashboardTotal, {childList: true, subtree: true, characterData: true});
-    }
-  }
-
-  function observeEmptyStates() {
-    const downloadsBody = document.getElementById('t-tbody');
-    if (downloadsBody && !downloadsEmptyObserver) {
-      downloadsEmptyObserver = new MutationObserver(function () {
-        decorateEmptyStates();
-        normalizeDownloadRowActions();
-      });
-      downloadsEmptyObserver.observe(downloadsBody, {childList: true, subtree: true});
-    }
-
-    const recentBody = document.getElementById('dash-tbody');
-    if (recentBody && !recentEmptyObserver) {
-      recentEmptyObserver = new MutationObserver(decorateEmptyStates);
-      recentEmptyObserver.observe(recentBody, {childList: true, subtree: true});
-    }
-  }
 
   function initializeDownloadsPresentation() {
-    installPaginationRenderer();
-    installFilterWrapper();
     ensureDownloadFilters();
     decorateBulkSelectionToolbar();
     decorateDownloadsStructure();
@@ -497,10 +434,11 @@
     decorateEmptyStates();
     normalizeDownloadRowActions();
     syncFilterState();
-    observeDynamicCounts();
-    observeEmptyStates();
   }
 
   initializeDownloadsPresentation();
   document.addEventListener('DOMContentLoaded', initializeDownloadsPresentation, {once: true});
+  document.addEventListener('debridpulse:downloads-rendered', initializeDownloadsPresentation);
+  document.addEventListener('debridpulse:dashboard-recent-rendered', decorateEmptyStates);
+  document.addEventListener('debridpulse:dashboard-stats-rendered', decorateDownloadsHeader);
 })();

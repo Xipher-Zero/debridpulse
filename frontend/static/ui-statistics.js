@@ -6,7 +6,81 @@
 (function () {
   'use strict';
 
-  const EVENT_NAME = 'debridpulse:statistics-rendered';
+async function loadDetailedStatsData(period) {
+  period = period || (document.querySelector('#stats-period-tabs .ftab.active')||{}).dataset?.period || '24h';
+
+  // Chart-Titel Mapping
+  var chartTitles = {
+    '1h':  'Completions — last hour',
+    '24h': 'Completions — last 24 hours',
+    '7d':  'Completions — last 7 days',
+    '30d': 'Completions — last 30 days',
+    '1y':  'Completions — last year',
+    'all': 'All-time completions'
+  };
+  var chartTitleEl = document.getElementById('chart-title');
+  if (chartTitleEl) chartTitleEl.textContent = chartTitles[period] || 'Completions';
+
+  // Period label for subtext
+  var periodLabels = {
+    '1h':'last hour','24h':'last 24h','7d':'last 7 days',
+    '30d':'last 30 days','1y':'last year','all':'all time'
+  };
+  var pLabel = periodLabels[period] || period;
+
+  try {
+    var stats = await api('GET', '/stats/detail?period=' + encodeURIComponent(period));
+    var t = stats.totals || {};
+    document.getElementById('detail-stat-cards').innerHTML =
+      '<div class="metric-card"><div class="metric-label">Downloads</div><div class="metric-value">'+(t.torrent_total||0)+'</div><div class="metric-sub">Added in '+pLabel+'.</div></div>' +
+      '<div class="metric-card"><div class="metric-label">Completed Size</div><div class="metric-value">'+fmtSize(t.completed_size||0)+'</div><div class="metric-sub">Completed in '+pLabel+'.</div></div>' +
+      '<div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value">'+(t.completed_count||0)+'</div><div class="metric-sub">Finished in '+pLabel+'.</div></div>' +
+      '<div class="metric-card"><div class="metric-label">In Progress</div><div class="metric-value">'+(t.partial_total||0)+'</div><div class="metric-sub">Currently downloading or processing.</div></div>' +
+      (t.success_rate_pct!=null ? '<div class="metric-card"><div class="metric-label">Success Rate</div><div class="metric-value">'+t.success_rate_pct+'%</div><div class="metric-sub">Completed vs. completed+error.</div></div>' : '');
+
+    document.getElementById('detail-torrent-status').innerHTML = renderKvMap(stats.torrent_status);
+    document.getElementById('detail-file-status').innerHTML   = renderKvMap(stats.file_status, function(v){return v.count??v;});
+    document.getElementById('detail-event-levels').innerHTML  = renderKvMap(stats.event_levels);
+    var srcEl = document.getElementById('detail-sources');
+    if (srcEl) {
+      var srcs = stats.sources||[];
+      srcEl.innerHTML = srcs.length
+        ? srcs.map(function(s){ return '<div class="kv-row"><span class="kv-key">'+esc(s.source||'(none)')+'</span><span class="kv-val">'+s.count+'</span></div>'; }).join('')
+        : '<div class="empty">No data.</div>';
+    }
+
+    // Chart — data already period-filtered from backend
+    var daily = stats.daily_completions || [];
+    var ctx = document.getElementById('daily-chart');
+    if (ctx && typeof Chart !== 'undefined') {
+      if (ctx._ci) ctx._ci.destroy();
+      var themeStyles = getComputedStyle(document.body);
+      var gridColor = themeStyles.getPropertyValue('--border').trim();
+      var tickColor = themeStyles.getPropertyValue('--text3').trim();
+      ctx._ci = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: daily.map(function(d){ return d.date||''; }),
+          datasets: [{
+            label: 'Completions', data: daily.map(function(d){ return d.count||0; }),
+            backgroundColor: 'rgba(56,210,125,.48)', borderColor: '#38d27d',
+            borderWidth: 1, borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid:{color:gridColor}, ticks:{color:tickColor,font:{size:10},maxRotation:45} },
+            y: { grid:{color:gridColor}, ticks:{color:tickColor,font:{size:10}}, beginAtZero:true, precision:0 }
+          }
+        }
+      });
+    }
+  } catch(e) { toast(sanitizeErrorMsg(e.message),'error'); }
+}
+
+
   const SOURCE_LABELS = Object.freeze({
     direct_link: 'Debrid Link',
     manual: 'Magnet Link',
@@ -545,39 +619,25 @@
     applySharedSurfaceClass();
   }
 
-  function install() {
-    const previous = window.loadDetailedStats;
-    if (typeof previous !== 'function') {
-      console.error('[DebridPulse] Statistics presentation not installed: loadDetailedStats is unavailable.');
-      return false;
-    }
-    if (previous.dpStatisticsPresentation === '1') return true;
+  async function loadDetailedStats(period) {
+    const resolved = selectedPeriod(period);
+    const result = await loadDetailedStatsData(resolved);
+    applyPresentation(resolved);
+    return result;
+  }
 
-    const wrapped = async function (period) {
-      const resolved = selectedPeriod(period);
-      const result = await previous.call(this, resolved);
-      document.dispatchEvent(new CustomEvent(EVENT_NAME, {
-        detail: {period: resolved}
-      }));
-      return result;
-    };
-    wrapped.dpStatisticsPresentation = '1';
-    window.loadDetailedStats = wrapped;
+  function install() {
+    window.loadDetailedStats = loadDetailedStats;
+    try { loadDetailedStats = window.loadDetailedStats; } catch (_) {}
     window.fmtDuration = formatCompactDuration;
     return true;
   }
 
   function initialize() {
-    applyPresentation();
-    document.addEventListener(EVENT_NAME, function (event) {
-      applyPresentation(event.detail && event.detail.period);
-    });
+    applyPresentation('7d');
   }
 
-  window.DPStatisticsLifecycle = Object.freeze({
-    event: EVENT_NAME,
-    install: install,
-  });
+  window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});
 
   install();
   if (document.readyState === 'loading') {

@@ -58,3 +58,20 @@
 /* Cross-page visual accents and shell signal field. */
 @import url('/ui-visual-accents.css?v=21');
 @import url('/ui-shell-signal-field.css?v=20');
+
+/* Required canonical application/page styles. */
+@import url('/ui-help-chrome.css?v=2');
+@import url('/ui-help-license-documents.css?v=2');
+@import url('/ui-help-balance.css?v=2');
+@import url('/ui-settings-downloads-completion.css?v=2');
+@import url('/ui-settings-form-consistency.css?v=2');
+@import url('/ui-settings-aria2-live.css?v=2');
+@import url('/ui-settings-maintenance-wipe.css?v=2');
+@import url('/ui-settings-notifications.css?v=2');
+@import url('/ui-settings-authentication.css?v=2');
+@import url('/ui-settings-authentication-polish.css?v=2');
+@import url('/ui-settings-authentication-oidc.css?v=2');
+@import url('/ui-settings-card-icons.css?v=2');
+@import url('/ui-page-finalization.css?v=2');
+@import url('/ui-statistics.css?v=2');
+@import url('/ui-shell-brand.css?v=2');
