@@ -1,0 +1,64 @@
+name: Frontend Canonicalize Phase 2
+
+on:
+  push:
+    branches: [1.0.11-hotfix1]
+    paths:
+      - scripts/_canonicalize_phase2.py
+      - .github/workflows/frontend-canonicalize-phase2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1.0.11-hotfix1
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Apply guarded canonicalization
+        run: python scripts/_canonicalize_phase2.py
+
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+
+      - name: Python compile
+        run: python -m compileall -q backend
+
+      - name: Diff integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(cat VERSION)" = "1.0.11.1"
+          ! grep -R "MutationObserver" frontend/static/ui-runtime.js frontend/static/ui-downloads-runtime.js frontend/static/ui-settings-*.js
+          ! grep -q "ui-page-finalization" frontend/static/index.html frontend/static/style-v11.css
+          ! grep -q "ui-help-chrome.js" frontend/static/index.html
+          ! grep -q "ui-shell-runtime.js" frontend/static/index.html
+
+      - name: Commit canonical tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f scripts/_canonicalize_phase2.py .github/workflows/frontend-canonicalize-phase2.yml
+          git config user.name "Xipher-Zero"
+          git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "refactor: remove late frontend correction scaffolding"
+          git push origin HEAD:1.0.11-hotfix1
