@@ -125,7 +125,7 @@ def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
 def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> None:
     overlay = read("style-v11.css")
 
-    shell = overlay.index("/ui-shell-structural.css?v=27")
+    shell = overlay.index("/ui-shell-structural.css?v=28")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     controls = overlay.index("/ui-dashboard-control-polish.css?v=23")
     stats = overlay.index("/ui-statistics-page.css?v=21")
