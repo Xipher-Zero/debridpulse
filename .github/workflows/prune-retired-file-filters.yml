@@ -1,0 +1,88 @@
+name: Retired File Filters Prune
+
+on:
+  push:
+    branches:
+      - audit/retire-file-filters-20260831
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: github.event.head_commit.message != 'audit: apply retired File Filters prune'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Apply retirement patch
+        run: python .github/scripts/prune_retired_file_filters.py
+
+      - name: Install test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+          pip install ruff
+
+      - name: Run targeted retirement contracts
+        run: |
+          cd backend
+          python -m pytest -q \
+            tests/test_settings_runtime_contract_census.py \
+            tests/test_settings_downloads_completion_ui.py \
+            tests/test_settings_architecture_ui.py \
+            tests/test_download_logic.py
+
+      - name: Syntax and undefined-name gates
+        run: |
+          cd backend
+          ruff check api auth core db services main.py --select F821,F822,F823
+          python -m compileall -q .
+          cd ..
+          node --check frontend/static/ui-settings-page.js
+          node --check frontend/static/ui-settings-downloads-completion.js
+          git diff --check
+
+      - name: Show retirement reference census
+        run: |
+          echo '--- active owner references ---'
+          git grep -nE 'filters_enabled|blocked_extensions|blocked_keywords|min_file_size_mb|block_samples|block_extras|torrent_labels|def is_blocked|blocked_items|Filtered files were skipped' -- \
+            backend/core/config.py \
+            backend/core/config_validator.py \
+            backend/services/manager_v2.py \
+            frontend/static/ui-settings-page.js \
+            frontend/static/ui-settings-downloads-completion.js \
+            frontend/static/ui-settings-downloads-completion.css \
+            || true
+          echo '--- preserved explicit block + label contracts ---'
+          git grep -nE '/torrents/\{torrent_id\}/files/\{file_id\}/block|/torrents/\{torrent_id\}/label' -- backend/api/routes.py
+
+      - name: Commit disposable candidate
+        run: |
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add \
+            backend/core/config.py \
+            backend/core/config_validator.py \
+            backend/services/manager_v2.py \
+            frontend/static/ui-settings-page.js \
+            frontend/static/ui-settings-downloads-completion.js \
+            frontend/static/ui-settings-downloads-completion.css \
+            backend/tests/test_download_logic.py \
+            backend/tests/test_settings_downloads_completion_ui.py \
+            backend/tests/test_settings_architecture_ui.py \
+            backend/tests/test_settings_runtime_contract_census.py
+          git commit -m 'audit: apply retired File Filters prune'
+          git push origin HEAD:audit/retire-file-filters-20260831
