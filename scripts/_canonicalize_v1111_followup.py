@@ -111,23 +111,26 @@ write(index_path, index)
 
 # Release/install examples follow VERSION. These are real release surfaces, not
 # architecture-test accommodations.
+old_image = 'ghcr.io/xipher-zero/debridpulse:v1.0.11'
+new_image = 'ghcr.io/xipher-zero/debridpulse:v1.0.11.1'
+
 compose_path = 'docker-compose.yml'
 compose = read(compose_path)
-compose = replace_once(
-    compose,
-    'ghcr.io/xipher-zero/debridpulse:v1.0.11',
-    'ghcr.io/xipher-zero/debridpulse:v1.0.11.1',
-    'compose image version',
-)
+compose = replace_once(compose, old_image, new_image, 'compose image version')
 write(compose_path, compose)
 
 readme_path = 'README.md'
 readme = read(readme_path)
-old_image = 'ghcr.io/xipher-zero/debridpulse:v1.0.11'
-new_image = 'ghcr.io/xipher-zero/debridpulse:v1.0.11.1'
 count = readme.count(old_image)
 if count != 2:
     raise RuntimeError(f'README image version: expected two matches, found {count}')
 write(readme_path, readme.replace(old_image, new_image))
+
+project_page_path = 'index.html'
+project_page = read(project_page_path)
+count = project_page.count(old_image)
+if count < 1:
+    raise RuntimeError('project page image version: expected at least one v1.0.11 image reference')
+write(project_page_path, project_page.replace(old_image, new_image))
 
 print('Applied v1.0.11.1 corrective follow-up')
