@@ -41,23 +41,28 @@ jobs:
             node --check "$file"
           done < <(find frontend/static -type f -name '*.js' -print0)
 
-      - name: Remove audit scaffolding and verify final RC census
+      - name: Prepare harvestable non-workflow tree
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f .github/scripts/finalize-v1011.py .github/workflows/audit-version-census.yml
-          if grep -RIni --exclude-dir=.git --exclude='test_version_utils.py' 'rc1' .; then
-            echo 'ERROR: stale RC1 identifier remains outside intentional prerelease tests'
+          git checkout HEAD -- \
+            .github/workflows/tests.yml \
+            .github/workflows/container-security.yml \
+            .github/workflows/fork-image.yml \
+            .github/workflows/codeql.yml
+          git rm -f .github/scripts/finalize-v1011.py
+          if grep -RIni --exclude-dir=.git --exclude='test_version_utils.py' --exclude='audit-version-census.yml' 'rc1' .; then
+            echo 'ERROR: stale RC1 identifier remains outside intentional prerelease tests/audit scaffolding'
             exit 1
           fi
           git diff --check
 
-      - name: Commit qualified candidate on disposable branch
+      - name: Commit qualified harvest tree
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'Xipher-Zero'
           git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
           git add -A
-          git commit -m 'release: finalize v1.0.11 surfaces'
+          git commit -m 'release: finalize v1.0.11 non-workflow surfaces'
           git push origin HEAD:audit/v1.0.11-version-census
