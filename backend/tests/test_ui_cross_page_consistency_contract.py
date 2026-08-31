@@ -76,3 +76,16 @@ def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
     visual = overlay.index("/ui-visual-accents.css?v=21")
     signal = overlay.index("/ui-shell-signal-field.css?v=20")
     assert shared < shell < provider < dashboard < dashboard_final < downloads < transfer < visual < signal
+
+def test_global_toast_uses_one_footer_safe_anchor_across_pages() -> None:
+    shared = read_static("ui-shared-contract.css")
+    toast = shared[shared.index("/* Global toast position") :]
+
+    assert "--dp-toast-bottom-offset: 96px;" in toast
+    assert "body.dp-v11-structural #toasts" in toast
+    assert "bottom: var(--dp-toast-bottom-offset);" in toast
+    assert "@media (max-width: 900px)" in toast
+    assert "--dp-toast-bottom-offset: 160px;" in toast
+    assert "#view-settings" not in toast
+    assert ".active" not in toast
+

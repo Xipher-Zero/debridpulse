@@ -163,21 +163,41 @@ class SecureExtractor(Extractor):
                                         nested,
                                         nested.parent,
                                     )
-                                    if delete_after:
-                                        nested.unlink(missing_ok=True)
-                                        logger.debug("Removed nested archive %s", nested)
                                 except Exception as nested_error:
                                     logger.warning(
                                         "Nested extraction failed for %s: %s",
                                         nested,
                                         nested_error,
                                     )
+                                    continue
+
+                                if delete_after:
+                                    try:
+                                        nested.unlink(missing_ok=True)
+                                        logger.debug("Removed nested archive %s", nested)
+                                    except OSError as cleanup_error:
+                                        logger.warning(
+                                            "Nested archive cleanup failed for %s: %s",
+                                            nested,
+                                            cleanup_error,
+                                        )
                     except Exception as scan_error:
                         logger.debug("Nested archive scan failed: %s", scan_error)
 
+                    # Extraction success and source cleanup are separate truths.
+                    # A cleanup failure must not relabel already-materialized data
+                    # as an extraction failure; ExtractionService owns the durable
+                    # transfer-level cleanup audit and retries DB-known source paths.
                     if delete_after and archive.exists():
-                        archive.unlink()
-                        logger.debug("Deleted archive: %s", archive)
+                        try:
+                            archive.unlink()
+                            logger.debug("Deleted archive: %s", archive)
+                        except OSError as cleanup_error:
+                            logger.warning(
+                                "Archive cleanup deferred for %s: %s",
+                                archive,
+                                cleanup_error,
+                            )
                     return True, f"Extracted {archive.name}"
                 except Exception as exc:
                     last_err = f"Extraction failed for {archive.name}: {exc}"

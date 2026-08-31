@@ -80,3 +80,20 @@ body.light.dp-v11-structural .modal-close[role="button"]:focus-visible,
 body.light.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
   outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
 }
+
+/* Global toast position uses the Settings footer as the minimum safe lower
+   datum while remaining identical across pages at a given viewport width. */
+:root {
+  --dp-toast-bottom-offset: 96px;
+}
+
+body.dp-v11-structural #toasts {
+  bottom: var(--dp-toast-bottom-offset);
+}
+
+@media (max-width: 900px) {
+  :root {
+    --dp-toast-bottom-offset: 160px;
+  }
+}
+
