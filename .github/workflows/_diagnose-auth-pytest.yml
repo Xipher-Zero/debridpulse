@@ -41,6 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/_canonicalize_settings_auth.py
+          python scripts/_canonicalize_v1111_followup.py
 
       - name: Run full backend suite and capture exact failures
         id: pytest
