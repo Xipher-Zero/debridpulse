@@ -133,6 +133,19 @@ class IntegrityMetadata:
 
 
 @dataclass(frozen=True)
+class SourceIdentity:
+    """Comparable source scope supplied by the resolver, without source secrets."""
+    scope: str
+    key: str
+
+
+@dataclass(frozen=True)
+class ArtifactFingerprint:
+    total_bytes: int
+    signature: str
+
+
+@dataclass(frozen=True)
 class TransferCandidate:
     name: str
     endpoints: tuple[Endpoint, ...]
@@ -146,6 +159,7 @@ class TransferCandidate:
     integrity: tuple[IntegrityMetadata, ...] = ()
     priority: int = 0
     id: str = field(default_factory=new_identity)
+    source_identity: SourceIdentity | None = None
 
 
 @dataclass(frozen=True)
@@ -225,6 +239,12 @@ class ExecutionObservation:
     @property
     def resumable(self) -> bool:
         return self.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING, ExecutionState.PAUSED}
+
+
+@dataclass(frozen=True)
+class ExecutionSnapshot:
+    observations: tuple[ExecutionObservation, ...]
+    error: NormalizedError | None = None
 
 
 @dataclass(frozen=True)
@@ -309,3 +329,4 @@ class ExecutionAttempt:
     state: str
     progress: TransferProgress = field(default_factory=TransferProgress)
     error: NormalizedError | None = None
+    candidate: TransferCandidate | None = field(default=None, repr=False)

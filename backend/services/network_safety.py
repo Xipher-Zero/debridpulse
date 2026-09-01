@@ -11,6 +11,15 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
+
+class UnsafeDestinationError(ValueError):
+    """An address violates public-destination policy."""
+
+
+class DestinationLookupError(ConnectionError):
+    """The destination could not be resolved; no policy authorization was granted."""
+
+
 def validate_provider_download_url(value: object, *, context: str = "download link") -> str:
     """Validate a provider-issued URL before handing it to the local downloader.
 
@@ -22,25 +31,25 @@ def validate_provider_download_url(value: object, *, context: str = "download li
     """
     raw = str(value or "").strip()
     if not raw:
-        raise Exception(f"Provider returned an empty {context}")
+        raise UnsafeDestinationError(f"Provider returned an empty {context}")
     try:
         parsed = urlsplit(raw)
         port = parsed.port  # force validation of malformed/out-of-range ports
     except ValueError as exc:
-        raise Exception(f"Provider returned an invalid {context}") from exc
+        raise UnsafeDestinationError(f"Provider returned an invalid {context}") from exc
 
     if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
-        raise Exception(f"Provider returned a non-HTTP(S) {context}")
+        raise UnsafeDestinationError(f"Provider returned a non-HTTP(S) {context}")
     if parsed.username is not None or parsed.password is not None:
-        raise Exception(f"Provider returned a credential-bearing {context}")
+        raise UnsafeDestinationError(f"Provider returned a credential-bearing {context}")
     if port is not None and not (1 <= port <= 65535):
-        raise Exception(f"Provider returned an invalid {context}")
+        raise UnsafeDestinationError(f"Provider returned an invalid {context}")
 
     host = parsed.hostname.rstrip(".").casefold()
     if not host or "%" in host:
-        raise Exception(f"Provider returned an invalid {context} host")
+        raise UnsafeDestinationError(f"Provider returned an invalid {context} host")
     if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
-        raise Exception(f"Provider returned a local {context} host")
+        raise UnsafeDestinationError(f"Provider returned a local {context} host")
 
     try:
         address = ipaddress.ip_address(host)
@@ -53,7 +62,7 @@ def validate_provider_download_url(value: object, *, context: str = "download li
         except OSError:
             address = None
     if address is not None and not address.is_global:
-        raise Exception(f"Provider returned a non-public {context} address")
+        raise UnsafeDestinationError(f"Provider returned a non-public {context} address")
 
     return raw
 
@@ -74,10 +83,10 @@ def reject_non_public_resolution(addresses: Iterable[str], *, host: str) -> None
         if str(address or "").strip()
     }
     if not normalized:
-        raise ValueError(f"Provider download host {host!r} did not resolve to an address")
+        raise UnsafeDestinationError(f"Provider download host {host!r} did not resolve to an address")
     blocked = sorted(address for address in normalized if not _public_ip(address))
     if blocked:
-        raise ValueError(
+        raise UnsafeDestinationError(
             f"Provider download host {host!r} resolved to non-public address(es): "
             + ", ".join(blocked[:4])
         )
@@ -89,7 +98,7 @@ async def validate_resolved_public_destination(uri: str) -> str:
     parsed = urlsplit(validated)
     host = str(parsed.hostname or "").rstrip(".").casefold()
     if not host:
-        raise ValueError("Provider download URL has no hostname")
+        raise UnsafeDestinationError("Provider download URL has no hostname")
 
     try:
         literal = ipaddress.ip_address(host)
@@ -98,7 +107,7 @@ async def validate_resolved_public_destination(uri: str) -> str:
 
     if literal is not None:
         if not literal.is_global:
-            raise ValueError(f"Provider download host {host!r} is not public")
+            raise UnsafeDestinationError(f"Provider download host {host!r} is not public")
         return validated
 
     port = int(parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
@@ -112,7 +121,7 @@ async def validate_resolved_public_destination(uri: str) -> str:
             proto=socket.IPPROTO_TCP,
         )
     except socket.gaierror as exc:
-        raise ValueError(f"Provider download host {host!r} could not be resolved") from exc
+        raise DestinationLookupError(f"Provider download host {host!r} could not be resolved") from exc
 
     reject_non_public_resolution(
         (entry[4][0] for entry in answers if entry and len(entry) >= 5 and entry[4]),
@@ -126,12 +135,27 @@ def _content_range_total(value: str) -> int:
     return int(match.group(1)) if match else 0
 
 
+class PublicDestinationResolver(aiohttp.abc.AbstractResolver):
+    """Authorize the exact DNS answers supplied to an HTTP connection."""
+    async def resolve(self, host, port=0, family=socket.AF_UNSPEC):
+        answers = await asyncio.get_running_loop().getaddrinfo(
+            host, port, family=family, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+        reject_non_public_resolution((entry[4][0] for entry in answers), host=host)
+        return [{"hostname": host, "host": entry[4][0], "port": port,
+                 "family": entry[0], "proto": entry[2], "flags": socket.AI_NUMERICHOST}
+                for entry in answers]
+
+    async def close(self):
+        pass
+
+
 async def sampled_public_artifact_fingerprint(
     uri: str,
     *,
     sample_bytes: int = 64 * 1024,
     timeout_seconds: float = 20.0,
-) -> str | None:
+    headers: dict | None = None,
+) -> tuple[int, str] | None:
     """Return a bounded first+last-range fingerprint without following redirects.
 
     This is used only to strengthen near-size cross-hoster mirror identity. A
@@ -143,10 +167,11 @@ async def sampled_public_artifact_fingerprint(
     sample_bytes = max(4096, int(sample_bytes))
     timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    connector = aiohttp.TCPConnector(resolver=PublicDestinationResolver(), use_dns_cache=False)
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
         async with session.get(
             validated,
-            headers={"Range": f"bytes=0-{sample_bytes - 1}", "Accept-Encoding": "identity"},
+            headers={**(headers or {}), "Range": f"bytes=0-{sample_bytes - 1}", "Accept-Encoding": "identity"},
             allow_redirects=False,
         ) as response:
             if 300 <= response.status < 400:
@@ -162,14 +187,16 @@ async def sampled_public_artifact_fingerprint(
                 digest.update(str(length).encode("ascii"))
                 digest.update(b"\0")
                 digest.update(body)
-                return digest.hexdigest()
+                return length, digest.hexdigest()
             if response.status != 206:
                 return None
             total = _content_range_total(response.headers.get("Content-Range", ""))
             if total <= 0:
                 return None
             first = await response.content.read(sample_bytes + 1)
-            if not first or len(first) > sample_bytes:
+            if len(first) != min(total, sample_bytes):
+                return None
+            if str(response.headers.get("Content-Range", "")).strip().lower() != f"bytes 0-{len(first)-1}/{total}":
                 return None
 
         if total <= len(first):
@@ -177,12 +204,12 @@ async def sampled_public_artifact_fingerprint(
             digest.update(str(total).encode("ascii"))
             digest.update(b"\0")
             digest.update(first[:total])
-            return digest.hexdigest()
+            return total, digest.hexdigest()
 
         last_start = max(0, total - sample_bytes)
         async with session.get(
             validated,
-            headers={"Range": f"bytes={last_start}-{total - 1}", "Accept-Encoding": "identity"},
+            headers={**(headers or {}), "Range": f"bytes={last_start}-{total - 1}", "Accept-Encoding": "identity"},
             allow_redirects=False,
         ) as response:
             if response.status != 206:
@@ -190,7 +217,9 @@ async def sampled_public_artifact_fingerprint(
             if _content_range_total(response.headers.get("Content-Range", "")) != total:
                 return None
             last = await response.content.read(sample_bytes + 1)
-            if not last or len(last) > sample_bytes:
+            if len(last) != total - last_start:
+                return None
+            if str(response.headers.get("Content-Range", "")).strip().lower() != f"bytes {last_start}-{total-1}/{total}":
                 return None
 
     digest = hashlib.sha256()
@@ -199,4 +228,4 @@ async def sampled_public_artifact_fingerprint(
     digest.update(first)
     digest.update(b"\0")
     digest.update(last)
-    return digest.hexdigest()
+    return total, digest.hexdigest()

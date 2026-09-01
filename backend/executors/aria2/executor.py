@@ -16,11 +16,11 @@ from urllib.parse import urlsplit
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.downloader_egress_guard import downloader_egress_guard
-from services.network_safety import validate_resolved_public_destination
+from services.network_safety import DestinationLookupError, sampled_public_artifact_fingerprint, validate_resolved_public_destination
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
 from transfers.models import (
-    CancellationInitiator, Capability, ExecutionHandle, ExecutionObservation,
-    ExecutionRequest, ExecutionState, HealthObservation, IntegrationDescriptor,
+    ArtifactFingerprint, CancellationInitiator, Capability, ExecutionHandle, ExecutionObservation,
+    ExecutionRequest, ExecutionState, ExecutionSnapshot, HealthObservation, IntegrationDescriptor,
     OutcomeKind, TransferOutcome,
 )
 
@@ -35,6 +35,8 @@ class Aria2Configuration:
     connections_per_server: int = 1
     continue_downloads: bool = True
     confirmation_delay: float = 0.05
+    waiting_window: int = 100
+    stopped_window: int = 100
     secrets: tuple[str, ...] = field(default=(), repr=False)
 
 
@@ -92,6 +94,16 @@ class Aria2Executor:
     def resumable_paths(self, target: str) -> tuple[str, ...]:
         return (str(self._target(target)) + ".aria2",)
 
+    async def fingerprint(self, candidate):
+        endpoint = next((item for item in candidate.endpoints if item.scheme in self.descriptor.schemes), None)
+        if endpoint is None:
+            return None
+        for key, value in endpoint.headers.items():
+            if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
+                return None
+        result = await sampled_public_artifact_fingerprint(endpoint.address, headers=dict(endpoint.headers))
+        return ArtifactFingerprint(*result) if result else None
+
     def _remote_target(self, target: Path) -> str:
         if not self.configuration.remote_root:
             return str(target)
@@ -104,6 +116,9 @@ class Aria2Executor:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE)
         try:
             address = await validate_resolved_public_destination(endpoint.address)
+        except DestinationLookupError as exc:
+            raise TransferError(NormalizedError(Domain.NETWORK, Category.DNS_FAILURE, Stage.QUEUE,
+                retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF, integration_id=self.descriptor.id)) from exc
         except ValueError as exc:
             raise self._failure(Category.DESTINATION_BLOCKED, domain=Domain.SECURITY) from exc
         try:
@@ -172,20 +187,71 @@ class Aria2Executor:
                     if check < 2:
                         await asyncio.sleep(self.configuration.confirmation_delay)
                     continue
-                if str(native.gid) != gid:
-                    raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
-                expected = self._remote_target(self._target(str(handle.context["target"])))
-                if any(str(item.get("path") or "") not in {"", expected} for item in (native.files or [])):
-                    raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
-                result = observation(handle, native, secrets=self._secrets(handle))
-                # Expose the application's filesystem namespace, not the remote
-                # daemon's mount mapping or any native file dictionaries.
-                return ExecutionObservation(handle, result.state, result.progress,
-                                            (str(handle.context["target"]),), result.error)
+                return self._observation(handle, native)
             return ExecutionObservation(handle, ExecutionState.ABSENT)
         except Exception as exc:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                                         error=exception_failure(exc, stage=Stage.RECONCILIATION, secrets=self._secrets(handle)))
+
+    def _observation(self, handle, native):
+        if str(native.gid) != str(handle.context["gid"]):
+            raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+        expected = self._remote_target(self._target(str(handle.context["target"])))
+        if any(str(item.get("path") or "") not in {"", expected} for item in (native.files or [])):
+            raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
+        result = observation(handle, native, secrets=self._secrets(handle))
+        return ExecutionObservation(handle, result.state, result.progress,
+                                    (str(handle.context["target"]),), result.error)
+
+    async def observe_many(self, handles: tuple[ExecutionHandle, ...]) -> ExecutionSnapshot:
+        if not handles:
+            return ExecutionSnapshot(())
+        permitted = {}
+        results = []
+        for handle in handles:
+            try:
+                gid = await self._check(handle, "observe")
+                permitted[gid] = handle
+            except Exception as exc:
+                results.append(ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                    error=exception_failure(exc, stage=Stage.RECONCILIATION, secrets=self._secrets(handle))))
+        if not permitted:
+            return ExecutionSnapshot(tuple(results))
+        try:
+            keys = self.client._keys()
+            cfg = self.configuration
+            snapshots = await self.client._multicall([
+                ("aria2.tellActive", [keys]),
+                ("aria2.tellWaiting", [0, max(10, min(1000, cfg.waiting_window)), keys]),
+                ("aria2.tellStopped", [0, max(10, min(1000, cfg.stopped_window)), keys]),
+            ])
+            if len(snapshots) != 3 or any(not isinstance(items, list) for items in snapshots):
+                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+            found = {}
+            for items in snapshots:
+                for item in items:
+                    if not isinstance(item, dict):
+                        raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+                    gid = str(item.get("gid") or "")
+                    if gid in permitted:
+                        found[gid] = self.client._normalize(item)
+            for gid, handle in permitted.items():
+                if gid in found:
+                    try:
+                        results.append(self._observation(handle, found[gid]))
+                    except Exception as exc:
+                        results.append(ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                            error=exception_failure(exc, stage=Stage.RECONCILIATION, secrets=self._secrets(handle))))
+                else:
+                    # Bulk windows are incomplete and jobs can move between
+                    # lists. Only per-handle confirmation can prove absence.
+                    results.append(await self.observe(handle))
+            return ExecutionSnapshot(tuple(results))
+        except Exception as exc:
+            # A failed snapshot never becomes an empty/absent snapshot. Native
+            # bulk errors may contain any requested capability, so redact all.
+            secrets = tuple(value for handle in handles for value in self._secrets(handle))
+            return ExecutionSnapshot((), exception_failure(exc, stage=Stage.RECONCILIATION, secrets=secrets))
 
     async def _control(self, handle: ExecutionHandle, *, resume: bool) -> ExecutionObservation:
         try:

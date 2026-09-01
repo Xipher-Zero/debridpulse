@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from transfers.models import (
-    CleanupDirective, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    CleanupDirective, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
     HealthObservation, IntegrationDescriptor, ProviderObservation,
     ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
-    TransferOutcome, TransferRequest, SourceEntry,
+    TransferOutcome, TransferRequest, SourceEntry, ArtifactFingerprint,
 )
 
 
@@ -69,6 +69,16 @@ class Executor(Protocol):
 class PauseResume(Protocol):
     async def pause(self, handle: ExecutionHandle) -> ExecutionObservation: ...
     async def resume(self, handle: ExecutionHandle) -> ExecutionObservation: ...
+
+
+@runtime_checkable
+class BatchObservation(Protocol):
+    async def observe_many(self, handles: tuple[ExecutionHandle, ...]) -> ExecutionSnapshot: ...
+
+
+@runtime_checkable
+class CandidateSampling(Protocol):
+    async def fingerprint(self, candidate: TransferCandidate) -> ArtifactFingerprint | None: ...
 
 
 @runtime_checkable

@@ -13,7 +13,7 @@ from transfers.models import (
     Capability, CleanupAuthority, CleanupDirective, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
     ProviderResource, ResolutionResult, ResourceSnapshot, ResourceState,
-    SourceEntry, TransferCandidate, TransferOutcome, TransferRequest,
+    SourceEntry, SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
 )
 
 
@@ -69,6 +69,7 @@ class AllDebridProvider:
                 str(native.get("filename") or native.get("name") or request.name),
                 (Endpoint(urlsplit(endpoint).scheme, endpoint),), size,
                 provider_id=self.descriptor.id, refresh_request=request,
+                source_identity=SourceIdentity("host", str(urlsplit(str(request.payload)).hostname or "").casefold().removeprefix("www.").rstrip(".")),
             )
             return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
         if request.kind == "magnet":
@@ -144,7 +145,8 @@ class AllDebridProvider:
                                                 integration_id=self.descriptor.id))
         result = await self.resolve(candidate.refresh_request)
         return replace(result, candidates=tuple(replace(item, relative_path=candidate.relative_path,
-                                                        resource=candidate.resource) for item in result.candidates))
+                                                        resource=candidate.resource,
+                                                        id=candidate.id if index == 0 else item.id) for index, item in enumerate(result.candidates)))
 
     @normalized_boundary(Stage.CLEANUP)
     async def cleanup(self, directive: CleanupDirective) -> TransferOutcome:

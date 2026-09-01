@@ -136,6 +136,10 @@ async def migrate(*, external_executor: bool, globally_paused: bool = False) -> 
                         int(file["id"]), codec.dump(request), codec.dump(entry)))
                 error = _error(file.get("block_reason"), execution=physical)
                 if not physical:
+                    if file.get("blocked"):
+                        await db.execute("UPDATE download_files SET request_id=?,candidates=?,status='blocked' WHERE id=?",
+                                         (request_id, codec.dump((candidate,)) if candidate else None, file["id"]))
+                        await db.execute("UPDATE transfer_requests SET state='skipped' WHERE id=?", (request_id,))
                     if file.get("status") in {"error", "missing"} and file.get("mirror_state") != "standby":
                         error = error or _error("Legacy source outcome")
                         await db.execute("UPDATE transfer_requests SET state='failed',error=? WHERE id=?", (codec.dump(error), request_id))

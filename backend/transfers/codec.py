@@ -10,7 +10,7 @@ from typing import Mapping
 from transfers.errors import NormalizedError
 from transfers.models import (
     Endpoint, ExecutionHandle, IntegrityMetadata, Ownership, ProviderResource,
-    TransferCandidate, TransferRequest, SourceEntry,
+    TransferCandidate, TransferRequest, SourceEntry, SourceIdentity,
 )
 
 
@@ -59,6 +59,8 @@ def candidate(value: dict) -> TransferCandidate:
     data["endpoints"] = tuple(Endpoint(**item) for item in data["endpoints"])
     data["integrity"] = tuple(IntegrityMetadata(**item) for item in data.get("integrity", []))
     data["resource"] = resource(data.get("resource"))
+    if data.get("source_identity"):
+        data["source_identity"] = SourceIdentity(**data["source_identity"])
     if data.get("refresh_request"):
         data["refresh_request"] = request(data["refresh_request"])
     return TransferCandidate(**data)

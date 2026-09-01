@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 import time
 
-from transfers.contracts import CandidateRefresh, Cleanup, Inventory, Manifest, PauseResume, ResourceLookup
+from transfers.contracts import BatchObservation, CandidateRefresh, Cleanup, Inventory, Manifest, PauseResume, ResourceLookup
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
@@ -23,6 +23,7 @@ from transfers.models import (
     RequestRecord, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
     TransferState, new_identity,
 )
+from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -38,6 +39,8 @@ class TransferEngine:
         self.postprocessors = tuple(postprocessors)
         self.clock = clock
         self._cycle_lock = asyncio.Lock()
+        self._resolution_cycle_lock = asyncio.Lock()
+        self._execution_cycle_lock = asyncio.Lock()
         self._dispatch_lock = asyncio.Lock()
         self._paths_lock = asyncio.Lock()
         self._control_lock = asyncio.Lock()
@@ -70,32 +73,85 @@ class TransferEngine:
     async def tick(self):
         """One bounded scheduling/reconciliation cycle; retry delays never sleep a lock."""
         async with self._cycle_lock:
+            await self.resolve_pending()
+            await self.reconcile_executions()
+
+    async def resolve_pending(self):
+        """Provider cadence can run independently of fast execution observation."""
+        async with self._resolution_cycle_lock:
             await self._cleanup_pending()
             transfers = await self.repository.active()
-            # Priority order is also dispatch order. Resolution uses a separate
-            # bounded semaphore; accepted work is durable before this cycle.
-            for transfer in transfers:
+            async def resolve_transfer(transfer):
                 lock = self._transfer_locks.setdefault(transfer.id, asyncio.Lock())
                 async with lock:
-                    await self._process(transfer.id)
+                    if not await self._live(transfer.id, admission=True):
+                        return
+                    records = await self.repository.requests(transfer.id)
+                    await asyncio.gather(*(self._process_request(record) for record in records))
+            await asyncio.gather(*(resolve_transfer(transfer) for transfer in transfers))
 
-    async def _process(self, transfer_id: int):
-        if not await self._live(transfer_id, admission=True):
+    async def _process_request(self, record: RequestRecord):
+        if record.retry_at > self.clock() or not await self._live(record.transfer_id, admission=True):
             return
-        for record in await self.repository.requests(transfer_id):
-            if record.retry_at > self.clock() or not await self._live(transfer_id, admission=True):
-                continue
+        try:
             if record.state == "pending":
                 await self._resolve(record)
             elif record.state == "waiting":
-                await self._observe_resource(record)
+                async with self._resolution_slots:
+                    await self._observe_resource(record)
+            elif record.state == "materializing":
+                candidates = await self.repository.resolved_candidates(record.id)
+                if candidates:
+                    await self._materialize(record, candidates)
+                else:
+                    raise TransferError(self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION))
             elif record.state == "resolving":
                 # Process restart during a non-idempotent provider submission:
                 # never blindly repeat it. Inventory reconciliation can attach
                 # an observed resource; absent evidence requires operator input.
                 error = self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION)
                 await self.repository.request_failure(record.id, error, None)
-        for artifact in await self.repository.artifacts(transfer_id):
+        except Exception as exc:
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.RECONCILIATION)
+            await self._request_failure(record, error)
+
+    async def reconcile_executions(self):
+        """Observe each current attempt once, then dispatch in transfer priority order."""
+        async with self._execution_cycle_lock:
+            transfers = await self.repository.active()
+            artifacts_by_transfer = {transfer.id: await self.repository.artifacts(transfer.id) for transfer in transfers}
+            grouped = {}
+            for artifacts in artifacts_by_transfer.values():
+                for artifact in artifacts:
+                    if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
+                        grouped.setdefault(artifact.execution.executor_id, []).append(artifact.execution)
+            observations = {}
+            for executor_id, handles in grouped.items():
+                executor = self.registry.executors.get(executor_id)
+                if not isinstance(executor, BatchObservation):
+                    continue
+                try:
+                    snapshot = await executor.observe_many(tuple(handles))
+                    if snapshot.error:
+                        for handle in handles:
+                            observations[handle.attempt_id] = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=snapshot.error)
+                    else:
+                        requested = {handle.attempt_id: handle for handle in handles}
+                        for observation in snapshot.observations:
+                            if requested.get(observation.handle.attempt_id) != observation.handle:
+                                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                            observations[observation.handle.attempt_id] = observation
+                        if any(handle.attempt_id not in observations for handle in handles):
+                            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                except Exception as exc:
+                    error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id=executor_id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION)
+                    for handle in handles:
+                        observations[handle.attempt_id] = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
+            for transfer in transfers:
+                await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations)
+
+    async def _process_executions(self, transfer_id, artifacts, observations):
+        for artifact in artifacts:
             if not await self._live(transfer_id, admission=True):
                 break
             if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
@@ -105,7 +161,9 @@ class TransferEngine:
                     await self.repository.artifact_state(artifact.id, "error", error=error)
                     continue
                 try:
-                    observed = await executor.observe(artifact.execution)
+                    observed = observations.get(artifact.execution.attempt_id)
+                    if observed is None:
+                        observed = await executor.observe(artifact.execution)
                 except Exception as exc:
                     observed = ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN,
                         error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION))
@@ -187,6 +245,8 @@ class TransferEngine:
                 await self._request_failure(record, error, waiting=True)
             elif observation.state in {ResourceState.UNKNOWN, ResourceState.UNAVAILABLE}:
                 raise TransferError(self._error(Category.UNMAPPED_PROVIDER_ERROR, Stage.RECONCILIATION, domain=Domain.PROVIDER))
+            elif observation.state == ResourceState.PREPARING:
+                await self.repository.poll_after(record.id, self.clock() + self.policy.resource_poll_interval)
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
                 integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.RECONCILIATION)
@@ -208,6 +268,14 @@ class TransferEngine:
         if record.parent_id:
             relative = str(Path(safe_name(transfer.name)) / relative)
         async with self._paths_lock:
+            if not record.parent_id:
+                root_ids = {item.id for item in await self.repository.requests(record.transfer_id) if item.parent_id is None}
+                for primary in await self.repository.artifacts(record.transfer_id):
+                    if primary.request_id not in root_ids or not primary.candidates:
+                        continue
+                    size = await shared_size(primary.candidates[0], candidates[0], self.registry)
+                    if size is not None and await self.repository.add_alternate(primary, record, candidates, size):
+                        return
             target = destination(self.root, relative)
             occupied = await self.repository.occupied_paths()
             if record.parent_id and str(target).casefold() in occupied:
@@ -237,7 +305,7 @@ class TransferEngine:
             async with self._dispatch_lock:
                 if not await self._live(artifact.transfer_id, admission=True):
                     return
-                attempts = await self.repository.executions()
+                attempts = await self.repository.live_executions()
                 occupied = sum(attempt.state in {"prepared", "queued", "transferring", "unknown"} for attempt in attempts)
                 if occupied >= max(1, self.policy.max_active_executions):
                     return
@@ -313,7 +381,8 @@ class TransferEngine:
         if decision.action == Recovery.TRY_ALTERNATE_CANDIDATE:
             sidecars = self.registry.executors[artifact.execution.executor_id].resumable_paths(artifact.target) if artifact.execution else ()
             retire_partial(self.root, artifact.target, sidecars)
-            await self.repository.artifact_state(artifact.id, "queued", retry_at=decision.retry_at, release=True, selected=artifact.selected + 1)
+            await self.repository.artifact_state(artifact.id, "queued", retry_at=decision.retry_at, release=True,
+                selected=artifact.selected + 1, expected_bytes=artifact.candidates[artifact.selected + 1].expected_bytes)
         elif decision.action == Recovery.RERESOLVE:
             await self.repository.artifact_state(artifact.id, "queued", retry_at=decision.retry_at, release=True)
             await self._refresh(artifact)
@@ -342,7 +411,10 @@ class TransferEngine:
                 raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION))
             if any(item.expires_at is not None and item.expires_at <= self.clock() for item in result.candidates):
                 raise TransferError(self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION))
-            await self.repository.materialize(record, result.candidates, artifact.target)
+            retained = artifact.candidates[:artifact.selected] + result.candidates + artifact.candidates[artifact.selected + 1:]
+            await self.repository.materialize(record, retained, artifact.target)
+            await self.repository.artifact_state(artifact.id, "queued", selected=artifact.selected,
+                expected_bytes=result.candidates[0].expected_bytes)
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
                 integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.CANDIDATE_PREPARATION)
@@ -356,7 +428,7 @@ class TransferEngine:
         transfer = await self.repository.get(transfer_id)
         requests = await self.repository.requests(transfer_id)
         artifacts = await self.repository.artifacts(transfer_id)
-        pending = any(item.state in {"pending", "waiting", "resolving"} for item in requests)
+        pending = any(item.state in {"pending", "waiting", "resolving", "materializing"} for item in requests)
         attempts = {item.handle.attempt_id: item for item in await self.repository.executions(transfer_id)}
         total = sum(item.expected_bytes for item in artifacts)
         completed = sum(item.expected_bytes if item.state == "completed" else min(item.expected_bytes,
@@ -377,6 +449,9 @@ class TransferEngine:
             await self.repository.state(transfer_id, TransferState.FAILED, progress=progress, error=error)
         elif artifacts and all(item.state == "cancelled" for item in artifacts):
             await self.repository.state(transfer_id, TransferState.CANCELLED, progress=progress)
+        elif not artifacts and await self.repository.blocked_artifact_count(transfer_id):
+            if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=0):
+                await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.SKIPPED, detail="No selected artifacts"))
 
     async def _complete(self, transfer_id: int, artifacts):
         if self.postprocessors:
@@ -399,6 +474,14 @@ class TransferEngine:
         async with self._control_lock:
             await self.repository.pause_intent(transfer_id, True)
             return await self._control(transfer_id, resume=False)
+
+    async def select_artifact(self, transfer_id: int, artifact_id: int, *, selected: bool):
+        transfer = await self.repository.get(transfer_id)
+        if not transfer or transfer.state == TransferState.DELETED:
+            raise KeyError(transfer_id)
+        await self.repository.select_artifact(transfer_id, artifact_id, selected)
+        if selected and transfer.state == TransferState.COMPLETED:
+            await self.repository.state(transfer_id, TransferState.QUEUED, operator=True, expected_epoch=transfer.epoch)
 
     async def resume(self, transfer_id: int):
         async with self._control_lock:

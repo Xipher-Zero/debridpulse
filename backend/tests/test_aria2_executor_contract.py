@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from executors.aria2.client import Aria2ConnectionError, Aria2DownloadStatus, Aria2RPCError
+from executors.aria2.client import Aria2ConnectionError, Aria2DownloadStatus, Aria2RPCError, Aria2Service
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from executors.aria2.translation import native_failure, observation
 from transfers.errors import Category, Domain, Recovery, Retryability, TransferError
@@ -235,3 +235,63 @@ def test_removed_and_unknown_are_not_ordinary_failures():
     result = observation(handle, native)
     assert result.state == ExecutionState.UNKNOWN
     assert result.error.retryability == Retryability.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_bulk_observation_filters_foreign_jobs_and_confirms_missing_handles(execution):
+    daemon = execution.daemon
+    daemon._keys = Aria2Service._keys
+    daemon._normalize = Aria2Service._normalize.__get__(daemon)
+    daemon._multicall = AsyncMock(return_value=[[{
+        "gid": "foreign-native-id", "status": "active", "files": [{"path": "/foreign/file"}],
+    }], [], []])
+    snapshot = await execution.executor.observe_many((execution.handle,))
+    assert snapshot.error is None
+    assert len(snapshot.observations) == 1
+    assert snapshot.observations[0].state == ExecutionState.ABSENT
+    assert daemon.lookups == 3
+    assert daemon._multicall.await_count == 1
+    assert not daemon.calls
+
+
+@pytest.mark.asyncio
+async def test_bulk_failure_remains_unknown_without_per_job_retry_storm(execution):
+    daemon = execution.daemon
+    daemon._keys = Aria2Service._keys
+    daemon._multicall = AsyncMock(side_effect=Aria2ConnectionError("daemon unavailable"))
+    snapshot = await execution.executor.observe_many((execution.handle,))
+    assert snapshot.observations == ()
+    assert snapshot.error.category == Category.EXECUTOR_UNAVAILABLE
+    assert daemon.lookups == 0
+
+
+@pytest.mark.asyncio
+async def test_private_literal_is_explicit_nonretryable_security_failure(execution, monkeypatch):
+    from services.network_safety import validate_resolved_public_destination
+    monkeypatch.setattr("executors.aria2.executor.validate_resolved_public_destination", validate_resolved_public_destination)
+    request = replace(execution.request, candidate=replace(execution.request.candidate, endpoints=(Endpoint("http", "http://127.0.0.1/file"),)))
+    handle = execution.executor.prepare(request)
+    execution.grants[handle.attempt_id] = handle
+    result = await execution.executor.start(request, handle)
+    assert result.error.category == Category.DESTINATION_BLOCKED
+    assert result.error.retryability == Retryability.NEVER
+    assert not execution.daemon.calls
+
+
+@pytest.mark.asyncio
+async def test_sampling_resolver_rejects_changed_private_answer_at_connection(monkeypatch):
+    import asyncio
+    import socket
+    from services.network_safety import PublicDestinationResolver, UnsafeDestinationError
+    loop = asyncio.get_running_loop()
+    answers = AsyncMock(side_effect=[
+        [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("8.8.8.8", 443))],
+        [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))],
+    ])
+    monkeypatch.setattr(loop, "getaddrinfo", answers)
+    resolver = PublicDestinationResolver()
+    public = await resolver.resolve("changing.example", 443)
+    assert public[0]["host"] == "8.8.8.8"
+    assert public[0]["hostname"] == "changing.example"
+    with pytest.raises(UnsafeDestinationError):
+        await resolver.resolve("changing.example", 443)

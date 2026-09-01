@@ -43,6 +43,7 @@ class TransferPolicy:
     resolution_concurrency: int = 3
     adoption_stability_seconds: float = 3.25
     cleanup_after_completion: bool = False
+    resource_poll_interval: float = 30.0
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
         if error.domain == Domain.SECURITY or error.retryability in {Retryability.NEVER, Retryability.UNKNOWN}:

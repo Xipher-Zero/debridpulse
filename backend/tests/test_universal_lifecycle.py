@@ -15,6 +15,7 @@ from transfers.models import (
     CleanupAuthority, ExecutionObservation, ExecutionRequest, ExecutionState,
     OutcomeKind, Ownership, ResolutionResult, ResourceState, TransferOutcome,
     TransferRequest, TransferState,
+    SourceIdentity, ArtifactFingerprint,
 )
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -353,3 +354,119 @@ async def test_routing_preference_and_display_name_do_not_change_source_identity
     assert first.id == second.id
     independent = await core.engine.submit((TransferRequest("parcel", "same-input"),), deduplicate=False)
     assert independent.id != first.id
+
+
+@pytest.mark.asyncio
+async def test_resolved_candidate_survives_crash_before_file_planning(core, monkeypatch):
+    transfer = await submit(core)
+    record = (await core.repository.requests(transfer.id))[0]
+    materialize = core.repository.materialize
+    async def interrupted(*args, **kwargs):
+        raise asyncio.CancelledError()
+    monkeypatch.setattr(core.repository, "materialize", interrupted)
+    with pytest.raises(asyncio.CancelledError):
+        await core.engine._resolve(record)
+    assert (await core.repository.requests(transfer.id))[0].state == "materializing"
+    monkeypatch.setattr(core.repository, "materialize", materialize)
+    await core.engine.tick()
+    assert (await core.repository.artifacts(transfer.id))[0].execution
+    assert len([item for item in core.provider.calls if item[0] == "resolve"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_provider_does_not_block_existing_execution_updates(core):
+    first = await submit(core, "first")
+    await core.engine.tick()
+    handle = (await core.repository.artifacts(first.id))[0].execution
+    await submit(core, "slow", "slow.bin")
+    core.provider.entered, core.provider.release = asyncio.Event(), asyncio.Event()
+    resolving = asyncio.create_task(core.engine.resolve_pending())
+    await core.provider.entered.wait()
+    core.executor.finish(handle)
+    try:
+        await asyncio.wait_for(core.engine.reconcile_executions(), timeout=2)
+        assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
+    finally:
+        core.provider.release.set()
+        await resolving
+
+
+@pytest.mark.asyncio
+async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(core):
+    first = replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", "one"))
+    second = replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", "two"))
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (first,)), ResolutionResult(ResourceState.AVAILABLE, (second,))]
+    transfer = await core.engine.submit((TransferRequest("parcel", "one"), TransferRequest("parcel", "two")))
+    await core.engine.tick()
+    artifacts = await core.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert len(artifact.candidates) == 2
+    assert len([item for item in core.executor.calls if item[0] == "start"]) == 1
+    target = Path(artifact.target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"part")
+    sidecar = Path(core.executor.resumable_paths(artifact.target)[0])
+    sidecar.write_bytes(b"resume")
+    error = NormalizedError(Domain.NETWORK, Category.REMOTE_READ_FAILED, Stage.EXECUTION,
+                            Retryability.BACKOFF, Recovery.TRY_ALTERNATE_CANDIDATE)
+    core.executor.jobs[artifact.execution.attempt_id] = replace(core.executor.jobs[artifact.execution.attempt_id], state=ExecutionState.FAILED, error=error)
+    await core.engine.tick()
+    assert not target.exists() and not sidecar.exists()
+    await core.engine.tick()
+    retried = (await core.repository.artifacts(transfer.id))[0]
+    assert retried.id == artifact.id and retried.target == artifact.target
+    assert retried.selected == 1
+    attempts = await core.repository.executions(transfer.id)
+    assert len(attempts) == 2
+    assert {item.candidate.id for item in attempts} == {first.id, second.id}
+
+
+@pytest.mark.asyncio
+async def test_same_source_scope_key_does_not_collapse_distinct_inputs(core):
+    candidate = replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", "same-origin"))
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (candidate,))] * 2
+    transfer = await core.engine.submit((TransferRequest("parcel", "one"), TransferRequest("parcel", "two")))
+    await core.engine.tick()
+    artifacts = await core.repository.artifacts(transfer.id)
+    assert len(artifacts) == 2
+    assert artifacts[0].target != artifacts[1].target
+
+
+@pytest.mark.asyncio
+async def test_near_size_mirrors_require_matching_sample_evidence(core):
+    from unittest.mock import AsyncMock
+    first = replace(core.provider.candidate("same.bin"), expected_bytes=1000, source_identity=SourceIdentity("host", "one"))
+    second = replace(core.provider.candidate("same.bin"), expected_bytes=1001, source_identity=SourceIdentity("host", "two"))
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (first,)), ResolutionResult(ResourceState.AVAILABLE, (second,))]
+    core.executor.fingerprint = AsyncMock(return_value=ArtifactFingerprint(1000, "same-sampled-bytes"))
+    transfer = await core.engine.submit((TransferRequest("parcel", "one"), TransferRequest("parcel", "two")))
+    await core.engine.tick()
+    artifacts = await core.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1 and artifacts[0].expected_bytes == 1000
+    assert core.executor.fingerprint.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_file_selection_before_dispatch_excludes_blocked_artifact(core):
+    transfer = await submit(core)
+    await core.engine.resolve_pending()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    await core.engine.select_artifact(transfer.id, artifact.id, selected=False)
+    await core.engine.reconcile_executions()
+    assert not core.executor.calls
+    assert (await core.repository.get(transfer.id)).state == TransferState.COMPLETED
+    await core.engine.select_artifact(transfer.id, artifact.id, selected=True)
+    await core.engine.tick()
+    assert (await core.repository.artifacts(transfer.id))[0].execution
+
+
+@pytest.mark.asyncio
+async def test_file_selection_cannot_change_after_execution_was_created(core):
+    from transfers.errors import TransferError
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    with pytest.raises(TransferError) as rejected:
+        await core.engine.select_artifact(transfer.id, artifact.id, selected=False)
+    assert rejected.value.error.category == Category.RESOURCE_STATE_CONFLICT

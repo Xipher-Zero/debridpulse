@@ -2,7 +2,7 @@
 from urllib.parse import urlsplit
 
 from providers.alldebrid.translation import observation_from_native, resource_from_native
-from transfers.models import Endpoint, Ownership, TransferCandidate, TransferRequest
+from transfers.models import Endpoint, Ownership, SourceIdentity, TransferCandidate, TransferRequest
 
 
 def legacy_resource(row):
@@ -24,4 +24,5 @@ def legacy_candidate(row, resource=None):
     request = TransferRequest(urlsplit(source).scheme, source, name=str(row.get("filename") or ""), preferred_provider="alldebrid") if source else None
     return TransferCandidate(str(row.get("filename") or "download"), (Endpoint(urlsplit(address).scheme, address),),
                              expected_bytes=max(0, int(row.get("size_bytes") or 0)), provider_id="alldebrid", resource=resource,
-                             refresh_request=request, id=f"v1-file-{row['id']}")
+                             refresh_request=request, id=f"v1-file-{row['id']}",
+                             source_identity=SourceIdentity("host", str(urlsplit(source).hostname or "").casefold().removeprefix("www.").rstrip(".")))
