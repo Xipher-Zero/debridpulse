@@ -30,7 +30,7 @@ def read(path: Path) -> str:
 def statistics_view() -> str:
     html = read(INDEX)
     start = html.index("<!-- Statistics -->")
-    end = html.index("<!-- Changelog -->", start)
+    end = html.index("<!-- Help -->", start)
     return html[start:end]
 
 
