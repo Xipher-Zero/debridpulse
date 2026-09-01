@@ -1,0 +1,254 @@
+name: Browser qualify v1.0.11.1 Dashboard sparklines f067428
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-dashboard-sparklines
+    paths:
+      - .github/workflows/_browser-v1111-sparklines-f067428.yml
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: f06742847f60b5924e4584714055d0a311172158
+  CANDIDATE_VERSION: 1.0.11.1
+  IMAGE_TAG: local/debridpulse:browser-f067428
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: f06742847f60b5924e4584714055d0a311172158
+          fetch-depth: 2
+
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+          test "$(grep -o 'class="dp-card-spark"' frontend/static/index.html | wc -l)" -eq 6
+          ! grep -q 'makeSparkline' frontend/static/ui-runtime.js
+          ! grep -q 'installMetricHistoryHook' frontend/static/ui-runtime.js
+          grep -q 'recordDashboardMetricHistory({' frontend/static/app.js
+          grep -q 'dashboardSmoothSparkPath' frontend/static/app.js
+
+      - name: Build exact candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag "$IMAGE_TAG" \
+            .
+
+      - name: Browser canonical ownership, live state, smoothing, navigation, and reload
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-spark-browser"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          docker run --detach --name "$container_name" \
+            --publish 127.0.0.1:18080:8080 \
+            --env PUID=12345 --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/health >/dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then
+            docker logs "$container_name" || true
+            exit 1
+          fi
+
+          chrome_bin="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome_bin"
+          rm -rf /tmp/dp-browser && mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+          export CHROME_BIN="$chrome_bin"
+          export NODE_PATH=/tmp/dp-browser/node_modules
+
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const puppeteer = require('puppeteer-core');
+          const base = 'http://127.0.0.1:18080/';
+          const historyKey = 'debridpulse.dashboard.metric-history.v2';
+
+          const payload1 = {
+            version: '1.0.11.1', paused: false,
+            by_status: {completed: 2, downloading: 1, queued: 0, processing: 0, uploading: 0, error: 0, deleted: 100},
+            completed_count: 2, active_operations: 1, active_downloads: 1,
+            error_count: 0, total_completed_bytes: 1024, total_blocked_files: 0,
+            completed_last_24h: 1, completed_last_7d: 2, success_rate_pct: 100,
+            avg_download_duration_seconds: 60, avg_torrent_size_bytes: 512,
+            operator_active_progress_pct: 25
+          };
+          const payload2 = {
+            version: '1.0.11.1', paused: false,
+            by_status: {completed: 3, downloading: 2, queued: 0, processing: 1, uploading: 0, error: 1, deleted: 200},
+            completed_count: 3, active_operations: 3, active_downloads: 2,
+            error_count: 1, total_completed_bytes: 4096, total_blocked_files: 1,
+            completed_last_24h: 2, completed_last_7d: 3, success_rate_pct: 80,
+            avg_download_duration_seconds: 90, avg_torrent_size_bytes: 1024,
+            operator_active_progress_pct: 50
+          };
+          const payload3 = {
+            version: '1.0.11.1', paused: false,
+            by_status: {completed: 4, downloading: 0, queued: 0, processing: 0, uploading: 0, error: 0, deleted: 300},
+            completed_count: 4, active_operations: 0, active_downloads: 0,
+            error_count: 0, total_completed_bytes: 8192, total_blocked_files: 1,
+            completed_last_24h: 3, completed_last_7d: 4, success_rate_pct: 90,
+            avg_download_duration_seconds: 75, avg_torrent_size_bytes: 2048,
+            operator_active_progress_pct: 0
+          };
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: process.env.CHROME_BIN,
+              headless: true,
+              args: ['--no-sandbox', '--disable-dev-shm-usage']
+            });
+            try {
+              // Base-owner proof: the six SVG surfaces exist with JavaScript disabled.
+              const staticPage = await browser.newPage();
+              await staticPage.setJavaScriptEnabled(false);
+              await staticPage.goto(base, {waitUntil: 'domcontentloaded'});
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark', els => els.length), 6);
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark-line', els => els.length), 6);
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark-fill', els => els.length), 6);
+              await staticPage.close();
+
+              let currentStats = payload1;
+              const page = await browser.newPage();
+              const pageErrors = [];
+              const badLocalResponses = [];
+              page.on('pageerror', error => pageErrors.push(String(error)));
+              page.on('response', response => {
+                const url = response.url();
+                if (url.startsWith(base) && response.status() >= 400) {
+                  badLocalResponses.push(`${response.status()} ${url}`);
+                }
+              });
+              await page.setRequestInterception(true);
+              page.on('request', request => {
+                const url = request.url();
+                if (/\/api\/stats(?:\?|$)/.test(url)) {
+                  request.respond({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify(currentStats)
+                  }).catch(() => {});
+                } else {
+                  request.continue().catch(() => {});
+                }
+              });
+
+              await page.goto(base, {waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+
+              // Reset any startup sample, then prove loadStats itself owns sampling.
+              await page.evaluate(key => localStorage.setItem(key, '[]'), historyKey);
+              currentStats = payload1;
+              assert.equal(await page.evaluate(() => loadStats()), true);
+              currentStats = payload2;
+              assert.equal(await page.evaluate(() => loadStats()), true);
+
+              const state = await page.evaluate(key => ({
+                totalText: document.getElementById('s-total').textContent.trim(),
+                completedText: document.getElementById('s-completed').textContent.trim(),
+                activeText: document.getElementById('s-active').textContent.trim(),
+                processingText: document.getElementById('s-processing').textContent.trim(),
+                errorText: document.getElementById('s-error').textContent.trim(),
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || ''),
+                fills: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-fill')).map(el => el.getAttribute('d') || ''),
+                history: JSON.parse(localStorage.getItem(key) || '[]')
+              }), historyKey);
+
+              // Deleted rows are excluded from both the visible KPI and its stored sparkline sample.
+              assert.equal(state.totalText, '7');
+              assert.equal(state.completedText, '3');
+              assert.equal(state.activeText, '3');
+              assert.equal(state.processingText, '1');
+              assert.equal(state.errorText, '1');
+              assert.equal(state.history.length, 2);
+              assert.deepEqual(
+                Object.fromEntries(['total','completed','active','processing','errors','downloaded'].map(k => [k, state.history[1][k]])),
+                {total: 7, completed: 3, active: 3, processing: 1, errors: 1, downloaded: 4096}
+              );
+
+              // Every primary KPI now renders a curved cubic path, not a jagged polyline.
+              assert.equal(state.paths.length, 6);
+              for (const path of state.paths) {
+                assert.match(path, /^M /);
+                assert.match(path, / C /);
+              }
+              for (const fill of state.fills) {
+                assert.match(fill, / C /);
+                assert.match(fill, / L 100 24 L 0 24 Z$/);
+              }
+
+              // A further real stats transition must add a third sample and repaint from the canonical owner.
+              const before = state.paths.slice();
+              currentStats = payload3;
+              assert.equal(await page.evaluate(() => loadStats()), true);
+              const after = await page.evaluate(key => ({
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || ''),
+                history: JSON.parse(localStorage.getItem(key) || '[]'),
+                totalText: document.getElementById('s-total').textContent.trim()
+              }), historyKey);
+              assert.equal(after.history.length, 3);
+              assert.equal(after.history[2].total, 4);
+              assert.equal(after.totalText, '4');
+              assert(after.paths.some((path, index) => path !== before[index]));
+
+              // Exercise navigation and theme around the corrected Dashboard owner.
+              for (const view of ['torrents', 'events', 'stats', 'settings', 'help', 'dashboard']) {
+                await page.evaluate(v => nav(v), view);
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              if (await page.$('#theme-toggle')) {
+                await page.click('#theme-toggle');
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await page.click('#theme-toggle');
+              }
+
+              // Hard reload must retain the static surface and repaint persisted history.
+              currentStats = payload3;
+              await page.reload({waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+              const reloaded = await page.evaluate(() => ({
+                sparks: document.querySelectorAll('#view-dashboard .dp-card-spark').length,
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || '')
+              }));
+              assert.equal(reloaded.sparks, 6);
+              assert(reloaded.paths.every(path => path.includes(' C ')));
+
+              assert.deepEqual(pageErrors, []);
+              // Ignore expected API errors from unconfigured optional integrations, but no static resources may 404.
+              const badStatic = badLocalResponses.filter(item => /\.(?:js|css|svg|png|ico)(?:\?|$)/.test(item));
+              assert.deepEqual(badStatic, []);
+            } finally {
+              await browser.close();
+            }
+          })().catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
