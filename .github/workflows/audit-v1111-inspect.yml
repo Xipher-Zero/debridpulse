@@ -1,4 +1,4 @@
-name: v1.0.11.1 audit inspection
+name: v1.0.11.1 audit security mutator
 
 on:
   push:
@@ -6,38 +6,43 @@ on:
       - audit/v1.0.11.1-post-release-remediation
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  mutate-security:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Inspect remediation ownership
-        shell: bash
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Apply deterministic security patch
         run: |
           set -euo pipefail
-          echo '=== candidate ==='
-          git rev-parse HEAD
-          cat VERSION
-          echo '=== aria2 addUri / ensure_download / public-destination call sites ==='
-          grep -RInE 'addUri|ensure_download\(|validate_resolved_public_destination' backend/services backend/api backend/core || true
-          echo '=== canonical aria2 job policy ==='
-          grep -n -A55 -B5 'def _aria2_job_options' backend/services/manager_v2.py || true
-          echo '=== manager ensure_download contexts ==='
-          for n in $(grep -n 'ensure_download(' backend/services/manager_v2.py | cut -d: -f1); do
-            a=$((n-22)); [ "$a" -lt 1 ] && a=1
-            b=$((n+18))
-            echo "--- manager_v2.py:${a}-${b} ---"
-            sed -n "${a},${b}p" backend/services/manager_v2.py
-          done
-          echo '=== retired frontend symbols ==='
-          grep -RInE 'view-(changelog|aria2queue|support)|loadChangelog|loadAria2QueueView|aria2q-' frontend/static backend/tests || true
-          echo '=== bootstrap references ==='
-          grep -RInE 'presentation-loader|page-finalization|dashboard-(batch5|polish)|calibration' frontend/static docs backend/tests || true
-          echo '=== index scripts/styles ==='
-          grep -nE '<script|stylesheet' frontend/static/index.html
-          echo '=== style-v11 imports ==='
-          cat frontend/static/style-v11.css
-          echo '=== relevant API paths used by retired views ==='
-          grep -RInE "'/changelog'|'/aria2/downloads'|aria2/downloads" frontend/static/app.js backend/api || true
+          python .github/scripts/audit_v1111_security_patch.py
+          python -m compileall -q backend/services
+          grep -n -A18 -B3 'def _aria2_job_options' backend/services/manager_v2.py
+          grep -n -A30 -B6 'class GuardedTransferIntegrityAria2Service' backend/services/transfer_runtime_guard.py
+      - name: Focused regression baseline
+        run: |
+          set -euo pipefail
+          cd backend
+          pip install -r requirements-dev.txt
+          python -m pytest \
+            tests/test_v106_external_aria2_ownership.py \
+            tests/test_v106_audit_contracts.py \
+            tests/test_v1111_canonical_frontend_contract.py \
+            -q --tb=short
+      - name: Commit source corrections
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/services/manager_v2.py backend/services/aria2_runtime.py backend/services/transfer_runtime_guard.py
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'fix(security): bind aria2 jobs to guarded transfer policy'
+          git push origin HEAD:audit/v1.0.11.1-post-release-remediation
