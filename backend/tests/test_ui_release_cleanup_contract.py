@@ -21,5 +21,7 @@ def test_release_docs_record_permanent_browser_validation_without_legacy_live_la
     assert "six canonical navigation surfaces" in architecture
     assert "retired presentation-loader/finalization dependencies" in architecture
     assert "live calibration" not in architecture
-    assert "ui-presentation-loader" not in architecture
-    assert "ui-page-finalization" not in architecture
+    assert "there is no live presentation-loader/finalization bootstrap" in architecture
+    assert "retired `ui-presentation-loader.*`" in architecture
+    assert "`ui-page-finalization.*`" in architecture
+    assert "must not be reintroduced as a corrective mechanism" in architecture
