@@ -14,10 +14,12 @@ def test_retired_duplicate_legacy_stylesheet_is_absent() -> None:
     assert not (STATIC / "style-legacy.css").exists()
 
 
-
-
-def test_release_docs_record_browser_validation_without_calling_live_layers_dead() -> None:
-    architecture = (DOCS / "UI_FRONTEND_ARCHITECTURE.md").read_text(encoding="utf-8")
-    assert "dd6984c940ee9dcffd20d8566f568d6eec9cbd3d" in architecture
-    assert "browser-validated" in architecture.lower()
-    assert "live calibration" in architecture.lower()
+def test_release_docs_record_permanent_browser_validation_without_legacy_live_layers() -> None:
+    architecture = (DOCS / "UI_FRONTEND_ARCHITECTURE.md").read_text(encoding="utf-8").lower()
+    assert "permanent ci" in architecture
+    assert "real-browser smoke contract" in architecture
+    assert "six canonical navigation surfaces" in architecture
+    assert "retired presentation-loader/finalization dependencies" in architecture
+    assert "live calibration" not in architecture
+    assert "ui-presentation-loader" not in architecture
+    assert "ui-page-finalization" not in architecture
