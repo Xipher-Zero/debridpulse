@@ -1,33 +1,396 @@
-
-==================================== ERRORS ====================================
-_____________ ERROR collecting tests/test_extraction_lifecycle.py ______________
-/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/_pytest/python.py:508: in importtestmodule
-    mod = import_path(
-/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/_pytest/pathlib.py:596: in import_path
-    importlib.import_module(module_name)
-/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/importlib/__init__.py:90: in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-<frozen importlib._bootstrap>:1387: in _gcd_import
-    ???
-<frozen importlib._bootstrap>:1360: in _find_and_load
-    ???
-<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked
-    ???
-<frozen importlib._bootstrap>:935: in _load_unlocked
-    ???
-/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/_pytest/assertion/rewrite.py:179: in exec_module
-    source_stat, co = _rewrite_test(fn, self.config)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/_pytest/assertion/rewrite.py:348: in _rewrite_test
-    tree = ast.parse(source, filename=strfn)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/ast.py:52: in parse
-    return compile(source, filename, mode, flags,
-E     File "/home/runner/work/debridpulse/debridpulse/backend/tests/test_extraction_lifecycle.py", line 257
-E       async def test_extraction_events_form_durable_operator_audit(tmp_path, monkeypatch):
-E   IndentationError: unexpected unindent
+........................................................................ [  6%]
+........................................................................ [ 13%]
+........................................................................ [ 19%]
+........................................................................ [ 26%]
+........................................................................ [ 33%]
+........................................................................ [ 39%]
+........................................................................ [ 46%]
+........................................................................ [ 52%]
+........................................................................ [ 59%]
+........................................................................ [ 66%]
+........................................................................ [ 72%]
+........................................................................ [ 79%]
+.....................................................F.................. [ 85%]
+........................................................................ [ 92%]
+........................................................................ [ 99%]
+..........                                                               [100%]
+=================================== FAILURES ===================================
+______ test_recent_activity_reclaims_only_added_column_slack_for_actions _______
+tests/test_ui_transfer_contract.py:124: in test_recent_activity_reclaims_only_added_column_slack_for_actions
+    assert f".t-table th:nth-child({column})" not in css
+E   AssertionError: assert '.t-table th:nth-child(1)' not in '/* DebridPu...t;\n  }\n}\n'
+E     
+E     '.t-table th:nth-child(1)' is contained here:
+E       -activity .t-table th:nth-child(1),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
+E           width: 40% !important;
+E         }
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
+E           width: 13% !important;
+E         }
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
+E           width: 21% !important;
+E         }
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
+E           width: 9% !important;
+E         }
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+E           width: 12% !important;
+E         }
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+E           width: 5% !important;
+E         }
+E       }
+E       
+E       /* Sidebar hover now uses the same directional material language as the rest
+E          of the shell. It remains intentionally much quieter than the active row. */
+E       body.dp-v11-structural .nav-item:not(.active):hover {
+E         background: linear-gradient(90deg,
+E           rgba(136,76,228,.13) 0%,
+E           rgba(132,79,218,.075) 42%,
+E           rgba(128,86,205,.025) 76%,
+E           transparent 100%) !important;
+E       }
+E       body.light.dp-v11-structural .nav-item:not(.active):hover {
+E         background: linear-gradient(90deg,
+E           rgba(143,91,222,.17) 0%,
+E           rgba(157,119,224,.095) 43%,
+E           rgba(174,151,226,.035) 77%,
+E           transparent 100%) !important;
+E       }
+E       
+E       /* ── Quick Add secondary utility controls ─────────────────────────────── */
+E       /* Import and Recover All are helpers, not primary or semantic state actions.
+E          Keep them clearly clickable, but let Add and Pause own the visual hierarchy. */
+E       body.dp-v11-structural #view-dashboard #btn-import-existing,
+E       body.dp-v11-structural #view-dashboard #btn-recover-all {
+E         height: 32px !important;
+E         min-height: 32px !important;
+E         padding: 0 12px !important;
+E         border-radius: 8px !important;
+E         font-weight: 650 !important;
+E         transform: none;
+E         transition: filter .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease !important;
+E       }
+E       
+E       body.dp-v11-structural #view-dashboard #btn-import-existing {
+E         background:
+E           linear-gradient(180deg, rgba(255,255,255,.085) 0%, rgba(255,255,255,.018) 34%, transparent 46%),
+E           linear-gradient(145deg, rgba(65,60,80,.80) 0%, rgba(47,43,61,.78) 56%, rgba(36,33,48,.82) 100%) !important;
+E         border-color: rgba(151,137,174,.45) !important;
+E         color: #d7cde3 !important;
+E         box-shadow:
+E           inset 0 1px rgba(255,255,255,.085),
+E           -4px 6px 12px -9px rgba(7,5,13,.48),
+E           0 4px 9px -8px rgba(9,7,16,.34) !important;
+E       }
+E       body.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+E         color: #bfa9d8 !important;
+E       }
+E       
+E       body.dp-v11-structural #view-dashboard #btn-recover-all {
+E         background:
+E           radial-gradient(ellipse 112% 100% at 16% -8%, rgba(165,95,225,.13) 0%, transparent 56%),
+E           linear-gradient(145deg, rgba(64,50,77,.82) 0%, rgba(48,39,59,.82) 56%, rgba(37,31,47,.86) 100%) !important;
+E         border-color: rgba(177,119,224,.54) !important;
+E         color: #dfc3f5 !important;
+E         text-shadow: none !important;
+E         box-shadow:
+E           inset 0 1px rgba(255,255,255,.085),
+E           -4px 6px 12px -9px rgba(46,24,66,.38),
+E           0 4px 9px -8px rgba(36,23,51,.30) !important;
+E       }
+E       body.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+E         filter:
+E           hue-rotate(215deg)
+E           saturate(1.28)
+E           brightness(1.08)
+E           drop-shadow(0 0 4px rgba(166,92,224,.24)) !important;
+E       }
+E       
+E       body.light.dp-v11-structural #view-dashboard #btn-import-existing {
+E         background:
+E           linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.42) 34%, transparent 46%),
+E           linear-gradient(145deg, #fcfbff 0%, #f4f1f8 56%, #ece8f2 100%) !important;
+E         border-color: #cec5da !important;
+E         color: #62586f !important;
+E         box-shadow:
+E           inset 0 1px rgba(255,255,255,1),
+E           -4px 6px 12px -9px rgba(68,59,83,.24),
+E           0 4px 9px -8px rgba(76,67,91,.17) !important;
+E       }
+E       body.light.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+E         color: #78678b !important;
+E       }
+E       
+E       body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+E         background:
+E           radial-gradient(ellipse 112% 100% at 16% -8%, rgba(155,94,211,.11) 0%, transparent 56%),
+E           linear-gradient(145deg, #fcf9ff 0%, #f3edf8 56%, #ebe2f2 100%) !important;
+E         border-color: #bb9ad4 !important;
+E         color: #744993 !important;
+E         text-shadow: none !important;
+E         box-shadow:
+E           inset 0 1px rgba(255,255,255,1),
+E           -4px 6px 12px -9px rgba(91,65,111,.25),
+E           0 4px 9px -8px rgba(94,70,113,.18) !important;
+E       }
+E       body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+E         filter:
+E           hue-rotate(215deg)
+E           saturate(1.24)
+E           brightness(.93)
+E           drop-shadow(0 0 4px rgba(144,74,194,.20)) !important;
+E       }
+E       
+E       body.dp-v11-structural #view-dashboard #btn-import-existing:hover,
+E       body.dp-v11-structural #view-dashboard #btn-recover-all:hover {
+E         filter: brightness(1.025) !important;
+E         transform: translateY(-1px) !important;
+E       }
+E       
+E       /* Consolidated from ui-dashboard-final.css. */
+E       /* DebridPulse v1.0.11 final Dashboard overrides.
+E        *
+E        * These rules remove stale Dashboard calibration divergences from the shared
+E        * language while retaining only genuine Dashboard-specific geometry here.
+E        */
+E       
+E       /* Recent Activity and Downloads use the same 76px empty-download artwork.
+E          This selector intentionally outranks the older batch-4 38px calibration. */
+E       body.dp-v11-structural #view-dashboard #dash-activity-card.dp-dashboard-activity .empty-icon {
+E         width: 76px !important;
+E         height: 76px !important;
+E         margin: 0 auto 12px !important;
+E       }
+E       
+E       /* Quick Add already carries the universal .input class. Preserve its textarea
+E          geometry/mono typography, but reset the material and focus behavior to the
+E          canonical field contract so focus adds a lavender ring without visually
+E          replacing the field perimeter. */
+E       body.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+E         border-color: var(--dp-field-border) !important;
+E         background: var(--dp-field-surface) !important;
+E         color: var(--dp-field-text) !important;
+E         box-shadow: inset 0 1px rgba(255,255,255,.018) !important;
+E       }
+E       body.light.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+E         box-shadow: inset 0 1px rgba(255,255,255,.85) !important;
+E       }
+E       body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:hover {
+E         border-color: var(--dp-border-strong) !important;
+E       }
+E       body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:focus {
+E         outline: none !important;
+E         border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong)) !important;
+E         background: var(--dp-field-surface) !important;
+E         box-shadow: var(--dp-focus-ring) !important;
+E       }
+E       
+E       /* Recent Activity alone had its trailing Action column pushed against the
+E          right edge by the wide-table calibration. Reclaim only unused Added-column
+E          width: the first four columns and the Added start position remain untouched. */
+E       @media (min-width: 1440px) {
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+E           width: 8% !important;
+E         }
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+E         body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+E           width: 9% !important;
+E         }
+E       }
 =========================== short test summary info ============================
-ERROR tests/test_extraction_lifecycle.py
-!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-1 error in 2.46s
+FAILED tests/test_ui_transfer_contract.py::test_recent_activity_reclaims_only_added_column_slack_for_actions - AssertionError: assert '.t-table th:nth-child(1)' not in '/* DebridPu...t;\n  }\n}\n'
+  
+  '.t-table th:nth-child(1)' is contained here:
+    -activity .t-table th:nth-child(1),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
+        width: 40% !important;
+      }
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
+        width: 13% !important;
+      }
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
+        width: 21% !important;
+      }
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
+        width: 9% !important;
+      }
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+        width: 12% !important;
+      }
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+        width: 5% !important;
+      }
+    }
+    
+    /* Sidebar hover now uses the same directional material language as the rest
+       of the shell. It remains intentionally much quieter than the active row. */
+    body.dp-v11-structural .nav-item:not(.active):hover {
+      background: linear-gradient(90deg,
+        rgba(136,76,228,.13) 0%,
+        rgba(132,79,218,.075) 42%,
+        rgba(128,86,205,.025) 76%,
+        transparent 100%) !important;
+    }
+    body.light.dp-v11-structural .nav-item:not(.active):hover {
+      background: linear-gradient(90deg,
+        rgba(143,91,222,.17) 0%,
+        rgba(157,119,224,.095) 43%,
+        rgba(174,151,226,.035) 77%,
+        transparent 100%) !important;
+    }
+    
+    /* ── Quick Add secondary utility controls ─────────────────────────────── */
+    /* Import and Recover All are helpers, not primary or semantic state actions.
+       Keep them clearly clickable, but let Add and Pause own the visual hierarchy. */
+    body.dp-v11-structural #view-dashboard #btn-import-existing,
+    body.dp-v11-structural #view-dashboard #btn-recover-all {
+      height: 32px !important;
+      min-height: 32px !important;
+      padding: 0 12px !important;
+      border-radius: 8px !important;
+      font-weight: 650 !important;
+      transform: none;
+      transition: filter .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease !important;
+    }
+    
+    body.dp-v11-structural #view-dashboard #btn-import-existing {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.085) 0%, rgba(255,255,255,.018) 34%, transparent 46%),
+        linear-gradient(145deg, rgba(65,60,80,.80) 0%, rgba(47,43,61,.78) 56%, rgba(36,33,48,.82) 100%) !important;
+      border-color: rgba(151,137,174,.45) !important;
+      color: #d7cde3 !important;
+      box-shadow:
+        inset 0 1px rgba(255,255,255,.085),
+        -4px 6px 12px -9px rgba(7,5,13,.48),
+        0 4px 9px -8px rgba(9,7,16,.34) !important;
+    }
+    body.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+      color: #bfa9d8 !important;
+    }
+    
+    body.dp-v11-structural #view-dashboard #btn-recover-all {
+      background:
+        radial-gradient(ellipse 112% 100% at 16% -8%, rgba(165,95,225,.13) 0%, transparent 56%),
+        linear-gradient(145deg, rgba(64,50,77,.82) 0%, rgba(48,39,59,.82) 56%, rgba(37,31,47,.86) 100%) !important;
+      border-color: rgba(177,119,224,.54) !important;
+      color: #dfc3f5 !important;
+      text-shadow: none !important;
+      box-shadow:
+        inset 0 1px rgba(255,255,255,.085),
+        -4px 6px 12px -9px rgba(46,24,66,.38),
+        0 4px 9px -8px rgba(36,23,51,.30) !important;
+    }
+    body.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+      filter:
+        hue-rotate(215deg)
+        saturate(1.28)
+        brightness(1.08)
+        drop-shadow(0 0 4px rgba(166,92,224,.24)) !important;
+    }
+    
+    body.light.dp-v11-structural #view-dashboard #btn-import-existing {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.42) 34%, transparent 46%),
+        linear-gradient(145deg, #fcfbff 0%, #f4f1f8 56%, #ece8f2 100%) !important;
+      border-color: #cec5da !important;
+      color: #62586f !important;
+      box-shadow:
+        inset 0 1px rgba(255,255,255,1),
+        -4px 6px 12px -9px rgba(68,59,83,.24),
+        0 4px 9px -8px rgba(76,67,91,.17) !important;
+    }
+    body.light.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+      color: #78678b !important;
+    }
+    
+    body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+      background:
+        radial-gradient(ellipse 112% 100% at 16% -8%, rgba(155,94,211,.11) 0%, transparent 56%),
+        linear-gradient(145deg, #fcf9ff 0%, #f3edf8 56%, #ebe2f2 100%) !important;
+      border-color: #bb9ad4 !important;
+      color: #744993 !important;
+      text-shadow: none !important;
+      box-shadow:
+        inset 0 1px rgba(255,255,255,1),
+        -4px 6px 12px -9px rgba(91,65,111,.25),
+        0 4px 9px -8px rgba(94,70,113,.18) !important;
+    }
+    body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+      filter:
+        hue-rotate(215deg)
+        saturate(1.24)
+        brightness(.93)
+        drop-shadow(0 0 4px rgba(144,74,194,.20)) !important;
+    }
+    
+    body.dp-v11-structural #view-dashboard #btn-import-existing:hover,
+    body.dp-v11-structural #view-dashboard #btn-recover-all:hover {
+      filter: brightness(1.025) !important;
+      transform: translateY(-1px) !important;
+    }
+    
+    /* Consolidated from ui-dashboard-final.css. */
+    /* DebridPulse v1.0.11 final Dashboard overrides.
+     *
+     * These rules remove stale Dashboard calibration divergences from the shared
+     * language while retaining only genuine Dashboard-specific geometry here.
+     */
+    
+    /* Recent Activity and Downloads use the same 76px empty-download artwork.
+       This selector intentionally outranks the older batch-4 38px calibration. */
+    body.dp-v11-structural #view-dashboard #dash-activity-card.dp-dashboard-activity .empty-icon {
+      width: 76px !important;
+      height: 76px !important;
+      margin: 0 auto 12px !important;
+    }
+    
+    /* Quick Add already carries the universal .input class. Preserve its textarea
+       geometry/mono typography, but reset the material and focus behavior to the
+       canonical field contract so focus adds a lavender ring without visually
+       replacing the field perimeter. */
+    body.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+      border-color: var(--dp-field-border) !important;
+      background: var(--dp-field-surface) !important;
+      color: var(--dp-field-text) !important;
+      box-shadow: inset 0 1px rgba(255,255,255,.018) !important;
+    }
+    body.light.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+      box-shadow: inset 0 1px rgba(255,255,255,.85) !important;
+    }
+    body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:hover {
+      border-color: var(--dp-border-strong) !important;
+    }
+    body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:focus {
+      outline: none !important;
+      border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong)) !important;
+      background: var(--dp-field-surface) !important;
+      box-shadow: var(--dp-focus-ring) !important;
+    }
+    
+    /* Recent Activity alone had its trailing Action column pushed against the
+       right edge by the wide-table calibration. Reclaim only unused Added-column
+       width: the first four columns and the Added start position remain untouched. */
+    @media (min-width: 1440px) {
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+        width: 8% !important;
+      }
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+      body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+        width: 9% !important;
+      }
+    }
+1 failed, 1089 passed in 10.81s
