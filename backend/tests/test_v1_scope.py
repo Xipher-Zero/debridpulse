@@ -367,7 +367,7 @@ def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tile
     statistics_styles = (REPO_ROOT / "frontend/static/ui-statistics-page.css").read_text()
 
     assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
-    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
     history = stats_view.split('<div class="dash-kpi-strip dp-stats-history-grid">', 1)[1].split(
         '<div class="scard dp-stats-chart', 1
     )[0]
@@ -382,7 +382,6 @@ def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tile
     assert "setDot('db'" in frontend
     assert ".dash-kpi-strip--dashboard" not in dashboard_styles
     assert "#view-stats .dp-stats-history-grid" in statistics_styles
-
 
 
 def test_inherited_file_preview_and_block_routes_are_hardened():
