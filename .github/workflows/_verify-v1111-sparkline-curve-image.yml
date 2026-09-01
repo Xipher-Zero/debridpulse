@@ -1,0 +1,65 @@
+name: Verify v1.0.11.1 sparkline curve image
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-sparkline-curve-b598903
+    paths:
+      - .github/workflows/_verify-v1111-sparkline-curve-image.yml
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  verify-published-image:
+    runs-on: ubuntu-24.04
+    env:
+      IMAGE: ghcr.io/xipher-zero/debridpulse:sha-b598903
+      EXPECTED_REV: b59890352a07b4197b099b9c0f4bc850197ef7a3
+      EXPECTED_VERSION: 1.0.11.1
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull back immutable image and verify runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          revision="$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          version="$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          test "$revision" = "$EXPECTED_REV"
+          test "$version" = "$EXPECTED_VERSION"
+
+          name="debridpulse-pullback-b598903"
+          cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name "$name" \
+            --publish 127.0.0.1:18082:8080 \
+            --env PUID=12345 --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE"
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18082/api/health >/dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then
+            docker logs "$name" || true
+            exit 1
+          fi
+
+          test "$(docker inspect "$name" --format '{{.State.Status}}')" = running
+          echo "revision=$revision"
+          echo "version=$version"
+          docker inspect "$IMAGE" --format 'repo_digests={{json .RepoDigests}}'
