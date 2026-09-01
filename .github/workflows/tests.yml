@@ -7,6 +7,7 @@ on:
       - main
       - '1.0.11'
       - 'staging/**'
+      - 'audit/**'
   pull_request:
     branches:
       - main
@@ -36,6 +37,12 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
+      - name: Install aria2 downloader regression dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends aria2
+          aria2c --version
+
       - name: Install dependencies
         run: |
           cd backend
@@ -61,6 +68,8 @@ jobs:
       - name: Check frontend JavaScript syntax
         run: |
           find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+          node --check frontend/browser/playwright.config.js
+          node --check frontend/browser/app.spec.js
 
   security:
     runs-on: ubuntu-latest
