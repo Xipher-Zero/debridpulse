@@ -14,7 +14,7 @@ from typing import Optional
 
 from core.config import get_settings
 from db.database import get_db
-from services.aria2 import Aria2ConnectionError, Aria2RPCError
+from executors.aria2.client import Aria2ConnectionError, Aria2RPCError
 from services.aria2_runtime import is_builtin_mode
 from services.dispatch_coordinator import MirrorAwareTransferControlCoordinator
 

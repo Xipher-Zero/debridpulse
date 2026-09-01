@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from services.aria2 import Aria2Service
+from executors.aria2.client import Aria2Service
 from services.downloader_egress_guard import DownloaderEgressGuard
 from services.manager_v2 import TorrentManager
 import services.transfer_runtime_guard as runtime_guard

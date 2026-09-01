@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from db.database import get_db
-from services.aria2 import Aria2ConnectionError, Aria2RPCError
+from executors.aria2.client import Aria2ConnectionError, Aria2RPCError
 from services.aria2_runtime import is_builtin_mode
 
 logger = logging.getLogger("alldebrid.transfer_control")

@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_builtin_automatic_purge_preserves_bounded_result_state(monkeypatch):
-    import services.aria2 as aria2_module
+    import executors.aria2.client as aria2_module
 
     monkeypatch.setattr(aria2_module, "_is_builtin_mode", lambda: True)
     service = aria2_module.Aria2Service("http://127.0.0.1:6800/jsonrpc")
@@ -24,7 +24,7 @@ async def test_builtin_automatic_purge_preserves_bounded_result_state(monkeypatc
 
 @pytest.mark.asyncio
 async def test_builtin_explicit_force_purge_remains_available(monkeypatch):
-    import services.aria2 as aria2_module
+    import executors.aria2.client as aria2_module
 
     monkeypatch.setattr(aria2_module, "_is_builtin_mode", lambda: True)
     service = aria2_module.Aria2Service("http://127.0.0.1:6800/jsonrpc")
@@ -38,7 +38,7 @@ async def test_builtin_explicit_force_purge_remains_available(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_external_force_purge_remains_blocked(monkeypatch):
-    import services.aria2 as aria2_module
+    import executors.aria2.client as aria2_module
 
     monkeypatch.setattr(aria2_module, "_is_builtin_mode", lambda: False)
     service = aria2_module.Aria2Service("http://external.example/jsonrpc")

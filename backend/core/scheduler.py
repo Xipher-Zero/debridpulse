@@ -214,7 +214,7 @@ async def aria2_restart_loop():
 
             # Wait until no active downloads to avoid interruption
             try:
-                from services.aria2 import Aria2Service
+                from executors.aria2.client import Aria2Service
                 from services.aria2_runtime import effective_rpc_config
                 url, secret = effective_rpc_config(cfg)
                 svc = Aria2Service(url, secret, 10)

@@ -51,6 +51,10 @@ def _is_transient_connection_error(exc: Exception) -> bool:
 class Aria2RPCError(Exception):
     """RPC error from aria2 (e.g. invalid parameters, unknown GID)."""
 
+    def __init__(self, message: str, *, code=None):
+        super().__init__(message)
+        self.code = code
+
 
 class Aria2ConnectionError(Aria2RPCError):
     """Connection error to aria2; subclass retained for compatibility."""
@@ -553,7 +557,8 @@ class Aria2Service:
         if "error" in data:
             error = data["error"] or {}
             raise Aria2RPCError(
-                f"aria2 [{error.get('code', 'UNKNOWN')}]: {error.get('message', 'Unknown error')}"
+                f"aria2 [{error.get('code', 'UNKNOWN')}]: {error.get('message', 'Unknown error')}",
+                code=error.get("code"),
             )
 
         return data.get("result")

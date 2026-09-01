@@ -17,7 +17,7 @@ def test_exact_capability_is_removed_from_persisted_errors():
 
 
 def test_aria2_success_logging_never_formats_request_uri():
-    source = (Path(__file__).parents[1] / "services" / "aria2.py").read_text()
+    source = (Path(__file__).parents[1] / "executors" / "aria2" / "client.py").read_text()
     ensure = source.split("async def ensure_download", 1)[1].split("def _find_all_matches", 1)[0]
     assert "queued download accepted as GID %s" in ensure
     assert "sanitize_log_value(normalized_uri" not in ensure

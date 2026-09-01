@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from packaging.version import Version
-from services.aria2 import Aria2Service
+from executors.aria2.client import Aria2Service
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -17,7 +17,7 @@ def test_v105_version_and_instrumentation():
 
 
 def test_aria2_multicall_and_auth_are_preserved():
-    aria2 = source("backend/services/aria2.py")
+    aria2 = source("backend/executors/aria2/client.py")
     assert '"system.multicall"' in aria2
     assert "async def _multicall(" in aria2
     svc = Aria2Service("http://localhost:6800/jsonrpc", secret="secret-value")

@@ -60,7 +60,7 @@ if "pydantic" not in sys.modules:
     sys.modules["pydantic"] = types.SimpleNamespace(BaseModel=_FakeModel)
 
 from providers.alldebrid.client import AllDebridService, flatten_files
-from services.aria2 import Aria2Service, Aria2DownloadStatus, Aria2RPCError, Aria2ConnectionError
+from executors.aria2.client import Aria2Service, Aria2DownloadStatus, Aria2RPCError, Aria2ConnectionError
 from services.manager_v2 import (
     TransientAllDebridStateError,
     normalize_provider_state,
@@ -579,8 +579,8 @@ class Aria2RobustnessTests(unittest.IsolatedAsyncioTestCase):
             async def __aexit__(self, *a): pass
             def __call__(self, *a, **kw): raise Exception("Cannot write to closing transport")
 
-        with patch("services.aria2.aiohttp.TCPConnector", return_value=FakeConnector()), \
-             patch("services.aria2.aiohttp.ClientSession") as mock_session:
+        with patch("executors.aria2.client.aiohttp.TCPConnector", return_value=FakeConnector()), \
+             patch("executors.aria2.client.aiohttp.ClientSession") as mock_session:
             mock_session.return_value.__aenter__ = AsyncMock(side_effect=Exception("Cannot write to closing transport"))
             mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -704,7 +704,7 @@ class Aria2RobustnessTests(unittest.IsolatedAsyncioTestCase):
         service.get_all = fake_get_all
         service._call = fake_call
 
-        with patch("services.aria2.asyncio.sleep", new=AsyncMock()):
+        with patch("executors.aria2.client.asyncio.sleep", new=AsyncMock()):
             gid = await service.ensure_download("https://test.invalid/file", max_retries=5)
 
         self.assertEqual(gid, "gid-final")
@@ -1902,7 +1902,7 @@ class ManagerDedupeTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((Path(tmp) / "aria2.log.1").exists())
 
     def test_aria2_download_payload_reports_progress_and_files(self):
-        from services.aria2 import aria2_download_to_dict
+        from executors.aria2.client import aria2_download_to_dict
 
         download = Aria2DownloadStatus(
             gid="abc123",

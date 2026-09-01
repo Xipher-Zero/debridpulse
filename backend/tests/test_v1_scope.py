@@ -300,7 +300,7 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
     styles = (REPO_ROOT / "frontend/static/style.css").read_text()
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
-    aria2_service = (REPO_ROOT / "backend/services/aria2.py").read_text()
+    aria2_service = (REPO_ROOT / "backend/executors/aria2/client.py").read_text()
 
     assert frontend.count("function fmtSpeed(bps)") == 1
     assert frontend.count("function fmtSpeedCap(bps)") == 1

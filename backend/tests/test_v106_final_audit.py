@@ -8,7 +8,7 @@ from api.serializers import public_payload, public_torrent
 from api.routes import _sql_date, _sql_strftime
 from core.logging_utils import sanitize_exception
 from db.database import DatabaseMaintenanceGate
-from services.aria2 import Aria2RPCError, Aria2Service
+from executors.aria2.client import Aria2RPCError, Aria2Service
 from services.aria2_runtime import BuiltinAria2Runtime
 from services.maintenance_gate import ApplicationMaintenanceGate
 from services.manager_v2 import _safe_persisted_error
@@ -110,7 +110,7 @@ async def test_provider_quiescence_cancellation_reopens_admission():
 
 @pytest.mark.asyncio
 async def test_aria2_failure_never_exposes_capability_and_uri_lock_is_released(monkeypatch, caplog):
-    import services.aria2 as aria2_module
+    import executors.aria2.client as aria2_module
 
     capability = "https://locked.example.invalid/cap"
     service = Aria2Service("http://127.0.0.1:6800/jsonrpc")

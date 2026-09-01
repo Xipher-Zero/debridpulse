@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.config import get_settings
-from services.aria2 import Aria2Service
+from executors.aria2.client import Aria2Service
 
 logger = logging.getLogger("alldebrid.aria2")
 

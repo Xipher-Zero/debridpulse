@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import re
 from typing import Any
 
-from services.aria2 import Aria2DownloadStatus, aria2_download_to_dict
+from executors.aria2.client import Aria2DownloadStatus, aria2_download_to_dict
 
 _TORRENT_PRIVATE_FIELDS = frozenset({"magnet", "download_url"})
 _FILE_PRIVATE_FIELDS = frozenset({"source_url", "download_url"})

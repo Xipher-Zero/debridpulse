@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.aria2 import Aria2DownloadStatus
+from executors.aria2.client import Aria2DownloadStatus
 from services.transfer_integrity import (
     TransferIntegrityAria2Service,
     TransferIntegrityManager,
@@ -339,7 +339,7 @@ async def test_stopped_complete_result_does_not_satisfy_fresh_builtin_dispatch()
     service._call = AsyncMock(return_value="fresh-gid")
 
     with patch("services.transfer_integrity.is_builtin_mode", return_value=True), patch(
-        "services.aria2._is_builtin_mode", return_value=True
+        "executors.aria2.client._is_builtin_mode", return_value=True
     ):
         gid = await service.ensure_download(
             "https://provider.invalid/file",
@@ -373,7 +373,7 @@ async def test_live_paused_result_remains_reusable_for_builtin_resume():
     service._call = AsyncMock()
 
     with patch("services.transfer_integrity.is_builtin_mode", return_value=True), patch(
-        "services.aria2._is_builtin_mode", return_value=True
+        "executors.aria2.client._is_builtin_mode", return_value=True
     ):
         gid = await service.ensure_download(
             "https://provider.invalid/file",

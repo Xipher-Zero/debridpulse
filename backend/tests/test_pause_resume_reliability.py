@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.aria2 import Aria2DownloadStatus, Aria2RPCError
+from executors.aria2.client import Aria2DownloadStatus, Aria2RPCError
 from services.reconciliation_service import ReconciliationService
 from services.transfer_control import TransferControlCoordinator
 from services.transfer_control_service import TransferControlService

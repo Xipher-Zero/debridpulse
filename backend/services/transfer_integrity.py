@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from core.config import get_settings
 from db.database import get_db
-from services.aria2 import Aria2Service
+from executors.aria2.client import Aria2Service
 from services.aria2_runtime import effective_rpc_config, is_builtin_mode
 from services.manager_v2 import (
     TorrentManager,
