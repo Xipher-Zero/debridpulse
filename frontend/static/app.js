@@ -165,17 +165,10 @@ function sanitizeErrorMsg(message) {
 }
 
 function toast(msg, type = 'info') {
-  const icons = {success:'✅',error:'❌',warn:'⚠️',info:'ℹ️'};
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  const icon = document.createElement('span');
-  icon.textContent = icons[type] || '·';
-  const text = document.createElement('span');
-  text.textContent = String(msg ?? '');
-  el.append(icon, text);
-  document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.style.opacity = '0', 3000);
-  setTimeout(() => el.remove(), 3400);
+  if (!window.DPIcons || typeof window.DPIcons.toast !== 'function') {
+    throw new Error('DebridPulse icon runtime is unavailable');
+  }
+  return window.DPIcons.toast(msg, type);
 }
 
 function setButtonPending(button, pending, pendingLabel) {
@@ -327,21 +320,10 @@ function renderKvMap(arr, formatter) {
   }).join('')}</div>`;
 }
 function badge(s) {
-  const m = {pending:'⏳ Pending',uploading:'⬆ Uploading',processing:'⚙ Processing',extracting:'📦 Extracting',
-    queued:'🕓 Queued',paused:'⏸ Paused',downloading:'⬇ Downloading',ready:'✓ Ready',completed:'✅ Done',
-    downloading_with_errors:'⬇ Downloading',
-    completed_with_errors:'⚠ Completed with errors',
-    error:'❌ Error',missing:'❌ Missing file',provider_failed:'❌ Provider download failed',
-    provider_missing:'❌ Removed from provider',failed:'❌ Provider download failed',
-    deleted:'🗑 Deleted',imported:'📋 Imported',partial:'⚠ Partial'};
-  const key = String(s || '');
-  const requestedCls = key === 'missing' || key === 'provider_failed' || key === 'provider_missing' || key === 'failed'
-    ? 'error'
-    : key === 'completed_with_errors' || key === 'downloading_with_errors'
-      ? 'partial'
-      : key;
-  const cls = /^[a-z0-9_-]+$/i.test(requestedCls) ? requestedCls : 'unknown';
-  return `<span class="badge badge-${cls}">${esc(m[key] || key || 'Unknown')}</span>`;
+  if (!window.DPIcons || typeof window.DPIcons.statusBadge !== 'function') {
+    throw new Error('DebridPulse icon runtime is unavailable');
+  }
+  return window.DPIcons.statusBadge(s);
 }
 function transferDisplayStatus(t) {
   if (t && String(t.extraction_status || '').trim() === 'extracting') {
@@ -391,18 +373,28 @@ function providerDisplayStatus(t) {
   return (t && t.provider_status) || '';
 }
 function progress(pct, status) {
-  const done   = status === 'completed';
-  const active = status === 'downloading';
-  let pctVal = done ? 100 : Math.min(Math.max(pct || 0, 0), 100);
-  // Show a thin "in progress" stripe when downloading but no percentage yet
-  const showStripe = active && pctVal === 0;
-  const fillStyle = showStripe
+  const state = String(status || '').toLowerCase();
+  const done = state === 'completed';
+  const failed = state === 'error';
+  const active = state === 'downloading';
+  const raw = Number(pct);
+  const actual = done ? 100 : Math.min(Math.max(Number.isFinite(raw) ? raw : 0, 0), 100);
+  const showStripe = active && actual === 0;
+  const visual = actual;
+  let fillStyle = showStripe
     ? 'width:100%;opacity:.35;background:repeating-linear-gradient(90deg,var(--accent) 0,var(--accent) 8px,transparent 8px,transparent 16px)'
-    : `width:${pctVal}%`;
-  const cls = done ? 'done' : '';
-  const label = done ? '100%' : showStripe ? '…' : `${pctVal.toFixed(0)}%`;
-  return `<div class="prog"><div class="prog-fill ${cls}" style="${fillStyle}"></div></div>
-          <span class="prog-pct">${label}</span>`;
+    : 'width:' + visual + '%';
+  if (failed) {
+    fillStyle += ';opacity:1;background:var(--dp-state-error)!important;background-color:var(--dp-state-error)!important;background-image:none!important;box-shadow:0 0 8px color-mix(in srgb,var(--dp-state-error) 88%,transparent),0 0 17px color-mix(in srgb,var(--dp-state-error) 46%,transparent)!important;filter:saturate(1.12) brightness(1.08)';
+  }
+  const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : '');
+  const trackCls = failed ? 'prog dp-terminal-error-rail' : 'prog';
+  const label = done ? '100%' : (showStripe ? '…' : actual.toFixed(0) + '%');
+  const attrs = failed
+    ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
+    : '';
+  return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
+         '<span class="prog-pct">' + label + '</span>';
 }
 
 function patchExtractionTransferEvent(data) {
@@ -680,13 +672,60 @@ function renderOperatorTitle() {
 }
 
 function updateOperatorTitle(stats) {
-  const active = Math.max(0, parseInt(stats?.operator_active_downloads, 10) || 0);
-  const value = Number(stats?.operator_active_progress_pct);
+  const byStatus = stats && stats.by_status && typeof stats.by_status === 'object' ? stats.by_status : null;
+  const nonNegativeCount = value => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+  };
+  const logicalActive = byStatus
+    ? nonNegativeCount(byStatus.downloading) + nonNegativeCount(byStatus.queued)
+    : nonNegativeCount(stats && stats.operator_active_downloads);
 
-  _operatorTitleState.active = active;
-  _operatorTitleState.progress = Number.isFinite(value)
-    ? Math.min(100, Math.max(0, Math.round(value)))
-    : 0;
+  updateOperatorTitle._latestLogicalActive = logicalActive;
+
+  const cancelIdle = () => {
+    if (updateOperatorTitle._idleTimer != null) {
+      clearTimeout(updateOperatorTitle._idleTimer);
+      updateOperatorTitle._idleTimer = null;
+    }
+  };
+
+  if (stats && stats.paused) {
+    cancelIdle();
+    _operatorTitleState.active = 0;
+    _operatorTitleState.progress = 0;
+    renderOperatorTitle();
+    return;
+  }
+
+  if (logicalActive > 0) {
+    cancelIdle();
+    _operatorTitleState.active = logicalActive;
+    const rawProgress = stats && stats.operator_active_progress_pct;
+    const value = rawProgress == null ? NaN : Number(rawProgress);
+    if (Number.isFinite(value)) {
+      _operatorTitleState.progress = Math.min(100, Math.max(0, Math.round(value)));
+    }
+    renderOperatorTitle();
+    return;
+  }
+
+  if (_operatorTitleState.active === 0) {
+    cancelIdle();
+    renderOperatorTitle();
+    return;
+  }
+
+  if (updateOperatorTitle._idleTimer == null) {
+    updateOperatorTitle._idleTimer = setTimeout(() => {
+      updateOperatorTitle._idleTimer = null;
+      if (updateOperatorTitle._latestLogicalActive === 0) {
+        _operatorTitleState.active = 0;
+        _operatorTitleState.progress = 0;
+        renderOperatorTitle();
+      }
+    }, 1500);
+  }
   renderOperatorTitle();
 }
 
@@ -1414,21 +1453,13 @@ function toggleTheme() {
 function updateThemeToggle(isLight) {
   const btn = document.getElementById('theme-toggle');
   if (!btn) return;
+  if (!window.DPIcons || typeof window.DPIcons.renderThemeGlyph !== 'function') {
+    throw new Error('DebridPulse icon runtime is unavailable');
+  }
   const action = isLight ? 'Switch to dark mode' : 'Switch to light mode';
-  btn.textContent = isLight ? '☾' : '☀︎';
   btn.title = action;
   btn.setAttribute('aria-label', action);
-  const chart = document.getElementById('daily-chart')?._ci;
-  if (chart) {
-    const styles = getComputedStyle(document.body);
-    const gridColor = styles.getPropertyValue('--border').trim();
-    const tickColor = styles.getPropertyValue('--text3').trim();
-    chart.options.scales.x.grid.color = gridColor;
-    chart.options.scales.y.grid.color = gridColor;
-    chart.options.scales.x.ticks.color = tickColor;
-    chart.options.scales.y.ticks.color = tickColor;
-    chart.update('none');
-  }
+  window.DPIcons.renderThemeGlyph(!!isLight);
 }
 document.addEventListener('DOMContentLoaded', () => {
   setInterval(function() {

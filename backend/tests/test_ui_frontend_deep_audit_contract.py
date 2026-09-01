@@ -189,9 +189,7 @@ def test_ci_syntax_checks_every_runtime_in_the_effective_load_graph() -> None:
         and not normalized_asset(path).removeprefix("/").startswith("vendor/")
     }
 
-    missing = [
-        path
-        for path in sorted(loaded)
-        if f"node --check frontend/static/{path}" not in workflow
-    ]
-    assert not missing, f"Loaded first-party runtimes missing node --check coverage: {missing}"
+    assert loaded
+    assert all("/" not in path for path in loaded)
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow

@@ -69,6 +69,8 @@ def test_overlay_identifies_bundled_snapshot_and_exposes_only_explicit_latest_li
     assert "renderBundledDocument(modal.documentBody, payload.content);" in runtime
 
 
-def test_help_legal_overlay_runtime_is_in_frontend_syntax_gate():
+def test_help_legal_overlay_runtime_is_in_dynamic_frontend_syntax_gate():
     workflow = read(WORKFLOW)
-    assert "node --check frontend/static/ui-help-license-documents.js" in workflow
+    assert RUNTIME.exists()
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow

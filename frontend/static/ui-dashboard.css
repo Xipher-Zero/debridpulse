@@ -798,3 +798,1022 @@ body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .empty-icon 
   opacity: .72;
   filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
 }
+
+/* Canonical Dashboard continuation: accepted v1.0.11 calibration folded in source order. */
+
+/* Consolidated from ui-dashboard-batch5.css. */
+/* DebridPulse v1.0.11 live-review refinement batch.
+   This is a presentation-only correction layer. It intentionally does not
+   advance the application version or the existing v=18 cache generation. */
+
+/* Provider Status: keep the crown centered on the same left anchor as the
+   connected dot, but reserve actual horizontal room for it. The resulting
+   text measure intentionally breaks before the complete "(NNN days)" phrase. */
+body.dp-v11-structural #premium-row {
+  display: block !important;
+  position: relative !important;
+  min-height: 44px !important;
+  padding: 2px 0 10px 28px !important;
+}
+body.dp-v11-structural #premium-row::before {
+  position: absolute !important;
+  left: 4px !important;
+  top: 19px !important;
+  transform: translate(-50%, -50%) !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  background-size: 36px 36px !important;
+}
+body.dp-v11-structural #lbl-premium {
+  display: block !important;
+  width: 100% !important;
+  max-width: 164px !important;
+  margin: 0 auto !important;
+  white-space: normal !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  text-align: center !important;
+  font-size: 10px !important;
+  line-height: 1.45 !important;
+  letter-spacing: -.018em !important;
+}
+
+/* Selected sidebar endpoint: one uninterrupted radial spotlight. The old
+   circular box-shadow was the remaining visible halo/ring in the light theme. */
+body.dp-v11-structural .nav-item.active::after,
+body.light.dp-v11-structural .nav-item.active::after {
+  background-color: transparent !important;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255,255,255,.99) 0 1px,
+    rgba(235,205,255,.88) 1.4px,
+    rgba(184,91,255,.78) 3px,
+    rgba(161,72,247,.61) 18%,
+    rgba(143,63,231,.42) 39%,
+    rgba(127,62,218,.19) 62%,
+    rgba(120,68,204,.055) 80%,
+    transparent 100%) !important;
+  box-shadow: none !important;
+}
+
+/* Transfer-status grammar. Dashboard badges have their legacy leading emoji
+   stripped by ui-runtime, so restore deliberate monochrome status glyphs here.
+   Downloads keeps the legacy text glyph but forces text presentation/color. */
+body.dp-v11-structural #dash-tbody .badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+body.dp-v11-structural #dash-tbody .badge::before {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  min-width: 15px;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 800;
+  text-shadow: 0 0 7px currentColor;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"] .badge-downloading::before {
+  content: '↓';
+  color: #34d382;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"] .badge-partial::before {
+  content: '↓';
+  color: #f2bd3f;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="paused"] .badge-paused::before {
+  content: 'Ⅱ';
+  color: #f2bd3f;
+  font-size: 14px;
+  letter-spacing: -2px;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-completed::before {
+  content: '✓';
+  color: #34d382;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="error"] .badge-error::before {
+  content: '×';
+  color: #ff676f;
+  font-size: 18px;
+}
+
+body.dp-v11-structural #t-tbody .badge {
+  font-variant-emoji: text;
+  font-family: var(--dp-font-sans), 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
+}
+body.dp-v11-structural #t-tbody tr[data-status="downloading"] .badge-downloading {
+  color: #34d382 !important;
+}
+body.dp-v11-structural #t-tbody tr[data-status="downloading"] .badge-partial,
+body.dp-v11-structural #t-tbody tr[data-status="paused"] .badge-paused {
+  color: #f2bd3f !important;
+}
+body.dp-v11-structural #t-tbody tr[data-status="completed"] .badge-completed {
+  color: #34d382 !important;
+}
+body.dp-v11-structural #t-tbody tr[data-status="error"] .badge-error {
+  color: #ff676f !important;
+}
+
+/* Active transfer progress must read as live work rather than a hairline. */
+body.dp-v11-structural #dash-tbody .prog,
+body.dp-v11-structural #t-tbody .prog {
+  height: 6px !important;
+  border-radius: 999px !important;
+  background: rgba(126, 136, 166, .20) !important;
+  overflow: visible !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.10) !important;
+}
+body.light.dp-v11-structural #dash-tbody .prog,
+body.light.dp-v11-structural #t-tbody .prog {
+  background: #d9deea !important;
+  box-shadow: inset 0 1px 2px rgba(58, 66, 94, .10) !important;
+}
+body.dp-v11-structural #dash-tbody .prog-fill,
+body.dp-v11-structural #t-tbody .prog-fill {
+  height: 6px !important;
+  border-radius: 999px !important;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-fill,
+body.dp-v11-structural #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-fill {
+  background: linear-gradient(90deg, #28c879, #43dc91) !important;
+  box-shadow: 0 0 5px rgba(48, 211, 130, .68), 0 0 11px rgba(48, 211, 130, .28) !important;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-fill,
+body.dp-v11-structural #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-fill {
+  background: linear-gradient(90deg, #e7ab29, #f2c84d) !important;
+  box-shadow: 0 0 5px rgba(242, 189, 63, .66), 0 0 11px rgba(242, 189, 63, .27) !important;
+}
+
+/* Percentage is a primary live-transfer datum, not subordinate metadata. */
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"] .prog-pct,
+body.dp-v11-structural #t-tbody tr[data-status="downloading"] .prog-pct {
+  display: inline-block !important;
+  margin-top: 5px !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  font-weight: 760 !important;
+  letter-spacing: -.02em !important;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
+body.dp-v11-structural #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
+  color: #34d382 !important;
+  text-shadow: 0 0 8px rgba(52, 211, 130, .30);
+}
+body.dp-v11-structural #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
+body.dp-v11-structural #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
+  color: #f2bd3f !important;
+  text-shadow: 0 0 8px rgba(242, 189, 63, .28);
+}
+body.light.dp-v11-structural #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
+body.light.dp-v11-structural #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
+  color: #198e55 !important;
+}
+body.light.dp-v11-structural #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
+body.light.dp-v11-structural #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
+  color: #b37b0d !important;
+}
+
+/* Operational control grammar: green means resume/go; amber means pause.
+   Red remains reserved for failures and destructive actions. */
+body.dp-v11-structural #btn-pause-all,
+body.dp-v11-structural button[onclick*="pauseT("] {
+  background: linear-gradient(135deg,
+    rgba(125, 91, 30, .91) 0%,
+    rgba(90, 69, 31, .94) 52%,
+    rgba(57, 49, 39, .97) 100%) !important;
+  border-color: rgba(242, 189, 63, .64) !important;
+  color: #ffd35b !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.06), 0 5px 15px rgba(113, 79, 20, .15) !important;
+}
+body.light.dp-v11-structural #btn-pause-all,
+body.light.dp-v11-structural button[onclick*="pauseT("] {
+  background: linear-gradient(135deg, #fff3cf 0%, #f8dfa2 52%, #edca76 100%) !important;
+  border-color: #d5a63e !important;
+  color: #8b620b !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 14px rgba(154, 111, 24, .13) !important;
+}
+body.dp-v11-structural #btn-resume-all,
+body.dp-v11-structural #btn-resume-paused,
+body.dp-v11-structural button[onclick*="resumeT("] {
+  background: linear-gradient(135deg,
+    rgba(25, 117, 78, .84) 0%,
+    rgba(20, 86, 66, .91) 50%,
+    rgba(16, 54, 49, .95) 100%) !important;
+  border-color: rgba(73, 224, 145, .42) !important;
+  color: #9af0bf !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.05), 0 6px 18px rgba(16, 78, 53, .16) !important;
+}
+body.light.dp-v11-structural #btn-resume-all,
+body.light.dp-v11-structural #btn-resume-paused,
+body.light.dp-v11-structural button[onclick*="resumeT("] {
+  background: linear-gradient(135deg, #e4faec 0%, #c9f2da 52%, #afe7c7 100%) !important;
+  border-color: #83d3aa !important;
+  color: #176d46 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.78), 0 5px 16px rgba(30, 121, 78, .10) !important;
+}
+
+/* Recover is a violet application/recovery action, not an amber pause/caution
+   action. Keep it below the primary Add action in saturation and emphasis. */
+body.dp-v11-structural #view-dashboard #btn-recover-all {
+  background:
+    linear-gradient(135deg, rgba(162,95,244,.16), rgba(132,82,210,.05) 48%, transparent 76%),
+    linear-gradient(135deg, #625a75 0%, #504a63 52%, #423d55 100%) !important;
+  border-color: rgba(170, 111, 232, .68) !important;
+  color: #e3c5ff !important;
+  text-shadow: 0 0 8px rgba(169, 104, 234, .18);
+  box-shadow: inset 0 1px rgba(255,255,255,.07), 0 5px 14px rgba(89, 52, 127, .15) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+  background:
+    linear-gradient(135deg, rgba(159,96,228,.13), rgba(137,93,205,.035) 48%, transparent 76%),
+    linear-gradient(135deg, #81788f 0%, #716a83 52%, #625d74 100%) !important;
+  border-color: #a47acb !important;
+  color: #f0ddff !important;
+  text-shadow: 0 0 7px rgba(137, 76, 198, .14);
+  box-shadow: inset 0 1px rgba(255,255,255,.12), 0 5px 14px rgba(78, 58, 102, .14) !important;
+}
+
+/* Primary Add: DP violet first, with layered depth rather than a flat blue
+   rectangle. A tiny cool tail remains only for dimensional separation. */
+body.dp-v11-structural #view-dashboard #btn-add-transfer {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.035) 30%, transparent 48%),
+    linear-gradient(135deg, #973cf4 0%, #7a38ee 48%, #6846e9 78%, #6054df 100%) !important;
+  border-color: rgba(181, 102, 255, .82) !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(46, 17, 85, .34);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.24),
+    inset 0 -2px rgba(62,31,126,.18),
+    -3px 7px 14px -6px rgba(105, 45, 190, .48),
+    0 0 18px rgba(130, 62, 232, .18) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-add-transfer {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,.055) 30%, transparent 48%),
+    linear-gradient(135deg, #9440ee 0%, #7b3be8 50%, #6b48e4 80%, #6550dc 100%) !important;
+  border-color: #a85cf2 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.34),
+    inset 0 -2px rgba(72,38,142,.16),
+    -4px 8px 15px -7px rgba(91, 56, 150, .40),
+    0 0 18px rgba(130, 69, 213, .16) !important;
+}
+body.dp-v11-structural #view-dashboard #btn-add-transfer:hover {
+  filter: brightness(1.045) saturate(1.04);
+  transform: translateY(-1px);
+}
+
+/* Consolidated from ui-dashboard-polish.css. */
+/* DebridPulse v1.0.11 final live-review polish.
+   Presentation-only refinements. Do not advance the application version or
+   the existing v=18 visual cache generation. */
+
+/* ── Topbar operational controls: semantic color + card-consistent depth ── */
+body.dp-v11-structural #topbar-actions #btn-pause-all.btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.075) 0%, transparent 34%),
+    linear-gradient(135deg, rgba(126,91,31,.94) 0%, rgba(91,68,29,.96) 54%, rgba(57,48,35,.98) 100%) !important;
+  border-color: rgba(242,189,63,.68) !important;
+  color: #ffd45d !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.10),
+    inset 0 -1px rgba(56,42,16,.34),
+    -5px 7px 14px -8px rgba(113,79,20,.42),
+    0 5px 11px -8px rgba(79,56,18,.32) !important;
+}
+body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.78) 0%, rgba(255,255,255,.10) 34%, transparent 44%),
+    linear-gradient(135deg, #fff2cc 0%, #f7dda0 54%, #edc974 100%) !important;
+  border-color: #d5a63e !important;
+  color: #875f0a !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.92),
+    inset 0 -1px rgba(157,111,18,.16),
+    -5px 7px 14px -8px rgba(154,111,24,.42),
+    0 5px 11px -8px rgba(113,82,22,.24) !important;
+}
+
+body.dp-v11-structural #topbar-actions #btn-resume-all.btn,
+body.dp-v11-structural #topbar-actions #btn-resume-paused.btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.07) 0%, transparent 34%),
+    linear-gradient(135deg, rgba(27,121,81,.91) 0%, rgba(20,88,66,.95) 54%, rgba(15,55,49,.98) 100%) !important;
+  border-color: rgba(73,224,145,.48) !important;
+  color: #9af0bf !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.09),
+    inset 0 -1px rgba(6,43,29,.30),
+    -5px 7px 14px -8px rgba(16,91,57,.42),
+    0 5px 11px -8px rgba(12,63,42,.28) !important;
+}
+body.light.dp-v11-structural #topbar-actions #btn-resume-all.btn,
+body.light.dp-v11-structural #topbar-actions #btn-resume-paused.btn {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.82) 0%, rgba(255,255,255,.12) 35%, transparent 45%),
+    linear-gradient(135deg, #e7fbed 0%, #c9f1d9 54%, #afe6c6 100%) !important;
+  border-color: #79d0a2 !important;
+  color: #176d46 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.94),
+    inset 0 -1px rgba(26,125,79,.13),
+    -5px 7px 14px -8px rgba(30,121,78,.38),
+    0 5px 11px -8px rgba(30,104,72,.22) !important;
+}
+
+body.dp-v11-structural #aria2-speed-badge {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), transparent 38%),
+    linear-gradient(145deg, rgba(18,23,52,.96), rgba(12,17,42,.94) 54%, rgba(9,13,34,.97)) !important;
+  border-color: rgba(123,132,184,.25) !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.055),
+    inset 0 -1px rgba(2,5,17,.32),
+    -5px 7px 14px -9px rgba(0,0,15,.42),
+    0 5px 11px -8px rgba(0,0,12,.28) !important;
+}
+body.light.dp-v11-structural #aria2-speed-badge {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.48) 32%, transparent 42%),
+    linear-gradient(145deg, #ffffff 0%, #fafafe 54%, #f2f1f8 100%) !important;
+  border-color: #d9d8e6 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,1),
+    inset 0 -1px rgba(84,72,116,.055),
+    -5px 7px 14px -9px rgba(61,57,88,.30),
+    0 5px 11px -8px rgba(65,62,90,.18) !important;
+}
+
+body.dp-v11-structural .theme-toggle {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), transparent 38%),
+    linear-gradient(145deg, rgba(18,23,52,.96), rgba(11,16,40,.97)) !important;
+  border-color: rgba(123,132,184,.25) !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.055),
+    inset 0 -1px rgba(2,5,17,.32),
+    -4px 7px 13px -8px rgba(0,0,15,.40),
+    0 5px 10px -8px rgba(0,0,12,.28) !important;
+}
+body.light.dp-v11-structural .theme-toggle {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.46) 34%, transparent 44%),
+    linear-gradient(145deg, #ffffff 0%, #fafafe 54%, #f1f0f7 100%) !important;
+  border-color: #d9d8e6 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,1),
+    inset 0 -1px rgba(84,72,116,.055),
+    -4px 7px 13px -8px rgba(61,57,88,.28),
+    0 5px 10px -8px rgba(65,62,90,.16) !important;
+}
+
+/* Speed cap hover is deliberately text-only. No surface, border, or color
+   transformation is permitted in either theme. */
+body.dp-v11-structural #aria2-cap-toggle,
+body.dp-v11-structural #aria2-cap-toggle:hover,
+body.dp-v11-structural #aria2-cap-toggle[aria-expanded="true"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: inherit !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+body.dp-v11-structural #aria2-cap-toggle:hover,
+body.dp-v11-structural #aria2-cap-toggle[aria-expanded="true"] {
+  font-weight: 800 !important;
+}
+
+/* ── Provider Status ───────────────────────────────────────────────────── */
+/* Raise the crown only a smidge; the premium text measure is already correct. */
+body.dp-v11-structural #premium-row::before {
+  top: 17px !important;
+}
+
+/* Connected means green. Never let inherited currentColor create a warm halo. */
+body.dp-v11-structural #dot-api.ok {
+  color: #34d382 !important;
+  background: #34d382 !important;
+  box-shadow:
+    0 0 6px rgba(52,211,130,.78),
+    0 0 13px rgba(52,211,130,.34) !important;
+}
+body.light.dp-v11-structural #dot-api.ok {
+  color: #2bc979 !important;
+  background: #2bc979 !important;
+  box-shadow:
+    0 0 6px rgba(43,201,121,.66),
+    0 0 12px rgba(43,201,121,.28) !important;
+}
+
+/* ── Sidebar selected endpoint + download-count badge ─────────────────── */
+/* The endpoint is light spilling through the sidebar edge, not a circular
+   object attached to it. Put the bloom source just outside the edge, broaden
+   it horizontally, and let it die much faster vertically. */
+body.dp-v11-structural .nav-item.active::after,
+body.light.dp-v11-structural .nav-item.active::after {
+  right: -34px !important;
+  top: 50% !important;
+  width: 62px !important;
+  height: 38px !important;
+  transform: translateY(-50%) !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  background:
+    radial-gradient(ellipse 8% 16% at 45% 50%,
+      rgba(255,255,255,.98) 0%,
+      rgba(238,213,255,.84) 32%,
+      rgba(199,132,255,.42) 58%,
+      transparent 100%),
+    radial-gradient(ellipse 78% 46% at 52% 50%,
+      rgba(180,86,252,.82) 0%,
+      rgba(164,73,241,.70) 14%,
+      rgba(146,64,229,.52) 31%,
+      rgba(132,61,216,.31) 50%,
+      rgba(123,63,201,.13) 69%,
+      rgba(118,68,190,.035) 86%,
+      transparent 100%) !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+}
+body.light.dp-v11-structural .nav-item.active::after {
+  background:
+    radial-gradient(ellipse 8% 16% at 45% 50%,
+      rgba(255,255,255,.98) 0%,
+      rgba(239,215,255,.82) 32%,
+      rgba(191,116,249,.38) 58%,
+      transparent 100%),
+    radial-gradient(ellipse 78% 46% at 52% 50%,
+      rgba(170,72,244,.72) 0%,
+      rgba(155,65,233,.60) 14%,
+      rgba(140,61,220,.43) 31%,
+      rgba(127,62,205,.25) 50%,
+      rgba(121,67,192,.10) 69%,
+      rgba(118,72,183,.025) 86%,
+      transparent 100%) !important;
+}
+
+body.dp-v11-structural #nb-active.nav-badge {
+  min-width: 22px !important;
+  height: 22px !important;
+  padding: 0 6px !important;
+  background: linear-gradient(145deg, rgba(145,84,225,.31), rgba(94,52,158,.24)) !important;
+  border: 1px solid rgba(181,120,247,.70) !important;
+  color: #e2c4ff !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.08),
+    0 2px 7px rgba(96,47,157,.24) !important;
+}
+body.light.dp-v11-structural #nb-active.nav-badge {
+  background: linear-gradient(145deg, #eadcff 0%, #d7bfff 100%) !important;
+  border-color: #a568e8 !important;
+  color: #6623a8 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.72),
+    0 2px 7px rgba(103,52,163,.20) !important;
+}
+
+/* ── Metric-card sparkline fill ───────────────────────────────────────── */
+/* Keep the semantic area tint alive almost to the card floor. The runtime's
+   two-stop SVG gradient remains intact; the terminal stop is intentionally
+   faint rather than fully transparent so the fade no longer dies early. */
+body.dp-v11-structural #view-dashboard .dp-card-spark stop:first-child {
+  stop-opacity: .38 !important;
+}
+body.dp-v11-structural #view-dashboard .dp-card-spark stop:last-child {
+  stop-opacity: .095 !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-card-spark stop:first-child {
+  stop-opacity: .34 !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-card-spark stop:last-child {
+  stop-opacity: .075 !important;
+}
+
+/* ── Primary Add action ───────────────────────────────────────────────── */
+/* Still the primary CTA, but made from the same material language as the
+   surrounding raised cards instead of being the page's largest saturated slab. */
+body.dp-v11-structural #view-dashboard #btn-add-transfer {
+  background:
+    radial-gradient(ellipse 125% 92% at 18% -10%,
+      rgba(255,255,255,.23) 0%, rgba(255,255,255,.075) 35%, transparent 61%),
+    linear-gradient(145deg, #8d48db 0%, #763fc9 52%, #6249bd 100%) !important;
+  border-color: rgba(160,94,221,.78) !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(41,20,71,.34) !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.26),
+    inset 0 -2px rgba(57,27,102,.18),
+    -5px 8px 15px -8px rgba(91,48,147,.46),
+    0 6px 12px -9px rgba(78,45,125,.34) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-add-transfer {
+  background:
+    radial-gradient(ellipse 125% 92% at 18% -10%,
+      rgba(255,255,255,.34) 0%, rgba(255,255,255,.10) 35%, transparent 61%),
+    linear-gradient(145deg, #8950d4 0%, #7646c9 52%, #6551c3 100%) !important;
+  border-color: #9c68d8 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.48),
+    inset 0 -2px rgba(76,42,126,.14),
+    -5px 8px 15px -8px rgba(91,56,145,.38),
+    0 6px 12px -9px rgba(78,58,119,.28) !important;
+}
+body.dp-v11-structural #view-dashboard #btn-add-transfer:hover {
+  filter: brightness(1.04) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Transfer progress emphasis ───────────────────────────────────────── */
+/* Progress remains green as completion/progress information even when the
+   transfer itself is paused; degraded downloads alone switch to amber. */
+body.dp-v11-structural #dash-tbody .prog,
+body.dp-v11-structural #t-tbody .prog {
+  height: 7px !important;
+  overflow: visible !important;
+}
+body.dp-v11-structural #dash-tbody .prog-fill,
+body.dp-v11-structural #t-tbody .prog-fill {
+  height: 7px !important;
+  background: linear-gradient(90deg, #28c879, #43dc91) !important;
+  box-shadow:
+    0 0 6px rgba(48,211,130,.78),
+    0 0 13px rgba(48,211,130,.34) !important;
+}
+body.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-fill,
+body.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-fill {
+  background: linear-gradient(90deg, #e7ab29, #f2c84d) !important;
+  box-shadow:
+    0 0 6px rgba(242,189,63,.76),
+    0 0 13px rgba(242,189,63,.32) !important;
+}
+body.dp-v11-structural #dash-tbody .prog-pct,
+body.dp-v11-structural #t-tbody .prog-pct {
+  display: inline-block !important;
+  margin-top: 6px !important;
+  color: #42dc8c !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  font-weight: 800 !important;
+  letter-spacing: -.025em !important;
+  text-shadow: 0 0 8px rgba(52,211,130,.30) !important;
+}
+body.light.dp-v11-structural #dash-tbody .prog-pct,
+body.light.dp-v11-structural #t-tbody .prog-pct {
+  color: #198e55 !important;
+  text-shadow: 0 0 7px rgba(52,211,130,.18) !important;
+}
+body.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-pct,
+body.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-pct {
+  color: #f2bd3f !important;
+  text-shadow: 0 0 8px rgba(242,189,63,.28) !important;
+}
+body.light.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-pct,
+body.light.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-pct {
+  color: #ad770d !important;
+}
+
+/* ── Recent Activity body ambient depth ───────────────────────────────── */
+/* Sparse lists leave a large canvas. Give that canvas environmental light,
+   not another decorative object, so the treatment still works with many rows. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
+  background:
+    radial-gradient(ellipse 88% 84% at 100% 100%,
+      rgba(133,78,216,.060) 0%, rgba(113,72,190,.026) 38%, transparent 74%),
+    linear-gradient(180deg, rgba(13,18,41,.04) 0%, rgba(7,11,28,.34) 100%) !important;
+  box-shadow: inset 0 10px 18px -18px rgba(0,0,12,.54) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
+  background:
+    radial-gradient(ellipse 88% 84% at 100% 100%,
+      rgba(133,82,205,.060) 0%, rgba(122,88,186,.028) 38%, transparent 74%),
+    linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(242,243,249,.25) 100%) !important;
+  box-shadow: inset 0 10px 18px -18px rgba(72,65,99,.36) !important;
+}
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table tbody,
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table tbody tr {
+  background-color: transparent;
+}
+
+/* Consolidated from ui-dashboard-polish-final.css. */
+/* Final cascade guard for the v1.0.11 polish pass.
+   Keep legacy indeterminate/striped progress rendering intact while the new
+   semantic glow applies to ordinary determinate progress bars. */
+body.dp-v11-structural #dash-tbody .prog-fill[style*="repeating-linear-gradient"],
+body.dp-v11-structural #t-tbody .prog-fill[style*="repeating-linear-gradient"] {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0,
+    var(--accent) 8px,
+    transparent 8px,
+    transparent 16px
+  ) !important;
+  box-shadow: none !important;
+  opacity: .35 !important;
+}
+
+/* ── Selected sidebar endpoint ────────────────────────────────────────── */
+/* Treat the right-edge accent as a tiny spark throwing diffuse purple light,
+   not a circle/ellipse/pill attached to the selected row. The radial mask
+   guarantees that none of the pseudo-element's rectangular bounds can read. */
+body.dp-v11-structural .nav-item.active::after,
+body.light.dp-v11-structural .nav-item.active::after {
+  right: -2px !important;
+  top: 50% !important;
+  width: 76px !important;
+  height: 54px !important;
+  transform: translateY(-50%) !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  background:
+    radial-gradient(circle at 98% 50%,
+      rgba(255,255,255,.99) 0 1.2px,
+      rgba(244,225,255,.96) 1.3px 2.4px,
+      rgba(205,133,255,.86) 2.5px 3.8px,
+      rgba(173,78,248,.48) 4px 5.2px,
+      transparent 7px),
+    conic-gradient(from 180deg at 98% 50%,
+      transparent 0deg 11deg,
+      rgba(199,126,255,.16) 12deg 15deg,
+      transparent 17deg 37deg,
+      rgba(180,91,249,.11) 39deg 43deg,
+      transparent 45deg 137deg,
+      rgba(190,106,255,.12) 139deg 143deg,
+      transparent 145deg 217deg,
+      rgba(184,95,250,.11) 219deg 223deg,
+      transparent 225deg 317deg,
+      rgba(192,112,255,.13) 319deg 323deg,
+      transparent 325deg 345deg,
+      rgba(205,135,255,.17) 347deg 350deg,
+      transparent 352deg 360deg),
+    radial-gradient(ellipse 100% 68% at 98% 50%,
+      rgba(171,79,245,.42) 0%,
+      rgba(157,69,233,.24) 24%,
+      rgba(145,67,220,.11) 46%,
+      rgba(137,70,207,.035) 66%,
+      transparent 80%) !important;
+  -webkit-mask-image: radial-gradient(ellipse 100% 86% at 98% 50%,
+    #000 0%, #000 24%, rgba(0,0,0,.82) 43%, rgba(0,0,0,.38) 62%, transparent 82%) !important;
+  mask-image: radial-gradient(ellipse 100% 86% at 98% 50%,
+    #000 0%, #000 24%, rgba(0,0,0,.82) 43%, rgba(0,0,0,.38) 62%, transparent 82%) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  pointer-events: none !important;
+}
+body.light.dp-v11-structural .nav-item.active::after {
+  opacity: .92;
+}
+
+/* ── Dashboard bottom datum ───────────────────────────────────────────── */
+/* Sidebar and viewport remain independent components. On the desktop
+   Dashboard only, share the same 24px lower gutter so Provider Status and the
+   fully extended Recent Activity card finish on one visual baseline. */
+@media (min-width: 901px) {
+  body.dp-v11-structural:has(#content.dashboard-active) .sidebar-footer {
+    bottom: 24px !important;
+  }
+}
+
+/* ── Provider crown ───────────────────────────────────────────────────── */
+/* Nudge the statement icon slightly higher again and make it emit the same DP
+   purple energy used elsewhere, without touching the already-approved text. */
+body.dp-v11-structural #premium-row::before {
+  top: 15px !important;
+  filter:
+    drop-shadow(0 0 4px rgba(183,83,255,.76))
+    drop-shadow(0 0 11px rgba(153,65,239,.42)) !important;
+}
+body.light.dp-v11-structural #premium-row::before {
+  filter:
+    drop-shadow(0 0 4px rgba(171,67,244,.72))
+    drop-shadow(0 0 12px rgba(145,58,226,.38)) !important;
+}
+
+/* ── Metric icon light sources ────────────────────────────────────────── */
+/* Each semantic icon is now the perceived source of the card's directional
+   illumination. Keep the glow omnidirectional; light mode can carry a broader
+   bloom while dark mode stays tighter. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon .dp-icon {
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--c) 62%, transparent))
+    drop-shadow(0 0 11px color-mix(in srgb, var(--c) 27%, transparent)) !important;
+}
+body.light.dp-v11-structural #view-dashboard .dash-hero-stat .dhs-icon .dp-icon {
+  filter:
+    drop-shadow(0 0 6px color-mix(in srgb, var(--c) 70%, transparent))
+    drop-shadow(0 0 15px color-mix(in srgb, var(--c) 32%, transparent)) !important;
+}
+
+/* ── Progress percentage restraint ────────────────────────────────────── */
+/* The bar owns semantic color/glow. The percentage returns to its original
+   geometry and mono type, gaining emphasis only through darker neutral text. */
+body.dp-v11-structural #dash-tbody .prog-pct,
+body.dp-v11-structural #t-tbody .prog-pct,
+body.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-pct,
+body.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-pct {
+  display: block !important;
+  margin-top: 3px !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  line-height: normal !important;
+  font-weight: 500 !important;
+  letter-spacing: normal !important;
+  color: #c8ccdc !important;
+  text-shadow: none !important;
+}
+body.light.dp-v11-structural #dash-tbody .prog-pct,
+body.light.dp-v11-structural #t-tbody .prog-pct,
+body.light.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-pct,
+body.light.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-pct {
+  color: #3e465f !important;
+  text-shadow: none !important;
+}
+
+/* ── Recent Activity header simplification ────────────────────────────── */
+/* Downloads already owns full-list navigation in the sidebar. Remove the
+   redundant/vague View All shortcut and let the Activity header breathe. */
+body.dp-v11-structural #view-dashboard .dp-dashboard-activity .card-header
+  button[onclick*="data-view=torrents"] {
+  display: none !important;
+}
+
+/* ── Live review micro-refinements ────────────────────────────────────── */
+/* Keep the selected-row starburst, but bound its vertical footprint inside
+   the selection so the rays never cross the row's top/bottom edges. */
+body.dp-v11-structural .nav-item.active::after,
+body.light.dp-v11-structural .nav-item.active::after {
+  height: calc(100% - 12px) !important;
+  max-height: 38px !important;
+  -webkit-mask-image: radial-gradient(ellipse 100% 74% at 98% 50%,
+    #000 0%, #000 22%, rgba(0,0,0,.80) 41%, rgba(0,0,0,.34) 61%, transparent 80%) !important;
+  mask-image: radial-gradient(ellipse 100% 74% at 98% 50%,
+    #000 0%, #000 22%, rgba(0,0,0,.80) 41%, rgba(0,0,0,.34) 61%, transparent 80%) !important;
+}
+
+/* The live speed remains semantically green, but light-mode contrast needs to
+   be substantially stronger than the generic success green on white. */
+body.light.dp-v11-structural #aria2-badge-speed {
+  color: #087a46 !important;
+  font-weight: 700 !important;
+}
+
+/* Metric cards are information surfaces, not buttons. Remove the hover motion
+   that implied a press/click affordance while preserving their static lighting. */
+body.dp-v11-structural #view-dashboard .dash-hero-stat,
+body.dp-v11-structural #view-dashboard .dash-hero-stat:hover {
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Reduce the primary CTA's visual mass by about five percent and center it
+   against the textarea instead of stretching with it as the input expands. */
+body.dp-v11-structural #view-dashboard #btn-add-transfer {
+  align-self: center !important;
+  min-width: 91px !important;
+  width: auto !important;
+  min-height: 56px !important;
+  height: 56px !important;
+}
+
+/* Dashboard badge normalization strips the leading legacy emoji. Restore the
+   deliberate amber caution glyph for completed-with-errors, and optically
+   center the Done checkmark by nudging its visual mass down one pixel. */
+body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-partial::before {
+  content: '⚠' !important;
+  color: #f2bd3f !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  transform: translateY(1px) !important;
+}
+body.dp-v11-structural #dash-tbody tr[data-status="completed"] .badge-completed::before {
+  transform: translateY(1px) !important;
+}
+
+/* ── Dark-card red + progress/table/sidebar balance refinements ───────── */
+/* Errors needs to read as a real failure state in the dark theme rather than
+   receding into burgundy/pink. One semantic source drives the card wash,
+   top edge, sparkline, and icon glow. */
+body.dp-v11-structural #view-dashboard #dash-error-card {
+  --c: #ff4854 !important;
+}
+body.light.dp-v11-structural #view-dashboard #dash-error-card {
+  --c: #e93f4d !important;
+}
+body.dp-v11-structural #view-dashboard #dash-error-card .dhs-icon .dp-icon {
+  filter:
+    saturate(1.28)
+    brightness(1.10)
+    drop-shadow(0 0 5px color-mix(in srgb, var(--c) 68%, transparent))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--c) 32%, transparent)) !important;
+}
+
+/* Preserve the approved semantic glow and reduce only the physical core line
+   so completed/error-state progress reads lighter without losing scanability. */
+body.dp-v11-structural #dash-tbody .prog,
+body.dp-v11-structural #t-tbody .prog {
+  height: 4.5px !important;
+}
+
+/* On wide Dashboard layouts, Status had far more horizontal allocation than
+   its content needed. Reclaim that slack for Progress while keeping Name and
+   the trailing metadata/action columns balanced. */
+@media (min-width: 1440px) {
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table {
+    table-layout: fixed !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
+    width: 40% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
+    width: 13% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
+    width: 21% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
+    width: 9% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+    width: 12% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+    width: 5% !important;
+  }
+}
+
+/* Sidebar hover now uses the same directional material language as the rest
+   of the shell. It remains intentionally much quieter than the active row. */
+body.dp-v11-structural .nav-item:not(.active):hover {
+  background: linear-gradient(90deg,
+    rgba(136,76,228,.13) 0%,
+    rgba(132,79,218,.075) 42%,
+    rgba(128,86,205,.025) 76%,
+    transparent 100%) !important;
+}
+body.light.dp-v11-structural .nav-item:not(.active):hover {
+  background: linear-gradient(90deg,
+    rgba(143,91,222,.17) 0%,
+    rgba(157,119,224,.095) 43%,
+    rgba(174,151,226,.035) 77%,
+    transparent 100%) !important;
+}
+
+/* ── Quick Add secondary utility controls ─────────────────────────────── */
+/* Import and Recover All are helpers, not primary or semantic state actions.
+   Keep them clearly clickable, but let Add and Pause own the visual hierarchy. */
+body.dp-v11-structural #view-dashboard #btn-import-existing,
+body.dp-v11-structural #view-dashboard #btn-recover-all {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  font-weight: 650 !important;
+  transform: none;
+  transition: filter .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease !important;
+}
+
+body.dp-v11-structural #view-dashboard #btn-import-existing {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.085) 0%, rgba(255,255,255,.018) 34%, transparent 46%),
+    linear-gradient(145deg, rgba(65,60,80,.80) 0%, rgba(47,43,61,.78) 56%, rgba(36,33,48,.82) 100%) !important;
+  border-color: rgba(151,137,174,.45) !important;
+  color: #d7cde3 !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.085),
+    -4px 6px 12px -9px rgba(7,5,13,.48),
+    0 4px 9px -8px rgba(9,7,16,.34) !important;
+}
+body.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+  color: #bfa9d8 !important;
+}
+
+body.dp-v11-structural #view-dashboard #btn-recover-all {
+  background:
+    radial-gradient(ellipse 112% 100% at 16% -8%, rgba(165,95,225,.13) 0%, transparent 56%),
+    linear-gradient(145deg, rgba(64,50,77,.82) 0%, rgba(48,39,59,.82) 56%, rgba(37,31,47,.86) 100%) !important;
+  border-color: rgba(177,119,224,.54) !important;
+  color: #dfc3f5 !important;
+  text-shadow: none !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.085),
+    -4px 6px 12px -9px rgba(46,24,66,.38),
+    0 4px 9px -8px rgba(36,23,51,.30) !important;
+}
+body.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+  filter:
+    hue-rotate(215deg)
+    saturate(1.28)
+    brightness(1.08)
+    drop-shadow(0 0 4px rgba(166,92,224,.24)) !important;
+}
+
+body.light.dp-v11-structural #view-dashboard #btn-import-existing {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.42) 34%, transparent 46%),
+    linear-gradient(145deg, #fcfbff 0%, #f4f1f8 56%, #ece8f2 100%) !important;
+  border-color: #cec5da !important;
+  color: #62586f !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,1),
+    -4px 6px 12px -9px rgba(68,59,83,.24),
+    0 4px 9px -8px rgba(76,67,91,.17) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+  color: #78678b !important;
+}
+
+body.light.dp-v11-structural #view-dashboard #btn-recover-all {
+  background:
+    radial-gradient(ellipse 112% 100% at 16% -8%, rgba(155,94,211,.11) 0%, transparent 56%),
+    linear-gradient(145deg, #fcf9ff 0%, #f3edf8 56%, #ebe2f2 100%) !important;
+  border-color: #bb9ad4 !important;
+  color: #744993 !important;
+  text-shadow: none !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,1),
+    -4px 6px 12px -9px rgba(91,65,111,.25),
+    0 4px 9px -8px rgba(94,70,113,.18) !important;
+}
+body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+  filter:
+    hue-rotate(215deg)
+    saturate(1.24)
+    brightness(.93)
+    drop-shadow(0 0 4px rgba(144,74,194,.20)) !important;
+}
+
+body.dp-v11-structural #view-dashboard #btn-import-existing:hover,
+body.dp-v11-structural #view-dashboard #btn-recover-all:hover {
+  filter: brightness(1.025) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Consolidated from ui-dashboard-final.css. */
+/* DebridPulse v1.0.11 final Dashboard overrides.
+ *
+ * These rules remove stale Dashboard calibration divergences from the shared
+ * language while retaining only genuine Dashboard-specific geometry here.
+ */
+
+/* Recent Activity and Downloads use the same 76px empty-download artwork.
+   This selector intentionally outranks the older batch-4 38px calibration. */
+body.dp-v11-structural #view-dashboard #dash-activity-card.dp-dashboard-activity .empty-icon {
+  width: 76px !important;
+  height: 76px !important;
+  margin: 0 auto 12px !important;
+}
+
+/* Quick Add already carries the universal .input class. Preserve its textarea
+   geometry/mono typography, but reset the material and focus behavior to the
+   canonical field contract so focus adds a lavender ring without visually
+   replacing the field perimeter. */
+body.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+  border-color: var(--dp-field-border) !important;
+  background: var(--dp-field-surface) !important;
+  color: var(--dp-field-text) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.018) !important;
+}
+body.light.dp-v11-structural #view-dashboard textarea.input.direct-link-input {
+  box-shadow: inset 0 1px rgba(255,255,255,.85) !important;
+}
+body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:hover {
+  border-color: var(--dp-border-strong) !important;
+}
+body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:focus {
+  outline: none !important;
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong)) !important;
+  background: var(--dp-field-surface) !important;
+  box-shadow: var(--dp-focus-ring) !important;
+}
+
+/* Recent Activity alone had its trailing Action column pushed against the
+   right edge by the wide-table calibration. Reclaim only unused Added-column
+   width: the first four columns and the Added start position remain untouched. */
+@media (min-width: 1440px) {
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
+    width: 8% !important;
+  }
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
+    width: 9% !important;
+  }
+}

@@ -244,11 +244,12 @@ def test_extraction_state_is_persisted_and_operator_visible():
     database_source = (root / "backend/db/database.py").read_text()
     routes_source = (root / "backend/api/routes.py").read_text()
     app_source = (root / "frontend/static/app.js").read_text()
+    icon_source = (root / "frontend/static/operator-title.js").read_text()
     assert "extraction_status" in database_source
     assert '("extraction_error", "TEXT")' in database_source
     assert "active_operations" in routes_source
     assert "extracting_count" in routes_source
-    assert "extracting:'📦 Extracting'" in app_source
+    assert "extracting: {icon: 'packageOpen', label: 'Extracting'" in icon_source
     assert "t.extraction_status" in app_source
 
 

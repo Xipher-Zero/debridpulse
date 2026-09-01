@@ -336,10 +336,11 @@ def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     assert "@import url('/ui-settings-page.css?v=2');" in styles
 
 
-def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
+def test_settings_page_runtime_is_owned_by_dynamic_frontend_syntax_gate():
     workflow = source(TESTS_WORKFLOW)
-    assert "node --check frontend/static/ui-settings-page.js" in workflow
-
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow
+    assert SETTINGS_PAGE_JS.exists()
 
 def test_static_settings_dom_is_never_a_runtime_dependency():
     runtime = source(SETTINGS_PAGE_JS)

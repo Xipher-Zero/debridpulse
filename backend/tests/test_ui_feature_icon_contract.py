@@ -28,7 +28,7 @@ def test_feature_icon_class_uses_one_51px_visual_footprint() -> None:
 
 def test_kpi_and_isolated_glows_keep_distinct_color_ownership() -> None:
     feature = read("ui-feature-icon-contract.css")
-    dashboard = read("ui-dashboard-polish-final.css")
+    dashboard = read("ui-dashboard.css")
     assert "var(--c) 62%" in dashboard
     assert "var(--c) 70%" in dashboard
     for color in ("#8a5ad6", "#8b3fff", "#4c8fff", "#b866f5"):

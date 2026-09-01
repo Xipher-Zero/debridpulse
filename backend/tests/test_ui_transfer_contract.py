@@ -9,21 +9,22 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
 TRANSFER = STATIC / "ui-transfer-contract.css"
-DASHBOARD = STATIC / "ui-dashboard-final.css"
+DASHBOARD = STATIC / "ui-dashboard.css"
 
 
 def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    dashboard_final = "/ui-dashboard-final.css?v=23"
+    dashboard = "/ui-dashboard.css?v=20"
     downloads = "/ui-downloads-page.css?v=27"
     help_page = "/ui-help-page.css?v=22"
     transfer = "/ui-transfer-contract.css?v=31"
 
-    for layer in (dashboard_final, downloads, help_page, transfer):
+    for layer in (dashboard, downloads, help_page, transfer):
         assert layer in overlay
     assert "/ui-dashboard-progress-weight.css" not in overlay
+    assert "/ui-dashboard-final.css" not in overlay
     assert (
-        overlay.index(dashboard_final)
+        overlay.index(dashboard)
         < overlay.index(downloads)
         < overlay.index(help_page)
         < overlay.index(transfer)
@@ -112,13 +113,17 @@ def test_transfer_track_and_fill_share_active_weight() -> None:
 
 def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
     css = DASHBOARD.read_text(encoding="utf-8")
-    assert "@media (min-width: 1440px)" in css
-    assert ".t-table th:nth-child(5)" in css
-    assert ".t-table td:nth-child(5)" in css
-    assert "width: 8% !important" in css
-    assert ".t-table th:nth-child(6)" in css
-    assert ".t-table td:nth-child(6)" in css
-    assert "width: 9% !important" in css
-    for column in range(1, 5):
-        assert f".t-table th:nth-child({column})" not in css
-        assert f".t-table td:nth-child({column})" not in css
+    marker = "/* Consolidated from ui-dashboard-final.css. */"
+    assert marker in css
+    final_calibration = css.split(marker, 1)[1]
+
+    for column in (1, 2, 3, 4):
+        assert f".t-table th:nth-child({column})" not in final_calibration
+        assert f".t-table td:nth-child({column})" not in final_calibration
+
+    assert ".t-table th:nth-child(5)" in final_calibration
+    assert ".t-table td:nth-child(5)" in final_calibration
+    assert "width: 8% !important" in final_calibration
+    assert ".t-table th:nth-child(6)" in final_calibration
+    assert ".t-table td:nth-child(6)" in final_calibration
+    assert "width: 9% !important" in final_calibration

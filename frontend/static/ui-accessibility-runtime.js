@@ -34,18 +34,7 @@
   }
 
   function installNavigationSemantics() {
-    const navHost = document.querySelector('#sidebar nav');
-    if (!navHost) return;
     syncNavigationState();
-
-    if (navHost.dataset.dpA11yObserved !== '1') {
-      navHost.dataset.dpA11yObserved = '1';
-      new MutationObserver(syncNavigationState).observe(navHost, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class']
-      });
-    }
   }
 
   function normalizeActivityNaming() {
@@ -59,18 +48,6 @@
     if (pageTitle && pageTitle.textContent.trim() === 'Event Log') pageTitle.textContent = 'Activity Log';
   }
 
-  function installNavigationNamingHook() {
-    if (typeof window.nav !== 'function' || window.nav.dpActivityNaming === '1') return;
-    const previous = window.nav;
-    const wrapped = function () {
-      const result = previous.apply(this, arguments);
-      normalizeActivityNaming();
-      syncNavigationState();
-      return result;
-    };
-    wrapped.dpActivityNaming = '1';
-    window.nav = wrapped;
-  }
 
   function syncFilterGroup(group, label) {
     if (!group) return;
@@ -86,26 +63,13 @@
     });
   }
 
-  function observeFilterGroup(group, label) {
-    if (!group) return;
-    syncFilterGroup(group, label);
-    if (group.dataset.dpA11yObserved === '1') return;
-    group.dataset.dpA11yObserved = '1';
-    new MutationObserver(function () {
-      syncFilterGroup(group, label);
-    }).observe(group, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class']
-    });
-  }
 
   function installFilterSemantics() {
-    observeFilterGroup(
+    syncFilterGroup(
       document.querySelector('#view-torrents .filter-tabs'),
       'Download status filter'
     );
-    observeFilterGroup(
+    syncFilterGroup(
       document.getElementById('stats-period-tabs'),
       'Statistics period'
     );
@@ -164,24 +128,10 @@
     });
   }
 
-  function observeTablist(tablist, label) {
-    if (!tablist) return;
-    syncTablist(tablist, label);
-    if (tablist.dataset.dpTabA11yObserved === '1') return;
-    tablist.dataset.dpTabA11yObserved = '1';
-    new MutationObserver(function () {
-      syncTablist(tablist, label);
-    }).observe(tablist, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class']
-    });
-  }
 
   function installTabSemantics() {
-    observeTablist(document.getElementById('help-tabs'), 'Help sections');
-    observeTablist(document.getElementById('settings-tabs'), 'Settings sections');
+    syncTablist(document.getElementById('help-tabs'), 'Help sections');
+    syncTablist(document.getElementById('settings-tabs'), 'Settings sections');
   }
 
   function installDashboardErrorCardSemantics() {
@@ -686,9 +636,32 @@
     };
   }
 
+
+  function installAccessibilityLifecycle() {
+    if (document.documentElement.dataset.dpAccessibilityLifecycle === '1') return;
+    document.documentElement.dataset.dpAccessibilityLifecycle = '1';
+
+    document.addEventListener('debridpulse:navigation', function () {
+      queueMicrotask(function () {
+        normalizeActivityNaming();
+        installNavigationSemantics();
+        installFilterSemantics();
+        installTabSemantics();
+      });
+    });
+    document.addEventListener('debridpulse:downloads-rendered', installFilterSemantics);
+    document.addEventListener('debridpulse:settings-rendered', installTabSemantics);
+    document.addEventListener('click', function (event) {
+      if (!event.target.closest('.filter-tabs .ftab, .dp-help-tabs .stab, .dp-settings-tabs .stab')) return;
+      queueMicrotask(function () {
+        installFilterSemantics();
+        installTabSemantics();
+      });
+    });
+  }
+
   function initializeAccessibilityContract() {
     installNavigationSemantics();
-    installNavigationNamingHook();
     normalizeActivityNaming();
     installFilterSemantics();
     installTabSemantics();
@@ -697,6 +670,7 @@
     normalizeDownloadsLegacyPresentation();
     installProviderStatusPresentation();
     installUniversalSelectDropdowns();
+    installAccessibilityLifecycle();
   }
 
   initializeAccessibilityContract();

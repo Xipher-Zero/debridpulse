@@ -352,6 +352,8 @@ def test_configuration_payload_and_mutation_paths_do_not_own_live_discovery():
 
 
 
-def test_auth_resilience_runtime_is_covered_by_frontend_syntax_gate():
+def test_retired_auth_resilience_runtime_is_not_required_by_dynamic_syntax_gate():
     workflow = TEST_WORKFLOW.read_text(encoding="utf-8")
-    assert "node --check frontend/static/ui-settings-auth-resilience.js" in workflow
+    assert not RESILIENCE_JS.exists()
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow
