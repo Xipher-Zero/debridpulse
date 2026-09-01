@@ -1,0 +1,212 @@
+name: Browser qualify v1.0.11.1 5d44c2a
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_browser-v1111-5d44c2a.yml
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: 5d44c2a52b88f027501c8091913e4a8d546910b9
+  CANDIDATE_VERSION: 1.0.11.1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 5d44c2a52b88f027501c8091913e4a8d546910b9
+          fetch-depth: 1
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+      - name: Build and start exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --build-arg APP_VERSION="$CANDIDATE_VERSION" --build-arg VCS_REF="$CANDIDATE_SHA" -t local/dp:browser-5d44c2a .
+          docker run -d --name dp-browser-5d44c2a -p 127.0.0.1:18080:8080 -e PUID=12345 -e PGID=12345 -e CONFIG_PATH=/app/config/config.json -e DB_PATH=/app/data/debridpulse.db local/dp:browser-5d44c2a
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/health >/dev/null && exit 0; sleep 2; done
+          docker logs dp-browser-5d44c2a || true
+          exit 1
+      - name: Install browser harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+      - name: Run comprehensive browser qualification
+        shell: bash
+        env:
+          NODE_PATH: /tmp/dp-browser/node_modules
+        run: |
+          set -euo pipefail
+          export CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node <<'NODE'
+          const assert=require('node:assert/strict');
+          const puppeteer=require('puppeteer-core');
+          const base='http://127.0.0.1:18080/';
+          const views=['dashboard','torrents','events','stats','settings','help'];
+          const titles={dashboard:'Dashboard',torrents:'Downloads',events:'Activity Log',stats:'Statistics',settings:'Settings',help:'Help & License'};
+          const retired=['/ui-presentation-loader.js','/ui-shell-runtime.js','/ui-page-finalization.js','/ui-visual-behavior-fixes.js','/ui-help-chrome.js','/ui-settings-auth-resilience.js','/ui-settings-authentication.js','/ui-settings-authentication-polish.js','/ui-settings-authentication-oidc.js','/ui-settings-authentication-callback.js'];
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+          async function assertCanonicalDownloads(p){
+            const state=await p.evaluate(()=>{
+              const view=document.getElementById('view-torrents');
+              const card=view.querySelector(':scope > .card');
+              const search=document.getElementById('torrent-search');
+              const bar=document.getElementById('bulk-bar');
+              const table=document.querySelector('#view-torrents .dp-downloads-table-wrap');
+              const title=document.getElementById('torrent-card-title');
+              const pageSize=document.getElementById('torrent-page-size');
+              return {
+                card:!!card, search:!!search, bar:!!bar, table:!!table,
+                barParentIsCard:bar?.parentElement===card,
+                searchBeforeBar:!!(search&&bar&&(search.compareDocumentPosition(bar)&Node.DOCUMENT_POSITION_FOLLOWING)),
+                barBeforeTable:!!(bar&&table&&(bar.compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING)),
+                title:title?.textContent.trim()||'',
+                pageSize:!!pageSize,
+                barClasses:bar?.className||'',
+              };
+            });
+            assert(state.card&&state.search&&state.bar&&state.table,'Downloads canonical static structure missing');
+            assert.equal(state.barParentIsCard,true,'batch bar is not integrated into Downloads card');
+            assert.equal(state.searchBeforeBar,true,'batch bar is not after Search');
+            assert.equal(state.barBeforeTable,true,'batch bar is not before table viewport');
+            assert.equal(state.title,'Download Queue');
+            assert.equal(state.pageSize,false,'retired page-size substrate still exists');
+            assert(/dp-downloads-bulk-integrated/.test(state.barClasses));
+
+            // Reveal the already-owned band without changing its structure and
+            // verify the actual rendered geometry is inside the card between
+            // Search and table, matching accepted v1.0.11 composition.
+            const geometry=await p.evaluate(()=>{
+              const bar=document.getElementById('bulk-bar');
+              bar.classList.add('visible');
+              const card=document.querySelector('#view-torrents > .card');
+              const search=document.getElementById('torrent-search').getBoundingClientRect();
+              const b=bar.getBoundingClientRect();
+              const table=document.querySelector('#view-torrents .dp-downloads-table-wrap').getBoundingClientRect();
+              const c=card.getBoundingClientRect();
+              return {display:getComputedStyle(bar).display,barTop:b.top,barBottom:b.bottom,searchBottom:search.bottom,tableTop:table.top,cardTop:c.top,cardBottom:c.bottom};
+            });
+            assert.notEqual(geometry.display,'none');
+            assert(geometry.barTop>=geometry.searchBottom-2,'batch band rendered above Search');
+            assert(geometry.barBottom<=geometry.tableTop+2,'batch band rendered below table start');
+            assert(geometry.barTop>=geometry.cardTop&&geometry.barBottom<=geometry.cardBottom,'batch band rendered outside Downloads card');
+            await p.evaluate(()=>document.getElementById('bulk-bar').classList.remove('visible'));
+          }
+
+          async function normal(browser,w,h){
+            const p=await browser.newPage();
+            await p.setViewport({width:w,height:h});
+            await p.setCacheEnabled(false);
+            const requests=[],errors=[],badStatic=[];
+            p.on('request',r=>{try{requests.push(new URL(r.url()).pathname)}catch(_){}});
+            p.on('pageerror',e=>errors.push(String(e)));
+            p.on('response',r=>{try{const u=new URL(r.url());if(u.hostname==='127.0.0.1'&&r.status()>=400&&!u.pathname.startsWith('/api/'))badStatic.push(`${r.status()} ${u.pathname}`)}catch(_){}});
+            await p.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+            await p.waitForFunction(()=>typeof window.nav==='function'&&window.DPIcons&&document.querySelector('#view-dashboard.active'),{timeout:12000});
+            for(const x of retired)assert(!requests.includes(x),`retired runtime requested: ${x}`);
+            const initial=await p.evaluate(()=>({
+              settings:document.getElementById('view-settings').innerHTML.trim(),
+              help:document.getElementById('view-help').innerHTML.trim(),
+              legacyRender:typeof window.renderSettings,
+              legacyForm:typeof window.getFormSettings,
+              legacyTab:typeof window.switchSettingsTab,
+              settingsOwner:typeof window.DPSettingsPage,
+              statsOwner:typeof window.DPStatisticsLifecycle,
+              helpOwner:typeof window.DPHelpPage,
+              debug:document.getElementById('debug-status'),
+              health:document.getElementById('dash-health-bar'),
+              recovery:document.getElementById('dash-health-recovery'),
+              deadlock:document.getElementById('dash-health-deadlock'),
+              aging:document.getElementById('dash-health-aging')
+            }));
+            assert.equal(initial.settings,'');assert.equal(initial.help,'');
+            assert.equal(initial.legacyRender,'undefined');assert.equal(initial.legacyForm,'undefined');assert.equal(initial.legacyTab,'undefined');
+            assert.equal(initial.settingsOwner,'object');assert.equal(initial.statsOwner,'object');assert.equal(initial.helpOwner,'object');
+            assert.equal(initial.debug,null);assert.equal(initial.health,null);assert.equal(initial.recovery,null);assert.equal(initial.deadlock,null);assert.equal(initial.aging,null);
+
+            for(const v of views){
+              if(v==='settings'||v==='help')await p.evaluate(v=>{const root=document.getElementById(`view-${v}`);window.__first=null;window.__obs?.disconnect?.();window.__obs=new MutationObserver(()=>{if(!window.__first&&root.innerHTML.trim())window.__first=root.innerHTML});window.__obs.observe(root,{childList:true,subtree:true})},v);
+              await p.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),v);
+              await p.waitForFunction(v=>document.getElementById(`view-${v}`)?.classList.contains('active'),{timeout:12000},v);
+              await p.waitForFunction((v,t)=>document.getElementById('page-title').textContent.trim()===t,{timeout:12000},v,titles[v]);
+              if(v==='torrents')await assertCanonicalDownloads(p);
+              if(v==='settings'||v==='help'){
+                await p.waitForFunction(v=>document.getElementById(`view-${v}`).children.length>0,{timeout:12000},v);
+                if(v==='settings')await p.waitForFunction(()=>{const s=document.getElementById('view-settings')?.innerHTML||'';return /Sources &amp; Providers|Sources & Providers/.test(s)&&/Authentication/.test(s)},{timeout:12000});
+                await sleep(100);
+                const r=await p.evaluate(v=>({first:window.__first||'',final:document.getElementById(`view-${v}`).innerHTML}),v);
+                assert(r.first.length>0,`${v} did not render directly`);
+                if(v==='settings'){
+                  assert(/dp-settings-loading|Sources &amp; Providers|Sources & Providers/.test(r.first),'Settings first mutation is not its canonical loading/final owner');
+                  assert(/Sources &amp; Providers|Sources & Providers/.test(r.final),'Settings final render is not canonical Settings');
+                  assert(/Authentication/.test(r.final),'Settings final render lacks Authentication');
+                }else{
+                  assert(/Field Manual/.test(r.first),'Help first render is not canonical Help');
+                  assert(/dp-help-master-card/.test(r.first),'Help first render lacks canonical master card');
+                }
+              }
+            }
+
+            await p.evaluate(()=>document.querySelector('.dp-help-tab[data-tab="license"]').click());
+            await p.waitForFunction(()=>!document.querySelector('#dp-help-panel-license')?.hidden,{timeout:5000});
+            const scale=await p.$eval('#dp-help-tab-license img',i=>({src:i.getAttribute('src'),complete:i.complete,width:i.naturalWidth}));
+            assert.equal(scale.src,'/icons/lucide/scale.svg');assert(scale.complete&&scale.width>0,'License scale icon failed');
+            await p.evaluate(()=>document.querySelector('.dp-help-local-document-button[data-legal-document="gpl"]').click());
+            await p.waitForSelector('.dp-help-legal-dialog',{timeout:5000});
+            await p.waitForFunction(()=>{const b=document.querySelector('.dp-help-legal-document');return b&&b.textContent.trim()&&b.textContent.trim()!=='Loading…'},{timeout:10000});
+            const modal=await p.evaluate(()=>({title:document.getElementById('dp-help-legal-dialog-title')?.textContent||'',body:document.querySelector('.dp-help-legal-document')?.textContent||''}));
+            assert(/GNU General Public License|GPL/i.test(modal.title));assert(modal.body.length>500,'Bundled GPL document did not render');
+            await p.keyboard.press('Escape');await p.waitForFunction(()=>!document.querySelector('.dp-help-legal-dialog'),{timeout:5000});
+
+            for(let c=0;c<3;c++)for(const v of views.slice().reverse())await p.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),v);
+            await p.evaluate(()=>document.querySelector('.nav-item[data-view="dashboard"]').click());
+            await p.waitForFunction(()=>document.querySelector('#view-dashboard.active'),{timeout:12000});
+            const light=await p.evaluate(()=>document.body.classList.contains('light'));
+            await p.evaluate(()=>document.getElementById('theme-toggle').click());await p.waitForFunction(x=>document.body.classList.contains('light')!==x,{timeout:5000},light);
+            await p.evaluate(()=>document.getElementById('theme-toggle').click());await p.waitForFunction(x=>document.body.classList.contains('light')===x,{timeout:5000},light);
+            await p.reload({waitUntil:'domcontentloaded',timeout:20000});
+            await p.waitForFunction(()=>document.querySelector('#view-dashboard.active'),{timeout:12000});
+            const reload=await p.evaluate(()=>({settings:document.getElementById('view-settings').innerHTML.trim(),help:document.getElementById('view-help').innerHTML.trim(),debug:document.getElementById('debug-status'),health:document.getElementById('dash-health-bar')}));
+            assert.equal(reload.settings,'');assert.equal(reload.help,'');assert.equal(reload.debug,null);assert.equal(reload.health,null);
+            for(const x of retired)assert(!requests.includes(x),`retired runtime requested after reload: ${x}`);
+            assert.deepEqual(errors,[],`browser errors: ${errors.join(' | ')}`);assert.deepEqual(badStatic,[],`bad static responses: ${badStatic.join(' | ')}`);
+            await p.close();
+          }
+
+          async function missingOwner(browser,target,path){
+            const p=await browser.newPage();await p.setRequestInterception(true);
+            p.on('request',r=>new URL(r.url()).pathname===path?r.abort():r.continue());
+            await p.goto(base,{waitUntil:'domcontentloaded',timeout:20000});await p.waitForFunction(()=>typeof window.nav==='function',{timeout:12000});
+            assert.equal(await p.$eval(`#view-${target}`,e=>e.innerHTML.trim()),'');
+            await p.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),target);await sleep(350);
+            const s=await p.evaluate(v=>({active:document.getElementById(`view-${v}`).classList.contains('active'),html:document.getElementById(`view-${v}`).innerHTML.trim()}),target);
+            assert.equal(s.active,true);assert.equal(s.html,'',`missing ${target} owner exposed fallback substrate`);await p.close();
+          }
+
+          async function optionalAsset(browser){
+            const p=await browser.newPage();await p.setRequestInterception(true);p.on('request',r=>new URL(r.url()).pathname==='/icons/dp/sidebar-wave-accent.svg'?r.abort():r.continue());
+            await p.goto(base,{waitUntil:'domcontentloaded',timeout:20000});await p.waitForFunction(()=>document.querySelector('#view-dashboard.active')&&window.DPIcons,{timeout:12000});
+            await p.evaluate(()=>document.querySelector('.nav-item[data-view="help"]').click());await p.waitForFunction(()=>document.querySelector('#view-help.active')?.children.length>0,{timeout:12000});await p.close();
+          }
+
+          (async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME_BIN,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});try{await normal(b,1440,1000);await normal(b,390,844);await missingOwner(b,'settings','/ui-settings-page.js');await missingOwner(b,'help','/ui-help-page.js');await optionalAsset(b);console.log('BROWSER_QUALIFICATION=PASS')}finally{await b.close()}})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs dp-browser-5d44c2a || true
