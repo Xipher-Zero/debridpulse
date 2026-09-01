@@ -730,6 +730,147 @@ function updateOperatorTitle(stats) {
   renderOperatorTitle();
 }
 
+
+const DASHBOARD_METRIC_HISTORY_KEY = 'debridpulse.dashboard.metric-history.v2';
+const DASHBOARD_METRIC_HISTORY_LIMIT = 30;
+const DASHBOARD_METRIC_SAMPLE_INTERVAL_MS = 15000;
+const DASHBOARD_HERO_METRICS = {
+  's-total':      {key: 'total',      label: 'Total downloads'},
+  's-completed':  {key: 'completed',  label: 'Completed'},
+  's-active':     {key: 'active',     label: 'Active now'},
+  's-processing': {key: 'processing', label: 'Processing'},
+  's-error':      {key: 'errors',     label: 'Errors'},
+  's-size':       {key: 'downloaded', label: 'Total downloaded'}
+};
+
+function dashboardMetricNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function readDashboardMetricHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DASHBOARD_METRIC_HISTORY_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(sample => sample && Number.isFinite(Number(sample.ts)))
+      .slice(-DASHBOARD_METRIC_HISTORY_LIMIT);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeDashboardMetricHistory(samples) {
+  try {
+    localStorage.setItem(
+      DASHBOARD_METRIC_HISTORY_KEY,
+      JSON.stringify(samples.slice(-DASHBOARD_METRIC_HISTORY_LIMIT))
+    );
+  } catch (_) {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+}
+
+function dashboardSparkCoordinates(values) {
+  if (!Array.isArray(values) || values.length < 2) return [];
+  const clean = values.map(dashboardMetricNumber);
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  const span = max - min;
+  return clean.map((value, index) => ({
+    x: (index / (clean.length - 1)) * 100,
+    y: span === 0 ? 12 : 20 - ((value - min) / span) * 16
+  }));
+}
+
+function dashboardSmoothSparkPath(points) {
+  if (!Array.isArray(points) || points.length < 2) return '';
+  const fmt = value => Number(value).toFixed(2);
+  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  const tension = 0.82;
+  let path = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+
+  for (let index = 0; index < points.length - 1; index++) {
+    const p0 = points[Math.max(0, index - 1)];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = points[Math.min(points.length - 1, index + 2)];
+    const lowY = Math.min(p1.y, p2.y);
+    const highY = Math.max(p1.y, p2.y);
+    const cp1 = {
+      x: p1.x + ((p2.x - p0.x) / 6) * tension,
+      y: clamp(p1.y + ((p2.y - p0.y) / 6) * tension, lowY, highY)
+    };
+    const cp2 = {
+      x: p2.x - ((p3.x - p1.x) / 6) * tension,
+      y: clamp(p2.y - ((p3.y - p1.y) / 6) * tension, lowY, highY)
+    };
+    path += ` C ${fmt(cp1.x)} ${fmt(cp1.y)}, ${fmt(cp2.x)} ${fmt(cp2.y)}, ${fmt(p2.x)} ${fmt(p2.y)}`;
+  }
+  return path;
+}
+
+function renderDashboardMetricHistory(samples) {
+  Object.entries(DASHBOARD_HERO_METRICS).forEach(([valueId, metric]) => {
+    const value = document.getElementById(valueId);
+    const card = value?.closest('.dash-hero-stat');
+    const svg = card?.querySelector('.dp-card-spark');
+    if (!card || !svg) return;
+
+    const values = samples.map(sample => dashboardMetricNumber(sample[metric.key]));
+    const line = svg.querySelector('.dp-card-spark-line');
+    const fill = svg.querySelector('.dp-card-spark-fill');
+    const point = svg.querySelector('.dp-card-spark-point');
+    if (!line || !fill || !point) return;
+
+    const coordinates = dashboardSparkCoordinates(values);
+    const path = dashboardSmoothSparkPath(coordinates);
+    card.dataset.dpMetric = metric.key;
+    card.title = `${metric.label} — sparkline shows recent live samples of this exact card metric.`;
+
+    if (path) {
+      line.setAttribute('d', path);
+      fill.setAttribute('d', `${path} L 100 24 L 0 24 Z`);
+      point.setAttribute('opacity', '0');
+    } else if (values.length === 1) {
+      line.setAttribute('d', '');
+      fill.setAttribute('d', '');
+      point.setAttribute('cx', '50');
+      point.setAttribute('cy', '12');
+      point.setAttribute('opacity', '1');
+    } else {
+      line.setAttribute('d', '');
+      fill.setAttribute('d', '');
+      point.setAttribute('opacity', '0');
+    }
+  });
+}
+
+function recordDashboardMetricHistory(metrics) {
+  if (!metrics || typeof metrics !== 'object') return;
+  const snapshot = {
+    ts: Date.now(),
+    total: dashboardMetricNumber(metrics.total),
+    completed: dashboardMetricNumber(metrics.completed),
+    active: dashboardMetricNumber(metrics.active),
+    processing: dashboardMetricNumber(metrics.processing),
+    errors: dashboardMetricNumber(metrics.errors),
+    downloaded: dashboardMetricNumber(metrics.downloaded)
+  };
+  const samples = readDashboardMetricHistory();
+  const last = samples[samples.length - 1];
+  const changed = !last || Object.values(DASHBOARD_HERO_METRICS).some(metric =>
+    dashboardMetricNumber(last[metric.key]) !== snapshot[metric.key]
+  );
+  const due = !last || snapshot.ts - dashboardMetricNumber(last.ts) >= DASHBOARD_METRIC_SAMPLE_INTERVAL_MS;
+
+  if (changed || due) {
+    samples.push(snapshot);
+    while (samples.length > DASHBOARD_METRIC_HISTORY_LIMIT) samples.shift();
+    writeDashboardMetricHistory(samples);
+  }
+  renderDashboardMetricHistory(samples);
+}
+
 async function loadStats() {
   // Retry up to 5 times — server may be slow on first request after container start
   for (let attempt = 1; attempt <= 5; attempt++) {
@@ -763,6 +904,14 @@ async function loadStats() {
       if (errCard) errCard.style.opacity = errCount > 0 ? '1' : '.6';
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
+      recordDashboardMetricHistory({
+        total,
+        completed,
+        active: s.active_operations ?? s.active_downloads ?? 0,
+        processing: (Number(bs.processing) || 0) + (Number(bs.uploading) || 0),
+        errors: errCount,
+        downloaded: s.total_completed_bytes
+      });
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
       document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
       document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';

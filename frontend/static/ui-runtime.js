@@ -5,17 +5,6 @@
   'use strict';
 
   const DP_ICON_BASE = '/icons/dp/';
-  const METRIC_HISTORY_KEY = 'debridpulse.dashboard.metric-history.v1';
-  const METRIC_HISTORY_LIMIT = 30;
-  const METRIC_SAMPLE_INTERVAL_MS = 15000;
-  const HERO_METRICS = {
-    's-total':      {key: 'total',      label: 'Total downloads'},
-    's-completed':  {key: 'completed',  label: 'Completed'},
-    's-active':     {key: 'active',     label: 'Active now'},
-    's-processing': {key: 'processing', label: 'Processing'},
-    's-error':      {key: 'errors',     label: 'Errors'},
-    's-size':       {key: 'downloaded', label: 'Total downloaded'}
-  };
   const SUBTITLES = {
     Dashboard: 'Overview of your download activities and system status.',
     Downloads: 'Inspect, filter, and control queued and active transfers.',
@@ -50,144 +39,6 @@
     subtitle.textContent = SUBTITLES[title.textContent.trim()] || '';
   }
 
-  function numeric(value) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-  }
-
-  function dashboardMetricSnapshot(stats) {
-    const byStatus = stats && stats.by_status && typeof stats.by_status === 'object'
-      ? stats.by_status
-      : {};
-    const total = Object.values(byStatus).reduce(function (sum, value) {
-      return sum + numeric(value);
-    }, 0);
-    return {
-      ts: Date.now(),
-      total: total,
-      completed: numeric(stats && (stats.completed_count ?? byStatus.completed)),
-      active: numeric(stats && (stats.active_operations ?? stats.active_downloads)),
-      processing: numeric(byStatus.processing) + numeric(byStatus.uploading),
-      errors: numeric(stats && (stats.error_count ?? byStatus.error)),
-      downloaded: numeric(stats && stats.total_completed_bytes)
-    };
-  }
-
-  function readMetricHistory() {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(METRIC_HISTORY_KEY) || '[]');
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(function (sample) {
-        return sample && Number.isFinite(Number(sample.ts));
-      }).slice(-METRIC_HISTORY_LIMIT);
-    } catch (_) {
-      return [];
-    }
-  }
-
-  function writeMetricHistory(samples) {
-    try {
-      localStorage.setItem(METRIC_HISTORY_KEY, JSON.stringify(samples.slice(-METRIC_HISTORY_LIMIT)));
-    } catch (_) {
-      /* Storage can be unavailable in hardened/private browser contexts. */
-    }
-  }
-
-  function makeSparkline(card, index) {
-    if (!card || card.querySelector('.dp-card-spark')) return;
-    const gradientId = 'dp-card-spark-fill-' + index;
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'dp-card-spark');
-    svg.setAttribute('viewBox', '0 0 100 24');
-    svg.setAttribute('preserveAspectRatio', 'none');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.innerHTML =
-      '<defs><linearGradient id="' + gradientId + '" x1="0" y1="0" x2="0" y2="1">' +
-        '<stop offset="0%" stop-color="currentColor" stop-opacity=".34"/>' +
-        '<stop offset="100%" stop-color="currentColor" stop-opacity="0"/>' +
-      '</linearGradient></defs>' +
-      '<polygon class="dp-card-spark-fill" fill="url(#' + gradientId + ')" points=""/>' +
-      '<polyline class="dp-card-spark-line" points=""/>' +
-      '<circle class="dp-card-spark-point" cx="50" cy="12" r="1.45" opacity="0"/>';
-    card.appendChild(svg);
-  }
-
-  function sparklinePoints(values) {
-    if (!Array.isArray(values) || values.length < 2) return '';
-    const clean = values.map(numeric);
-    const min = Math.min.apply(null, clean);
-    const max = Math.max.apply(null, clean);
-    const span = max - min;
-    return clean.map(function (value, index) {
-      const x = clean.length === 1 ? 50 : (index / (clean.length - 1)) * 100;
-      const y = span === 0 ? 12 : 20 - ((value - min) / span) * 16;
-      return x.toFixed(2) + ',' + y.toFixed(2);
-    }).join(' ');
-  }
-
-  function renderDashboardMetricHistory(samples) {
-    Object.entries(HERO_METRICS).forEach(function ([valueId, metric]) {
-      const value = document.getElementById(valueId);
-      const card = value && value.closest('.dash-hero-stat');
-      const svg = card && card.querySelector('.dp-card-spark');
-      if (!card || !svg) return;
-
-      const values = samples.map(function (sample) {
-        return numeric(sample[metric.key]);
-      });
-      const line = svg.querySelector('.dp-card-spark-line');
-      const fill = svg.querySelector('.dp-card-spark-fill');
-      const point = svg.querySelector('.dp-card-spark-point');
-      const points = sparklinePoints(values);
-
-      card.dataset.dpMetric = metric.key;
-      card.title = metric.label + ' — sparkline shows recent live samples of this exact card metric.';
-
-      if (values.length >= 2 && points) {
-        line.setAttribute('points', points);
-        fill.setAttribute('points', '0,24 ' + points + ' 100,24');
-        point.setAttribute('opacity', '0');
-      } else if (values.length === 1) {
-        line.setAttribute('points', '');
-        fill.setAttribute('points', '');
-        point.setAttribute('cx', '50');
-        point.setAttribute('cy', '12');
-        point.setAttribute('opacity', '1');
-      } else {
-        line.setAttribute('points', '');
-        fill.setAttribute('points', '');
-        point.setAttribute('opacity', '0');
-      }
-    });
-  }
-
-  function recordDashboardMetricHistory(stats) {
-    if (!stats || typeof stats !== 'object') return;
-    const snapshot = dashboardMetricSnapshot(stats);
-    const samples = readMetricHistory();
-    const last = samples[samples.length - 1];
-    const metricKeys = Object.values(HERO_METRICS).map(function (metric) { return metric.key; });
-    const changed = !last || metricKeys.some(function (key) {
-      return numeric(last[key]) !== numeric(snapshot[key]);
-    });
-    const due = !last || snapshot.ts - numeric(last.ts) >= METRIC_SAMPLE_INTERVAL_MS;
-
-    if (changed || due) {
-      samples.push(snapshot);
-      while (samples.length > METRIC_HISTORY_LIMIT) samples.shift();
-      writeMetricHistory(samples);
-    }
-    renderDashboardMetricHistory(samples);
-  }
-
-  function installMetricHistoryHook() {
-    if (document.documentElement.dataset.dpDashboardMetricLifecycle === '1') return;
-    document.documentElement.dataset.dpDashboardMetricLifecycle = '1';
-    document.addEventListener('debridpulse:dashboard-stats-rendered', function (event) {
-      recordDashboardMetricHistory(event.detail && event.detail.stats);
-    });
-  }
-
   function decorateDashboardHero() {
     const heroIcons = {
       's-total': 'card-download.svg',
@@ -197,7 +48,7 @@
       's-error': 'card-error.svg',
       's-size': 'card-disk.svg'
     };
-    Object.entries(heroIcons).forEach(function ([valueId, filename], index) {
+    Object.entries(heroIcons).forEach(function ([valueId, filename]) {
       const value = document.getElementById(valueId);
       const card = value && value.closest('.dash-hero-stat');
       const holder = card && card.querySelector('.dhs-icon');
@@ -206,9 +57,7 @@
         holder.appendChild(dpImg(filename, 'dp-icon--metric'));
         holder.dataset.dpDecorated = '1';
       }
-      makeSparkline(card, index);
     });
-    renderDashboardMetricHistory(readMetricHistory());
   }
 
   function normalizeSpeedCapArrow() {
@@ -401,7 +250,6 @@
     ensurePageHeading();
     decorateDashboardHero();
     normalizeSpeedCapArrow();
-    installMetricHistoryHook();
     decorateQuickAdd();
     decorateRecentActivity();
     decorateActivityLog();

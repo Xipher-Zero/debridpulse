@@ -368,6 +368,8 @@ body.dp-v11-structural #view-dashboard .dhs-sub {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px currentColor);
 }
