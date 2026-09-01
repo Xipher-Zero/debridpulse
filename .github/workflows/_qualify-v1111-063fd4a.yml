@@ -1,0 +1,620 @@
+name: Qualify v1.0.11.1 063fd4a
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-063fd4a-qualification
+    paths:
+      - .github/workflows/_qualify-v1111-063fd4a.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+  security-events: write
+
+env:
+  CANDIDATE_SHA: 063fd4a89ef627abfd37f8e15dc2764e4c00010e
+  CANDIDATE_VERSION: 1.0.11.1
+  IMAGE_TAG: local/debridpulse:qual-063fd4a
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  source-gates:
+    name: Source, regression, dependency, and static security gates
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 063fd4a89ef627abfd37f8e15dc2764e4c00010e
+          fetch-depth: 2
+
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+          echo "QUALIFYING_SHA=$(git rev-parse HEAD)"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install test and audit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          pip install -r requirements-dev.txt
+          pip install ruff pip-audit bandit
+
+      - name: Diff and frontend JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+
+      - name: Python undefined-name and compile gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          ruff check api auth core db services main.py --select F821,F822,F823
+          cd ..
+          python -m compileall -q backend
+
+      - name: Frontend architecture integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat VERSION)" = "1.0.11.1"
+          for retired in \
+            ui-presentation-loader.js \
+            ui-shell-runtime.js \
+            ui-page-finalization.js \
+            ui-page-finalization.css \
+            ui-visual-behavior-fixes.js \
+            ui-help-chrome.js \
+            ui-settings-auth-resilience.js \
+            ui-settings-authentication.js \
+            ui-settings-authentication-polish.js \
+            ui-settings-authentication-polish.css \
+            ui-settings-authentication-oidc.js \
+            ui-settings-authentication-callback.js \
+            ui-dashboard-batch5.css \
+            ui-dashboard-polish.css \
+            ui-dashboard-polish-final.css \
+            ui-dashboard-final.css \
+            ui-settings-authentication-oidc.css \
+            ui-statistics.css; do
+            test ! -e "frontend/static/$retired"
+            if grep -q "$retired" frontend/static/index.html frontend/static/style-v11.css 2>/dev/null; then
+              echo "Retired frontend layer still referenced: $retired"
+              exit 1
+            fi
+          done
+          ! grep -q 'window.nav =' frontend/static/ui-accessibility-runtime.js
+          test "$(grep -o 'new MutationObserver' frontend/static/ui-accessibility-runtime.js | wc -l)" = 3
+          ! grep -q 'MutationObserver' frontend/static/ui-error-semantics.js
+          ! grep -Eq 'window\.(progress|badge|toast|updateOperatorTitle|updateThemeToggle|toggleTheme)[[:space:]]*=' \
+            frontend/static/operator-title.js \
+            frontend/static/ui-error-semantics.js \
+            frontend/static/ui-accessibility-runtime.js
+          grep -q 'dp-terminal-error-progress' frontend/static/app.js
+          grep -q 'window.DPIcons.statusBadge' frontend/static/app.js
+          grep -q 'window.DPIcons.toast' frontend/static/app.js
+          grep -q 'window.DPIcons.renderThemeGlyph' frontend/static/app.js
+          grep -q 'window.DPSettingsPage = Object.freeze({load});' frontend/static/ui-settings-page.js
+          grep -q 'window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});' frontend/static/ui-statistics.js
+          grep -q 'window.DPHelpPage = Object.freeze({load, activateTab});' frontend/static/ui-help-page.js
+          grep -q "debridpulse:help-rendered" frontend/static/ui-help-page.js
+          grep -q "debridpulse:help-rendered" frontend/static/ui-help-license-documents.js
+          ! grep -q 'DOMContentLoaded' frontend/static/ui-help-page.js
+          ! grep -q 'DOMContentLoaded' frontend/static/ui-help-license-documents.js
+          ! grep -q 'requestAnimationFrame' frontend/static/ui-help-license-documents.js
+          test -f frontend/static/icons/lucide/scale.svg
+          test ! -e scripts/_canonicalize_frontend_runtime_css.py
+          test ! -e scripts/_repair_canonical_contract_tests.py
+          test ! -e .github/workflows/_canonicalize-runtime-css.yml
+          test ! -e .github/workflows/_audit-v1111-frontend.yml
+          test ! -e v1111-frontend-census.txt
+          test ! -e v1111-pytest-failures.txt
+
+          # Statistics must be the accepted composition at first paint, not an
+          # inherited substrate that converges through runtime reparenting.
+          ! grep -q 'ensureStatisticsArchitecture' frontend/static/ui-statistics.js
+          ! grep -q 'decorateChartHeader' frontend/static/ui-statistics.js
+          ! grep -q 'moveDashboardKpisToStatistics' frontend/static/ui-runtime.js
+          ! grep -q 'decorateHistoricalKpis' frontend/static/ui-runtime.js
+          ! grep -R -q 'dash-kpi-strip--dashboard' frontend/static/index.html frontend/static/ui-dashboard.css frontend/static/ui-runtime.js
+          ! grep -R -q 'i-queue-health\|i-queue-copy' frontend/static/index.html frontend/static/app.js frontend/static/ui-runtime.js frontend/static/ui-statistics.js
+          grep -q 'By the Numbers' frontend/static/index.html
+          grep -q 'Because vibes are not a performance metric.' frontend/static/index.html
+          grep -q 'view card dp-statistics-master' frontend/static/index.html
+          grep -q 'dp-stats-breakdown-grid' frontend/static/index.html
+          python - <<'PY'
+          from pathlib import Path
+          html = Path('frontend/static/index.html').read_text()
+          start = html.index('<!-- Statistics -->')
+          end = html.index('<!-- Changelog -->', start)
+          stats = html[start:end]
+          required = (
+              'dp-stats-master-header', 'dp-stats-master-body',
+              'dp-stats-history-grid', 'dp-stats-chart',
+              'dp-stats-breakdown-grid', '/icons/dp/statistics.svg',
+              '/icons/dp/card-download.svg',
+          )
+          for item in required:
+              assert item in stats, item
+          assert 'split-grid' not in stats
+          assert '📈' not in stats
+          assert stats.count('data-dp-stats-metric=') == 5
+          assert stats.count('class="list-card dp-list-workspace-surface"') == 4
+          PY
+
+      - name: Full regression suite from zero
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          python -m pytest tests/ -q --tb=short --junitxml=/tmp/debridpulse-pytest.xml
+          python - <<'PY'
+          from xml.etree import ElementTree as ET
+          root = ET.parse('/tmp/debridpulse-pytest.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root.findall('testsuite'))
+          tests = sum(int(s.attrib.get('tests', 0)) for s in suites)
+          failures = sum(int(s.attrib.get('failures', 0)) for s in suites)
+          errors = sum(int(s.attrib.get('errors', 0)) for s in suites)
+          skipped = sum(int(s.attrib.get('skipped', 0)) for s in suites)
+          print(f'PYTEST_TOTAL={tests} FAILURES={failures} ERRORS={errors} SKIPPED={skipped}')
+          if failures or errors:
+              raise SystemExit(1)
+          PY
+
+      - name: pip-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          pip-audit -r requirements.txt --progress-spinner off
+
+      - name: Bandit high-confidence high-severity gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          bandit -r . --exclude ./tests --severity-level high --confidence-level high -f txt
+
+  container-runtime-browser:
+    name: Release image, runtime, non-root, browser, and vulnerability gates
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 063fd4a89ef627abfd37f8e15dc2764e4c00010e
+          fetch-depth: 2
+
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+          echo "QUALIFYING_SHA=$(git rev-parse HEAD)"
+
+      - name: Build release image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag "$IMAGE_TAG" \
+            .
+
+      - name: Root startup and release smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-qual-root"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name "$container_name" \
+            --env PUID=0 --env PGID=0 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+          healthy=0
+          for _ in $(seq 1 30); do
+            if docker exec "$container_name" curl --fail --silent --show-error http://127.0.0.1:8080/api/health >/dev/null; then healthy=1; break; fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != "true" ]; then break; fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then docker inspect "$container_name" || true; docker logs "$container_name" || true; exit 1; fi
+          health_payload="$(docker exec "$container_name" curl --fail --silent --show-error http://127.0.0.1:8080/api/health)"
+          test "$(jq -r '.version // empty' <<< "$health_payload")" = "$CANDIDATE_VERSION"
+          docker exec "$container_name" test -f /app/LICENSE
+          docker exec "$container_name" test -f /app/NOTICE
+          docker exec "$container_name" test -f /app/licenses/python-runtime.json
+          docker exec "$container_name" test -f /app/licenses/bencode2-MIT.txt
+          docker exec "$container_name" grep -q "Chris Moore" /app/NOTICE
+          docker exec "$container_name" grep -q '^VERSION_CODENAME=trixie$' /etc/os-release
+          docker exec "$container_name" dpkg-query -W 7zip 7zip-rar aria2 gosu
+          docker exec "$container_name" test -f /usr/share/doc/7zip-rar/copyright
+          docker exec "$container_name" test -f /usr/share/doc/7zip-rar/unRarLicense.txt
+          docker exec "$container_name" sh -c '7z i | grep -qi rar'
+          docker exec "$container_name" sh -c '
+            set -eu
+            rm -rf /tmp/debridpulse-7z-smoke
+            mkdir -p /tmp/debridpulse-7z-smoke/input /tmp/debridpulse-7z-smoke/output
+            printf "debridpulse-7z-smoke\n" > /tmp/debridpulse-7z-smoke/input/payload.txt
+            (cd /tmp/debridpulse-7z-smoke/input && 7z a -bd -y ../archive.7z payload.txt)
+            7z x -bd -y /tmp/debridpulse-7z-smoke/archive.7z -o/tmp/debridpulse-7z-smoke/output
+            grep -q "debridpulse-7z-smoke" /tmp/debridpulse-7z-smoke/output/payload.txt
+          '
+
+      - name: Non-root runtime and writable-path validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-qual-nonroot"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name "$container_name" \
+            --env PUID=12345 --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+          healthy=0
+          for _ in $(seq 1 30); do
+            if docker exec "$container_name" curl --fail --silent --show-error http://127.0.0.1:8080/api/health >/dev/null; then healthy=1; break; fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != "true" ]; then break; fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then docker logs "$container_name" || true; exit 1; fi
+          test "$(docker exec "$container_name" awk '/^Uid:/{print $2}' /proc/1/status)" = "12345"
+          test "$(docker exec "$container_name" awk '/^Gid:/{print $2}' /proc/1/status)" = "12345"
+          docker exec --user 12345:12345 "$container_name" sh -c '
+            set -eu
+            touch /app/data/.nonroot-smoke /app/config/.nonroot-smoke /download/.nonroot-smoke
+            rm -f /app/data/.nonroot-smoke /app/config/.nonroot-smoke /download/.nonroot-smoke
+          '
+
+      - name: Report runtime vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: local/debridpulse:qual-063fd4a
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: false
+          exit-code: '0'
+
+      - name: Block fixable high or critical runtime vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: local/debridpulse:qual-063fd4a
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Browser cold-load, direct Statistics ownership, navigation, theme, responsive, dialogs, and failure paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-qual-browser"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name "$container_name" \
+            --publish 127.0.0.1:18080:8080 \
+            --env PUID=12345 --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/health >/dev/null; then healthy=1; break; fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then docker logs "$container_name" || true; exit 1; fi
+          chrome_bin="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome_bin"
+          rm -rf /tmp/dp-browser /tmp/dp-browser-evidence
+          mkdir -p /tmp/dp-browser /tmp/dp-browser-evidence
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+          export CHROME_BIN="$chrome_bin"
+          export NODE_PATH=/tmp/dp-browser/node_modules
+          node <<'NODE'
+          const assert=require('node:assert/strict');
+          const puppeteer=require('puppeteer-core');
+          const base='http://127.0.0.1:18080/';
+          const views=['dashboard','torrents','events','stats','settings','help'];
+          const titles={dashboard:'Dashboard',torrents:'Downloads',events:'Activity Log',stats:'Statistics',settings:'Settings',help:'Help & License'};
+          const retired=['/ui-presentation-loader.js','/ui-shell-runtime.js','/ui-page-finalization.js','/ui-visual-behavior-fixes.js','/ui-help-chrome.js','/ui-settings-auth-resilience.js','/ui-settings-authentication.js','/ui-settings-authentication-polish.js','/ui-settings-authentication-oidc.js','/ui-settings-authentication-callback.js','/ui-statistics.css'];
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+          async function statsStructure(p){
+            return p.evaluate(()=>{
+              const view=document.getElementById('view-stats');
+              const header=view?.querySelector(':scope > .dp-stats-master-header');
+              const body=view?.querySelector(':scope > .dp-stats-master-body');
+              const period=document.getElementById('stats-period-tabs');
+              const history=body?.querySelector(':scope > .dp-stats-history-grid');
+              const chart=body?.querySelector(':scope > .dp-stats-chart');
+              const breakdown=body?.querySelector(':scope > .dp-stats-breakdown-grid');
+              const cards=breakdown?[...breakdown.querySelectorAll(':scope > .list-card')]:[];
+              const titles=cards.map(c=>c.querySelector('.card-title'));
+              const headerRect=header?.getBoundingClientRect();
+              const titleRect=header?.querySelector('.dp-stats-master-title')?.getBoundingClientRect();
+              const periodRect=period?.getBoundingClientRect();
+              return {
+                master:view?.classList.contains('dp-statistics-master')||false,
+                headerDirect:!!header,
+                bodyDirect:!!body,
+                heading:header?.querySelector('.dp-stats-heading')?.textContent.trim()||'',
+                subtitle:header?.querySelector('.dp-stats-subtitle')?.textContent.trim()||'',
+                periodParent:period?.parentElement===header,
+                periodActive:period?.querySelector('.ftab.active')?.dataset.period||'',
+                periodRight:!!(periodRect&&titleRect&&periodRect.left>titleRect.right),
+                primaryCount:body?.querySelectorAll(':scope > #detail-stat-cards > [data-dp-stats-metric]').length||0,
+                historyCount:history?.querySelectorAll(':scope > .dash-kpi').length||0,
+                queueHealth:!!document.getElementById('i-queue-health')||!!document.getElementById('i-queue-copy'),
+                chartDirect:!!chart,
+                chartIcon:chart?.querySelector('.scard-header img')?.getAttribute('src')||'',
+                chartHeading:chart?.querySelector('.dp-stats-chart-heading')?.textContent.trim()||'',
+                chartSubtitle:document.getElementById('chart-title')?.textContent.trim()||'',
+                breakdownCount:cards.length,
+                splitCount:view?.querySelectorAll('.split-grid').length||0,
+                emoji:(view?.textContent||'').includes('📈'),
+                cardTop:cards.map(c=>Math.round(c.getBoundingClientRect().top)),
+                titleCentered:titles.map((t,i)=>{
+                  if(!t)return false;
+                  const tr=t.getBoundingClientRect(),cr=cards[i].getBoundingClientRect();
+                  return Math.abs((tr.left+tr.width/2)-(cr.left+cr.width/2))<4;
+                }),
+                shellSignature:[
+                  view?.className||'', header?.className||'', body?.className||'',
+                  history?.className||'', chart?.className||'', breakdown?.className||'',
+                  period?.parentElement?.className||''
+                ].join('|'),
+                headerWidth:Math.round(headerRect?.width||0),
+              };
+            });
+          }
+
+          function assertStatsBase(s,desktop){
+            assert.equal(s.master,true,'Statistics master class missing at first paint');
+            assert.equal(s.headerDirect,true,'Statistics master header is not direct base child');
+            assert.equal(s.bodyDirect,true,'Statistics master body is not direct base child');
+            assert.equal(s.heading,'By the Numbers');
+            assert.equal(s.subtitle,'Because vibes are not a performance metric.');
+            assert.equal(s.periodParent,true,'Period control is not directly owned by Statistics header');
+            assert.equal(s.periodActive,'7d');
+            assert.equal(s.primaryCount,5);
+            assert.equal(s.historyCount,5);
+            assert.equal(s.queueHealth,false);
+            assert.equal(s.chartDirect,true);
+            assert.equal(s.chartIcon,'/icons/dp/card-download.svg');
+            assert.equal(s.chartHeading,'Completions');
+            assert.equal(s.breakdownCount,4);
+            assert.equal(s.splitCount,0);
+            assert.equal(s.emoji,false);
+            if(desktop){
+              assert.equal(s.periodRight,true,'Period control is not on the right side of Statistics header');
+              assert.equal(new Set(s.cardTop).size,1,`Statistics breakdown cards are not one desktop row: ${s.cardTop}`);
+              assert(s.titleCentered.every(Boolean),'Statistics lower-card headings are not centered');
+            }
+          }
+
+          async function normal(browser,w,h){
+            const desktop=w>=900;
+            const p=await browser.newPage();
+            await p.setViewport({width:w,height:h});
+            await p.setCacheEnabled(false);
+            const requests=[],errors=[],badStatic=[];
+            p.on('request',r=>{try{requests.push(new URL(r.url()).pathname)}catch(_){}});
+            p.on('pageerror',e=>errors.push(String(e)));
+            p.on('response',r=>{try{const u=new URL(r.url());if(u.hostname==='127.0.0.1'&&r.status()>=400&&!u.pathname.startsWith('/api/'))badStatic.push(`${r.status()} ${u.pathname}`)}catch(_){}});
+            await p.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+            await p.waitForFunction(()=>typeof window.nav==='function'&&window.DPIcons&&document.querySelector('#view-dashboard.active'),{timeout:12000});
+            for(const x of retired)assert(!requests.includes(x),`retired runtime requested: ${x}`);
+
+            const beforeStats=await statsStructure(p);
+            assertStatsBase(beforeStats,desktop);
+            const initial=await p.evaluate(()=>({settings:document.getElementById('view-settings').innerHTML.trim(),help:document.getElementById('view-help').innerHTML.trim(),legacyRender:typeof window.renderSettings,legacyForm:typeof window.getFormSettings,legacyTab:typeof window.switchSettingsTab,settingsOwner:typeof window.DPSettingsPage,statsOwner:typeof window.DPStatisticsLifecycle,helpOwner:typeof window.DPHelpPage}));
+            assert.equal(initial.settings,'');assert.equal(initial.help,'');
+            assert.equal(initial.legacyRender,'undefined');assert.equal(initial.legacyForm,'undefined');assert.equal(initial.legacyTab,'undefined');
+            assert.equal(initial.settingsOwner,'object');assert.equal(initial.statsOwner,'object');assert.equal(initial.helpOwner,'object');
+
+            for(const v of views){
+              if(v==='settings'||v==='help')await p.evaluate(v=>{const root=document.getElementById(`view-${v}`);window.__first=null;window.__obs?.disconnect?.();window.__obs=new MutationObserver(()=>{if(!window.__first&&root.innerHTML.trim())window.__first=root.innerHTML});window.__obs.observe(root,{childList:true,subtree:true})},v);
+              await p.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),v);
+              await p.waitForFunction(v=>document.getElementById(`view-${v}`)?.classList.contains('active'),{timeout:12000},v);
+              await p.waitForFunction((v,t)=>document.getElementById('page-title').textContent.trim()===t,{timeout:12000},v,titles[v]);
+              if(v==='stats'){
+                await p.waitForFunction(()=>document.getElementById('daily-chart')?._ci,{timeout:12000});
+                await sleep(100);
+                const afterStats=await statsStructure(p);
+                assertStatsBase(afterStats,desktop);
+                assert.equal(afterStats.shellSignature,beforeStats.shellSignature,'Statistics runtime changed canonical shell ownership');
+                assert.equal(afterStats.chartSubtitle,'Completed downloads in the last 7 days.');
+                await p.screenshot({path:`/tmp/dp-browser-evidence/statistics-${w}x${h}.png`,fullPage:true});
+              }
+              if(v==='settings'||v==='help'){
+                await p.waitForFunction(v=>document.getElementById(`view-${v}`).children.length>0,{timeout:12000},v);
+                if(v==='settings')await p.waitForFunction(()=>{const s=document.getElementById('view-settings')?.innerHTML||'';return /Sources &amp; Providers|Sources & Providers/.test(s)&&/Authentication/.test(s)},{timeout:12000});
+                await sleep(100);
+                const r=await p.evaluate(v=>({first:window.__first||'',final:document.getElementById(`view-${v}`).innerHTML}),v);
+                assert(r.first.length>0,`${v} did not render directly`);
+                if(v==='settings'){
+                  assert(/dp-settings-loading|Sources &amp; Providers|Sources & Providers/.test(r.first),'Settings first mutation is not its canonical loading/final owner');
+                  assert(/Sources &amp; Providers|Sources & Providers/.test(r.final),'Settings final render is not canonical Settings');
+                  assert(/Authentication/.test(r.final),'Settings final render lacks Authentication');
+                }else{
+                  assert(/Field Manual/.test(r.first),'Help first render is not canonical Help');
+                  assert(/dp-help-master-card/.test(r.first),'Help first render lacks canonical master card');
+                }
+              }
+            }
+
+            await p.evaluate(()=>document.querySelector('.dp-help-tab[data-tab="license"]').click());
+            await p.waitForFunction(()=>!document.querySelector('#dp-help-panel-license')?.hidden,{timeout:5000});
+            const scale=await p.$eval('#dp-help-tab-license img',i=>({src:i.getAttribute('src'),complete:i.complete,width:i.naturalWidth}));
+            assert.equal(scale.src,'/icons/lucide/scale.svg');assert(scale.complete&&scale.width>0,'License scale icon failed');
+            await p.evaluate(()=>document.querySelector('.dp-help-local-document-button[data-legal-document="gpl"]').click());
+            await p.waitForSelector('.dp-help-legal-dialog',{timeout:5000});
+            await p.waitForFunction(()=>{const b=document.querySelector('.dp-help-legal-document');return b&&b.textContent.trim()&&b.textContent.trim()!=='Loading…'},{timeout:10000});
+            const modal=await p.evaluate(()=>({title:document.getElementById('dp-help-legal-dialog-title')?.textContent||'',body:document.querySelector('.dp-help-legal-document')?.textContent||''}));
+            assert(/GNU General Public License|GPL/i.test(modal.title));assert(modal.body.length>500,'Bundled GPL document did not render');
+            await p.keyboard.press('Escape');await p.waitForFunction(()=>!document.querySelector('.dp-help-legal-dialog'),{timeout:5000});
+
+            for(let c=0;c<3;c++)for(const v of views.slice().reverse())await p.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),v);
+            await p.evaluate(()=>document.querySelector('.nav-item[data-view="dashboard"]').click());
+            await p.waitForFunction(()=>document.querySelector('#view-dashboard.active'),{timeout:12000});
+            const light=await p.evaluate(()=>document.body.classList.contains('light'));
+            await p.evaluate(()=>document.getElementById('theme-toggle').click());await p.waitForFunction(x=>document.body.classList.contains('light')!==x,{timeout:5000},light);
+            await p.evaluate(()=>document.getElementById('theme-toggle').click());await p.waitForFunction(x=>document.body.classList.contains('light')===x,{timeout:5000},light);
+            await p.reload({waitUntil:'domcontentloaded',timeout:20000});
+            await p.waitForFunction(()=>document.querySelector('#view-dashboard.active'),{timeout:12000});
+            assertStatsBase(await statsStructure(p),desktop);
+            const reload=await p.evaluate(()=>({settings:document.getElementById('view-settings').innerHTML.trim(),help:document.getElementById('view-help').innerHTML.trim()}));
+            assert.equal(reload.settings,'');assert.equal(reload.help,'');
+            for(const x of retired)assert(!requests.includes(x),`retired runtime requested after reload: ${x}`);
+            assert.deepEqual(errors,[],`browser errors: ${errors.join(' | ')}`);assert.deepEqual(badStatic,[],`bad static responses: ${badStatic.join(' | ')}`);
+            await p.close();
+          }
+
+          async function missingOwner(browser,target,path){
+            const p=await browser.newPage();await p.setRequestInterception(true);
+            p.on('request',r=>new URL(r.url()).pathname===path?r.abort():r.continue());
+            await p.goto(base,{waitUntil:'domcontentloaded',timeout:20000});await p.waitForFunction(()=>typeof window.nav==='function',{timeout:12000});
+            assert.equal(await p.$eval(`#view-${target}`,e=>e.innerHTML.trim()),'');
+            await p.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),target);await sleep(350);
+            const s=await p.evaluate(v=>({active:document.getElementById(`view-${v}`).classList.contains('active'),html:document.getElementById(`view-${v}`).innerHTML.trim()}),target);
+            assert.equal(s.active,true);assert.equal(s.html,'',`missing ${target} owner exposed fallback substrate`);await p.close();
+          }
+
+          async function optionalAsset(browser){
+            const p=await browser.newPage();await p.setRequestInterception(true);p.on('request',r=>new URL(r.url()).pathname==='/icons/dp/sidebar-wave-accent.svg'?r.abort():r.continue());
+            await p.goto(base,{waitUntil:'domcontentloaded',timeout:20000});await p.waitForFunction(()=>document.querySelector('#view-dashboard.active')&&window.DPIcons,{timeout:12000});
+            assertStatsBase(await statsStructure(p),true);
+            await p.evaluate(()=>document.querySelector('.nav-item[data-view="help"]').click());await p.waitForFunction(()=>document.querySelector('#view-help.active')?.children.length>0,{timeout:12000});await p.close();
+          }
+
+          (async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME_BIN,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});try{await normal(b,1440,1000);await normal(b,390,844);await missingOwner(b,'settings','/ui-settings-page.js');await missingOwner(b,'help','/ui-help-page.js');await optionalAsset(b);console.log('BROWSER_QUALIFICATION=PASS')}finally{await b.close()}})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-evidence-v1111-063fd4a
+          path: /tmp/dp-browser-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, python, actions]
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 063fd4a89ef627abfd37f8e15dc2764e4c00010e
+          fetch-depth: 2
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+  package-local-image:
+    name: Package local installable image
+    needs: [source-gates, container-runtime-browser, codeql]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 063fd4a89ef627abfd37f8e15dc2764e4c00010e
+          fetch-depth: 1
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+      - name: Build exact qualified image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag debridpulse:1.0.11.1-local-063fd4a \
+            .
+      - name: Export installable artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p local-build
+          docker save debridpulse:1.0.11.1-local-063fd4a | gzip -9 > local-build/debridpulse-v1.0.11.1-063fd4a-docker-image.tar.gz
+          (cd local-build && sha256sum debridpulse-v1.0.11.1-063fd4a-docker-image.tar.gz > SHA256SUMS)
+          cat > local-build/INSTALL.txt <<'EOF'
+          DebridPulse v1.0.11.1 local qualification build
+          Candidate: 063fd4a89ef627abfd37f8e15dc2764e4c00010e
+
+          Load:
+            gunzip -c debridpulse-v1.0.11.1-063fd4a-docker-image.tar.gz | docker load
+
+          Image name after load:
+            debridpulse:1.0.11.1-local-063fd4a
+
+          This is a local-test artifact only. It has not been promoted or published as a release image.
+          EOF
+          printf '%s\n' "$CANDIDATE_SHA" > local-build/CANDIDATE_SHA
+          ls -lh local-build
+      - name: Upload local installable build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: debridpulse-v1.0.11.1-063fd4a-local-build
+          path: local-build/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
