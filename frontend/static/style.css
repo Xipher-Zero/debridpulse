@@ -1075,10 +1075,6 @@ textarea.input { resize: vertical; }
   /* Settings-Grid: single column on narrow screens */
   .settings-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
 
-  /* Downloads panel controls wrap */
-  #view-aria2queue .view-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-  #view-aria2queue .view-header > div:last-child { width: 100%; flex-wrap: wrap; }
-
   /* Filter tabs wrap */
   .filter-tabs { flex-wrap: wrap; gap: 4px; }
 

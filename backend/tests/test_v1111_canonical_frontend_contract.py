@@ -264,7 +264,7 @@ def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> N
     html = read(INDEX)
     runtime = read(RUNTIME)
     style = read(STATIC / "style-v11.css")
-    view = html[html.index('<!-- Statistics -->'):html.index('<!-- Changelog -->')]
+    view = html[html.index('<!-- Statistics -->'):html.index('<!-- Help -->')]
     for fragment in (
         "window.loadDetailedStats = loadDetailedStats;",
         "window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});",
@@ -293,7 +293,7 @@ def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> N
 def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
     source = read(STATS)
     html = read(INDEX)
-    view = html[html.index('<!-- Statistics -->'):html.index('<!-- Changelog -->')]
+    view = html[html.index('<!-- Statistics -->'):html.index('<!-- Help -->')]
     for fragment in (
         "Last 24 Hours", "Completed downloads over the last 24 hours.",
         "Last 7 Days", "Completed downloads over the last 7 days.",
@@ -398,3 +398,30 @@ def test_core_canonical_owners_do_not_reintroduce_historical_wrapper_patterns() 
     for name, source in sources.items():
         for fragment in forbidden:
             assert fragment not in source, f"{name} regained wrapper pattern {fragment}"
+
+
+
+def test_retired_unreachable_views_and_owners_are_not_packaged() -> None:
+    html = read(INDEX)
+    app = read(APP)
+    legacy_css = read(STATIC / "style.css")
+    for fragment in (
+        "view-changelog",
+        "view-aria2queue",
+        "view-support",
+        "changelog-content",
+        "aria2q-",
+    ):
+        assert fragment not in html
+        assert fragment not in legacy_css
+    for fragment in (
+        "loadChangelog",
+        "loadAria2QueueView",
+        "renderAria2QueueView",
+        "aria2QueueAction",
+        "_aria2qTimer",
+        "aria2q-",
+    ):
+        assert fragment not in app
+    supported = re.findall(r'class="nav-item(?: active)?" data-view="([^"]+)"', html)
+    assert supported == ["dashboard", "torrents", "events", "stats", "settings", "help"]
