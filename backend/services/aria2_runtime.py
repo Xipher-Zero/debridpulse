@@ -57,6 +57,7 @@ def aria2_global_options(cfg=None, *, include_safety: bool = False) -> Dict[str,
     if include_safety:
         options.update({
             "follow-torrent": "false",
+            "follow-metalink": "false",
             "enable-dht": "false",
             "enable-dht6": "false",
             "enable-peer-exchange": "false",

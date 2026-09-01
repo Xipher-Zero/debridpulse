@@ -501,6 +501,11 @@ class TorrentManager:
             # replaces the prior file at the requested path.
             "allow-overwrite": "true",
             "auto-file-renaming": "false",
+            # AllDebrid owns torrent/metalink processing. aria2 is only the
+            # file-transfer stage; never let a provider HTTP response spawn
+            # metadata-follow children outside the DebridPulse ownership ledger.
+            "follow-torrent": "false",
+            "follow-metalink": "false",
             # The application validates the initial public destination. Do not
             # let aria2 silently cross that boundary through an HTTP redirect.
             "max-http-redirection": "0",

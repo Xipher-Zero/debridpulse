@@ -23,7 +23,8 @@ from pathlib import Path, PurePosixPath
 
 from core.config import get_settings
 from db.database import get_db
-from services.aria2_runtime import effective_rpc_config
+from services.aria2_runtime import effective_rpc_config, is_builtin_mode
+from services.downloader_egress_guard import downloader_egress_guard
 from services.network_safety import (
     reject_non_public_resolution,
     validate_resolved_public_destination,
@@ -51,11 +52,27 @@ _PROVIDER_STATE_OWNER: ContextVar[object | None] = ContextVar(
 
 
 class GuardedTransferIntegrityAria2Service(TransferIntegrityAria2Service):
-    """Apply destination-network policy immediately before aria2 dispatch."""
+    """Bind every owned aria2 connection to the guarded egress boundary."""
 
-    async def ensure_download(self, uri: str, *args, **kwargs) -> str:
+    async def ensure_download(self, uri: str, options=None, *args, **kwargs) -> str:
+        # Keep the early resolution check as defense in depth, but do not rely
+        # on it for connection authorization: aria2 would otherwise resolve the
+        # hostname again later and re-open the DNS-rebinding race.
         validated = await validate_resolved_public_destination(uri)
-        return await super().ensure_download(validated, *args, **kwargs)
+        await downloader_egress_guard.ensure_started()
+        guarded_options = dict(options or {})
+        guarded_options.update(
+            downloader_egress_guard.job_options(
+                validated,
+                external=not is_builtin_mode(),
+            )
+        )
+        return await super().ensure_download(
+            validated,
+            guarded_options,
+            *args,
+            **kwargs,
+        )
 
 
 class GuardedTransferIntegrityManager(TransferIntegrityManager):
