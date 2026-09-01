@@ -1,0 +1,323 @@
+name: Qualify v1.0.11.1 sparkline curve b598903
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-sparkline-curve-b598903
+    paths:
+      - .github/workflows/_qualify-v1111-sparkline-curve-b598903.yml
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: b59890352a07b4197b099b9c0f4bc850197ef7a3
+  CANDIDATE_VERSION: 1.0.11.1
+  IMAGE_TAG: local/debridpulse:sparkline-curve-b598903
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  browser-and-geometry:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: b59890352a07b4197b099b9c0f4bc850197ef7a3
+          fetch-depth: 2
+
+      - name: Prove exact candidate and canonical ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+          test "$(grep -o 'class="dp-card-spark"' frontend/static/index.html | wc -l)" -eq 6
+          test "$(grep -o 'class="dp-card-spark-line"' frontend/static/index.html | wc -l)" -eq 6
+          test "$(grep -o 'class="dp-card-spark-fill"' frontend/static/index.html | wc -l)" -eq 6
+          grep -q 'recordDashboardMetricHistory({' frontend/static/app.js
+          grep -q 'dashboardMonotoneSparkPath' frontend/static/app.js
+          grep -q 'const intervals = points.slice(0, -1).map' frontend/static/app.js
+          ! grep -q 'dashboardSmoothSparkPath' frontend/static/app.js
+          ! grep -q 'const tension = 0.82;' frontend/static/app.js
+          ! grep -q 'makeSparkline' frontend/static/ui-runtime.js
+          ! grep -q 'installMetricHistoryHook' frontend/static/ui-runtime.js
+          ! grep -q 'METRIC_HISTORY_KEY' frontend/static/ui-runtime.js
+
+      - name: Frontend JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+
+      - name: Build exact candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag "$IMAGE_TAG" \
+            .
+          test "$(docker image inspect "$IMAGE_TAG" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$CANDIDATE_SHA"
+          test "$(docker image inspect "$IMAGE_TAG" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$CANDIDATE_VERSION"
+
+      - name: Browser state, monotone geometry, navigation, themes, desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-spark-curve-b598903"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          docker run --detach --name "$container_name" \
+            --publish 127.0.0.1:18080:8080 \
+            --env PUID=12345 --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/health >/dev/null; then healthy=1; break; fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then docker logs "$container_name" || true; exit 1; fi
+
+          chrome_bin="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome_bin"
+          rm -rf /tmp/dp-browser && mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+          export CHROME_BIN="$chrome_bin"
+          export NODE_PATH=/tmp/dp-browser/node_modules
+
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const puppeteer = require('puppeteer-core');
+          const base = 'http://127.0.0.1:18080/';
+          const historyKey = 'debridpulse.dashboard.metric-history.v2';
+
+          const samples = [
+            {
+              by_status: {completed: 2, downloading: 1, processing: 0, uploading: 0, error: 0, deleted: 100},
+              completed_count: 2, active_operations: 1, active_downloads: 1,
+              error_count: 0, total_completed_bytes: 1024, total_blocked_files: 0,
+              completed_last_24h: 1, completed_last_7d: 2, success_rate_pct: 100,
+              avg_download_duration_seconds: 60, avg_torrent_size_bytes: 512,
+              operator_active_progress_pct: 25, paused: false
+            },
+            {
+              by_status: {completed: 3, downloading: 2, processing: 1, uploading: 0, error: 1, deleted: 200},
+              completed_count: 3, active_operations: 3, active_downloads: 2,
+              error_count: 1, total_completed_bytes: 4096, total_blocked_files: 1,
+              completed_last_24h: 2, completed_last_7d: 3, success_rate_pct: 80,
+              avg_download_duration_seconds: 90, avg_torrent_size_bytes: 1024,
+              operator_active_progress_pct: 50, paused: false
+            },
+            {
+              by_status: {completed: 4, downloading: 0, processing: 0, uploading: 0, error: 0, deleted: 300},
+              completed_count: 4, active_operations: 0, active_downloads: 0,
+              error_count: 0, total_completed_bytes: 8192, total_blocked_files: 1,
+              completed_last_24h: 3, completed_last_7d: 4, success_rate_pct: 90,
+              avg_download_duration_seconds: 75, avg_torrent_size_bytes: 2048,
+              operator_active_progress_pct: 0, paused: false
+            }
+          ];
+
+          function parsePath(path) {
+            const m = path.match(/^M\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
+            assert(m, `missing move command: ${path}`);
+            const start = {x: Number(m[1]), y: Number(m[2])};
+            const re = /C\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?),\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?),\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g;
+            const segments = [];
+            let current = start;
+            let match;
+            while ((match = re.exec(path))) {
+              const segment = {
+                start: current,
+                cp1: {x: Number(match[1]), y: Number(match[2])},
+                cp2: {x: Number(match[3]), y: Number(match[4])},
+                end: {x: Number(match[5]), y: Number(match[6])}
+              };
+              segments.push(segment);
+              current = segment.end;
+            }
+            return {start, segments};
+          }
+
+          function cubic(a, b, c, d, t) {
+            const u = 1 - t;
+            return u*u*u*a + 3*u*u*t*b + 3*u*t*t*c + t*t*t*d;
+          }
+
+          function assertShapePreserving(path, expectedPoints) {
+            const parsed = parsePath(path);
+            assert.equal(parsed.segments.length, expectedPoints.length - 1);
+            parsed.segments.forEach((segment, index) => {
+              const expectedStart = expectedPoints[index];
+              const expectedEnd = expectedPoints[index + 1];
+              assert(Math.abs(segment.start.x - expectedStart.x) <= 0.011);
+              assert(Math.abs(segment.start.y - expectedStart.y) <= 0.011);
+              assert(Math.abs(segment.end.x - expectedEnd.x) <= 0.011);
+              assert(Math.abs(segment.end.y - expectedEnd.y) <= 0.011);
+              const low = Math.min(expectedStart.y, expectedEnd.y) - 0.011;
+              const high = Math.max(expectedStart.y, expectedEnd.y) + 0.011;
+              assert(segment.cp1.y >= low && segment.cp1.y <= high, 'cp1 overshoot');
+              assert(segment.cp2.y >= low && segment.cp2.y <= high, 'cp2 overshoot');
+              let previous = expectedStart.y;
+              for (let step = 1; step <= 100; step++) {
+                const t = step / 100;
+                const value = cubic(segment.start.y, segment.cp1.y, segment.cp2.y, segment.end.y, t);
+                assert(value >= low && value <= high, `curve overshoot at segment ${index}`);
+                if (expectedEnd.y > expectedStart.y) assert(value + 0.0001 >= previous, `reverse motion in rising segment ${index}`);
+                if (expectedEnd.y < expectedStart.y) assert(value - 0.0001 <= previous, `reverse motion in falling segment ${index}`);
+                previous = value;
+              }
+            });
+            return parsed;
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: process.env.CHROME_BIN,
+              headless: true,
+              args: ['--no-sandbox', '--disable-dev-shm-usage']
+            });
+            try {
+              const staticPage = await browser.newPage();
+              await staticPage.setJavaScriptEnabled(false);
+              await staticPage.goto(base, {waitUntil: 'domcontentloaded'});
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark', els => els.length), 6);
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark-line', els => els.length), 6);
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark-fill', els => els.length), 6);
+              await staticPage.close();
+
+              let current = samples[0];
+              const page = await browser.newPage();
+              await page.setViewport({width: 1920, height: 1080, deviceScaleFactor: 1});
+              const pageErrors = [];
+              const badStatic = [];
+              page.on('pageerror', e => pageErrors.push(String(e)));
+              page.on('response', r => {
+                if (r.url().startsWith(base) && r.status() >= 400 && /\.(?:js|css|svg|png|ico)(?:\?|$)/.test(r.url())) {
+                  badStatic.push(`${r.status()} ${r.url()}`);
+                }
+              });
+              await page.setRequestInterception(true);
+              page.on('request', req => {
+                if (/\/api\/stats(?:\?|$)/.test(req.url())) {
+                  req.respond({status: 200, contentType: 'application/json', body: JSON.stringify(current)}).catch(() => {});
+                } else {
+                  req.continue().catch(() => {});
+                }
+              });
+
+              await page.goto(base, {waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+
+              const geometry = await page.evaluate(() => {
+                const cases = {
+                  accelerating: [{x:0,y:20},{x:25,y:19},{x:50,y:17},{x:75,y:12},{x:100,y:2}],
+                  decelerating: [{x:0,y:20},{x:25,y:10},{x:50,y:5},{x:75,y:3},{x:100,y:2}],
+                  riseFlat: [{x:0,y:20},{x:25,y:15},{x:50,y:8},{x:75,y:8},{x:100,y:8}],
+                  flatRise: [{x:0,y:20},{x:25,y:20},{x:50,y:20},{x:75,y:12},{x:100,y:2}],
+                  reversal: [{x:0,y:20},{x:25,y:12},{x:50,y:4},{x:75,y:10},{x:100,y:16}],
+                  two: [{x:0,y:20},{x:100,y:2}]
+                };
+                return Object.fromEntries(Object.entries(cases).map(([name, points]) => [name, {
+                  points,
+                  path: dashboardMonotoneSparkPath(points)
+                }]));
+              });
+
+              for (const value of Object.values(geometry)) assertShapePreserving(value.path, value.points);
+
+              const reversal = parsePath(geometry.reversal.path);
+              assert(Math.abs(reversal.segments[1].cp2.y - reversal.segments[1].end.y) <= 0.011, 'reversal left tangent is not flat');
+              assert(Math.abs(reversal.segments[2].cp1.y - reversal.segments[2].start.y) <= 0.011, 'reversal right tangent is not flat');
+
+              const two = parsePath(geometry.two.path).segments[0];
+              for (let step = 0; step <= 100; step++) {
+                const t = step / 100;
+                const actual = cubic(two.start.y, two.cp1.y, two.cp2.y, two.end.y, t);
+                const expected = two.start.y + (two.end.y - two.start.y) * t;
+                assert(Math.abs(actual - expected) < 0.02, 'two-point sparkline is not effectively linear');
+              }
+
+              await page.evaluate(key => localStorage.setItem(key, '[]'), historyKey);
+              current = samples[0]; await page.evaluate(() => loadStats());
+              current = samples[1]; await page.evaluate(() => loadStats());
+
+              const first = await page.evaluate(key => ({
+                values: {
+                  total: document.getElementById('s-total').textContent.trim(),
+                  completed: document.getElementById('s-completed').textContent.trim(),
+                  active: document.getElementById('s-active').textContent.trim(),
+                  processing: document.getElementById('s-processing').textContent.trim(),
+                  errors: document.getElementById('s-error').textContent.trim()
+                },
+                history: JSON.parse(localStorage.getItem(key) || '[]'),
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || ''),
+                fills: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-fill')).map(el => el.getAttribute('d') || '')
+              }), historyKey);
+
+              assert.deepEqual(first.values, {total: '7', completed: '3', active: '3', processing: '1', errors: '1'});
+              assert.equal(first.history.length, 2);
+              assert.deepEqual(
+                Object.fromEntries(['total','completed','active','processing','errors','downloaded'].map(k => [k, first.history[1][k]])),
+                {total: 7, completed: 3, active: 3, processing: 1, errors: 1, downloaded: 4096}
+              );
+              first.paths.forEach(path => { assert.match(path, /^M /); assert.match(path, / C /); });
+              first.fills.forEach(path => { assert.match(path, / C /); assert.match(path, / L 100 24 L 0 24 Z$/); });
+
+              current = samples[2]; await page.evaluate(() => loadStats());
+              const second = await page.evaluate(key => ({
+                total: document.getElementById('s-total').textContent.trim(),
+                history: JSON.parse(localStorage.getItem(key) || '[]'),
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || '')
+              }), historyKey);
+              assert.equal(second.total, '4');
+              assert.equal(second.history.length, 3);
+              assert.equal(second.history[2].total, 4);
+              assert(second.paths.some((path, i) => path !== first.paths[i]));
+
+              for (const view of ['torrents', 'events', 'stats', 'settings', 'help', 'dashboard']) {
+                const result = await page.evaluate(v => {
+                  const el = document.querySelector(`.nav-item[data-view="${v}"]`);
+                  if (!el) return false;
+                  nav(el);
+                  return document.getElementById(`view-${v}`)?.classList.contains('active') || false;
+                }, view);
+                assert.equal(result, true, `navigation failed for ${view}`);
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+
+              const theme = await page.$('#theme-toggle');
+              if (theme) {
+                await theme.click(); await new Promise(resolve => setTimeout(resolve, 100));
+                await theme.click(); await new Promise(resolve => setTimeout(resolve, 100));
+              }
+
+              current = samples[2];
+              await page.reload({waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+              assert.equal(await page.$$eval('#view-dashboard .dp-card-spark', els => els.length), 6);
+              assert((await page.$$eval('#view-dashboard .dp-card-spark-line', els => els.map(el => el.getAttribute('d') || ''))).every(path => path.includes(' C ')));
+
+              await page.setViewport({width: 390, height: 844, deviceScaleFactor: 1});
+              await page.reload({waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+              assert.equal(await page.$$eval('#view-dashboard .dp-card-spark', els => els.length), 6);
+              const mobilePaths = await page.$$eval('#view-dashboard .dp-card-spark-line', els => els.map(el => el.getAttribute('d') || ''));
+              assert.equal(mobilePaths.length, 6);
+              assert(mobilePaths.every(path => path.includes(' C ')));
+
+              assert.deepEqual(pageErrors, []);
+              assert.deepEqual(badStatic, []);
+            } finally {
+              await browser.close();
+            }
+          })().catch(err => { console.error(err); process.exitCode = 1; });
+          NODE
