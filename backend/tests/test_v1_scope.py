@@ -156,11 +156,14 @@ def test_unified_submission_input_expands_to_five_lines():
 
 
 def test_release_workflow_accepts_public_v1_tags():
-    workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()
+    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()
+    promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()
     release_helper = (REPO_ROOT / "release.py").read_text()
-    assert "- 'v*'" in workflow
-    assert "startsWith(github.ref, 'refs/tags/v')" in workflow
-    assert "DB_PATH=/app/data/debridpulse.db" in workflow
+    assert "- 'v*'" in image_workflow
+    assert "- 'v*'" in promotion_workflow
+    assert 'target_tag="$GITHUB_REF_NAME"' in promotion_workflow
+    assert "type=ref,event=tag" not in image_workflow
+    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow
     version = (REPO_ROOT / "VERSION").read_text().strip()
     parsed = Version(version)
     assert parsed.release[:2] == (1, 0)

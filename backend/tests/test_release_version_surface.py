@@ -28,6 +28,11 @@ def test_release_container_metadata_uses_authoritative_version_file() -> None:
         workflow_text = read(ROOT / ".github" / "workflows" / workflow_name)
         assert release_branch in workflow_text
 
-    # Normal end-user deployments track the promoted main image via latest,
-    # while staging/release branches retain immutable SHA publication only.
-    assert "type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}" in workflow
+    # Fork Image is now immutable-only. Mutable aliases are owned by the
+    # exact-SHA Release Promotion gate after all independent qualifiers pass.
+    promotion = read(ROOT / ".github" / "workflows" / "release-promotion.yml")
+    assert "type=raw,value=latest" not in workflow
+    assert "type=ref,event=tag" not in workflow
+    assert 'target_tag="latest"' in promotion
+    assert 'target_tag="$GITHUB_REF_NAME"' in promotion
+    assert '"Fork Image"' in promotion
