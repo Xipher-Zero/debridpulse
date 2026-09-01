@@ -68,11 +68,22 @@ jobs:
           cd backend
           ruff check api auth core db services main.py --select F821,F822,F823
       - name: Full regression suite
+        id: regression
+        shell: bash
+        run: |
+          set -o pipefail
+          cd backend
+          python -m pytest tests/ -q --tb=short 2>&1 | tee ../v1111-pytest-failures.txt
+      - name: Persist regression diagnostics
+        if: failure() && steps.regression.outcome == 'failure'
         shell: bash
         run: |
           set -euo pipefail
-          cd backend
-          python -m pytest tests/ -v --tb=short
+          git config user.name "Xipher-Zero"
+          git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
+          git add v1111-pytest-failures.txt
+          git commit -m "chore: capture canonicalization test failures"
+          git push origin HEAD:1.0.11-hotfix1
       - name: Python compile
         run: python -m compileall -q backend
       - name: Architecture integrity
@@ -100,7 +111,8 @@ jobs:
             scripts/_canonicalize_frontend_runtime_css.py \
             .github/workflows/_canonicalize-runtime-css.yml \
             .github/workflows/_audit-v1111-frontend.yml \
-            v1111-frontend-census.txt
+            v1111-frontend-census.txt \
+            v1111-pytest-failures.txt
           git config user.name "Xipher-Zero"
           git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
           git add -A
