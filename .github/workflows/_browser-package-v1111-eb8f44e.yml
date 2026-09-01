@@ -1,0 +1,308 @@
+name: Browser qualify and package v1.0.11.1 eb8f44e
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_browser-package-v1111-eb8f44e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  CANDIDATE_SHA: eb8f44e239d1930fd93aaec70c1f055011d30dff
+  CANDIDATE_VERSION: 1.0.11.1
+  IMAGE_TAG: local/debridpulse:qual-eb8f44e
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  browser:
+    name: Browser cold-load, navigation, responsive, theme, dialogs, failure paths
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: eb8f44e239d1930fd93aaec70c1f055011d30dff
+          fetch-depth: 1
+
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+
+      - name: Build and start exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag "$IMAGE_TAG" .
+          docker run -d --name dp-browser \
+            -p 127.0.0.1:18080:8080 \
+            -e PUID=12345 -e PGID=12345 \
+            -e CONFIG_PATH=/app/config/config.json \
+            -e DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/api/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs dp-browser || true
+          exit 1
+
+      - name: Install browser harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+
+      - name: Run browser qualification
+        shell: bash
+        env:
+          NODE_PATH: /tmp/dp-browser/node_modules
+        run: |
+          set -euo pipefail
+          export CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const puppeteer = require('puppeteer-core');
+          const base = 'http://127.0.0.1:18080/';
+          const retired = [
+            '/ui-presentation-loader.js','/ui-shell-runtime.js','/ui-page-finalization.js',
+            '/ui-visual-behavior-fixes.js','/ui-help-chrome.js','/ui-settings-auth-resilience.js',
+            '/ui-settings-authentication.js','/ui-settings-authentication-polish.js',
+            '/ui-settings-authentication-oidc.js','/ui-settings-authentication-callback.js'
+          ];
+          const views = ['dashboard','torrents','events','stats','settings','help'];
+          const expectedTitles = {
+            dashboard:'Dashboard', torrents:'Downloads', events:'Activity Log',
+            stats:'Statistics', settings:'Settings', help:'Help & License'
+          };
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+          async function normalPass(browser, width, height) {
+            const page = await browser.newPage();
+            await page.setViewport({width,height});
+            await page.setCacheEnabled(false);
+            const requests = [];
+            const pageErrors = [];
+            const badStaticResponses = [];
+            page.on('request', req => { try { requests.push(new URL(req.url()).pathname); } catch (_) {} });
+            page.on('pageerror', err => pageErrors.push(String(err)));
+            page.on('response', res => {
+              try {
+                const u = new URL(res.url());
+                if (u.hostname === '127.0.0.1' && res.status() >= 400 && !u.pathname.startsWith('/api/')) {
+                  badStaticResponses.push(`${res.status()} ${u.pathname}`);
+                }
+              } catch (_) {}
+            });
+
+            await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+            await page.waitForFunction(() => typeof window.nav === 'function' && window.DPIcons && document.querySelector('#view-dashboard.active'),{timeout:12000});
+            for (const path of retired) assert(!requests.includes(path),`retired runtime requested: ${path}`);
+            const initial = await page.evaluate(() => ({
+              settings: document.getElementById('view-settings').innerHTML.trim(),
+              help: document.getElementById('view-help').innerHTML.trim(),
+              renderSettings: typeof window.renderSettings,
+              getFormSettings: typeof window.getFormSettings,
+              switchSettingsTab: typeof window.switchSettingsTab,
+              dpSettings: typeof window.DPSettingsPage,
+              dpStatistics: typeof window.DPStatisticsLifecycle,
+              dpHelp: typeof window.DPHelpPage
+            }));
+            assert.equal(initial.settings,'');
+            assert.equal(initial.help,'');
+            assert.equal(initial.renderSettings,'undefined');
+            assert.equal(initial.getFormSettings,'undefined');
+            assert.equal(initial.switchSettingsTab,'undefined');
+            assert.equal(initial.dpSettings,'object');
+            assert.equal(initial.dpStatistics,'object');
+            assert.equal(initial.dpHelp,'object');
+
+            for (const view of views) {
+              if (view === 'settings' || view === 'help') {
+                await page.evaluate(v => {
+                  const root = document.getElementById(`view-${v}`);
+                  window.__dpFirstCanonicalRender = null;
+                  window.__dpRenderObserver?.disconnect?.();
+                  window.__dpRenderObserver = new MutationObserver(() => {
+                    if (!window.__dpFirstCanonicalRender && root.innerHTML.trim()) window.__dpFirstCanonicalRender = root.innerHTML;
+                  });
+                  window.__dpRenderObserver.observe(root,{childList:true,subtree:true});
+                },view);
+              }
+              await page.evaluate(v => document.querySelector(`.nav-item[data-view="${v}"]`).click(),view);
+              await page.waitForFunction(v => document.getElementById(`view-${v}`)?.classList.contains('active'),{timeout:12000},view);
+              await page.waitForFunction((v,title) => document.getElementById('page-title').textContent.trim() === title,{timeout:12000},view,expectedTitles[view]);
+              if (view === 'settings' || view === 'help') {
+                await page.waitForFunction(v => document.getElementById(`view-${v}`).children.length > 0,{timeout:12000},view);
+                await delay(120);
+                const render = await page.evaluate(v => ({first:window.__dpFirstCanonicalRender || '',final:document.getElementById(`view-${v}`).innerHTML}),view);
+                assert(render.first.length > 0,`${view} did not render directly`);
+                if (view === 'settings') {
+                  assert(/Sources &amp; Providers|Sources & Providers/.test(render.first),'Settings first render is not canonical Settings');
+                  assert(/Authentication/.test(render.first),'Settings first render lacks canonical Authentication section');
+                } else {
+                  assert(/Field Manual/.test(render.first),'Help first render is not canonical Help');
+                  assert(/dp-help-master-card/.test(render.first),'Help first render lacks canonical master card');
+                }
+              }
+            }
+
+            await page.evaluate(() => document.querySelector('.dp-help-tab[data-tab="license"]').click());
+            await page.waitForFunction(() => !document.querySelector('#dp-help-panel-license')?.hidden,{timeout:5000});
+            const scaleState = await page.$eval('#dp-help-tab-license img', img => ({complete:img.complete,width:img.naturalWidth,src:img.getAttribute('src')}));
+            assert.equal(scaleState.src,'/icons/lucide/scale.svg');
+            assert(scaleState.complete && scaleState.width > 0,'License scale icon failed to load');
+            await page.evaluate(() => document.querySelector('.dp-help-local-document-button[data-legal-document="gpl"]').click());
+            await page.waitForSelector('.dp-help-legal-dialog',{timeout:5000});
+            await page.waitForFunction(() => {
+              const body = document.querySelector('.dp-help-legal-document');
+              return body && body.textContent.trim() && body.textContent.trim() !== 'Loading…';
+            },{timeout:10000});
+            const modal = await page.evaluate(() => ({
+              title: document.getElementById('dp-help-legal-dialog-title')?.textContent || '',
+              body: document.querySelector('.dp-help-legal-document')?.textContent || ''
+            }));
+            assert(/GNU General Public License|GPL/i.test(modal.title));
+            assert(modal.body.length > 500,'Bundled GPL document did not render');
+            await page.keyboard.press('Escape');
+            await page.waitForFunction(() => !document.querySelector('.dp-help-legal-dialog'),{timeout:5000});
+
+            for (let cycle=0; cycle<3; cycle++) {
+              for (const view of views.slice().reverse()) {
+                await page.evaluate(v => document.querySelector(`.nav-item[data-view="${v}"]`).click(),view);
+              }
+            }
+            await page.evaluate(() => document.querySelector('.nav-item[data-view="dashboard"]').click());
+            await page.waitForFunction(() => document.querySelector('#view-dashboard.active'),{timeout:12000});
+            const beforeLight = await page.evaluate(() => document.body.classList.contains('light'));
+            await page.evaluate(() => document.getElementById('theme-toggle').click());
+            await page.waitForFunction(before => document.body.classList.contains('light') !== before,{timeout:5000},beforeLight);
+            await page.evaluate(() => document.getElementById('theme-toggle').click());
+            await page.waitForFunction(before => document.body.classList.contains('light') === before,{timeout:5000},beforeLight);
+
+            await page.reload({waitUntil:'domcontentloaded',timeout:20000});
+            await page.waitForFunction(() => document.querySelector('#view-dashboard.active'),{timeout:12000});
+            const afterReload = await page.evaluate(() => ({settings:document.getElementById('view-settings').innerHTML.trim(),help:document.getElementById('view-help').innerHTML.trim()}));
+            assert.equal(afterReload.settings,'');
+            assert.equal(afterReload.help,'');
+            for (const path of retired) assert(!requests.includes(path),`retired runtime requested after reload: ${path}`);
+            assert.deepEqual(pageErrors,[],`browser page errors: ${pageErrors.join(' | ')}`);
+            assert.deepEqual(badStaticResponses,[],`bad local static responses: ${badStaticResponses.join(' | ')}`);
+            await page.close();
+          }
+
+          async function requiredOwnerFailurePass(browser, target, blockedPath) {
+            const page = await browser.newPage();
+            await page.setRequestInterception(true);
+            page.on('request', req => {
+              const path = new URL(req.url()).pathname;
+              if (path === blockedPath) req.abort(); else req.continue();
+            });
+            await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+            await page.waitForFunction(() => typeof window.nav === 'function',{timeout:12000});
+            assert.equal(await page.$eval(`#view-${target}`,el => el.innerHTML.trim()),'');
+            await page.evaluate(v => document.querySelector(`.nav-item[data-view="${v}"]`).click(),target);
+            await delay(350);
+            const state = await page.evaluate(v => ({active:document.getElementById(`view-${v}`).classList.contains('active'),html:document.getElementById(`view-${v}`).innerHTML.trim()}),target);
+            assert.equal(state.active,true);
+            assert.equal(state.html,'',`missing canonical ${target} owner exposed a fallback substrate`);
+            await page.close();
+          }
+
+          async function decorativeAssetFailurePass(browser) {
+            const page = await browser.newPage();
+            await page.setRequestInterception(true);
+            page.on('request', req => {
+              const path = new URL(req.url()).pathname;
+              if (path === '/icons/dp/sidebar-wave-accent.svg') req.abort(); else req.continue();
+            });
+            await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+            await page.waitForFunction(() => document.querySelector('#view-dashboard.active') && window.DPIcons,{timeout:12000});
+            await page.evaluate(() => document.querySelector('.nav-item[data-view="help"]').click());
+            await page.waitForFunction(() => document.querySelector('#view-help.active')?.children.length > 0,{timeout:12000});
+            await page.close();
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({executablePath:process.env.CHROME_BIN,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            try {
+              await normalPass(browser,1440,1000);
+              await normalPass(browser,390,844);
+              await requiredOwnerFailurePass(browser,'settings','/ui-settings-page.js');
+              await requiredOwnerFailurePass(browser,'help','/ui-help-page.js');
+              await decorativeAssetFailurePass(browser);
+              console.log('BROWSER_QUALIFICATION=PASS');
+            } finally { await browser.close(); }
+          })().catch(error => { console.error(error); process.exit(1); });
+          NODE
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs dp-browser || true
+
+  package:
+    name: Package local installable build
+    needs: browser
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: eb8f44e239d1930fd93aaec70c1f055011d30dff
+          fetch-depth: 1
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+      - name: Build exact qualified image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag debridpulse:1.0.11.1-local-eb8f44e .
+      - name: Export local build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p local-build
+          docker save debridpulse:1.0.11.1-local-eb8f44e | gzip -9 > local-build/debridpulse-v1.0.11.1-eb8f44e-docker-image.tar.gz
+          sha256sum local-build/debridpulse-v1.0.11.1-eb8f44e-docker-image.tar.gz > local-build/SHA256SUMS
+          printf '%s\n' "$CANDIDATE_SHA" > local-build/CANDIDATE_SHA
+          cat > local-build/INSTALL.txt <<'EOF'
+          DebridPulse v1.0.11.1 local test build
+          Candidate: eb8f44e239d1930fd93aaec70c1f055011d30dff
+
+          Load:
+            gunzip -c debridpulse-v1.0.11.1-eb8f44e-docker-image.tar.gz | docker load
+
+          Image:
+            debridpulse:1.0.11.1-local-eb8f44e
+
+          This artifact is for local testing only. It has not been promoted or published as a release image.
+          EOF
+          ls -lh local-build
+      - name: Upload local installable build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: debridpulse-v1.0.11.1-eb8f44e-local-build
+          path: local-build/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
