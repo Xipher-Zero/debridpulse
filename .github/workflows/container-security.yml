@@ -8,6 +8,7 @@ on:
       - main
       - '1.0.11'
       - 'staging/**'
+      - 'audit/**'
   pull_request:
     branches:
       - main
