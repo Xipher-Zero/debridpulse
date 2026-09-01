@@ -1,0 +1,90 @@
+name: Diagnose browser eb8f44e
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_diagnose-browser-eb8f44e.yml
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: eb8f44e239d1930fd93aaec70c1f055011d30dff
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: eb8f44e239d1930fd93aaec70c1f055011d30dff
+          fetch-depth: 1
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Build and start
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --build-arg APP_VERSION=1.0.11.1 --build-arg VCS_REF="$CANDIDATE_SHA" -t local/dp:diag .
+          docker run -d --name dpdiag -p 127.0.0.1:18080:8080 -e PUID=12345 -e PGID=12345 -e CONFIG_PATH=/app/config/config.json -e DB_PATH=/app/data/debridpulse.db local/dp:diag
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/health >/dev/null && exit 0; sleep 2; done
+          docker logs dpdiag
+          exit 1
+      - name: Install browser harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+      - name: Instrument navigation and Help lifecycle
+        shell: bash
+        env:
+          NODE_PATH: /tmp/dp-browser/node_modules
+        run: |
+          set -euo pipefail
+          export CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const base='http://127.0.0.1:18080/';
+          const views=['dashboard','torrents','events','stats','settings','help'];
+          const expected={dashboard:'Dashboard',torrents:'Downloads',events:'Event Log',stats:'Statistics',settings:'Settings',help:'Help & License'};
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:process.env.CHROME_BIN,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            try {
+              for (const [w,h] of [[1440,1000],[390,844]]) {
+                const page=await browser.newPage();
+                await page.setViewport({width:w,height:h});
+                page.on('pageerror',e=>console.log(`[PAGEERROR ${w}] ${e}`));
+                page.on('console',m=>{ if(['error','warning'].includes(m.type())) console.log(`[CONSOLE ${w} ${m.type()}] ${m.text()}`); });
+                await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+                await page.waitForFunction(()=>typeof window.nav==='function'&&window.DPIcons&&document.querySelector('#view-dashboard.active'),{timeout:12000});
+                console.log(`[INITIAL ${w}]`,await page.evaluate(()=>({title:document.getElementById('page-title')?.textContent,settingsLen:document.getElementById('view-settings')?.innerHTML.trim().length,helpLen:document.getElementById('view-help')?.innerHTML.trim().length,loadHelp:typeof window.loadHelp,dpHelp:typeof window.DPHelpPage})));
+                for(const v of views){
+                  console.log(`[CLICK ${w}] ${v}`);
+                  await page.evaluate(x=>document.querySelector(`.nav-item[data-view="${x}"]`).click(),v);
+                  await sleep(250);
+                  const s=await page.evaluate(x=>({title:document.getElementById('page-title')?.textContent,active:document.getElementById(`view-${x}`)?.classList.contains('active'),activeNav:[...document.querySelectorAll('.nav-item.active')].map(n=>n.dataset.view),len:document.getElementById(`view-${x}`)?.innerHTML.trim().length,helpRendered:document.getElementById('view-help')?.dataset.dpHelpRendered||null}),v);
+                  console.log(`[STATE ${w}] ${v} expected=${JSON.stringify(expected[v])} actual=${JSON.stringify(s)}`);
+                  if(s.title!==expected[v]) throw new Error(`TITLE_MISMATCH width=${w} view=${v} expected=${expected[v]} actual=${s.title}`);
+                  if(!s.active) throw new Error(`ACTIVE_MISMATCH width=${w} view=${v}`);
+                  if((v==='settings'||v==='help')&&!s.len) throw new Error(`EMPTY_OWNER width=${w} view=${v}`);
+                }
+                await page.evaluate(()=>document.querySelector('.dp-help-tab[data-tab="license"]').click());
+                await sleep(100);
+                console.log(`[LICENSE ${w}]`,await page.evaluate(()=>({hidden:document.getElementById('dp-help-panel-license')?.hidden,scale:document.querySelector('#dp-help-tab-license img')?.getAttribute('src'),scaleWidth:document.querySelector('#dp-help-tab-license img')?.naturalWidth,button:!!document.querySelector('.dp-help-local-document-button[data-legal-document="gpl"]')})));
+                await page.close();
+              }
+            } finally { await browser.close(); }
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Logs on failure
+        if: failure()
+        run: docker logs dpdiag || true
