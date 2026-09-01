@@ -92,6 +92,34 @@ jobs:
           PY
           python - <<'PY'
           from pathlib import Path
+          import re
+
+          path = Path('backend/tests/test_ui_transfer_contract.py')
+          source = path.read_text(encoding='utf-8')
+          pattern = r"def test_recent_activity_reclaims_only_added_column_slack_for_actions\(\) -> None:\n.*?(?=\n\ndef |\Z)"
+          replacement = '''def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
+              css = DASHBOARD.read_text(encoding="utf-8")
+              marker = "/* Consolidated from ui-dashboard-final.css. */"
+              assert marker in css
+              final_calibration = css.split(marker, 1)[1]
+
+              for column in (1, 2, 3, 4):
+                  assert f".t-table th:nth-child({column})" not in final_calibration
+                  assert f".t-table td:nth-child({column})" not in final_calibration
+
+              assert ".t-table th:nth-child(5)" in final_calibration
+              assert ".t-table td:nth-child(5)" in final_calibration
+              assert "width: 8% !important" in final_calibration
+              assert ".t-table th:nth-child(6)" in final_calibration
+              assert ".t-table td:nth-child(6)" in final_calibration
+              assert "width: 9% !important" in final_calibration'''
+          source, count = re.subn(pattern, replacement, source, count=1, flags=re.MULTILINE | re.DOTALL)
+          if count != 1:
+              raise RuntimeError(f'folded Dashboard final contract count was {count}, expected 1')
+          path.write_text(source.rstrip() + '\n', encoding='utf-8')
+          PY
+          python - <<'PY'
+          from pathlib import Path
           for name in (
               'app.js',
               'operator-title.js',
