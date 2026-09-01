@@ -152,35 +152,52 @@ test('Dashboard runtime hydrates KPI and sparkline state and submission field pr
   expect(runtime.errors).toEqual([]);
 });
 
-test('Downloads, Statistics, and Settings expose their canonical interactive controls', async ({ page }) => {
+test('Downloads exposes canonical filter, search, selection, and bulk controls', async ({ page }) => {
   await isolateExternalFonts(page);
   const runtime = observeRuntime(page);
   await page.goto('/');
-
   await openView(page, 'torrents', 'Downloads');
+
   await expect(page.locator('#view-torrents .filter-tabs .ftab')).toHaveCount(7);
-  await page.locator('#view-torrents .ftab[data-dp-status="error"]').click();
-  await expect(page.locator('#view-torrents .ftab[data-dp-status="error"]')).toHaveAttribute('aria-selected', 'true');
+  const errorFilter = page.locator('#view-torrents .ftab[data-dp-status="error"]');
+  await errorFilter.click();
+  await expect(errorFilter).toHaveClass(/\bactive\b/);
+  await expect(errorFilter).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#torrent-search').fill('browser-smoke-query');
   expect(await page.locator('#torrent-search').inputValue()).toBe('browser-smoke-query');
   await expect(page.locator('#bulk-bar')).toBeVisible();
   await expect(page.locator('#bulk-bar .dp-downloads-bulk-action')).toHaveCount(5);
   await expect(page.locator('#chk-all')).toBeVisible();
+  expect(runtime.errors).toEqual([]);
+});
 
+test('Statistics canonical shell and period controls render and transition', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const runtime = observeRuntime(page);
+  await page.goto('/');
   await openView(page, 'stats', 'Statistics');
+
   await expect(page.locator('.dp-statistics-master')).toBeVisible();
   await expect(page.locator('#detail-stat-cards [data-dp-stats-metric]')).toHaveCount(5);
-  await page.locator('#stats-period-tabs .ftab[data-period="24h"]').click();
-  await expect(page.locator('#stats-period-tabs .ftab[data-period="24h"]')).toHaveClass(/\bactive\b/);
+  const period = page.locator('#stats-period-tabs .ftab[data-period="24h"]');
+  await period.click();
+  await expect(period).toHaveClass(/\bactive\b/);
+  expect(runtime.errors).toEqual([]);
+});
 
+test('Settings clean shell renders all tabs and survives representative tab transitions', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const runtime = observeRuntime(page);
+  await page.goto('/');
   await openView(page, 'settings', 'Settings');
+
   await expect(page.locator('.dp-settings-tabs .stab')).toHaveCount(6);
   for (const tab of ['downloads', 'authentication', 'maintenance', 'sources']) {
-    await page.locator(`.dp-settings-tabs .stab[data-tab="${tab}"]`).click();
-    await expect(page.locator(`.dp-settings-tabs .stab[data-tab="${tab}"]`)).toHaveAttribute('aria-selected', 'true');
+    const button = page.locator(`.dp-settings-tabs .stab[data-tab="${tab}"]`);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
   }
-
   expect(runtime.errors).toEqual([]);
 });
 
