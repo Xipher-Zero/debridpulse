@@ -1,4 +1,4 @@
-# CodeQL static analysis — runs on main, the current release branch, staging/audit candidates, and weekly.
+# CodeQL static analysis — runs on main, the current release branch, staging/audit candidates, release tags, and weekly.
 # Scans Python backend, browser JavaScript, and GitHub Actions workflow files.
 name: CodeQL
 
@@ -9,6 +9,9 @@ on:
       - main
       - '1.0.11'
       - 'audit/**'
+    tags:
+      - 'v*'
+      - 'internal-v*'
   pull_request:
     branches:
       - main
