@@ -8,6 +8,9 @@ on:
       - '1.0.11'
       - 'staging/**'
       - 'audit/**'
+    tags:
+      - 'v*'
+      - 'internal-v*'
   pull_request:
     branches:
       - main
