@@ -165,7 +165,7 @@ test('Downloads exposes canonical filter, search, selection, and bulk controls',
   await expect(errorFilter).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#torrent-search').fill('browser-smoke-query');
   expect(await page.locator('#torrent-search').inputValue()).toBe('browser-smoke-query');
-  await expect(page.locator('#bulk-bar')).toBeVisible();
+  await expect(page.locator('#bulk-bar')).toBeHidden();
   await expect(page.locator('#bulk-bar .dp-downloads-bulk-action')).toHaveCount(5);
   await expect(page.locator('#chk-all')).toBeVisible();
   expect(runtime.errors).toEqual([]);
