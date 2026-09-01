@@ -300,7 +300,7 @@ class DashboardContractTests(unittest.TestCase):
         self.assertNotIn('data-view="aria2queue"', html)
         self.assertNotIn('id="t-magnet"', html)
         self.assertIn('<span class="nav-label">Downloads</span>', html)
-        self.assertIn('id="torrent-card-title">All Downloads</span>', html)
+        self.assertIn('id="torrent-card-title">Download Queue</span>', html)
         self.assertRegex(
             html,
             r'<script src="/app\.js\?v=\d+" defer></script>',
@@ -312,7 +312,7 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("setButtonPending(button, true, 'Adding…')", js)
         self.assertIn("🔗 Direct link", js)
         self.assertIn("torrents:'Downloads'", js)
-        self.assertIn("`All Downloads (${torrentTotal})`", js)
+        self.assertNotIn("`All Downloads (${torrentTotal})`", js)
         self.assertIn("function sourceLabel(source)", js)
         self.assertIn("function transferDisplayStatus(t)", js)
         icons = (repo_root / "frontend/static/operator-title.js").read_text()

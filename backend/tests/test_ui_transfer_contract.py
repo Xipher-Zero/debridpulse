@@ -15,7 +15,7 @@ DASHBOARD = STATIC / "ui-dashboard.css"
 def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     dashboard = "/ui-dashboard.css?v=20"
-    downloads = "/ui-downloads-page.css?v=27"
+    downloads = "/ui-downloads-page.css?v=28"
     help_page = "/ui-help-page.css?v=22"
     transfer = "/ui-transfer-contract.css?v=31"
 

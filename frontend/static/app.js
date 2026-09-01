@@ -747,7 +747,7 @@ async function loadStats() {
       setDot('api', 'ok', 'AllDebrid: online');
       // ── stat cards ─────────────────────────────────────────────────────
       // Soft-deleted rows remain in /stats for diagnostics/duplicate revival,
-      // but they are intentionally absent from the normal All Downloads view.
+      // but they are intentionally absent from the normal Downloads view.
       // User-facing totals and Queue Health therefore use the same visible universe.
       const total = Object.entries(bs)
         .filter(([status]) => status !== 'deleted')
@@ -1117,8 +1117,6 @@ async function loadTorrents() {
     const {items, total} = await api('GET', '/torrents?'+params.toString());
     torrentTotal = total ?? items.length;
     const tb = document.getElementById('t-tbody');
-    const title = document.getElementById('torrent-card-title');
-    if (title) title.textContent = `All Downloads (${torrentTotal})`;
     renderTorrentPagination(torrentTotal, _limit, _offset);
     if (!items.length) {
       tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon">⬇️</div>${currentTorrentSearch || currentFilter ? 'No downloads match the current filter or search.' : 'No downloads found.'}</div></td></tr>`;

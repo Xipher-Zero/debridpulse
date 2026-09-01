@@ -26,7 +26,7 @@ def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
     statistics = "/ui-statistics-page.css?v=21"
-    downloads = "/ui-downloads-page.css?v=27"
+    downloads = "/ui-downloads-page.css?v=28"
     help_page = "/ui-help-page.css?v=22"
     for layer in (tokens, universal, dashboard, statistics, downloads, help_page):
         assert layer in overlay
@@ -118,7 +118,7 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
     runtime = RUNTIME.read_text(encoding="utf-8")
     required = (
         "card-download.svg?v=11",
-        "All Downloads",
+        "Download Queue",
         "download tracked",
         "downloads tracked",
         "Search downloads…",
@@ -126,8 +126,6 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
         "No downloads match your current filters.",
         "No downloads match your search.",
         "document.getElementById('dash-tbody')",
-        "torrent-page-size",
-        "wrapper.remove()",
         "Showing all ",
         "matching downloads",
         "dp-pager-current",
@@ -144,10 +142,12 @@ def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> No
     assert "api('DELETE'" not in runtime
 
 
-def test_downloads_runtime_remains_a_presentation_shim() -> None:
+def test_downloads_runtime_is_loaded_once_by_the_canonical_document() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
-    assert "/ui-downloads-runtime.js?v=22" in operator
-    assert "data-dp-downloads-runtime" in operator
+    index = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert '<script src="/ui-downloads-runtime.js?v=24" defer data-dp-downloads-runtime="1"></script>' in index
+    assert "data-dp-downloads-runtime" not in operator
+    assert "/ui-downloads-runtime.js" not in operator
 
 
 def test_downloads_header_uses_registered_download_true_vector() -> None:
