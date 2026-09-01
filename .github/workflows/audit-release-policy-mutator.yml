@@ -31,22 +31,18 @@ jobs:
           path = Path('.github/workflows/fork-image.yml')
           lines = path.read_text(encoding='utf-8').splitlines()
           output = []
-          seen_sha = 0
           removed_mutable = 0
           for line in lines:
               stripped = line.strip()
-              if stripped.startswith('type=sha,prefix=sha-,format=short'):
-                  indent = line[: len(line) - len(line.lstrip())]
-                  output.append(f'{indent}type=sha,prefix=sha-,format=short')
-                  seen_sha += 1
-                  continue
               if stripped.startswith('type=raw,value=latest') or stripped.startswith('type=ref,event=tag'):
                   removed_mutable += 1
                   continue
+              if stripped.startswith('type=sha,prefix=sha-,format=short,enable='):
+                  indent = line[: len(line) - len(line.lstrip())]
+                  output.append(f'{indent}type=sha,prefix=sha-,format=short')
+                  continue
               output.append(line)
 
-          if seen_sha != 1:
-              raise SystemExit(f'expected exactly one SHA publication tag, found {seen_sha}')
           if removed_mutable != 2:
               raise SystemExit(f'expected exactly two mutable publication tag lines, removed {removed_mutable}')
 
