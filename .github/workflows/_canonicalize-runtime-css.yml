@@ -5,6 +5,7 @@ on:
     branches: [1.0.11-hotfix1]
     paths:
       - scripts/_canonicalize_frontend_runtime_css.py
+      - scripts/_repair_canonical_contract_tests.py
       - .github/workflows/_canonicalize-runtime-css.yml
   workflow_dispatch:
 
@@ -43,6 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/_canonicalize_frontend_runtime_css.py
+          python scripts/_repair_canonical_contract_tests.py
           python - <<'PY'
           from pathlib import Path
           for name in (
@@ -109,6 +111,7 @@ jobs:
           set -euo pipefail
           rm -f \
             scripts/_canonicalize_frontend_runtime_css.py \
+            scripts/_repair_canonical_contract_tests.py \
             .github/workflows/_canonicalize-runtime-css.yml \
             .github/workflows/_audit-v1111-frontend.yml \
             v1111-frontend-census.txt \
