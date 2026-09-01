@@ -7,6 +7,10 @@
 (function () {
   'use strict';
 
+  let activeBackdrop = null;
+  let activeOpener = null;
+  const helpRoot = () => document.getElementById('view-help');
+
   function focusableElements(dialog) {
     return Array.from(dialog.querySelectorAll(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
@@ -274,16 +278,6 @@
     return true;
   }
 
-  function init() {
-    if (enhance()) return;
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(enhance);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, {once: true});
-  } else {
-    init();
-  }
+  // The Help owner emits this only after its canonical markup exists.
+  document.addEventListener('debridpulse:help-rendered', enhance);
 })();

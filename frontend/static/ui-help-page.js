@@ -700,6 +700,10 @@
   function render() {
     const view = root();
     if (!view) return;
+    if (view.dataset.dpHelpRendered === '1') {
+      activateTab(state.activeTab);
+      return;
+    }
 
     view.classList.add('dp-help-clean-view');
 
@@ -743,18 +747,18 @@
         </div>
       </section>`;
 
+    view.dataset.dpHelpRendered = '1';
     bindEvents(view);
     activateTab(state.activeTab);
+    document.dispatchEvent(new CustomEvent('debridpulse:help-rendered', {detail: {view: 'help'}}));
   }
 
-  function init() {
-    if (!root()) return;
+  function load() {
     render();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
-  } else {
-    init();
-  }
+  // app.js owns generic navigation and calls this canonical Help entry point.
+  window.loadHelp = load;
+  try { loadHelp = load; } catch (_) {}
+  window.DPHelpPage = Object.freeze({load, activateTab});
 })();

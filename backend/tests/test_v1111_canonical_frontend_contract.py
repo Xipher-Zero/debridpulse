@@ -225,7 +225,13 @@ def test_help_is_direct_final_owner_with_seven_reviewed_sections() -> None:
     assert "When intuition fails." in source
     assert "dp-help-master-card" in source
     assert "dp-help-section-card" in source
+    assert "window.loadHelp = load;" in source
+    assert "window.DPHelpPage = Object.freeze({load, activateTab});" in source
+    assert "debridpulse:help-rendered" in source
+    assert "DOMContentLoaded" not in source
     assert "new MutationObserver" not in source
+    assert "if (v === 'help')      loadHelp();" in read(APP)
+    assert (STATIC / "icons" / "lucide" / "scale.svg").is_file()
 
 
 def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> None:
@@ -245,6 +251,12 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
     assert "/api/legal-documents/" in legal
     assert "credentials: 'same-origin'" in legal
     assert "trapDialogKeydown" in legal
+    assert "const helpRoot = () => document.getElementById('view-help');" in legal
+    assert "let activeBackdrop = null;" in legal
+    assert "let activeOpener = null;" in legal
+    assert "debridpulse:help-rendered" in legal
+    assert "requestAnimationFrame" not in legal
+    assert "DOMContentLoaded" not in legal
 
 
 def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> None:

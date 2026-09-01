@@ -87,6 +87,7 @@ function nav(el) {
   if (v === 'events')    loadEvents();
   if (v === 'stats')     loadDetailedStats();
   if (v === 'settings')  loadSettings();
+  if (v === 'help')      loadHelp();
   if (v === 'aria2queue') loadAria2QueueView();
   closeSidebar();
 }
