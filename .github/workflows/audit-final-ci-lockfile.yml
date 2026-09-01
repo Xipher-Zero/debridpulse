@@ -1,0 +1,42 @@
+name: Audit Final CI Lockfile Generator
+
+on:
+  push:
+    branches:
+      - 'audit/v1.0.11.1-post-release-remediation'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: audit/v1.0.11.1-post-release-remediation
+
+      - name: Generate reproducible browser lockfile
+        working-directory: frontend/browser
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts
+          npm audit --audit-level=high
+          test -s package-lock.json
+
+      - name: Commit lockfile and remove generator
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/browser/package-lock.json
+          git rm .github/workflows/audit-final-ci-lockfile.yml
+          git diff --cached --check
+          git commit -m 'ci(browser): lock Playwright dependency graph'
+          git push origin HEAD:audit/v1.0.11.1-post-release-remediation
