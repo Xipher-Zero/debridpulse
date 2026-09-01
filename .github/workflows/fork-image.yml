@@ -327,14 +327,46 @@ jobs:
 
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
-            remote_digest="$(docker buildx imagetools inspect "$tag" | awk '/^Digest:/ {print $2; exit}')"
+            remote_digest=""
+            for attempt in $(seq 1 12); do
+              inspect_output=""
+              if inspect_output="$(docker buildx imagetools inspect "$tag" 2>&1)"; then
+                remote_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect_output")"
+                if [ "$remote_digest" = "$digest" ]; then
+                  break
+                fi
+                echo "Registry digest not converged for $tag on attempt ${attempt}/12: expected $digest, got ${remote_digest:-<empty>}"
+              else
+                echo "Registry visibility check failed for $tag on attempt ${attempt}/12"
+              fi
+
+              if [ "$attempt" -lt 12 ]; then
+                sleep 5
+              fi
+            done
+
             if [ "$remote_digest" != "$digest" ]; then
-              echo "Published tag digest mismatch for $tag: expected $digest, got $remote_digest"
+              echo "Published tag digest mismatch for $tag after retries: expected $digest, got ${remote_digest:-<empty>}"
               exit 1
             fi
           done <<< "$GENERATED_TAGS"
 
-          docker pull "${IMAGE_NAME}@${digest}"
+          pulled=0
+          for attempt in $(seq 1 12); do
+            if docker pull "${IMAGE_NAME}@${digest}"; then
+              pulled=1
+              break
+            fi
+            echo "Published digest pull failed on attempt ${attempt}/12"
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
+          done
+          if [ "$pulled" -ne 1 ]; then
+            echo "Unable to pull published digest after retries: ${IMAGE_NAME}@${digest}"
+            exit 1
+          fi
+
           image_version="$(docker image inspect "${IMAGE_NAME}@${digest}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
           image_revision="$(docker image inspect "${IMAGE_NAME}@${digest}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
           if [ "$image_version" != "$expected_version" ]; then
