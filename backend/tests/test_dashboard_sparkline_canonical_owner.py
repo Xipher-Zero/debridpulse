@@ -16,8 +16,14 @@ def test_dashboard_sparkline_state_is_owned_by_load_stats_not_presentation_runti
     runtime = (STATIC / "ui-runtime.js").read_text()
     assert "recordDashboardMetricHistory({" in app
     assert "debridpulse.dashboard.metric-history.v2" in app
-    assert "dashboardSmoothSparkPath" in app
+    assert "dashboardMonotoneSparkPath" in app
     assert " C ${fmt(cp1.x)}" in app
+    assert "const intervals = points.slice(0, -1).map" in app
+    assert "left.slope * right.slope <= 0" in app
+    assert "endpointTangent" in app
+    assert "clamp(start.y + (tangents[index] * width) / 3" in app
+    assert "dashboardSmoothSparkPath" not in app
+    assert "const tension = 0.82;" not in app
     assert "makeSparkline" not in runtime
     assert "installMetricHistoryHook" not in runtime
     assert "METRIC_HISTORY_KEY" not in runtime
