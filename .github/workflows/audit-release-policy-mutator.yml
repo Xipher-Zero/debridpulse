@@ -1,0 +1,54 @@
+name: Audit Release Policy Mutator
+
+on:
+  push:
+    branches:
+      - 'audit/v1.0.11.1-post-release-remediation'
+
+permissions:
+  contents: write
+
+jobs:
+  mutate-release-policy:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: audit/v1.0.11.1-post-release-remediation
+
+      - name: Make Fork Image SHA-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/fork-image.yml')
+          text = path.read_text(encoding='utf-8')
+          old = """          tags: |\n            type=sha,prefix=sha-,format=short,enable=${{ !startsWith(github.ref, 'refs/tags/') }}\n            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}\n            type=ref,event=tag,enable=${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/internal-v') }}\n"""
+          new = """          tags: |\n            type=sha,prefix=sha-,format=short\n"""
+          if text.count(old) != 1:
+              raise SystemExit('expected mutable publication tag block not found exactly once')
+          text = text.replace(old, new)
+          if 'type=raw,value=latest' in text or 'type=ref,event=tag' in text:
+              raise SystemExit('mutable image-tag generation remains in Fork Image')
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Commit policy change and remove mutator
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/fork-image.yml
+          git rm .github/workflows/audit-release-policy-mutator.yml
+          git diff --cached --check
+          git commit -m 'ci(release): restrict Fork Image to immutable SHA tags'
+          git push origin HEAD:audit/v1.0.11.1-post-release-remediation
