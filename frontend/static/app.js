@@ -753,7 +753,6 @@ async function loadStats() {
         .filter(([status]) => status !== 'deleted')
         .reduce((sum, [, count]) => sum + (Number(count) || 0), 0);
       const completed = s.completed_count ?? bs.completed ?? 0;
-      const queuePct = pct(completed, total || 0);
       document.getElementById('s-total').textContent = total;
       document.getElementById('s-completed').textContent = completed;
       document.getElementById('s-active').textContent = s.active_operations ?? s.active_downloads ?? 0;
@@ -764,12 +763,6 @@ async function loadStats() {
       if (errCard) errCard.style.opacity = errCount > 0 ? '1' : '.6';
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
-      const healthEl = document.getElementById('i-queue-health');
-      if (healthEl) {
-        healthEl.textContent = `${queuePct}%`;
-        healthEl.style.color = queuePct >= 90 ? 'var(--green)' : queuePct >= 70 ? 'var(--accent)' : 'var(--red)';
-      }
-      document.getElementById('i-queue-copy').textContent = `${s.active_operations ?? s.active_downloads ?? 0} active / ${s.queued_downloads||0} queued`;
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
       document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
       document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';

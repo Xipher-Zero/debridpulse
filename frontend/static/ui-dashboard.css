@@ -106,12 +106,6 @@
   line-height: 1.25;
 }
 
-/* The former second Dashboard KPI row is physically moved into Statistics by
-   ui-runtime.js. If the runtime has not initialized yet, avoid a flash of the
-   old dense Dashboard arrangement. */
-#view-dashboard .dash-kpi-strip--dashboard {
-  display: none !important;
-}
 
 /* ── Quick Add ─────────────────────────────────────────────────────────── */
 #view-dashboard .dp-dashboard-quick-add {
@@ -382,7 +376,6 @@ body.dp-v11-structural #view-dashboard .dhs-sub {
   filter: drop-shadow(0 0 3px currentColor);
 }
 
-body.dp-v11-structural #view-dashboard .dash-kpi-strip--dashboard { display: none !important; }
 
 body.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
 body.dp-v11-structural #view-dashboard .dp-dashboard-activity {

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=15">
-<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=25" data-dp-v11-styles="1">
+<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=26" data-dp-v11-styles="1">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 </head>
@@ -178,45 +178,6 @@
         </div>
       </div>
 
-      <!-- ── KPI Strip ─────────────────────────────────────────────────────── -->
-      <div class="dash-kpi-strip dash-kpi-strip--dashboard">
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-queue-health">—</div>
-          <div class="dash-kpi-lbl">Queue Health</div>
-          <div class="dash-kpi-sub" id="i-queue-copy"></div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-last-day">—</div>
-          <div class="dash-kpi-lbl">Last 24 h</div>
-          <div class="dash-kpi-sub">completed</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-last-week">—</div>
-          <div class="dash-kpi-lbl">Last 7 Days</div>
-          <div class="dash-kpi-sub">completed</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-success-rate">—</div>
-          <div class="dash-kpi-lbl">Success Rate</div>
-          <div class="dash-kpi-sub">of all finished</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-avg-duration">—</div>
-          <div class="dash-kpi-lbl">Avg Duration</div>
-          <div class="dash-kpi-sub">per download</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-avg-size">—</div>
-          <div class="dash-kpi-lbl">Avg Size</div>
-          <div class="dash-kpi-sub">per completed</div>
-        </div>
-      </div>
-
       <!-- ── Unified transfer submission ───────────────────────────────────── -->
       <div class="card" style="margin-bottom:14px">
         <div class="card-header">
@@ -337,9 +298,16 @@
     </div>
 
     <!-- Statistics -->
-    <div class="view" id="view-stats">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--text3);font-weight:500">Period:</span>
+    <div class="view card dp-statistics-master" id="view-stats">
+      <div class="card-header dp-stats-master-header">
+        <div class="dp-stats-master-title">
+          <img src="/icons/dp/statistics.svg" alt="" aria-hidden="true" class="dp-icon dp-statistics-title-icon">
+          <div class="dp-stats-heading-copy">
+            <span class="dp-stats-heading">By the Numbers</span>
+            <span class="dp-stats-subtitle">Because vibes are not a performance metric.</span>
+          </div>
+        </div>
+        <span class="dp-stats-period-label">Period:</span>
         <div class="filter-tabs" id="stats-period-tabs">
           <div class="ftab" data-period="1h" onclick="setStatsPeriod(this)">1h</div>
           <div class="ftab" data-period="24h" onclick="setStatsPeriod(this)">24h</div>
@@ -349,17 +317,34 @@
           <div class="ftab" data-period="all" onclick="setStatsPeriod(this)">All time</div>
         </div>
       </div>
-      <div class="tab-grid" id="detail-stat-cards"><div class="metric-card"><div class="metric-label">Library</div><div class="metric-value">&#8212;</div><div class="metric-sub">Loading&#8230;</div></div></div>
-      <div class="scard" style="margin-bottom:14px"><div class="scard-header">&#128200; <span id="chart-title">Completions — last 7 days</span></div><div class="scard-body" style="padding:12px"><div class="chart-wrap"><canvas id="daily-chart"></canvas></div></div></div>
-      <div class="split-grid">
-        <div class="list-card"><div class="card-header"><span class="card-title">Download Status</span></div><div class="card-body" id="detail-torrent-status"><div class="empty">Loading&#8230;</div></div></div>
-        <div class="list-card"><div class="card-header"><span class="card-title">File Status</span></div><div class="card-body" id="detail-file-status"><div class="empty">Loading&#8230;</div></div></div>
-      </div>
-      <div class="split-grid">
-        <div class="list-card"><div class="card-header"><span class="card-title">Monitor Levels</span></div><div class="card-body" id="detail-event-levels"><div class="empty">Loading&#8230;</div></div></div>
-        <div class="list-card"><div class="card-header"><span class="card-title">Top Sources</span></div><div class="card-body" id="detail-sources"><div class="empty">Loading&#8230;</div></div></div>
+      <div class="card-body dp-stats-master-body">
+        <div class="tab-grid" id="detail-stat-cards">
+          <div class="metric-card" data-dp-stats-metric="downloads"><div class="metric-label">Downloads Added</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads added during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="completed"><div class="metric-label">Downloads Completed</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads completed during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="progress"><div class="metric-label">In Progress</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads still in progress that were added during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="success"><div class="metric-label">Success Rate</div><div class="metric-value">&#8212;</div><div class="metric-sub">Share of finished downloads completed successfully during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="data"><div class="metric-label">Total Data Downloaded</div><div class="metric-value">&#8212;</div><div class="metric-sub">Total data downloaded during the last 7 days.</div></div>
+        </div>
+        <div class="dash-kpi-strip dp-stats-history-grid">
+          <div class="dash-kpi dp-stats-kpi-day"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/calendar-24.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-day">&#8212;</div><div class="dash-kpi-lbl">Last 24 Hours</div><div class="dash-kpi-sub">Completed downloads over the last 24 hours.</div></div>
+          <div class="dash-kpi dp-stats-kpi-week"><span class="dp-icon-frame dp-icon-frame--purple dp-kpi-icon"><img src="/icons/dp/calendar-7.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-week">&#8212;</div><div class="dash-kpi-lbl">Last 7 Days</div><div class="dash-kpi-sub">Completed downloads over the last 7 days.</div></div>
+          <div class="dash-kpi dp-stats-kpi-duration"><span class="dp-icon-frame dp-icon-frame--amber dp-kpi-icon"><img src="/icons/dp/clock-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-duration">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD TIME</div><div class="dash-kpi-sub">Average completion time for downloads to finish.</div></div>
+          <div class="dash-kpi dp-stats-kpi-success"><span class="dp-icon-frame dp-icon-frame--green dp-kpi-icon"><img src="/icons/dp/heartbeat-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-success-rate">&#8212;</div><div class="dash-kpi-lbl">LIFE-TIME SUCCESS RATE</div><div class="dash-kpi-sub">Share of all recorded finished downloads completed successfully.</div></div>
+          <div class="dash-kpi dp-stats-kpi-size"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/cube.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-size">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD SIZE</div><div class="dash-kpi-sub">Average size of completed downloads.</div></div>
+        </div>
+        <div class="scard dp-stats-chart dp-list-workspace-surface">
+          <div class="scard-header"><img src="/icons/dp/card-download.svg" alt="" aria-hidden="true" class="dp-icon dp-stats-chart-title-icon"><span class="dp-stats-chart-heading-copy"><span class="dp-stats-chart-heading">Completions</span><span id="chart-title" class="dp-stats-chart-subtitle">Completed downloads in the last 7 days.</span></span></div>
+          <div class="scard-body"><div class="chart-wrap"><canvas id="daily-chart"></canvas></div></div>
+        </div>
+        <div class="dp-stats-breakdown-grid">
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Download Status</span></div><div class="card-body" id="detail-torrent-status"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">File Status</span></div><div class="card-body" id="detail-file-status"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Monitor Levels</span></div><div class="card-body" id="detail-event-levels"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Top Sources</span></div><div class="card-body" id="detail-sources"><div class="empty">Loading&#8230;</div></div></div>
+        </div>
       </div>
     </div>
+
     <!-- Changelog -->
     <div class="view" id="view-changelog">
       <div class="card">
@@ -505,12 +490,12 @@
 <input id="torrent-file-input" type="file" accept=".torrent,application/x-bittorrent" hidden onchange="uploadTorrentFile(this)">
 
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
-<script src="/app.js?v=17" defer></script>
+<script src="/app.js?v=18" defer></script>
 <script src="/operator-title.js?v=24" defer></script>
-<script src="/ui-runtime.js?v=25" defer data-dp-ui-runtime="1"></script>
+<script src="/ui-runtime.js?v=26" defer data-dp-ui-runtime="1"></script>
 <script src="/ui-downloads-runtime.js?v=24" defer data-dp-downloads-runtime="1"></script>
 <script src="/ui-accessibility-runtime.js?v=21" defer></script>
-<script src="/ui-statistics.js?v=2" defer></script>
+<script src="/ui-statistics.js?v=3" defer></script>
 <script src="/ui-help-page.js?v=3" defer></script>
 <script src="/ui-help-license-documents.js?v=3" defer></script>
 <script src="/ui-settings-page.js?v=2" defer></script>

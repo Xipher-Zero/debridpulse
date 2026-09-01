@@ -25,7 +25,7 @@ def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     tokens = "/ui-language-tokens.css?v=21"
     universal = "/ui-universal-language.css?v=20"
     dashboard = "/ui-dashboard.css?v=20"
-    statistics = "/ui-statistics-page.css?v=21"
+    statistics = "/ui-statistics-page.css?v=22"
     downloads = "/ui-downloads-page.css?v=28"
     help_page = "/ui-help-page.css?v=22"
     for layer in (tokens, universal, dashboard, statistics, downloads, help_page):

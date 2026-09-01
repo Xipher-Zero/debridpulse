@@ -13,7 +13,7 @@ def test_visible_download_total_excludes_soft_deleted_rows() -> None:
     app = read("app.js")
     assert ".filter(([status]) => status !== 'deleted')" in app
     assert ".reduce((sum, [, count]) => sum + (Number(count) || 0), 0)" in app
-    assert "const queuePct = pct(completed, total || 0);" in app
+    assert "const queuePct = pct(completed, total || 0);" not in app
 
 
 def test_bulk_toolbar_right_side_owns_count_and_clear_selection() -> None:

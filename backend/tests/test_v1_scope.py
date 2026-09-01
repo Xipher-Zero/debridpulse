@@ -360,23 +360,28 @@ def test_watch_folder_ingestion_is_not_shipped_in_v1():
     assert "_handle_torrent" not in manager
 
 
-def test_dashboard_kpi_strip_omits_duplicate_database_tile_and_stays_centered():
+def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tiles():
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
+    dashboard_styles = (REPO_ROOT / "frontend/static/ui-dashboard.css").read_text()
+    statistics_styles = (REPO_ROOT / "frontend/static/ui-statistics-page.css").read_text()
 
-    dashboard_strip = index.split(
-        '<div class="dash-kpi-strip dash-kpi-strip--dashboard">', 1
-    )[1].split('</div>\n\n      <div id="debug-status"', 1)[0]
+    assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    history = stats_view.split('<div class="dash-kpi-strip dp-stats-history-grid">', 1)[1].split(
+        '<div class="scard dp-stats-chart', 1
+    )[0]
 
-    assert dashboard_strip.count('class="dash-kpi"') == 6
-    assert 'id="i-db-type"' not in dashboard_strip
-    assert '<div class="dash-kpi-lbl">Database</div>' not in dashboard_strip
+    assert history.count('class="dash-kpi ') == 5
+    assert 'id="i-db-type"' not in history
+    assert '<div class="dash-kpi-lbl">Database</div>' not in history
+    assert 'id="i-queue-health"' not in history
+    assert 'id="i-queue-copy"' not in history
     assert "getElementById('i-db-type')" not in frontend
+    assert "getElementById('i-queue-health')" not in frontend
     assert "setDot('db'" in frontend
-    assert ".dash-kpi-strip--dashboard" in styles
-    assert "width: 85.7142857%;" in styles
-
+    assert ".dash-kpi-strip--dashboard" not in dashboard_styles
+    assert "#view-stats .dp-stats-history-grid" in statistics_styles
 
 
 

@@ -32,8 +32,8 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
     assert not (STATIC / "style-legacy.css").exists()
     index = read(INDEX)
     assert "/style.css?v=15" in index
-    assert "/style-v11.css?v=25" in index
-    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=25")
+    assert "/style-v11.css?v=26" in index
+    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=26")
 
     overlay = read(V11_STYLE)
     imports = (
@@ -49,7 +49,7 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "/ui-shell-provider-status.css?v=24",
         "/ui-dashboard.css?v=20",
         "/ui-utility-controls.css?v=23",
-        "/ui-statistics-page.css?v=21",
+        "/ui-statistics-page.css?v=22",
         "/ui-activity-log-page.css?v=30",
         "/ui-downloads-page.css?v=28",
         "/ui-settings-page.css?v=2",
@@ -100,7 +100,7 @@ def test_v11_cache_generations_remain_targeted() -> None:
         "/ui-shell-provider-status.css": "24",
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-utility-controls.css": "23",
-        "/ui-statistics-page.css": "21",
+        "/ui-statistics-page.css": "22",
         "/ui-activity-log-page.css": "30",
         "/ui-downloads-page.css": "28",
         "/ui-downloads-desktop.css": "28",

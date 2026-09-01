@@ -395,42 +395,6 @@
     normalizeActivityRows();
   }
 
-  function makeKpiIcon(filename, tone) {
-    const frame = document.createElement('span');
-    frame.className = 'dp-icon-frame dp-icon-frame--' + tone + ' dp-kpi-icon';
-    frame.appendChild(dpImg(filename, 'dp-icon--lg'));
-    return frame;
-  }
-
-  function decorateHistoricalKpis(strip) {
-    if (!strip || strip.dataset.dpDecorated === '1') return;
-    const iconMap = {
-      'i-queue-health': ['heartbeat-outline.svg', 'purple'],
-      'i-last-day': ['calendar-24.svg', 'blue'],
-      'i-last-week': ['calendar-7.svg', 'purple'],
-      'i-success-rate': ['verified-badge.svg', 'green'],
-      'i-avg-duration': ['clock-outline.svg', 'amber'],
-      'i-avg-size': ['cube.svg', 'blue']
-    };
-    Object.entries(iconMap).forEach(function ([valueId, config]) {
-      const value = document.getElementById(valueId);
-      const kpi = value && value.closest('.dash-kpi');
-      if (!kpi || kpi.querySelector('.dp-kpi-icon')) return;
-      kpi.prepend(makeKpiIcon(config[0], config[1]));
-    });
-    strip.dataset.dpDecorated = '1';
-  }
-
-  function moveDashboardKpisToStatistics() {
-    const strip = document.querySelector('.dash-kpi-strip--dashboard');
-    const statsCards = document.getElementById('detail-stat-cards');
-    if (!strip || !statsCards) return;
-    strip.classList.add('dp-stats-history-grid');
-    strip.classList.remove('dash-kpi-strip--dashboard');
-    decorateHistoricalKpis(strip);
-    if (strip.previousElementSibling !== statsCards) statsCards.insertAdjacentElement('afterend', strip);
-  }
-
   function initialize() {
     document.body.classList.add('dp-v11-structural');
     document.documentElement.dataset.dpUi = 'v1.0.11-structural';
@@ -441,7 +405,6 @@
     decorateQuickAdd();
     decorateRecentActivity();
     decorateActivityLog();
-    moveDashboardKpisToStatistics();
   }
 
   initialize();

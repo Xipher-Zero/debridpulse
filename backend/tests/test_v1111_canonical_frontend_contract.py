@@ -262,42 +262,48 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
 def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> None:
     source = read(STATS)
     html = read(INDEX)
+    runtime = read(RUNTIME)
+    style = read(STATIC / "style-v11.css")
+    view = html[html.index('<!-- Statistics -->'):html.index('<!-- Changelog -->')]
     for fragment in (
         "window.loadDetailedStats = loadDetailedStats;",
         "window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});",
-        "By the Numbers",
-        "Because vibes are not a performance metric.",
-        "dp-statistics-master",
-        "dp-statistics-master-header",
-        "dp-statistics-master-body",
-        "['downloads', 'completed', 'progress', 'success', 'data']",
         "statisticsPurpleGradient",
         "debridpulse:theme-changed",
-        "debridpulse:navigation",
     ):
         assert fragment in source
+    for fragment in (
+        "By the Numbers", "Because vibes are not a performance metric.",
+        "dp-statistics-master", "dp-stats-master-header", "dp-stats-master-body",
+        "dp-stats-breakdown-grid", "Completed downloads in the last 7 days.",
+    ):
+        assert fragment in view
     assert "|| '7d'" in source
-    assert 'data-period="7d" class="ftab active"' in html or 'class="ftab active" data-period="7d"' in html
-    assert "Completions — last 7 days" in html
+    assert 'class="ftab active" data-period="7d"' in view
+    assert "Completions — last 7 days" not in view
+    assert "ensureStatisticsArchitecture" not in source
+    assert "decorateChartHeader" not in source
+    assert "moveDashboardKpisToStatistics" not in runtime
+    assert "dash-kpi-strip--dashboard" not in html
+    assert not (STATIC / "ui-statistics.css").exists()
+    assert "/ui-statistics.css" not in style
     assert "window.loadDetailedStats = wrapped" not in source
 
 
 def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
     source = read(STATS)
+    html = read(INDEX)
+    view = html[html.index('<!-- Statistics -->'):html.index('<!-- Changelog -->')]
     for fragment in (
-        "Last 24 Hours",
-        "Completed downloads over the last 24 hours.",
-        "Last 7 Days",
-        "Completed downloads over the last 7 days.",
-        "MEAN DOWNLOAD TIME",
-        "LIFE-TIME SUCCESS RATE",
-        "MEAN DOWNLOAD SIZE",
-        "MAX_VISIBLE = 10",
-        "TWO_COLUMN_THRESHOLD = 6",
-        "entries.slice(0, MAX_VISIBLE)",
-        "Math.ceil(visible.length / 2)",
-        "heading.textContent = 'Completions'",
-        "/icons/dp/card-download.svg",
+        "Last 24 Hours", "Completed downloads over the last 24 hours.",
+        "Last 7 Days", "Completed downloads over the last 7 days.",
+        "MEAN DOWNLOAD TIME", "LIFE-TIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
+        "/icons/dp/card-download.svg", 'class="dp-stats-chart-heading">Completions</span>',
+    ):
+        assert fragment in view
+    for fragment in (
+        "MAX_VISIBLE = 10", "TWO_COLUMN_THRESHOLD = 6",
+        "entries.slice(0, MAX_VISIBLE)", "Math.ceil(visible.length / 2)",
     ):
         assert fragment in source
 

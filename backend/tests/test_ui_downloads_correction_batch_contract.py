@@ -78,7 +78,7 @@ def test_batch_cache_generations_are_explicit() -> None:
     style = read("style-v11.css")
     operator = read("operator-title.js")
     index = read("index.html")
-    assert "/style-v11.css?v=25" in index
+    assert "/style-v11.css?v=26" in index
     assert "/ui-runtime.js?v=24" in operator
     assert "/ui-utility-controls.css?v=23" in style
     assert "/ui-downloads-page.css?v=28" in style

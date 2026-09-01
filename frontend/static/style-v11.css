@@ -32,7 +32,7 @@
 @import url('/ui-utility-controls.css?v=23');
 
 /* Page layers contain page-specific geometry, behavior, and content details. */
-@import url('/ui-statistics-page.css?v=21');
+@import url('/ui-statistics-page.css?v=22');
 @import url('/ui-activity-log-page.css?v=30');
 @import url('/ui-downloads-page.css?v=28');
 @import url('/ui-downloads-desktop.css?v=28');
@@ -63,5 +63,4 @@
 @import url('/ui-settings-notifications.css?v=2');
 @import url('/ui-settings-authentication.css?v=2');
 @import url('/ui-settings-card-icons.css?v=2');
-@import url('/ui-statistics.css?v=2');
 @import url('/ui-shell-brand.css?v=2');
