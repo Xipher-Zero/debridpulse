@@ -117,10 +117,12 @@ jobs:
           fi
 
           expected_version="${{ steps.version.outputs.version }}"
+          expected_revision="${GITHUB_SHA}"
           expected_title="DebridPulse: AllDebrid + aria2 Download Manager"
           image_ref="local/debridpulse:${GITHUB_SHA}"
 
           image_version="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          image_revision="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
           image_title="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.title" }}')"
           image_license="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')"
           health_payload="$(docker exec "$container_name" curl --fail --silent --show-error http://127.0.0.1:8080/api/health)"
@@ -128,6 +130,11 @@ jobs:
 
           if [ "$image_version" != "$expected_version" ]; then
             echo "OCI version mismatch: expected $expected_version, got $image_version"
+            exit 1
+          fi
+
+          if [ "$image_revision" != "$expected_revision" ]; then
+            echo "OCI revision mismatch: expected $expected_revision, got $image_revision"
             exit 1
           fi
 
@@ -242,21 +249,29 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=GPL-2.0-or-later
 
-      - name: Verify generated image metadata
+      - name: Verify generated image metadata and staging tag policy
         shell: bash
         env:
           METADATA_JSON: ${{ steps.meta.outputs.json }}
+          GENERATED_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
 
           expected_version="${{ steps.version.outputs.version }}"
+          expected_revision="${GITHUB_SHA}"
           expected_title="DebridPulse: AllDebrid + aria2 Download Manager"
           generated_version="$(jq -r '.labels["org.opencontainers.image.version"] // empty' <<< "$METADATA_JSON")"
+          generated_revision="$(jq -r '.labels["org.opencontainers.image.revision"] // empty' <<< "$METADATA_JSON")"
           generated_title="$(jq -r '.labels["org.opencontainers.image.title"] // empty' <<< "$METADATA_JSON")"
           generated_license="$(jq -r '.labels["org.opencontainers.image.licenses"] // empty' <<< "$METADATA_JSON")"
 
           if [ "$generated_version" != "$expected_version" ]; then
             echo "Generated OCI version mismatch: expected $expected_version, got $generated_version"
+            exit 1
+          fi
+
+          if [ "$generated_revision" != "$expected_revision" ]; then
+            echo "Generated OCI revision mismatch: expected $expected_revision, got $generated_revision"
             exit 1
           fi
 
@@ -270,7 +285,24 @@ jobs:
             exit 1
           fi
 
+          if [[ "$GITHUB_REF" == refs/heads/staging/* ]]; then
+            mapfile -t staging_tags < <(printf '%s\n' "$GENERATED_TAGS" | sed '/^[[:space:]]*$/d')
+            if [ "${#staging_tags[@]}" -ne 1 ]; then
+              printf 'Staging publication must generate exactly one tag; got:\n%s\n' "$GENERATED_TAGS"
+              exit 1
+            fi
+            if [[ "${staging_tags[0]}" != "${IMAGE_NAME}:sha-"* ]]; then
+              echo "Staging publication tag is not SHA-only: ${staging_tags[0]}"
+              exit 1
+            fi
+            if [[ "${staging_tags[0]}" == *":latest" || "${staging_tags[0]}" == *":v"* || "${staging_tags[0]}" == *":internal-v"* ]]; then
+              echo "Mutable/version staging tag generated unexpectedly: ${staging_tags[0]}"
+              exit 1
+            fi
+          fi
+
       - name: Build and publish
+        id: publish
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           context: .
@@ -285,3 +317,43 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
+
+      - name: Verify published digest and OCI identity
+        shell: bash
+        env:
+          GENERATED_TAGS: ${{ steps.meta.outputs.tags }}
+          PUBLISHED_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          expected_version="${{ steps.version.outputs.version }}"
+          expected_revision="${GITHUB_SHA}"
+          digest="$PUBLISHED_DIGEST"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid or missing published digest: $digest"
+            exit 1
+          fi
+
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            remote_digest="$(docker buildx imagetools inspect "$tag" | awk '/^Digest:/ {print $2; exit}')"
+            if [ "$remote_digest" != "$digest" ]; then
+              echo "Published tag digest mismatch for $tag: expected $digest, got $remote_digest"
+              exit 1
+            fi
+          done <<< "$GENERATED_TAGS"
+
+          docker pull "${IMAGE_NAME}@${digest}"
+          image_version="$(docker image inspect "${IMAGE_NAME}@${digest}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          image_revision="$(docker image inspect "${IMAGE_NAME}@${digest}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          if [ "$image_version" != "$expected_version" ]; then
+            echo "Published OCI version mismatch: expected $expected_version, got $image_version"
+            exit 1
+          fi
+          if [ "$image_revision" != "$expected_revision" ]; then
+            echo "Published OCI revision mismatch: expected $expected_revision, got $image_revision"
+            exit 1
+          fi
+
+          echo "Published digest: $digest"
+          printf 'Published tags:\n%s\n' "$GENERATED_TAGS"
