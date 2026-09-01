@@ -16,7 +16,6 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-dashboard-final.css?v=23" in entry
     assert "/ui-shell.css?v=21" in entry
     for retired in (
         "ui-dashboard-structural.css",
@@ -26,6 +25,10 @@ def test_dashboard_stylesheet_is_active() -> None:
         "ui-dashboard-batch2-final.css",
         "ui-dashboard-batch3.css",
         "ui-dashboard-batch4.css",
+        "ui-dashboard-batch5.css",
+        "ui-dashboard-polish.css",
+        "ui-dashboard-polish-final.css",
+        "ui-dashboard-final.css",
     ):
         assert retired not in entry
         assert not (STATIC / retired).exists()
