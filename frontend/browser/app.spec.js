@@ -163,7 +163,11 @@ test('handled Event Log API failure stays inside the UI error lifecycle', async 
   await expect.poll(() => injected).toBeGreaterThan(0);
   await expect(page.locator('.toast.error .dp-toast-copy')).toContainText('browser gate injected failure');
   await expect(page.locator('#view-events')).toHaveClass(/\bactive\b/);
-  expect(runtime.errors).toEqual([]);
+  expect(runtime.badResponses.some(item => item.includes('503') && item.includes('/api/events?limit=500'))).toBeTruthy();
+  const unexpectedErrors = runtime.errors.filter(
+    error => error !== 'console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)'
+  );
+  expect(unexpectedErrors).toEqual([]);
 });
 
 test('Help legal modal traps lifecycle and restores opener focus', async ({ page }) => {
