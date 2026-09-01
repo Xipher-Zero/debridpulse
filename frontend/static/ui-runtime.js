@@ -26,16 +26,7 @@
     'Help & License': 'Usage guidance, project information, and licensing.'
   };
 
-  function loadV11Styles() {
-    let link = document.querySelector('link[data-dp-v11-styles]');
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.dataset.dpV11Styles = '1';
-      document.head.appendChild(link);
-    }
-    if (!/style-v11\.css\?v=24$/.test(link.href)) link.href = '/style-v11.css?v=24';
-  }
+
 
   function dpImg(filename, className) {
     const img = document.createElement('img');
@@ -54,28 +45,9 @@
 
   function ensurePageHeading() {
     const title = document.getElementById('page-title');
-    const topbar = document.getElementById('topbar');
-    if (!title || !topbar) return;
-    let wrap = title.closest('.dp-page-heading');
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'dp-page-heading';
-      title.parentNode.insertBefore(wrap, title);
-      wrap.appendChild(title);
-      const subtitle = document.createElement('p');
-      subtitle.id = 'page-subtitle';
-      subtitle.className = 'dp-page-subtitle';
-      wrap.appendChild(subtitle);
-    }
     const subtitle = document.getElementById('page-subtitle');
-    const sync = function () {
-      if (subtitle) subtitle.textContent = SUBTITLES[title.textContent.trim()] || '';
-    };
-    sync();
-    if (!title.dataset.dpHeadingObserved) {
-      title.dataset.dpHeadingObserved = '1';
-      new MutationObserver(sync).observe(title, {childList: true, characterData: true, subtree: true});
-    }
+    if (!title || !subtitle) return;
+    subtitle.textContent = SUBTITLES[title.textContent.trim()] || '';
   }
 
   function numeric(value) {
@@ -209,21 +181,11 @@
   }
 
   function installMetricHistoryHook() {
-    const previous = window.updateOperatorTitle;
-    if (typeof previous !== 'function' || previous.dpDashboardMetricHook === '1') return;
-    const wrapped = function (stats) {
-      recordDashboardMetricHistory(stats);
-      return previous.apply(this, arguments);
-    };
-    wrapped.dpDashboardMetricHook = '1';
-    window.updateOperatorTitle = wrapped;
-
-    if (document.documentElement.dataset.dpDashboardMetricSeeded !== '1') {
-      document.documentElement.dataset.dpDashboardMetricSeeded = '1';
-      setTimeout(function () {
-        if (typeof window.loadStats === 'function') window.loadStats();
-      }, 0);
-    }
+    if (document.documentElement.dataset.dpDashboardMetricLifecycle === '1') return;
+    document.documentElement.dataset.dpDashboardMetricLifecycle = '1';
+    document.addEventListener('debridpulse:dashboard-stats-rendered', function (event) {
+      recordDashboardMetricHistory(event.detail && event.detail.stats);
+    });
   }
 
   function decorateDashboardHero() {
@@ -362,13 +324,6 @@
       viewAll.dataset.dpStructuralButton = '1';
     }
     const tbody = document.getElementById('dash-tbody');
-    if (tbody && !tbody.dataset.dpStructuralObserved) {
-      tbody.dataset.dpStructuralObserved = '1';
-      new MutationObserver(function () {
-        updateRecentCount();
-        normalizeDashboardBadges();
-      }).observe(tbody, {childList: true, subtree: true});
-    }
     updateRecentCount();
     normalizeDashboardBadges();
   }
@@ -408,7 +363,7 @@
       title.appendChild(dpImg('document.svg', 'dp-activity-title-icon'));
       const copy = document.createElement('span');
       copy.className = 'dp-activity-heading-copy';
-      copy.innerHTML = '<span class="dp-activity-heading">Activity Log</span><span class="dp-activity-subtitle">Recent transfer activity, decisions, warnings, and errors.</span>';
+      copy.innerHTML = '<span class="dp-activity-heading">Activity Log</span><span class="dp-activity-subtitle">Everything DebridPulse thought was worth mentioning.</span>';
       title.appendChild(copy);
       title.dataset.dpStructuralTitle = '1';
     }
@@ -436,52 +391,11 @@
     const list = document.getElementById('event-list');
     if (list) {
       list.classList.add('dp-activity-list');
-      if (!list.dataset.dpActivityObserved) {
-        list.dataset.dpActivityObserved = '1';
-        new MutationObserver(normalizeActivityRows).observe(list, {childList: true, subtree: true});
-      }
     }
     normalizeActivityRows();
   }
 
-  function makeKpiIcon(filename, tone) {
-    const frame = document.createElement('span');
-    frame.className = 'dp-icon-frame dp-icon-frame--' + tone + ' dp-kpi-icon';
-    frame.appendChild(dpImg(filename, 'dp-icon--lg'));
-    return frame;
-  }
-
-  function decorateHistoricalKpis(strip) {
-    if (!strip || strip.dataset.dpDecorated === '1') return;
-    const iconMap = {
-      'i-queue-health': ['heartbeat-outline.svg', 'purple'],
-      'i-last-day': ['calendar-24.svg', 'blue'],
-      'i-last-week': ['calendar-7.svg', 'purple'],
-      'i-success-rate': ['verified-badge.svg', 'green'],
-      'i-avg-duration': ['clock-outline.svg', 'amber'],
-      'i-avg-size': ['cube.svg', 'blue']
-    };
-    Object.entries(iconMap).forEach(function ([valueId, config]) {
-      const value = document.getElementById(valueId);
-      const kpi = value && value.closest('.dash-kpi');
-      if (!kpi || kpi.querySelector('.dp-kpi-icon')) return;
-      kpi.prepend(makeKpiIcon(config[0], config[1]));
-    });
-    strip.dataset.dpDecorated = '1';
-  }
-
-  function moveDashboardKpisToStatistics() {
-    const strip = document.querySelector('.dash-kpi-strip--dashboard');
-    const statsCards = document.getElementById('detail-stat-cards');
-    if (!strip || !statsCards) return;
-    strip.classList.add('dp-stats-history-grid');
-    strip.classList.remove('dash-kpi-strip--dashboard');
-    decorateHistoricalKpis(strip);
-    if (strip.previousElementSibling !== statsCards) statsCards.insertAdjacentElement('afterend', strip);
-  }
-
   function initialize() {
-    loadV11Styles();
     document.body.classList.add('dp-v11-structural');
     document.documentElement.dataset.dpUi = 'v1.0.11-structural';
     ensurePageHeading();
@@ -491,9 +405,11 @@
     decorateQuickAdd();
     decorateRecentActivity();
     decorateActivityLog();
-    moveDashboardKpisToStatistics();
   }
 
   initialize();
   document.addEventListener('DOMContentLoaded', initialize, {once: true});
+  document.addEventListener('debridpulse:navigation', ensurePageHeading);
+  document.addEventListener('debridpulse:dashboard-recent-rendered', function () { updateRecentCount(); normalizeDashboardBadges(); });
+  document.addEventListener('debridpulse:activity-rendered', normalizeActivityRows);
 })();

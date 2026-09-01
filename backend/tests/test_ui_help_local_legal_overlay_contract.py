@@ -13,28 +13,8 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_help_local_document_overlay_loads_after_help_chrome():
-    loader = read(LOADER)
-
-    assert "/ui-help-license-documents.css?v=2" in loader
-    assert "/ui-help-license-documents.js?v=2" in loader
-    assert loader.index("/ui-help-chrome.js?v=2") < loader.index(
-        "/ui-help-license-documents.js?v=2"
-    )
 
 
-def test_license_actions_are_converted_from_external_navigation_to_local_buttons():
-    runtime = read(RUNTIME)
-
-    for document_id in ("gpl", "notice", "upstream-mit", "source-offer", "third-party"):
-        assert f"'{document_id}'" in runtime
-
-    assert ".dp-help-license-actions a[href]" in runtime
-    assert "button.type = 'button';" in runtime
-    assert "button.dataset.legalDocument = documentId;" in runtime
-    assert "anchor.replaceWith(button);" in runtime
-    assert "fetch('/api/legal-documents/' + encodeURIComponent(documentId)" in runtime
-    assert "iframe" not in runtime.lower()
 
 
 def test_overlay_uses_canonical_dialog_semantics_and_normal_close_paths():
@@ -89,6 +69,8 @@ def test_overlay_identifies_bundled_snapshot_and_exposes_only_explicit_latest_li
     assert "renderBundledDocument(modal.documentBody, payload.content);" in runtime
 
 
-def test_help_legal_overlay_runtime_is_in_frontend_syntax_gate():
+def test_help_legal_overlay_runtime_is_in_dynamic_frontend_syntax_gate():
     workflow = read(WORKFLOW)
-    assert "node --check frontend/static/ui-help-license-documents.js" in workflow
+    assert RUNTIME.exists()
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow

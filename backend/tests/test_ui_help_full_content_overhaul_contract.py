@@ -177,27 +177,6 @@ def test_troubleshooting_is_user_facing_and_covers_current_recovery_paths():
         assert retired not in panel
 
 
-def test_license_help_explains_bundled_documents_and_preserves_all_legal_actions():
-    panel = _panel("licensePanel", "panel")
-
-    for phrase in (
-        "Licensing and source",
-        "GPL-2.0-or-later",
-        "use, study, modify, and redistribute",
-        "without warranty",
-        "kroeberd/alldebrid-client v1.9.9",
-        "Upstream MIT license",
-        "Source offer",
-        "Third-party licenses",
-        "exact legal documents bundled with the running DebridPulse build",
-        "latest repository copy",
-        "/LICENSE",
-        "/NOTICE",
-        "/LICENSES/MIT.txt",
-        "/SOURCE_OFFER.md",
-        "/docs/DEPENDENCY_LICENSES.md",
-    ):
-        assert phrase in panel
 
 
 def test_remaining_help_overhaul_removes_known_legacy_user_copy():

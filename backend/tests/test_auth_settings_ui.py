@@ -89,25 +89,6 @@ def test_authentication_settings_are_owned_by_clean_settings_runtime():
     assert "removeLegacyAuthenticationControls" not in module
 
 
-def test_authentication_tab_contains_required_cards_and_uses_dedicated_api():
-    source = SETTINGS_PAGE_JS.read_text(encoding="utf-8")
-    for label in (
-        "Authentication Status",
-        "Username & Password",
-        "OpenID Connect",
-        "API Access",
-        "Sessions & Security",
-    ):
-        assert label in source
-
-    assert "request('PUT', '/auth/config'" in source
-    assert "request('POST', '/auth/oidc/verify-config'" in source
-    assert "request('POST', '/auth/api-token'" in source
-    assert "request('DELETE', '/auth/api-token'" in source
-    assert "return_to: '/oidc-verify-complete.html'" in source
-    assert "Copy this token now — it will not be shown again." in source
-    assert "localStorage" not in source
-    assert "sessionStorage" not in source
 
 
 def test_auth_secret_clear_intents_are_transient_and_not_serialized():

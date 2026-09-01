@@ -8,13 +8,13 @@
   'use strict';
 
   const TABS = Object.freeze([
-    ['quickstart', 'Quick Start'],
-    ['howitworks', 'How it works'],
-    ['aria2', 'aria2'],
-    ['integrations', 'Integrations'],
-    ['settings', 'Settings'],
-    ['trouble', 'Troubleshooting'],
-    ['license', 'License'],
+    ['quickstart', 'Quick Start', 'rocket'],
+    ['howitworks', 'How it works', 'workflow'],
+    ['aria2', 'Download Engine', 'download'],
+    ['integrations', 'Integrations', 'plug'],
+    ['settings', 'Settings', 'settings'],
+    ['trouble', 'Troubleshooting', 'wrench'],
+    ['license', 'License', 'scale'],
   ]);
 
   const state = { activeTab: 'quickstart' };
@@ -606,11 +606,11 @@
         </article>
 
         <div class="dp-help-license-actions">
-          <a class="dp-btn dp-btn--primary" href="https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSE" target="_blank" rel="noopener">Read GPL-2.0-or-later</a>
-          <a class="dp-btn dp-btn--ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/NOTICE" target="_blank" rel="noopener">Attribution notice</a>
-          <a class="dp-btn dp-btn--ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSES/MIT.txt" target="_blank" rel="noopener">Upstream MIT license</a>
-          <a class="dp-btn dp-btn--ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/SOURCE_OFFER.md" target="_blank" rel="noopener">Source offer</a>
-          <a class="dp-btn dp-btn--ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/docs/DEPENDENCY_LICENSES.md" target="_blank" rel="noopener">Third-party licenses</a>
+          <button type="button" class="dp-btn dp-btn--primary dp-help-local-document-button" data-legal-document="gpl">Read GPL-2.0-or-later</button>
+          <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="notice">Attribution notice</button>
+          <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="upstream-mit">Upstream MIT license</button>
+          <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="source-offer">Source offer</button>
+          <button type="button" class="dp-btn dp-btn--ghost dp-help-local-document-button" data-legal-document="third-party">Third-party licenses</button>
         </div>
 
         <div class="dp-help-copy dp-help-license-note dp-help-prose">
@@ -620,12 +620,34 @@
       </section>`;
   }
 
+  function canonicalDocumentMarkup(markup) {
+    const template = document.createElement('template');
+    template.innerHTML = String(markup || '').trim();
+    const section = template.content.firstElementChild;
+    if (!section || !section.classList.contains('dp-help-document')) return markup;
+
+    section.classList.add('card', 'dp-help-section-card', 'dp-large-panel-surface');
+    const heading = section.querySelector(':scope > .dp-help-section-heading');
+    if (!heading) return template.innerHTML;
+
+    const header = document.createElement('div');
+    header.className = 'card-header dp-help-section-card-header';
+    heading.before(header);
+    header.appendChild(heading);
+
+    const body = document.createElement('div');
+    body.className = 'card-body dp-help-section-card-body';
+    while (header.nextSibling) body.appendChild(header.nextSibling);
+    section.appendChild(body);
+    return template.innerHTML;
+  }
+
   function panel(name, body) {
     const active = state.activeTab === name;
     return `
       <section class="dp-help-panel" id="dp-help-panel-${name}" data-panel="${name}" role="tabpanel"
                aria-labelledby="dp-help-tab-${name}" ${active ? '' : 'hidden'}>
-        ${body}
+        ${canonicalDocumentMarkup(body)}
       </section>`;
   }
 
@@ -678,25 +700,35 @@
   function render() {
     const view = root();
     if (!view) return;
+    if (view.dataset.dpHelpRendered === '1') {
+      activateTab(state.activeTab);
+      return;
+    }
 
     view.classList.add('dp-help-clean-view');
 
-    const tabs = TABS.map(([id, label]) => {
+    const tabs = TABS.map(([id, label, icon]) => {
       const active = state.activeTab === id;
       return `
         <button class="dp-tab dp-help-tab${active ? ' is-active' : ''}" id="dp-help-tab-${id}"
                 type="button" role="tab" data-tab="${id}"
                 aria-controls="dp-help-panel-${id}"
                 aria-selected="${active ? 'true' : 'false'}"
-                tabindex="${active ? '0' : '-1'}">${label}</button>`;
+                tabindex="${active ? '0' : '-1'}">
+          <span class="dp-help-tab-chip" aria-hidden="true"><img class="dp-help-tab-glyph" src="/icons/lucide/${icon}.svg" alt=""></span>
+          <span class="dp-help-tab-label">${label}</span>
+        </button>`;
     }).join('');
 
     view.innerHTML = `
-      <section class="dp-card dp-help-master-card" aria-label="Help & Documentation">
+      <section class="dp-card dp-help-master-card dp-list-workspace-surface" aria-label="Help & Documentation">
         <header class="dp-card__header dp-help-master-header">
           <div class="dp-help-header-copy">
             <img class="dp-help-title-icon" src="/icons/dp/document.svg" alt="" aria-hidden="true">
-            <div class="dp-help-header-title">Help &amp; Documentation</div>
+            <div class="dp-help-header-text">
+              <div class="dp-help-header-title">Field Manual</div>
+              <div class="dp-help-header-subtitle">When intuition fails.</div>
+            </div>
           </div>
           <div class="dp-tabs dp-help-tabs" role="tablist" aria-label="Help sections">${tabs}</div>
         </header>
@@ -715,18 +747,18 @@
         </div>
       </section>`;
 
+    view.dataset.dpHelpRendered = '1';
     bindEvents(view);
     activateTab(state.activeTab);
+    document.dispatchEvent(new CustomEvent('debridpulse:help-rendered', {detail: {view: 'help'}}));
   }
 
-  function init() {
-    if (!root()) return;
+  function load() {
     render();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
-  } else {
-    init();
-  }
+  // app.js owns generic navigation and calls this canonical Help entry point.
+  window.loadHelp = load;
+  try { loadHelp = load; } catch (_) {}
+  window.DPHelpPage = Object.freeze({load, activateTab});
 })();

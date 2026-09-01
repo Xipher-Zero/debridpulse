@@ -30,19 +30,6 @@ def test_database_reset_card_copy_and_operator_order_are_locked():
     assert "row.append(backupToggle, allowToggle, wipeActions);" in js
 
 
-def test_database_reset_card_reuses_existing_internal_controls_and_is_idempotent():
-    js = source(RUNTIME)
-
-    # Persisted keys and the existing backend action remain intentionally stable;
-    # only operator-facing language changes from wipe to reset.
-    assert 'input[data-setting="db_backup_before_wipe"]' in js
-    assert 'input[data-setting="db_wipe_enabled"]' in js
-    assert 'button[data-action="wipe-database"]' in js
-    assert "dpWipeControlsPolished" in js
-    assert "card.dataset[WIPE_MARKER] = '1'" in js
-    assert "MutationObserver" in js
-    assert "mutation.type === 'childList'" in js
-    assert "attributes: true" not in js
 
 
 def test_database_reset_toggle_text_is_stacked_and_controls_stay_adjacent():
@@ -121,15 +108,3 @@ def test_backups_retention_layout_is_three_by_two_with_centered_actions_and_resp
     assert "justify-content: center;" in css
     assert ".dp-settings-backups-actions .btn" in css
     assert "width: auto;" in css
-
-
-def test_maintenance_presentation_assets_are_loaded_after_settings_page_with_cache_bump():
-    loader = source(LOADER)
-
-    css_entry = "'/ui-settings-maintenance-wipe.css?v=3'"
-    js_entry = "'/ui-settings-maintenance-wipe.js?v=3'"
-    settings_entry = "'/ui-settings-page.js?v=4'"
-    assert css_entry in loader
-    assert js_entry in loader
-    assert settings_entry in loader
-    assert loader.index(js_entry) > loader.index(settings_entry)

@@ -100,11 +100,6 @@ body.light {
   border-radius:10px; font-size:10px; font-weight:700;
   background:rgba(168,85,247,.15); color:var(--purple);
   border:1px solid rgba(168,85,247,.25); white-space:nowrap; }
-/* Bulk bar */
-.bulk-bar { display:none; background:var(--accent); color:var(--accent-contrast); padding:9px 16px;
-  border-radius:var(--radius); margin-bottom:10px; gap:12px; font-size:13px;
-  font-weight:600; align-items:center; }
-.bulk-bar.visible { display:flex; }
 /* Stat trend chart */
 .chart-wrap { position:relative; height:140px; margin-top:8px; }
 /* Priority */

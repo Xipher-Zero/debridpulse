@@ -360,53 +360,29 @@ def test_watch_folder_ingestion_is_not_shipped_in_v1():
     assert "_handle_torrent" not in manager
 
 
-def test_dashboard_kpi_strip_omits_duplicate_database_tile_and_stays_centered():
+def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tiles():
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
+    dashboard_styles = (REPO_ROOT / "frontend/static/ui-dashboard.css").read_text()
+    statistics_styles = (REPO_ROOT / "frontend/static/ui-statistics-page.css").read_text()
 
-    dashboard_strip = index.split(
-        '<div class="dash-kpi-strip dash-kpi-strip--dashboard">', 1
-    )[1].split('</div>\n\n      <div id="debug-status"', 1)[0]
-
-    assert dashboard_strip.count('class="dash-kpi"') == 6
-    assert 'id="i-db-type"' not in dashboard_strip
-    assert '<div class="dash-kpi-lbl">Database</div>' not in dashboard_strip
-    assert "getElementById('i-db-type')" not in frontend
-    assert "setDot('db'" in frontend
-    assert ".dash-kpi-strip--dashboard" in styles
-    assert "width: 85.7142857%;" in styles
-
-
-def test_v102_minor_ui_cleanup_contract():
-    index = (REPO_ROOT / "frontend/static/index.html").read_text()
-    frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
-
-    assert '<div class="metric-label">Downloads</div>' in frontend
-    assert '<div class="metric-label">Torrents</div>' not in frontend
-    assert '<span class="card-title">Download Status</span>' in index
-    assert '<span class="card-title">Torrent Status</span>' not in index
-
-    assert '<textarea class="input direct-link-input" id="q-transfer-input" rows="2"' in index
-    assert 'oninput="resizeDebridLinkInput(this)"' in index
-    assert "(event.ctrlKey||event.metaKey)&&event.key==='Enter'" in index
-    assert "addDashboardEntries()" in index
-    unified_add = frontend.split("async function addDashboardEntries()", 1)[1].split(
-        "// ── Torrents", 1
+    assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    history = stats_view.split('<div class="dash-kpi-strip dp-stats-history-grid">', 1)[1].split(
+        '<div class="scard dp-stats-chart', 1
     )[0]
-    assert "document.getElementById('q-transfer-input')" in unified_add
-    assert "document.getElementById('btn-add-transfer')" in unified_add
-    assert "openTorrentFilePicker();" in unified_add
-    assert "resizeDebridLinkInput(input);" in unified_add
-    assert "async function quickAdd()" not in frontend
 
-    assert '.aria2-queue { display: flex; flex-direction: column; gap: 10px; min-width: 0; width: 100%; }' in styles
-    assert 'max-width: 100%' in styles.split('.aria2-job {', 1)[1].split('}', 1)[0]
-    assert 'overflow-wrap: anywhere' in styles.split('.aria2-job-name {', 1)[1].split('}', 1)[0]
-    assert 'overflow-wrap: anywhere' in styles.split('.aria2-job-meta {', 1)[1].split('}', 1)[0]
-    assert '/style.css?v=15' in index
-    assert '/app.js?v=15' in index
+    assert history.count('class="dash-kpi ') == 5
+    assert 'id="i-db-type"' not in history
+    assert '<div class="dash-kpi-lbl">Database</div>' not in history
+    assert 'id="i-queue-health"' not in history
+    assert 'id="i-queue-copy"' not in history
+    assert "getElementById('i-db-type')" not in frontend
+    assert "getElementById('i-queue-health')" not in frontend
+    assert "setDot('db'" in frontend
+    assert ".dash-kpi-strip--dashboard" not in dashboard_styles
+    assert "#view-stats .dp-stats-history-grid" in statistics_styles
+
 
 
 def test_inherited_file_preview_and_block_routes_are_hardened():

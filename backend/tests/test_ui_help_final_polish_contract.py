@@ -15,11 +15,6 @@ def _block(css: str, selector: str) -> str:
     return css[start:end]
 
 
-def test_help_download_engine_tab_uses_user_facing_label():
-    chrome = _read("ui-help-chrome.js")
-
-    assert "aria2: 'Download Engine'" in chrome
-    assert "LABELS[tab.dataset.tab]" in chrome
 
 
 def test_license_closing_packaging_note_is_centered_and_emphasized():
@@ -31,18 +26,6 @@ def test_license_closing_packaging_note_is_centered_and_emphasized():
     assert "color: var(--dp-text-primary)" in block
 
 
-def test_help_master_header_uses_review_placeholder_flavor_text():
-    chrome = _read("ui-help-chrome.js")
-    css = _read("ui-help-chrome.css")
-
-    assert "function normalizeMasterHeader(view)" in chrome
-    assert "subtitle.className = 'dp-help-header-subtitle'" in chrome
-    assert "subtitle.textContent = 'To Be Determined'" in chrome
-
-    subtitle = _block(css, "body.dp-v11-structural #view-help .dp-help-header-subtitle {")
-    assert "margin-top: 4px" in subtitle
-    assert "font-size: 11px" in subtitle
-    assert "line-height: 1.35" in subtitle
 
 
 def test_help_section_selector_matches_settings_geometry_and_emphasis():

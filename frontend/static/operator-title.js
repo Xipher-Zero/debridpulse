@@ -1,96 +1,3 @@
-/* DebridPulse v1.0.6 operator-title state stabilization.
- *
- * The backend already exposes authoritative transfer counts in stats.by_status.
- * Treat queued + downloading as one logical download phase so brief aria2 file
- * handoffs do not make the browser tab appear idle. Throughput remains live and
- * may truthfully fall to zero during a handoff. A short, cancelable idle delay
- * absorbs transient state ordering without masking a real pause.
- */
-(function () {
-  'use strict';
-
-  const IDLE_CONFIRM_MS = 1500;
-  let idleTimer = null;
-  let latestLogicalActive = 0;
-
-  function removeLegacyStartupDebugSurface() {
-    const debugStatus = document.getElementById('debug-status');
-    if (debugStatus) debugStatus.remove();
-  }
-
-  removeLegacyStartupDebugSurface();
-
-  function nonNegativeCount(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 0;
-    return Math.max(0, Math.trunc(parsed));
-  }
-
-  function logicalActiveCount(stats) {
-    const byStatus = stats && stats.by_status;
-    if (byStatus && typeof byStatus === 'object') {
-      return nonNegativeCount(byStatus.downloading) + nonNegativeCount(byStatus.queued);
-    }
-    return nonNegativeCount(stats && stats.operator_active_downloads);
-  }
-
-  function cancelIdleTimer() {
-    if (idleTimer !== null) {
-      clearTimeout(idleTimer);
-      idleTimer = null;
-    }
-  }
-
-  function setIdleNow() {
-    cancelIdleTimer();
-    latestLogicalActive = 0;
-    _operatorTitleState.active = 0;
-    _operatorTitleState.progress = 0;
-    renderOperatorTitle();
-  }
-
-  window.updateOperatorTitle = function updateOperatorTitle(stats) {
-    const logicalActive = logicalActiveCount(stats);
-    latestLogicalActive = logicalActive;
-
-    if (stats && stats.paused) {
-      setIdleNow();
-      return;
-    }
-
-    if (logicalActive > 0) {
-      cancelIdleTimer();
-      _operatorTitleState.active = logicalActive;
-      const rawProgress = stats && stats.operator_active_progress_pct;
-      const progress = rawProgress == null ? NaN : Number(rawProgress);
-      if (Number.isFinite(progress)) {
-        _operatorTitleState.progress = Math.min(100, Math.max(0, Math.round(progress)));
-      }
-      renderOperatorTitle();
-      return;
-    }
-
-    if (_operatorTitleState.active === 0) {
-      cancelIdleTimer();
-      renderOperatorTitle();
-      return;
-    }
-
-    if (idleTimer === null) {
-      idleTimer = setTimeout(function () {
-        idleTimer = null;
-        if (latestLogicalActive === 0) {
-          _operatorTitleState.active = 0;
-          _operatorTitleState.progress = 0;
-          renderOperatorTitle();
-        }
-      }, IDLE_CONFIRM_MS);
-    }
-
-    renderOperatorTitle();
-  };
-})();
-
 /* DebridPulse v1.0.11 canonical Lucide presentation integration.
  *
  * Locally vendored Lucide subset; no runtime CDN. Geometry is sourced from
@@ -221,11 +128,11 @@
     statusBadge: statusBadge,
     statusMap: STATUS,
     toastMap: TOAST_ICON,
-    decorateButton: decorateButton
+    decorateButton: decorateButton,
+    toast: canonicalToast,
+    renderThemeGlyph: renderThemeGlyph
   });
 
-  window.badge = statusBadge;
-  window.toast = canonicalToast;
 
   function decorateNavigation() {
     const iconByView = {
@@ -270,42 +177,14 @@
     decorateAria2CapChevron();
   }
 
-  const legacyUpdateThemeToggle = window.updateThemeToggle;
-  if (typeof legacyUpdateThemeToggle === 'function') {
-    window.updateThemeToggle = function updateThemeToggleV11(isLight) {
-      legacyUpdateThemeToggle(isLight);
-      renderThemeGlyph(!!isLight);
-    };
-  }
-
-  const legacyToggleTheme = window.toggleTheme;
-  if (typeof legacyToggleTheme === 'function') {
-    window.toggleTheme = function toggleThemeV11() {
-      legacyToggleTheme();
-      renderThemeGlyph(document.body.classList.contains('light'));
-    };
-  }
-
   function bindThemeToggle() {
     const button = document.getElementById('theme-toggle');
     const control = button && button.closest('.sidebar-theme-control');
     const topbar = document.getElementById('topbar');
     if (!button || !control || !topbar) return;
-
     control.classList.add('topbar-theme-control');
     if (control.parentElement !== topbar) topbar.appendChild(control);
-    if (button.dataset.dpThemeBound === '1') return;
-
-    button.removeAttribute('onclick');
-    button.onclick = function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      const isLight = document.body.classList.toggle('light');
-      localStorage.setItem('theme', isLight ? 'light' : 'dark');
-      if (typeof window.updateThemeToggle === 'function') window.updateThemeToggle(isLight);
-      else renderThemeGlyph(isLight);
-    };
-    button.dataset.dpThemeBound = '1';
+    renderThemeGlyph(document.body.classList.contains('light'));
   }
 
   function initializeShellPresentation() {
@@ -334,15 +213,5 @@
   script.src = '/ui-runtime.js?v=24';
   script.defer = true;
   script.dataset.dpUiRuntime = '1';
-  document.head.appendChild(script);
-})();
-
-(function () {
-  'use strict';
-  if (document.querySelector('script[data-dp-downloads-runtime]')) return;
-  const script = document.createElement('script');
-  script.src = '/ui-downloads-runtime.js?v=22';
-  script.defer = true;
-  script.dataset.dpDownloadsRuntime = '1';
   document.head.appendChild(script);
 })();

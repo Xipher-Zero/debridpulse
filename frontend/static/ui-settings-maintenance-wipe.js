@@ -210,19 +210,5 @@
     queueMicrotask(polish);
   }
 
-  schedule();
-
-  const view = document.getElementById('view-settings');
-  if (view) {
-    const observer = new MutationObserver(function (mutations) {
-      if (!mutations.some(function (mutation) { return mutation.type === 'childList'; })) return;
-      const backups = findBackupsCard();
-      const wipe = findWipeCard();
-      if ((backups && backups.dataset[BACKUPS_MARKER] !== '1') ||
-          (wipe && wipe.dataset[WIPE_MARKER] !== '1')) {
-        schedule();
-      }
-    });
-    observer.observe(view, {childList: true, subtree: true});
-  }
+  document.addEventListener('debridpulse:settings-rendered', schedule);
 })();

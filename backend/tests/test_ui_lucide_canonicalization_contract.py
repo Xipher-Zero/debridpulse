@@ -1,4 +1,4 @@
-"""Contracts for the v1.0.11 canonical Lucide/status presentation pass."""
+"""Contracts for the canonical Lucide/status presentation ownership."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
+APP = STATIC / "app.js"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
 DOWNLOADS_RUNTIME = STATIC / "ui-downloads-runtime.js"
@@ -14,7 +15,8 @@ TRANSFER = STATIC / "ui-transfer-contract.css"
 ICONS = STATIC / "icon-system.css"
 
 
-def test_lucide_runtime_is_single_semantic_glyph_authority() -> None:
+def test_lucide_runtime_is_single_semantic_glyph_authority_without_global_replacement() -> None:
+    app = APP.read_text(encoding="utf-8")
     shell = SHELL_RUNTIME.read_text(encoding="utf-8")
     required = (
         "window.DPIcons",
@@ -22,6 +24,8 @@ def test_lucide_runtime_is_single_semantic_glyph_authority() -> None:
         "statusMap: STATUS",
         "toastMap: TOAST_ICON",
         "decorateButton: decorateButton",
+        "toast: canonicalToast",
+        "renderThemeGlyph: renderThemeGlyph",
         "circleCheck:",
         "circleX:",
         "clock3:",
@@ -30,12 +34,22 @@ def test_lucide_runtime_is_single_semantic_glyph_authority() -> None:
         "triangleAlert:",
         "trash2:",
         "fileInput:",
-        "window.badge = statusBadge",
-        "window.toast = canonicalToast",
         "23f9abc4ed0146cffededd3d7f94c1018bfdf693",
     )
     missing = [fragment for fragment in required if fragment not in shell]
     assert not missing, f"canonical Lucide runtime is missing: {missing}"
+
+    for forbidden in (
+        "window.badge = statusBadge",
+        "window.toast = canonicalToast",
+        "window.updateThemeToggle =",
+        "window.toggleTheme =",
+    ):
+        assert forbidden not in shell
+
+    assert "return window.DPIcons.statusBadge(s);" in app
+    assert "return window.DPIcons.toast(msg, type);" in app
+    assert "window.DPIcons.renderThemeGlyph(!!isLight);" in app
 
 
 def test_transfer_status_mapping_matches_debridpulse_semantics() -> None:

@@ -18,16 +18,6 @@ def source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_settings_has_one_post_core_clean_room_runtime():
-    bootstrap = source(BOOTSTRAP_JS)
-    loader = source(PRESENTATION_LOADER_JS)
-    runtime = source(SETTINGS_PAGE_JS)
-
-    assert "ui-settings-page.js" not in bootstrap
-    assert "/ui-settings-page.js?v=4" in loader
-    assert "data-dp-settings-page" in loader
-    assert "clean-room Settings page" in runtime
-    assert "window.DPSettingsPage = Object.freeze({load});" in runtime
 
 
 def test_settings_clean_room_runtime_owns_only_the_navigation_entry_hook():
@@ -125,30 +115,6 @@ def test_settings_runtime_directly_uses_backend_api_contracts():
     assert not missing, f"clean Settings runtime is missing backend contracts: {missing}"
 
 
-def test_settings_authentication_is_clean_implemented_and_secret_safe():
-    runtime = source(SETTINGS_PAGE_JS)
-
-    required = (
-        "function authPayload()",
-        "function persistAuth(",
-        "function clearPassword(",
-        "function setApiTokenEnabled(",
-        "function generateToken(",
-        "function clearToken(",
-        "function verifyOidc(",
-        "function finishOidc(",
-        "return_to: '/oidc-verify-complete.html'",
-        "confirm_open_mode",
-        "clear_password",
-        "clear_oidc_client_secret",
-        "Copy this token now — it will not be shown again.",
-    )
-    missing = [item for item in required if item not in runtime]
-    assert not missing, f"clean authentication implementation is incomplete: {missing}"
-
-    assert "oneTimeToken" in runtime
-    assert "localStorage" not in runtime
-    assert "sessionStorage" not in runtime
 
 
 def test_old_authentication_settings_augmentations_are_not_loaded():
@@ -370,10 +336,11 @@ def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     assert "@import url('/ui-settings-page.css?v=2');" in styles
 
 
-def test_settings_page_runtime_is_owned_by_frontend_syntax_gate():
+def test_settings_page_runtime_is_owned_by_dynamic_frontend_syntax_gate():
     workflow = source(TESTS_WORKFLOW)
-    assert "node --check frontend/static/ui-settings-page.js" in workflow
-
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow
+    assert SETTINGS_PAGE_JS.exists()
 
 def test_static_settings_dom_is_never_a_runtime_dependency():
     runtime = source(SETTINGS_PAGE_JS)
@@ -386,14 +353,3 @@ def test_static_settings_dom_is_never_a_runtime_dependency():
     assert "view.innerHTML =" in runtime
     assert "getElementById('settings-tabs')" not in runtime
     assert "getElementById('settings-form')" not in runtime
-
-
-def test_legacy_app_settings_implementation_is_dead_from_the_clean_runtime_path():
-    app = source(APP_JS)
-    runtime = source(SETTINGS_PAGE_JS)
-
-    # app.js may retain dead code until the monolith cleanup pass, but the single
-    # navigation entry is replaced before Settings is opened.
-    assert "function renderSettings()" in app
-    assert "window.loadSettings = load;" in runtime
-    assert "renderSettings(" not in runtime

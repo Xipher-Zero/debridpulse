@@ -344,55 +344,16 @@ def test_configuration_payload_and_mutation_paths_do_not_own_live_discovery():
     assert "_oidc_runtime_available" in runtime_block
 
 
-def test_settings_bootstrap_renders_from_settings_before_auth_enrichment():
-    source = RESILIENCE_JS.read_text(encoding="utf-8")
-    loader = PRESENTATION_LOADER_JS.read_text(encoding="utf-8")
-
-    assert "/ui-settings-page.js?v=4" in loader
-    assert "/ui-settings-auth-resilience.js?v=1" in loader
-    assert loader.index("/ui-settings-page.js?v=4") < loader.index("/ui-settings-auth-resilience.js?v=1")
-
-    assert "const settingsPromise = baseApi('GET', '/settings', undefined, 10000);" in source
-    assert "const authPromise = baseApi('GET', '/auth/config', undefined, 7000);" in source
-    assert "settings = await settingsPromise;" in source
-    assert "await renderWithSnapshots(settings, fallbackAuthFromSettings(settings));" in source
-    assert "authPromise.then(async auth =>" in source
-    assert source.index("await renderWithSnapshots(settings, fallbackAuthFromSettings(settings));") < source.index("authPromise.then(async auth =>")
 
 
-def test_reload_after_removing_oidc_uses_local_settings_snapshot_without_auth_wait():
-    source = RESILIENCE_JS.read_text(encoding="utf-8")
-
-    assert "const oidcEnabled = !!settings?.auth_oidc_enabled;" in source
-    assert "const oidcConfigured = oidcEnabled ||" in source
-    assert "oidc_available: null" in source
-    assert "await renderWithSnapshots(settings, fallbackAuthFromSettings(settings));" in source
-    bootstrap = source.split("async function resilientLoadSettings()", 1)[1].split("window.api = observedApi", 1)[0]
-    before_render = bootstrap.split("await renderWithSnapshots(settings, fallbackAuthFromSettings(settings));", 1)[0]
-    assert "await authPromise" not in before_render
 
 
-def test_auth_enrichment_failure_is_contained_and_navigation_away_cannot_repaint():
-    source = RESILIENCE_JS.read_text(encoding="utf-8")
-
-    assert "if (generation !== loadGeneration || !settingsActive()) return;" in source
-    assert "if (!settingsActive()) return;" in source
-    assert "markAuthUnavailable(error);" in source
-    assert "Authentication status unavailable" in source
-    assert "Other Settings remain available." in source
-    assert "view.innerHTML = '<div class=\"dp-settings-load-error\"" in source
 
 
-def test_oidc_runtime_status_is_independent_and_failure_only_degrades_kpi():
-    source = RESILIENCE_JS.read_text(encoding="utf-8")
-
-    assert "baseApi('GET', '/auth/oidc/runtime-status', undefined, 5000)" in source
-    assert "applyOidcRuntimeStatus(latestAuth, false);" in source
-    assert "Runtime Unavailable" in source
-    assert "kpi.dataset.c = 'red';" in source
-    assert "if (!auth?.oidc_enabled || !auth?.oidc_configured) return;" in source
 
 
-def test_auth_resilience_runtime_is_covered_by_frontend_syntax_gate():
+def test_retired_auth_resilience_runtime_is_not_required_by_dynamic_syntax_gate():
     workflow = TEST_WORKFLOW.read_text(encoding="utf-8")
-    assert "node --check frontend/static/ui-settings-auth-resilience.js" in workflow
+    assert not RESILIENCE_JS.exists()
+    assert "find frontend/static -maxdepth 1 -name '*.js' -print0" in workflow
+    assert "xargs -0 -n1 node --check" in workflow

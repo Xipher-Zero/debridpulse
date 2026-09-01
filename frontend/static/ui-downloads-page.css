@@ -105,15 +105,18 @@ body.dp-v11-structural #view-torrents .dp-downloads-refresh {
 }
 
 /* ── Contextual multi-selection toolbar ─────────────────────────────── */
-/* Promote the inherited flat accent banner into a standard header-only
-   card. The universal dp-card / dp-card__header language owns material and
-   framing; this page layer owns only Downloads composition. */
+/* Native band inside the Downloads card, between Search and the table. */
 body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card {
   display: none;
   flex: 0 0 auto;
-  margin: 0 0 10px !important;
+  margin: 0 !important;
   padding: 0 !important;
   gap: 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--dp-divider) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible;
   color: var(--dp-text-primary) !important;
   font-size: inherit !important;
   font-weight: inherit !important;
@@ -126,6 +129,7 @@ body.dp-v11-structural #view-torrents .dp-downloads-bulk-toolbar {
   min-height: 54px;
   justify-content: space-between;
   gap: 16px;
+  border-radius: 0 !important;
 }
 body.dp-v11-structural #view-torrents .dp-downloads-bulk-actions {
   display: flex;

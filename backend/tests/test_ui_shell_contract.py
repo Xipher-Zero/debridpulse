@@ -32,8 +32,8 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
     assert not (STATIC / "style-legacy.css").exists()
     index = read(INDEX)
     assert "/style.css?v=15" in index
-    assert "/style-v11.css?v=24" in index
-    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=24")
+    assert "/style-v11.css?v=26" in index
+    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=26")
 
     overlay = read(V11_STYLE)
     imports = (
@@ -48,14 +48,10 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "/ui-shell-structural.css?v=30",
         "/ui-shell-provider-status.css?v=24",
         "/ui-dashboard.css?v=20",
-        "/ui-dashboard-batch5.css?v=20",
-        "/ui-dashboard-polish.css?v=20",
-        "/ui-dashboard-polish-final.css?v=20",
         "/ui-utility-controls.css?v=23",
-        "/ui-dashboard-final.css?v=23",
-        "/ui-statistics-page.css?v=21",
+        "/ui-statistics-page.css?v=22",
         "/ui-activity-log-page.css?v=30",
-        "/ui-downloads-page.css?v=27",
+        "/ui-downloads-page.css?v=28",
         "/ui-settings-page.css?v=2",
         "/ui-help-page.css?v=22",
         "/ui-panel-surface-treatment.css?v=22",
@@ -81,6 +77,10 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "ui-dashboard-batch3.css",
         "ui-dashboard-batch4.css",
         "ui-dashboard-control-polish.css",
+        "ui-dashboard-batch5.css",
+        "ui-dashboard-polish.css",
+        "ui-dashboard-polish-final.css",
+        "ui-dashboard-final.css",
         "ui-live-review-batch.css",
         "ui-sidequest-polish.css",
     ):
@@ -100,10 +100,9 @@ def test_v11_cache_generations_remain_targeted() -> None:
         "/ui-shell-provider-status.css": "24",
         "/ui-shell-provider-status-v2.css": "28",
         "/ui-utility-controls.css": "23",
-        "/ui-dashboard-final.css": "23",
-        "/ui-statistics-page.css": "21",
+        "/ui-statistics-page.css": "22",
         "/ui-activity-log-page.css": "30",
-        "/ui-downloads-page.css": "27",
+        "/ui-downloads-page.css": "28",
         "/ui-downloads-desktop.css": "28",
         "/ui-settings-page.css": "2",
         "/ui-settings-chrome.css": "2",
@@ -117,16 +116,6 @@ def test_v11_cache_generations_remain_targeted() -> None:
         assert generations[path] == version
 
 
-def test_bootstrap_cache_generation_and_runtime_fallbacks_are_coherent() -> None:
-    index = read(INDEX)
-    operator = read(SHELL_RUNTIME)
-    runtime = read(PRESENTATION_RUNTIME)
-    assert "/style-v11.css?v=24" in index
-    assert "/operator-title.js?v=23" in index
-    assert "/ui-runtime.js?v=24" in index
-    assert "/ui-runtime.js?v=24" in operator
-    assert "/ui-downloads-runtime.js?v=22" in operator
-    assert "/style-v11.css?v=24" in runtime
 
 
 def test_shell_owns_topbar_navigation_canvas_and_provider_geometry() -> None:

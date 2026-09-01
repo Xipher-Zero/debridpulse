@@ -26,22 +26,15 @@
 @import url('/ui-shell-provider-status-v2.css?v=28');
 @import url('/ui-topbar-first-paint.css?v=20');
 
-/* Canonical Dashboard presentation owns base and structural geometry directly.
-   The remaining batch/polish files are live mixed calibration layers because
-   they still contain shell and transfer responsibilities. The final Dashboard
-   override remains late so its accepted precedence over those mixed layers and
-   shared utility controls is preserved. */
+/* Canonical Dashboard presentation owns its accepted v1.0.11 calibration directly.
+   Shared utility controls remain a distinct cross-page contract. */
 @import url('/ui-dashboard.css?v=20');
-@import url('/ui-dashboard-batch5.css?v=20');
-@import url('/ui-dashboard-polish.css?v=20');
-@import url('/ui-dashboard-polish-final.css?v=20');
 @import url('/ui-utility-controls.css?v=23');
-@import url('/ui-dashboard-final.css?v=23');
 
 /* Page layers contain page-specific geometry, behavior, and content details. */
-@import url('/ui-statistics-page.css?v=21');
+@import url('/ui-statistics-page.css?v=22');
 @import url('/ui-activity-log-page.css?v=30');
-@import url('/ui-downloads-page.css?v=27');
+@import url('/ui-downloads-page.css?v=28');
 @import url('/ui-downloads-desktop.css?v=28');
 @import url('/ui-settings-page.css?v=2');
 @import url('/ui-settings-chrome.css?v=2');
@@ -58,3 +51,16 @@
 /* Cross-page visual accents and shell signal field. */
 @import url('/ui-visual-accents.css?v=21');
 @import url('/ui-shell-signal-field.css?v=20');
+
+/* Required canonical application/page styles. */
+@import url('/ui-help-chrome.css?v=2');
+@import url('/ui-help-license-documents.css?v=2');
+@import url('/ui-help-license-balance.css?v=2');
+@import url('/ui-settings-downloads-completion.css?v=2');
+@import url('/ui-settings-form-layout.css?v=2');
+@import url('/ui-settings-aria2-live.css?v=2');
+@import url('/ui-settings-maintenance-wipe.css?v=2');
+@import url('/ui-settings-notifications.css?v=2');
+@import url('/ui-settings-authentication.css?v=2');
+@import url('/ui-settings-card-icons.css?v=2');
+@import url('/ui-shell-brand.css?v=2');

@@ -7,20 +7,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=15">
-<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=24" data-dp-v11-styles="1">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4">
+<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=26" data-dp-v11-styles="1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 </head>
 <body class="dp-v11-structural">
 <script src="/ui-theme-bootstrap.js?v=21"></script>
 
 <aside id="sidebar">
   <div class="logo">
-    <img class="logo-icon" src="/logo.svg?v=4" alt="DebridPulse logo">
+    <img class="logo-icon" src="/logo.svg?v=7" alt="DebridPulse logo">
     <div class="logo-text">
       <div class="logo-name logo-name-full" title="DebridPulse">Debrid<span>Pulse</span></div>
-      <div class="logo-ver" id="sidebar-version">v…</div>
     </div>
   </div>
   <nav>
@@ -87,14 +85,17 @@
 <div id="main">
   <div id="topbar">
     <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Menu">☰</button>
-    <h1 id="page-title">Dashboard</h1>
+    <div class="dp-page-heading">
+      <h1 id="page-title">Dashboard</h1>
+      <p id="page-subtitle" class="dp-page-subtitle">Overview of your download activities and system status.</p>
+    </div>
     <a id="update-badge" href="https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md"
        target="_blank" rel="noopener" aria-label="Open the DebridPulse changelog"
        style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--accent);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:none"
        title="Open the DebridPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
     <div id="topbar-actions"></div>
-    <div id="aria2-speed-badge" style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" title="Active / max — live speed — download speed cap">
-      <span style="color:var(--green)">&#9660;</span><span id="aria2-badge-active">0</span><span style="color:var(--text3)">/</span><span id="aria2-badge-max">—</span>
+    <div id="aria2-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" title="Active / max — live speed — download speed cap">
+      <span style="color:var(--green)">&#9660;</span><span id="aria2-badge-active">0</span><span style="color:var(--text3)">/</span><span id="aria2-badge-max">0</span>
       <span style="color:var(--border);margin:0 2px">|</span><span id="aria2-badge-speed" style="color:var(--green)">0 KB/s</span>
       <span style="color:var(--border);margin:0 2px">|</span>
       <div class="aria2-cap-control">
@@ -177,57 +178,6 @@
         </div>
       </div>
 
-      <!-- ── KPI Strip ─────────────────────────────────────────────────────── -->
-      <div class="dash-kpi-strip dash-kpi-strip--dashboard">
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-queue-health">—</div>
-          <div class="dash-kpi-lbl">Queue Health</div>
-          <div class="dash-kpi-sub" id="i-queue-copy"></div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-last-day">—</div>
-          <div class="dash-kpi-lbl">Last 24 h</div>
-          <div class="dash-kpi-sub">completed</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-last-week">—</div>
-          <div class="dash-kpi-lbl">Last 7 Days</div>
-          <div class="dash-kpi-sub">completed</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-success-rate">—</div>
-          <div class="dash-kpi-lbl">Success Rate</div>
-          <div class="dash-kpi-sub">of all finished</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-avg-duration">—</div>
-          <div class="dash-kpi-lbl">Avg Duration</div>
-          <div class="dash-kpi-sub">per download</div>
-        </div>
-        <div class="dash-kpi-sep"></div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-val" id="i-avg-size">—</div>
-          <div class="dash-kpi-lbl">Avg Size</div>
-          <div class="dash-kpi-sub">per completed</div>
-        </div>
-      </div>
-
-      <div id="debug-status" style="display:none;padding:10px 16px;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text2)"></div>
-
-      <!-- ── System Health ──────────────────────────────────────────────────── -->
-      <div id="dash-health-bar" style="display:none;margin-bottom:10px;padding:10px 16px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:12px">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <span style="font-weight:700;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em">System</span>
-          <span id="dash-health-recovery" style="color:var(--text2)"></span>
-          <span id="dash-health-deadlock" style="color:var(--text2)"></span>
-          <span id="dash-health-aging" style="color:var(--text2)"></span>
-        </div>
-      </div>
-
       <!-- ── Unified transfer submission ───────────────────────────────────── -->
       <div class="card" style="margin-bottom:14px">
         <div class="card-header">
@@ -278,49 +228,47 @@
 
     <!-- Downloads -->
     <div class="view" id="view-torrents">
-      <!-- Bulk-action toolbar: class="bulk-bar" is required for .bulk-bar.visible CSS -->
-      <div class="bulk-bar" id="bulk-bar">
-        <span id="bulk-count"></span>
-        <button class="btn btn-danger btn-sm" onclick="bulkAction('delete',this)">✕ Delete</button>
-        <button class="btn btn-blue btn-sm"   onclick="bulkAction('reset',this)">↺ Reset</button>
-        <button class="btn btn-ghost btn-sm"  onclick="bulkAction('pause',this)">⏸ Pause</button>
-        <button class="btn btn-ghost btn-sm"  onclick="bulkAction('resume',this)">▶ Resume</button>
-        <button class="btn btn-ghost btn-sm"  onclick="clearSelection()" style="margin-left:auto;color:inherit;opacity:.7">✕ Clear</button>
-      </div>
-
       <div class="card">
         <div class="card-header">
-          <span class="card-title" id="torrent-card-title">All Downloads</span>
-          <div class="filter-tabs">
-            <div class="ftab active" onclick="setFilter(this,'')">All</div>
-            <div class="ftab" onclick="setFilter(this,'downloading')">Active</div>
-            <div class="ftab" onclick="setFilter(this,'ready')">Ready</div>
-            <div class="ftab" onclick="setFilter(this,'completed')">Done</div>
-            <div class="ftab" onclick="setFilter(this,'error')">Error</div>
+          <span class="card-title" id="torrent-card-title">Download Queue</span>
+          <div class="filter-tabs" data-dp-filter-contract="desktop-v24" role="tablist" aria-label="Download status filter">
+            <div class="ftab active" data-dp-status="" role="tab" aria-selected="true" onclick="setFilter(this,'')">All</div>
+            <div class="ftab" data-dp-status="downloading" role="tab" aria-selected="false" onclick="setFilter(this,'downloading')">Downloading</div>
+            <div class="ftab" data-dp-status="paused" role="tab" aria-selected="false" onclick="setFilter(this,'paused')">Paused</div>
+            <div class="ftab" data-dp-status="processing" role="tab" aria-selected="false" onclick="setFilter(this,'processing')">Processing</div>
+            <div class="ftab" data-dp-status="ready" role="tab" aria-selected="false" onclick="setFilter(this,'ready')">Ready</div>
+            <div class="ftab" data-dp-status="completed" role="tab" aria-selected="false" onclick="setFilter(this,'completed')">Done</div>
+            <div class="ftab" data-dp-status="error" role="tab" aria-selected="false" onclick="setFilter(this,'error')">Error</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="loadTorrents()" style="margin-left:8px">↻</button>
+          <button class="btn btn-ghost btn-sm dp-downloads-refresh" onclick="loadTorrents()" aria-label="Refresh downloads" title="Refresh downloads">Refresh</button>
         </div>
         <div style="padding:10px 14px 0">
           <div class="ev-search-row">
-            <input class="input" id="torrent-search" placeholder="Search by name, hash, AllDebrid ID, source, label, or error…" oninput="onTorrentSearchInput()"/>
+            <input class="input" id="torrent-search" placeholder="Search downloads…" oninput="onTorrentSearchInput()"/>
           </div>
         </div>
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <div class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar">
+          <div class="dp-card__header dp-downloads-bulk-toolbar">
+            <div class="dp-downloads-bulk-actions">
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--pause" onclick="bulkAction('pause',this)">Pause</button>
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--resume" onclick="bulkAction('resume',this)">Resume</button>
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--reset" onclick="bulkAction('reset',this)">Reset</button>
+              <span class="dp-downloads-bulk-separator" aria-hidden="true"></span>
+              <button class="btn btn-danger dp-downloads-bulk-action dp-downloads-bulk-action--delete" onclick="bulkAction('delete',this)">Delete</button>
+            </div>
+            <div class="dp-downloads-bulk-status">
+              <span id="bulk-count" class="dp-downloads-bulk-count"></span>
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--clear" onclick="clearSelection()">Clear Selections</button>
+            </div>
+          </div>
+        </div>
+        <div class="dp-downloads-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="t-table" style="min-width:500px">
           <thead><tr><th style="width:32px"><input type="checkbox" id="chk-all" onchange="toggleAllCheckboxes(this)"/></th><th>Name</th><th>Source / Label</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><th>Actions</th></tr></thead>
           <tbody id="t-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
         </table>
         </div>
         <div id="torrent-pagination" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:12px;color:var(--text3)">Per page:</span>
-            <select id="torrent-page-size" class="input" style="width:70px;padding:4px 6px;font-size:12px" onchange="onPageSizeChange(this.value)">
-              <option value="15">15</option>
-              <option value="25" selected>25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
-          </div>
           <div id="torrent-page-btns" style="display:flex;gap:4px;align-items:center"></div>
           <div id="torrent-page-info" style="font-size:12px;color:var(--text3)"></div>
         </div>
@@ -350,29 +298,53 @@
     </div>
 
     <!-- Statistics -->
-    <div class="view" id="view-stats">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--text3);font-weight:500">Period:</span>
+    <div class="view card dp-statistics-master" id="view-stats">
+      <div class="card-header dp-stats-master-header">
+        <div class="dp-stats-master-title">
+          <img src="/icons/dp/statistics.svg" alt="" aria-hidden="true" class="dp-icon dp-statistics-title-icon">
+          <div class="dp-stats-heading-copy">
+            <span class="dp-stats-heading">By the Numbers</span>
+            <span class="dp-stats-subtitle">Because vibes are not a performance metric.</span>
+          </div>
+        </div>
+        <span class="dp-stats-period-label">Period:</span>
         <div class="filter-tabs" id="stats-period-tabs">
           <div class="ftab" data-period="1h" onclick="setStatsPeriod(this)">1h</div>
-          <div class="ftab active" data-period="24h" onclick="setStatsPeriod(this)">24h</div>
-          <div class="ftab" data-period="7d" onclick="setStatsPeriod(this)">7d</div>
+          <div class="ftab" data-period="24h" onclick="setStatsPeriod(this)">24h</div>
+          <div class="ftab active" data-period="7d" onclick="setStatsPeriod(this)">7d</div>
           <div class="ftab" data-period="30d" onclick="setStatsPeriod(this)">30d</div>
           <div class="ftab" data-period="1y" onclick="setStatsPeriod(this)">1y</div>
           <div class="ftab" data-period="all" onclick="setStatsPeriod(this)">All time</div>
         </div>
       </div>
-      <div class="tab-grid" id="detail-stat-cards"><div class="metric-card"><div class="metric-label">Library</div><div class="metric-value">&#8212;</div><div class="metric-sub">Loading&#8230;</div></div></div>
-      <div class="scard" style="margin-bottom:14px"><div class="scard-header">&#128200; <span id="chart-title">Completions — last 24 hours</span></div><div class="scard-body" style="padding:12px"><div class="chart-wrap"><canvas id="daily-chart"></canvas></div></div></div>
-      <div class="split-grid">
-        <div class="list-card"><div class="card-header"><span class="card-title">Download Status</span></div><div class="card-body" id="detail-torrent-status"><div class="empty">Loading&#8230;</div></div></div>
-        <div class="list-card"><div class="card-header"><span class="card-title">File Status</span></div><div class="card-body" id="detail-file-status"><div class="empty">Loading&#8230;</div></div></div>
-      </div>
-      <div class="split-grid">
-        <div class="list-card"><div class="card-header"><span class="card-title">Monitor Levels</span></div><div class="card-body" id="detail-event-levels"><div class="empty">Loading&#8230;</div></div></div>
-        <div class="list-card"><div class="card-header"><span class="card-title">Top Sources</span></div><div class="card-body" id="detail-sources"><div class="empty">Loading&#8230;</div></div></div>
+      <div class="card-body dp-stats-master-body">
+        <div class="tab-grid" id="detail-stat-cards">
+          <div class="metric-card" data-dp-stats-metric="downloads"><div class="metric-label">Downloads Added</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads added during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="completed"><div class="metric-label">Downloads Completed</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads completed during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="progress"><div class="metric-label">In Progress</div><div class="metric-value">&#8212;</div><div class="metric-sub">Downloads still in progress that were added during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="success"><div class="metric-label">Success Rate</div><div class="metric-value">&#8212;</div><div class="metric-sub">Share of finished downloads completed successfully during the last 7 days.</div></div>
+          <div class="metric-card" data-dp-stats-metric="data"><div class="metric-label">Total Data Downloaded</div><div class="metric-value">&#8212;</div><div class="metric-sub">Total data downloaded during the last 7 days.</div></div>
+        </div>
+        <div class="dash-kpi-strip dp-stats-history-grid">
+          <div class="dash-kpi dp-stats-kpi-day"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/calendar-24.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-day">&#8212;</div><div class="dash-kpi-lbl">Last 24 Hours</div><div class="dash-kpi-sub">Completed downloads over the last 24 hours.</div></div>
+          <div class="dash-kpi dp-stats-kpi-week"><span class="dp-icon-frame dp-icon-frame--purple dp-kpi-icon"><img src="/icons/dp/calendar-7.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-week">&#8212;</div><div class="dash-kpi-lbl">Last 7 Days</div><div class="dash-kpi-sub">Completed downloads over the last 7 days.</div></div>
+          <div class="dash-kpi dp-stats-kpi-duration"><span class="dp-icon-frame dp-icon-frame--amber dp-kpi-icon"><img src="/icons/dp/clock-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-duration">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD TIME</div><div class="dash-kpi-sub">Average completion time for downloads to finish.</div></div>
+          <div class="dash-kpi dp-stats-kpi-success"><span class="dp-icon-frame dp-icon-frame--green dp-kpi-icon"><img src="/icons/dp/heartbeat-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-success-rate">&#8212;</div><div class="dash-kpi-lbl">LIFE-TIME SUCCESS RATE</div><div class="dash-kpi-sub">Share of all recorded finished downloads completed successfully.</div></div>
+          <div class="dash-kpi dp-stats-kpi-size"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/cube.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-size">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD SIZE</div><div class="dash-kpi-sub">Average size of completed downloads.</div></div>
+        </div>
+        <div class="scard dp-stats-chart dp-list-workspace-surface">
+          <div class="scard-header"><img src="/icons/dp/card-download.svg" alt="" aria-hidden="true" class="dp-icon dp-stats-chart-title-icon"><span class="dp-stats-chart-heading-copy"><span class="dp-stats-chart-heading">Completions</span><span id="chart-title" class="dp-stats-chart-subtitle">Completed downloads in the last 7 days.</span></span></div>
+          <div class="scard-body"><div class="chart-wrap"><canvas id="daily-chart"></canvas></div></div>
+        </div>
+        <div class="dp-stats-breakdown-grid">
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Download Status</span></div><div class="card-body" id="detail-torrent-status"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">File Status</span></div><div class="card-body" id="detail-file-status"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Monitor Levels</span></div><div class="card-body" id="detail-event-levels"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Top Sources</span></div><div class="card-body" id="detail-sources"><div class="empty">Loading&#8230;</div></div></div>
+        </div>
       </div>
     </div>
+
     <!-- Changelog -->
     <div class="view" id="view-changelog">
       <div class="card">
@@ -491,334 +463,11 @@
 
     <!-- Help -->
     <div class="view" id="view-help">
-      <div class="view-header">
-        <h2 class="view-title">&#10067; Help &amp; Documentation</h2>
       </div>
-
-      <div class="stabs" id="help-tabs" style="margin-bottom:0">
-        <div class="stab active"  data-htab="quickstart"   onclick="switchHelpTab(this)">&#128640; Quick Start</div>
-        <div class="stab"         data-htab="howitworks"   onclick="switchHelpTab(this)">&#128214; How it works</div>
-        <div class="stab"         data-htab="aria2"        onclick="switchHelpTab(this)">&#11015;&#65038; aria2</div>
-        <div class="stab"         data-htab="integrations" onclick="switchHelpTab(this)">&#128268; Integrations</div>
-        <div class="stab"         data-htab="settings"     onclick="switchHelpTab(this)">&#9881;&#65039; Settings</div>
-        <div class="stab"         data-htab="trouble"      onclick="switchHelpTab(this)">&#128295; Troubleshooting</div>
-        <div class="stab"         data-htab="license"      onclick="switchHelpTab(this)">&#9878;&#65039; License</div>
-      </div>
-
-      <div class="help-panels-wrap">
-      <!-- ── Quick Start ─────────────────────────────────────────────────── -->
-      <div class="help-panel active" id="htab-quickstart">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:760px;display:flex;flex-direction:column;gap:20px">
-
-            <div>
-              <h3 style="margin:0 0 6px;color:var(--accent);font-size:15px">Five steps to your first download</h3>
-              <p style="margin:0;color:var(--text2);font-size:13px">Complete these steps once and everything runs automatically from then on.</p>
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:14px">
-
-              <div style="display:flex;gap:14px;align-items:flex-start">
-                <div style="background:var(--accent);color:#000;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">1</div>
-                <div>
-                  <div style="font-weight:600;margin-bottom:3px">Enter your AllDebrid API key</div>
-                  <div style="color:var(--text2);font-size:13px">Go to <b>Settings → AllDebrid</b> and paste your API key. Get it at <a href="https://alldebrid.com/apikeys" target="_blank" style="color:var(--accent)">alldebrid.com/apikeys</a>. Click <b>Save</b>.</div>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:14px;align-items:flex-start">
-                <div style="background:var(--accent);color:#000;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">2</div>
-                <div>
-                  <div style="font-weight:600;margin-bottom:3px">Set the download folder</div>
-                  <div style="color:var(--text2);font-size:13px">Go to <b>Settings → Download</b> and set the <b>Built-in aria2 Download Folder</b> to an existing path accessible by the container (the documented container mount is <code>/download</code>).</div>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:14px;align-items:flex-start">
-                <div style="background:var(--accent);color:#000;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">3</div>
-                <div>
-                  <div style="font-weight:600;margin-bottom:3px">Configure aria2</div>
-                  <div style="color:var(--text2);font-size:13px">By default aria2 runs <b>built-in</b> inside the container — no extra setup. For an external aria2 instance, set <b>aria2 Mode</b> to <b>External aria2</b> in <b>Settings → Download</b> and provide the RPC URL.</div>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:14px;align-items:flex-start">
-                <div style="background:var(--accent);color:#000;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">4</div>
-                <div>
-                  <div style="font-weight:600;margin-bottom:3px">Add a torrent</div>
-                  <div style="color:var(--text2);font-size:13px">Submit a direct link, paste a magnet link, or upload a <code>.torrent</code> file from the Dashboard.</div>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:14px;align-items:flex-start">
-                <div style="background:var(--accent);color:#000;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">5</div>
-                <div>
-                  <div style="font-weight:600;margin-bottom:3px">Watch it download</div>
-                  <div style="color:var(--text2);font-size:13px">The <b>Dashboard</b> shows live progress. The client polls AllDebrid every 30 s, fetches unlocked links, and hands them to aria2. Completed torrents are removed from AllDebrid automatically.</div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── How it works ─────────────────────────────────────────────────── -->
-      <div class="help-panel" id="htab-howitworks">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:760px;display:flex;flex-direction:column;gap:20px">
-
-            <h3 style="margin:0;color:var(--accent);font-size:15px">The download pipeline</h3>
-
-            <div style="font-size:13px;color:var(--text2);line-height:1.7">
-              <p style="margin:0 0 10px">DebridPulse sits between your download sources and your disk. It never downloads directly from peers — your debrid provider's cloud does. You get the finished file via an unlocked HTTPS link.</p>
-
-              <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
-                <div style="display:flex;gap:10px;align-items:center">
-                  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;white-space:nowrap;min-width:130px;text-align:center;font-weight:600;color:var(--text1)">Magnet / .torrent</div>
-                  <div style="color:var(--text3)">→</div>
-                  <div style="color:var(--text2)">Uploaded to AllDebrid. <b>status: uploading</b></div>
-                </div>
-                <div style="display:flex;gap:10px;align-items:center">
-                  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;white-space:nowrap;min-width:130px;text-align:center;font-weight:600;color:var(--text1)">AllDebrid processes</div>
-                  <div style="color:var(--text3)">→</div>
-                  <div style="color:var(--text2)">Polls every 30 s. <b>status: processing</b></div>
-                </div>
-                <div style="display:flex;gap:10px;align-items:center">
-                  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;white-space:nowrap;min-width:130px;text-align:center;font-weight:600;color:var(--accent)">Ready on AllDebrid</div>
-                  <div style="color:var(--text3)">→</div>
-                  <div style="color:var(--text2)">Links unlocked, handed to aria2. <b>status: downloading</b></div>
-                </div>
-                <div style="display:flex;gap:10px;align-items:center">
-                  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;white-space:nowrap;min-width:130px;text-align:center;font-weight:600;color:var(--green)">aria2 complete</div>
-                  <div style="color:var(--text3)">→</div>
-                  <div style="color:var(--text2)">Magnet cleaned up on AllDebrid and the local transfer is marked <b>completed</b>.</div>
-                </div>
-              </div>
-
-              <p style="margin:14px 0 0"><b>Error auto-recovery:</b> Upload failures (code 5) and "no peers" (code 8) are retried automatically up to <code>upload_fail_retry_count</code> times. Stalled downloads are reset after <code>stuck_download_timeout_hours</code> so they can be dispatched again. Use <b>⟳ Recover All</b> to manually trigger a full recovery pass.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── aria2 ─────────────────────────────────────────────────────────── -->
-      <div class="help-panel" id="htab-aria2">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:760px;display:flex;flex-direction:column;gap:18px">
-
-            <h3 style="margin:0;color:var(--accent);font-size:15px">aria2 — the download engine</h3>
-
-            <div style="font-size:13px;color:var(--text2);line-height:1.7">
-              <p style="margin:0 0 10px">DebridPulse uses <b>aria2</b> as the actual HTTP download engine. Two modes are supported:</p>
-
-              <b style="color:var(--text1)">Built-in (default)</b>
-              <p style="margin:4px 0 10px">aria2 runs inside the container. No external setup needed. Configure options in <b>Settings → Download Client → aria2 Config</b>. The process is managed by the client and restarts automatically.</p>
-
-              <b style="color:var(--text1)">External RPC</b>
-              <p style="margin:4px 0 10px">Point to an existing aria2 instance by providing the JSON-RPC URL (e.g. <code>http://aria2:6800/jsonrpc</code>) and an optional secret token. Useful for shared aria2 instances or custom setups.</p>
-
-              <b style="color:var(--text1)">Performance tips</b>
-              <ul style="margin:6px 0;padding-left:18px">
-                <li><b>Max concurrent downloads</b> controls how many torrents are processed in parallel (default: 3). Higher values are faster but use more RAM and bandwidth.</li>
-                <li><b>Connections per file</b> (<code>split</code>): more connections = faster single-file downloads. 8–16 is typically optimal.</li>
-                <li><b>Speed limits</b>: set in <b>Downloads → ↓ Limit</b> in the header badge, or via Settings.</li>
-                <li>Enable <b>Auto-memory tuning</b> to let the client adjust aria2's cache based on available RAM.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Integrations ──────────────────────────────────────────────────── -->
-      <div class="help-panel" id="htab-integrations">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:760px;display:flex;flex-direction:column;gap:18px">
-
-            <h3 style="margin:0;color:var(--accent);font-size:15px">Integrations</h3>
-
-            <div style="display:flex;flex-direction:column;gap:16px;font-size:13px;color:var(--text2);line-height:1.7">
-
-              <div>
-                <b style="color:var(--text1);display:block;margin-bottom:4px">&#128276; Discord Notifications</b>
-                Enter a Discord webhook URL in <b>Settings → Notifications</b>. Fine-grained toggles let you choose exactly which events trigger a notification: completed, error, upload failed, no peers, and periodic statistics reports.
-              </div>
-
-              <div>
-                <b style="color:var(--text1);display:block;margin-bottom:4px">&#128202; Prometheus Metrics</b>
-                A Prometheus-compatible scrape endpoint is available at <code>GET /api/metrics</code>. Metrics include torrent counts by status, active downloads, errors, SSE subscriber count, and total bytes downloaded. Add to your Prometheus config with <code>metrics_path: /api/metrics</code>.
-              </div>
-
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Settings Reference ────────────────────────────────────────────── -->
-      <div class="help-panel" id="htab-settings">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:760px;display:flex;flex-direction:column;gap:10px">
-
-            <h3 style="margin:0;color:var(--accent);font-size:15px">Settings reference</h3>
-
-            <div style="font-size:12px;color:var(--text2);line-height:1.7">
-
-              <details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;color:var(--text1);font-size:13px">General</summary>
-                <div style="padding:6px 0 0 12px">
-                  <b>AllDebrid API Key</b> — Required. Get at alldebrid.com/apikeys.<br>
-                  <b>Access Control</b> — Optional HTTP Basic Auth. Set both username and password to enable. Leave either empty to disable. Exempt paths: /api/health, /api/version, /api/avatar.<br>
-                </div>
-              </details>
-
-              <details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;color:var(--text1);font-size:13px">Download Client</summary>
-                <div style="padding:6px 0 0 12px">
-                  <b>Max Concurrent Downloads</b> — How many torrents are processed (unlocked + dispatched) simultaneously. Default: 3.<br>
-                  <b>Built-in aria2 Download Folder</b> — Local path used by DebridPulse and built-in aria2.<br>
-                  <b>External aria2 Download Path</b> — Path to that download location as seen by an external aria2 daemon.<br>
-                  <b>Min Free Disk Space (GB)</b> — If less than this is available, active transfers are allowed to finish while new dispatches are deferred until space recovers. 0 = disabled.<br>
-                  <b>Stalled download timeout (hours)</b> — Downloads left queued or downloading without an update longer than this are reset for retry. 0 = disabled.
-                </div>
-              </details>
-
-              <details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;color:var(--text1);font-size:13px">AllDebrid API</summary>
-                <div style="padding:6px 0 0 12px">
-                  <b>API calls per minute</b> — Rate limit for AllDebrid API calls (token-bucket). Default: 60. 0 = unlimited.<br>
-                  <b>Upload fail retries</b> — How many times to retry a "Upload failed" (code 5) magnet. Default: 3.<br>
-                  <b>Retry delay (minutes)</b> — Wait between upload-failed retry attempts. Default: 5.
-                </div>
-              </details>
-
-              <details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;color:var(--text1);font-size:13px">Notifications</summary>
-                <div style="padding:6px 0 0 12px">
-                  <b>Discord Webhook URL</b> — Main webhook for all notifications.<br>
-                  Per-event toggles control which events trigger a notification independently.
-                </div>
-              </details>
-
-              <details style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:600;color:var(--text1);font-size:13px">Advanced / Maintenance</summary>
-                <div style="padding:6px 0 0 12px">
-                  <b>Event Log Retention (days)</b> — Events older than this are deleted daily. Torrent rows are never deleted — duplicate prevention is unaffected. 0 = keep forever.<br>
-                  <b>Backup</b> — Automatic JSON backups of the database. Configurable interval and retention.<br>
-                  <b>Database</b> — DebridPulse uses an internal SQLite database with WAL mode.
-                </div>
-              </details>
-
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Troubleshooting ───────────────────────────────────────────────── -->
-      <div class="help-panel" id="htab-trouble">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:760px;display:flex;flex-direction:column;gap:14px">
-
-            <h3 style="margin:0;color:var(--accent);font-size:15px">Troubleshooting</h3>
-
-            <div style="font-size:13px;display:flex;flex-direction:column;gap:14px">
-
-              <details open><summary style="cursor:pointer;font-weight:600;color:var(--text1)">Torrents are not downloading / stuck at "processing"</summary>
-                <div style="color:var(--text2);padding:8px 0 0 12px;line-height:1.7">
-                  1. Check the event log for the torrent (click the row → Events).<br>
-                  2. Click <b>⟳ Recover All</b> in the Downloads view — this resets stalled transfers and re-dispatches ready AllDebrid downloads.<br>
-                  3. Open <code>/api/torrents/diagnose</code> to see exact status counts and a sample of non-terminal torrents with file counts.<br>
-                  4. Verify the AllDebrid API key is valid: Settings → AllDebrid → Test.
-                </div>
-              </details>
-
-              <details><summary style="cursor:pointer;font-weight:600;color:var(--text1)">Downloads start but files are never written to disk</summary>
-                <div style="color:var(--text2);padding:8px 0 0 12px;line-height:1.7">
-                  1. Check the <b>Built-in aria2 Download Folder</b> path — it must be accessible inside the container.<br>
-                  2. In Unraid: ensure the path mapping in the Docker template is correct (host path → container path).<br>
-                  3. If using an external aria2 instance, set the <b>External aria2 Download Path</b> to the path seen by that daemon (it may differ from the DebridPulse container path).<br>
-                  4. Check the <code>min_free_disk_gb</code> setting — when the guard is active, new downloads are deferred until free space recovers.
-                </div>
-              </details>
-
-              <details><summary style="cursor:pointer;font-weight:600;color:var(--text1)">Upload Failed / No peers errors</summary>
-                <div style="color:var(--text2);padding:8px 0 0 12px;line-height:1.7">
-                  <b>Upload Failed (code 5):</b> AllDebrid rejected the upload. The client retries automatically (up to <code>upload_fail_retry_count</code> times). If retries are exhausted the torrent is marked error — use the <b>↻</b> retry button on the row or <b>⟳ Recover All</b>.<br><br>
-                  <b>No peers (code 8):</b> The torrent has no seeders. The client deletes the magnet from AllDebrid and re-uploads automatically if a magnet link is stored. If the torrent was added via .torrent file (no magnet stored), you must re-add it manually.
-                </div>
-              </details>
-
-              <details><summary style="cursor:pointer;font-weight:600;color:var(--text1)">Live updates not working (no SSE)</summary>
-                <div style="color:var(--text2);padding:8px 0 0 12px;line-height:1.7">
-                  The UI uses Server-Sent Events (SSE) for live updates instead of polling. If you see stale data:<br>
-                  1. Check the browser console for <code>EventSource</code> errors.<br>
-                  2. If you use a reverse proxy (nginx, Traefik), ensure it does not buffer responses. For nginx add <code>proxy_buffering off;</code> and <code>proxy_read_timeout 3600s;</code> to the DebridPulse location block.<br>
-                  3. The client falls back to 15-second polling automatically if SSE fails.
-                </div>
-              </details>
-
-              <details><summary style="cursor:pointer;font-weight:600;color:var(--text1)">Auth is enabled but I'm locked out</summary>
-                <div style="color:var(--text2);padding:8px 0 0 12px;line-height:1.7">
-                  Edit the configured settings file (documented container default: <code>/app/config/config.json</code>) and set <code>"auth_username": ""</code> and <code>"auth_password": ""</code>, then restart the container. Auth is disabled when either field is empty.
-                </div>
-              </details>
-
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── License ───────────────────────────────────────────────────────── -->
-      <div class="help-panel" id="htab-license">
-        <div class="card" style="margin-top:0;border-radius:0 0 var(--radius) var(--radius)">
-          <div class="card-body" style="max-width:820px;display:flex;flex-direction:column;gap:18px">
-            <div>
-              <h3 style="margin:0 0 8px;color:var(--accent);font-size:15px">DebridPulse licensing</h3>
-              <p style="margin:0;color:var(--text2);font-size:13px;line-height:1.7">
-                DebridPulse modifications are Copyright &copy; 2026 Chris Moore and are
-                distributed under the <b style="color:var(--text1)">GNU General Public License v2.0 or later</b>
-                (<code>GPL-2.0-or-later</code>).
-              </p>
-              <p style="margin:8px 0 0;color:var(--text2);font-size:13px;line-height:1.7">
-                You may redistribute and modify DebridPulse under those terms. It is provided
-                without warranty; see the complete license for the governing conditions and disclaimer.
-              </p>
-            </div>
-
-            <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;background:var(--surface2);font-size:13px;color:var(--text2);line-height:1.7">
-              This application is derived from
-              <a href="https://github.com/kroeberd/alldebrid-client/tree/c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c" target="_blank" rel="noopener" style="color:var(--accent)">kroeberd/alldebrid-client v1.9.9</a>
-              (commit <code>c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c</code>),
-              Copyright &copy; 2026 kroeberd, originally distributed under the MIT License.
-              The upstream copyright and permission notice are retained with DebridPulse.
-            </div>
-
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <a class="btn btn-primary" href="https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSE" target="_blank" rel="noopener">Read GPL-2.0-or-later</a>
-              <a class="btn btn-ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/NOTICE" target="_blank" rel="noopener">Attribution notice</a>
-              <a class="btn btn-ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSES/MIT.txt" target="_blank" rel="noopener">Upstream MIT license</a>
-              <a class="btn btn-ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/SOURCE_OFFER.md" target="_blank" rel="noopener">Source offer</a>
-              <a class="btn btn-ghost" href="https://github.com/Xipher-Zero/debridpulse/blob/main/docs/DEPENDENCY_LICENSES.md" target="_blank" rel="noopener">Third-party licenses</a>
-            </div>
-
-            <p style="margin:0;color:var(--text3);font-size:12px;line-height:1.6">
-              The complete license, notices, dependency inventory, and source offer are also packaged in the DebridPulse container image.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      </div><!-- /help-panels-wrap -->
-    </div>
 
     <!-- Settings -->
     <div class="view" id="view-settings">
-      <div class="stabs" id="settings-tabs"></div>
-      <div id="settings-form"></div>
-      <div class="save-bar">
-        <span class="save-hint">Settings are applied immediately after saving.</span>
-        <div class="settings-context-actions">
-          <button class="btn btn-ghost" id="btn-test-alldebrid" data-settings-test-tab="tab-general" onclick="testAD(this)">🔑 Test AllDebrid</button>
-          <button class="btn btn-ghost" id="btn-test-aria2" data-settings-test-tab="tab-download" onclick="testAria2(this)" hidden>⬇️ Test Aria2</button>
-          <button class="btn btn-ghost" id="btn-test-discord" data-settings-test-tab="tab-notifications" onclick="testDiscord(this)" hidden>🔔 Test Discord</button>
-        </div>
-        <button class="btn btn-primary" id="btn-save-settings" onclick="saveSettings(this)">💾 Save Settings</button>
       </div>
-    </div>
 
   </div>
 </div>
@@ -840,12 +489,23 @@
 
 <input id="torrent-file-input" type="file" accept=".torrent,application/x-bittorrent" hidden onchange="uploadTorrentFile(this)">
 
-<script src="/app.js?v=15" defer></script>
-<script src="/operator-title.js?v=23" defer></script>
-<script src="/ui-runtime.js?v=24" defer data-dp-ui-runtime="1"></script>
-<script src="/ui-downloads-runtime.js?v=22" defer data-dp-downloads-runtime="1"></script>
-<script src="/ui-accessibility-runtime.js?v=21" defer></script>
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
+<script src="/app.js?v=18" defer></script>
+<script src="/operator-title.js?v=24" defer></script>
+<script src="/ui-runtime.js?v=26" defer data-dp-ui-runtime="1"></script>
+<script src="/ui-downloads-runtime.js?v=24" defer data-dp-downloads-runtime="1"></script>
+<script src="/ui-accessibility-runtime.js?v=21" defer></script>
+<script src="/ui-statistics.js?v=3" defer></script>
+<script src="/ui-help-page.js?v=3" defer></script>
+<script src="/ui-help-license-documents.js?v=3" defer></script>
+<script src="/ui-settings-page.js?v=2" defer></script>
+<script src="/ui-settings-maintenance-wipe.js?v=2" defer></script>
+<script src="/ui-settings-notifications.js?v=2" defer></script>
+<script src="/ui-settings-downloads-completion.js?v=2" defer></script>
+<script src="/ui-settings-aria2-live.js?v=2" defer></script>
+<script src="/ui-settings-card-icons.js?v=2" defer></script>
+<script src="/ui-error-semantics.js?v=2" defer></script>
+<div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version">v…</div>
 <div id="mobile-overlay" onclick="closeSidebar()"></div>
 </body>
 </html>

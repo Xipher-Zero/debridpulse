@@ -16,7 +16,6 @@ RUNTIME = STATIC / "ui-runtime.js"
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
     assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-dashboard-final.css?v=23" in entry
     assert "/ui-shell.css?v=21" in entry
     for retired in (
         "ui-dashboard-structural.css",
@@ -26,6 +25,10 @@ def test_dashboard_stylesheet_is_active() -> None:
         "ui-dashboard-batch2-final.css",
         "ui-dashboard-batch3.css",
         "ui-dashboard-batch4.css",
+        "ui-dashboard-batch5.css",
+        "ui-dashboard-polish.css",
+        "ui-dashboard-polish-final.css",
+        "ui-dashboard-final.css",
     ):
         assert retired not in entry
         assert not (STATIC / retired).exists()
@@ -80,24 +83,28 @@ def test_dashboard_canonical_owner_keeps_reviewed_surface_calibration() -> None:
     assert not missing, f"Dashboard canonical surface contract is missing: {missing}"
 
 
-def test_dashboard_keeps_one_primary_metric_row_and_moves_history() -> None:
+def test_dashboard_keeps_one_primary_metric_row_and_statistics_owns_history_directly() -> None:
     dashboard = DASHBOARD_CSS.read_text(encoding="utf-8")
     statistics = STATISTICS_CSS.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
+    index = (REPO_ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
 
     assert "grid-template-columns: repeat(6" in dashboard
-    assert "#view-dashboard .dash-kpi-strip--dashboard" in dashboard
-    assert "display: none !important" in dashboard
+    assert "#view-dashboard .dash-kpi-strip--dashboard" not in dashboard
     assert "#view-stats .dp-stats-history-grid" not in dashboard
     assert "#view-stats .dp-stats-history-grid" in statistics
-    assert "moveDashboardKpisToStatistics" in runtime
-    assert "statsCards.insertAdjacentElement('afterend', strip)" in runtime
-    assert "dp-stats-history-grid" in runtime
+    assert "moveDashboardKpisToStatistics" not in runtime
+    assert "decorateHistoricalKpis" not in runtime
+    assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    assert 'class="dash-kpi-strip dp-stats-history-grid"' in stats_view
 
 
-def test_dashboard_uses_canonical_custom_semantic_assets() -> None:
+def test_dashboard_and_statistics_use_canonical_custom_semantic_assets() -> None:
     runtime = RUNTIME.read_text(encoding="utf-8")
-    expected = (
+    index = (REPO_ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
+
+    dashboard_assets = (
         "card-download.svg",
         "card-checkmark.svg",
         "card-play.svg",
@@ -106,15 +113,21 @@ def test_dashboard_uses_canonical_custom_semantic_assets() -> None:
         "card-disk.svg",
         "card-link.svg",
         "card-document-stack.svg",
+    )
+    missing = [asset for asset in dashboard_assets if asset not in runtime]
+    assert not missing, f"Dashboard is missing canonical assets: {missing}"
+
+    statistics_assets = (
         "heartbeat-outline.svg",
         "calendar-24.svg",
         "calendar-7.svg",
-        "verified-badge.svg",
         "clock-outline.svg",
         "cube.svg",
     )
-    missing = [asset for asset in expected if asset not in runtime]
-    assert not missing, f"Dashboard is missing canonical assets: {missing}"
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    missing = [asset for asset in statistics_assets if asset not in stats_view]
+    assert not missing, f"Statistics is missing canonical assets: {missing}"
+    assert "verified-badge.svg" not in stats_view
 
 
 def test_quick_add_preserves_existing_functional_controls() -> None:

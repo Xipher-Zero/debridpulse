@@ -555,53 +555,20 @@
     applyExtraction(view);
     expandConfiguredSecretMasks(view);
   }
-
   let scheduled = false;
-  let observer = null;
 
-  function observe(view) {
-    if (!observer || !view) return;
-    observer.observe(view, {childList: true, subtree: true});
-  }
 
-  function applyWithoutSelfObservation() {
-    const view = root();
-    if (!view) return;
 
-    if (observer) observer.disconnect();
-    try {
-      apply();
-    } finally {
-      observe(view);
-    }
-  }
+
 
   function scheduleApply() {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      applyWithoutSelfObservation();
+      apply();
     });
   }
 
-  function attach() {
-    const view = root();
-    if (!view) return;
-    if (view.dataset.dpSettingsDownloadsCompletionBound === '1') {
-      applyWithoutSelfObservation();
-      return;
-    }
-
-    view.dataset.dpSettingsDownloadsCompletionBound = '1';
-    observer = new MutationObserver(scheduleApply);
-    observe(view);
-    applyWithoutSelfObservation();
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', attach, {once: true});
-  } else {
-    attach();
-  }
+  document.addEventListener('debridpulse:settings-rendered', scheduleApply);
 })();

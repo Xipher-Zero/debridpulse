@@ -844,3 +844,10 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
     text-align: left;
   }
 }
+
+/* Canonical Settings master subtitle. */
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
+  font-size: 11px !important;
+  line-height: 1.35;
+}
+body.dp-v11-structural #view-settings .dp-settings-header-subtitle::after { content: none !important; }

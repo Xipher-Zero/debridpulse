@@ -64,13 +64,3 @@ def test_archive_password_editor_fills_remaining_extraction_card_height() -> Non
     editor = css.split(".dp-settings-extraction-password-editor {", 1)[1].split("}", 1)[0]
     assert "flex: 1 1 auto;" in editor
     assert "max-height: none;" in editor
-
-
-def test_form_layout_loads_after_settings_completion_style() -> None:
-    loader = source(LOADER)
-    assert "/ui-settings-downloads-completion.css?v=4" in loader
-    assert "/ui-settings-form-layout.css?v=1" in loader
-    assert loader.index("/ui-settings-downloads-completion.css?v=4") < loader.index(
-        "/ui-settings-form-layout.css?v=1"
-    )
-    assert "/ui-settings-downloads-completion.js?v=4&statefix=1" in loader

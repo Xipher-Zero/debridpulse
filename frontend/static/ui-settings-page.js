@@ -1,8 +1,8 @@
 /* DebridPulse v1.0.11 clean-room Settings page.
  *
- * This runtime deliberately does not consume the inherited Settings renderer,
- * serializer, tab lifecycle, authentication augmentation, or Settings DOM.
- * The backend APIs are the only migration contract.
+ * This runtime owns the Settings shell, forms, serialization, authentication
+ * presentation/resilience, OIDC verification, and Settings interaction lifecycle.
+ * Backend APIs are the page contract; no legacy Settings renderer is involved.
  */
 (function () {
   'use strict';
@@ -31,6 +31,9 @@
       completed: false,
     },
   };
+
+  let loadGeneration = 0;
+  let authGeneration = 0;
 
   const root = () => document.getElementById('view-settings');
   const byId = id => document.getElementById(id);
@@ -339,10 +342,10 @@
       ? `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`
       : html(title);
     return `
-      <section class="card dp-settings-card ${options.className || ''}">
+      <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
           <span class="${titleClass}">${titleMarkup}</span>
-          ${options.headerCenter ? `<div class="dp-settings-card-header-center">${options.headerCenter}</div>` : ''}
+          ${options.headerCenter ? `<div class="dp-settings-card-header-center ${options.headerCenterClass || ''}">${options.headerCenter}</div>` : ''}
           ${options.action || ''}
         </div>
         <div class="card-body">${body}</div>
@@ -351,7 +354,7 @@
 
   function groupCard(title, body, options = {}) {
     return `
-      <section class="card dp-settings-group-card ${options.className || ''}">
+      <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
           <span class="card-title">${html(title)}</span>
           ${options.action || ''}
@@ -667,8 +670,223 @@
     return discord + reports;
   }
 
+  function fieldClass(markup, ...classes) {
+    const className = classes.filter(Boolean).join(' ');
+    if (!className) return markup;
+    return markup.replace('class="dp-settings-field"', `class="dp-settings-field ${className}"`);
+  }
+
+  function authHeaderToggle(key, value, extraClass = '') {
+    const id = fieldId(key);
+    return `
+      <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable ${html(extraClass)}" for="${id}">
+        <span class="toggle-info"><span class="tl">Enable</span></span>
+        <span class="toggle">
+          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)}>
+          <span class="ttrack"></span>
+        </span>
+      </label>`;
+  }
+
+  function oidcPolicyToggle(value) {
+    const id = fieldId('oidc_allow_all');
+    return `
+      <label class="toggle-row dp-settings-toggle dp-settings-oidc-allow-all" for="${id}">
+        <span class="toggle-info"><span class="tl">Allow Any Authenticated OIDC Identity</span></span>
+        <span class="toggle">
+          <input id="${id}" data-setting="oidc_allow_all" type="checkbox" ${checked(value)}>
+          <span class="ttrack"></span>
+        </span>
+      </label>`;
+  }
+
+  function mechanismLabel(value) {
+    const raw = String(value || '').trim();
+    if (raw === 'password_session') return 'Password Session';
+    if (raw === 'oidc_session') return 'OIDC Session';
+    return raw || 'Open / anonymous';
+  }
+
+  function settingsActive() {
+    return root()?.classList.contains('active') === true;
+  }
+
+  function oidcIdentity(auth) {
+    return [
+      auth?.oidc_enabled ? '1' : '0',
+      text(auth?.oidc_issuer_url),
+      text(auth?.oidc_client_id),
+      text(auth?.public_base_url_effective || auth?.public_base_url),
+    ].join('|');
+  }
+
+  function fallbackAuthFromSettings(settings) {
+    const passwordEnabled = !!settings?.auth_password_enabled;
+    const username = text(settings?.auth_username).trim();
+    const oidcEnabled = !!settings?.auth_oidc_enabled;
+    const issuer = text(settings?.oidc_issuer_url).trim();
+    const clientId = text(settings?.oidc_client_id).trim();
+    const publicBase = text(settings?.public_base_url).trim();
+    const oidcConfigured = oidcEnabled || !!(issuer && clientId && publicBase);
+    let mode = 'No authentication';
+    if (passwordEnabled && oidcEnabled) mode = 'Username & Password + OIDC';
+    else if (passwordEnabled) mode = 'Username & Password';
+    else if (oidcEnabled) mode = 'OIDC';
+
+    return {
+      mode,
+      authentication_required: passwordEnabled || oidcEnabled,
+      password_enabled: passwordEnabled,
+      password_ready: passwordEnabled && !!username,
+      password_configured: passwordEnabled,
+      username,
+      session_lifetime_hours: Number(settings?.auth_session_lifetime_hours || 12),
+      oidc_enabled: oidcEnabled,
+      oidc_configured: oidcConfigured,
+      oidc_ready: oidcEnabled && oidcConfigured,
+      oidc_available: null,
+      oidc_verified: false,
+      oidc_verified_at: null,
+      oidc_provider_name: text(settings?.oidc_provider_name || 'OpenID Connect'),
+      oidc_issuer_url: issuer,
+      oidc_client_id: clientId,
+      oidc_client_secret_configured: false,
+      oidc_scopes: Array.isArray(settings?.oidc_scopes) ? settings.oidc_scopes.slice() : [],
+      oidc_allow_all: !!settings?.oidc_allow_all,
+      oidc_allowed_subjects: Array.isArray(settings?.oidc_allowed_subjects) ? settings.oidc_allowed_subjects.slice() : [],
+      oidc_allowed_emails: Array.isArray(settings?.oidc_allowed_emails) ? settings.oidc_allowed_emails.slice() : [],
+      oidc_allowed_groups: Array.isArray(settings?.oidc_allowed_groups) ? settings.oidc_allowed_groups.slice() : [],
+      oidc_group_claim: text(settings?.oidc_group_claim || 'groups'),
+      public_base_url: publicBase,
+      public_base_url_effective: publicBase,
+      public_base_url_env_override: false,
+      oidc_callback_url: '',
+      api_token_enabled: false,
+      api_token_configured: false,
+      current_session_mechanism: null,
+      session_count: 0,
+    };
+  }
+
+  function removeAuthUnavailableNotice() {
+    root()?.querySelector('[data-panel="authentication"] .dp-settings-auth-unavailable')?.remove();
+  }
+
+  function markAuthUnavailable(error) {
+    if (!settingsActive()) return;
+    const panel = root()?.querySelector('[data-panel="authentication"]');
+    if (!panel) return;
+    let notice = panel.querySelector('.dp-settings-auth-unavailable');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.className = 'dp-settings-caution dp-settings-auth-unavailable';
+      panel.prepend(notice);
+    }
+    notice.replaceChildren();
+    const title = document.createElement('b');
+    title.textContent = 'Authentication status unavailable';
+    const detail = document.createElement('span');
+    detail.textContent = text(error?.message || error || 'The local authentication status request failed. Other Settings remain available.');
+    notice.append(title, detail);
+  }
+
+  function callbackFromPublicBase(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    let parsed;
+    try { parsed = new URL(raw); } catch (_) { return ''; }
+    if (parsed.protocol !== 'https:' || !parsed.hostname) return '';
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return '';
+    if (parsed.pathname !== '/' && parsed.pathname !== '') return '';
+    const origin = raw.endsWith('/') ? raw.slice(0, -1) : raw;
+    return origin + '/auth/oidc/callback';
+  }
+
+  function updateOidcCallbackPreview() {
+    const source = byId('dp-auth-public-base-url');
+    const input = byId('dp-auth-oidc-callback');
+    const button = root()?.querySelector('button[data-action="copy-oidc-callback"]');
+    const field = input?.closest('.dp-settings-auth-callback-field');
+    if (!source || !input || !button || !field) return;
+
+    const callback = callbackFromPublicBase(source.value);
+    input.value = callback;
+    input.placeholder = callback ? '' : 'Set Public DebridPulse Base URL to display the Callback URL.';
+    button.disabled = !callback;
+    field.classList.toggle('is-callback-unavailable', !callback);
+  }
+
+  async function copyOidcCallback() {
+    const source = byId('dp-auth-public-base-url');
+    const input = byId('dp-auth-oidc-callback');
+    const callback = callbackFromPublicBase(source?.value);
+    if (!input || !callback) return;
+
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(callback);
+      notify('OIDC callback URL copied', 'success');
+      return;
+    } catch (_) {
+      try {
+        input.focus();
+        input.select();
+        if (document.execCommand('copy')) {
+          notify('OIDC callback URL copied', 'success');
+          return;
+        }
+      } catch (_) {}
+    }
+
+    input.focus();
+    input.select();
+    notify('Select and copy the callback URL manually', 'info');
+  }
+
+  function applyOidcRuntimeStatus(auth, available) {
+    if (!settingsActive() || !auth?.oidc_enabled || !auth?.oidc_configured) return;
+    const kpi = Array.from(root()?.querySelectorAll('.dp-settings-auth-kpi') || []).find(node => {
+      return text(node.querySelector('.dhs-label')?.textContent).trim() === 'OIDC State';
+    });
+    const value = kpi?.querySelector('.dhs-val');
+    if (!kpi || !value) return;
+    const presentation = oidcStatePresentation(auth, available);
+    value.replaceChildren(document.createTextNode(presentation.primary));
+    if (presentation.secondary) {
+      value.appendChild(document.createElement('br'));
+      const secondary = document.createElement('span');
+      secondary.className = 'dp-settings-auth-kpi-secondary';
+      secondary.textContent = presentation.secondary;
+      value.appendChild(secondary);
+    }
+    kpi.dataset.c = presentation.tone;
+  }
+
+  async function probeOidcRuntime(auth, generation) {
+    if (!auth?.oidc_enabled || !auth?.oidc_configured) return;
+    const identity = oidcIdentity(auth);
+    try {
+      const status = await request('GET', '/auth/oidc/runtime-status', undefined, 5000);
+      if (generation !== authGeneration || identity !== oidcIdentity(state.auth)) return;
+      state.auth = {...state.auth, oidc_available: status?.oidc_available};
+      applyOidcRuntimeStatus(state.auth, status?.oidc_available);
+    } catch (_) {
+      if (generation !== authGeneration || identity !== oidcIdentity(state.auth)) return;
+      state.auth = {...state.auth, oidc_available: false};
+      applyOidcRuntimeStatus(state.auth, false);
+    }
+  }
+
+  function acceptAuth(auth, {probe = true} = {}) {
+    state.auth = auth;
+    syncAuthIntoSettings(auth);
+    authGeneration += 1;
+    removeAuthUnavailableNotice();
+    if (probe) void probeOidcRuntime(auth, authGeneration);
+    return authGeneration;
+  }
+
   function authStatusCard(a) {
-    const callback = a.oidc_callback_url || 'Configure External Base URL to derive callback';
     const modeRaw = String(a.mode || 'Unknown');
     const modeValue = modeRaw === 'OIDC'
       ? 'OpenID Connect'
@@ -678,11 +896,8 @@
 
     const passwordOperational = !!a.password_enabled && !!a.password_ready;
     const oidcOperational = !!a.oidc_enabled && !!a.oidc_ready && a.oidc_available !== false;
-
     let modeTone = 'neutral';
-    if (a.authentication_required) {
-      modeTone = passwordOperational || oidcOperational ? 'green' : 'red';
-    }
+    if (a.authentication_required) modeTone = passwordOperational || oidcOperational ? 'green' : 'red';
 
     let passwordValue = 'Not Configured';
     let passwordTone = 'neutral';
@@ -703,7 +918,6 @@
     }
 
     const oidcState = oidcStatePresentation(a);
-
     let tokenValue = 'Not Configured';
     let tokenTone = 'neutral';
     if (a.api_token_configured) {
@@ -725,6 +939,8 @@
       ['OIDC State', oidcState.primary, oidcState.tone, oidcState.secondary],
       ['API Token', tokenValue, tokenTone],
     ];
+    const lifetimeId = fieldId('auth_session_lifetime_hours');
+
     return card('Authentication Status', `
       <div class="dp-settings-status-grid dp-settings-auth-kpi-grid">
         ${items.map(([label, value, tone, secondary = '']) => `
@@ -735,90 +951,184 @@
             </div>
           </div>`).join('')}
       </div>
-      <div class="dp-settings-field">
-        <label class="form-label">OIDC Callback URL</label>
-        <input class="input" value="${html(callback)}" readonly>
+      <div class="dp-settings-auth-session-row">
+        <div class="dp-settings-status"><b>Active Browser Sessions</b><span>${html(a.session_count ?? 0)}</span></div>
+        <div class="dp-settings-status"><b>Current Authentication Mechanism</b><span>${html(mechanismLabel(a.current_session_mechanism))}</span></div>
+        <div class="dp-settings-field dp-settings-auth-session-lifetime dp-settings-auth-session-lifetime-polished">
+          <label class="form-label" for="${lifetimeId}">Browser Session Lifetime</label>
+          <span class="dp-settings-auth-duration-control">
+            <input class="input" id="${lifetimeId}" data-setting="auth_session_lifetime_hours" type="number"
+                   min="1" max="168" value="${html(a.session_lifetime_hours || 12)}" aria-label="Browser Session Lifetime in hours">
+            <span class="dp-settings-auth-duration-unit" aria-hidden="true">hours</span>
+          </span>
+          <span class="form-hint">How long a browser login remains valid before sign-in is required again.</span>
+        </div>
+        <div class="dp-settings-actions dp-settings-auth-session-actions">
+          <span class="form-label dp-settings-auth-action-label" aria-hidden="true">&nbsp;</span>
+          <span class="dp-settings-auth-session-action-control">
+            <button class="btn btn-ghost btn-sm" type="button" data-action="logout-session">Log Out Current Session</button>
+          </span>
+        </div>
       </div>
-    `);
+    `, {className: 'dp-settings-auth-status-card'});
   }
 
   function authenticationPanel(a) {
     const externalBase = a.public_base_url_env_override ? (a.public_base_url_effective || '') : (a.public_base_url || '');
-    const readonly = a.public_base_url_env_override ? 'readonly' : '';
+    const publicBaseReadonly = !!a.public_base_url_env_override;
     const provider = a.oidc_provider_name || 'OpenID Connect';
     const scopes = Array.isArray(a.oidc_scopes) ? a.oidc_scopes.join(' ') : '';
     const lines = values => Array.isArray(values) ? values.join('\n') : '';
+    const callback = callbackFromPublicBase(externalBase) || '';
+    const usernameField = fieldClass(input('auth_username', 'Username', a.username || '', {
+      autocomplete: 'username',
+      placeholder: 'operator',
+      hint: 'Username used for browser and HTTP Basic authentication.',
+    }), 'dp-settings-auth-username-field');
 
-    return authStatusCard(a) +
-      card('Username & Password', `
-        ${toggle('auth_password_enabled', 'Enable Username & Password', 'Local browser login plus HTTP Basic for API clients.', a.password_enabled)}
-        ${input('auth_username', 'Username', a.username || '', {autocomplete: 'username', placeholder: 'operator'})}
+    const credentials = card('Username & Password', `
+      <div class="dp-settings-auth-credentials-row">
+        ${usernameField}
         <div class="dp-settings-field">
           <label class="form-label" for="dp-auth-new-password">New Password</label>
           <input class="input" id="dp-auth-new-password" type="password" maxlength="4096" autocomplete="new-password"
-                 placeholder="${html(a.password_configured ? 'Stored password configured — blank keeps it' : 'Set a password before enabling')}">
-          <span class="form-hint">Entering a value replaces the stored Argon2id credential.</span>
+                 placeholder="${html(a.password_configured ? 'Stored password configured. Blank keeps it.' : 'Set a password before enabling')}">
+          <span class="form-hint">Leave blank to keep the current password. Enter a new password to replace it.</span>
         </div>
-        <div class="dp-settings-actions">
-          <button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>
+        <div class="dp-settings-actions dp-settings-auth-password-actions">
+          <span class="form-label dp-settings-auth-action-label" aria-hidden="true">&nbsp;</span>
+          <span class="dp-settings-auth-action-control">
+            <button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>
+          </span>
         </div>
-      `) +
-      card('OpenID Connect', `
-        ${toggle('auth_oidc_enabled', 'Enable OpenID Connect', 'Provider-neutral Authorization Code + PKCE login.', a.oidc_enabled)}
-        ${input('oidc_provider_name', 'Provider Display Name', provider)}
-        ${input('oidc_issuer_url', 'Issuer URL', a.oidc_issuer_url || '', {placeholder: 'https://id.example/application/o/debridpulse'})}
-        ${input('oidc_client_id', 'Client ID', a.oidc_client_id || '')}
-        <div class="dp-settings-field">
-          <label class="form-label" for="dp-auth-oidc-secret">Client Secret</label>
-          <input class="input" id="dp-auth-oidc-secret" type="password" autocomplete="off"
-                 placeholder="${html(a.oidc_client_secret_configured ? 'Stored client secret configured — blank keeps it' : 'Optional for public clients')}">
-          ${a.oidc_client_secret_configured ? `<label class="dp-settings-inline-check"><input id="dp-auth-clear-oidc-secret" type="checkbox"> Clear stored client secret</label>` : ''}
+      </div>
+    `, {
+      className: 'dp-settings-username-password-card',
+      headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
+      headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
+      action: authHeaderToggle('auth_password_enabled', a.password_enabled),
+    });
+
+    const publicBase = `
+      <div class="dp-settings-field dp-settings-auth-public-base-field dp-settings-oidc-sandwich">
+        <label class="form-label" for="dp-auth-public-base-url">Public DebridPulse Base URL</label>
+        <input class="input" id="dp-auth-public-base-url" value="${html(externalBase)}"
+               placeholder="https://download.example.com" ${publicBaseReadonly ? 'readonly' : ''}>
+        <span class="form-hint">${publicBaseReadonly
+          ? 'Managed by PUBLIC_BASE_URL. Used for secure browser sessions and OIDC callback generation.'
+          : 'Externally reachable HTTPS address used for secure browser sessions and OIDC callback generation.'}</span>
+      </div>`;
+
+    const callbackField = `
+      <div class="dp-settings-field dp-settings-auth-callback-field dp-settings-oidc-sandwich ${callback ? '' : 'is-callback-unavailable'}">
+        <label class="form-label" for="dp-auth-oidc-callback">OIDC Callback URL</label>
+        <div class="dp-settings-inline-field dp-settings-oidc-callback-control">
+          <input class="input" id="dp-auth-oidc-callback" value="${html(callback)}" readonly aria-readonly="true" autocomplete="off"
+                 placeholder="${callback ? '' : 'Set Public DebridPulse Base URL to display the Callback URL.'}">
+          <button class="btn btn-ghost btn-sm" type="button" data-action="copy-oidc-callback"
+                  aria-label="Copy OIDC Callback URL" ${callback ? '' : 'disabled'}>Copy</button>
         </div>
-        ${input('oidc_scopes', 'Scopes', scopes, {placeholder: 'openid profile email'})}
-        ${toggle('oidc_allow_all', 'Allow Any Authenticated OIDC Identity', 'When off, configured subject/email/group rules authorize access.', a.oidc_allow_all)}
-        ${textarea('oidc_allowed_subjects', 'Allowed Subjects (one per line)', lines(a.oidc_allowed_subjects), {rows: 3})}
-        ${textarea('oidc_allowed_emails', 'Allowed Emails (one per line)', lines(a.oidc_allowed_emails), {rows: 3, hint: 'Email authorization requires email_verified=true.'})}
-        ${textarea('oidc_allowed_groups', 'Allowed Groups (one per line)', lines(a.oidc_allowed_groups), {rows: 3})}
-        ${input('oidc_group_claim', 'Group Claim', a.oidc_group_claim || 'groups')}
-        <div class="dp-settings-actions">
-          <button class="btn btn-blue" type="button" data-action="verify-oidc">Verify Sign-In</button>
+        <span class="form-hint">Copy this exact URL into your identity provider's redirect/callback URI configuration.</span>
+      </div>`;
+
+    const providerField = fieldClass(input('oidc_provider_name', 'Provider Name', provider, {
+      hint: 'Name shown on the sign-in page.',
+    }), 'dp-settings-oidc-sandwich');
+    const issuerField = fieldClass(input('oidc_issuer_url', 'Issuer URL', a.oidc_issuer_url || '', {
+      placeholder: 'https://id.example/application/o/debridpulse',
+      hint: 'OIDC issuer URL published by your identity provider.',
+    }), 'dp-settings-oidc-sandwich');
+    const clientIdField = fieldClass(input('oidc_client_id', 'Client ID', a.oidc_client_id || '', {
+      hint: 'Client identifier issued by your OIDC provider.',
+    }), 'dp-settings-oidc-sandwich');
+    const scopesField = fieldClass(input('oidc_scopes', 'Scopes', scopes, {
+      placeholder: 'openid profile email',
+      hint: 'Space-separated scopes requested during sign-in.',
+    }), 'dp-settings-oidc-sandwich');
+    const groupClaimField = fieldClass(input('oidc_group_claim', 'Group Claim', a.oidc_group_claim || 'groups', {
+      hint: 'Claim containing group memberships used by group authorization rules.',
+    }), 'dp-settings-oidc-sandwich');
+
+    const secretFieldMarkup = `
+      <div class="dp-settings-field dp-settings-oidc-sandwich">
+        <label class="form-label" for="dp-auth-oidc-secret">Client Secret</label>
+        <input class="input" id="dp-auth-oidc-secret" type="password" autocomplete="off"
+               placeholder="${html(a.oidc_client_secret_configured ? 'Stored Client Secret Configured. Blank keeps it.' : 'Optional for public clients')}">
+        <span class="form-hint">Leave blank to keep the stored secret. Enter a new value to replace it.</span>
+      </div>`;
+
+    const clearSecret = `
+      <div class="dp-settings-oidc-clear-secret-action">
+        <span class="form-label dp-settings-oidc-clear-secret-spacer">Clear Stored Secret</span>
+        <div class="dp-settings-oidc-clear-secret-control">
+          <label class="dp-settings-oidc-clear-secret ${a.oidc_client_secret_configured ? '' : 'is-disabled'}">
+            <span class="dp-settings-oidc-clear-secret-copy">Clear Stored Secret</span>
+            <input id="dp-auth-clear-oidc-secret" type="checkbox"
+                   ${a.oidc_client_secret_configured ? '' : 'disabled aria-disabled="true"'}>
+          </label>
         </div>
-      `) +
-      card('API Access', `
-        ${toggle('api_token_enabled', 'Enable Bearer API Token', 'Use a dedicated token for automation and API clients.', a.api_token_enabled)}
-        <p class="dp-settings-copy">Stored token state: <b>${a.api_token_configured ? 'Configured' : 'Not configured'}</b>.</p>
-        <div class="dp-settings-actions">
-          <button class="btn btn-blue btn-sm" type="button" data-action="generate-token">${a.api_token_configured ? 'Rotate Token' : 'Generate Token'}</button>
-          <button class="btn btn-danger btn-sm" type="button" data-action="clear-token" ${a.api_token_configured ? '' : 'disabled'}>Clear Token</button>
+        <small class="dp-settings-oidc-clear-secret-hint">${a.oidc_client_secret_configured
+          ? 'Remove the saved secret when settings are applied.'
+          : 'No stored client secret is configured.'}</small>
+      </div>`;
+
+    const subjects = fieldClass(textarea('oidc_allowed_subjects', 'Allowed Subjects', lines(a.oidc_allowed_subjects), {
+      rows: 3,
+      hint: 'Authorize matching OIDC subject identifiers, one per line.',
+    }), 'dp-settings-oidc-sandwich');
+    const emails = fieldClass(textarea('oidc_allowed_emails', 'Allowed Emails', lines(a.oidc_allowed_emails), {
+      rows: 3,
+      hint: 'Authorize verified email addresses, one per line. Requires email_verified=true.',
+    }), 'dp-settings-oidc-sandwich');
+    const groups = fieldClass(textarea('oidc_allowed_groups', 'Allowed Groups', lines(a.oidc_allowed_groups), {
+      rows: 3,
+      hint: 'Authorize identities belonging to matching OIDC groups, one per line.',
+    }), 'dp-settings-oidc-sandwich');
+
+    const oidc = card('OpenID Connect', `
+      <div class="dp-settings-oidc-row dp-settings-oidc-row--origin">${publicBase}${callbackField}</div>
+      <div class="dp-settings-oidc-row dp-settings-oidc-row--identity">${providerField}${issuerField}</div>
+      <div class="dp-settings-oidc-row dp-settings-oidc-row--credentials">${clientIdField}${secretFieldMarkup}${clearSecret}</div>
+      <div class="dp-settings-oidc-row dp-settings-oidc-row--protocol">${scopesField}${groupClaimField}</div>
+      <section class="dp-settings-oidc-access">
+        <div class="dp-settings-oidc-section-heading">
+          <span class="dp-settings-oidc-section-title">Access Control</span>
+          <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
+          ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
+        <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
+      </section>
+    `, {
+      className: 'dp-settings-oidc-card dp-settings-oidc-grouped-card',
+      headerCenter: 'Configure an external identity provider for browser sign-in.',
+      headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
+      action: authHeaderToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable'),
+    });
+
+    const configured = !!a.api_token_configured;
+    const tokenLayoutClass = state.oneTimeToken ? 'dp-settings-api-token-layout has-token' : 'dp-settings-api-token-layout';
+    const apiAccess = card('API Access', `
+      <div class="${tokenLayoutClass}">
+        <div class="dp-settings-actions dp-settings-api-token-actions">
+          <button class="btn btn-blue btn-sm dp-settings-api-token-generate" type="button" data-action="generate-token">${configured ? 'Rotate Token' : 'Generate Token'}</button>
+          <button class="btn btn-danger btn-sm dp-settings-api-token-revoke" type="button" data-action="clear-token" ${configured ? '' : 'disabled'}>Revoke Token</button>
+        </div>
+        <p class="dp-settings-copy dp-settings-api-token-status">Stored Token: <b>${configured ? 'Configured' : 'Not Configured'}</b></p>
         ${state.oneTimeToken ? `
-          <div class="dp-settings-token-once">
-            <b>Copy this token now — it will not be shown again.</b>
-            <div class="dp-settings-inline-field">
-              <input class="input" id="dp-settings-api-token-once" readonly value="${html(state.oneTimeToken)}">
-              <button class="btn btn-ghost btn-sm" type="button" data-action="copy-token">Copy</button>
-            </div>
+          <b class="dp-settings-api-token-warning">Copy this token now. DebridPulse will not display it again.</b>
+          <div class="dp-settings-inline-field dp-settings-api-token-field">
+            <input class="input" id="dp-settings-api-token-once" readonly value="${html(state.oneTimeToken)}">
+            <button class="btn btn-ghost btn-sm" type="button" data-action="copy-token">Copy</button>
           </div>` : ''}
-      `) +
-      card('Sessions & Security', `
-        <div class="dp-settings-field">
-          <label class="form-label" for="dp-auth-public-base-url">External Base URL (Canonical Origin)</label>
-          <input class="input" id="dp-auth-public-base-url" value="${html(externalBase)}" placeholder="https://download.example.com" ${readonly}>
-          <span class="form-hint">${a.public_base_url_env_override
-            ? 'Managed by the PUBLIC_BASE_URL environment variable.'
-            : 'Canonical externally reachable HTTPS origin used for reverse-proxy origin validation, secure cookies, and OIDC callback construction.'}</span>
-        </div>
-        ${input('auth_session_lifetime_hours', 'Browser Session Lifetime (hours)', a.session_lifetime_hours || 12, {
-          type: 'number', min: 1, max: 168
-        })}
-        <div class="dp-settings-status-grid">
-          <div class="dp-settings-status"><b>Active browser sessions</b><span>${html(a.session_count ?? 0)}</span></div>
-          <div class="dp-settings-status"><b>Current mechanism</b><span>${html(a.current_session_mechanism || 'Open / anonymous')}</span></div>
-        </div>
-        <div class="dp-settings-actions">
-          <button class="btn btn-ghost btn-sm" type="button" data-action="logout-session">Log Out Current Session</button>
-        </div>
-      `);
+      </div>
+    `, {
+      className: 'dp-settings-api-access-card',
+      headerCenter: 'Use a dedicated bearer token for automation, monitoring, and API integrations.',
+      headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--api',
+      action: authHeaderToggle('api_token_enabled', a.api_token_enabled),
+    });
+
+    return authStatusCard(a) + credentials + oidc + apiAccess;
   }
 
   function maintenancePanel(s) {
@@ -883,8 +1193,8 @@
           <div class="dp-settings-header-copy">
             <div class="dp-settings-header-icon" aria-hidden="true"></div>
             <div>
-              <div class="dp-settings-header-title">Settings</div>
-              <div class="dp-settings-header-subtitle">Configure providers, downloads, automation, authentication, and maintenance.</div>
+              <div class="dp-settings-header-title">Tuning Deck</div>
+              <div class="dp-settings-header-subtitle">Your rules, your defaults.</div>
             </div>
           </div>
           <div class="stabs dp-settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
@@ -914,6 +1224,7 @@
             </button>
             <button class="btn btn-ghost" type="button" data-context-action="downloads" data-action="test-aria2">Test aria2</button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord">Test Discord</button>
+            <button class="btn btn-ghost" type="button" data-context-action="authentication" data-action="verify-oidc">Test OIDC Sign-In</button>
           </div>
           <button class="btn btn-primary" type="button" data-action="save">Apply Settings</button>
         </div>
@@ -922,6 +1233,8 @@
     activateTab(state.activeTab);
     bindEvents(view);
     updateModeState();
+    updateOidcCallbackPreview();
+    document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
   function activateTab(name) {
@@ -962,8 +1275,13 @@
       next.focus();
     });
 
+    view.addEventListener('input', event => {
+      if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
+    });
+
     view.addEventListener('change', event => {
       if (event.target.matches(`[data-setting="aria2_mode"]`)) updateModeState();
+      if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
     });
@@ -992,6 +1310,7 @@
       else if (action === 'generate-token') generateToken(button);
       else if (action === 'clear-token') clearToken(button);
       else if (action === 'copy-token') copyToken();
+      else if (action === 'copy-oidc-callback') copyOidcCallback();
       else if (action === 'logout-session') logoutSession(button);
     });
   }
@@ -1167,10 +1486,11 @@
 
     setBusy(button, true, 'Saving…');
     try {
-      state.auth = await request('PUT', '/auth/config', payload, 15000);
-      syncAuthIntoSettings(state.auth);
+      const auth = await request('PUT', '/auth/config', payload, 15000);
+      const generation = acceptAuth(auth, {probe: false});
       state.activeTab = 'authentication';
       renderPreservingViewport();
+      void probeOidcRuntime(auth, generation);
       notify(successMessage, 'success');
       return true;
     } catch (error) {
@@ -1427,7 +1747,7 @@
       state.auth.api_token_configured = false;
       state.oneTimeToken = '';
       renderPreservingViewport();
-      notify('API token cleared', 'success');
+      notify('API token revoked', 'success');
     } catch (error) {
       notify(error.message, 'error');
     } finally {
@@ -1477,10 +1797,11 @@
 
     try {
       if (window.debridPulseAuth) await window.debridPulseAuth.refreshSession({force: true});
-      state.auth = await request('GET', '/auth/config', undefined, 7000);
-      syncAuthIntoSettings(state.auth);
+      const auth = await request('GET', '/auth/config', undefined, 7000);
+      const generation = acceptAuth(auth, {probe: false});
       state.activeTab = 'authentication';
       renderPreservingViewport();
+      void probeOidcRuntime(auth, generation);
     } catch (_) {}
 
     const ok = !!result?.ok;
@@ -1601,35 +1922,49 @@
     document.getElementById('content')?.classList.remove('settings-active');
 
     if (state.loading) return state.loading;
+    const generation = ++loadGeneration;
     state.loading = (async () => {
       const view = root();
       if (!view) return;
       view.classList.add('dp-settings-clean-view');
       view.innerHTML = '<div class="dp-settings-loading">Loading Settings…</div>';
 
+      const settingsPromise = request('GET', '/settings', undefined, 10000);
+      const authPromise = request('GET', '/auth/config', undefined, 7000);
+
+      let settings;
       try {
-        const [settings, authData] = await Promise.all([
-          request('GET', '/settings', undefined, 10000),
-          request('GET', '/auth/config', undefined, 7000),
-        ]);
-        syncGlobalSettings(settings);
-        state.auth = authData;
-        syncAuthIntoSettings(authData);
-        render();
+        settings = await settingsPromise;
       } catch (error) {
+        if (generation !== loadGeneration || !settingsActive()) return;
         view.innerHTML = `<div class="dp-settings-load-error"><b>Settings could not be loaded.</b><span>${html(error.message)}</span></div>`;
         notify(error.message, 'error');
+        return;
       }
+
+      if (generation !== loadGeneration || !settingsActive()) return;
+      syncGlobalSettings(settings);
+      state.auth = fallbackAuthFromSettings(settings);
+      syncAuthIntoSettings(state.auth);
+      render();
+
+      void authPromise.then(auth => {
+        if (generation !== loadGeneration || !settingsActive()) return;
+        const authGen = acceptAuth(auth, {probe: false});
+        state.activeTab = state.activeTab || 'sources';
+        renderPreservingViewport();
+        void probeOidcRuntime(auth, authGen);
+      }).catch(error => {
+        if (generation !== loadGeneration) return;
+        markAuthUnavailable(error);
+      });
     })().finally(() => {
       state.loading = null;
     });
     return state.loading;
   }
 
-  // Transitional navigation hook only: app.js owns generic navigation and still
-  // calls loadSettings(). Replace that one entry point with the clean-room page.
-  // No inherited Settings renderer, serializer, tab lifecycle, or action function
-  // is invoked by this runtime.
+  // app.js owns generic navigation and calls this canonical Settings entry point.
   window.loadSettings = load;
   try { loadSettings = load; } catch (_) {}
 

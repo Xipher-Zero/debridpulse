@@ -22,8 +22,6 @@
     'Backups & Retention': ['maintenance', '/icons/dp/settings/backups-retention.svg?v=1'],
     'Database Reset Controls': ['maintenance', '/icons/dp/settings/database-reset-controls.svg?v=1'],
   });
-
-  let observer = null;
   let scheduled = false;
 
   const root = () => document.getElementById('view-settings');
@@ -81,43 +79,18 @@
     });
   }
 
-  function observe(view) {
-    if (!observer || !view) return;
-    observer.observe(view, {childList: true, subtree: false});
-  }
 
-  function applyWithoutSelfObservation() {
-    const view = root();
-    if (!view) return;
-    observer?.disconnect();
-    try {
-      apply();
-    } finally {
-      observe(view);
-    }
-  }
+
+
 
   function scheduleApply() {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      applyWithoutSelfObservation();
+      apply();
     });
   }
 
-  function bind() {
-    const view = root();
-    if (!view) return;
-
-    observer?.disconnect();
-    observer = new MutationObserver(scheduleApply);
-    applyWithoutSelfObservation();
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bind, {once: true});
-  } else {
-    bind();
-  }
+  document.addEventListener('debridpulse:settings-rendered', scheduleApply);
 })();
