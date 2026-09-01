@@ -1,0 +1,244 @@
+name: Diagnose browser f500727
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_diagnose-browser-f500727.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CANDIDATE_SHA: f50072764619338bbcee5378008af859f4fc2655
+  CANDIDATE_VERSION: 1.0.11.1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  browser-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: f50072764619338bbcee5378008af859f4fc2655
+          fetch-depth: 2
+
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+
+      - name: Build and start candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag local/debridpulse:browser-f500727 .
+          docker run --detach \
+            --name debridpulse-browser-diag \
+            --publish 127.0.0.1:18080:8080 \
+            --env PUID=12345 \
+            --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            local/debridpulse:browser-f500727
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/api/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs debridpulse-browser-diag
+          exit 1
+
+      - name: Install browser harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome_bin="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome_bin"
+          echo "CHROME_BIN=$chrome_bin" >> "$GITHUB_ENV"
+          mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+          echo "NODE_PATH=/tmp/dp-browser/node_modules" >> "$GITHUB_ENV"
+
+      - name: Run instrumented browser qualification
+        id: browser
+        shell: bash
+        run: |
+          set -o pipefail
+          node <<'NODE' 2>&1 | tee /tmp/debridpulse-browser-diagnostic.log
+          const assert = require('node:assert/strict');
+          const puppeteer = require('puppeteer-core');
+          const base = 'http://127.0.0.1:18080/';
+          const retired = [
+            '/ui-presentation-loader.js','/ui-shell-runtime.js','/ui-page-finalization.js',
+            '/ui-visual-behavior-fixes.js','/ui-help-chrome.js','/ui-settings-auth-resilience.js',
+            '/ui-settings-authentication.js','/ui-settings-authentication-polish.js',
+            '/ui-settings-authentication-oidc.js','/ui-settings-authentication-callback.js'
+          ];
+          const views = ['dashboard','torrents','events','stats','settings','help'];
+          const expectedTitles = {
+            dashboard:'Dashboard', torrents:'Downloads', events:'Event Log',
+            stats:'Statistics', settings:'Settings', help:'Help & License'
+          };
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+          const mark = text => console.log(`[DIAG] ${text}`);
+
+          async function dump(page, label) {
+            const state = await page.evaluate(() => ({
+              title: document.getElementById('page-title')?.textContent?.trim(),
+              active: document.querySelector('.view.active')?.id,
+              settingsLength: document.getElementById('view-settings')?.innerHTML?.trim().length,
+              helpLength: document.getElementById('view-help')?.innerHTML?.trim().length,
+              light: document.body.classList.contains('light'),
+              href: location.href
+            })).catch(error => ({evaluateError:String(error)}));
+            console.log(`[STATE:${label}]`, JSON.stringify(state));
+          }
+
+          async function normalPass(browser, width, height) {
+            mark(`normalPass ${width}x${height} begin`);
+            const page = await browser.newPage();
+            await page.setViewport({width,height});
+            await page.setCacheEnabled(false);
+            const requests=[]; const pageErrors=[]; const consoleErrors=[];
+            page.on('request', req => { try { requests.push(new URL(req.url()).pathname); } catch (_) {} });
+            page.on('pageerror', error => { pageErrors.push(String(error)); console.log('[PAGEERROR]', String(error)); });
+            page.on('console', msg => { if (msg.type()==='error') { consoleErrors.push(msg.text()); console.log('[CONSOLE_ERROR]',msg.text()); }});
+            try {
+              mark('goto');
+              await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+              await page.waitForFunction(() => typeof window.nav==='function' && !!window.DPIcons && document.querySelector('#view-dashboard.active'),{timeout:12000});
+              await dump(page,'after-load');
+              for (const path of retired) assert(!requests.includes(path),`retired runtime requested: ${path}`);
+              mark('retired-request check PASS');
+              const initial=await page.evaluate(() => ({
+                settings:document.getElementById('view-settings').innerHTML.trim(),
+                help:document.getElementById('view-help').innerHTML.trim(),
+                renderSettings:typeof window.renderSettings,
+                getFormSettings:typeof window.getFormSettings,
+                switchSettingsTab:typeof window.switchSettingsTab,
+                dpSettings:typeof window.DPSettingsPage,
+                dpStatistics:typeof window.DPStatisticsLifecycle
+              }));
+              console.log('[INITIAL]',JSON.stringify(initial));
+              assert.equal(initial.settings,''); assert.equal(initial.help,'');
+              assert.equal(initial.renderSettings,'undefined'); assert.equal(initial.getFormSettings,'undefined');
+              assert.equal(initial.switchSettingsTab,'undefined'); assert.equal(initial.dpSettings,'object'); assert.equal(initial.dpStatistics,'object');
+              mark('initial canonical-owner check PASS');
+
+              for (const view of views) {
+                mark(`navigate ${view}`);
+                if (view==='settings'||view==='help') {
+                  await page.evaluate(v=>{
+                    const root=document.getElementById(`view-${v}`);
+                    window.__dpFirstCanonicalRender=null;
+                    window.__dpRenderObserver?.disconnect?.();
+                    window.__dpRenderObserver=new MutationObserver(()=>{
+                      if(!window.__dpFirstCanonicalRender&&root.innerHTML.trim()) window.__dpFirstCanonicalRender=root.innerHTML;
+                    });
+                    window.__dpRenderObserver.observe(root,{childList:true,subtree:true});
+                  },view);
+                }
+                await page.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),view);
+                await page.waitForFunction(v=>document.getElementById(`view-${v}`)?.classList.contains('active'),{timeout:12000},view);
+                await page.waitForFunction((v,title)=>document.getElementById('page-title').textContent.trim()===title,{timeout:12000},view,expectedTitles[view]);
+                await dump(page,`nav-${view}`);
+                if(view==='settings'||view==='help') {
+                  await page.waitForFunction(v=>document.getElementById(`view-${v}`).children.length>0,{timeout:12000},view);
+                  await delay(100);
+                  const render=await page.evaluate(v=>({first:window.__dpFirstCanonicalRender||'',final:document.getElementById(`view-${v}`).innerHTML}),view);
+                  console.log(`[RENDER:${view}] first=${render.first.length} final=${render.final.length}`);
+                  assert(render.first.length>0,`${view} did not render directly`);
+                  if(view==='settings') {
+                    assert(/Sources &amp; Providers|Sources & Providers/.test(render.first),'Settings first render is not canonical Settings');
+                    assert(/Authentication/.test(render.first),'Settings first render lacks canonical Authentication section');
+                  } else {
+                    assert(/Field Manual/.test(render.first),'Help first render is not canonical Help');
+                    assert(/dp-help-master-card/.test(render.first),'Help first render lacks canonical master card');
+                  }
+                }
+              }
+              mark('all navigation PASS');
+              for(let cycle=0;cycle<3;cycle++) for(const view of views.slice().reverse()) await page.evaluate(v=>document.querySelector(`.nav-item[data-view="${v}"]`).click(),view);
+              await page.evaluate(()=>document.querySelector('.nav-item[data-view="dashboard"]').click());
+              await page.waitForFunction(()=>document.querySelector('#view-dashboard.active'),{timeout:12000});
+              mark('rapid navigation PASS');
+              const beforeLight=await page.evaluate(()=>document.body.classList.contains('light'));
+              await page.evaluate(()=>document.getElementById('theme-toggle').click());
+              await page.waitForFunction(before=>document.body.classList.contains('light')!==before,{timeout:5000},beforeLight);
+              await page.evaluate(()=>document.getElementById('theme-toggle').click());
+              await page.waitForFunction(before=>document.body.classList.contains('light')===before,{timeout:5000},beforeLight);
+              mark('theme toggle PASS');
+              await page.reload({waitUntil:'domcontentloaded',timeout:20000});
+              await page.waitForFunction(()=>document.querySelector('.view.active'),{timeout:12000});
+              await dump(page,'after-reload');
+              for(const path of retired) assert(!requests.includes(path),`retired runtime requested after reload: ${path}`);
+              assert.deepEqual(pageErrors,[],`browser page errors: ${pageErrors.join(' | ')}`);
+              mark(`normalPass ${width}x${height} PASS; consoleErrors=${consoleErrors.length}`);
+            } catch(error) {
+              await dump(page,'normal-failure');
+              await page.screenshot({path:`/tmp/browser-failure-${width}x${height}.png`,fullPage:true}).catch(()=>{});
+              throw error;
+            } finally { await page.close(); }
+          }
+
+          async function requiredOwnerFailurePass(browser) {
+            mark('requiredOwnerFailurePass begin');
+            const page=await browser.newPage();
+            await page.setRequestInterception(true);
+            page.on('request',req=>{const path=new URL(req.url()).pathname; if(path==='/ui-settings-page.js') req.abort(); else req.continue();});
+            try {
+              await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+              await page.waitForFunction(()=>typeof window.nav==='function',{timeout:12000});
+              const before=await page.$eval('#view-settings',el=>el.innerHTML.trim()); assert.equal(before,'');
+              await page.evaluate(()=>document.querySelector('.nav-item[data-view="settings"]').click()); await delay(350);
+              const state=await page.evaluate(()=>({active:document.getElementById('view-settings').classList.contains('active'),html:document.getElementById('view-settings').innerHTML.trim()}));
+              console.log('[OWNER_FAILURE_STATE]',JSON.stringify(state));
+              assert.equal(state.active,true); assert.equal(state.html,'','missing canonical Settings owner exposed a fallback substrate');
+              mark('requiredOwnerFailurePass PASS');
+            } catch(error) { await dump(page,'owner-failure'); throw error; } finally { await page.close(); }
+          }
+
+          async function decorativeAssetFailurePass(browser) {
+            mark('decorativeAssetFailurePass begin');
+            const page=await browser.newPage(); await page.setRequestInterception(true);
+            page.on('request',req=>{const path=new URL(req.url()).pathname; if(path==='/icons/dp/sidebar-wave-accent.svg') req.abort(); else req.continue();});
+            try {
+              await page.goto(base,{waitUntil:'domcontentloaded',timeout:20000});
+              await page.waitForFunction(()=>document.querySelector('#view-dashboard.active')&&window.DPIcons,{timeout:12000});
+              await page.evaluate(()=>document.querySelector('.nav-item[data-view="help"]').click());
+              await page.waitForFunction(()=>document.querySelector('#view-help.active')?.children.length>0,{timeout:12000});
+              mark('decorativeAssetFailurePass PASS');
+            } catch(error) { await dump(page,'decorative-failure'); throw error; } finally { await page.close(); }
+          }
+
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:process.env.CHROME_BIN,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            try { await normalPass(browser,1440,1000); await normalPass(browser,390,844); await requiredOwnerFailurePass(browser); await decorativeAssetFailurePass(browser); mark('ALL PASS'); }
+            finally { await browser.close(); }
+          })().catch(error=>{console.error('[DIAGNOSTIC_FAILURE]',error?.stack||String(error));process.exit(1);});
+          NODE
+
+      - name: Upload browser diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-diagnostic-f500727
+          path: |
+            /tmp/debridpulse-browser-diagnostic.log
+            /tmp/browser-failure-*.png
+          if-no-files-found: warn
+
+      - name: Container logs on failure
+        if: failure()
+        shell: bash
+        run: docker logs debridpulse-browser-diag || true
