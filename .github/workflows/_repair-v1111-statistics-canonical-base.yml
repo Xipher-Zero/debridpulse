@@ -42,6 +42,7 @@ jobs:
           set -euo pipefail
           python helper/scripts/_repair_stats_canonical_base.py repo
           python helper/scripts/_repair_stats_contract_followup.py repo
+          python helper/scripts/_repair_stats_contract_followup2.py repo
       - name: Canonical Statistics architecture assertions
         working-directory: repo
         shell: bash
