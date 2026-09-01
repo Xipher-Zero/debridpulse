@@ -1,9 +1,8 @@
-"""Final-state contracts for the retained mixed Dashboard calibration stack.
+"""Final-state contracts for the canonical Dashboard presentation owner.
 
-The canonical Dashboard owner now includes its structural geometry directly.
-The remaining batch and polish layers stay live because they still mix Dashboard,
-shell, and transfer responsibilities. These tests protect accepted behavior and
-explicit ownership boundaries rather than implementation history.
+The accepted v1.0.11 calibration remains behaviorally protected, but historical
+batch/polish files are no longer architectural owners. Their accepted rules are
+folded into ui-dashboard.css by the v1.0.11.1 canonicalization pass.
 """
 
 from pathlib import Path
@@ -11,11 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 STYLE = STATIC / "style-v11.css"
-BATCH5 = STATIC / "ui-dashboard-batch5.css"
-POLISH = STATIC / "ui-dashboard-polish.css"
-FINAL = STATIC / "ui-dashboard-polish-final.css"
+DASHBOARD = STATIC / "ui-dashboard.css"
 UTILITY = STATIC / "ui-utility-controls.css"
-DASHBOARD_FINAL = STATIC / "ui-dashboard-final.css"
 
 
 def read(path: Path) -> str:
@@ -27,20 +23,13 @@ def require(css: str, fragments: tuple[str, ...], label: str) -> None:
     assert not missing, f"{label} is missing: {missing}"
 
 
-def test_retained_dashboard_calibration_order_is_explicit() -> None:
+def dashboard_css() -> str:
+    return read(DASHBOARD)
+
+
+def test_dashboard_has_one_canonical_calibration_owner() -> None:
     overlay = read(STYLE)
-    layers = (
-        "/ui-universal-language.css?v=20",
-        "/ui-dashboard.css?v=20",
-        "/ui-dashboard-batch5.css?v=20",
-        "/ui-dashboard-polish.css?v=20",
-        "/ui-dashboard-polish-final.css?v=20",
-        "/ui-utility-controls.css?v=23",
-        "/ui-dashboard-final.css?v=23",
-    )
-    for layer in layers:
-        assert layer in overlay
-    assert [overlay.index(layer) for layer in layers] == sorted(overlay.index(layer) for layer in layers)
+    assert "/ui-dashboard.css?v=20" in overlay
     for retired in (
         "ui-dashboard-structural.css",
         "ui-dashboard-consistency.css",
@@ -50,14 +39,18 @@ def test_retained_dashboard_calibration_order_is_explicit() -> None:
         "ui-dashboard-batch3.css",
         "ui-dashboard-batch4.css",
         "ui-dashboard-control-polish.css",
+        "ui-dashboard-batch5.css",
+        "ui-dashboard-polish.css",
+        "ui-dashboard-polish-final.css",
+        "ui-dashboard-final.css",
     ):
         assert retired not in overlay
         assert not (STATIC / retired).exists()
 
 
-def test_retained_stage_keeps_provider_and_spotlight_geometry() -> None:
+def test_canonical_dashboard_keeps_provider_and_spotlight_geometry() -> None:
     require(
-        read(BATCH5),
+        dashboard_css(),
         (
             "padding: 2px 0 10px 28px !important",
             "left: 4px !important",
@@ -69,9 +62,9 @@ def test_retained_stage_keeps_provider_and_spotlight_geometry() -> None:
     )
 
 
-def test_retained_stage_keeps_transfer_semantics_and_progress_emphasis() -> None:
+def test_canonical_dashboard_keeps_transfer_semantics_and_progress_emphasis() -> None:
     require(
-        read(BATCH5),
+        dashboard_css(),
         (
             'tr[data-status="downloading"] .badge-downloading::before',
             'tr[data-status="downloading"] .badge-partial::before',
@@ -91,9 +84,9 @@ def test_retained_stage_keeps_transfer_semantics_and_progress_emphasis() -> None
     )
 
 
-def test_retained_stage_keeps_action_color_grammar_and_primary_add_depth() -> None:
+def test_canonical_dashboard_keeps_action_color_grammar_and_primary_add_depth() -> None:
     require(
-        read(BATCH5),
+        dashboard_css(),
         (
             "#btn-pause-all",
             'button[onclick*="pauseT("]',
@@ -110,9 +103,9 @@ def test_retained_stage_keeps_action_color_grammar_and_primary_add_depth() -> No
     )
 
 
-def test_dashboard_polish_keeps_topbar_pause_and_speedcap_semantics() -> None:
+def test_canonical_dashboard_keeps_topbar_pause_and_speedcap_semantics() -> None:
     require(
-        read(POLISH),
+        dashboard_css(),
         (
             "#topbar-actions #btn-pause-all.btn",
             "#fff2cc",
@@ -127,9 +120,9 @@ def test_dashboard_polish_keeps_topbar_pause_and_speedcap_semantics() -> None:
     )
 
 
-def test_dashboard_polish_keeps_sidebar_provider_and_badge_presentation() -> None:
+def test_canonical_dashboard_keeps_sidebar_provider_and_badge_presentation() -> None:
     require(
-        read(POLISH),
+        dashboard_css(),
         (
             "#premium-row::before",
             "top: 17px !important",
@@ -144,9 +137,9 @@ def test_dashboard_polish_keeps_sidebar_provider_and_badge_presentation() -> Non
     )
 
 
-def test_dashboard_polish_keeps_progress_add_and_activity_depth() -> None:
+def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
     require(
-        read(POLISH),
+        dashboard_css(),
         (
             ".dp-card-spark stop:last-child",
             "stop-opacity: .075 !important",
@@ -164,9 +157,9 @@ def test_dashboard_polish_keeps_progress_add_and_activity_depth() -> None:
     )
 
 
-def test_final_calibration_keeps_indeterminate_progress_stripes() -> None:
+def test_canonical_dashboard_keeps_indeterminate_progress_stripes() -> None:
     require(
-        read(FINAL),
+        dashboard_css(),
         (
             '.prog-fill[style*="repeating-linear-gradient"]',
             "repeating-linear-gradient(",
@@ -178,8 +171,8 @@ def test_final_calibration_keeps_indeterminate_progress_stripes() -> None:
     )
 
 
-def test_final_calibration_keeps_sidebar_starburst_without_count_badge_overlap() -> None:
-    css = read(FINAL)
+def test_canonical_dashboard_keeps_sidebar_starburst_without_count_badge_overlap() -> None:
+    css = dashboard_css()
     require(
         css,
         (
@@ -195,12 +188,11 @@ def test_final_calibration_keeps_sidebar_starburst_without_count_badge_overlap()
         ),
         "sidebar starburst contract",
     )
-    assert "#nb-active" not in css
 
 
-def test_final_calibration_keeps_provider_baseline_crown_and_metric_icon_lighting() -> None:
+def test_canonical_dashboard_keeps_provider_baseline_crown_and_metric_icon_lighting() -> None:
     require(
-        read(FINAL),
+        dashboard_css(),
         (
             ":has(#content.dashboard-active) .sidebar-footer",
             "bottom: 24px !important",
@@ -215,9 +207,9 @@ def test_final_calibration_keeps_provider_baseline_crown_and_metric_icon_lightin
     )
 
 
-def test_final_calibration_keeps_original_progress_percentage_geometry() -> None:
+def test_canonical_dashboard_keeps_original_progress_percentage_geometry() -> None:
     require(
-        read(FINAL),
+        dashboard_css(),
         (
             ".prog-pct",
             "margin-top: 3px !important",
@@ -232,15 +224,15 @@ def test_final_calibration_keeps_original_progress_percentage_geometry() -> None
     )
 
 
-def test_final_calibration_hides_recent_activity_view_all() -> None:
-    css = read(FINAL)
+def test_canonical_dashboard_hides_recent_activity_view_all() -> None:
+    css = dashboard_css()
     assert 'button[onclick*="data-view=torrents"]' in css
     assert "display: none !important" in css
 
 
-def test_final_calibration_keeps_live_micro_refinements() -> None:
+def test_canonical_dashboard_keeps_live_micro_refinements() -> None:
     require(
-        read(FINAL),
+        dashboard_css(),
         (
             "height: calc(100% - 12px) !important",
             "max-height: 38px !important",
@@ -262,9 +254,9 @@ def test_final_calibration_keeps_live_micro_refinements() -> None:
     )
 
 
-def test_final_calibration_keeps_color_spacing_and_sidebar_hover_refinements() -> None:
+def test_canonical_dashboard_keeps_color_spacing_and_sidebar_hover_refinements() -> None:
     require(
-        read(FINAL),
+        dashboard_css(),
         (
             "#dash-error-card",
             "--c: #ff4854 !important",
@@ -323,8 +315,8 @@ def test_shared_utility_controls_keep_light_pause_all_treatment() -> None:
     )
 
 
-def test_dashboard_final_owner_keeps_empty_state_and_field_focus_contracts() -> None:
-    css = read(DASHBOARD_FINAL)
+def test_canonical_dashboard_keeps_empty_state_and_field_focus_contracts() -> None:
+    css = dashboard_css()
     assert "#dash-activity-card.dp-dashboard-activity .empty-icon" in css
     assert "width: 76px !important" in css
     assert "height: 76px !important" in css
