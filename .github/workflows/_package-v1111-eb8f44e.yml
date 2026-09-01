@@ -1,0 +1,70 @@
+name: Package qualified v1.0.11.1 eb8f44e local build
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_package-v1111-eb8f44e.yml
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: eb8f44e239d1930fd93aaec70c1f055011d30dff
+  CANDIDATE_VERSION: 1.0.11.1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable qualified candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: eb8f44e239d1930fd93aaec70c1f055011d30dff
+          fetch-depth: 1
+      - name: Prove exact qualified candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+      - name: Build exact local-test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag debridpulse:1.0.11.1-local-eb8f44e .
+      - name: Export installable image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p local-build
+          docker save debridpulse:1.0.11.1-local-eb8f44e | gzip -9 > local-build/debridpulse-v1.0.11.1-eb8f44e-docker-image.tar.gz
+          sha256sum local-build/debridpulse-v1.0.11.1-eb8f44e-docker-image.tar.gz > local-build/SHA256SUMS
+          printf '%s\n' "$CANDIDATE_SHA" > local-build/CANDIDATE_SHA
+          cat > local-build/INSTALL.txt <<'EOF'
+          DebridPulse v1.0.11.1 local test build
+          Candidate: eb8f44e239d1930fd93aaec70c1f055011d30dff
+
+          Load the image:
+            gunzip -c debridpulse-v1.0.11.1-eb8f44e-docker-image.tar.gz | docker load
+
+          Image tag after loading:
+            debridpulse:1.0.11.1-local-eb8f44e
+
+          This is a local-test artifact only. It has not been promoted or published as a release image.
+          EOF
+          ls -lh local-build
+      - name: Upload local installable build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: debridpulse-v1.0.11.1-eb8f44e-local-build
+          path: local-build/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
