@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, AsyncGenerator, Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field
 
@@ -65,15 +65,17 @@ def _sql_strftime(fmt: str, field: str) -> str:
 def _sql_date(field: str) -> str:
     return f"DATE({field}, 'localtime')"
 
-from services.transfer_service import transfer_service
-from services.aria2_runtime import runtime as aria2_runtime
+from application.dependencies import get_application
+from application.service import ApplicationService
+from executors.aria2.runtime import runtime as aria2_runtime
 from services.event_bus import bind_publisher
+from services.notification_service import NotificationService
 from api.serializers import (
-    public_aria2_download,
     public_download_file,
     public_payload,
     public_torrent,
 )
+from executors.aria2.presentation import public_aria2_download
 
 logger = logging.getLogger("alldebrid.routes")
 router = APIRouter()
@@ -89,7 +91,7 @@ def _duplicate_candidate_from_payload(payload: dict, source: str = "preview"):
         magnet=str(payload.get("magnet") or "").strip(),
         torrent_url=str(payload.get("torrent_url") or "").strip(),
         infohash=str(payload.get("hash") or payload.get("infohash") or "").strip().lower(),
-        alldebrid_id=str(payload.get("alldebrid_id") or "").strip(),
+        resource_id=str(payload.get("resource_id") or "").strip(),
         size_bytes=int(payload.get("size_bytes") or payload.get("size") or 0),
         indexer=str(payload.get("indexer") or "").strip(),
         category=str(payload.get("category") or "").strip(),
@@ -164,8 +166,10 @@ _AUTH_COMPAT_SETTINGS_FIELDS = (
 )
 
 
-def _public_settings(settings: AppSettings) -> dict:
+def _public_settings(settings: AppSettings, definitions=()) -> dict:
     data = settings.model_dump()
+    from integrations.configuration import public_integrations
+    data["integrations"] = public_integrations(settings, definitions)
     for field in _SECRET_SETTINGS:
         if field in data:
             data[f"{field}_configured"] = bool(str(data.get(field) or "").strip())
@@ -200,8 +204,8 @@ def _revoke_stale_authentication_state(previous: AppSettings, current: AppSettin
 
 
 @router.get("/settings")
-async def get_settings_ep():
-    return _public_settings(get_settings())
+async def get_settings_ep(application: ApplicationService = Depends(get_application)):
+    return _public_settings(get_settings(), application.definitions)
 
 
 @router.get("/health")
@@ -283,31 +287,41 @@ def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
 
 
 @router.put("/settings")
-async def update_settings(new: SettingsUpdate):
-    previous = get_settings()
-    merged = _merge_secret_settings(new, previous)
-    clean = validate_and_sanitise(AppSettings(**merged))
-    if getattr(clean, "max_concurrent_downloads", None) is not None:
-        clean = clean.model_copy(update={"aria2_max_active_downloads": clean.max_concurrent_downloads})
-    save_settings(clean)
-    apply_settings(clean)
-    _revoke_stale_authentication_state(previous, clean)
-    transfer_service.reset_services()
-    if getattr(clean, "aria2_mode", "external") == "builtin":
-        if (getattr(previous, "aria2_mode", "external") == "builtin"
-                and getattr(previous, "aria2_builtin_port", 6800) != getattr(clean, "aria2_builtin_port", 6800)):
-            await aria2_runtime.restart()
-        else:
-            await aria2_runtime.ensure_started()
+async def update_settings(new: SettingsUpdate, application: ApplicationService = Depends(get_application)):
+    async with application.configuration_admission():
+        previous = get_settings()
+        merged = _merge_secret_settings(new, previous)
+        definitions = application.definitions
+        from integrations.configuration import normalize_settings
+        merged["integrations"] = new.integrations
+        clean = normalize_settings(AppSettings(**merged), definitions, previous=previous,
+            supplied_fields=new.model_fields_set, clear_legacy_secrets=new.clear_secrets)
+        clean = validate_and_sanitise(clean)
+        if getattr(clean, "max_concurrent_downloads", None) is not None:
+            clean = clean.model_copy(update={"aria2_max_active_downloads": clean.max_concurrent_downloads})
         try:
-            await transfer_service.apply_aria2_memory_tuning()
-        except Exception as exc:
-            logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
-    elif getattr(previous, "aria2_mode", "external") == "builtin":
-        await aria2_runtime.stop()
-    data = _public_settings(clean)
-    data["ok"] = True
-    return data
+            await application.validate_configuration(previous, clean)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        save_settings(clean)
+        apply_settings(clean)
+        _revoke_stale_authentication_state(previous, clean)
+        application.configure()
+        if getattr(clean, "aria2_mode", "external") == "builtin":
+            if (getattr(previous, "aria2_mode", "external") == "builtin"
+                    and getattr(previous, "aria2_builtin_port", 6800) != getattr(clean, "aria2_builtin_port", 6800)):
+                await aria2_runtime.restart()
+            else:
+                await aria2_runtime.ensure_started()
+            try:
+                await application.integration_admin("aria2").apply_memory_tuning()
+            except Exception as exc:
+                logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
+        elif getattr(previous, "aria2_mode", "external") == "builtin":
+            await aria2_runtime.stop()
+        data = _public_settings(clean, application.definitions)
+        data["ok"] = True
+        return data
 
 
 # ── Avatar ─────────────────────────────────────────────────────────────────────
@@ -386,55 +400,49 @@ async def test_discord():
 
 @router.post("/settings/test-alldebrid")
 async def test_alldebrid():
+    from providers.alldebrid.admin import account_status
     cfg = get_settings()
     if not cfg.alldebrid_api_key:
         raise HTTPException(400, "No API key configured")
     try:
-        user = await transfer_service.provider.test()
-        u = user.get("user", user)
-        return {
-            "ok":           True,
-            "username":     u.get("username", ""),
-            "isPremium":    u.get("isPremium", False),
-            "premiumUntil": u.get("premiumUntil", u.get("premium_until", 0)),
-        }
-    except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+        return await account_status(cfg)
+    except Exception as exc:
+        raise HTTPException(502, _sanitize_error(exc))
 
 
 @router.post("/settings/test-aria2")
-async def test_aria2():
+async def test_aria2( application: ApplicationService = Depends(get_application)):
     try:
-        result = await transfer_service.test_aria2()
+        result = await application.integration_admin("aria2").test()
         return {"ok": True, **result}
     except Exception as e:
         raise HTTPException(502, _sanitize_error(e))
 
 
 @router.post("/settings/aria2-housekeeping")
-async def run_aria2_housekeeping_ep():
+async def run_aria2_housekeeping_ep( application: ApplicationService = Depends(get_application)):
     try:
-        return await transfer_service.run_aria2_housekeeping()
+        return await application.integration_admin("aria2").housekeeping()
     except Exception as e:
         raise HTTPException(502, _sanitize_error(e))
 
 
 @router.get("/aria2/runtime")
-async def aria2_runtime_status():
+async def aria2_runtime_status( application: ApplicationService = Depends(get_application)):
     status = await aria2_runtime.status()
     diagnostics = {}
     speed_stat = {"download_speed": 0, "upload_speed": 0, "active": 0}
     try:
         if status.get("running"):
-            diagnostics = await transfer_service.aria2.memory_diagnostics()
-            speed_stat  = await transfer_service.aria2.get_global_stat()
+            diagnostics = await application.integration_admin("aria2").memory_diagnostics()
+            speed_stat  = await application.integration_admin("aria2").get_global_stat()
     except Exception as exc:
         diagnostics = {"error": sanitize_exception(exc)}
     return {**status, "diagnostics": diagnostics, **speed_stat}
 
 
 @router.get("/aria2/global-stat")
-async def aria2_global_stat():
+async def aria2_global_stat( application: ApplicationService = Depends(get_application)):
     """Return ownership-safe live counters used by the topbar indicator."""
     cfg = get_settings()
     external = getattr(cfg, "aria2_mode", "external") != "builtin"
@@ -444,13 +452,13 @@ async def aria2_global_stat():
             "ok": True,
             "mode": "builtin",
             "external_control": False,
-            **await transfer_service.aria2.get_global_stat(),
+            **await application.integration_admin("aria2").get_global_stat(),
         }
 
     # External aria2 may be shared with unrelated applications. Observe only
     # jobs whose GIDs DebridPulse has recorded as its own.
-    active_downloads = await transfer_service.aria2.get_active()
-    owned_active = await transfer_service.owned_aria2_downloads(active_downloads)
+    active_downloads = await application.integration_admin("aria2").get_active()
+    owned_active = await application.integration_admin("aria2").filter_owned(active_downloads)
 
     return {
         "ok": True,
@@ -467,45 +475,45 @@ async def aria2_global_stat():
 
 
 @router.post("/aria2/runtime/start")
-async def aria2_runtime_start():
+async def aria2_runtime_start( application: ApplicationService = Depends(get_application)):
     status = await aria2_runtime.start()
-    transfer_service.reset_services()
+    application.configure()
     return status
 
 
 @router.post("/aria2/runtime/stop")
-async def aria2_runtime_stop():
+async def aria2_runtime_stop( application: ApplicationService = Depends(get_application)):
     status = await aria2_runtime.stop()
-    transfer_service.reset_services()
+    application.configure()
     return status
 
 
 @router.post("/aria2/runtime/restart")
-async def aria2_runtime_restart():
+async def aria2_runtime_restart( application: ApplicationService = Depends(get_application)):
     status = await aria2_runtime.restart()
-    transfer_service.reset_services()
+    application.configure()
     return status
 
 
 @router.post("/aria2/runtime/apply")
-async def aria2_runtime_apply():
+async def aria2_runtime_apply( application: ApplicationService = Depends(get_application)):
     try:
         await aria2_runtime.apply_options()
-        result = await transfer_service.run_aria2_housekeeping()
+        result = await application.integration_admin("aria2").housekeeping()
         return {"ok": True, **result}
     except Exception as e:
         raise HTTPException(502, _sanitize_error(e))
 
 
 @router.get("/aria2/downloads")
-async def aria2_downloads():
+async def aria2_downloads( application: ApplicationService = Depends(get_application)):
     cfg = get_settings()
     try:
-        downloads = await transfer_service.aria2.get_all(
+        downloads = await application.integration_admin("aria2").get_all(
             getattr(cfg, "aria2_waiting_window", 100),
             getattr(cfg, "aria2_stopped_window", 100),
         )
-        downloads = await transfer_service.owned_aria2_downloads(downloads)
+        downloads = await application.integration_admin("aria2").filter_owned(downloads)
     except Exception as e:
         raise HTTPException(502, _sanitize_error(e))
     items = [public_aria2_download(download) for download in downloads]
@@ -529,11 +537,11 @@ async def aria2_downloads():
 
 
 @router.post("/aria2/downloads/{gid}/{action}")
-async def aria2_download_action(gid: str, action: str):
+async def aria2_download_action(gid: str, action: str, application: ApplicationService = Depends(get_application)):
     if action not in {"pause", "resume", "remove"}:
         raise HTTPException(400, "Unsupported aria2 action")
     try:
-        result = await transfer_service.control_aria2_gid(gid, action)
+        result = await application.integration_admin("aria2").control(gid, action)
         return {"ok": True, "gid": gid, "action": action, **result}
     except PermissionError as e:
         raise HTTPException(403, _sanitize_error(e))
@@ -548,8 +556,7 @@ async def list_torrents(
     status: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = Query(0, ge=0, le=5000),
-    offset: int = 0,
-):
+    offset: int = 0, application: ApplicationService = Depends(get_application)):
     async with get_db() as db:
         clauses = []
         params = []
@@ -571,12 +578,11 @@ async def list_torrents(
                     OR LOWER(COALESCE(t.hash, '')) LIKE ?
                     OR LOWER(COALESCE(t.source, '')) LIKE ?
                     OR LOWER(COALESCE(t.label, '')) LIKE ?
-                    OR LOWER(COALESCE(t.alldebrid_id, '')) LIKE ?
                     OR LOWER(COALESCE(t.error_message, '')) LIKE ?
                 )"""
             )
             needle = f"%{search.strip().lower()}%"
-            params.extend([needle, needle, needle, needle, needle, needle])
+            params.extend([needle, needle, needle, needle, needle])
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         query = f"""SELECT t.*,
@@ -594,16 +600,16 @@ async def list_torrents(
             f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
         )
         total = total_row["cnt"] if total_row else 0
-        return {"items": [public_torrent(row) for row in rows], "total": total}
+        return {"items": [public_payload(await application.repository.presentation(row["id"])) for row in rows], "total": total}
 
 
 @router.post("/torrents/add-magnet")
-async def add_magnet(body: dict):
+async def add_magnet(body: dict, application: ApplicationService = Depends(get_application)):
     magnet = (body.get("magnet") or "").strip()
     if not magnet:
         raise HTTPException(400, "magnet is required")
     try:
-        row = await transfer_service.add_magnet_direct(magnet, source="manual")
+        row = await application.submit_magnet(magnet, source="manual")
         return public_payload(row)
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
@@ -613,7 +619,7 @@ async def add_magnet(body: dict):
 
 
 @router.post("/torrents/add-file")
-async def add_torrent_file(file: UploadFile = File(...)):
+async def add_torrent_file(file: UploadFile = File(...), application: ApplicationService = Depends(get_application)):
     """Upload a .torrent metafile directly to AllDebrid.
 
     The local aria2 daemon never receives the torrent metafile.  AllDebrid
@@ -636,7 +642,7 @@ async def add_torrent_file(file: UploadFile = File(...)):
         raise HTTPException(413, "Torrent file exceeds the 16 MB upload limit")
 
     try:
-        result = await transfer_service.add_torrent_file_direct(
+        result = await application.submit_torrent(
             data,
             filename,
             source="manual_file",
@@ -649,7 +655,7 @@ async def add_torrent_file(file: UploadFile = File(...)):
 
 
 @router.post("/links/add")
-async def add_debrid_links(body: dict):
+async def add_debrid_links(body: dict, application: ApplicationService = Depends(get_application)):
     """Submit one or more ordinary hoster URLs as a tracked transfer batch."""
     raw_links = body.get("links", [])
     if isinstance(raw_links, str):
@@ -659,7 +665,7 @@ async def add_debrid_links(body: dict):
     else:
         raise HTTPException(400, "links must be a list or newline-separated string")
     try:
-        return public_payload(await transfer_service.add_direct_links(links))
+        return public_payload(await application.submit_links(links))
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
     except Exception as exc:
@@ -680,9 +686,8 @@ async def check_torrent_duplicate(body: dict):
 
 
 @router.post("/torrents/import-existing")
-async def import_existing():
-    results = await transfer_service.import_existing_magnets()
-    return {"imported": len(results), "items": public_payload(results)}
+async def import_existing( application: ApplicationService = Depends(get_application)):
+    return {"ok": True, **await application.reconcile_inventory()}
 
 
 @router.get("/torrents/diagnose")
@@ -694,7 +699,7 @@ async def diagnose_torrents():
                GROUP BY status ORDER BY cnt DESC"""
         )).fetchall()
         non_terminal = await (await db.execute(
-            """SELECT t.id, t.name, t.status, t.alldebrid_id,
+            """SELECT t.id, t.name, t.status,
                       (SELECT COUNT(*) FROM download_files f WHERE f.torrent_id=t.id AND f.blocked=0) AS file_count
                FROM torrents t
                WHERE t.status NOT IN ('completed', 'deleted')
@@ -707,288 +712,67 @@ async def diagnose_torrents():
 
 
 @router.post("/torrents/recover-all")
-async def recover_all_ready():
-    """
-    Immediately recover torrents stuck in bad states and dispatch all that
-    AllDebrid reports as ready.
-
-    Step 1: Reset any torrent with status='downloading' but no download_files
-            records — these are stuck waiting for the semaphore and will never
-            progress on their own.
-    Step 2: Run import_existing_magnets() to pick up all ready AllDebrid magnets
-            and dispatch _start_download for each.
-    """
-    try:
-        # Step 1: Reset stuck 'downloading' torrents that have no download_files.
-        # These were set to 'downloading' by _start_download before acquiring the
-        # semaphore (v1.5.39 bug), so _download() never ran and no files were queued.
-        reset_count = 0
-        async with get_db() as db:
-            stuck = await (await db.execute(
-                """SELECT t.id FROM torrents t
-                   WHERE t.status = 'downloading'
-                     AND NOT EXISTS (
-                         SELECT 1 FROM download_files f
-                         WHERE f.torrent_id = t.id AND f.blocked = 0
-                     )"""
-            )).fetchall()
-            if stuck:
-                ids = [r["id"] for r in stuck]
-                placeholders = ",".join("?" * len(ids))
-                await db.execute(
-                    f"UPDATE torrents SET status='ready', updated_at=CURRENT_TIMESTAMP "
-                    f"WHERE id IN ({placeholders})",
-                    ids,
-                )
-                await db.execute(
-                    f"INSERT INTO events (torrent_id, level, message) "
-                    f"SELECT id, 'warn', 'recover-all: reset stuck downloading (no download_files)' "
-                    f"FROM torrents WHERE id IN ({placeholders})",
-                    ids,
-                )
-                await db.commit()
-                reset_count = len(ids)
-
-        # Step 2: Import and dispatch all ready AllDebrid magnets.
-        result = await transfer_service.import_existing_magnets()
-        started = sum(1 for r in result if r.get("should_queue") and r.get("status") == "ready")
-        # Build breakdown for diagnosis
-        from collections import Counter
-        status_breakdown = Counter(r.get("status") for r in result)
-        sq_breakdown = Counter(
-            f"{r.get('status')}/sq={r.get('should_queue')}"
-            for r in result
-        )
-        return {
-            "ok": True,
-            "reset": reset_count,
-            "checked": len(result),
-            "started": started,
-            "status_breakdown": dict(status_breakdown),
-            "should_queue_breakdown": dict(sq_breakdown),
-        }
-    except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+async def recover_all_ready( application: ApplicationService = Depends(get_application)):
+    """Reconcile durable requests and owned executions through the core."""
+    return await application.recover()
 
 
 @router.get("/torrents/{torrent_id}/files-preview")
-async def torrent_files_preview(torrent_id: int):
-    """Preview downloadable files for a ready torrent (fetched live from AllDebrid).
-
-    Returns the file list without starting a download or changing torrent state.
-    For torrents already in downloading/queued/completed state, returns the
-    local download_files rows instead.
-    """
-    async with get_db() as db:
-        row = await db.fetchone(
-            "SELECT id, alldebrid_id, status, name FROM torrents WHERE id=?",
-            (torrent_id,),
-        )
-        if not row:
-            raise HTTPException(404, "Torrent not found")
-
-        # For torrents already processed, return local download_files
-        if row["status"] in ("queued", "downloading", "paused", "completed"):
-            files = await db.fetchall(
-                "SELECT id, filename, size_bytes, status, blocked "
-                "FROM download_files WHERE torrent_id=? AND blocked=0 ORDER BY id",
-                (torrent_id,),
-            )
-            return {"source": "local", "files": [dict(f) for f in files]}
-
-    # For ready/processing torrents, fetch live from AllDebrid
-    if not row["alldebrid_id"]:
-        raise HTTPException(400, "Torrent has no AllDebrid ID — not ready yet")
+async def torrent_files_preview(torrent_id: int, application: ApplicationService = Depends(get_application)):
     try:
-        files_data = await transfer_service.provider.get_magnet_files([str(row["alldebrid_id"])])
-        from providers.alldebrid.client import flatten_files
-        for entry in files_data:
-            if str(entry.get("id", "")) == str(row["alldebrid_id"]):
-                flat = flatten_files(entry.get("files", []))
-                return {
-                    "source": "alldebrid",
-                    "files": [
-                        {
-                            "filename": f.get("path") or f.get("name") or "download",
-                            "size_bytes": int(f.get("size") or 0),
-                        }
-                        for f in flat
-                    ],
-                }
-        return {"source": "alldebrid", "files": []}
-    except Exception as exc:
-        raise HTTPException(502, _sanitize_error(exc))
+        return await application.preview(torrent_id)
+    except KeyError:
+        raise HTTPException(404, "Transfer not found")
 
 
 @router.post("/torrents/{torrent_id}/files/{file_id}/block")
-async def block_file(torrent_id: int, file_id: int, blocked: bool = True):
-    """Toggle the blocked flag on a download_files row.
-
-    Blocked files are skipped by aria2 dispatch and not counted toward
-    torrent completion. Use blocked=false to unblock.
-    """
-    async with get_db() as db:
-        row = await db.fetchone(
-            "SELECT id, status, download_id, blocked FROM download_files "
-            "WHERE id=? AND torrent_id=?",
-            (file_id, torrent_id),
-        )
-        if not row:
-            raise HTTPException(404, "File not found")
-        requested = bool(blocked)
-        current = bool(row.get("blocked"))
-        if requested == current:
-            return {"ok": True, "file_id": file_id, "blocked": requested}
-        status = str(row.get("status") or "").strip().lower()
-        download_id = str(row.get("download_id") or "").strip()
-        if download_id or status not in {"pending", "paused", "blocked", "unlocking"}:
-            raise HTTPException(
-                409,
-                "File selection can only change before physical aria2 dispatch",
-            )
-        await db.execute(
-            "UPDATE download_files SET blocked=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (1 if requested else 0, file_id),
-        )
-        await db.commit()
-    return {"ok": True, "file_id": file_id, "blocked": requested}
+async def block_file(torrent_id: int, file_id: int, blocked: bool = True, application: ApplicationService = Depends(get_application)):
+    try:
+        return await application.select_artifact(torrent_id, file_id, selected=not blocked)
+    except KeyError:
+        raise HTTPException(404, "File not found")
+    except ValueError as exc:
+        raise HTTPException(409, _sanitize_error(exc))
 
 
 @router.get("/torrents/{torrent_id}")
-async def get_torrent(torrent_id: int):
-    """Return a single torrent with its download files and recent events."""
-    async with get_db() as db:
-        row = await db.fetchone("SELECT * FROM torrents WHERE id=?", (torrent_id,))
-        if not row:
-            raise HTTPException(404, "Not found")
-        files  = await db.fetchall(
-            "SELECT * FROM download_files WHERE torrent_id=? ORDER BY id", (torrent_id,))
-        events = await db.fetchall(
-            "SELECT * FROM events WHERE torrent_id=? ORDER BY created_at DESC LIMIT 50", (torrent_id,))
-        return {
-            **public_torrent(row),
-            "files": [public_download_file(file_row) for file_row in files],
-            "events": [public_payload(dict(event)) for event in events],
-        }
+async def get_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
+    item = await application.repository.presentation(torrent_id, details=True)
+    if item is None:
+        raise HTTPException(404, "Transfer not found")
+    return public_payload(item)
 
 
 @router.delete("/torrents/{torrent_id}")
-async def delete_torrent(torrent_id: int, from_alldebrid: bool = True):
+async def delete_torrent(torrent_id: int, from_alldebrid: bool = True, application: ApplicationService = Depends(get_application)):
+    # The old query parameter is retained as an external API compatibility alias.
     try:
-        await transfer_service.delete_torrent(torrent_id, delete_from_ad=from_alldebrid)
-        return {"ok": True}
-    except ValueError as e:
-        raise HTTPException(404, _sanitize_error(e))
-    except Exception as e:
-        raise HTTPException(500, _sanitize_error(e))
+        return await application.delete(torrent_id, remote=from_alldebrid)
+    except KeyError:
+        raise HTTPException(404, "Transfer not found")
 
 
 @router.post("/torrents/{torrent_id}/retry")
-async def retry_torrent(torrent_id: int):
-    """Re-queue a failed torrent.
-
-    If the torrent has a stored magnet link it is re-uploaded to AllDebrid
-    from scratch (old alldebrid_id cleared, upload_retry_count reset).
-    If only an alldebrid_id is known (no magnet — e.g. added via .torrent
-    file) the status is reset to 'ready' so the poll cycle re-checks it.
-    """
-    async with get_db() as db:
-        row = await db.fetchone("SELECT * FROM torrents WHERE id=?", (torrent_id,))
-        if not row:
-            raise HTTPException(404, "Torrent not found")
-
-    magnet = (row.get("magnet") or "").strip()
-    ad_id  = (row.get("alldebrid_id") or "").strip()
-
-    if str(row.get("source") or "") == "direct_link":
-        try:
-            return await transfer_service.retry_direct_link_collection(torrent_id)
-        except ValueError as exc:
-            raise HTTPException(400, _sanitize_error(exc))
-        except Exception as exc:
-            raise HTTPException(502, _sanitize_error(exc))
-
-    if not magnet and not ad_id:
-        raise HTTPException(400, "No magnet or AllDebrid ID — cannot retry")
-
-    if magnet:
-        # Re-upload the magnet to AllDebrid from scratch.
-        # Clear the stale alldebrid_id and reset counters first so that
-        # if the upload fails the torrent is left in a clean error state.
-        async with get_db() as db:
-            await db.execute(
-                """UPDATE torrents
-                   SET status='uploading', alldebrid_id=NULL,
-                       error_message=NULL, polling_failures=0,
-                       upload_retry_count=0, provider_status=NULL,
-                       provider_status_code=NULL, updated_at=CURRENT_TIMESTAMP
-                   WHERE id=?""",
-                (torrent_id,),
-            )
-            await db.execute(
-                "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
-                (torrent_id, "Manual retry — re-uploading magnet to AllDebrid"),
-            )
-            await db.commit()
-        try:
-            await transfer_service.add_magnet_direct(magnet, source=str(row.get("source") or "manual"))
-        except Exception as exc:
-            async with get_db() as db:
-                await db.execute(
-                    """UPDATE torrents
-                       SET status='error', error_message=?,
-                           updated_at=CURRENT_TIMESTAMP
-                       WHERE id=?""",
-                    (_sanitize_error(exc), torrent_id),
-                )
-                await db.execute(
-                    "INSERT INTO events (torrent_id, level, message) VALUES (?, 'error', ?)",
-                    (torrent_id, f"Manual retry failed: {_sanitize_error(exc)}"),
-                )
-                await db.commit()
-            raise HTTPException(502, _sanitize_error(exc))
-        return {"ok": True, "new_status": "uploading"}
-    else:
-        # No magnet stored (added via .torrent file) — reset status so
-        # the poll cycle re-checks the existing alldebrid_id.
-        async with get_db() as db:
-            await db.execute(
-                """UPDATE torrents
-                   SET status='ready', error_message=NULL,
-                       polling_failures=0, upload_retry_count=0,
-                       provider_status=NULL, provider_status_code=NULL,
-                       updated_at=CURRENT_TIMESTAMP
-                   WHERE id=?""",
-                (torrent_id,),
-            )
-            await db.execute(
-                """UPDATE download_files
-                   SET status='pending', download_id=NULL, retry_count=0,
-                       updated_at=CURRENT_TIMESTAMP
-                   WHERE torrent_id=? AND status='error'""",
-                (torrent_id,),
-            )
-            await db.execute(
-                "INSERT INTO events (torrent_id, level, message) VALUES (?, 'info', ?)",
-                (torrent_id, "Manual retry — resetting to ready (no magnet stored)"),
-            )
-            await db.commit()
-        return {"ok": True, "new_status": "ready"}
+async def retry_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
+    try:
+        return await application.retry(torrent_id)
+    except KeyError:
+        raise HTTPException(404, "Transfer not found")
 
 
 @router.post("/torrents/{torrent_id}/pause")
-async def pause_torrent(torrent_id: int):
+async def pause_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
     try:
-        await transfer_service.pause_torrent(torrent_id)
+        await application.pause(torrent_id)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(400, _sanitize_error(e))
 
 
 @router.post("/torrents/{torrent_id}/resume")
-async def resume_torrent(torrent_id: int):
+async def resume_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
     try:
-        await transfer_service.resume_torrent(torrent_id)
+        await application.resume(torrent_id)
         return {"ok": True, "paused": bool(get_settings().paused)}
     except Exception as e:
         raise HTTPException(400, _sanitize_error(e))
@@ -999,13 +783,8 @@ class LabelUpdate(BaseModel):
 
 
 @router.put("/torrents/{torrent_id}/label")
-async def set_torrent_label(torrent_id: int, body: LabelUpdate):
-    async with get_db() as db:
-        await db.execute(
-            "UPDATE torrents SET label=?, priority=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (body.label.strip(), body.priority, torrent_id),
-        )
-        await db.commit()
+async def set_torrent_label(torrent_id: int, body: LabelUpdate, application: ApplicationService = Depends(get_application)):
+    await application.repository.update_metadata(torrent_id, label=body.label.strip(), priority=body.priority)
     return {"ok": True}
 
 
@@ -1015,55 +794,23 @@ class BulkAction(BaseModel):
 
 
 @router.post("/torrents/bulk")
-async def bulk_action(body: BulkAction):
+async def bulk_action(body: BulkAction, application: ApplicationService = Depends(get_application)):
     if not body.ids:
         raise HTTPException(400, "No IDs provided")
     ok = failed = 0
-    for tid in body.ids:
+    for value in body.ids:
         try:
-            tid = int(tid)
+            tid = int(value)
             if body.action == "delete":
-                await transfer_service.delete_torrent(tid, delete_from_ad=True)
-            elif body.action == "retry":
-                async with get_db() as db:
-                    transfer = await db.fetchone(
-                        "SELECT source FROM torrents WHERE id=?", (tid,)
-                    )
-                if transfer and str(transfer.get("source") or "") == "direct_link":
-                    await transfer_service.retry_direct_link_collection(tid)
-                else:
-                    async with get_db() as db:
-                        await db.execute(
-                            """UPDATE torrents
-                               SET status='uploading', error_message=NULL,
-                                   polling_failures=0, updated_at=CURRENT_TIMESTAMP
-                               WHERE id=?""",
-                            (tid,),
-                        )
-                        await db.commit()
-            elif body.action == "reset":
-                # Reset any stuck/error torrent back to 'ready' so the
-                # next sync cycle picks it up again
-                async with get_db() as db:
-                    await db.execute(
-                        """UPDATE torrents
-                           SET status='ready', error_message=NULL,
-                               polling_failures=0, updated_at=CURRENT_TIMESTAMP
-                           WHERE id=? AND alldebrid_id IS NOT NULL""",
-                        (tid,),
-                    )
-                    await db.commit()
+                await application.delete(tid, remote=True)
+            elif body.action in {"retry", "reset"}:
+                await application.retry(tid)
             elif body.action == "pause":
-                await transfer_service.pause_torrent(tid)
+                await application.pause(tid)
             elif body.action == "resume":
-                await transfer_service.resume_torrent(tid)
+                await application.resume(tid)
             elif body.action == "remove_label":
-                async with get_db() as db:
-                    await db.execute(
-                        "UPDATE torrents SET label='', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                        (tid,),
-                    )
-                    await db.commit()
+                await application.repository.update_metadata(tid, label="")
             ok += 1
         except Exception:
             failed += 1
@@ -1086,14 +833,14 @@ async def get_events(limit: int = Query(200, le=500)):
 
 
 @router.get("/admin/performance")
-async def performance_diagnostics():
+async def performance_diagnostics( application: ApplicationService = Depends(get_application)):
     from core.performance import snapshot as performance_snapshot
     from db.database import db_runtime_metrics
 
     return {
         "timers": performance_snapshot(),
         "database": db_runtime_metrics(),
-        "aria2": transfer_service.aria2.rpc_metrics(),
+        "aria2": application.integration_admin("aria2").rpc_metrics(),
     }
 
 
@@ -1303,13 +1050,13 @@ async def get_stats_detail(period: str = "all"):
 # ── Processing control ─────────────────────────────────────────────────────────
 
 @router.post("/processing/pause")
-async def pause_processing():
-    result = await transfer_service.pause_all_downloads()
+async def pause_processing( application: ApplicationService = Depends(get_application)):
+    result = await application.pause_all()
     return {"ok": True, "paused": bool(get_settings().paused), **result}
 
 @router.post("/processing/resume")
-async def resume_processing():
-    result = await transfer_service.resume_all_downloads()
+async def resume_processing( application: ApplicationService = Depends(get_application)):
+    result = await application.resume_all()
     return {"ok": True, "paused": bool(get_settings().paused), **result}
 
 # ── Changelog ──────────────────────────────────────────────────────────────────
@@ -1471,7 +1218,7 @@ _database_wipe_lock = asyncio.Lock()
 
 
 @router.post("/admin/database/wipe")
-async def wipe_database_admin(body: dict | None = None):
+async def wipe_database_admin(body: dict | None = None, application: ApplicationService = Depends(get_application)):
     cfg = get_settings()
     if not getattr(cfg, "db_wipe_enabled", False):
         raise HTTPException(400, "Database wipe is disabled in settings")
@@ -1488,7 +1235,7 @@ async def wipe_database_admin(body: dict | None = None):
         scheduler_stopped = False
         quiesced = False
         try:
-            async with transfer_service.database_wipe_admission():
+            async with application.database_wipe_admission():
                 # A state-changing request could have been admitted immediately
                 # before maintenance closed admission. The gate drains it first;
                 # refresh every destructive setting only after that drain.
@@ -1504,7 +1251,7 @@ async def wipe_database_admin(body: dict | None = None):
                     await scheduler_runtime.stop_scheduler()
 
                 try:
-                    quiesce_result = await transfer_service.quiesce_for_database_wipe()
+                    quiesce_result = await application.quiesce_for_database_wipe()
                     quiesced = True
                 except Exception as exc:
                     raise HTTPException(409, _sanitize_error(exc))
@@ -1529,13 +1276,13 @@ async def wipe_database_admin(body: dict | None = None):
                     return {**result, "backup": backup_result, "quiesced": quiesce_result}
                 finally:
                     if quiesced:
-                        await transfer_service.release_database_wipe_quiescence()
+                        await application.release_database_wipe_quiescence()
                         quiesced = False
         finally:
             # Restart only after application admission has reopened so new
             # scheduler tasks cannot immediately bounce off the maintenance gate.
             if scheduler_stopped:
-                await scheduler_runtime.start_scheduler()
+                await scheduler_runtime.start_scheduler(application)
 
 
 
@@ -1544,12 +1291,12 @@ async def wipe_database_admin(body: dict | None = None):
 
 
 @router.get("/aria2/global-options")
-async def aria2_get_global_options():
+async def aria2_get_global_options( application: ApplicationService = Depends(get_application)):
     """Return current aria2 global options (includes speed limits)."""
     try:
         cfg = get_settings()
         external = getattr(cfg, "aria2_mode", "external") != "builtin"
-        opts = await transfer_service.aria2.get_global_options()
+        opts = await application.integration_admin("aria2").get_global_options()
         return {
             "ok": True,
             "mode": "external" if external else "builtin",
@@ -1568,7 +1315,7 @@ async def aria2_get_global_options():
 
 
 @router.post("/aria2/global-options")
-async def aria2_set_global_options(body: dict):
+async def aria2_set_global_options(body: dict, application: ApplicationService = Depends(get_application)):
     """
     Apply global aria2 options at runtime.
     Accepts: max_download_speed (bytes/s, 0=unlimited), max_upload_speed.
@@ -1604,7 +1351,7 @@ async def aria2_set_global_options(body: dict):
         raise HTTPException(400, "No valid options provided")
     try:
         if not external:
-            await transfer_service.aria2.change_global_options(options)
+            await application.integration_admin("aria2").change_global_options(options)
         # Persist so the limits survive an aria2 restart
         if cfg_updates:
             current = load_settings()
@@ -1615,9 +1362,9 @@ async def aria2_set_global_options(body: dict):
         # If max_concurrent_downloads changed, reset the Manager Semaphore so
         # the next _start_download picks up the new limit immediately.
         if "max_concurrent_downloads" in cfg_updates:
-            transfer_service.reset_services()
+            application.configure()
             try:
-                await transfer_service.advance_aria2_queue()
+                await application.reconcile_executions()
             except Exception as exc:
                 logger.debug("aria2 quick slot dispatch skipped: %s", sanitize_exception(exc))
         return {
@@ -1690,17 +1437,14 @@ async def export_stats(hours: int = Query(24, ge=1, le=8760)):
 
 
 @router.post("/admin/full-sync")
-async def trigger_full_sync():
-    """Manually trigger a full AllDebrid reconciliation (all torrents incl. error/queued)."""
-    from services.transfer_service import transfer_service
-    updated = await transfer_service.full_alldebrid_sync()
-    return {"ok": True, "updated": updated, "message": f"{updated} torrents updated"}
+async def trigger_full_sync( application: ApplicationService = Depends(get_application)):
+    return {"ok": True, **await application.reconcile_inventory()}
 
 
 @router.post("/admin/deep-sync")
-async def trigger_deep_sync():
+async def trigger_deep_sync( application: ApplicationService = Depends(get_application)):
     t0 = time.monotonic()
-    await transfer_service.deep_sync_aria2_finished()
+    await application.reconcile_executions()
     return {"ok": True, "elapsed_seconds": round(time.monotonic() - t0, 2)}
 
 
@@ -1785,14 +1529,14 @@ async def sse_subscriber_count():
 
 
 @router.get("/disk-guard")
-async def disk_guard_status():
+async def disk_guard_status( application: ApplicationService = Depends(get_application)):
     """
     Current disk-space guard state.
 
     Returns free_gb, min_free_gb, and whether the guard is active
     (new dispatches currently deferred due to low disk space).
     """
-    return await transfer_service.check_disk_space_guard()
+    return await application.check_resources()
 
 
 @router.get("/metrics")
@@ -1882,21 +1626,15 @@ async def prometheus_metrics():
 # ── Priority Queue ────────────────────────────────────────────────────────────
 
 @router.patch("/torrents/{torrent_id}/priority")
-async def set_torrent_priority(torrent_id: int, body: dict):
+async def set_torrent_priority(torrent_id: int, body: dict, application: ApplicationService = Depends(get_application)):
     """Set the dispatch priority for a torrent.
     Higher priority = dispatched sooner.  Default: 0.
     Body: {"priority": <int>}
     """
     priority = int(body.get("priority") or 0)
-    async with get_db() as db:
-        row = await db.fetchone("SELECT id FROM torrents WHERE id=?", (torrent_id,))
-        if not row:
-            raise HTTPException(404, "Torrent not found")
-        await db.execute(
-            "UPDATE torrents SET priority=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (priority, torrent_id),
-        )
-        await db.commit()
+    if not await application.repository.get(torrent_id):
+        raise HTTPException(404, "Transfer not found")
+    await application.repository.update_metadata(torrent_id, priority=priority)
     await _sse_broadcast("torrent_updated", {"torrent_id": torrent_id, "priority": priority})
     return {"ok": True, "torrent_id": torrent_id, "priority": priority}
 
@@ -1904,20 +1642,17 @@ async def set_torrent_priority(torrent_id: int, body: dict):
 # ── Recovery ──────────────────────────────────────────────────────────────────
 
 @router.post("/recovery/run")
-async def run_recovery():
+async def run_recovery( application: ApplicationService = Depends(get_application)):
     """Manually trigger an auto-recovery pass."""
-    result = await transfer_service.reconciliation.recover()
+    result = await application.recover()
     return {"ok": True, "result": result}
 
 
 # ── AllDebrid orphan cleanup ───────────────────────────────────────────────────
 
 @router.post("/admin/cleanup-alldebrid-orphans")
-async def cleanup_alldebrid_orphans_endpoint():
-    """
-    Conservatively scan provider-side error/no-peer objects. Automatic deletion
-    is limited to objects with positive local ownership evidence; unknown, imported
-    and local-only-deleted provider objects are preserved.
-    """
-    deleted = await transfer_service.cleanup_alldebrid_orphans()
-    return {"ok": True, "deleted": deleted}
+async def cleanup_alldebrid_orphans_endpoint( application: ApplicationService = Depends(get_application)):
+    """Compatibility URL for retrying already-authorized canonical cleanup."""
+    async with application.application_operation():
+        await application.engine.cleanup_pending()
+    return {"ok": True}

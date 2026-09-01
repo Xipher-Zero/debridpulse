@@ -1,15 +1,7 @@
-"""
-Duplicate Intelligence Service — backend/services/duplicates.py
+"""Read-only duplicate previews from fingerprints, core resources and metadata.
 
-Central gatekeeper: called before EVERY AllDebrid upload.
-Never performs AllDebrid operations itself — purely read-only against the local DB.
-
-Design principles:
-  - All add-flows must call check_before_add() before any AllDebrid contact.
-  - Search/preview is always read-only; this service is safe to call during search.
-  - Decisions are graduated: allow / warn / skip.
-  - Conservative defaults — only hard block when confidence == 1.0 (exact hash).
-  - No heavy dependencies; no external HTTP calls.
+Admission identity and reacquisition policy belong to TransferRepository. This
+module provides advisory search results without contacting any integration.
 """
 from __future__ import annotations
 
@@ -19,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from db.database import get_db
-logger = logging.getLogger("alldebrid.duplicates")
+logger = logging.getLogger("debridpulse.duplicates")
 
 # ── Sentinel status values that indicate an active or completed entry ──────────
 _ACTIVE_STATUSES = frozenset({
@@ -42,7 +34,7 @@ class DuplicateCandidate:
     magnet:        str            = ""
     torrent_url:   str            = ""
     infohash:      str            = ""       # normalised lowercase hex
-    alldebrid_id:  str            = ""
+    resource_id:  str            = ""
     size_bytes:    int            = 0
     indexer:       str            = ""
     category:      str            = ""
@@ -244,17 +236,17 @@ async def find_hash_duplicate(infohash: str) -> Optional[DuplicateMatch]:
     return None
 
 
-async def find_alldebrid_id_duplicate(alldebrid_id: str) -> Optional[DuplicateMatch]:
+async def find_resource_id_duplicate(resource_id: str) -> Optional[DuplicateMatch]:
     """
-    Stage 2: check by AllDebrid ID (prevents re-uploading something already on AD).
+    Stage 2: check by resource identity (prevents re-uploading something already represented locally).
     """
-    if not alldebrid_id:
+    if not resource_id:
         return None
     try:
         async with get_db() as db:
             row = await db.fetchone(
-                "SELECT id, name, status, hash FROM torrents WHERE alldebrid_id = ? LIMIT 1",
-                (str(alldebrid_id),),
+                "SELECT t.id,t.name,t.status,t.hash FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id WHERE r.id=? LIMIT 1",
+                (str(resource_id),),
             )
         if row and row["status"] in _ALL_NON_DELETED:
             return DuplicateMatch(
@@ -262,11 +254,11 @@ async def find_alldebrid_id_duplicate(alldebrid_id: str) -> Optional[DuplicateMa
                 name=row["name"] or "",
                 status=row["status"],
                 hash=row["hash"] or "",
-                reason="same_alldebrid_id",
+                reason="same_resource_id",
                 confidence=1.0,
             )
     except Exception as exc:
-        logger.debug("find_alldebrid_id_duplicate error: %s", exc)
+        logger.debug("find_resource_id_duplicate error: %s", exc)
     return None
 
 
@@ -411,17 +403,17 @@ async def find_semantic_duplicates(candidate: DuplicateCandidate) -> list[Duplic
 
 async def check_before_add(candidate: DuplicateCandidate) -> DuplicateDecision:
     """
-    Central duplicate gate.  Call this before ANY AllDebrid upload.
+    Read-only duplicate preview; core admission remains authoritative.
 
     Returns a DuplicateDecision with action:
       "allow"  — no duplicate found, proceed normally
       "warn"   — possible duplicate, proceed but surface warning to user
-      "skip"   — confident duplicate, do not upload to AllDebrid
+      "skip"   — confident duplicate, reuse the existing transfer identity
 
     Decision logic:
       - Exact hash match in active/completed status → skip (confidence 1.0)
       - Exact hash match in error/pending status → warn (allow retry)
-      - AllDebrid-ID match → skip
+      - Resource identity match → skip
       - Semantic match (confidence ≥ 0.95) → skip
       - Semantic match (confidence ≥ 0.85) → warn
       - No match → allow
@@ -457,28 +449,28 @@ async def check_before_add(candidate: DuplicateCandidate) -> DuplicateDecision:
                 matches=[match],
             )
 
-    # -- Stage 2: AllDebrid ID -----------------------------------------------
-    ad_id = str(candidate.alldebrid_id or "").strip()
-    if ad_id:
-        match = await find_alldebrid_id_duplicate(ad_id)
+    # -- Stage 2: resource identity -----------------------------------------------
+    resource_id = str(candidate.resource_id or "").strip()
+    if resource_id:
+        match = await find_resource_id_duplicate(resource_id)
         if match:
             if match.status in _ACTIVE_STATUSES:
                 logger.info(
-                    "Duplicate skip [AllDebrid ID]: '%s' matches existing torrent #%s (%s)",
-                    (candidate.title or ad_id)[:60], match.torrent_id, match.status,
+                    "Duplicate skip [resource identity]: '%s' matches existing torrent #%s (%s)",
+                    (candidate.title or resource_id)[:60], match.torrent_id, match.status,
                 )
                 return DuplicateDecision(
                     is_duplicate=True,
                     confidence=1.0,
                     action="skip",
-                    reason="same_alldebrid_id",
+                    reason="same_resource_id",
                     matches=[match],
                 )
             return DuplicateDecision(
                 is_duplicate=True,
                 confidence=0.95,
                 action="warn",
-                reason="same_alldebrid_id_error_state",
+                reason="same_resource_id_error_state",
                 matches=[match],
             )
 

@@ -319,58 +319,22 @@ function renderKvMap(arr, formatter) {
     </div>`;
   }).join('')}</div>`;
 }
-function badge(s) {
+function badge(s, detail) {
   if (!window.DPIcons || typeof window.DPIcons.statusBadge !== 'function') {
     throw new Error('DebridPulse icon runtime is unavailable');
   }
-  return window.DPIcons.statusBadge(s);
+  const semantics = window.DPFailureSemantics;
+  const category = s === 'error' && semantics ? semantics.classify(detail) : '';
+  return window.DPIcons.statusBadge(s, category ? semantics.labels[category] : '', category);
 }
 function transferDisplayStatus(t) {
-  if (t && String(t.extraction_status || '').trim() === 'extracting') {
-    return 'extracting';
-  }
-  if (
-    t &&
-    t.status === 'completed' &&
-    String(t.extraction_status || '').trim() === 'error'
-  ) {
-    return 'completed_with_errors';
-  }
-  if (
-    t &&
-    t.source === 'direct_link' &&
-    t.status === 'downloading' &&
-    String(t.error_message || '').trim()
-  ) {
-    return 'downloading_with_errors';
-  }
-  if (
-    t &&
-    t.source === 'direct_link' &&
-    t.status === 'completed' &&
-    String(t.error_message || '').trim()
-  ) {
-    return 'completed_with_errors';
-  }
-  if (t && t.source === 'direct_link' && t.status === 'error' && t.provider_status === 'missing') {
-    return 'missing';
-  }
-  if (t && t.status === 'error' && t.provider_status === 'missing') {
-    return 'provider_missing';
-  }
-  if (t && t.status === 'error' && ['error', 'failed'].includes(t.provider_status)) {
-    return 'provider_failed';
-  }
+  if (t && String(t.extraction_status || '').trim() === 'extracting') return 'extracting';
+  if (t && t.status === 'completed' && (t.extraction_status === 'error' || Number(t.source_failure_count) > 0)) return 'completed_with_errors';
+  if (t && t.status === 'downloading' && Number(t.source_failure_count) > 0) return 'downloading_with_errors';
   return (t && t.status) || '';
 }
 function providerDisplayStatus(t) {
-  if (t && t.source !== 'direct_link' && t.provider_status === 'missing') {
-    return 'provider_missing';
-  }
-  if (t && t.provider_status === 'failed') {
-    return 'provider_failed';
-  }
-  return (t && t.provider_status) || '';
+  return (t && t.resources || []).map(resource => resource.state).join(', ');
 }
 function progress(pct, status) {
   const state = String(status || '').toLowerCase();
@@ -1071,10 +1035,9 @@ async function loadRecent() {
         <td>
           <div class="t-name" title="${esc(t.name)||''}">${esc(t.name)||'(unnamed)'}</div>
           ${is_active ? `<div class="dash-row-bar"><div class="dash-row-bar-fill" style="width:${pct_val}%;background:var(--blue)"></div></div>` : ''}
-          ${t.alldebrid_id ? `<div class="t-hash" style="font-size:10px;color:var(--text3)" title="AllDebrid ID">AD: ${esc(t.alldebrid_id)}</div>` : ''}
           ${t.source === 'direct_link' ? `<div class="t-hash" style="font-size:10px;color:var(--text3)" title="Direct debrid link transfer">🔗 Direct link</div>` : ''}
         </td>
-        <td data-role="transfer-status">${badge(transferDisplayStatus(t))}</td>
+        <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
         <td data-role="transfer-progress">${progress(t.progress,t.status)}</td>
         <td class="sz">${fmtSize(t.size_bytes)}</td>
         <td class="sz">${fmtDate(t.created_at)}</td>
@@ -1328,7 +1291,7 @@ async function loadTorrents() {
         <div>${sourceLabel(t.source)}</div>
         ${t.label?`<span class="lbl-badge">🏷 ${esc(t.label)}</span>`:''}
       </td>
-      <td data-role="transfer-status">${badge(transferDisplayStatus(t))}</td>
+      <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
       <td data-role="transfer-progress">${progress(t.progress,t.status)}</td>
       <td class="sz">${fmtSize(t.size_bytes)}</td>
       <td class="sz">${fmtDate(t.created_at)}</td>
@@ -1561,15 +1524,15 @@ async function showDetail(id) {
 
     if (modalBody) modalBody.innerHTML = `
       <div class="detail-grid">
-        <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t))}</div></div>
-        <div><div class="dk">Provider</div><div class="dv">${t.provider_status ? badge(providerDisplayStatus(t)) : '—'}</div></div>
+        <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
+        <div><div class="dk">Provider</div><div class="dv">${esc((t.providers || []).join(', ') || '—')}</div></div>
         <div><div class="dk">Progress</div><div class="dv">${(t.progress||0).toFixed(1)}%</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
         <div><div class="dk">Source</div><div class="dv">${sourceLabel(t.source)}</div></div>
-        <div><div class="dk">Downloader</div><div class="dv">${esc(t.download_client||'aria2')}</div></div>
+        <div><div class="dk">Downloader</div><div class="dv">${esc((t.executors || []).join(', ') || '—')}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>
         <div><div class="dk">Completed</div><div class="dv">${fmtDate(t.completed_at)}</div></div>
-        <div style="grid-column:1/-1"><div class="dk">AllDebrid ID</div><div class="dv">${esc(t.alldebrid_id||'—')}</div></div>
+        <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
         ${t.error_message?`<div style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
@@ -1591,12 +1554,20 @@ async function showDetail(id) {
                     : (f.block_reason ? `<div style="font-size:10px;color:var(--red);margin-top:4px">${esc(f.block_reason)}</div>` : '')}
                 </td>
                 <td class="sz">${fmtSize(f.size_bytes)}</td>
-                <td>${badge(f.status)}</td>
+                <td>${badge(f.status, f)}</td>
               </tr>`).join('')}</tbody>
             </table>
           </div>
         </div>
       `:''}
+      ${t.source_outcomes && t.source_outcomes.length ? `
+        <div class="card dp-detail-section-card">
+          <div class="card-header"><span class="card-title">Source Warnings (${t.source_outcomes.length})</span></div>
+          <div class="dp-detail-table-wrap"><table class="t-table"><tbody>
+            ${t.source_outcomes.map(source => `<tr><td>${esc(source.name)}</td><td>${badge('error', source)}</td></tr>`).join('')}
+          </tbody></table></div>
+        </div>
+      ` : ''}
       ${t.events&&t.events.length?`
         <div class="card dp-detail-section-card dp-detail-events-card">
           <div class="card-header">
@@ -2165,7 +2136,7 @@ function renderAria2Downloads(data) {
         ${esc(file.name || file.path || 'file')} · ${Math.max(0, file.progress || 0).toFixed(1)}% · ${fmtSize(file.completed_length || 0)} / ${fmtSize(file.length || 0)}
       </div>`).join('');
     const more = (job.files || []).length > 4 ? `<div>+ ${(job.files || []).length - 4} more file(s)</div>` : '';
-    const error = job.error_message ? `<div class="aria2-error">${esc(job.error_code || '')} ${esc(job.error_message)}</div>` : '';
+    const error = job.error_message ? `<div class="aria2-error">${esc((job.error || {}).category || '')} ${esc(job.error_message)}</div>` : '';
     return `
       <div class="aria2-job">
         <div class="aria2-job-top">

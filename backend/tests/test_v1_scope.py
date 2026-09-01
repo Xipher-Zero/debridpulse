@@ -222,77 +222,6 @@ def test_dashboard_recent_activity_exposes_pause_resume_but_not_remove():
         assert "loadRecent();" in handler
 
 
-def test_global_pause_control_exposes_mixed_selective_pause_state():
-    frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
-    index = (REPO_ROOT / "frontend/static/index.html").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
-    routes = (REPO_ROOT / "backend/api/routes.py").read_text()
-
-    assert "Resume Paused (${selectivelyPaused})" in frontend
-    assert 'onclick="resumePausedDownloads()"' in frontend
-    assert 'id="btn-pause-all"' in frontend
-    assert 'onclick="pauseProcessing()"' in frontend
-    assert 'id="btn-resume-all"' in frontend
-    assert 'onclick="resumeProcessing()"' in frontend
-    assert "el.dataset.initialized !== '1'" in frontend
-    assert "pausedTransferCount = Math.max(0, Number(bs.paused) || 0)" in frontend
-    resume_handler = frontend.split(
-        "async function resumeT(id, button)", 1
-    )[1].split(
-        "// ── Detail Modal", 1
-    )[0]
-
-    assert "settingsData.paused = result.paused" in resume_handler
-    assert "pausedTransferCount" in resume_handler
-    assert "Math.max(0, pausedTransferCount - 1)" in resume_handler
-    assert index.index('id="topbar-actions"') < index.index('id="aria2-speed-badge"')
-    assert "#aria2-speed-badge" in styles
-    assert "white-space: nowrap" in styles
-    assert "flex: 0 0 230px" in styles
-    assert "width: 64px" in styles
-    assert "font-variant-numeric: tabular-nums" in styles
-
-    pause_handler = frontend.split("async function pauseProcessing()", 1)[1].split(
-        "async function resumeProcessing()", 1
-    )[0]
-    assert "loadRecent();" in pause_handler
-    assert "loadTorrents()" in pause_handler
-
-    pause_route = routes.split("async def pause_processing():", 1)[1].split(
-        '@router.post("/processing/resume")', 1
-    )[0]
-    resume_route = routes.split("async def resume_processing():", 1)[1].split(
-        "# ── Changelog", 1
-    )[0]
-    assert "await transfer_service.pause_all_downloads()" in pause_route
-    assert "await transfer_service.resume_all_downloads()" in resume_route
-    assert "save_settings" not in pause_route
-    assert "apply_settings" not in resume_route
-
-    control_service = (REPO_ROOT / "backend/services/transfer_control_service.py").read_text()
-    assert "self._set_global_paused(True)" in control_service
-    assert "self._set_global_paused(False)" in control_service
-    assert "self.coordinator._schedule_queue()" in control_service
-
-    manager = (REPO_ROOT / "backend/services/manager_v2.py").read_text()
-    sync_handler = manager.split("async def sync_aria2_downloads(self):", 1)[1].split(
-        "async def _reset_torrent_for_redownload", 1
-    )[0]
-    dispatch_handler = manager.split(
-        "async def _engine_dispatch_pending_aria2_queue", 1
-    )[1].split("async def _schedule_ready_aria2_parents", 1)[0]
-    ready_handler = manager.split(
-        "async def _schedule_ready_aria2_parents", 1
-    )[1].split("async def _engine_advance_aria2_queue_locked", 1)[0]
-    advance_handler = manager.split(
-        "async def _engine_advance_aria2_queue_locked", 1
-    )[1].split("async def _remove_owned_aria2_gid", 1)[0]
-    assert "if self.is_paused()" not in sync_handler.split("all_downloads =", 1)[0]
-    assert 'self.download_client_name() != "aria2" or self.is_paused()' in dispatch_handler
-    assert "status='ready'" in ready_handler
-    assert "provider_status='ready'" in ready_handler
-    assert "targeted_manual_resume" not in dispatch_handler + ready_handler + advance_handler
-    assert "allow_while_paused" not in dispatch_handler + ready_handler + advance_handler
 
 
 def test_topbar_uses_live_aria2_speed_with_human_download_units():
@@ -336,31 +265,11 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     assert "#aria2-speed-badge.external-control" in styles
 
     assert "async def get_active(self)" in aria2_service
-    assert "owned_active = await transfer_service.owned_aria2_downloads(active_downloads)" in routes
-    assert "downloads = await transfer_service.owned_aria2_downloads(downloads)" in routes
+    assert 'owned_active = await application.integration_admin("aria2").filter_owned(active_downloads)' in routes
+    assert 'downloads = await application.integration_admin("aria2").filter_owned(downloads)' in routes
     assert '"external_control": True' in routes
 
 
-def test_watch_folder_ingestion_is_not_shipped_in_v1():
-    frontend = "\n".join(
-        (REPO_ROOT / path).read_text()
-        for path in ("frontend/static/index.html", "frontend/static/app.js")
-    )
-    scheduler = (REPO_ROOT / "backend/core/scheduler.py").read_text()
-    manager = (REPO_ROOT / "backend/services/manager_v2.py").read_text()
-
-    for marker in (
-        'id="s-watch_folder"',
-        'id="s-processed_folder"',
-        'id="s-watch_interval_seconds"',
-        "Watch Folder Scan",
-    ):
-        assert marker not in frontend
-
-    assert "watch_folder_loop" not in scheduler
-    assert "scan_watch_folder" not in manager
-    assert "_handle_magnet_file" not in manager
-    assert "_handle_torrent" not in manager
 
 
 def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tiles():
@@ -390,9 +299,9 @@ def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tile
 def test_inherited_file_preview_and_block_routes_are_hardened():
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
     assert "size_bytes, status, blocked, progress" not in routes
-    block_route = routes.split('async def block_file(torrent_id: int, file_id: int, blocked: bool = True):', 1)[1].split('@router.get("/torrents/{torrent_id}")', 1)[0]
-    assert "download_id" in block_route
-    assert "status not in" in block_route
+    block_route = routes.split('async def block_file(torrent_id: int, file_id: int, blocked: bool = True,', 1)[1].split('@router.get("/torrents/{torrent_id}")', 1)[0]
+    assert "application.select_artifact" in block_route
+    assert "selected=not blocked" in block_route
     assert "409" in block_route
 
 

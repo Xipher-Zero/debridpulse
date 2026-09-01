@@ -58,7 +58,7 @@ jobs:
       - name: Check undefined Python names
         run: |
           cd backend
-          ruff check api auth core db services main.py --select F821,F822,F823
+          ruff check api application auth core db executors integrations postprocessors providers services transfers main.py --select F821,F822,F823
 
       - name: Run all tests
         run: |

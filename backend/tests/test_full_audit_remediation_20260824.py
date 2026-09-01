@@ -10,13 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 import db.database as database
-import services.direct_link_result_guard as result_guard
-import services.dispatch_coordinator as dispatch_module
 from core.config import AppSettings, apply_settings
-from services.direct_link_result_guard import DirectLinkResultGuardManager
-from services.dispatch_coordinator import collapse_direct_link_mirrors
-from services.extractor import Extractor
-from services.manager_v2 import _direct_link_unlock_failure_prefix
+from postprocessors.archive.extractor import Extractor
 from providers.alldebrid.client import AllDebridAPIError
 
 
@@ -81,37 +76,6 @@ async def test_nested_archive_created_by_current_extraction_still_extracts(tmp_p
     assert not (dest / "created" / "nested.zip").exists()
 
 
-def test_systemic_provider_unlock_failure_is_not_source_specific():
-    assert _direct_link_unlock_failure_prefix(Exception("Network error: timeout")) == "provider-unlock"
-    assert _direct_link_unlock_failure_prefix(Exception("AllDebrid HTTP 503 for link/unlock")) == "provider-unlock"
-
-
-def test_link_specific_provider_code_remains_source_specific():
-    assert _direct_link_unlock_failure_prefix(
-        AllDebridAPIError("LINK_DOWN", "resource unavailable")
-    ) == "source-unlock"
-
-
-@pytest.mark.asyncio
-async def test_provider_unlock_failure_without_gid_is_not_failover_eligible():
-    manager = DirectLinkResultGuardManager()
-    eligible, reason = await manager._mirror_failure_is_failover_eligible(
-        {
-            "download_id": None,
-            "block_reason": "provider-unlock: AllDebrid HTTP 503 for link/unlock",
-            "download_url": None,
-        }
-    )
-    assert eligible is False
-    assert reason == "AllDebrid HTTP 503 for link/unlock"
-
-
-def test_aria2_jobs_refuse_http_redirects():
-    manager = DirectLinkResultGuardManager()
-    apply_settings(AppSettings())
-    assert manager._aria2_job_options()["max-http-redirection"] == "0"
-
-
 class _Cursor:
     def __init__(self, rowcount=1):
         self.rowcount = rowcount
@@ -148,45 +112,6 @@ class _MirrorDb:
 
     async def commit(self):
         return None
-
-
-@pytest.mark.asyncio
-async def test_real_world_three_hoster_tolerance_collapses_in_full_path(monkeypatch):
-    rows = [
-        {"file_id": 1, "torrent_id": 7, "filename": "GF200826-TMNTSFS-RN.rar",
-         "size_bytes": 3_595_501_360, "source_url": "https://1fichier.com/a",
-         "download_url": "https://cap.example/1", "status": "pending", "download_id": None,
-         "blocked": 0, "mirror_group_id": None, "mirror_state": "",
-         "local_path": "/download/GF200826-TMNTSFS-RN.rar"},
-        {"file_id": 2, "torrent_id": 7, "filename": "GF200826-TMNTSFS-RN.rar",
-         "size_bytes": 3_595_501_360, "source_url": "https://rapidgator.net/a",
-         "download_url": "https://cap.example/2", "status": "pending", "download_id": None,
-         "blocked": 0, "mirror_group_id": None, "mirror_state": "",
-         "local_path": "/download/GF200826-TMNTSFS-RN (2).rar"},
-        {"file_id": 3, "torrent_id": 7, "filename": "GF200826-TMNTSFS-RN.rar",
-         "size_bytes": 3_597_035_110, "source_url": "https://megaup.net/a",
-         "download_url": "https://cap.example/3", "status": "pending", "download_id": None,
-         "blocked": 0, "mirror_group_id": None, "mirror_state": "",
-         "local_path": "/download/GF200826-TMNTSFS-RN (3).rar"},
-    ]
-    db = _MirrorDb(rows)
-
-    class _Ctx:
-        async def __aenter__(self): return db
-        async def __aexit__(self, *_args): return False
-
-    monkeypatch.setattr(dispatch_module, "get_db", lambda: _Ctx())
-
-    assert await collapse_direct_link_mirrors() == 2
-    assert rows[0]["mirror_state"] == "active"
-    assert rows[1]["status"] == "duplicate"
-    assert rows[1]["mirror_state"] == "standby"
-    assert "exact provider size matched" in rows[1]["block_reason"]
-    assert rows[2]["status"] == "duplicate"
-    assert rows[2]["mirror_state"] == "standby"
-    assert "size tolerance matched" in rows[2]["block_reason"]
-    assert rows[1]["mirror_group_id"] == rows[0]["mirror_group_id"]
-    assert rows[2]["mirror_group_id"] == rows[0]["mirror_group_id"]
 
 
 def test_current_schema_contract_includes_extraction_and_mirror_columns():

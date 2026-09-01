@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import hashlib
+import json
 from pathlib import Path, PurePosixPath
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
@@ -40,6 +41,17 @@ class Aria2Configuration:
     secrets: tuple[str, ...] = field(default=(), repr=False)
 
 
+class _AdmissionDeferred(Exception):
+    """Owned execution remains parked by a newer core control intent."""
+
+
+def execution_binding(configuration, url):
+    """Bind authority to one daemon and filesystem mapping, never merely a GID."""
+    payload = [str(url).strip(), configuration.external,
+               str(Path(configuration.local_root).resolve()), configuration.remote_root]
+    return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
+
+
 class Aria2Executor:
     descriptor = IntegrationDescriptor(
         "aria2", "aria2", frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE, Capability.HEALTH}),
@@ -52,6 +64,7 @@ class Aria2Executor:
         self.configuration = configuration
         self.authorize = authorize
         self.egress = egress or downloader_egress_guard
+        self.binding = execution_binding(configuration, getattr(client, "url", ""))
 
     def _failure(self, category: Category, stage=Stage.EXECUTION, *, domain=Domain.EXECUTOR) -> TransferError:
         return TransferError(NormalizedError(domain, category, stage, retryability=Retryability.NEVER,
@@ -77,14 +90,18 @@ class Aria2Executor:
             gid = "1" + gid[1:]
         redactions = [value for endpoint in request.candidate.endpoints
                       for value in (endpoint.address, *endpoint.headers.values()) if value]
-        return ExecutionHandle(self.descriptor.id, {"gid": gid, "target": str(target), "redactions": redactions}, request.attempt_id)
+        return ExecutionHandle(self.descriptor.id, {"gid": gid, "target": str(target), "redactions": redactions, "binding": self.binding}, request.attempt_id)
 
     def _secrets(self, handle: ExecutionHandle) -> tuple[str, ...]:
         return self.configuration.secrets + tuple(str(item) for item in handle.context.get("redactions", ()))
 
     async def _check(self, handle: ExecutionHandle, action: str) -> str:
-        if handle.executor_id != self.descriptor.id or not await self.authorize(handle, action):
+        if handle.executor_id != self.descriptor.id or not await self.authorize(handle, "observe"):
             raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
+        if handle.context.get("binding") != self.binding:
+            raise self._failure(Category.EXECUTOR_UNAVAILABLE)
+        if action != "observe" and not await self.authorize(handle, action):
+            raise _AdmissionDeferred()
         gid = str(handle.context.get("gid") or "")
         if len(gid) != 16 or any(ch not in "0123456789abcdef" for ch in gid):
             raise self._failure(Category.INVALID_ADAPTER_RESPONSE)
@@ -134,6 +151,7 @@ class Aria2Executor:
             "allow-overwrite": "true", "auto-file-renaming": "false",
             "follow-torrent": "false", "follow-metalink": "false",
             "max-http-redirection": "0", "check-certificate": "true",
+            "max-tries": "1",
             "split": str(max(1, cfg.split)), "min-split-size": cfg.minimum_split_size,
             "max-connection-per-server": str(max(1, cfg.connections_per_server)),
             "continue": "true" if cfg.continue_downloads else "false",
@@ -168,6 +186,8 @@ class Aria2Executor:
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
             return ExecutionObservation(handle, ExecutionState.PAUSED if request.paused else ExecutionState.QUEUED)
+        except _AdmissionDeferred:
+            return ExecutionObservation(handle, ExecutionState.PAUSED)
         except Exception as exc:
             # A lost acknowledgement leaves an uncertain execution, not a
             # failed artifact and not permission to create another native job.
@@ -260,6 +280,7 @@ class Aria2Executor:
             before = await self.observe(handle)
             if before.error or not before.resumable:
                 return before
+            await self._check(handle, action)
             await self.client._call("aria2.unpause" if resume else "aria2.forcePause", [gid])
             expected = {ExecutionState.TRANSFERRING, ExecutionState.QUEUED, ExecutionState.SUCCEEDED} if resume else {ExecutionState.PAUSED, ExecutionState.SUCCEEDED}
             for check in range(3):
@@ -271,6 +292,8 @@ class Aria2Executor:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=NormalizedError(
                 Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
                 retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE, integration_id=self.descriptor.id))
+        except _AdmissionDeferred:
+            return await self.observe(handle)
         except Exception as exc:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                                         error=exception_failure(exc, secrets=self._secrets(handle)))

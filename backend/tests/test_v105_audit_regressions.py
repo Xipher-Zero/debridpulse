@@ -36,13 +36,13 @@ def test_notification_boundary_preserves_null_object_and_added_webhook(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_notification_requeue_and_update_paths_have_resolved_symbols(monkeypatch):
+async def test_notification_accepted_and_update_paths_have_resolved_symbols(monkeypatch):
     import core.config
     from services.notifications import NotificationService
 
     client = NotificationService("https://example.invalid/main")
     client._send = AsyncMock(return_value=True)
-    await client.send_requeue("x", 1, 3, reason="retry")
+    await client.send_added("x", transfer_id="123")
 
     monkeypatch.setattr(
         core.config,
@@ -53,96 +53,18 @@ async def test_notification_requeue_and_update_paths_have_resolved_symbols(monke
     assert client._send.await_count == 2
 
 
-@pytest.mark.asyncio
-async def test_scheduler_download_cycle_uses_service_root(monkeypatch):
-    import core.scheduler as scheduler
-
-    monkeypatch.setattr(scheduler, "_jitter_sleep", AsyncMock(return_value=None))
-    monkeypatch.setattr(
-        scheduler,
-        "get_settings",
-        lambda: SimpleNamespace(aria2_poll_interval_seconds=2),
-    )
-
-    seen = []
-
-    async def one_cycle():
-        seen.append(scheduler.transfer_service)
-        raise asyncio.CancelledError
-
-    monkeypatch.setattr(scheduler.transfer_service.reconciliation, "reconcile", one_cycle)
-    with pytest.raises(asyncio.CancelledError):
-        await scheduler.sync_download_clients_loop()
-    assert seen == [scheduler.transfer_service]
 
 
 def test_scheduler_update_notifications_use_service_boundary():
     source = (Path(__file__).resolve().parents[1] / "core" / "scheduler.py").read_text()
     assert "from services.notifications import notifier" not in source
-    assert "transfer_service.notifications.client().send_update" in source
+    assert "NotificationService().client().send_update" in source
 
 
-@pytest.mark.asyncio
-async def test_external_aria2_gateway_cannot_change_global_options(monkeypatch):
-    import services.aria2_gateway as gateway_module
-
-    monkeypatch.setattr(gateway_module, "is_builtin_mode", lambda: False)
-    aria2 = SimpleNamespace(change_global_options=AsyncMock())
-    engine = SimpleNamespace(aria2=lambda: aria2)
-    ownership = SimpleNamespace(owns=AsyncMock(return_value=True), filter_owned=AsyncMock())
-    gateway = gateway_module.Aria2Gateway(engine, ownership)
-    with pytest.raises(PermissionError):
-        await gateway.change_global_options({"max-overall-download-limit": "1M"})
-    aria2.change_global_options.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_builtin_aria2_gateway_can_change_global_options(monkeypatch):
-    import services.aria2_gateway as gateway_module
-
-    monkeypatch.setattr(gateway_module, "is_builtin_mode", lambda: True)
-    aria2 = SimpleNamespace(change_global_options=AsyncMock(return_value={"ok": True}))
-    engine = SimpleNamespace(aria2=lambda: aria2)
-    ownership = SimpleNamespace(owns=AsyncMock(return_value=True), filter_owned=AsyncMock())
-    gateway = gateway_module.Aria2Gateway(engine, ownership)
-    result = await gateway.change_global_options({"max-overall-download-limit": "1M"})
-    assert result == {"ok": True}
-    aria2.change_global_options.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_operational_tables_are_first_class_and_wipe_resets_runtime(tmp_path, monkeypatch):
-    import db.database as database
-    import services.db_maintenance as maintenance
-    from services.transfer_service import transfer_service
-
-    db_path = tmp_path / "state.db"
-    monkeypatch.setattr(database, "DB_PATH", db_path)
-    await database.init_db()
-
-    with sqlite3.connect(db_path) as conn:
-        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "transfer_pause_intents" in tables
-    assert "debridpulse_aria2_owned_gids" in tables
-    assert set(maintenance.TABLES) >= {"transfer_pause_intents", "debridpulse_aria2_owned_gids"}
-
-    async with database.get_db() as db:
-        await db.execute("INSERT INTO torrents(hash, name, status) VALUES(?, ?, ?)", ("abc", "x", "paused"))
-        await db.execute("INSERT INTO transfer_pause_intents(torrent_id, paused) VALUES(1, 1)")
-        await db.execute("INSERT INTO debridpulse_aria2_owned_gids(gid, torrent_id) VALUES('gid1', 1)")
-        await db.commit()
-
-    transfer_service.control.coordinator._pause_intents = {1}
-    transfer_service.control.coordinator._initialized = True
-    result = await maintenance.wipe_database(verified_quiesced=True)
-    assert set(result["wiped_tables"]) >= {"transfer_pause_intents", "debridpulse_aria2_owned_gids"}
-    assert transfer_service.control.coordinator._pause_intents == set()
-    assert transfer_service.control.coordinator._initialized is False
-
-    async with database.get_db() as db:
-        for table in maintenance.TABLES:
-            row = await db.fetchone(f"SELECT COUNT(*) AS n FROM {table}")
-            assert row["n"] == 0
 
 
 @pytest.mark.asyncio

@@ -31,33 +31,9 @@ def test_sqlite_hot_indexes_are_preserved():
     assert "asyncpg" not in db.lower()
 
 
-def test_reconciliation_keeps_snapshot_reuse_and_negative_cache():
-    src = source("backend/services/reconciliation_service.py")
-    for token in ("aria2.scheduler_snapshot_reuse", "confirmed_missing", "aria2.confirm_gid_cache_hits", "_cycle_snapshot"):
-        assert token in src
 
 
-def test_provider_poll_does_not_nest_download_reconciliation():
-    manager = source("backend/services/manager_v2.py")
-    sync = manager.split("async def sync_alldebrid_status(self):", 1)[1].split("async def deep_sync_aria2_finished", 1)[0]
-    assert "sync_download_clients" not in sync
 
 
-def test_external_aria2_ownership_cache_remains_durable():
-    manager = source("backend/services/manager_v2.py")
-    assert "self._aria2_owned_gid_cache: Set[str] = set()" in manager
-    assert "self._aria2_owned_gid_cache.add(gid)" in manager
-    owned = manager.split("async def _aria2_owned_gids", 1)[1].split("async def _aria2_owned_downloads", 1)[0]
-    assert "return set(self._aria2_owned_gid_cache)" in owned
-    assert "SELECT gid" not in owned
 
 
-def test_explicit_architecture_replaces_patch_bootstrap():
-    manager = source("backend/services/manager_v2.py")
-    service = source("backend/services/transfer_service.py")
-    control = source("backend/services/transfer_control.py")
-    for name in ("TransferControlService", "ReconciliationService", "NotificationService"):
-        assert name in service
-    assert "bind_architecture" in manager
-    assert "_install_transfer_control(manager)" not in manager
-    assert "self.manager.pause_torrent =" not in control

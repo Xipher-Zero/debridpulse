@@ -15,7 +15,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import aiohttp
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from core.branding import APP_SHORT_NAME
@@ -25,7 +25,8 @@ from core.version import read_version
 from providers.alldebrid.client import AllDebridService
 from executors.aria2.client import Aria2Service
 from services.notifications import NotificationService
-from services.transfer_service import transfer_service
+from application.dependencies import get_application
+from application.service import ApplicationService
 
 
 router = APIRouter()
@@ -217,7 +218,7 @@ async def validate_alldebrid(payload: AllDebridValidationRequest):
 
 
 @router.post("/settings/validate-aria2")
-async def validate_aria2(payload: Aria2ValidationRequest):
+async def validate_aria2(payload: Aria2ValidationRequest, application: ApplicationService = Depends(get_application)):
     cfg = get_settings()
     try:
         if payload.mode == "builtin":
@@ -226,7 +227,7 @@ async def validate_aria2(payload: Aria2ValidationRequest):
                     400,
                     "Built-in aria2 starts after Apply Settings; apply the mode change before testing it",
                 )
-            result = await transfer_service.test_aria2()
+            result = await application.integration_admin("aria2").test()
         else:
             url = payload.url.strip() or str(cfg.aria2_url or "").strip()
             if not url:

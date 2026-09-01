@@ -11,7 +11,7 @@ from providers.alldebrid.client import (
     flatten_files,
 )
 from services.network_safety import validate_provider_download_url
-from services.extractor import (
+from postprocessors.archive.extractor import (
     _extract_7z_to,
     _extract_rar_to,
     _preflight_7z,
@@ -102,8 +102,8 @@ def test_7zip_composite_formats_keep_nested_mode_but_exclude_xz():
 
 
 def test_7zip_preflight_uses_same_strict_parser_policy():
-    with patch("services.extractor._run_tool", return_value=(0, "listing")) as run_tool, patch(
-        "services.extractor.validate_7z_listing"
+    with patch("postprocessors.archive.extractor._run_tool", return_value=(0, "listing")) as run_tool, patch(
+        "postprocessors.archive.extractor.validate_7z_listing"
     ):
         _preflight_7z(Path("payload.7z"), "7z", [""])
 
@@ -113,9 +113,9 @@ def test_7zip_preflight_uses_same_strict_parser_policy():
 
 
 def test_7zip_extract_uses_strict_7z_parser():
-    with patch("services.extractor._tool_available", return_value=True), patch(
-        "services.extractor._preflight_7z"
-    ), patch("services.extractor._run_tool", return_value=(0, "")) as run_tool:
+    with patch("postprocessors.archive.extractor._tool_available", return_value=True), patch(
+        "postprocessors.archive.extractor._preflight_7z"
+    ), patch("postprocessors.archive.extractor._run_tool", return_value=(0, "")) as run_tool:
         _extract_7z_to(Path("payload.7z"), Path("/tmp/dp-security-test"))
 
     command = run_tool.call_args.args[0]
@@ -126,9 +126,9 @@ def test_rar_extract_uses_magic_validated_7zip_autodetect(tmp_path):
     archive = tmp_path / "payload.rar"
     archive.write_bytes(b"Rar!\x1a\x07\x01\x00" + b"payload")
 
-    with patch("services.extractor._tool_available", return_value=True), patch(
-        "services.extractor._preflight_7z"
-    ), patch("services.extractor._run_tool", return_value=(0, "")) as run_tool:
+    with patch("postprocessors.archive.extractor._tool_available", return_value=True), patch(
+        "postprocessors.archive.extractor._preflight_7z"
+    ), patch("postprocessors.archive.extractor._run_tool", return_value=(0, "")) as run_tool:
         _extract_rar_to(archive, Path("/tmp/dp-security-test"))
 
     command = run_tool.call_args.args[0]

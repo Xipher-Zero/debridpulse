@@ -86,10 +86,10 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("api.routes.save_settings", side_effect=fake_save), \
              patch("api.routes.apply_settings", side_effect=fake_apply), \
-             patch.object(routes.transfer_service, "apply_aria2_memory_tuning", AsyncMock(return_value={"ok": True})), \
-             patch.object(routes.transfer_service, "reset_services", MagicMock()):
+             patch.object(routes.aria2_runtime, "ensure_started", AsyncMock()), \
+             patch.object(routes.aria2_runtime, "restart", AsyncMock()):
             result = await routes.update_settings(
-                routes.AppSettings(discord_avatar_url="data:image/png;base64,abc123")
+                routes.SettingsUpdate(discord_avatar_url="data:image/png;base64,abc123"), application=SimpleNamespace(definitions=(), configuration_admission=lambda: _fake_db_context(None), validate_configuration=AsyncMock(), configure=MagicMock(), integration_admin=MagicMock())
             )
 
         self.assertTrue(result["ok"])
@@ -108,14 +108,14 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("api.routes.save_settings", side_effect=fake_save), \
              patch("api.routes.apply_settings", side_effect=fake_apply), \
-             patch.object(routes.transfer_service, "apply_aria2_memory_tuning", AsyncMock(return_value={"ok": True})), \
-             patch.object(routes.transfer_service, "reset_services", MagicMock()):
+             patch.object(routes.aria2_runtime, "ensure_started", AsyncMock()), \
+             patch.object(routes.aria2_runtime, "restart", AsyncMock()):
             result = await routes.update_settings(
-                routes.AppSettings(
+                routes.SettingsUpdate(
                     stats_report_interval_hours=12,
                     stats_report_window_hours=168,
                     stats_report_webhook_url="https://discord.com/api/webhooks/test",
-                )
+                ), application=SimpleNamespace(definitions=(), configuration_admission=lambda: _fake_db_context(None), validate_configuration=AsyncMock(), configure=MagicMock(), integration_admin=MagicMock())
             )
 
         self.assertTrue(result["ok"])
@@ -133,6 +133,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
             aria2_max_active_downloads=1,
         )
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
+        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, configure=MagicMock(), reconcile_executions=AsyncMock())
 
         def fake_save(cfg):
             saved["cfg"] = cfg
@@ -140,13 +141,14 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         def fake_apply(cfg):
             saved["applied"] = cfg
 
-        with patch("api.routes.load_settings", return_value=current), \
+        with patch("api.routes.get_settings", return_value=current), \
+             patch("api.routes.load_settings", return_value=current), \
              patch("api.routes.save_settings", side_effect=fake_save), \
              patch("api.routes.apply_settings", side_effect=fake_apply), \
-             patch.object(routes.transfer_service, "aria2", new=fake_aria2), \
-             patch.object(routes.transfer_service, "reset_services", MagicMock()) as reset_services, \
-             patch.object(routes.transfer_service, "advance_aria2_queue", AsyncMock()) as advance:
-            result = await routes.aria2_set_global_options({"max_concurrent_downloads": 2})
+             patch("api.routes.get_application", return_value=application), \
+             patch.object(application, "configure", MagicMock()) as reset_services, \
+             patch.object(application, "reconcile_executions", AsyncMock()) as advance:
+            result = await routes.aria2_set_global_options({"max_concurrent_downloads": 2}, application=application)
 
         self.assertEqual(result["applied"]["max-concurrent-downloads"], "2")
         self.assertEqual(saved["cfg"].max_concurrent_downloads, 2)
@@ -193,6 +195,7 @@ class TorrentListingRouteTests(unittest.IsolatedAsyncioTestCase):
                 search="Example",
                 limit=0,
                 offset=0,
+                application=SimpleNamespace(repository=SimpleNamespace(presentation=AsyncMock(return_value=db.rows[0]))),
             )
 
         self.assertEqual(result["total"], 1)
@@ -203,7 +206,7 @@ class TorrentListingRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("LIMIT ? OFFSET ?", sql)
         self.assertEqual(
             params,
-            ["completed", "%example%", "%example%", "%example%", "%example%", "%example%", "%example%"],
+            ["completed", "%example%", "%example%", "%example%", "%example%", "%example%"],
         )
         total_sql, total_params = db.fetchone_calls[0]
         self.assertIn("SELECT COUNT(*) AS cnt FROM torrents t WHERE", total_sql)
@@ -223,11 +226,12 @@ class TorrentListingRouteTests(unittest.IsolatedAsyncioTestCase):
 class ProcessingPauseRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_individual_resume_delegates_to_control_service(self):
         cfg = routes.AppSettings(paused=False)
-        with patch.object(routes.transfer_service, "resume_torrent", AsyncMock()) as resume, \
+        application = SimpleNamespace(resume=AsyncMock())
+        with patch.object(application, "resume", AsyncMock()) as resume, \
              patch("api.routes.get_settings", return_value=cfg), \
              patch("api.routes.save_settings") as save, \
              patch("api.routes.apply_settings") as apply:
-            result = await routes.resume_torrent(73)
+            result = await routes.resume_torrent(73, application=application)
 
         self.assertEqual(result, {"ok": True, "paused": False})
         resume.assert_awaited_once_with(73)
@@ -247,10 +251,11 @@ class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
             get_global_stat=AsyncMock(return_value=stat)
         )
         cfg = SimpleNamespace(aria2_mode="builtin")
+        application = SimpleNamespace(integration_admin=lambda _: fake_aria2)
 
         with patch("api.routes.get_settings", return_value=cfg), \
-             patch.object(routes.transfer_service, "aria2", new=fake_aria2):
-            result = await routes.aria2_global_stat()
+             patch("api.routes.get_application", return_value=application):
+            result = await routes.aria2_global_stat(application=application)
 
         self.assertEqual(
             result,
@@ -278,15 +283,17 @@ class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
         )
         ownership_filter = AsyncMock(return_value=[owned])
         cfg = SimpleNamespace(aria2_mode="external")
+        fake_aria2.filter_owned = ownership_filter
+        application = SimpleNamespace(integration_admin=lambda _: fake_aria2)
 
         with patch("api.routes.get_settings", return_value=cfg), \
-             patch.object(routes.transfer_service, "aria2", new=fake_aria2), \
+             patch("api.routes.get_application", return_value=application), \
              patch.object(
-                 routes.transfer_service,
-                 "owned_aria2_downloads",
+                 fake_aria2,
+                 "filter_owned",
                  ownership_filter,
              ):
-            result = await routes.aria2_global_stat()
+            result = await routes.aria2_global_stat(application=application)
 
         self.assertEqual(
             result,
@@ -340,7 +347,12 @@ class DatabaseBackupServiceTests(unittest.IsolatedAsyncioTestCase):
         }
 
         class _BackupDb:
+            async def execute(self, *args):
+                pass
+
             async def fetchall(self, sql, params=()):
+                if "sqlite_master" in sql:
+                    return [{"name": table} for table in db_maintenance.TABLES]
                 return [row]
 
         @asynccontextmanager

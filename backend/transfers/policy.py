@@ -44,6 +44,16 @@ class TransferPolicy:
     adoption_stability_seconds: float = 3.25
     cleanup_after_completion: bool = False
     resource_poll_interval: float = 30.0
+    resolution_max_attempts: int | None = None
+    resolution_retry_delay: float | None = None
+    stalled_after_seconds: float = 0
+
+    def retry_resolution(self, error, attempts, now):
+        from dataclasses import replace
+        policy = replace(self,
+            max_attempts=self.max_attempts if self.resolution_max_attempts is None else self.resolution_max_attempts,
+            retry_delay=self.retry_delay if self.resolution_retry_delay is None else self.resolution_retry_delay)
+        return policy.retry(error, attempts, now, can_refresh=True)
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
         if error.domain == Domain.SECURITY or error.retryability in {Retryability.NEVER, Retryability.UNKNOWN}:

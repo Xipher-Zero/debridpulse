@@ -72,12 +72,6 @@ class Aria2DownloadStatus:
     files: Optional[List[Dict[str, Any]]] = None
 
 
-@dataclass
-class _UriLockEntry:
-    lock: asyncio.Lock
-    users: int = 0
-
-
 def aria2_download_to_dict(download: Aria2DownloadStatus) -> Dict[str, Any]:
     total = int(getattr(download, "total_length", 0) or 0)
     completed = int(getattr(download, "completed_length", 0) or 0)
@@ -131,7 +125,6 @@ class Aria2Service:
         self.secret = secret.strip()
         self.timeout = aiohttp.ClientTimeout(total=max(5, int(timeout_seconds or 15)))
         self._request_id = 0
-        self._uri_locks: Dict[str, _UriLockEntry] = {}
         self._rpc_pace_lock = asyncio.Lock()
         self._last_call_time: float = 0.0
         self._rpc_http_requests = 0
@@ -164,7 +157,7 @@ class Aria2Service:
             return [self._normalize(raw) for raw in (result or [])]
         except Aria2ConnectionError as exc:
             logger.warning("aria2 unreachable (get_active): %s", exc)
-            return []
+            raise
         except Aria2RPCError as exc:
             logger.error("aria2 RPC error (get_active): %s", exc)
             return []
@@ -232,10 +225,10 @@ class Aria2Service:
             )
         except Aria2ConnectionError as exc:
             logger.warning("aria2 unreachable (get_all): %s", exc)
-            return []
+            raise
         except Aria2RPCError as exc:
             logger.error("aria2 RPC error (get_all): %s", exc)
-            return []
+            raise
 
         downloads: List[Aria2DownloadStatus] = []
         for payload in results:
@@ -247,158 +240,11 @@ class Aria2Service:
         result = await self._call("aria2.tellStatus", [gid, self._keys()])
         return self._normalize(result)
 
-    async def ensure_download(
-        self,
-        uri: str,
-        options: Optional[Dict[str, Any]] = None,
-        start_paused: bool = False,
-        max_retries: int = 5,
-        cached_downloads: Optional[List["Aria2DownloadStatus"]] = None,
-    ) -> str:
-        normalized_uri = uri.strip()
-        target_path = self._target_path_from_options(options)
-        async with self._uri_lock(normalized_uri):
-            if cached_downloads is not None:
-                all_downloads = cached_downloads
-            elif _is_builtin_mode():
-                all_downloads = await self.get_all()
-            else:
-                all_downloads = []
-            matches = self._find_all_matches(normalized_uri, target_path, all_downloads)
-
-            if _is_builtin_mode():
-                for dl in matches:
-                    if dl.status in {"complete", "removed"}:
-                        for dup in matches:
-                            if dup.gid != dl.gid and dup.status not in {"complete", "removed"}:
-                                logger.warning("Removing stale duplicate aria2 entry %s for queued download", dup.gid)
-                                await self.remove(dup.gid)
-                        return dl.gid
-            else:
-                matches = [dl for dl in matches if dl.status in {"active", "waiting", "paused"}]
-
-            if len(matches) > 1:
-                for dup in matches[1:]:
-                    logger.warning("Removing duplicate aria2 entry %s for queued download", dup.gid)
-                    await self.remove(dup.gid)
-
-            if matches:
-                existing = matches[0]
-                if start_paused and existing.status != "paused":
-                    await self.pause(existing.gid)
-                return existing.gid
-
-            rpc_options: Dict[str, Any] = dict(options or {})
-            if start_paused:
-                rpc_options["pause"] = "true"
-
-            def safe_download_error(exc: BaseException) -> str:
-                # Strip the exact capability first; generic sanitization is then
-                # defense in depth rather than the capability boundary itself.
-                raw = str(exc).replace(normalized_uri, "<download-url>")
-                return sanitize_log_value(raw, max_length=200)
-
-            last_error: Optional[Exception] = None
-            for attempt in range(1, max_retries + 1):
-                try:
-                    gid = await self._call("aria2.addUri", [[normalized_uri], rpc_options])
-                    logger.info("aria2: queued download accepted as GID %s", gid)
-                    return gid
-                except Aria2ConnectionError as exc:
-                    last_error = exc
-                    if attempt >= max_retries:
-                        break
-                    delay = min(attempt * attempt, 10)
-                    logger.warning(
-                        "aria2 unreachable (attempt %s/%s), retrying in %ss: %s",
-                        attempt,
-                        max_retries,
-                        delay,
-                        safe_download_error(exc),
-                    )
-                    await asyncio.sleep(delay)
-                except Aria2RPCError as exc:
-                    logger.warning("aria2 rejected download request: %s", safe_download_error(exc))
-                    raise Aria2RPCError("aria2 rejected download request") from exc
-                except Exception as exc:
-                    last_error = exc
-                    if attempt >= max_retries:
-                        break
-                    delay = min(attempt * attempt, 10)
-                    logger.warning(
-                        "Error queuing download (attempt %s/%s), retrying in %ss: %s",
-                        attempt,
-                        max_retries,
-                        delay,
-                        safe_download_error(exc),
-                    )
-                    await asyncio.sleep(delay)
-
-        error_type = type(last_error).__name__ if last_error is not None else "unknown error"
-        raise Aria2RPCError(f"Unable to queue aria2 download after retries ({error_type})")
-
-    def _find_all_matches(
-        self,
-        uri: str,
-        target_path: str,
-        all_downloads: List["Aria2DownloadStatus"],
-    ) -> List["Aria2DownloadStatus"]:
-        uri = uri.strip()
-        target_path = self._normalize_path(target_path)
-        matched: List[Aria2DownloadStatus] = []
-        for download in all_downloads:
-            for file_info in download.files or []:
-                current_path = self._normalize_path(str(file_info.get("path", "")))
-                if target_path and current_path == target_path:
-                    matched.append(download)
-                    break
-                for u in file_info.get("uris", []) or []:
-                    if str(u.get("uri", "")).strip() == uri:
-                        matched.append(download)
-                        break
-                else:
-                    continue
-                break
-        matched.sort(key=lambda d: 0 if d.status in {"complete", "removed"} else 1)
-        return matched
-
-    async def find_existing_download(self, uri: str) -> Optional["Aria2DownloadStatus"]:
-        all_downloads = await self.get_all()
-        for dl in self._find_all_matches(uri, "", all_downloads):
-            if dl.status not in {"complete", "removed"}:
-                return dl
-        return None
-
-    @asynccontextmanager
-    async def _uri_lock(self, uri: str):
-        """Serialize one URI while dropping the high-cardinality key after use."""
-        entry = self._uri_locks.get(uri)
-        if entry is None:
-            entry = _UriLockEntry(lock=asyncio.Lock())
-            self._uri_locks[uri] = entry
-        entry.users += 1
-        try:
-            async with entry.lock:
-                yield
-        finally:
-            entry.users = max(0, entry.users - 1)
-            if entry.users == 0 and not entry.lock.locked() and self._uri_locks.get(uri) is entry:
-                self._uri_locks.pop(uri, None)
-
     def _bounded_window(self, value: int) -> int:
         try:
             return max(10, min(1000, int(value or 100)))
         except Exception:
             return 100
-
-    def _target_path_from_options(self, options: Optional[Dict[str, Any]]) -> str:
-        if not options:
-            return ""
-        directory = str(options.get("dir", "") or "").strip()
-        out_name = str(options.get("out", "") or "").strip()
-        if not directory or not out_name:
-            return ""
-        return self._normalize_path(str(PurePosixPath(directory) / out_name))
 
     async def pause(self, gid: str):
         await self._best_effort("aria2.pause", [gid])

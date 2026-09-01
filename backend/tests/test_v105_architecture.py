@@ -7,29 +7,8 @@ def text(path):
     return (ROOT / path).read_text()
 
 
-def test_service_root_and_explicit_components_exist():
-    root = text("backend/services/transfer_service.py")
-    for name in (
-        "ProviderGateway", "TransferRepository", "DispatchCoordinator",
-        "Aria2Gateway", "OwnershipLedger", "TransferStateMachine",
-        "TransferControlService", "ReconciliationService", "ExtractionService", "NotificationService",
-    ):
-        assert name in root
-    assert "bind_architecture" in root
-    assert "def __getattr__" not in root
 
 
-def test_runtime_monkey_patching_is_removed():
-    manager = text("backend/services/manager_v2.py")
-    control = text("backend/services/transfer_control.py")
-    assert "_install_transfer_control(manager)" not in manager
-    assert "_install_parent_progress_guard(manager)" not in manager
-    assert "_install_global_pause_semantics(manager)" not in manager
-    for assignment in (
-        "self.manager.pause_torrent =", "self.manager.resume_torrent =",
-        "self.manager._aria2_get_all =", "self.manager._download =",
-    ):
-        assert assignment not in control
 
 
 def test_sqlite_is_the_only_runtime_database():
@@ -44,11 +23,6 @@ def test_sqlite_is_the_only_runtime_database():
     assert not (ROOT / "backend/db/migration.py").exists()
 
 
-def test_entrypoints_use_transfer_service():
-    for path in ("backend/api/routes.py", "backend/core/scheduler.py", "backend/main.py"):
-        src = text(path)
-        assert "from services.transfer_service import transfer_service" in src
-        assert "from services.manager_v2 import manager" not in src
 
 
 def test_security_contracts():
@@ -69,12 +43,6 @@ def test_security_contracts():
     assert "os.fchmod(fd, 0o600)" in secure_files
 
 
-def test_reconciliation_keeps_v104_snapshot_and_negative_cache_invariants():
-    src = text("backend/services/reconciliation_service.py")
-    assert "aria2.scheduler_snapshot_reuse" in src
-    assert "confirmed_missing" in src
-    assert "aria2.confirm_gid_cache_hits" in src
-    assert "await self.engine._engine_aria2_get_all()" in src
 
 
 def test_removed_runtime_scope_is_not_exposed_in_frontend():

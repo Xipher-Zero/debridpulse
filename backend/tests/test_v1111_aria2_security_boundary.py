@@ -11,8 +11,11 @@ import pytest
 
 from executors.aria2.client import Aria2Service
 from services.downloader_egress_guard import DownloaderEgressGuard
-from services.manager_v2 import TorrentManager
-import services.transfer_runtime_guard as runtime_guard
+import executors.aria2.executor as runtime_guard
+from executors.aria2.executor import Aria2Executor, Aria2Configuration
+from transfers.models import Endpoint, ExecutionRequest, TransferCandidate, new_identity
+from unittest.mock import AsyncMock
+from urllib.parse import urlsplit
 
 pytestmark = pytest.mark.asyncio
 
@@ -253,12 +256,18 @@ async def _wait_status(service: Aria2Service, gid: str, terminal=("complete", "e
     raise AssertionError(f"aria2 job did not reach terminal state: {last}")
 
 
-async def test_canonical_job_options_disable_metadata_following() -> None:
-    manager = TorrentManager()
-    options = manager._aria2_job_options({"dir": "/download", "out": "payload.bin"})
+async def test_canonical_job_options_disable_metadata_following(tmp_path, monkeypatch) -> None:
+    async def validated(uri): return uri
+    monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated)
+    from types import SimpleNamespace
+    guard = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda *args, **kwargs: {})
+    executor = Aria2Executor(None, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
+    request = ExecutionRequest(TransferCandidate("payload.bin", (Endpoint("https", "https://example.test/file"),)), str(tmp_path / "payload.bin"), new_identity())
+    _uri, options = await executor._options(request, executor.prepare(request))
     assert options["follow-torrent"] == "false"
     assert options["follow-metalink"] == "false"
     assert options["max-http-redirection"] == "0"
+    assert options["max-tries"] == "1"
 
 
 async def test_external_mode_fails_closed_without_guard_route(monkeypatch) -> None:
@@ -315,24 +324,10 @@ async def test_dns_rebinding_public_preflight_private_at_connect_is_blocked(
 
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
     monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
-    monkeypatch.setattr(runtime_guard, "is_builtin_mode", lambda: True)
-    guarded = runtime_guard.GuardedTransferIntegrityAria2Service(
-        service.url, service.secret, 3
-    )
+    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
     uri = f"http://rebind.test:{target_port}/payload.bin"
     try:
-        gid = await guarded.ensure_download(
-            uri,
-            {
-                "dir": str(tmp_path),
-                "out": "blocked.bin",
-                "max-tries": "1",
-                "connect-timeout": "2",
-                "timeout": "2",
-            },
-            max_retries=1,
-            cached_downloads=[],
-        )
+        gid = await _start_transfer(guarded, uri, tmp_path / 'blocked.bin')
         status = await _wait_status(service, gid)
         assert status["status"] == "error"
         assert preflight == [(uri, "93.184.216.34")]
@@ -369,18 +364,10 @@ async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
 
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
     monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
-    monkeypatch.setattr(runtime_guard, "is_builtin_mode", lambda: True)
-    guarded = runtime_guard.GuardedTransferIntegrityAria2Service(
-        service.url, service.secret, 3
-    )
+    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
     uri = f"http://public.test:{target_port}/payload.bin"
     try:
-        gid = await guarded.ensure_download(
-            uri,
-            {"dir": str(tmp_path), "out": "public.bin", "max-tries": "1"},
-            max_retries=1,
-            cached_downloads=[],
-        )
+        gid = await _start_transfer(guarded, uri, tmp_path / 'public.bin')
         status = await _wait_status(service, gid)
         assert status["status"] == "complete"
         assert (tmp_path / "public.bin").read_bytes() == b"public-path-ok"
@@ -421,22 +408,10 @@ async def test_guarded_https_preserves_original_hostname_and_tls_sni(
 
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
     monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
-    monkeypatch.setattr(runtime_guard, "is_builtin_mode", lambda: True)
-    guarded = runtime_guard.GuardedTransferIntegrityAria2Service(
-        service.url, service.secret, 3
-    )
+    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
     uri = f"https://sni.test:{target_port}/payload.bin"
     try:
-        gid = await guarded.ensure_download(
-            uri,
-            {
-                "dir": str(tmp_path),
-                "out": "tls.bin",
-                "max-tries": "1",
-            },
-            max_retries=1,
-            cached_downloads=[],
-        )
+        gid = await _start_transfer(guarded, uri, tmp_path / 'tls.bin')
         status = await _wait_status(service, gid)
         assert status["status"] == "complete", status
         assert (tmp_path / "tls.bin").read_bytes() == b"tls-path-ok"
@@ -493,33 +468,32 @@ async def test_literal_private_connection_target_is_blocked() -> None:
         ),
     ],
 )
-async def test_real_aria2_does_not_follow_http_metadata(
-    tmp_path: Path, content_type: str, name: str, body: bytes
-) -> None:
+async def test_real_aria2_does_not_follow_http_metadata(tmp_path: Path, content_type: str, name: str, body: bytes, monkeypatch) -> None:
     server, port, _state = await _start_http_server(body, content_type)
     proc, service = await _start_aria2(tmp_path)
-    manager = TorrentManager()
-    options = manager._aria2_job_options(
-        {
-            "dir": str(tmp_path),
-            "out": name,
-            "max-tries": "1",
-        }
-    )
+    async def resolver(host, port): return [_answer("127.0.0.1", port)]
+    async def validated(uri): return uri
+    monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated)
+    guard = DownloaderEgressGuard(resolver=resolver, public_check=lambda address: address == "127.0.0.1", bind_host="127.0.0.1", bind_port=0)
+    executor = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
     try:
-        gid = await service.ensure_download(
-            f"http://127.0.0.1:{port}/{name}",
-            options,
-            max_retries=1,
-            cached_downloads=[],
-        )
+        gid = await _start_transfer(executor, f"http://metadata.test:{port}/{name}", tmp_path / name)
         status = await _wait_status(service, gid)
-        assert status["status"] == "complete"
+        assert status["status"] == "complete", status
         assert not status.get("followedBy")
         stopped = await service._call("aria2.tellStopped", [0, 20, ["gid", "followedBy"]])
         assert [item["gid"] for item in stopped] == [gid]
         assert all(not item.get("followedBy") for item in stopped)
     finally:
         await _stop_aria2(proc, service)
+        await guard.stop()
         server.close()
         await server.wait_closed()
+
+
+async def _start_transfer(executor, uri, target):
+    request = ExecutionRequest(TransferCandidate(target.name, (Endpoint(urlsplit(uri).scheme, uri),)), str(target), new_identity())
+    handle = executor.prepare(request)
+    observation = await executor.start(request, handle)
+    assert observation.error is None, observation.error
+    return handle.context["gid"]

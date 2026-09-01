@@ -1,0 +1,261 @@
+"""Application commands over the single universal lifecycle owner.
+
+This module is usable with any registry. It knows no concrete integrations,
+native job identifiers, response formats, or integration error codes.
+"""
+from __future__ import annotations
+
+import asyncio
+from urllib.parse import parse_qs, urlsplit
+
+from services.event_bus import publish
+from services.maintenance_gate import ApplicationMaintenanceGate
+from transfers.contracts import Manifest
+from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.models import ExecutionState, TransferRequest, TransferState
+from transfers.requests import (
+    direct_link_collection_name, direct_link_filename, extract_hash,
+    extract_hash_from_torrent, normalize_direct_links,
+)
+
+
+class ApplicationService:
+    def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, pause_changed=None, capacity=None):
+        self.engine = engine
+        self.repository = engine.repository
+        self._configure = configure
+        self.lifecycle = tuple(lifecycle)
+        self.admins = admins or {}
+        self._admission = ApplicationMaintenanceGate()
+        self.pause_changed = pause_changed
+        self.capacity = capacity
+        self.observability = None
+        self.resolution_wakeup = asyncio.Event()
+        self.execution_wakeup = asyncio.Event()
+        self.execution_poll_interval = 2
+        self.definitions = ()
+
+    def configuration_admission(self):
+        return self._admission.maintenance()
+
+    async def validate_configuration(self, previous, current):
+        from integrations.configuration import normalize_settings
+        previous = normalize_settings(previous, self.definitions)
+        for definition in self.definitions:
+            old = previous.integrations[definition.id].options
+            new = current.integrations[definition.id].options
+            if any(old.get(key) != new.get(key) for key in definition.ownership_fields):
+                if await self.repository.has_integration_references(definition.id):
+                    raise ValueError(f"Finish or remove existing {definition.name} resources before changing its connection")
+        if previous.download_folder != current.download_folder and await self.repository.has_integration_references():
+            raise ValueError("Finish or remove existing resources before changing the download folder")
+
+    async def deliver_events(self):
+        if self.observability:
+            await self.observability.deliver()
+
+    async def _pause_changed(self):
+        if self.pause_changed:
+            self.pause_changed(await self.repository.globally_paused())
+
+    async def check_resources(self):
+        result = self.capacity.check() if self.capacity else {"enabled": False, "active": False}
+        self.engine.dispatch_permitted = not result["active"]
+        return result
+
+    def application_operation(self):
+        return self._admission.operation()
+
+    def database_wipe_admission(self):
+        return self._admission.maintenance()
+
+    def integration_admin(self, identity):
+        try:
+            return self.admins[identity]
+        except KeyError:
+            raise ValueError("Integration administration is unavailable") from None
+
+    async def require(self, transfer_id):
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None:
+            raise KeyError(transfer_id)
+        return transfer
+
+    async def _publish(self, transfer_id):
+        item = await self.repository.presentation(transfer_id)
+        if item:
+            await publish("torrent_updated", item)
+        await publish("stats_changed", {})
+        return item
+
+    async def submit(self, requests, **options):
+        async with self.application_operation():
+            transfer = await self.engine.submit(tuple(requests), **options)
+            self.resolution_wakeup.set()
+            return await self._publish(transfer.id)
+
+    async def submit_magnet(self, magnet, *, source="manual"):
+        fingerprint = extract_hash(magnet)
+        if not fingerprint or urlsplit(magnet).scheme != "magnet":
+            raise ValueError("A valid BitTorrent magnet is required")
+        name = parse_qs(urlsplit(magnet).query).get("dn", [fingerprint])[0]
+        return await self.submit((TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint),), name=name, source=source)
+
+    async def submit_torrent(self, data, filename, *, source="manual_file"):
+        fingerprint = extract_hash_from_torrent(data)
+        if not fingerprint:
+            raise ValueError("Invalid torrent metainfo")
+        name = filename.rsplit(".", 1)[0]
+        return await self.submit((TransferRequest("torrent", data, name=filename, fingerprint=fingerprint),), name=name, source=source)
+
+    async def submit_links(self, links):
+        urls = normalize_direct_links(links)
+        requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index)) for index, url in enumerate(urls, 1))
+        item = await self.submit(requests, name=direct_link_collection_name([], urls), source="direct_link", deduplicate=False)
+        return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
+
+    async def pause(self, transfer_id):
+        async with self.application_operation():
+            await self.require(transfer_id)
+            errors = await self.engine.pause(transfer_id)
+            self.execution_wakeup.set()
+            await self._publish(transfer_id)
+            return self._control_result(errors)
+
+    async def resume(self, transfer_id):
+        async with self.application_operation():
+            await self.require(transfer_id)
+            errors = await self.engine.resume(transfer_id)
+            self.resolution_wakeup.set()
+            self.execution_wakeup.set()
+            await self._pause_changed()
+            await self._publish(transfer_id)
+            return self._control_result(errors)
+
+    @staticmethod
+    def _control_result(errors):
+        if errors:
+            raise TransferError(errors[0])
+        return {"ok": True}
+
+    async def pause_all(self):
+        async with self.application_operation():
+            results = await self.engine.pause_all()
+            await self._pause_changed()
+            await publish("stats_changed", {})
+            return {"ok": not any(results.values()), "paused": True, "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
+
+    async def resume_all(self):
+        async with self.application_operation():
+            results = await self.engine.resume_all()
+            self.resolution_wakeup.set()
+            self.execution_wakeup.set()
+            await self._pause_changed()
+            await publish("stats_changed", {})
+            return {"ok": not any(results.values()), "paused": False, "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
+
+    async def retry(self, transfer_id):
+        async with self.application_operation():
+            transfer = await self.require(transfer_id)
+            accepted = await self.engine.retry(transfer_id, reacquire=transfer.state in {TransferState.COMPLETED, TransferState.DELETED})
+            if not accepted:
+                raise TransferError(NormalizedError(Domain.RECONCILIATION, Category.RECOVERY_FAILED, Stage.RECONCILIATION))
+            self.resolution_wakeup.set()
+            self.execution_wakeup.set()
+            return {"ok": True, **await self._publish(transfer_id)}
+
+    async def delete(self, transfer_id, *, remote=True):
+        async with self.application_operation():
+            await self.require(transfer_id)
+            await self.engine.delete(transfer_id, remote=remote)
+            await self._publish(transfer_id)
+            return {"ok": True}
+
+    async def select_artifact(self, transfer_id, artifact_id, *, selected):
+        async with self.application_operation():
+            await self.engine.select_artifact(transfer_id, artifact_id, selected=selected)
+            self.execution_wakeup.set()
+            await self._publish(transfer_id)
+            return {"ok": True, "file_id": artifact_id, "blocked": not selected}
+
+    async def preview(self, transfer_id):
+        await self.require(transfer_id)
+        item = await self.repository.presentation(transfer_id, details=True)
+        if item["files"]:
+            return {"source": "local", "files": item["files"]}
+        files = []
+        for resource, _state, _pending in await self.repository.resources(transfer_id):
+            provider = self.engine.registry.providers.get(resource.provider_id)
+            if isinstance(provider, Manifest):
+                entries = await provider.manifest(resource)
+                files.extend({"filename": entry.relative_path or entry.name, "size_bytes": entry.expected_bytes} for entry in entries)
+        return {"source": "provider", "files": files}
+
+    async def resolve_pending(self):
+        async with self.application_operation():
+            await self.engine.resolve_pending()
+            self.execution_wakeup.set()
+
+    async def reconcile_executions(self):
+        async with self.application_operation():
+            await self.check_resources()
+            before = await self.repository.active()
+            await self.engine.reconcile_executions()
+            for transfer in before:
+                await self._publish(transfer.id)
+
+    async def process_postprocessors(self):
+        async with self.application_operation():
+            await self.engine.process_postprocessors()
+
+    async def reconcile_inventory(self):
+        async with self.application_operation():
+            before = {item.id for item in await self.repository.active()}
+            errors = await self.engine.reconcile_inventory()
+            after = await self.repository.active()
+            return {"imported": sum(item.id not in before for item in after), "updated": len(after), "errors": [error.as_dict() for error in errors]}
+
+    async def recover(self):
+        async with self.application_operation():
+            report = await self.reconcile_inventory()
+            await self.resolve_pending()
+            await self.reconcile_executions()
+            return {"ok": not report["errors"], **report}
+
+    async def quiesce_for_database_wipe(self):
+        # The maintenance admission owner has already drained all commands and
+        # scheduler cycles, including in-flight provider submissions.
+        result = await self.pause_all()
+        if result["failed"]:
+            raise RuntimeError("Could not confirm every owned execution is paused")
+        checked = 0
+        for attempt in await self.repository.live_executions():
+            executor = self.engine.registry.executors.get(attempt.handle.executor_id)
+            if executor is None:
+                raise RuntimeError("An execution integration is unavailable")
+            observation = await executor.observe(attempt.handle)
+            if observation.state not in {ExecutionState.PAUSED, ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.CANCELLED, ExecutionState.ABSENT}:
+                raise RuntimeError("An owned execution could not be confirmed idle")
+            checked += 1
+        return {"pause": result, "owned_checked": checked, "provider_operations_drained": True, "materialization_drained": True}
+
+    async def release_database_wipe_quiescence(self):
+        # Admission is released by the surrounding maintenance context.
+        return None
+
+    def configure(self):
+        if self._configure:
+            self._configure(self)
+
+    async def start_integrations(self):
+        for integration in self.lifecycle:
+            await integration.start()
+
+    async def stop_integrations(self):
+        for integration in reversed(self.lifecycle):
+            await integration.stop()
+
+    async def maintain_integrations(self):
+        async with self.application_operation():
+            for integration in self.lifecycle:
+                await integration.maintain()

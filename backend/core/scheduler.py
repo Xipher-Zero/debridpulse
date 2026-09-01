@@ -7,7 +7,9 @@ from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.performance import async_timer
 from core.version import is_version_newer, normalize_version_tag
-from services.transfer_service import transfer_service
+from services.notification_service import NotificationService
+
+application = None
 
 logger = logging.getLogger("alldebrid.scheduler")
 _tasks = []
@@ -46,39 +48,25 @@ def _stats_report_window_hours(cfg) -> int:
 
 
 async def sync_status_loop():
-    """
-    Regular AllDebrid poll: syncs active (non-terminal) torrents every poll_interval_seconds.
-    Also runs cleanup tasks each cycle and enforces Smart Scheduler night-mode limits.
-    """
-    await _jitter_sleep(get_settings().poll_interval_seconds)
     while True:
+        application.resolution_wakeup.clear()
         try:
             async with async_timer("scheduler.provider_poll"):
-                await transfer_service.sync_alldebrid_status()
-        except Exception as e:
-            logger.error("Status sync error: %s", sanitize_exception(e))
-        try:
-            await transfer_service.cleanup_no_peer_errors()
-        except Exception as e:
-            logger.error("No-peer cleanup error: %s", sanitize_exception(e))
-        try:
-            await transfer_service.cleanup_alldebrid_orphans()
-        except Exception as e:
-            logger.debug("AllDebrid orphan cleanup error: %s", sanitize_exception(e))
-        try:
-            await transfer_service.cleanup_stuck_downloads()
-        except Exception as e:
-            logger.error("Stuck download cleanup error: %s", sanitize_exception(e))
-        await asyncio.sleep(get_settings().poll_interval_seconds)
+                await application.resolve_pending()
+        except Exception as exc:
+            logger.error("Resolution cycle failed: %s", sanitize_exception(exc))
+        await _wait_for_work(application.resolution_wakeup, max(1, get_settings().poll_interval_seconds))
+
+
+async def _wait_for_work(event, timeout):
+    try:
+        await asyncio.wait_for(event.wait(), timeout=timeout)
+    except TimeoutError:
+        pass
 
 
 async def full_sync_loop():
-    """
-    Full AllDebrid reconciliation: runs every full_sync_interval_minutes (default 5).
-    Catches torrents in 'error'/'queued' that are actually 'ready' on AllDebrid,
-    and any status drift between local DB and AllDebrid.
-    Also imports new magnets added directly on AllDebrid.
-    """
+    """Observe registered provider inventories without inferring absent ownership."""
     cfg = get_settings()
     interval = max(1, _coerce_int_setting(getattr(cfg, "full_sync_interval_minutes", 5), 5))
     await _jitter_sleep(interval * 60)  # spread startup across the full interval
@@ -90,7 +78,7 @@ async def full_sync_loop():
             continue
         try:
             async with async_timer("scheduler.provider_inventory"):
-                result = await transfer_service.reconcile_provider_inventory()
+                result = await application.reconcile_inventory()
             if result.get("imported") or result.get("updated"):
                 logger.info(
                     "Provider inventory: %d imported, %d reconciled from %d item(s)",
@@ -104,33 +92,23 @@ async def full_sync_loop():
 
 
 async def sync_download_clients_loop():
-    await _jitter_sleep(max(2, get_settings().aria2_poll_interval_seconds))
     while True:
+        application.execution_wakeup.clear()
         try:
             async with async_timer("scheduler.download_client_sync"):
-                await transfer_service.reconciliation.reconcile()
+                await application.reconcile_executions()
         except Exception as e:
             logger.error("Download client sync error: %s", sanitize_exception(e))
-        await asyncio.sleep(max(2, get_settings().aria2_poll_interval_seconds))
+        await _wait_for_work(application.execution_wakeup, max(2, application.execution_poll_interval))
 
 
-async def deep_sync_loop():
-    """Run a slower supplemental pass through canonical aria2 recovery.
-
-    Normal reconciliation owns retry timing/accounting on every aria2 poll.
-    ``aria2_deep_sync_interval_minutes=0`` disables this compatibility cadence.
-    """
+async def postprocessing_loop():
     while True:
-        cfg = get_settings()
-        interval_min = max(0, _coerce_int_setting(getattr(cfg, "aria2_deep_sync_interval_minutes", 10), 10))
-        if interval_min <= 0:
-            await asyncio.sleep(60)
-            continue
-        await asyncio.sleep(interval_min * 60)
         try:
-            await transfer_service.deep_sync_aria2_finished()
-        except Exception as e:
-            logger.error("Deep aria2 sync error: %s", sanitize_exception(e))
+            await application.process_postprocessors()
+        except Exception as exc:
+            logger.error("Post-processing cycle failed: %s", sanitize_exception(exc))
+        await asyncio.sleep(2)
 
 
 async def backup_loop():
@@ -147,94 +125,29 @@ async def backup_loop():
         await asyncio.sleep(interval_h * 3600)
 
 
-async def aria2_housekeeping_loop():
-    """Periodically reapply built-in aria2 memory tuning without deleting result history."""
+async def integration_maintenance_loop():
     await asyncio.sleep(90)
     while True:
-        cfg = get_settings()
-        interval_min = max(0, _coerce_int_setting(getattr(cfg, "aria2_purge_interval_minutes", 60), 60))
-        if interval_min <= 0:
-            await asyncio.sleep(300)
-            continue
-        await asyncio.sleep(interval_min * 60)
         try:
-            await transfer_service.run_aria2_housekeeping()
-        except Exception as e:
-            logger.error("aria2 housekeeping error: %s", sanitize_exception(e))
+            await application.maintain_integrations()
+        except Exception as exc:
+            logger.error("Integration maintenance failed: %s", sanitize_exception(exc))
+        await asyncio.sleep(60)
 
 
-async def aria2_log_rotation_loop():
-    """Rotate the built-in aria2 log file before it grows without bound."""
-    from services.aria2_runtime import runtime, is_builtin_mode
-
-    await asyncio.sleep(180)
+async def application_events_loop():
     while True:
         try:
-            cfg = get_settings()
-            if is_builtin_mode(cfg):
-                result = await runtime.ensure_log_rotation()
-                if result.get("rotated"):
-                    logger.info("aria2 log rotation completed")
-        except Exception as e:
-            logger.error("aria2 log rotation error: %s", sanitize_exception(e))
-        await asyncio.sleep(900)
+            await application.deliver_events()
+        except Exception as exc:
+            logger.warning("Event delivery failed: %s", sanitize_exception(exc))
+        await asyncio.sleep(2)
 
 
-async def aria2_restart_loop():
-    """
-    Periodically restarts the built-in aria2 process to reclaim memory.
 
-    aria2 uses glibc malloc. Even with MALLOC_ARENA_MAX=1 the process heap
-    grows over time as malloc retains pages after freeing them. A full process
-    restart is the only guaranteed way to return that memory to the OS.
 
-    The restart is deferred until aria2 has no active downloads to avoid
-    interrupting in-progress transfers. After restart, _dispatch re-queues
-    all pending files from the DB within one poll cycle (normally ≤2 seconds).
 
-    Controlled by aria2_restart_interval_hours (0 = disabled).
-    """
-    from services.aria2_runtime import runtime, is_builtin_mode
 
-    while True:
-        await asyncio.sleep(300)  # check every 5 minutes
-        try:
-            cfg = get_settings()
-            if not is_builtin_mode(cfg):
-                continue
-            interval_h = float(getattr(cfg, "aria2_restart_interval_hours", 0) or 0)
-            if interval_h <= 0:
-                continue
-            uptime_s = runtime._started_at
-            if uptime_s <= 0:
-                continue
-            age_h = (time.time() - uptime_s) / 3600
-            if age_h < interval_h:
-                continue
-
-            # Wait until no active downloads to avoid interruption
-            try:
-                from executors.aria2.client import Aria2Service
-                from services.aria2_runtime import effective_rpc_config
-                url, secret = effective_rpc_config(cfg)
-                svc = Aria2Service(url, secret, 10)
-                all_dl = await svc.get_all()
-                active = [d for d in all_dl if d.status == "active"]
-                if active:
-                    logger.debug(
-                        "aria2 restart deferred: %d active downloads", len(active)
-                    )
-                    continue
-            except Exception:
-                continue
-
-            logger.info(
-                "aria2 periodic restart after %.1f hours (memory reclaim)", age_h
-            )
-            await runtime.restart()
-            logger.info("aria2 restarted successfully")
-        except Exception as e:
-            logger.error("aria2_restart_loop error: %s", sanitize_exception(e))
 
 
 async def update_check_loop() -> None:
@@ -271,7 +184,7 @@ async def update_check_loop() -> None:
 
             if latest and is_version_newer(latest, current) and latest != _last_notified:
                 logger.info("Update available: %s → %s", current, latest)
-                await transfer_service.notifications.client().send_update(
+                await NotificationService().client().send_update(
                     current_version=current,
                     latest_version=latest,
                     release_url=rel.get("html_url", ""),
@@ -332,7 +245,7 @@ async def disk_guard_loop():
         interval = max(10, int(getattr(cfg, "disk_guard_interval_seconds", 60) or 60))
         if min_gb > 0:
             try:
-                await transfer_service.check_disk_space_guard()
+                await application.check_resources()
             except Exception as e:
                 logger.debug("disk_guard check error: %s", sanitize_exception(e))
         await asyncio.sleep(interval)
@@ -342,7 +255,13 @@ def scheduler_running() -> bool:
     return any(not task.done() for task in _tasks)
 
 
-async def start_scheduler():
+async def start_scheduler(service=None):
+    global application
+    if service is not None:
+        application = service
+    if application is None:
+        from application.composition import application as default_application
+        application = default_application
     if scheduler_running():
         logger.debug("Scheduler already running")
         return
@@ -350,13 +269,12 @@ async def start_scheduler():
     _tasks.append(asyncio.create_task(sync_status_loop()))
     _tasks.append(asyncio.create_task(full_sync_loop()))
     _tasks.append(asyncio.create_task(sync_download_clients_loop()))
-    _tasks.append(asyncio.create_task(deep_sync_loop()))
-    _tasks.append(asyncio.create_task(aria2_housekeeping_loop()))
-    _tasks.append(asyncio.create_task(aria2_log_rotation_loop()))
+    _tasks.append(asyncio.create_task(postprocessing_loop()))
+    _tasks.append(asyncio.create_task(integration_maintenance_loop()))
+    _tasks.append(asyncio.create_task(application_events_loop()))
     _tasks.append(asyncio.create_task(backup_loop()))
     _tasks.append(asyncio.create_task(stats_snapshot_loop()))
     _tasks.append(asyncio.create_task(stats_report_loop()))
-    _tasks.append(asyncio.create_task(aria2_restart_loop()))
     _tasks.append(asyncio.create_task(update_check_loop()))
     _tasks.append(asyncio.create_task(events_ttl_loop()))
     _tasks.append(asyncio.create_task(disk_guard_loop()))

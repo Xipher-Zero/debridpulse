@@ -7,14 +7,10 @@ import zipfile
 import pytest
 
 import db.database as database
-import services.extraction_service as extraction_service
-from services.extraction_service import (
-    ExtractionService,
-    _archive_source_paths,
-    _canonical_archive_entries,
-    _cleanup_successful_sources,
-)
-from services.extractor import Extractor
+from postprocessors.archive.sources import _archive_source_paths
+from postprocessors.archive.sources import _canonical_archive_entries
+from postprocessors.archive.sources import _cleanup_successful_sources
+from postprocessors.archive.extractor import Extractor
 
 
 async def _prepare_db(tmp_path: Path, monkeypatch):
@@ -83,86 +79,6 @@ def _events(db_path: Path, torrent_id: int) -> list[str]:
         ]
     finally:
         conn.close()
-
-
-@pytest.mark.asyncio
-async def test_completed_zip_runs_through_post_download_extraction(tmp_path, monkeypatch):
-    db_path = await _prepare_db(tmp_path, monkeypatch)
-    archive = tmp_path / "payload.zip"
-    with zipfile.ZipFile(archive, "w") as zf:
-        zf.writestr("payload.txt", b"payload")
-    torrent_id = _insert_completed(db_path, archive)
-    monkeypatch.setattr(extraction_service, "get_settings", lambda: _settings())
-    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
-
-    result = await ExtractionService().extract_completed_transfer(torrent_id)
-
-    assert result["attempted"] is True
-    assert result["status"] == "completed"
-    assert result["cleanup"] == {
-        "requested": True,
-        "removed": 1,
-        "total": 1,
-        "failed": 0,
-    }
-    assert not archive.exists()
-    assert (tmp_path / "payload.txt").read_bytes() == b"payload"
-    assert _parent(db_path, torrent_id) == {
-        "extraction_status": "completed",
-        "extraction_error": None,
-        "status": "completed",
-    }
-    published_states = [
-        call.args[1].get("extraction_status")
-        for call in extraction_service.publish.await_args_list
-        if call.args and call.args[0] == "torrent_updated"
-    ]
-    assert published_states == ["extracting", "completed"]
-
-
-@pytest.mark.asyncio
-async def test_delete_archive_disabled_retains_source_without_cleanup_event(tmp_path, monkeypatch):
-    db_path = await _prepare_db(tmp_path, monkeypatch)
-    archive = tmp_path / "payload.zip"
-    with zipfile.ZipFile(archive, "w") as zf:
-        zf.writestr("payload.txt", b"payload")
-    torrent_id = _insert_completed(db_path, archive)
-    monkeypatch.setattr(
-        extraction_service,
-        "get_settings",
-        lambda: _settings(extract_delete_archive=False),
-    )
-    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
-
-    result = await ExtractionService().extract_completed_transfer(torrent_id)
-
-    assert result["status"] == "completed"
-    assert result["cleanup"] == {
-        "requested": False,
-        "removed": 0,
-        "total": 0,
-        "failed": 0,
-    }
-    assert archive.exists()
-    assert not any(message.startswith("Archive cleanup:") for message in _events(db_path, torrent_id))
-
-
-@pytest.mark.asyncio
-async def test_inaccessible_rar_is_visible_failure_not_silent_skip(tmp_path, monkeypatch):
-    db_path = await _prepare_db(tmp_path, monkeypatch)
-    archive = tmp_path / "missing.rar"
-    torrent_id = _insert_completed(db_path, archive)
-    monkeypatch.setattr(extraction_service, "get_settings", lambda: _settings())
-    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
-
-    result = await ExtractionService().extract_completed_transfer(torrent_id)
-
-    assert result["attempted"] is True
-    assert result["status"] == "error"
-    parent = _parent(db_path, torrent_id)
-    assert parent["status"] == "completed"
-    assert parent["extraction_status"] == "error"
-    assert "not accessible to DebridPulse" in parent["extraction_error"]
 
 
 @pytest.mark.asyncio
@@ -251,26 +167,6 @@ def test_extraction_state_is_persisted_and_operator_visible():
     assert "extracting_count" in routes_source
     assert "extracting: {icon: 'packageOpen', label: 'Extracting'" in icon_source
     assert "t.extraction_status" in app_source
-
-
-@pytest.mark.asyncio
-async def test_extraction_events_form_durable_operator_audit(tmp_path, monkeypatch):
-    db_path = await _prepare_db(tmp_path, monkeypatch)
-    archive = tmp_path / "payload.zip"
-    with zipfile.ZipFile(archive, "w") as zf:
-        zf.writestr("payload.txt", b"payload")
-    torrent_id = _insert_completed(db_path, archive)
-    monkeypatch.setattr(extraction_service, "get_settings", lambda: _settings())
-    monkeypatch.setattr(extraction_service, "publish", AsyncMock())
-
-    await ExtractionService().extract_completed_transfer(torrent_id)
-
-    events = _events(db_path, torrent_id)
-
-    assert "Auto-extract: Attempted · 1 archive(s) detected" in events
-    assert "Extraction status: Extracting" in events
-    assert "Extraction status: Completed · 1/1 archive(s) extracted" in events
-    assert "Archive cleanup: Completed · 1/1 source file(s) removed" in events
 
 
 def test_external_extraction_stages_inside_destination(tmp_path, monkeypatch):

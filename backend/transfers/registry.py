@@ -27,7 +27,7 @@ class IntegrationRegistry:
         if not isinstance(provider, Provider):
             raise TypeError("Provider must implement resolution and descriptor contracts")
         descriptor = provider.descriptor
-        if not descriptor.id or descriptor.id in self.providers:
+        if not descriptor.id or descriptor.id in self.providers or descriptor.id in self.executors:
             raise ValueError("Provider identity is missing or already registered")
         if Capability.RESOLVE not in descriptor.capabilities or not descriptor.request_types:
             raise ValueError("Provider must declare resolution and supported request types")
@@ -40,7 +40,7 @@ class IntegrationRegistry:
         if not isinstance(executor, Executor):
             raise TypeError("Executor must implement execution and descriptor contracts")
         descriptor = executor.descriptor
-        if not descriptor.id or descriptor.id in self.executors or not descriptor.schemes:
+        if not descriptor.id or descriptor.id in self.executors or descriptor.id in self.providers or not descriptor.schemes:
             raise ValueError("Executor requires a unique identity and supported schemes")
         if ({Capability.PAUSE, Capability.RESUME} & descriptor.capabilities
                 and not isinstance(executor, PauseResume)):

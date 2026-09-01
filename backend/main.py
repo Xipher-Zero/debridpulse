@@ -29,9 +29,9 @@ from core.logging_utils import configure_logging, log_startup_banner, sanitize_e
 from core.scheduler import start_scheduler, stop_scheduler
 from core.version import read_version
 from db.database import DatabaseMaintenanceActive, init_db, DB_PATH
-from services.aria2_runtime import runtime as aria2_runtime
-from services.transfer_service import transfer_service
+from application.dependencies import get_application
 from services.maintenance_gate import ApplicationMaintenanceActive
+from transfers.errors import TransferError
 
 _log_cfg = _get_log_settings()
 configure_logging(
@@ -43,28 +43,6 @@ logger = logging.getLogger("alldebrid.main")
 
 # persistence initialization on startup
 
-async def _reset_stuck_downloads_sqlite():
-    """Resets torrents that were stuck in 'downloading' state when the app last stopped."""
-    import aiosqlite as _aiosqlite
-    async with _aiosqlite.connect(DB_PATH, timeout=30) as _db:
-        _db.row_factory = _aiosqlite.Row
-        stuck = await (await _db.execute(
-            """SELECT id, alldebrid_id, name FROM torrents
-               WHERE status='downloading'
-                 AND id NOT IN (SELECT DISTINCT torrent_id FROM download_files)"""
-        )).fetchall()
-        for row in stuck:
-            await _db.execute(
-                "UPDATE torrents SET status='ready', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (row["id"],),
-            )
-            await _db.execute(
-                "INSERT INTO events (torrent_id, level, message) VALUES (?, 'warn', ?)",
-                (row["id"], "Recovered stuck download on startup — re-queuing"),
-            )
-            logger.info("Startup: reset stuck torrent %s (%s)", row["id"], row["name"])
-        await _db.commit()
-    return list(stuck)
 
 
 @asynccontextmanager
@@ -109,34 +87,19 @@ async def lifespan(app: FastAPI):
         logger.warning("Config validation skipped due to error: %s", sanitize_exception(exc))
 
     await init_db()
+    from application.composition import application as default_application
+    application = getattr(app.state, "application", default_application)
+    app.state.application = application
+    from db.migrations.v112 import migrate
+    await migrate(external_executor=cfg.aria2_mode == "external", globally_paused=cfg.paused)
+    await application.engine.initialize()
+    await application.engine.recover_postprocessing()
+    await application.start_integrations()
     try:
-        stuck = await _reset_stuck_downloads_sqlite()
-        for row in stuck:
-            if row["alldebrid_id"]:
-                asyncio.create_task(transfer_service.control.start_download(
-                    row["id"], str(row["alldebrid_id"]), str(row["name"] or "")
-                ))
+        await application.recover()
     except Exception as exc:
-        logger.warning("Startup stuck-download cleanup failed: %s", sanitize_exception(exc))
-
-    try:
-        await transfer_service.provider.import_existing()
-    except Exception as exc:
-        logger.warning("Initial provider import skipped: %s", sanitize_exception(exc))
-    try:
-        await aria2_runtime.ensure_started()
-    except Exception as exc:
-        logger.warning("Built-in aria2 startup skipped: %s", sanitize_exception(exc))
-    try:
-        await transfer_service.reconciliation.startup()
-    except Exception as exc:
-        logger.warning("Startup reconciliation failed: %s", sanitize_exception(exc))
-    try:
-        await transfer_service.aria2.housekeeping()
-    except Exception as exc:
-        logger.warning("Startup aria2 housekeeping failed: %s", sanitize_exception(exc))
-
-    await start_scheduler()
+        logger.warning("Startup reconciliation deferred: %s", sanitize_exception(exc))
+    await start_scheduler(application)
     session_store.start_cleanup()
     try:
         yield
@@ -149,9 +112,9 @@ async def lifespan(app: FastAPI):
                 await stop_scheduler()
             finally:
                 try:
-                    await aria2_runtime.stop()
+                    await application.stop_integrations()
                 except Exception as exc:
-                    logger.warning("Built-in aria2 shutdown failed: %s", sanitize_exception(exc))
+                    logger.warning("Integration shutdown failed: %s", sanitize_exception(exc))
 
 
 class _RequestBodyTooLarge(Exception):
@@ -235,6 +198,11 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(TransferError)
+async def transfer_error_handler(_request: Request, exc: TransferError):
+    return JSONResponse(status_code=409, content={"detail": exc.error.message, "error": exc.error.as_dict()})
+
+
 _MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _DATABASE_WIPE_PATH = "/api/admin/database/wipe"
 _AUTH_MUTATION_PATHS = {
@@ -253,7 +221,7 @@ async def application_mutation_admission_middleware(request: Request, call_next)
         and request.url.path not in _AUTH_MUTATION_PATHS
     ):
         try:
-            async with transfer_service.application_operation():
+            async with get_application(request).application_operation():
                 return await call_next(request)
         except ApplicationMaintenanceActive:
             return Response(

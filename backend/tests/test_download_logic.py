@@ -53,25 +53,6 @@ def make_torrent_row(status: str, alldebrid_id: str = "123", torrent_id: int = 1
 class TestStatusTransitions:
     """Verify the documented status transitions are internally consistent."""
 
-    def test_terminal_statuses_defined(self):
-        """completed and deleted are terminal — nothing should restart them."""
-        from services.manager_v2 import _terminal_torrent_status
-        assert _terminal_torrent_status("completed") is True
-        assert _terminal_torrent_status("deleted") is True
-
-    def test_non_terminal_statuses(self):
-        from services.manager_v2 import _terminal_torrent_status
-        # error IS terminal — errored torrents are not re-polled by the normal sync;
-        # they are only restarted by full_alldebrid_sync when AllDebrid reports ready.
-        for s in ("queued", "downloading", "pending", "ready", "paused",
-                  "uploading", "processing"):
-            assert _terminal_torrent_status(s) is False, f"{s} should not be terminal"
-
-    def test_error_is_terminal(self):
-        from services.manager_v2 import _terminal_torrent_status
-        # Errors are terminal from the polling perspective — they do not get
-        # re-polled by sync_alldebrid_status but CAN be restarted by full_alldebrid_sync.
-        assert _terminal_torrent_status("error") is True
 
     def test_restartable_statuses_in_full_sync(self):
         """full_alldebrid_sync should only restart these statuses."""
@@ -80,7 +61,6 @@ class TestStatusTransitions:
         assert "queued" not in restartable
         assert "downloading" not in restartable
         assert "paused" not in restartable
-
 
 
 # ── _finalize_aria2_torrent logic ─────────────────────────────────────────────
@@ -126,43 +106,12 @@ class TestFinalizeLogic:
 
 # ── normalize_provider_state ──────────────────────────────────────────────────
 
-class TestNormalizeProviderState:
-    def test_ready_status(self):
-        from services.manager_v2 import normalize_provider_state
-        result = normalize_provider_state({
-            "statusCode": 4, "status": "Ready", "filename": "Test", "size": 1000
-        })
-        assert result["provider_status"] == "ready"
-        assert result["local_status"] == "ready"
-
-    def test_processing_status(self):
-        from services.manager_v2 import normalize_provider_state
-        # AllDebrid statusCode 1-3 = processing/downloading on AllDebrid side
-        result = normalize_provider_state({"statusCode": 1, "status": "Downloading"})
-        assert result["provider_status"] == "processing"
-
-    def test_ready_status_code_4(self):
-        from services.manager_v2 import normalize_provider_state
-        result = normalize_provider_state({"statusCode": 4, "status": "Ready"})
-        assert result["provider_status"] == "ready"
-
-    def test_error_status(self):
-        from services.manager_v2 import normalize_provider_state
-        result = normalize_provider_state({"statusCode": 7, "status": "Error"})
-        assert result["provider_status"] == "error"
-
-    def test_unknown_code_maps_gracefully(self):
-        from services.manager_v2 import normalize_provider_state
-        result = normalize_provider_state({"statusCode": 999, "status": "Unknown"})
-        assert "provider_status" in result
-        assert result["provider_status"]  # non-empty
-
 
 # ── safe_name / safe_rel_path ─────────────────────────────────────────────────
 
 class TestPathHelpers:
     def test_safe_name_strips_dangerous_chars(self):
-        from services.manager_v2 import safe_name
+        from transfers.filesystem import safe_name
         assert "/" not in safe_name("a/b/c")
         assert "\\" not in safe_name("a\\b")
         # After fix: leading dots are stripped so '..' cannot appear at the start
@@ -171,54 +120,25 @@ class TestPathHelpers:
         assert result  # non-empty fallback
 
     def test_safe_name_strips_leading_dots(self):
-        from services.manager_v2 import safe_name
+        from transfers.filesystem import safe_name
         assert not safe_name("../evil").startswith("..")
         assert not safe_name("../../root").startswith("..")
         assert safe_name(".hidden_file") == "hidden_file"  # leading dot stripped
 
     def test_safe_name_normal_stays_intact(self):
-        from services.manager_v2 import safe_name
+        from transfers.filesystem import safe_name
         result = safe_name("My Movie (2024) [1080p]")
         assert "Movie" in result
         assert "(2024)" in result
 
     def test_safe_name_preserves_normal(self):
-        from services.manager_v2 import safe_name
+        from transfers.filesystem import safe_name
         result = safe_name("My Movie (2024) [1080p]")
         assert result  # non-empty
         assert len(result) <= 255
 
-    def test_safe_rel_path(self):
-        from services.manager_v2 import safe_rel_path
-        result = safe_rel_path("subdir/file.mkv")
-        assert ".." not in str(result)
-
 
 # ── full_sync restartable set ─────────────────────────────────────────────────
-
-class TestFullSyncRestartableSet:
-    """Verify the full_alldebrid_sync trigger logic directly from source."""
-
-    def test_restartable_set_excludes_in_progress(self):
-        """
-        The set of statuses that trigger _start_download in full_alldebrid_sync
-        must NOT include queued, downloading, or paused.
-        """
-        import re
-        import os
-        root = os.path.dirname(os.path.dirname(__file__))
-        with open(os.path.join(root, 'services', 'manager_v2.py'), encoding='utf-8') as f:
-            src = f.read()
-        # Find the _restartable definition in full_alldebrid_sync
-        m = re.search(r'_restartable\s*=\s*\(([^)]+)\)', src)
-        assert m, "_restartable set not found in full_alldebrid_sync"
-        restartable_str = m.group(1)
-        assert '"queued"' not in restartable_str, "queued must not be in _restartable"
-        assert '"downloading"' not in restartable_str, "downloading must not be in _restartable"
-        assert '"paused"' not in restartable_str, "paused must not be in _restartable"
-        # Must include the error/pending/processing/uploading/ready statuses
-        assert '"error"' in restartable_str
-        assert '"pending"' in restartable_str
 
 
 # ── Config validator integration ──────────────────────────────────────────────

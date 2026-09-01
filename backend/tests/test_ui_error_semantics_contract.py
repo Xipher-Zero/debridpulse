@@ -8,89 +8,48 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_concise_failure_taxonomy_is_complete():
-    runtime = read("ui-error-semantics.js")
-    expected = {
-        "Unsupported Host",
-        "Source Unavailable",
-        "Invalid Link",
-        "Link Unavailable",
-        "Link Timeout",
-        "Magnet Rejected",
-        "Torrent Rejected",
-        "Provider Expired",
-        "Provider Unreachable",
-        "Provider Sync Failed",
-        "Provider Auth Failed",
-        "Queue Failed",
-        "Downloader Offline",
-        "Download Failed",
-        "Disk Full",
-        "Write Failed",
-        "Extraction Failed",
-        "Provider Error",
-    }
-    for label in expected:
-        assert label in runtime
-    assert "LINK_HOST_NOT_SUPPORTED" in runtime
-    assert "/api/torrents/" in runtime
+def test_concise_failure_taxonomy_uses_only_canonical_categories():
+    import json
+    import subprocess
+    script = read("ui-error-semantics.js")
+    checks = [
+        ({"error": {"category": "disk_full"}, "error_message": "LINK_DOWN"}, "disk_full"),
+        ({"error": {"category": "source_not_found"}}, "source_not_found"),
+        ({"error_message": "LINK_HOST_NOT_SUPPORTED", "provider_status_code": 11}, "internal_error"),
+        ({"error": {"category": "unknown_future_code"}}, "internal_error"),
+        ({"error": {"category": "__proto__"}}, "internal_error"),
+    ]
+    code = "global.window = {};\n" + script + "\nconst cases = " + json.dumps(checks) + "; cases.forEach(([input,expected]) => { if(window.DPFailureSemantics.classify(input)!==expected) throw new Error(expected); });"
+    result = subprocess.run(["node", "-e", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "LINK_HOST_NOT_SUPPORTED" not in script
+    assert "fetch(" not in script
+    assert "provider_status" not in script
 
 
-def test_terminal_failure_progress_is_rendered_by_app_and_enriched_without_override():
+def test_terminal_failure_progress_has_one_renderer_and_truthful_geometry():
     app = read("app.js")
     runtime = read("ui-error-semantics.js")
-
-    # The canonical renderer owns first-pass terminal-failure geometry directly.
-    for fragment in (
-        "function progress(pct, status)",
-        "const visual = actual;",
-        "dp-terminal-error-progress",
-        "dp-terminal-error-rail",
-        "data-dp-actual-progress",
-        "data-dp-visual-progress",
-        "actual.toFixed(0) + '%'",
-        "background:var(--dp-state-error)!important",
-        "background-image:none!important",
-    ):
+    for fragment in ("function progress(pct, status)", "const visual = actual;", "dp-terminal-error-progress", "dp-terminal-error-rail", "data-dp-actual-progress", "data-dp-visual-progress", "actual.toFixed(0) + '%'", "background:var(--dp-state-error)!important", "background-image:none!important"):
         assert fragment in app
-
-    # Error semantics may enrich already-rendered failed rows, but it may not
-    # replace the canonical renderer or observe the page into convergence.
-    assert "function installProgressOverride" not in runtime
+    assert "paintFailedProgress" not in runtime
     assert "window.progress =" not in runtime
     assert "MutationObserver" not in runtime
-    assert "const visualWidth = pct;" in runtime
-    assert "track.classList.add('dp-terminal-error-rail')" in runtime
-    assert "fill.classList.remove('done')" in runtime
-    assert "setProperty('background', 'var(--dp-state-error)', 'important')" in runtime
-    assert "setProperty('background-image', 'none', 'important')" in runtime
+    assert "fetch(" not in runtime
     assert "failed && actual === 0 ? 100 : actual" not in app
-    assert "failed && actual === 0 ? 100 : actual" not in runtime
-
     css = read("ui-visual-accents.css")
-    assert ".prog.dp-terminal-error-rail" in css
-    assert "overflow: visible !important" in css
-    assert "border-radius: 999px !important" in css
-    assert ".prog.dp-terminal-error-rail::before" in css
-    assert ".prog.dp-terminal-error-rail::after" in css
-    assert "width: 16px" in css
-    assert "height: 9px" in css
-    assert ".prog-fill.error" in css
-    assert "background: var(--dp-state-error) !important" in css
-    assert "background-image: none !important" in css
-    assert "var(--dp-state-error) 88%" in css
-    assert "var(--dp-state-error) 46%" in css
+    for fragment in (".prog.dp-terminal-error-rail", "overflow: visible !important", ".prog.dp-terminal-error-rail::before", ".prog.dp-terminal-error-rail::after", ".prog-fill.error", "background: var(--dp-state-error) !important", "background-image: none !important"):
+        assert fragment in css
 
 
-def test_error_semantics_uses_explicit_render_events_without_startup_spin():
+def test_error_semantics_is_available_before_first_render_without_fetch_or_observers():
     runtime = read("ui-error-semantics.js")
-    assert "function startAfterCore()" in runtime
-    assert "core render helpers unavailable" in runtime
-    assert "debridpulse:dashboard-recent-rendered" in runtime
-    assert "debridpulse:downloads-rendered" in runtime
-    assert "setTimeout(startWhenReady" not in runtime
-    assert "window.setTimeout(startWhenReady" not in runtime
-    assert "function startWhenReady()" not in runtime
+    html = read("index.html")
+    assert "window.DPFailureSemantics = Object.freeze" in runtime
+    assert "addEventListener" not in runtime
+    assert "setTimeout" not in runtime
+    assert "fetch(" not in runtime
+    assert html.index('/ui-error-semantics.js') < html.index('/app.js')
 
 
 def test_dark_dashboard_cards_receive_subdued_colored_shadow():

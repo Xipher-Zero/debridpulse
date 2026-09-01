@@ -35,9 +35,9 @@ def directory_contains(path: Path) -> bool:
         return False
 
 
-def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple[IntegrityMetadata, ...] = ()) -> bool:
+def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple[IntegrityMetadata, ...] = (), *, allow_empty=False) -> bool:
     target = Path(path)
-    if expected_size <= 0 or not directory_contains(target) or any(directory_contains(Path(item)) for item in sidecars):
+    if expected_size < 0 or (expected_size == 0 and not allow_empty) or not directory_contains(target) or any(directory_contains(Path(item)) for item in sidecars):
         return False
     descriptor = None
     try:
@@ -45,7 +45,7 @@ def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_size != expected_size:
             return False
-        if len(os.pread(descriptor, 1, 0)) != 1 or len(os.pread(descriptor, 1, expected_size - 1)) != 1:
+        if expected_size and (len(os.pread(descriptor, 1, 0)) != 1 or len(os.pread(descriptor, 1, expected_size - 1)) != 1):
             return False
         for checksum in integrity:
             if checksum.algorithm not in {"sha256", "sha512", "sha1", "md5"}:
@@ -69,11 +69,11 @@ def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple
             os.close(descriptor)
 
 
-async def stable_payload(path: str, expected_size: int, *, sidecars=(), integrity=(), delay=3.25) -> bool:
-    if not await asyncio.to_thread(payload_matches, path, expected_size, sidecars, integrity):
+async def stable_payload(path: str, expected_size: int, *, sidecars=(), integrity=(), delay=3.25, allow_empty=False) -> bool:
+    if not await asyncio.to_thread(payload_matches, path, expected_size, sidecars, integrity, allow_empty=allow_empty):
         return False
     await asyncio.sleep(delay)
-    return await asyncio.to_thread(payload_matches, path, expected_size, sidecars, integrity)
+    return await asyncio.to_thread(payload_matches, path, expected_size, sidecars, integrity, allow_empty=allow_empty)
 
 
 def retire_partial(root: str, target: str, sidecars=()) -> None:

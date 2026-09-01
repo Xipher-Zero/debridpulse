@@ -151,12 +151,12 @@ def test_cross_cutting_accessibility_runtime_remains_semantic_and_io_free() -> N
         assert forbidden not in source
 
 
-def test_error_semantics_startup_is_bounded_and_not_busy_polled() -> None:
-    source = read(ERROR_RUNTIME)
-    assert "function startAfterCore()" in source
-    assert "core render helpers unavailable" in source
-    assert "setTimeout(startWhenReady" not in source
-    assert "window.setTimeout(startWhenReady" not in source
+def test_error_semantics_startup_is_bounded_and_not_busy_polled():
+    source = ERROR_RUNTIME.read_text()
+    assert "setTimeout" not in source
+    assert "MutationObserver" not in source
+    assert "fetch(" not in source
+    assert "window.DPFailureSemantics = Object.freeze" in source
 
 
 def test_shared_visual_contract_is_css_owned_not_runtime_injected() -> None:

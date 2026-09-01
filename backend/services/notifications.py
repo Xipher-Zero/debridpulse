@@ -97,7 +97,7 @@ def _source_label(source: str) -> str:
         "manual":             "Manual (UI)",
         "manual_file":        "Torrent file (UI)",
         "direct_link":        "Direct link (UI)",
-        "alldebrid_existing": "AllDebrid import",
+        "inventory": "Provider inventory",
         "api":                "API",
     }.get(source, source)
 
@@ -127,19 +127,19 @@ class NotificationService:
         self,
         name: str,
         source: str = "manual",
-        alldebrid_id: str = "",
+        transfer_id: str = "",
         extra_fields: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Torrent successfully uploaded to AllDebrid."""
+        """Transfer accepted for processing."""
         if not self.added_webhook_url:
             return
         fields: List[Dict[str, Any]] = [
             {"name": "Source",  "value": _source_label(source),      "inline": True},
-            {"name": "Status",  "value": "Queued on AllDebrid",       "inline": True},
+            {"name": "Status",  "value": "Accepted",       "inline": True},
             {"name": "Time",    "value": _now_utc(),                  "inline": True},
         ]
-        if alldebrid_id:
-            fields.append({"name": "AllDebrid ID", "value": str(alldebrid_id), "inline": True})
+        if transfer_id:
+            fields.append({"name": "Transfer ID", "value": str(transfer_id), "inline": True})
         if extra_fields:
             fields.extend(extra_fields)
         await self._send(
@@ -156,7 +156,7 @@ class NotificationService:
         file_count: int = 0,
         size_bytes: int = 0,
         destination: str = "",
-        download_client: str = "aria2",
+        download_client: str = "",
     ) -> None:
         """Download fully completed."""
         if not self.webhook_url:
@@ -186,8 +186,8 @@ class NotificationService:
         context: str = "",
         source: str = "",
         provider: str = "",
-        alldebrid_id: str = "",
-        status_code: str = "",
+        transfer_id: str = "",
+        category: str = "",
     ) -> None:
         """Error during processing or download."""
         if not self.webhook_url:
@@ -197,10 +197,10 @@ class NotificationService:
             fields.append({"name": "Source", "value": source[:200], "inline": True})
         if provider:
             fields.append({"name": "Provider", "value": provider[:200], "inline": True})
-        if alldebrid_id:
-            fields.append({"name": "AllDebrid ID", "value": str(alldebrid_id)[:200], "inline": True})
-        if status_code:
-            fields.append({"name": "Status Code", "value": str(status_code)[:200], "inline": True})
+        if transfer_id:
+            fields.append({"name": "Transfer ID", "value": str(transfer_id)[:200], "inline": True})
+        if category:
+            fields.append({"name": "Category", "value": str(category)[:200], "inline": True})
         if reason:
             fields.append({"name": "Reason",  "value": reason[:1000],  "inline": False})
         if context:
@@ -297,54 +297,7 @@ class NotificationService:
             fields=fields or None,
         )
 
-    async def send_requeue(
-        self,
-        name: str,
-        attempt: int,
-        max_attempts: int,
-        reason: str = "",
-        alldebrid_id: str = "",
-    ) -> None:
-        """Notify that a failed upload has been automatically re-queued."""
-        if not self.webhook_url:
-            return
-        fields: List[Dict[str, Any]] = []
-        if alldebrid_id:
-            fields.append({"name": "AllDebrid ID", "value": alldebrid_id, "inline": True})
-        fields.append({"name": "Attempt", "value": f"{attempt} / {max_attempts}", "inline": True})
-        if reason:
-            fields.append({"name": "Reason", "value": reason[:200], "inline": False})
-        await self._send(
-            url=self.webhook_url,
-            title="🔄 Upload failed — re-queued automatically",
-            description=f"**{name[:100]}** could not be uploaded to AllDebrid and has been re-queued.",
-            color=COLOR_WARNING,
-            fields=fields or None,
-        )
 
-    async def send_upload_failed_permanent(
-        self,
-        name: str,
-        max_attempts: int,
-        reason: str = "",
-        alldebrid_id: str = "",
-    ) -> None:
-        """Notify that a failed upload has exhausted all retries."""
-        if not self.webhook_url:
-            return
-        fields: List[Dict[str, Any]] = []
-        if alldebrid_id:
-            fields.append({"name": "AllDebrid ID", "value": alldebrid_id, "inline": True})
-        fields.append({"name": "Retries", "value": f"{max_attempts} attempts exhausted", "inline": True})
-        if reason:
-            fields.append({"name": "Last error", "value": reason[:200], "inline": False})
-        await self._send(
-            url=self.webhook_url,
-            title="❌ Upload failed permanently",
-            description=f"**{name[:100]}** could not be uploaded to AllDebrid after {max_attempts} attempts.",
-            color=COLOR_ERROR,
-            fields=fields or None,
-        )
 
     async def send_update(
         self,

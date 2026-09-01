@@ -102,6 +102,6 @@ def test_loaded_runtime_markers_are_unique_when_a_presentation_loader_exists() -
 
 def test_error_semantics_does_not_busy_poll_for_core_helpers() -> None:
     error = read("ui-error-semantics.js")
-    assert "startAfterCore" in error
-    assert "setTimeout(startWhenReady" not in error
-    assert "window.setTimeout(startWhenReady" not in error
+    assert "window.DPFailureSemantics = Object.freeze" in error
+    assert "setTimeout" not in error
+    assert "addEventListener" not in error

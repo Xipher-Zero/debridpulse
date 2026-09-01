@@ -9,10 +9,9 @@ from api.routes import _sql_date, _sql_strftime
 from core.logging_utils import sanitize_exception
 from db.database import DatabaseMaintenanceGate
 from executors.aria2.client import Aria2RPCError, Aria2Service
-from services.aria2_runtime import BuiltinAria2Runtime
+from executors.aria2.runtime import BuiltinAria2Runtime
 from services.maintenance_gate import ApplicationMaintenanceGate
-from services.manager_v2 import _safe_persisted_error
-from services.provider_gateway import ProviderGateway
+from test_aria2_executor_contract import execution
 
 
 @pytest.mark.asyncio
@@ -82,58 +81,20 @@ async def test_database_maintenance_acquisition_cancellation_reopens_gate():
 
 
 @pytest.mark.asyncio
-async def test_provider_quiescence_cancellation_reopens_admission():
-    gateway = ProviderGateway(SimpleNamespace())
-    hold = asyncio.Event()
-    entered = asyncio.Event()
-
-    async def active():
-        async with gateway._operation():
-            entered.set()
-            await hold.wait()
-
-    active_task = asyncio.create_task(active())
-    await entered.wait()
-    task = asyncio.create_task(gateway.begin_quiescence())
-    while not gateway.quiescing:
-        await asyncio.sleep(0)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert gateway.quiescing is False
-
-    hold.set()
-    await active_task
-    async with gateway._operation():
-        pass
-
-
-@pytest.mark.asyncio
-async def test_aria2_failure_never_exposes_capability_and_uri_lock_is_released(monkeypatch, caplog):
-    import executors.aria2.client as aria2_module
-
-    capability = "https://locked.example.invalid/cap"
-    service = Aria2Service("http://127.0.0.1:6800/jsonrpc")
-    monkeypatch.setattr(aria2_module, "_is_builtin_mode", lambda: False)
+async def test_aria2_failure_never_exposes_capability_or_blindly_retries(execution, monkeypatch, caplog):
+    capability = execution.request.candidate.endpoints[0].address
+    calls = []
 
     async def fail(*args, **kwargs):
+        calls.append(args)
         raise RuntimeError(f"backend rejected {capability}")
 
-    monkeypatch.setattr(service, "_call", fail)
-    with pytest.raises(Aria2RPCError) as raised:
-        await service.ensure_download(capability, max_retries=1)
-
-    assert capability not in str(raised.value)
+    monkeypatch.setattr(execution.daemon, "_call", fail)
+    result = await execution.executor.start(execution.request, execution.handle)
+    assert result.state.value == "unknown"
+    assert capability not in str(result.error.as_dict())
     assert capability not in caplog.text
-    assert service._uri_locks == {}
-
-
-def test_persisted_error_boundary_redacts_capability():
-    capability = "https://locked.example.invalid/download/" + ("secret-" * 30)
-    error = RuntimeError(f"dispatch failed {capability}")
-    safe = _safe_persisted_error(error)
-    assert capability not in safe
-    assert safe == sanitize_exception(error, max_length=300)
+    assert len(calls) == 1
 
 
 class _FakeProcess:
@@ -158,7 +119,7 @@ class _FakeProcess:
 
 @pytest.mark.asyncio
 async def test_failed_builtin_aria2_start_is_transactional(monkeypatch):
-    import services.aria2_runtime as runtime_module
+    import executors.aria2.runtime as runtime_module
 
     runtime = BuiltinAria2Runtime()
     process = _FakeProcess()

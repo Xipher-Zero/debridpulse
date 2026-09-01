@@ -16,30 +16,6 @@ def test_live_refresh_keeps_action_nodes_stable_and_coalesces_core_loaders():
     assert "loadTorrents = coalesceAsync(loadTorrents);" in js
 
 
-def test_progress_only_sse_updates_rows_without_forcing_full_render():
-    js = (REPO_ROOT / "frontend/static/app.js").read_text()
-    manager = (
-        REPO_ROOT / "backend/services/manager_v2.py"
-    ).read_text()
-
-    assert "function patchProgressOnlyTransferEvent(data)" in js
-    assert 'data-role="transfer-progress"' in js
-    assert 'data-status="${esc(t.status)}"' in js
-
-    assert (
-        '"progress_only": not any('
-        in manager
-    )
-    assert (
-        'item["status_changed"]'
-        in manager
-    )
-    assert (
-        "for item in changed_updates"
-        in manager
-    )
-    assert '"items": changed_updates' in manager
-    assert '"status_changed": status_changed' in manager
 
 
 def test_async_controls_acknowledge_clicks_immediately():
@@ -83,7 +59,7 @@ def test_settings_put_response_is_reused_without_followup_get():
         REPO_ROOT / "backend/api/routes.py"
     ).read_text()
 
-    assert "data = _public_settings(clean)" in routes
+    assert "data = _public_settings(clean, application.definitions)" in routes
     assert 'data["ok"] = True' in routes
 
     settings_put_assignments = re.findall(
@@ -177,64 +153,8 @@ def test_settings_aria2_queue_refresh_is_coalesced_and_actions_acknowledge():
 
 
 
-def test_pass3_polling_noops_do_not_refresh_transfer_freshness():
-    manager = (REPO_ROOT / "backend/services/manager_v2.py").read_text()
-
-    provider = manager.split(
-        "async def _apply_provider_update", 1
-    )[1].split(
-        "async def _set_provider_missing", 1
-    )[0]
-
-    assert "meaningful_changed = (" in provider
-    assert "if meaningful_changed:" in provider
-    assert "if visible_changed:" in provider
-    assert "persisted_progress = current_progress if local_delivery_active else progress" in provider
-    assert "stable provider polling" in provider.lower()
-
-    aggregate = (REPO_ROOT / "backend/services/transfer_state_machine.py").read_text()
-    repository = (REPO_ROOT / "backend/services/transfer_repository.py").read_text()
-
-    assert "if progress != current_progress or status != current_status:" in aggregate
-    assert "if int(progress) != int(current_progress) or status != current_status:" in aggregate
-    assert "updates.append((progress, status, transfer_id))" in aggregate
-    assert "self.repository.persist_parent_progress(updates)" in aggregate
-    assert "await db.executemany(" in repository
-
-    sync = manager.split(
-        "async def sync_aria2_downloads", 1
-    )[1].split(
-        "async def _reset_torrent_for_redownload", 1
-    )[0]
-
-    assert "f.download_id, f.status, f.blocked, f.size_bytes" in sync
-    assert "def file_state_needs_update(desired_status: str)" in sync
-
-
-def test_pass3_import_reconciliation_does_not_touch_stable_rows():
-    manager = (REPO_ROOT / "backend/services/manager_v2.py").read_text()
-    imported = manager.split(
-        "async def import_existing_magnets", 1
-    )[1].split(
-        "async def delete_torrent", 1
-    )[0]
-
-    assert "metadata_changed = (" in imported
-    assert imported.count("if metadata_changed:") == 2
-    assert "stuck-transfer watchdog" in imported
-    assert "Stable provider" in imported
 
 
 
 
-def test_pass3_provider_noop_handles_zero_status_code_and_paused_delivery():
-    manager = (REPO_ROOT / "backend/services/manager_v2.py").read_text()
-    provider = manager.split(
-        "async def _apply_provider_update", 1
-    )[1].split(
-        "async def _increment_poll_failure", 1
-    )[0]
 
-    assert 'current_provider_code = row.get("provider_status_code")' in provider
-    assert "if current_provider_code is not None" in provider
-    assert "TorrentStatus.PAUSED" in provider

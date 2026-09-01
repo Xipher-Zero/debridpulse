@@ -73,39 +73,22 @@ class AllDebridService:
         return result
 
     async def _post(self, base: str, endpoint: str,
-                    data: Optional[Dict] = None,
-                    retries: int = 1) -> Dict[str, Any]:
+                    data: Optional[Dict] = None) -> Dict[str, Any]:
+        """One native operation; retry and ambiguous outcomes belong to core."""
         url = f"{base}/{endpoint}"
-        last_error: Optional[Exception] = None
-        attempts = max(1, int(retries or 1))
-        for attempt in range(1, attempts + 1):
-            await acquire_alldebrid_request_slot()
-            result = None
-            try:
-                async with aiohttp.ClientSession(headers=self._headers()) as s:
-                    async with s.post(url, data=data or {}, timeout=TIMEOUT) as resp:
-                        body = await resp.text()
-                        if resp.status >= 500:
-                            raise Exception(f"AllDebrid HTTP {resp.status} for {endpoint}")
-                        result = self._decode_json_body(body, endpoint)
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                last_error = Exception(f"Network error: {exc}")
-            except Exception as exc:
-                last_error = exc
-
-            if result is not None:
-                if result.get("status") != "success":
-                    err  = result.get("error", {})
-                    code = err.get("code", "UNKNOWN") if isinstance(err, dict) else "UNKNOWN"
-                    msg  = err.get("message", str(err)) if isinstance(err, dict) else str(err)
-                    raise AllDebridAPIError(code, msg)
-                return result.get("data", {})
-
-            if attempt >= attempts:
-                break
-            await asyncio.sleep(min(attempt, 3))
-
-        raise last_error or Exception(f"Unknown AllDebrid error for {endpoint}")
+        await acquire_alldebrid_request_slot()
+        async with aiohttp.ClientSession(headers=self._headers()) as session:
+            async with session.post(url, data=data or {}, timeout=TIMEOUT) as response:
+                body = await response.text()
+                if response.status >= 500:
+                    raise Exception(f"AllDebrid HTTP {response.status} for {endpoint}")
+                result = self._decode_json_body(body, endpoint)
+        if result.get("status") != "success":
+            err = result.get("error", {})
+            code = err.get("code", "UNKNOWN") if isinstance(err, dict) else "UNKNOWN"
+            msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            raise AllDebridAPIError(code, msg)
+        return result.get("data", {})
 
     async def _multipart(self, endpoint: str, form: aiohttp.FormData) -> Dict[str, Any]:
         await acquire_alldebrid_request_slot()
@@ -126,7 +109,7 @@ class AllDebridService:
     # ── User ──────────────────────────────────────────────────────────────────
 
     async def get_user(self) -> Dict:
-        return await self._post(API_V4, "user", retries=3)
+        return await self._post(API_V4, "user")
 
     # ── Magnets ───────────────────────────────────────────────────────────────
 
@@ -181,7 +164,7 @@ class AllDebridService:
             payload["id"] = str(magnet_id)
 
         try:
-            data = await self._post(API_V41, "magnet/status", payload, retries=3)
+            data = await self._post(API_V41, "magnet/status", payload)
             raw = data.get("magnets", [])
             if isinstance(raw, dict):
                 return [raw]
@@ -197,7 +180,7 @@ class AllDebridService:
 
         # Fallback: deprecated /v4/magnet/status
         try:
-            data = await self._post(API_V4, "magnet/status", payload, retries=3)
+            data = await self._post(API_V4, "magnet/status", payload)
             raw = data.get("magnets", [])
             if isinstance(raw, dict):
                 return [raw]
@@ -213,7 +196,7 @@ class AllDebridService:
         if not magnet_ids:
             return []
         payload = {f"id[{i}]": str(mid) for i, mid in enumerate(magnet_ids)}
-        data = await self._post(API_V4, "magnet/files", payload, retries=3)
+        data = await self._post(API_V4, "magnet/files", payload)
         return data.get("magnets", [])
 
     async def delete_magnet(self, magnet_id: str) -> bool:
@@ -234,7 +217,7 @@ class AllDebridService:
 
     async def unlock_link(self, link: str) -> Dict:
         result = await self._post(
-            API_V4, "link/unlock", {"link": link}, retries=3
+            API_V4, "link/unlock", {"link": link}
         )
         immediate_link = str(result.get("link") or "").strip()
         if immediate_link:
@@ -262,7 +245,6 @@ class AllDebridService:
                 API_V4,
                 "link/delayed",
                 {"id": str(delayed_id)},
-                retries=3,
             )
             status = int(delayed.get("status") or 0)
             generated_link = str(delayed.get("link") or "").strip()
@@ -303,5 +285,4 @@ def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
         elif "e" in node and isinstance(node["e"], list):
             result.extend(flatten_files(node["e"], current))
     return result
-
 

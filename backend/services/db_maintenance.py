@@ -31,6 +31,14 @@ TABLES = [
     "transfer_pause_intents",
     "deferred_provider_submissions",
     "debridpulse_aria2_owned_gids",
+    "transfer_controls",
+    "transfer_requests",
+    "provider_resources",
+    "resolution_attempts",
+    "execution_attempts",
+    "transfer_outcomes",
+    "postprocess_attempts",
+    "application_events",
 ]
 
 _TABLE_ORDER = {
@@ -41,6 +49,14 @@ _TABLE_ORDER = {
     "transfer_pause_intents": "torrent_id",
     "deferred_provider_submissions": "torrent_id",
     "debridpulse_aria2_owned_gids": "gid",
+    "transfer_controls": "key",
+    "transfer_requests": "id",
+    "provider_resources": "id",
+    "resolution_attempts": "id",
+    "execution_attempts": "id",
+    "transfer_outcomes": "id",
+    "postprocess_attempts": "transfer_id,processor_id",
+    "application_events": "id",
 }
 
 _BACKUP_DIR_RE = re.compile(r"^\d{8}_\d{6}(?:_[0-9a-f]{8}|_[0-9a-f]{32})?$")
@@ -132,7 +148,11 @@ async def _run_database_backup_locked() -> dict:
 
     try:
         async with get_db() as db:
+            await db.execute("BEGIN")
+            present = {row["name"] for row in await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'")}
             for table in TABLES:
+                if table not in present:
+                    continue  # A pre-upgrade backup contains only its actual schema.
                 order_key = _TABLE_ORDER[table]
                 rows = await db.fetchall(f"SELECT * FROM {table} ORDER BY {order_key}")
                 payload["tables"][table] = rows
@@ -206,6 +226,11 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
     if not verified_quiesced:
         raise RuntimeError("Database wipe requires verified quiesced transfer state")
     async with get_db() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        for table in ("application_events", "postprocess_attempts", "transfer_outcomes", "execution_attempts", "resolution_attempts", "provider_resources"):
+            await db.execute(f"DELETE FROM {table}")
+        await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")
+        await db.execute("DELETE FROM transfer_requests")
         await db.execute("DELETE FROM debridpulse_aria2_owned_gids")
         await db.execute("DELETE FROM transfer_pause_intents")
         await db.execute("DELETE FROM deferred_provider_submissions")
@@ -221,9 +246,6 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
             logger.debug("sqlite_sequence reset skipped: %s", exc)
         await db.commit()
 
-    # Drop in-memory mirrors only after the durable wipe commits successfully.
-    from services.transfer_service import transfer_service
-    transfer_service.reset_services()
     logger.warning("Database wipe completed")
     return {"ok": True, "wiped_tables": TABLES}
 

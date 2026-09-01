@@ -10,58 +10,6 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_provider_quiescence_waits_for_inflight_operation():
-    from services.provider_gateway import ProviderGateway
-
-    started = asyncio.Event()
-    release = asyncio.Event()
-
-    async def add_magnet_direct(magnet, source="manual"):
-        started.set()
-        await release.wait()
-        return {"ok": True}
-
-    engine = SimpleNamespace(add_magnet_direct=add_magnet_direct)
-    gateway = ProviderGateway(engine)
-    operation = asyncio.create_task(gateway.add_magnet("magnet:?xt=urn:btih:test"))
-    await started.wait()
-    quiesce = asyncio.create_task(gateway.begin_quiescence())
-    await asyncio.sleep(0)
-    assert not quiesce.done()
-    release.set()
-    await operation
-    await quiesce
-    with pytest.raises(RuntimeError, match="quiesced"):
-        await gateway.add_magnet("magnet:?xt=urn:btih:blocked")
-    await gateway.end_quiescence()
-
-
-def test_provider_delete_requires_positive_local_ownership():
-    from services.manager_v2 import TorrentManager
-
-    assert TorrentManager._provider_delete_authorized("manual") is True
-    assert TorrentManager._provider_delete_authorized("manual_file") is True
-    assert TorrentManager._provider_delete_authorized("api") is True
-    assert TorrentManager._provider_delete_authorized("alldebrid_existing") is False
-    assert TorrentManager._provider_delete_authorized("import_existing") is False
-    assert TorrentManager._provider_delete_authorized("watch") is False
-    assert TorrentManager._provider_delete_authorized("future-arbitrary-source") is False
-    assert TorrentManager._provider_delete_authorized("") is False
-    assert TorrentManager._provider_delete_authorized(None) is False
-
-
-def test_orphan_cleanup_never_treats_unknown_as_delete_authority():
-    source = (Path(__file__).resolve().parents[1] / "services" / "manager_v2.py").read_text()
-    block = source.split("async def cleanup_alldebrid_orphans", 1)[1].split("async def _apply_provider_update", 1)[0]
-    assert "local is None" in block
-    assert "_provider_delete_authorized" in block
-    assert "local is None" in block
-    assert "not self._provider_delete_authorized" in block
-    assert block.index("local is None") < block.index("delete_magnet(ad_id)")
-    assert "preserving unowned/unknown provider object" in block
-
-
-@pytest.mark.asyncio
 async def test_database_maintenance_gate_drains_existing_and_rejects_new_sessions():
     from db.database import DatabaseMaintenanceActive, DatabaseMaintenanceGate
 
@@ -125,7 +73,7 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
     async def stop_scheduler():
         calls.append("scheduler-stop")
 
-    async def start_scheduler():
+    async def start_scheduler(application):
         calls.append("scheduler-start")
 
     async def quiesce():
@@ -150,12 +98,12 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
 
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", stop_scheduler)
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", start_scheduler)
-    monkeypatch.setattr(routes.transfer_service, "quiesce_for_database_wipe", quiesce)
-    monkeypatch.setattr(routes.transfer_service, "release_database_wipe_quiescence", release)
+    from services.maintenance_gate import ApplicationMaintenanceGate
+    application = SimpleNamespace(database_wipe_admission=ApplicationMaintenanceGate().maintenance, quiesce_for_database_wipe=quiesce, release_database_wipe_quiescence=release)
     monkeypatch.setattr(routes, "database_maintenance", maintenance)
     monkeypatch.setattr(db_maintenance, "wipe_database", wipe_database)
 
-    result = await routes.wipe_database_admin({"confirm": True})
+    result = await routes.wipe_database_admin({"confirm": True}, application=application)
     assert result["ok"] is True
     assert calls == [
         "scheduler-stop",
@@ -209,8 +157,6 @@ def test_settings_secret_merge_preserve_replace_clear():
     payload.update(clear_secrets=["not_a_secret"])
     with pytest.raises(Exception):
         _merge_secret_settings(SettingsUpdate(**payload), previous)
-
-
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js not installed")
@@ -324,36 +270,6 @@ async def test_application_maintenance_gate_drains_admitted_work_and_rejects_new
 
 
 @pytest.mark.asyncio
-async def test_transfer_service_gate_blocks_resume_and_intake_during_wipe_admission():
-    from services.maintenance_gate import ApplicationMaintenanceActive, ApplicationMaintenanceGate
-    from services.transfer_service import TransferService
-
-    service = object.__new__(TransferService)
-    service._application_maintenance = ApplicationMaintenanceGate()
-    service.control = SimpleNamespace(resume_all=AsyncMock(return_value={"ok": True}))
-    service.provider = SimpleNamespace(add_magnet=AsyncMock(return_value={"ok": True}))
-
-    async def expect_resume_rejected():
-        with pytest.raises(ApplicationMaintenanceActive):
-            await service.resume_all_downloads()
-
-    async def expect_intake_rejected():
-        with pytest.raises(ApplicationMaintenanceActive):
-            await service.add_magnet_direct("magnet:?xt=urn:btih:test")
-
-    async with service.database_wipe_admission():
-        # The maintenance owner is intentionally reentrant. The race is work
-        # arriving from other request/tasks after admission has closed.
-        await asyncio.gather(
-            asyncio.create_task(expect_resume_rejected()),
-            asyncio.create_task(expect_intake_rejected()),
-        )
-
-    service.control.resume_all.assert_not_awaited()
-    service.provider.add_magnet.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_database_wipe_rechecks_pause_after_application_admission_drain(monkeypatch):
     import api.routes as routes
 
@@ -380,41 +296,16 @@ async def test_database_wipe_rechecks_pause_after_application_admission_drain(mo
         finally:
             calls.append("app-gate-exit")
 
-    monkeypatch.setattr(routes.transfer_service, "database_wipe_admission", application_gate)
+    application = SimpleNamespace(database_wipe_admission=application_gate)
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", AsyncMock())
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", AsyncMock())
 
     with pytest.raises(Exception) as exc:
-        await routes.wipe_database_admin({"confirm": True})
+        await routes.wipe_database_admin({"confirm": True}, application=application)
     assert getattr(exc.value, "status_code", None) == 409
     routes.scheduler_runtime.stop_scheduler.assert_not_awaited()
     routes.scheduler_runtime.start_scheduler.assert_not_awaited()
     assert calls == ["app-gate-enter", "app-gate-exit"]
-
-
-def test_database_wipe_application_gate_covers_execution_opening_boundaries():
-    service = (Path(__file__).resolve().parents[1] / "services" / "transfer_service.py").read_text()
-    for method in (
-        "resume_torrent",
-        "resume_all_downloads",
-        "control_aria2_gid",
-        "add_magnet_direct",
-        "add_torrent_file_direct",
-        "add_direct_links",
-        "retry_direct_link_collection",
-        "delete_torrent",
-        "advance_aria2_queue",
-        "deep_sync_aria2_finished",
-    ):
-        block = service.split(f"async def {method}", 1)[1].split("\n    async def ", 1)[0]
-        assert "self._application_maintenance.operation()" in block
-
-
-def test_dead_disk_guard_pause_path_removed():
-    manager = (Path(__file__).resolve().parents[1] / "services" / "manager_v2.py").read_text()
-    assert "_disk_guard_pause_all" not in manager
-    assert "_disk_guard_paused" not in manager
-
 
 
 def test_mutating_http_requests_share_application_maintenance_admission():
@@ -423,7 +314,7 @@ def test_mutating_http_requests_share_application_maintenance_admission():
     assert '_MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}' in main
     assert '_DATABASE_WIPE_PATH = "/api/admin/database/wipe"' in main
     assert "request.url.path != _DATABASE_WIPE_PATH" in block
-    assert "transfer_service.application_operation()" in block
+    assert "get_application(request).application_operation()" in block
     assert "ApplicationMaintenanceActive" in block
     assert 'status_code=503' in block
 
@@ -449,21 +340,14 @@ async def test_database_wipe_refreshes_disabled_setting_after_admission_drain(mo
         state.enabled = False
         yield
 
-    monkeypatch.setattr(routes.transfer_service, "database_wipe_admission", application_gate)
+    application = SimpleNamespace(database_wipe_admission=application_gate)
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", AsyncMock())
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", AsyncMock())
 
     with pytest.raises(Exception) as exc:
-        await routes.wipe_database_admin({"confirm": True})
+        await routes.wipe_database_admin({"confirm": True}, application=application)
     assert getattr(exc.value, "status_code", None) == 400
     routes.scheduler_runtime.stop_scheduler.assert_not_awaited()
     routes.scheduler_runtime.start_scheduler.assert_not_awaited()
 
 
-def test_disk_guard_disable_clears_gate_before_dispatch_kick():
-    manager = (Path(__file__).resolve().parents[1] / "services" / "manager_v2.py").read_text()
-    block = manager.split("if min_gb <= 0:", 1)[1].split("free_gb =", 1)[0]
-    assert block.index("self._disk_guard_active = False") < block.index("await self._disk_guard_resume_all()")
-    routes = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text()
-    assert "downloads currently paused due to low disk space" not in routes
-    assert "new dispatches currently deferred due to low disk space" in routes

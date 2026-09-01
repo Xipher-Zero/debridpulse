@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from services.extractor import (
+from postprocessors.archive.extractor import (
     Extractor,
     archive_paths_from_downloads,
     find_archives,

@@ -47,7 +47,7 @@ def test_lucide_runtime_is_single_semantic_glyph_authority_without_global_replac
     ):
         assert forbidden not in shell
 
-    assert "return window.DPIcons.statusBadge(s);" in app
+    assert "return window.DPIcons.statusBadge(s, category ? semantics.labels[category] : '', category);" in app
     assert "return window.DPIcons.toast(msg, type);" in app
     assert "window.DPIcons.renderThemeGlyph(!!isLight);" in app
 

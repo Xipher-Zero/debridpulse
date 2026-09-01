@@ -1,4 +1,4 @@
-"""Browser-facing serializers for persistence and aria2 records.
+"""Browser-facing serializers for canonical transfer records.
 
 Persistence rows intentionally retain provider/materialization capabilities such
 as magnets and unlocked URLs. Ordinary API responses must not expose those
@@ -14,7 +14,6 @@ import json
 
 from transfers.errors import NormalizedError
 
-from executors.aria2.client import Aria2DownloadStatus, aria2_download_to_dict
 
 _OPAQUE_FIELDS = frozenset({"payload", "context", "handle", "candidate", "candidates", "endpoints", "request", "resource", "redactions", "headers", "normalized_error"})
 _TORRENT_PRIVATE_FIELDS = frozenset({"magnet", "download_url"}) | _OPAQUE_FIELDS
@@ -67,12 +66,8 @@ def _without_fields(value: Mapping[str, Any], private_fields: frozenset[str]) ->
 def public_torrent(value: Mapping[str, Any]) -> dict[str, Any]:
     """Serialize a torrent row using browser-facing transfer semantics.
 
-    AllDebrid's ``downloaded / size`` percentage describes provider cache state,
-    not local DebridPulse possession. A cached torrent can therefore report 100%
-    while DebridPulse is still determining which local files already exist and
-    which files must be queued to aria2. Keep that provider progress internally,
-    but present 0% to the browser until local materialization has established a
-    queued/downloading/paused/completed transfer state.
+    Provider readiness does not prove local possession. Display local progress
+    only once materialization or execution has established it.
     """
     payload = _without_fields(value, _TORRENT_PRIVATE_FIELDS)
     status = str(payload.get("status") or "").strip().lower()
@@ -97,13 +92,3 @@ def public_payload(value: Any) -> Any:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [public_payload(item) for item in value]
     return value
-
-
-def public_aria2_download(download: Aria2DownloadStatus) -> dict[str, Any]:
-    """Serialize aria2 state without the underlying request URIs."""
-    payload = aria2_download_to_dict(download)
-    payload["files"] = [
-        {key: value for key, value in file_info.items() if key != "uris"}
-        for file_info in payload.get("files", [])
-    ]
-    return payload

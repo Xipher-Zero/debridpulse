@@ -55,8 +55,7 @@ class ApplicationMaintenanceGate:
                         self._depths.pop(current, None)
                         if counted:
                             self._active_operations = max(0, self._active_operations - 1)
-                            if self._active_operations == 0:
-                                self._condition.notify_all()
+                            self._condition.notify_all()
                     else:
                         self._depths[current] = depth - 1
 
@@ -73,7 +72,10 @@ class ApplicationMaintenanceGate:
                 self._maintenance_active = True
                 self._owner = current
                 claimed = True
-                while self._active_operations:
+                # A settings operation can upgrade its own admission while
+                # draining other operations; it must not wait for itself.
+                own_operation = 1 if self._depths.get(current, 0) else 0
+                while self._active_operations > own_operation:
                     await self._condition.wait()
             yield
         finally:

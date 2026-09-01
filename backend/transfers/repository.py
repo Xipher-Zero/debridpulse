@@ -23,6 +23,14 @@ from transfers.policy import transition_allowed
 
 
 _SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS application_events (
+        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        kind TEXT NOT NULL, detail TEXT, claimed INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS postprocess_attempts (
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id), processor_id TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending', paths TEXT NOT NULL, outcome TEXT,
+        PRIMARY KEY(transfer_id,processor_id))""",
     "CREATE TABLE IF NOT EXISTS transfer_controls(key TEXT PRIMARY KEY,value TEXT NOT NULL)",
     """CREATE TABLE IF NOT EXISTS transfer_requests (
         id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
@@ -57,7 +65,7 @@ _COLUMNS = {
     "transfer_requests": {"metadata": "TEXT"},
     "provider_resources": {"cleanup_attempts": "INTEGER NOT NULL DEFAULT 0", "cleanup_retry_at": "REAL NOT NULL DEFAULT 0", "cleanup_blocked": "INTEGER NOT NULL DEFAULT 0"},
     "resolution_attempts": {"result": "TEXT"},
-    "execution_attempts": {"candidate": "TEXT"},
+    "execution_attempts": {"candidate": "TEXT", "progress_at": "REAL"},
     "download_files": {
         "request_id": "TEXT", "candidates": "TEXT", "selected_candidate": "INTEGER NOT NULL DEFAULT 0",
         "execution_attempt_id": "TEXT", "normalized_error": "TEXT", "retry_at": "REAL NOT NULL DEFAULT 0",
@@ -66,6 +74,69 @@ _COLUMNS = {
 
 
 class TransferRepository:
+    async def has_integration_references(self, identity=None):
+        """Connection changes cannot abandon live jobs or unresolved resources."""
+        async with get_db() as db:
+            params = () if identity is None else (identity,)
+            executor_filter = "" if identity is None else " AND executor_id=?"
+            provider_filter = "" if identity is None else " AND provider_id=?"
+            if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','transferring','paused','unknown')" + executor_filter + " LIMIT 1", params):
+                return True
+            return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent'" + provider_filter + " LIMIT 1", params))
+
+    async def pending_events(self):
+        async with get_db() as db:
+            return await db.fetchall("SELECT * FROM application_events WHERE claimed=0 ORDER BY id LIMIT 100")
+
+    async def claim_event(self, event_id):
+        async with get_db() as db:
+            cursor = await db.execute("UPDATE application_events SET claimed=1 WHERE id=? AND claimed=0", (event_id,))
+            await db.commit()
+            return bool(cursor.rowcount)
+
+    async def queue_postprocessing(self, transfer_id, processors, paths):
+        async with get_db() as db:
+            created = False
+            for processor in processors:
+                cursor = await db.execute("INSERT OR IGNORE INTO postprocess_attempts(transfer_id,processor_id,paths) VALUES(?,?,?)",
+                    (transfer_id, processor.descriptor.id, codec.dump(paths)))
+                created = created or bool(cursor.rowcount)
+            if created:
+                await db.execute("UPDATE torrents SET extraction_status='pending' WHERE id=? AND status NOT IN ('completed','deleted') AND COALESCE(extraction_status,'')!='extracting'", (transfer_id,))
+            await db.commit()
+
+    async def postprocessing_jobs(self):
+        async with get_db() as db:
+            return await db.fetchall("""SELECT p.* FROM postprocess_attempts p JOIN torrents t ON t.id=p.transfer_id
+                WHERE p.state='pending' AND t.status='extracting' ORDER BY t.priority DESC,t.id""")
+
+    async def claim_postprocessing(self, transfer_id, processor_id):
+        async with get_db() as db:
+            cursor = await db.execute("UPDATE postprocess_attempts SET state='processing' WHERE transfer_id=? AND processor_id=? AND state='pending'", (transfer_id, processor_id))
+            await db.execute("UPDATE torrents SET extraction_status='extracting' WHERE id=? AND status='extracting'", (transfer_id,))
+            await db.commit()
+            return bool(cursor.rowcount)
+
+    async def finish_postprocessing(self, transfer_id, processor_id, outcome):
+        async with get_db() as db:
+            await db.execute("UPDATE postprocess_attempts SET state='finished',outcome=? WHERE transfer_id=? AND processor_id=?", (codec.dump(outcome), transfer_id, processor_id))
+            message = f"Post-processing {processor_id}: " + (outcome.error.message if outcome.error else outcome.detail or outcome.kind)
+            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if outcome.error else "info", message))
+            jobs = await db.fetchall("SELECT state,outcome FROM postprocess_attempts WHERE transfer_id=?", (transfer_id,))
+            finished = all(job["state"] == "finished" for job in jobs)
+            if finished:
+                outcomes = [codec.load(job["outcome"]) for job in jobs if job["outcome"]]
+                errors = [outcome.get("error") for outcome in outcomes]
+                error = next((NormalizedError.from_dict(item) for item in errors if item), None)
+                status = "error" if error else "skipped" if all(item["kind"] == "skipped" for item in outcomes) else "completed"
+                await db.execute("UPDATE torrents SET extraction_status=?,extraction_error=? WHERE id=? AND status!='deleted'", (status, error.message if error else None, transfer_id))
+            await db.commit()
+            return finished
+
+    async def interrupted_postprocessing(self):
+        async with get_db() as db:
+            return await db.fetchall("SELECT transfer_id,processor_id FROM postprocess_attempts WHERE state='processing'")
+
     async def initialize(self) -> None:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -92,6 +163,65 @@ class TransferRepository:
             row = await db.fetchone("""SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE t.id=?""", (transfer_id,))
         return self._transfer(row)
+
+    async def presentation(self, transfer_id: int, *, details=False):
+        """Explicit canonical read model; opaque integration context stays private."""
+        async with get_db() as db:
+            row = await db.fetchone("""SELECT id,hash,name,status,size_bytes,progress,local_path,source,label,priority,
+                error_message,normalized_error,extraction_status,extraction_error,created_at,updated_at,completed_at
+                FROM torrents WHERE id=?""", (transfer_id,))
+            if not row:
+                return None
+            files = await db.fetchall("""SELECT f.id,f.torrent_id,f.filename,f.size_bytes,f.local_path,f.status,f.download_client,
+                f.blocked,f.block_reason,f.retry_count,f.mirror_group_id,f.mirror_state,f.updated_at,f.normalized_error,
+                e.progress AS execution_progress FROM download_files f
+                LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id WHERE f.torrent_id=? ORDER BY f.id""", (transfer_id,))
+            requests = await db.fetchall("SELECT id,state,error,payload,metadata FROM transfer_requests WHERE transfer_id=?", (transfer_id,))
+            resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
+            providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
+            events = await db.fetchall("SELECT id,torrent_id,level,message,created_at FROM events WHERE torrent_id=? ORDER BY id DESC LIMIT 50", (transfer_id,)) if details else []
+        def normalized(item, field="normalized_error"):
+            error = codec.error(item.pop(field, None))
+            item["error"] = error.as_dict() if error else None
+            item["error_message"] = error.message if error else None
+            return item
+        result = normalized(dict(row))
+        result["file_count"] = len(files)
+        result["blocked_count"] = sum(bool(item["blocked"]) for item in files)
+        result["source_failure_count"] = sum(item["state"] == "failed" for item in requests)
+        result["resources"] = [dict(item) for item in resources]
+        result["providers"] = sorted({item["provider_id"] for item in (*resources, *providers)})
+        result["executors"] = sorted({item["download_client"] for item in files if item["download_client"]})
+        if details:
+            result["files"] = []
+            for row in files:
+                item = normalized(dict(row))
+                progress = TransferProgress(**codec.load(item.pop("execution_progress", None), {}))
+                item["download_speed"] = progress.bytes_per_second if item["status"] == "downloading" else 0
+                item["progress"] = 100 if item["status"] == "completed" else min(100, progress.completed_bytes / item["size_bytes"] * 100) if item["size_bytes"] else 0
+                result["files"].append(item)
+            result["source_outcomes"] = []
+            for item in requests:
+                if item["state"] == "failed":
+                    request = codec.request(codec.load(item["payload"]))
+                    error = codec.error(item["error"])
+                    result["source_outcomes"].append({"id": item["id"], "name": request.name or "Source request", "status": "error",
+                        "error": error.as_dict() if error else None, "error_message": error.message if error else None})
+            result["events"] = [dict(item) for item in events]
+        return result
+
+    async def aggregate_metadata(self, transfer_id, *, total_bytes, local_path):
+        async with get_db() as db:
+            await db.execute("UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status!='deleted'", (total_bytes, local_path, transfer_id))
+            await db.commit()
+
+    async def update_metadata(self, transfer_id, *, label=None, priority=None):
+        async with get_db() as db:
+            if not await db.fetchone("SELECT id FROM torrents WHERE id=?", (transfer_id,)):
+                raise KeyError(transfer_id)
+            await db.execute("UPDATE torrents SET label=COALESCE(?,label),priority=COALESCE(?,priority),updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (label, priority, transfer_id))
+            await db.commit()
 
     async def active(self) -> tuple[Transfer, ...]:
         async with get_db() as db:
@@ -125,22 +255,31 @@ class TransferRepository:
                 for ordinal, request in enumerate(requests):
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload) VALUES(?,?,?,?)",
                                      (new_identity(), transfer_id, ordinal, codec.dump(request)))
+            if created:
+                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer accepted')", (transfer_id,))
+                await db.execute("INSERT INTO application_events(transfer_id,kind) VALUES(?,'accepted')", (transfer_id,))
             await db.commit()
         return await self.get(transfer_id), created
 
     async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None) -> bool:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone("SELECT status,lifecycle_epoch FROM torrents WHERE id=?", (transfer_id,))
+            row = await db.fetchone("SELECT status,progress,lifecycle_epoch,normalized_error FROM torrents WHERE id=?", (transfer_id,))
             if not row or not transition_allowed(TransferState(row["status"]), target, operator=operator):
                 return False
             if expected_epoch is not None and row["lifecycle_epoch"] != expected_epoch:
                 return False
+            if row["status"] == target and (progress is None or row["progress"] == progress) and row["normalized_error"] == (codec.dump(error) if error else None):
+                return True
             await db.execute("""UPDATE torrents SET status=?, progress=COALESCE(?,progress), normalized_error=?,
                 error_message=?, updated_at=CURRENT_TIMESTAMP,
                 completed_at=CASE WHEN ?='completed' THEN COALESCE(completed_at,CURRENT_TIMESTAMP)
                     WHEN ? IN ('pending','queued') THEN NULL ELSE completed_at END WHERE id=?""",
                 (target, progress, codec.dump(error) if error else None, error.message if error else None, target, target, transfer_id))
+            if row["status"] != target or row["normalized_error"] != (codec.dump(error) if error else None):
+                message = f"Transfer {target}" + (f": {error.message}" if error else "")
+                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if error else "info", message))
+                await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
             await db.commit()
         return True
 
@@ -221,6 +360,13 @@ class TransferRepository:
                 identity = uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
                 await db.execute("""INSERT OR IGNORE INTO transfer_requests(id,transfer_id,parent_id,ordinal,payload,metadata)
                     VALUES(?,?,?,?,?,?)""", (identity, record.transfer_id, record.id, ordinal, codec.dump(entry.request), codec.dump(entry)))
+                await db.execute("""UPDATE transfer_requests SET payload=?,metadata=?,state=CASE WHEN state='waiting_parent' THEN 'pending' ELSE state END
+                    WHERE id=?""", (codec.dump(entry.request), codec.dump(entry), identity))
+            missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
+            missing = await db.fetchall("SELECT id FROM transfer_requests WHERE parent_id=? AND state='waiting_parent'", (record.id,))
+            for child in missing:
+                await db.execute("UPDATE transfer_requests SET state='failed',error=? WHERE id=?", (codec.dump(missing_error), child["id"]))
+                await db.execute("UPDATE download_files SET status='error',normalized_error=? WHERE request_id=? AND status!='completed'", (codec.dump(missing_error), child["id"]))
             await db.execute("UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=?", (record.id,))
             await db.commit()
 
@@ -298,6 +444,21 @@ class TransferRepository:
         if action in {"start", "resume"} and await self.globally_paused():
             return False
         return action != "start" or row["state"] == "prepared"
+
+    async def execution_idle_seconds(self, observation, now):
+        """Durable activity clock; repeated snapshots never manufacture progress."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT state,progress,progress_at FROM execution_attempts WHERE id=?", (observation.handle.attempt_id,))
+            if not row:
+                return 0
+            previous = TransferProgress(**codec.load(row["progress"], {}))
+            active = observation.state == ExecutionState.TRANSFERRING and observation.error is None
+            changed = previous.completed_bytes != observation.progress.completed_bytes or row["state"] != observation.state
+            if row["progress_at"] is None or not active or changed:
+                await db.execute("UPDATE execution_attempts SET progress_at=? WHERE id=?", (now, observation.handle.attempt_id))
+                await db.commit()
+                return 0
+            return max(0, now - row["progress_at"])
 
     async def execution(self, observation: ExecutionObservation) -> None:
         handle = observation.handle
@@ -385,11 +546,32 @@ class TransferRepository:
                              (transfer_id, "error" if outcome.error else "info", message))
             await db.commit()
 
-    async def retry_requests(self, transfer_id: int, *, request_id=None):
+    async def retry_requests(self, transfer_id: int, *, request_id=None, reset_budget=False):
         async with get_db() as db:
-            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL WHERE transfer_id=? AND " +
-                             ("id=?" if request_id else "state='failed'"), (transfer_id, request_id) if request_id else (transfer_id,))
+            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE transfer_id=? AND " +
+                             ("id=?" if request_id else "state='failed'"), (reset_budget, transfer_id, request_id) if request_id else (reset_budget, transfer_id))
             await db.commit()
+
+    async def renew_parent(self, record, retry_at, *, reset_budget=False):
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=?,error=NULL,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE id=?", (retry_at, reset_budget, record.id))
+            await db.execute("""UPDATE transfer_requests SET state='waiting_parent',error=NULL WHERE parent_id=? AND id IN
+                (SELECT request_id FROM download_files WHERE status IN ('error','unresolved','lost','cancelled'))""", (record.id,))
+            await db.commit()
+
+    async def reset_retry_budget(self, artifact_id):
+        async with get_db() as db:
+            await db.execute("UPDATE download_files SET retry_count=0 WHERE id=?", (artifact_id,))
+            await db.commit()
+
+    async def reset_postprocessing(self, transfer_id):
+        async with get_db() as db:
+            if await db.fetchone("SELECT transfer_id FROM postprocess_attempts WHERE transfer_id=? AND state IN ('pending','processing')", (transfer_id,)):
+                return False
+            await db.execute("DELETE FROM postprocess_attempts WHERE transfer_id=?", (transfer_id,))
+            await db.commit()
+        return True
 
     async def globally_paused(self) -> bool:
         async with get_db() as db:
@@ -440,9 +622,9 @@ class TransferRepository:
         result = codec.load(row["result"], {}) if row else {}
         return tuple(codec.candidate(value) for value in result.get("candidates", []))
 
-    async def poll_after(self, request_id: str, timestamp: float):
+    async def poll_after(self, request_id: str, timestamp: float, *, waiting=False):
         async with get_db() as db:
-            await db.execute("UPDATE transfer_requests SET retry_at=? WHERE id=?", (timestamp, request_id))
+            await db.execute("UPDATE transfer_requests SET retry_at=?,state=CASE WHEN ? THEN 'waiting' ELSE state END WHERE id=?", (timestamp, waiting, request_id))
             await db.commit()
 
     async def add_alternate(self, primary: Artifact, record: RequestRecord, candidates, size: int):

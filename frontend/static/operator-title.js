@@ -83,12 +83,12 @@
     return '<svg class="' + cls + '" data-dp-lucide="' + name + '" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + geometry + '</svg>';
   }
 
-  function statusBadge(status) {
+  function statusBadge(status, label, category) {
     const key = String(status == null ? '' : status).trim().toLowerCase();
     const descriptor = STATUS[key] || {icon: 'info', label: key || 'Unknown', className: key || 'pending'};
-    return '<span class="badge badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '">' +
+    return '<span class="badge badge-' + escapeHtml(descriptor.className) + '" data-dp-status="' + escapeHtml(key) + '"' + (category ? ' data-dp-failure-code="' + escapeHtml(category) + '"' : '') + '>' +
       lucideSvg(descriptor.icon, 'dp-status-icon') +
-      '<span class="dp-status-label">' + escapeHtml(descriptor.label) + '</span></span>';
+      '<span class="dp-status-label">' + escapeHtml(label || descriptor.label) + '</span></span>';
   }
 
   function decorateButton(button, iconName, label, labelMarker) {

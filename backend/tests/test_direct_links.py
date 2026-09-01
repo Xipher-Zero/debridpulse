@@ -38,13 +38,9 @@ if "aiosqlite" not in sys.modules:
 
 from db.database import _SCHEMA_COLUMNS_FILES
 from providers.alldebrid.client import AllDebridAPIError, AllDebridService
-from services.manager_v2 import (
-    TorrentManager,
-    _retry_async,
-    direct_link_collection_name,
-    direct_link_filename,
-    normalize_direct_links,
-)
+from transfers.requests import direct_link_collection_name
+from transfers.requests import direct_link_filename
+from transfers.requests import normalize_direct_links
 
 
 class DirectLinkInputTests(unittest.TestCase):
@@ -63,7 +59,7 @@ class DirectLinkInputTests(unittest.TestCase):
         )
 
     def test_rejects_non_http_input(self):
-        with self.assertRaisesRegex(ValueError, "Invalid debrid link"):
+        with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP or HTTPS URL"):
             normalize_direct_links(["magnet:?xt=urn:btih:abc"])
 
     def test_caps_each_batch_at_one_hundred_links(self):
@@ -130,53 +126,8 @@ class DirectLinkInputTests(unittest.TestCase):
     def test_schema_migrates_original_source_url(self):
         self.assertIn(("source_url", "TEXT"), _SCHEMA_COLUMNS_FILES)
 
-    def test_removed_source_can_reuse_its_original_target_path(self):
-        manager = TorrentManager()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            existing = root / "archive.zip"
-            existing.write_bytes(b"previous download")
 
-            protected = manager._unique_direct_link_path(
-                root, "archive.zip", set()
-            )
-            reusable = manager._unique_direct_link_path(
-                root,
-                "archive.zip",
-                set(),
-                reuse_existing=True,
-            )
 
-        self.assertEqual(protected.name, "archive (2).zip")
-        self.assertEqual(reusable.name, "archive.zip")
-
-    def test_live_owner_blocks_deleted_history_path_reuse(self):
-        manager = TorrentManager()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            existing = root / "archive.zip"
-            existing.write_bytes(b"current transfer payload")
-            live_paths = {str(existing).lower()}
-
-            selected = manager._unique_direct_link_path(
-                root,
-                "archive.zip",
-                live_paths,
-                reuse_existing=True,
-            )
-
-        self.assertEqual(selected.name, "archive (2).zip")
-
-    def test_direct_link_preparation_seeds_non_deleted_live_paths(self):
-        repo_backend = Path(__file__).resolve().parents[1]
-        manager_source = (repo_backend / "services/manager_v2.py").read_text()
-        self.assertIn("protected_live_paths: Set[str] = set()", manager_source)
-        self.assertIn("WHERE t.status!='deleted'", manager_source)
-        self.assertIn("AND t.id!=?", manager_source)
-        self.assertIn(
-            "reserved_paths: Set[str] = set(protected_live_paths)",
-            manager_source,
-        )
 
 
 class DelayedAllDebridTests(unittest.IsolatedAsyncioTestCase):
@@ -208,125 +159,11 @@ class DelayedAllDebridTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(service._post.await_count, 3)
 
 
-class MissingDirectLinkTests(unittest.IsolatedAsyncioTestCase):
-    async def test_link_down_keeps_code_and_is_not_retried(self):
-        calls = 0
-
-        async def missing_link():
-            nonlocal calls
-            calls += 1
-            raise AllDebridAPIError(
-                "LINK_DOWN",
-                "This link is not available on the file hoster website",
-            )
-
-        with self.assertRaises(AllDebridAPIError) as caught:
-            await _retry_async(
-                missing_link,
-                attempts=3,
-                retry_if=lambda exc: not (
-                    isinstance(exc, AllDebridAPIError)
-                    and exc.code == "LINK_DOWN"
-                ),
-            )
-
-        self.assertEqual(calls, 1)
-        self.assertEqual(caught.exception.code, "LINK_DOWN")
-        self.assertIn("LINK_DOWN", str(caught.exception))
 
 
-class DirectLinkTransactionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_submission_persists_parent_and_schedules_generation(self):
-        class FakeDb:
-            def __init__(self):
-                self.statements = []
-
-            async def execute_returning_id(self, sql, params=()):
-                self.statements.append((sql, params))
-                return 42
-
-            async def execute(self, sql, params=()):
-                self.statements.append((sql, params))
-
-            async def fetchone(self, sql, params=()):
-                return {
-                    "id": 42,
-                    "name": "sample.zip",
-                    "status": "processing",
-                    "source": "direct_link",
-                }
-
-            async def commit(self):
-                return None
-
-        fake_db = FakeDb()
-
-        @asynccontextmanager
-        async def fake_get_db():
-            yield fake_db
-
-        manager = TorrentManager()
-        settings = SimpleNamespace(paused=False, alldebrid_api_key="configured")
-        with patch("services.manager_v2.get_settings", return_value=settings), patch(
-            "services.manager_v2.get_db", fake_get_db
-        ), patch.object(
-            manager, "_broadcast_direct_link_update", new=AsyncMock()
-        ), patch.object(
-            manager, "_schedule_direct_link_collection", new=MagicMock()
-        ) as schedule:
-            result = await manager.add_direct_links(
-                ["https://host.invalid/sample.zip"]
-            )
-
-        self.assertEqual(result["accepted_links"], 1)
-        self.assertEqual(result["source"], "direct_link")
-        insert_sql, insert_params = fake_db.statements[0]
-        self.assertIn("INSERT INTO torrents", insert_sql)
-        self.assertIn("direct_link", insert_params)
-        schedule.assert_called_once_with(42, ["https://host.invalid/sample.zip"])
 
 
 class DashboardContractTests(unittest.TestCase):
-    def test_dashboard_and_downloads_page_match_unified_transfer_ui(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        html = (repo_root / "frontend/static/index.html").read_text()
-        js = (repo_root / "frontend/static/app.js").read_text()
-        unified_heading = "⬇️ Add Links, Magnets, or Torrent File"
-        self.assertIn(unified_heading, html)
-        self.assertIn('id="q-transfer-input" rows="2"', html)
-        self.assertIn('id="btn-add-transfer"', html)
-        self.assertNotIn('id="q-debrid-links"', html)
-        self.assertNotIn('id="q-magnet"', html)
-        self.assertNotIn('data-view="aria2queue"', html)
-        self.assertNotIn('id="t-magnet"', html)
-        self.assertIn('<span class="nav-label">Downloads</span>', html)
-        self.assertIn('id="torrent-card-title">Download Queue</span>', html)
-        self.assertRegex(
-            html,
-            r'<script src="/app\.js\?v=\d+" defer></script>',
-        )
-        self.assertIn("function classifyDashboardEntries", js)
-        self.assertIn("async function addDashboardEntries()", js)
-        self.assertIn("'/links/add'", js)
-        self.assertIn("'/torrents/add-magnet'", js)
-        self.assertIn("setButtonPending(button, true, 'Adding…')", js)
-        self.assertIn("🔗 Direct link", js)
-        self.assertIn("torrents:'Downloads'", js)
-        self.assertNotIn("`All Downloads (${torrentTotal})`", js)
-        self.assertIn("function sourceLabel(source)", js)
-        self.assertIn("function transferDisplayStatus(t)", js)
-        icons = (repo_root / "frontend/static/operator-title.js").read_text()
-        self.assertIn("missing: {icon: 'x', label: 'Missing file'", icons)
-        self.assertIn("downloading_with_errors: {icon: 'triangleAlert', label: 'Downloading'", icons)
-        self.assertIn("completed_with_errors: {icon: 'triangleAlert', label: 'Completed with errors'", icons)
-        self.assertIn("t.status === 'downloading'", js)
-        self.assertIn("t.status === 'completed'", js)
-        self.assertIn("String(t.error_message || '').trim()", js)
-        manager_source = (repo_root / "backend/services/manager_v2.py").read_text()
-        self.assertIn("File is no longer available on the source host", manager_source)
-        self.assertIn("AND f.status != 'missing'", manager_source)
-        self.assertIn("blocked=0 AND status!='missing'", manager_source)
-        self.assertIn("required_count == 0 and missing_count > 0", manager_source)
 
 
 
