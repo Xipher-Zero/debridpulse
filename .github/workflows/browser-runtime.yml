@@ -78,11 +78,12 @@ jobs:
             fi
           done
 
-      - name: Install Playwright Chromium
+      - name: Install and audit Playwright Chromium
         working-directory: frontend/browser
         run: |
           set -euo pipefail
           npm install --ignore-scripts
+          npm audit --audit-level=high
           npx playwright install --with-deps chromium
 
       - name: Run browser runtime contract
