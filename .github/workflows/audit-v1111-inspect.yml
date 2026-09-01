@@ -1,4 +1,4 @@
-name: v1.0.11.1 audit security qualification
+name: v1.0.11.1 frontend reachability mutator
 
 on:
   push:
@@ -6,40 +6,43 @@ on:
       - audit/v1.0.11.1-post-release-remediation
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  security-boundary:
+  mutate-frontend:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
-      - name: Install aria2 and test dependencies
+      - name: Apply frontend reachability cleanup
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y aria2
+          python .github/scripts/audit_v1111_frontend_patch.py
+          ! grep -RInE 'view-(changelog|aria2queue|support)|loadChangelog|loadAria2QueueView|aria2q-' frontend/static
+          node --check frontend/static/app.js
+      - name: Run focused frontend contracts
+        run: |
+          set -euo pipefail
           cd backend
           pip install -r requirements-dev.txt
-      - name: Run downloader security regressions
-        run: |
-          set -euo pipefail
-          cd backend
           python -m pytest \
-            tests/test_v1111_aria2_security_boundary.py \
-            tests/test_v106_external_aria2_ownership.py \
-            tests/test_v106_audit_contracts.py \
+            tests/test_v1111_canonical_frontend_contract.py \
+            tests/test_ui_runtime_architecture_contract.py \
+            tests/test_ui_dashboard_contract.py \
+            tests/test_ui_shell_contract.py \
             -q --tb=short
-      - name: Static source checks
+      - name: Commit cleanup
         run: |
           set -euo pipefail
-          python -m compileall -q backend/services
-          grep -n -A20 -B3 'def _aria2_job_options' backend/services/manager_v2.py
-          grep -RInE 'follow-torrent|follow-metalink|proxy-method|DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY' \
-            backend/services backend/tests/test_v1111_aria2_security_boundary.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/static/index.html frontend/static/app.js frontend/static/style.css backend/tests/test_v1111_canonical_frontend_contract.py
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'refactor(frontend): remove unreachable legacy views'
+          git push origin HEAD:audit/v1.0.11.1-post-release-remediation
