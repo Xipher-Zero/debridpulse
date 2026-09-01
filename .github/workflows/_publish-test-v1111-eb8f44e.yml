@@ -1,0 +1,81 @@
+name: Publish qualified v1.0.11.1 eb8f44e SHA test image
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_publish-test-v1111-eb8f44e.yml
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CANDIDATE_SHA: eb8f44e239d1930fd93aaec70c1f055011d30dff
+  CANDIDATE_VERSION: 1.0.11.1
+  IMAGE: ghcr.io/xipher-zero/debridpulse:sha-eb8f44e
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable working candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: eb8f44e239d1930fd93aaec70c1f055011d30dff
+          fetch-depth: 1
+
+      - name: Prove exact working candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+
+      - name: Authenticate to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build exact qualified test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag "$IMAGE" .
+
+          ACTUAL_REV="$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          ACTUAL_VERSION="$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          test "$ACTUAL_REV" = "$CANDIDATE_SHA"
+          test "$ACTUAL_VERSION" = "$CANDIDATE_VERSION"
+
+      - name: Push SHA-only test image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE" | tee /tmp/push.log
+          grep -E 'digest: sha256:[0-9a-f]{64}' /tmp/push.log
+
+      - name: Pull back and verify published image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image rm "$IMAGE"
+          docker pull "$IMAGE"
+          ACTUAL_REV="$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          ACTUAL_VERSION="$(docker image inspect "$IMAGE" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          echo "Published image:  $IMAGE"
+          echo "Expected revision: $CANDIDATE_SHA"
+          echo "Image revision:    $ACTUAL_REV"
+          echo "Expected version:  $CANDIDATE_VERSION"
+          echo "Image version:     $ACTUAL_VERSION"
+          test "$ACTUAL_REV" = "$CANDIDATE_SHA"
+          test "$ACTUAL_VERSION" = "$CANDIDATE_VERSION"
