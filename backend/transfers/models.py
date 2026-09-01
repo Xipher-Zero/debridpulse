@@ -1,0 +1,231 @@
+"""Canonical values crossing source, executor and post-processing boundaries."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Mapping
+from uuid import uuid4
+
+from transfers.errors import NormalizedError
+
+
+def new_identity() -> str:
+    return uuid4().hex
+
+
+class Capability(StrEnum):
+    RESOLVE = "resolve"
+    AVAILABILITY = "availability"
+    METADATA = "metadata"
+    REFRESH = "refresh"
+    ALTERNATES = "alternates"
+    RESOURCE_CREATION = "resource_creation"
+    RESOURCE_LOOKUP = "resource_lookup"
+    INVENTORY = "inventory"
+    CLEANUP = "cleanup"
+    HEALTH = "health"
+    INTEGRITY = "integrity"
+    PAUSE = "pause"
+    RESUME = "resume"
+    RECONCILE = "reconcile"
+
+
+class ResourceState(StrEnum):
+    PREPARING = "preparing"
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    ABSENT = "absent"
+    EXPIRED = "expired"
+    UNKNOWN = "unknown"
+
+
+class ExecutionState(StrEnum):
+    QUEUED = "queued"
+    TRANSFERRING = "transferring"
+    PAUSED = "paused"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    ABSENT = "absent"
+    UNKNOWN = "unknown"
+
+
+class Ownership(StrEnum):
+    CREATED = "created"
+    OBSERVED = "observed"
+    ADOPTED = "adopted"
+
+
+class CleanupAuthority(StrEnum):
+    OWNED = "owned"
+    USER_REQUEST = "user_request"
+
+
+class OutcomeKind(StrEnum):
+    OBSERVATION = "observation"
+    SUCCESS = "success"
+    FAILURE = "failure"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+
+
+class CancellationInitiator(StrEnum):
+    USER = "user"
+    POLICY = "policy"
+    PROVIDER = "provider"
+    EXECUTOR = "executor"
+
+
+@dataclass(frozen=True)
+class TransferRequest:
+    kind: str
+    payload: str | bytes = field(repr=False)
+    name: str = ""
+    fingerprint: str = ""
+    preferred_provider: str | None = None
+
+
+@dataclass(frozen=True)
+class IntegrationDescriptor:
+    id: str
+    name: str
+    capabilities: frozenset[Capability]
+    request_types: frozenset[str] = frozenset()
+    schemes: frozenset[str] = frozenset()
+    enabled: bool = True
+    priority: int = 0
+
+
+@dataclass(frozen=True)
+class ProviderResource:
+    provider_id: str
+    context: Mapping[str, object] = field(repr=False)
+    ownership: Ownership = Ownership.OBSERVED
+    id: str = field(default_factory=new_identity)
+
+
+@dataclass(frozen=True)
+class Endpoint:
+    scheme: str
+    address: str = field(repr=False)
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class IntegrityMetadata:
+    algorithm: str
+    digest: str
+
+
+@dataclass(frozen=True)
+class TransferCandidate:
+    name: str
+    endpoints: tuple[Endpoint, ...]
+    expected_bytes: int = 0
+    relative_path: str = ""
+    provider_id: str = ""
+    resource: ProviderResource | None = None
+    refresh_request: TransferRequest | None = field(default=None, repr=False)
+    context: Mapping[str, object] = field(default_factory=dict, repr=False)
+    expires_at: float | None = None
+    integrity: tuple[IntegrityMetadata, ...] = ()
+    priority: int = 0
+    id: str = field(default_factory=new_identity)
+
+
+@dataclass(frozen=True)
+class TransferProgress:
+    total_bytes: int = 0
+    completed_bytes: int = 0
+    bytes_per_second: int = 0
+
+    @property
+    def percentage(self) -> float:
+        return min(100.0, max(0.0, self.completed_bytes / self.total_bytes * 100)) if self.total_bytes > 0 else 0.0
+
+
+@dataclass(frozen=True)
+class ProviderObservation:
+    resource: ProviderResource
+    state: ResourceState
+    name: str = ""
+    fingerprint: str = ""
+    progress: TransferProgress = field(default_factory=TransferProgress)
+    error: NormalizedError | None = None
+    request: TransferRequest | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True)
+class ResolutionResult:
+    state: ResourceState
+    candidates: tuple[TransferCandidate, ...] = ()
+    observation: ProviderObservation | None = None
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class SourceEntry:
+    """Metadata for an unresolved manifest member; never dispatched as a candidate."""
+    name: str
+    expected_bytes: int
+    relative_path: str
+    request: TransferRequest = field(repr=False)
+
+
+@dataclass(frozen=True)
+class ResourceSnapshot:
+    observations: tuple[ProviderObservation, ...]
+    complete: bool = False
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class ExecutionHandle:
+    executor_id: str
+    context: Mapping[str, object] = field(repr=False)
+    attempt_id: str = field(default_factory=new_identity)
+
+
+@dataclass(frozen=True)
+class ExecutionRequest:
+    candidate: TransferCandidate
+    target: str
+    attempt_id: str
+    paused: bool = False
+
+
+@dataclass(frozen=True)
+class ExecutionObservation:
+    handle: ExecutionHandle
+    state: ExecutionState
+    progress: TransferProgress = field(default_factory=TransferProgress)
+    paths: tuple[str, ...] = ()
+    error: NormalizedError | None = None
+
+    @property
+    def occupies_slot(self) -> bool:
+        return self.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING}
+
+    @property
+    def resumable(self) -> bool:
+        return self.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING, ExecutionState.PAUSED}
+
+
+@dataclass(frozen=True)
+class TransferOutcome:
+    kind: OutcomeKind
+    error: NormalizedError | None = None
+    cancellation_initiator: CancellationInitiator | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class CleanupDirective:
+    resource: ProviderResource
+    authority: CleanupAuthority = CleanupAuthority.OWNED
+
+
+@dataclass(frozen=True)
+class HealthObservation:
+    healthy: bool
+    error: NormalizedError | None = None

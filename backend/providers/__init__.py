@@ -1,0 +1,1 @@
+"""Registered source integration implementations."""

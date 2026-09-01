@@ -402,7 +402,7 @@ class TestSearchReadOnly:
         mock_ctx.fetchone   = AsyncMock(return_value=None)
 
         with patch("services.duplicates.get_db", return_value=mock_ctx) as _db:
-            with patch("services.alldebrid.AllDebridService.upload_magnet") as mock_upload:
+            with patch("providers.alldebrid.client.AllDebridService.upload_magnet") as mock_upload:
                 await find_hash_duplicate("somehash")
                 mock_upload.assert_not_called()
 
@@ -414,7 +414,7 @@ class TestSearchReadOnly:
         mock_ctx.fetchall   = AsyncMock(return_value=[])
 
         with patch("services.duplicates.get_db", return_value=mock_ctx):
-            with patch("services.alldebrid.AllDebridService.upload_magnet") as mock_upload:
+            with patch("providers.alldebrid.client.AllDebridService.upload_magnet") as mock_upload:
                 await find_semantic_duplicates(DuplicateCandidate(title="Test Movie 2024"))
                 mock_upload.assert_not_called()
 
@@ -427,7 +427,7 @@ class TestSearchReadOnly:
         mock_ctx.fetchall   = AsyncMock(return_value=[])
 
         with patch("services.duplicates.get_db", return_value=mock_ctx):
-            with patch("services.alldebrid.AllDebridService.upload_magnet") as mock_upload:
+            with patch("providers.alldebrid.client.AllDebridService.upload_magnet") as mock_upload:
                 await check_before_add(DuplicateCandidate(
                     source="search",
                     title="Test",
@@ -450,7 +450,7 @@ class TestSearchReadOnly:
         decision.as_dict.return_value = duplicate
 
         with patch("services.duplicates.check_before_add", AsyncMock(return_value=decision)) as mock_check:
-            with patch("services.alldebrid.AllDebridService.upload_magnet") as mock_upload:
+            with patch("providers.alldebrid.client.AllDebridService.upload_magnet") as mock_upload:
                 result = await check_torrent_duplicate({
                     "title": "Preview Only",
                     "hash": "abcdef1234567890abcdef1234567890abcdef12",

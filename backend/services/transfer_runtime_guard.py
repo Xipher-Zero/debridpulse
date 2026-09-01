@@ -375,7 +375,7 @@ class GuardedTransferIntegrityManager(TransferIntegrityManager):
         local_hash = str(preferred_hash or "").strip().lower()
         if not local_hash:
             try:
-                from services.alldebrid import extract_hash_from_torrent
+                from transfers.requests import extract_hash_from_torrent
 
                 local_hash = str(extract_hash_from_torrent(file_bytes) or "").lower()
             except Exception:

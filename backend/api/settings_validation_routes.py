@@ -22,7 +22,7 @@ from core.branding import APP_SHORT_NAME
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.version import read_version
-from services.alldebrid import AllDebridService
+from providers.alldebrid.client import AllDebridService
 from services.aria2 import Aria2Service
 from services.notifications import NotificationService
 from services.transfer_service import transfer_service

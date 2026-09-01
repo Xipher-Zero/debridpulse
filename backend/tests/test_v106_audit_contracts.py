@@ -153,7 +153,7 @@ def test_7z_listing_budget_is_validated_before_extraction(tmp_path, monkeypatch)
 
 
 def test_alldebrid_client_rate_limits_multipart_uploads():
-    source = (Path(__file__).resolve().parents[1] / "services" / "alldebrid.py").read_text()
+    source = (Path(__file__).resolve().parents[1] / "providers" / "alldebrid" / "client.py").read_text()
     multipart = source.split("async def _multipart", 1)[1].split("# ── User", 1)[0]
     assert "await acquire_alldebrid_request_slot()" in multipart
     assert "services.manager_v2" not in source
@@ -194,7 +194,7 @@ def test_v106_transitional_and_mediainfo_residue_removed():
 
 
 def test_alldebrid_retry_attempts_are_individually_rate_limited():
-    source = (Path(__file__).resolve().parents[1] / "services" / "alldebrid.py").read_text()
+    source = (Path(__file__).resolve().parents[1] / "providers" / "alldebrid" / "client.py").read_text()
     post = source.split("async def _post", 1)[1].split("async def _multipart", 1)[0]
     loop_at = post.index("for attempt in range(1, attempts + 1):")
     limiter_at = post.index("await acquire_alldebrid_request_slot()")

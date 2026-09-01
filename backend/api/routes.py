@@ -801,7 +801,7 @@ async def torrent_files_preview(torrent_id: int):
         raise HTTPException(400, "Torrent has no AllDebrid ID — not ready yet")
     try:
         files_data = await transfer_service.provider.get_magnet_files([str(row["alldebrid_id"])])
-        from services.alldebrid import flatten_files
+        from providers.alldebrid.client import flatten_files
         for entry in files_data:
             if str(entry.get("id", "")) == str(row["alldebrid_id"]):
                 flat = flatten_files(entry.get("files", []))

@@ -11,7 +11,52 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
-from services.alldebrid import validate_provider_download_url
+def validate_provider_download_url(value: object, *, context: str = "download link") -> str:
+    """Validate a provider-issued URL before handing it to the local downloader.
+
+    A provider may broker the remote object, but the returned capability
+    URL still crosses a network trust boundary: aria2 will resolve and connect to
+    it from the DebridPulse host. Keep that boundary explicit and reject schemes,
+    credentials, and literal/local destinations that should never be necessary
+    for a public download URL.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        raise Exception(f"Provider returned an empty {context}")
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port  # force validation of malformed/out-of-range ports
+    except ValueError as exc:
+        raise Exception(f"Provider returned an invalid {context}") from exc
+
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        raise Exception(f"Provider returned a non-HTTP(S) {context}")
+    if parsed.username is not None or parsed.password is not None:
+        raise Exception(f"Provider returned a credential-bearing {context}")
+    if port is not None and not (1 <= port <= 65535):
+        raise Exception(f"Provider returned an invalid {context}")
+
+    host = parsed.hostname.rstrip(".").casefold()
+    if not host or "%" in host:
+        raise Exception(f"Provider returned an invalid {context} host")
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        raise Exception(f"Provider returned a local {context} host")
+
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        # inet_aton also recognizes legacy numeric IPv4 spellings such as
+        # 2130706433 or 0x7f000001 that strict ipaddress intentionally rejects
+        # but some network stacks still resolve as loopback/private addresses.
+        try:
+            address = ipaddress.ip_address(socket.inet_aton(host))
+        except OSError:
+            address = None
+    if address is not None and not address.is_global:
+        raise Exception(f"Provider returned a non-public {context} address")
+
+    return raw
+
 
 
 def _public_ip(address: str) -> bool:

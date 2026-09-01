@@ -59,7 +59,7 @@ if "pydantic" not in sys.modules:
             return self.__class__(**d)
     sys.modules["pydantic"] = types.SimpleNamespace(BaseModel=_FakeModel)
 
-from services.alldebrid import AllDebridService, flatten_files
+from providers.alldebrid.client import AllDebridService, flatten_files
 from services.aria2 import Aria2Service, Aria2DownloadStatus, Aria2RPCError, Aria2ConnectionError
 from services.manager_v2 import (
     TransientAllDebridStateError,
@@ -1647,7 +1647,7 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
             async def __aenter__(self): return self
             async def __aexit__(self, *a): return False
 
-        with patch("services.alldebrid.aiohttp.ClientSession", FakeSession):
+        with patch("providers.alldebrid.client.aiohttp.ClientSession", FakeSession):
             result = await service._post("https://api.example", "magnet/status", retries=2)
         self.assertEqual(result, {"ok": True})
 

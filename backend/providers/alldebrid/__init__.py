@@ -1,0 +1,1 @@
+"""AllDebrid source provider."""

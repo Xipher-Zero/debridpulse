@@ -16,7 +16,7 @@ from core.config import AppSettings, get_settings
 from core.logging_utils import sanitize_exception, sanitize_log_value
 import aiosqlite  # noqa: F401 — used by tests via unittest.mock.patch
 from db.database import get_db
-from services.alldebrid import AllDebridAPIError, AllDebridService, flatten_files
+from providers.alldebrid.client import AllDebridAPIError, AllDebridService, flatten_files
 from services.aria2 import Aria2ConnectionError, Aria2DownloadStatus, Aria2RPCError, Aria2Service
 from services.aria2_runtime import aria2_global_options, effective_rpc_config, is_builtin_mode
 from services.extractor import archive_paths_from_downloads, get_extractor
@@ -890,7 +890,7 @@ class TorrentManager:
         local_hash = preferred_hash or ""
         if not local_hash:
             try:
-                from services.alldebrid import extract_hash_from_torrent
+                from transfers.requests import extract_hash_from_torrent
                 local_hash = extract_hash_from_torrent(file_bytes) or ""
             except Exception as exc:
                 logger.debug("Failed to extract hash from torrent file: %s", exc)

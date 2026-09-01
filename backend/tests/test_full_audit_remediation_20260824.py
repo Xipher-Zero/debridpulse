@@ -17,7 +17,7 @@ from services.direct_link_result_guard import DirectLinkResultGuardManager
 from services.dispatch_coordinator import collapse_direct_link_mirrors
 from services.extractor import Extractor
 from services.manager_v2 import _direct_link_unlock_failure_prefix
-from services.alldebrid import AllDebridAPIError
+from providers.alldebrid.client import AllDebridAPIError
 
 
 @pytest.mark.asyncio

@@ -37,7 +37,7 @@ if "aiosqlite" not in sys.modules:
     )
 
 from db.database import _SCHEMA_COLUMNS_FILES
-from services.alldebrid import AllDebridAPIError, AllDebridService
+from providers.alldebrid.client import AllDebridAPIError, AllDebridService
 from services.manager_v2 import (
     TorrentManager,
     _retry_async,
@@ -198,7 +198,7 @@ class DelayedAllDebridTests(unittest.IsolatedAsyncioTestCase):
                 {"status": 2, "link": "https://download.invalid/archive.zip"},
             ]
         )
-        with patch("services.alldebrid.asyncio.sleep", new=AsyncMock()) as sleep:
+        with patch("providers.alldebrid.client.asyncio.sleep", new=AsyncMock()) as sleep:
             result = await service.unlock_link("https://host.invalid/archive")
 
         self.assertEqual(result["filename"], "archive.zip")

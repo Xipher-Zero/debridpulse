@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.config import AppSettings
 from core.scheduler import _coerce_int_setting, _stats_report_window_hours
-import services.rate_limit as rate_limit
+import providers.alldebrid.rate_limit as rate_limit
 
 
 class SchedulerSettingsTests(unittest.TestCase):
@@ -34,13 +34,13 @@ class AllDebridRateLimitTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rate_limit_zero_means_effectively_unlimited(self):
         cfg = types.SimpleNamespace(alldebrid_rate_limit_per_minute=0)
-        with patch("services.rate_limit.get_settings", return_value=cfg):
+        with patch("providers.alldebrid.rate_limit.get_settings", return_value=cfg):
             limiter = await rate_limit.get_alldebrid_rate_limiter()
         self.assertGreaterEqual(limiter._rate, 1_000_000)
 
     async def test_rate_limit_positive_value_is_respected(self):
         cfg = types.SimpleNamespace(alldebrid_rate_limit_per_minute=12)
-        with patch("services.rate_limit.get_settings", return_value=cfg):
+        with patch("providers.alldebrid.rate_limit.get_settings", return_value=cfg):
             limiter = await rate_limit.get_alldebrid_rate_limiter()
         self.assertEqual(limiter._rate, 12)
 

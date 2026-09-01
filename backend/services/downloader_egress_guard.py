@@ -28,7 +28,7 @@ import socket
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
-from services.alldebrid import validate_provider_download_url
+from services.network_safety import validate_provider_download_url
 from services.network_safety import reject_non_public_resolution
 
 logger = logging.getLogger("debridpulse.downloader_egress_guard")

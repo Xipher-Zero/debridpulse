@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from core.config import get_settings
 from db.database import get_db
-from services.alldebrid import AllDebridAPIError
+from providers.alldebrid.client import AllDebridAPIError
 from services.direct_link_result_guard import DirectLinkResultGuardManager
 from services.transfer_integrity import _EXISTING_PAYLOAD_STABILITY_SECONDS
 from services.manager_v2 import (

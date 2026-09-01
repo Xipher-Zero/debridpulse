@@ -4,7 +4,7 @@ import hashlib
 
 import bencode2
 
-from services.alldebrid import extract_hash_from_torrent
+from transfers.requests import extract_hash_from_torrent
 
 
 def _metainfo(announce: bytes = b"https://tracker.invalid/announce") -> tuple[bytes, bytes]:

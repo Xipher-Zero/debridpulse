@@ -6,11 +6,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.alldebrid import (
+from providers.alldebrid.client import (
     AllDebridService,
     flatten_files,
-    validate_provider_download_url,
 )
+from services.network_safety import validate_provider_download_url
 from services.extractor import (
     _extract_7z_to,
     _extract_rar_to,
@@ -70,7 +70,7 @@ async def test_unlock_link_validates_delayed_provider_target():
         ]
     )
 
-    with patch("services.alldebrid.asyncio.sleep", new=AsyncMock()):
+    with patch("providers.alldebrid.client.asyncio.sleep", new=AsyncMock()):
         with pytest.raises(Exception, match="non-public"):
             await service.unlock_link("https://host.example/source")
 
