@@ -38,13 +38,17 @@ jobs:
           test "$(cat VERSION)" = "1.0.11.1"
       - name: Apply canonical Statistics repair
         shell: bash
-        run: python helper/scripts/_repair_stats_canonical_base.py repo
+        run: |
+          set -euo pipefail
+          python helper/scripts/_repair_stats_canonical_base.py repo
+          python helper/scripts/_repair_stats_contract_followup.py repo
       - name: Canonical Statistics architecture assertions
         working-directory: repo
         shell: bash
         run: |
           set -euo pipefail
           ! grep -R "ensureStatisticsArchitecture\|moveDashboardKpisToStatistics\|decorateHistoricalKpis" frontend/static/ui-statistics.js frontend/static/ui-runtime.js
+          ! grep -R "dash-kpi-strip--dashboard" frontend/static/index.html frontend/static/ui-dashboard.css frontend/static/ui-runtime.js
           ! grep -R "ui-statistics.css" frontend/static/style-v11.css frontend/static/index.html
           test ! -e frontend/static/ui-statistics.css
           node --check frontend/static/ui-statistics.js
@@ -62,6 +66,8 @@ jobs:
           python -m pytest -q \
             backend/tests/test_ui_statistics_contract.py \
             backend/tests/test_v1111_canonical_frontend_contract.py \
+            backend/tests/test_ui_dashboard_contract.py \
+            backend/tests/test_v1_scope.py \
             backend/tests/test_ui_runtime_architecture_contract.py \
             backend/tests/test_ui_frontend_deep_audit_contract.py \
             backend/tests/test_ui_cross_page_consistency_contract.py
@@ -79,6 +85,6 @@ jobs:
           git status --short
           git config user.name "Xipher-Zero"
           git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
-          git add -A frontend/static backend/tests/test_ui_statistics_contract.py backend/tests/test_v1111_canonical_frontend_contract.py
+          git add -A frontend/static backend/tests
           git commit -m "fix: encode canonical Statistics composition"
           git push origin HEAD:1.0.11-hotfix1
