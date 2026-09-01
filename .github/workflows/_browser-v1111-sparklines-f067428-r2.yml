@@ -1,0 +1,227 @@
+name: Browser qualify v1.0.11.1 Dashboard sparklines f067428 r2
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-dashboard-sparklines
+    paths:
+      - .github/workflows/_browser-v1111-sparklines-f067428-r2.yml
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: f06742847f60b5924e4584714055d0a311172158
+  CANDIDATE_VERSION: 1.0.11.1
+  IMAGE_TAG: local/debridpulse:browser-f067428-r2
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout immutable candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: f06742847f60b5924e4584714055d0a311172158
+          fetch-depth: 2
+
+      - name: Prove exact candidate and canonical ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "$CANDIDATE_VERSION"
+          test -z "$(git status --porcelain)"
+          test "$(grep -o 'class="dp-card-spark"' frontend/static/index.html | wc -l)" -eq 6
+          test "$(grep -o 'class="dp-card-spark-line"' frontend/static/index.html | wc -l)" -eq 6
+          ! grep -q 'makeSparkline' frontend/static/ui-runtime.js
+          ! grep -q 'installMetricHistoryHook' frontend/static/ui-runtime.js
+          ! grep -q 'METRIC_HISTORY_KEY' frontend/static/ui-runtime.js
+          grep -q 'recordDashboardMetricHistory({' frontend/static/app.js
+          grep -q 'dashboardSmoothSparkPath' frontend/static/app.js
+
+      - name: Build exact candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --build-arg APP_VERSION="$CANDIDATE_VERSION" \
+            --build-arg VCS_REF="$CANDIDATE_SHA" \
+            --tag "$IMAGE_TAG" \
+            .
+
+      - name: Browser live-state and curved-sparkline qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="debridpulse-spark-browser-r2"
+          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          docker run --detach --name "$container_name" \
+            --publish 127.0.0.1:18080:8080 \
+            --env PUID=12345 --env PGID=12345 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$IMAGE_TAG"
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/health >/dev/null; then healthy=1; break; fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then docker logs "$container_name" || true; exit 1; fi
+
+          chrome_bin="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$chrome_bin"
+          rm -rf /tmp/dp-browser && mkdir -p /tmp/dp-browser
+          npm --prefix /tmp/dp-browser init -y >/dev/null 2>&1
+          npm --prefix /tmp/dp-browser install --no-save puppeteer-core@24.16.0 >/dev/null
+          export CHROME_BIN="$chrome_bin"
+          export NODE_PATH=/tmp/dp-browser/node_modules
+
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const puppeteer = require('puppeteer-core');
+          const base = 'http://127.0.0.1:18080/';
+          const historyKey = 'debridpulse.dashboard.metric-history.v2';
+          const samples = [
+            {
+              by_status: {completed: 2, downloading: 1, processing: 0, uploading: 0, error: 0, deleted: 100},
+              completed_count: 2, active_operations: 1, active_downloads: 1,
+              error_count: 0, total_completed_bytes: 1024, total_blocked_files: 0,
+              completed_last_24h: 1, completed_last_7d: 2, success_rate_pct: 100,
+              avg_download_duration_seconds: 60, avg_torrent_size_bytes: 512,
+              operator_active_progress_pct: 25, paused: false
+            },
+            {
+              by_status: {completed: 3, downloading: 2, processing: 1, uploading: 0, error: 1, deleted: 200},
+              completed_count: 3, active_operations: 3, active_downloads: 2,
+              error_count: 1, total_completed_bytes: 4096, total_blocked_files: 1,
+              completed_last_24h: 2, completed_last_7d: 3, success_rate_pct: 80,
+              avg_download_duration_seconds: 90, avg_torrent_size_bytes: 1024,
+              operator_active_progress_pct: 50, paused: false
+            },
+            {
+              by_status: {completed: 4, downloading: 0, processing: 0, uploading: 0, error: 0, deleted: 300},
+              completed_count: 4, active_operations: 0, active_downloads: 0,
+              error_count: 0, total_completed_bytes: 8192, total_blocked_files: 1,
+              completed_last_24h: 3, completed_last_7d: 4, success_rate_pct: 90,
+              avg_download_duration_seconds: 75, avg_torrent_size_bytes: 2048,
+              operator_active_progress_pct: 0, paused: false
+            }
+          ];
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: process.env.CHROME_BIN,
+              headless: true,
+              args: ['--no-sandbox', '--disable-dev-shm-usage']
+            });
+            try {
+              const staticPage = await browser.newPage();
+              await staticPage.setJavaScriptEnabled(false);
+              await staticPage.goto(base, {waitUntil: 'domcontentloaded'});
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark', els => els.length), 6);
+              assert.equal(await staticPage.$$eval('#view-dashboard .dp-card-spark-line', els => els.length), 6);
+              await staticPage.close();
+
+              let current = samples[0];
+              const page = await browser.newPage();
+              const pageErrors = [];
+              const badStatic = [];
+              page.on('pageerror', e => pageErrors.push(String(e)));
+              page.on('response', r => {
+                if (r.url().startsWith(base) && r.status() >= 400 && /\.(?:js|css|svg|png|ico)(?:\?|$)/.test(r.url())) {
+                  badStatic.push(`${r.status()} ${r.url()}`);
+                }
+              });
+              await page.setRequestInterception(true);
+              page.on('request', req => {
+                if (/\/api\/stats(?:\?|$)/.test(req.url())) {
+                  req.respond({status: 200, contentType: 'application/json', body: JSON.stringify(current)}).catch(() => {});
+                } else {
+                  req.continue().catch(() => {});
+                }
+              });
+
+              await page.goto(base, {waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+              await page.evaluate(key => localStorage.setItem(key, '[]'), historyKey);
+
+              current = samples[0];
+              await page.evaluate(() => loadStats());
+              current = samples[1];
+              await page.evaluate(() => loadStats());
+
+              const first = await page.evaluate(key => ({
+                values: {
+                  total: document.getElementById('s-total').textContent.trim(),
+                  completed: document.getElementById('s-completed').textContent.trim(),
+                  active: document.getElementById('s-active').textContent.trim(),
+                  processing: document.getElementById('s-processing').textContent.trim(),
+                  errors: document.getElementById('s-error').textContent.trim()
+                },
+                history: JSON.parse(localStorage.getItem(key) || '[]'),
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || ''),
+                fills: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-fill')).map(el => el.getAttribute('d') || '')
+              }), historyKey);
+
+              assert.deepEqual(first.values, {total: '7', completed: '3', active: '3', processing: '1', errors: '1'});
+              assert.equal(first.history.length, 2);
+              assert.deepEqual(
+                Object.fromEntries(['total','completed','active','processing','errors','downloaded'].map(k => [k, first.history[1][k]])),
+                {total: 7, completed: 3, active: 3, processing: 1, errors: 1, downloaded: 4096}
+              );
+              assert.equal(first.paths.length, 6);
+              first.paths.forEach(path => { assert.match(path, /^M /); assert.match(path, / C /); });
+              first.fills.forEach(path => { assert.match(path, / C /); assert.match(path, / L 100 24 L 0 24 Z$/); });
+
+              current = samples[2];
+              await page.evaluate(() => loadStats());
+              const second = await page.evaluate(key => ({
+                total: document.getElementById('s-total').textContent.trim(),
+                history: JSON.parse(localStorage.getItem(key) || '[]'),
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || '')
+              }), historyKey);
+              assert.equal(second.total, '4');
+              assert.equal(second.history.length, 3);
+              assert.equal(second.history[2].total, 4);
+              assert(second.paths.some((path, i) => path !== first.paths[i]));
+
+              // nav() accepts the nav element, not a view-name string.
+              for (const view of ['torrents', 'events', 'stats', 'settings', 'help', 'dashboard']) {
+                const result = await page.evaluate(v => {
+                  const el = document.querySelector(`.nav-item[data-view="${v}"]`);
+                  if (!el) return false;
+                  nav(el);
+                  return document.getElementById(`view-${v}`)?.classList.contains('active') || false;
+                }, view);
+                assert.equal(result, true, `navigation failed for ${view}`);
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+
+              const theme = await page.$('#theme-toggle');
+              if (theme) {
+                await theme.click();
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await theme.click();
+              }
+
+              current = samples[2];
+              await page.reload({waitUntil: 'networkidle2'});
+              await page.waitForSelector('#view-dashboard.active');
+              const reloaded = await page.evaluate(() => ({
+                sparks: document.querySelectorAll('#view-dashboard .dp-card-spark').length,
+                paths: Array.from(document.querySelectorAll('#view-dashboard .dp-card-spark-line')).map(el => el.getAttribute('d') || '')
+              }));
+              assert.equal(reloaded.sparks, 6);
+              assert(reloaded.paths.every(path => path.includes(' C ')));
+              assert.deepEqual(pageErrors, []);
+              assert.deepEqual(badStatic, []);
+            } finally {
+              await browser.close();
+            }
+          })().catch(err => { console.error(err); process.exitCode = 1; });
+          NODE
