@@ -1,0 +1,100 @@
+name: Restore Downloads bulk material through universal owner
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_repair-v1111-downloads-bulk-material-r2.yml
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: acccc222f2f84622413409e0d7733cc2d200b6f8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout guarded candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 1.0.11-hotfix1
+          fetch-depth: 2
+      - name: Prove exact base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = 1.0.11.1
+          test -z "$(git status --porcelain)"
+      - name: Collapse accepted v1.0.11 material into canonical ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          index = Path('frontend/static/index.html')
+          legacy = Path('frontend/static/style.css')
+
+          html = index.read_text()
+          base = legacy.read_text()
+
+          old_class = 'class="bulk-bar dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"'
+          # v1.0.11's accepted runtime gave this outer strip the canonical dp-card
+          # material. Keep that ownership directly in static markup and retire the
+          # inherited ADC .bulk-bar presentation class entirely.
+          new_class = 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"'
+          assert html.count(old_class) == 1
+          html = html.replace(old_class, new_class)
+
+          old_legacy = '''/* Bulk bar */\n.bulk-bar { display:none; background:var(--accent); color:var(--accent-contrast); padding:9px 16px;\n  border-radius:var(--radius); margin-bottom:10px; gap:12px; font-size:13px;\n  font-weight:600; align-items:center; }\n.bulk-bar.visible { display:flex; }\n'''
+          assert base.count(old_legacy) == 1
+          base = base.replace(old_legacy, '')
+
+          index.write_text(html)
+          legacy.write_text(base)
+
+          for path in Path('backend/tests').glob('test_*.py'):
+              text = path.read_text()
+              if old_class in text:
+                  path.write_text(text.replace(old_class, new_class))
+          PY
+
+          grep -q 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' frontend/static/index.html
+          ! grep -q 'class="bulk-bar ' frontend/static/index.html
+          ! grep -q '^\.bulk-bar' frontend/static/style.css
+          # Material remains owned by the universal component language, not Downloads CSS.
+          ! grep -q 'background: var(--dp-panel-surface)' frontend/static/ui-downloads-page.css
+          grep -q 'background: var(--dp-panel-surface);' frontend/static/ui-universal-language.css
+          git diff --check
+          find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Full regression before commit
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: |
+          set -euo pipefail
+          pip install -r backend/requirements-dev.txt
+          cd backend
+          python -m pytest tests/ -q --tb=short
+      - name: Commit canonical source correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git status --short
+          git add frontend/static/index.html frontend/static/style.css backend/tests
+          git commit -m 'fix: restore canonical Downloads bulk material'
+          git push origin HEAD:1.0.11-hotfix1
+          echo "NEW_CANDIDATE_SHA=$(git rev-parse HEAD)"
