@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=15">
-<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=24" data-dp-v11-styles="1">
+<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=25" data-dp-v11-styles="1">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 </head>
@@ -217,18 +217,6 @@
         </div>
       </div>
 
-      <div id="debug-status" style="display:none;padding:10px 16px;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text2)"></div>
-
-      <!-- ── System Health ──────────────────────────────────────────────────── -->
-      <div id="dash-health-bar" style="display:none;margin-bottom:10px;padding:10px 16px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:12px">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <span style="font-weight:700;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em">System</span>
-          <span id="dash-health-recovery" style="color:var(--text2)"></span>
-          <span id="dash-health-deadlock" style="color:var(--text2)"></span>
-          <span id="dash-health-aging" style="color:var(--text2)"></span>
-        </div>
-      </div>
-
       <!-- ── Unified transfer submission ───────────────────────────────────── -->
       <div class="card" style="margin-bottom:14px">
         <div class="card-header">
@@ -279,49 +267,47 @@
 
     <!-- Downloads -->
     <div class="view" id="view-torrents">
-      <!-- Bulk-action toolbar: class="bulk-bar" is required for .bulk-bar.visible CSS -->
-      <div class="bulk-bar" id="bulk-bar">
-        <span id="bulk-count"></span>
-        <button class="btn btn-danger btn-sm" onclick="bulkAction('delete',this)">✕ Delete</button>
-        <button class="btn btn-blue btn-sm"   onclick="bulkAction('reset',this)">↺ Reset</button>
-        <button class="btn btn-ghost btn-sm"  onclick="bulkAction('pause',this)">⏸ Pause</button>
-        <button class="btn btn-ghost btn-sm"  onclick="bulkAction('resume',this)">▶ Resume</button>
-        <button class="btn btn-ghost btn-sm"  onclick="clearSelection()" style="margin-left:auto;color:inherit;opacity:.7">✕ Clear</button>
-      </div>
-
       <div class="card">
         <div class="card-header">
-          <span class="card-title" id="torrent-card-title">All Downloads</span>
-          <div class="filter-tabs">
-            <div class="ftab active" onclick="setFilter(this,'')">All</div>
-            <div class="ftab" onclick="setFilter(this,'downloading')">Active</div>
-            <div class="ftab" onclick="setFilter(this,'ready')">Ready</div>
-            <div class="ftab" onclick="setFilter(this,'completed')">Done</div>
-            <div class="ftab" onclick="setFilter(this,'error')">Error</div>
+          <span class="card-title" id="torrent-card-title">Download Queue</span>
+          <div class="filter-tabs" data-dp-filter-contract="desktop-v24" role="tablist" aria-label="Download status filter">
+            <div class="ftab active" data-dp-status="" role="tab" aria-selected="true" onclick="setFilter(this,'')">All</div>
+            <div class="ftab" data-dp-status="downloading" role="tab" aria-selected="false" onclick="setFilter(this,'downloading')">Downloading</div>
+            <div class="ftab" data-dp-status="paused" role="tab" aria-selected="false" onclick="setFilter(this,'paused')">Paused</div>
+            <div class="ftab" data-dp-status="processing" role="tab" aria-selected="false" onclick="setFilter(this,'processing')">Processing</div>
+            <div class="ftab" data-dp-status="ready" role="tab" aria-selected="false" onclick="setFilter(this,'ready')">Ready</div>
+            <div class="ftab" data-dp-status="completed" role="tab" aria-selected="false" onclick="setFilter(this,'completed')">Done</div>
+            <div class="ftab" data-dp-status="error" role="tab" aria-selected="false" onclick="setFilter(this,'error')">Error</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="loadTorrents()" style="margin-left:8px">↻</button>
+          <button class="btn btn-ghost btn-sm dp-downloads-refresh" onclick="loadTorrents()" aria-label="Refresh downloads" title="Refresh downloads">Refresh</button>
         </div>
         <div style="padding:10px 14px 0">
           <div class="ev-search-row">
-            <input class="input" id="torrent-search" placeholder="Search by name, hash, AllDebrid ID, source, label, or error…" oninput="onTorrentSearchInput()"/>
+            <input class="input" id="torrent-search" placeholder="Search downloads…" oninput="onTorrentSearchInput()"/>
           </div>
         </div>
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <div class="bulk-bar dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar">
+          <div class="dp-card__header dp-downloads-bulk-toolbar">
+            <div class="dp-downloads-bulk-actions">
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--pause" onclick="bulkAction('pause',this)">Pause</button>
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--resume" onclick="bulkAction('resume',this)">Resume</button>
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--reset" onclick="bulkAction('reset',this)">Reset</button>
+              <span class="dp-downloads-bulk-separator" aria-hidden="true"></span>
+              <button class="btn btn-danger dp-downloads-bulk-action dp-downloads-bulk-action--delete" onclick="bulkAction('delete',this)">Delete</button>
+            </div>
+            <div class="dp-downloads-bulk-status">
+              <span id="bulk-count" class="dp-downloads-bulk-count"></span>
+              <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--clear" onclick="clearSelection()">Clear Selections</button>
+            </div>
+          </div>
+        </div>
+        <div class="dp-downloads-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="t-table" style="min-width:500px">
           <thead><tr><th style="width:32px"><input type="checkbox" id="chk-all" onchange="toggleAllCheckboxes(this)"/></th><th>Name</th><th>Source / Label</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><th>Actions</th></tr></thead>
           <tbody id="t-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
         </table>
         </div>
         <div id="torrent-pagination" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:12px;color:var(--text3)">Per page:</span>
-            <select id="torrent-page-size" class="input" style="width:70px;padding:4px 6px;font-size:12px" onchange="onPageSizeChange(this.value)">
-              <option value="15">15</option>
-              <option value="25" selected>25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
-          </div>
           <div id="torrent-page-btns" style="display:flex;gap:4px;align-items:center"></div>
           <div id="torrent-page-info" style="font-size:12px;color:var(--text3)"></div>
         </div>
@@ -519,10 +505,10 @@
 <input id="torrent-file-input" type="file" accept=".torrent,application/x-bittorrent" hidden onchange="uploadTorrentFile(this)">
 
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
-<script src="/app.js?v=16" defer></script>
-<script src="/operator-title.js?v=23" defer></script>
+<script src="/app.js?v=17" defer></script>
+<script src="/operator-title.js?v=24" defer></script>
 <script src="/ui-runtime.js?v=25" defer data-dp-ui-runtime="1"></script>
-<script src="/ui-downloads-runtime.js?v=23" defer data-dp-downloads-runtime="1"></script>
+<script src="/ui-downloads-runtime.js?v=24" defer data-dp-downloads-runtime="1"></script>
 <script src="/ui-accessibility-runtime.js?v=21" defer></script>
 <script src="/ui-statistics.js?v=2" defer></script>
 <script src="/ui-help-page.js?v=3" defer></script>

@@ -56,33 +56,6 @@
     const bar = document.getElementById('bulk-bar');
     const count = document.getElementById('bulk-count');
     if (!bar || !count) return;
-    if (bar.dataset.dpDownloadsBulk === '1') {
-      syncBulkButtonPresentation(bar);
-      return;
-    }
-    const buttons = Array.from(bar.querySelectorAll('button'));
-    const find = needle => buttons.find(button => (button.getAttribute('onclick') || '').includes(needle));
-    const pause = find("bulkAction('pause'");
-    const resume = find("bulkAction('resume'");
-    const reset = find("bulkAction('reset'");
-    const remove = find("bulkAction('delete'");
-    const clear = find('clearSelection()');
-    if (![pause, resume, reset, remove, clear].every(Boolean)) return;
-    bar.classList.add('dp-card', 'dp-downloads-bulk-card');
-    const header = document.createElement('div');
-    header.className = 'dp-card__header dp-downloads-bulk-toolbar';
-    const actions = document.createElement('div');
-    actions.className = 'dp-downloads-bulk-actions';
-    const separator = document.createElement('span');
-    separator.className = 'dp-downloads-bulk-separator';
-    separator.setAttribute('aria-hidden', 'true');
-    const status = document.createElement('div');
-    status.className = 'dp-downloads-bulk-status';
-    count.classList.add('dp-downloads-bulk-count');
-    actions.append(pause, resume, reset, separator, remove);
-    status.append(count, clear);
-    header.append(actions, status);
-    bar.replaceChildren(header);
     bar.dataset.dpDownloadsBulk = '1';
     syncBulkButtonPresentation(bar);
   }
@@ -156,7 +129,9 @@
   }
 
   function trackedCopy(count) {
-    return count === 1 ? '1 download tracked' : count + ' downloads tracked';
+    return count === 1
+      ? '1 download tracked. It followed instructions.'
+      : count + ' downloads tracked. Most of them followed instructions.';
   }
 
   function decorateDownloadsHeader() {
@@ -173,16 +148,16 @@
       if (icon && !/card-download\.svg/.test(icon.getAttribute('src') || '')) {
         icon.setAttribute('src', '/icons/dp/card-download.svg?v=11');
       }
-      title.setAttribute('aria-label', 'All Downloads. ' + copy + '.');
+      title.setAttribute('aria-label', 'Download Queue. ' + copy);
       return;
     }
 
     title.classList.add('dp-downloads-card-title');
-    title.setAttribute('aria-label', 'All Downloads. ' + copy + '.');
+    title.setAttribute('aria-label', 'Download Queue. ' + copy);
     title.innerHTML =
       '<img class="dp-icon dp-icon--lg dp-downloads-title-icon" src="/icons/dp/card-download.svg?v=11" alt="" aria-hidden="true">' +
       '<span class="dp-downloads-heading-copy">' +
-        '<span class="dp-downloads-heading">All Downloads</span>' +
+        '<span class="dp-downloads-heading">Download Queue</span>' +
         '<span class="dp-downloads-subtitle">' + copy + '</span>' +
       '</span>';
   }
@@ -315,15 +290,8 @@
     const card = document.querySelector('#view-torrents > .card');
     if (!card) return;
 
-    const tableWrap = card.querySelector('div[style*="overflow-x:auto"]');
-    if (tableWrap) tableWrap.classList.add('dp-downloads-table-wrap');
-
-    const pageSize = document.getElementById('torrent-page-size');
-    if (pageSize) {
-      const wrapper = pageSize.closest('div');
-      if (wrapper && wrapper.parentElement?.id === 'torrent-pagination') wrapper.remove();
-      else pageSize.remove();
-    }
+    const tableWrap = card.querySelector('.dp-downloads-table-wrap');
+    if (!tableWrap) throw new Error('Canonical Downloads table viewport is unavailable');
 
     const search = document.getElementById('torrent-search');
     if (search && search.placeholder !== 'Search downloads…') search.placeholder = 'Search downloads…';

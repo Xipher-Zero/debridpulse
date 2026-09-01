@@ -215,13 +215,3 @@
   script.dataset.dpUiRuntime = '1';
   document.head.appendChild(script);
 })();
-
-(function () {
-  'use strict';
-  if (document.querySelector('script[data-dp-downloads-runtime]')) return;
-  const script = document.createElement('script');
-  script.src = '/ui-downloads-runtime.js?v=22';
-  script.defer = true;
-  script.dataset.dpDownloadsRuntime = '1';
-  document.head.appendChild(script);
-})();

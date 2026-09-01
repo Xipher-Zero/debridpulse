@@ -2558,41 +2558,25 @@ async function triggerStatsSnapshot(button) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 (async()=>{
-  // ── Debug helper — shows status in UI (removed in production) ──────────────
-  function dbg(msg) {
-    const el = document.getElementById('debug-status');
-    if (!el) return;
-    el.style.display = 'block';
-    const row = document.createElement('div');
-    row.textContent = new Date().toLocaleTimeString() + ' — ' + String(msg ?? '');
-    el.appendChild(row);
-  }
-
-  dbg('Script gestartet');
   setDot('api',   'check', 'AllDebrid: checking…');
   setDot('aria2', 'check', 'aria2: checking…');
   setDot('db',    'check', 'DB: checking…');
 
   // Load settings
-  dbg('Lade Settings…');
   try {
     settingsData = await api('GET', '/settings');
-    dbg('Settings OK');
   } catch(e) {
-    dbg('Settings ERROR: ' + e.message);
   }
 
   renderTopbarActions();
   updateAria2ngLink();
 
   // Load stats with visible retry
-  dbg('Starte loadStats…');
   let statsLoaded = false;
   let statsAttempt = 0;
 
   while (!statsLoaded) {
     statsAttempt++;
-    dbg('loadStats Versuch ' + statsAttempt);
 
     statsLoaded = await loadStats();
 
@@ -2603,20 +2587,12 @@ async function triggerStatsSnapshot(button) {
           3000
         );
 
-      dbg(
-        'Error — retrying in ' +
-        delay +
-        'ms…'
-      );
 
       await new Promise(
         r => setTimeout(r, delay)
       );
 
       if (statsAttempt >= 10) {
-        dbg(
-          'Aufgegeben nach 10 Versuchen'
-        );
         break;
       }
     }
@@ -2627,23 +2603,7 @@ async function triggerStatsSnapshot(button) {
   checkConnections().catch(() => {});
   checkPremiumStatus().catch(() => {});
 
-  if (statsLoaded) {
-    dbg('Stats loaded ✓');
-
-    setTimeout(() => {
-      const el =
-        document.getElementById(
-          'debug-status'
-        );
-
-      if (el) {
-        el.style.display = 'none';
-      }
-    }, 5000);
-  } else {
-    dbg(
-      'Stats failed to load. Please reload the page.'
-    );
+  if (!statsLoaded) {
 
     setDot(
       'api',
@@ -3164,27 +3124,6 @@ async function setTorrentPriority(torrentId, priority) {
 }
 
 
-
-// ── System Health Bar (Dashboard) ─────────────────────────────────────────────
-
-async function updateHealthBar() {
-  var bar = document.getElementById('dash-health-bar');
-  if (!bar) return;
-  try {
-    var res = await api('POST', '/recovery/run', {}, 15000);
-    var r = res.result || {};
-    var items = [];
-    if (r.orphaned_queued_files)  items.push('🔧 ' + r.orphaned_queued_files + ' orphaned file(s) reset');
-    if (r.missed_completions)     items.push('✅ ' + r.missed_completions + ' completion(s) recovered');
-    if (r.deadlock_reset)         items.push('⚡ Queue deadlock cleared');
-    if (items.length) {
-      bar.style.display = '';
-      document.getElementById('dash-health-recovery').innerHTML = items.join(' &nbsp;·&nbsp; ');
-    } else {
-      bar.style.display = 'none';
-    }
-  } catch(e) { /* silently ignore */ }
-}
 
 // ── Drag & Drop Priority Reordering ───────────────────────────────────────────
 

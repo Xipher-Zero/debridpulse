@@ -325,6 +325,39 @@ def test_downloads_pagination_filtering_are_not_owned_by_app() -> None:
     assert "debridpulse:downloads-rendered" in app or "debridpulse:downloads-rendered" in downloads
 
 
+
+def test_downloads_static_owner_is_the_accepted_integrated_composition() -> None:
+    html = read(INDEX)
+    source = read(DOWNLOADS)
+    page_css = read(STATIC / "ui-downloads-page.css")
+    operator = read(STATIC / "operator-title.js")
+    view = html[html.index('id="view-torrents"'):html.index('<!-- Events -->')]
+    assert 'Download Queue' in view
+    assert 'data-dp-filter-contract="desktop-v24"' in view
+    assert 'class="bulk-bar dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in view
+    assert view.index('id="torrent-search"') < view.index('id="bulk-bar"') < view.index('class="dp-downloads-table-wrap"')
+    assert 'id="torrent-page-size"' not in view
+    assert 'Most of them followed instructions.' in source
+    assert "bar.replaceChildren(header)" not in source
+    assert "insertBefore(bar" not in source
+    assert "bar.classList.add('dp-card'" not in source
+    assert "Canonical integrated multi-selection strip" not in page_css
+    assert "data-dp-downloads-runtime" not in operator
+    assert '/ui-downloads-runtime.js?v=24' in html
+
+
+def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
+    html = read(INDEX)
+    app = read(APP)
+    for fragment in ('debug-status', 'dash-health-bar', 'dash-health-recovery', 'dash-health-deadlock', 'dash-health-aging'):
+        assert fragment not in html
+        assert fragment not in app
+    assert 'function dbg(' not in app
+    assert 'dbg(' not in app
+    assert 'function updateHealthBar(' not in app
+    assert 'function runRecovery(' in app
+    assert "'/recovery/run'" in app
+
 def test_release_surfaces_follow_v1111_without_advancing_production_state() -> None:
     version = read(VERSION).strip()
     assert version == "1.0.11.1"
