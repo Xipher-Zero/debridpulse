@@ -81,6 +81,17 @@ jobs:
           python scripts/_repair_canonical_contract_tests.py
           python - <<'PY'
           from pathlib import Path
+
+          path = Path('backend/tests/test_extraction_lifecycle.py')
+          source = path.read_text(encoding='utf-8')
+          bad = '    @pytest.mark.asyncio\nasync def test_extraction_events_form_durable_operator_audit'
+          good = '@pytest.mark.asyncio\nasync def test_extraction_events_form_durable_operator_audit'
+          if source.count(bad) != 1:
+              raise RuntimeError(f'extraction decorator boundary count was {source.count(bad)}, expected 1')
+          path.write_text(source.replace(bad, good, 1), encoding='utf-8')
+          PY
+          python - <<'PY'
+          from pathlib import Path
           for name in (
               'app.js',
               'operator-title.js',
