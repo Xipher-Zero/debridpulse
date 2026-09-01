@@ -1,0 +1,45 @@
+name: Inspect Statistics canonical ownership
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-stats-canonicalization
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 070f30a67390a45d8c9dea5ffd61553888109ccb
+      - name: Locate Statistics data/runtime owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== app.js Statistics symbols ==='
+          grep -nE 'loadDetailedStats|i-last-day|dp-stats-history-grid|detail-stat-cards|daily-chart' frontend/static/app.js || true
+          echo '=== index Statistics block ==='
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('frontend/static/index.html').read_text()
+          a=text.index('    <!-- Statistics -->')
+          b=text.index('    <!-- Changelog -->', a)
+          print(text[a:b])
+          PY
+          echo '=== ui-statistics architecture symbols ==='
+          grep -nE 'ensureStatisticsArchitecture|decorateChartHeader|applyPresentation|loadDetailedStatsData|dp-statistics-master|dp-stats-chart' frontend/static/ui-statistics.js || true
+          echo '=== app.js surrounding detailed stats ==='
+          python - <<'PY'
+          from pathlib import Path
+          lines=Path('frontend/static/app.js').read_text().splitlines()
+          needles=('loadDetailedStats','i-last-day','dp-stats-history-grid')
+          hits=[]
+          for i,line in enumerate(lines):
+              if any(n in line for n in needles): hits.append(i)
+          shown=set()
+          for i in hits:
+              lo=max(0,i-35); hi=min(len(lines),i+90)
+              key=(lo,hi)
+              if key in shown: continue
+              shown.add(key)
+              print(f'--- lines {lo+1}-{hi} ---')
+              for j in range(lo,hi): print(f'{j+1:04d}: {lines[j]}')
+          PY
