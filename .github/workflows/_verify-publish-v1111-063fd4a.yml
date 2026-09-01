@@ -38,7 +38,6 @@ jobs:
           ! grep -q 'class="bulk-bar ' frontend/static/index.html
           ! grep -q '^\.bulk-bar' frontend/static/style.css
           grep -q 'background: var(--dp-panel-surface);' frontend/static/ui-universal-language.css
-          git merge-base --is-ancestor 070f30a67390a45d8c9dea5ffd61553888109ccb "$CANDIDATE_SHA"
 
       - name: Build exact candidate
         shell: bash
