@@ -1,4 +1,4 @@
-name: v1.0.11.1 audit security mutator
+name: v1.0.11.1 audit security qualification
 
 on:
   push:
@@ -6,43 +6,40 @@ on:
       - audit/v1.0.11.1-post-release-remediation
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  mutate-security:
-    if: github.actor != 'github-actions[bot]'
+  security-boundary:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
-      - name: Apply deterministic security patch
+          cache: 'pip'
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Install aria2 and test dependencies
         run: |
           set -euo pipefail
-          python .github/scripts/audit_v1111_security_patch.py
-          python -m compileall -q backend/services
-          grep -n -A18 -B3 'def _aria2_job_options' backend/services/manager_v2.py
-          grep -n -A30 -B6 'class GuardedTransferIntegrityAria2Service' backend/services/transfer_runtime_guard.py
-      - name: Focused regression baseline
+          sudo apt-get update -qq
+          sudo apt-get install -y aria2
+          cd backend
+          pip install -r requirements-dev.txt
+      - name: Run downloader security regressions
         run: |
           set -euo pipefail
           cd backend
-          pip install -r requirements-dev.txt
           python -m pytest \
+            tests/test_v1111_aria2_security_boundary.py \
             tests/test_v106_external_aria2_ownership.py \
             tests/test_v106_audit_contracts.py \
-            tests/test_v1111_canonical_frontend_contract.py \
             -q --tb=short
-      - name: Commit source corrections
+      - name: Static source checks
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add backend/services/manager_v2.py backend/services/aria2_runtime.py backend/services/transfer_runtime_guard.py
-          git diff --cached --check
-          git diff --cached --stat
-          git commit -m 'fix(security): bind aria2 jobs to guarded transfer policy'
-          git push origin HEAD:audit/v1.0.11.1-post-release-remediation
+          python -m compileall -q backend/services
+          grep -n -A20 -B3 'def _aria2_job_options' backend/services/manager_v2.py
+          grep -RInE 'follow-torrent|follow-metalink|proxy-method|DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY' \
+            backend/services backend/tests/test_v1111_aria2_security_boundary.py
