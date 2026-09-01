@@ -53,8 +53,8 @@ jobs:
           end_marker = '    write(\n        "backend/tests/test_operator_title_state.py",\n'
           start = source.find(start_marker)
           end = source.find(end_marker, start if start >= 0 else 0)
-          if start < 0 or end < 0 or source.find(start_marker, start + 1) >= 0:
-              raise RuntimeError('extraction contract migration guard is ambiguous')
+          if start < 0 or end < 0 or source.count(start_marker) != 2 or source.count(end_marker) != 1:
+              raise RuntimeError('extraction contract migration span did not match exactly')
           replacement = '''    sub_once(
               "backend/tests/test_extraction_lifecycle.py",
               r"def test_extraction_state_is_persisted_and_operator_visible\\(\\):\\n.*?\\n(?=@pytest\\.mark\\.asyncio)",
