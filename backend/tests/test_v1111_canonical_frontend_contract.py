@@ -334,7 +334,7 @@ def test_downloads_static_owner_is_the_accepted_integrated_composition() -> None
     view = html[html.index('id="view-torrents"'):html.index('<!-- Events -->')]
     assert 'Download Queue' in view
     assert 'data-dp-filter-contract="desktop-v24"' in view
-    assert 'class="bulk-bar dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in view
+    assert 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in view
     assert view.index('id="torrent-search"') < view.index('id="bulk-bar"') < view.index('class="dp-downloads-table-wrap"')
     assert 'id="torrent-page-size"' not in view
     assert 'Most of them followed instructions.' in source

@@ -48,7 +48,7 @@ def test_bulk_selection_is_integrated_static_band_with_reviewed_action_order() -
     transfer = read("ui-transfer-contract.css")
     index = read("index.html")
     downloads = index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]
-    assert 'class="bulk-bar dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in downloads
+    assert 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in downloads
     assert downloads.index('id="torrent-search"') < downloads.index('id="bulk-bar"') < downloads.index('class="dp-downloads-table-wrap"')
     assert downloads.index("bulkAction('pause',this)") < downloads.index("bulkAction('resume',this)") < downloads.index("bulkAction('reset',this)") < downloads.index("bulkAction('delete',this)")
     assert 'class="dp-downloads-bulk-status"' in downloads
