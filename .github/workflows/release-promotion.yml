@@ -170,13 +170,44 @@ jobs:
           set -euo pipefail
 
           source_ref="${IMAGE_NAME}:${SOURCE_TAG}"
-          source_digest="$(docker buildx imagetools inspect "$source_ref" | awk '/^Digest:/ {print $2; exit}')"
+          source_digest=""
+          for attempt in $(seq 1 12); do
+            inspect_output=""
+            if inspect_output="$(docker buildx imagetools inspect "$source_ref" 2>&1)"; then
+              source_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect_output")"
+              if [[ "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                break
+              fi
+              echo "Source digest not yet available for $source_ref on attempt ${attempt}/12"
+            else
+              echo "Source registry visibility check failed for $source_ref on attempt ${attempt}/12"
+            fi
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
+          done
+
           if [[ ! "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "Unable to resolve immutable source digest for $source_ref: $source_digest"
+            echo "Unable to resolve immutable source digest for $source_ref after retries: ${source_digest:-<empty>}"
             exit 1
           fi
 
-          docker pull "${IMAGE_NAME}@${source_digest}"
+          pulled=0
+          for attempt in $(seq 1 12); do
+            if docker pull "${IMAGE_NAME}@${source_digest}"; then
+              pulled=1
+              break
+            fi
+            echo "Immutable source pull failed on attempt ${attempt}/12"
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
+          done
+          if [ "$pulled" -ne 1 ]; then
+            echo "Unable to pull immutable source after retries: ${IMAGE_NAME}@${source_digest}"
+            exit 1
+          fi
+
           image_version="$(docker image inspect "${IMAGE_NAME}@${source_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
           image_revision="$(docker image inspect "${IMAGE_NAME}@${source_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
 
@@ -214,13 +245,44 @@ jobs:
           target_ref="${IMAGE_NAME}:${TARGET_TAG}"
           docker buildx imagetools create --tag "$target_ref" "$source_ref"
 
-          target_digest="$(docker buildx imagetools inspect "$target_ref" | awk '/^Digest:/ {print $2; exit}')"
+          target_digest=""
+          for attempt in $(seq 1 12); do
+            inspect_output=""
+            if inspect_output="$(docker buildx imagetools inspect "$target_ref" 2>&1)"; then
+              target_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect_output")"
+              if [ "$target_digest" = "$SOURCE_DIGEST" ]; then
+                break
+              fi
+              echo "Promotion target not converged on attempt ${attempt}/12: expected $SOURCE_DIGEST, got ${target_digest:-<empty>}"
+            else
+              echo "Promotion target visibility check failed on attempt ${attempt}/12"
+            fi
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
+          done
+
           if [ "$target_digest" != "$SOURCE_DIGEST" ]; then
-            echo "Promotion digest mismatch: source $SOURCE_DIGEST, target $target_digest"
+            echo "Promotion digest mismatch after retries: source $SOURCE_DIGEST, target ${target_digest:-<empty>}"
             exit 1
           fi
 
-          docker pull "$target_ref"
+          pulled=0
+          for attempt in $(seq 1 12); do
+            if docker pull "$target_ref"; then
+              pulled=1
+              break
+            fi
+            echo "Promoted target pull failed on attempt ${attempt}/12"
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
+          done
+          if [ "$pulled" -ne 1 ]; then
+            echo "Unable to pull promoted target after retries: $target_ref"
+            exit 1
+          fi
+
           target_version="$(docker image inspect "$target_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
           target_revision="$(docker image inspect "$target_ref" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
           if [ "$target_version" != "$EXPECTED_VERSION" ]; then
