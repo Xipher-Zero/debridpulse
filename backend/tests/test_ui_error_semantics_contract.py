@@ -8,8 +8,6 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-
-
 def test_concise_failure_taxonomy_is_complete():
     runtime = read("ui-error-semantics.js")
     expected = {
@@ -38,18 +36,36 @@ def test_concise_failure_taxonomy_is_complete():
     assert "/api/torrents/" in runtime
 
 
-def test_terminal_failure_progress_preserves_actual_percent_and_uses_error_rail():
+def test_terminal_failure_progress_is_rendered_by_app_and_enriched_without_override():
+    app = read("app.js")
     runtime = read("ui-error-semantics.js")
-    assert "const visual = actual;" in runtime
+
+    # The canonical renderer owns first-pass terminal-failure geometry directly.
+    for fragment in (
+        "function progress(pct, status)",
+        "const visual = actual;",
+        "dp-terminal-error-progress",
+        "dp-terminal-error-rail",
+        "data-dp-actual-progress",
+        "data-dp-visual-progress",
+        "actual.toFixed(0) + '%'",
+        "background:var(--dp-state-error)!important",
+        "background-image:none!important",
+    ):
+        assert fragment in app
+
+    # Error semantics may enrich already-rendered failed rows, but it may not
+    # replace the canonical renderer or observe the page into convergence.
+    assert "function installProgressOverride" not in runtime
+    assert "window.progress =" not in runtime
+    assert "MutationObserver" not in runtime
     assert "const visualWidth = pct;" in runtime
     assert "track.classList.add('dp-terminal-error-rail')" in runtime
-    assert "failed && actual === 0 ? 100 : actual" not in runtime
-    assert "data-dp-actual-progress" in runtime
-    assert "data-dp-visual-progress" in runtime
-    assert "actual.toFixed(0) + '%'" in runtime
     assert "fill.classList.remove('done')" in runtime
     assert "setProperty('background', 'var(--dp-state-error)', 'important')" in runtime
     assert "setProperty('background-image', 'none', 'important')" in runtime
+    assert "failed && actual === 0 ? 100 : actual" not in app
+    assert "failed && actual === 0 ? 100 : actual" not in runtime
 
     css = read("ui-visual-accents.css")
     assert ".prog.dp-terminal-error-rail" in css
@@ -66,10 +82,12 @@ def test_terminal_failure_progress_preserves_actual_percent_and_uses_error_rail(
     assert "var(--dp-state-error) 46%" in css
 
 
-def test_error_semantics_has_no_unbounded_startup_spin():
+def test_error_semantics_uses_explicit_render_events_without_startup_spin():
     runtime = read("ui-error-semantics.js")
     assert "function startAfterCore()" in runtime
     assert "core render helpers unavailable" in runtime
+    assert "debridpulse:dashboard-recent-rendered" in runtime
+    assert "debridpulse:downloads-rendered" in runtime
     assert "setTimeout(startWhenReady" not in runtime
     assert "window.setTimeout(startWhenReady" not in runtime
     assert "function startWhenReady()" not in runtime
