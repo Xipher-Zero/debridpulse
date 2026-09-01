@@ -1,0 +1,58 @@
+name: Audit Final Contract Migrator
+
+on:
+  push:
+    branches:
+      - 'audit/v1.0.11.1-post-release-remediation'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-stale-contracts:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: audit/v1.0.11.1-post-release-remediation
+
+      - name: Migrate release ownership assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          version_path = Path('backend/tests/test_release_version_surface.py')
+          version_text = version_path.read_text(encoding='utf-8')
+          old = '''    # Normal end-user deployments track the promoted main image via latest,\n    # while staging/release branches retain immutable SHA publication only.\n    assert "type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}" in workflow\n'''
+          new = '''    # Fork Image is now immutable-only. Mutable aliases are owned by the\n    # exact-SHA Release Promotion gate after all independent qualifiers pass.\n    promotion = read(ROOT / ".github" / "workflows" / "release-promotion.yml")\n    assert "type=raw,value=latest" not in workflow\n    assert "type=ref,event=tag" not in workflow\n    assert 'target_tag="latest"' in promotion\n    assert 'target_tag="$GITHUB_REF_NAME"' in promotion\n    assert '"Fork Image"' in promotion\n'''
+          if version_text.count(old) != 1:
+              raise SystemExit('stale release-version ownership contract not found exactly once')
+          version_path.write_text(version_text.replace(old, new), encoding='utf-8')
+
+          scope_path = Path('backend/tests/test_v1_scope.py')
+          scope_text = scope_path.read_text(encoding='utf-8')
+          old = '''def test_release_workflow_accepts_public_v1_tags():\n    workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()\n    release_helper = (REPO_ROOT / "release.py").read_text()\n    assert "- 'v*'" in workflow\n    assert "startsWith(github.ref, 'refs/tags/v')" in workflow\n    assert "DB_PATH=/app/data/debridpulse.db" in workflow\n    version = (REPO_ROOT / "VERSION").read_text().strip()\n    parsed = Version(version)\n    assert parsed.release[:2] == (1, 0)\n    assert 'tag = f"v{version}"' in release_helper\n    assert "internal-v{version}" not in release_helper\n'''
+          new = '''def test_release_workflow_accepts_public_v1_tags():\n    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()\n    promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()\n    release_helper = (REPO_ROOT / "release.py").read_text()\n    assert "- 'v*'" in image_workflow\n    assert "- 'v*'" in promotion_workflow\n    assert 'target_tag="$GITHUB_REF_NAME"' in promotion_workflow\n    assert "type=ref,event=tag" not in image_workflow\n    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow\n    version = (REPO_ROOT / "VERSION").read_text().strip()\n    parsed = Version(version)\n    assert parsed.release[:2] == (1, 0)\n    assert 'tag = f"v{version}"' in release_helper\n    assert "internal-v{version}" not in release_helper\n'''
+          if scope_text.count(old) != 1:
+              raise SystemExit('stale public-v1 tag contract not found exactly once')
+          scope_path.write_text(scope_text.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Commit migrated contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/tests/test_release_version_surface.py backend/tests/test_v1_scope.py
+          git diff --cached --check
+          git commit -m 'test(release): align legacy contracts with promotion gate'
+          git push origin HEAD:audit/v1.0.11.1-post-release-remediation
