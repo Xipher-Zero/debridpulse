@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import shutil
 import socket
+import ssl
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -41,6 +43,73 @@ async def _start_http_server(body: bytes = b"ok", content_type: str = "applicati
             await writer.wait_closed()
 
     server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = int(server.sockets[0].getsockname()[1])
+    return server, port, state
+
+
+def _test_tls_context(tmp_path: Path, state: dict) -> ssl.SSLContext:
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        raise AssertionError("openssl is required for HTTPS/SNI downloader-boundary regression")
+    key = tmp_path / "sni-test.key"
+    cert = tmp_path / "sni-test.crt"
+    subprocess.run(
+        [
+            openssl,
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=sni.test",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile=cert, keyfile=key)
+
+    def record_sni(_socket, server_name, _context):
+        state["sni"].append(server_name)
+
+    context.set_servername_callback(record_sni)
+    return context
+
+
+async def _start_https_server(tmp_path: Path, body: bytes = b"tls-ok"):
+    state = {"connections": 0, "sni": [], "hosts": []}
+    context = _test_tls_context(tmp_path, state)
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        state["connections"] += 1
+        try:
+            raw = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=3)
+            for line in raw.decode("iso-8859-1", errors="replace").split("\r\n"):
+                if line.casefold().startswith("host:"):
+                    state["hosts"].append(line.split(":", 1)[1].strip())
+                    break
+            writer.write(
+                b"HTTP/1.1 200 OK\r\n"
+                + f"Content-Length: {len(body)}\r\n".encode()
+                + b"Content-Type: application/octet-stream\r\n"
+                + b"Connection: close\r\n\r\n"
+                + body
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=context)
     port = int(server.sockets[0].getsockname()[1])
     return server, port, state
 
@@ -248,6 +317,63 @@ async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
         assert (tmp_path / "public.bin").read_bytes() == b"public-path-ok"
         assert seen_hosts == ["public.test"]
         assert state["connections"] == 1
+    finally:
+        await _stop_aria2(proc, service)
+        await guard.stop()
+        target.close()
+        await target.wait_closed()
+
+
+async def test_guarded_https_preserves_original_hostname_and_tls_sni(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target, target_port, state = await _start_https_server(tmp_path, b"tls-path-ok")
+    seen_hosts = []
+
+    async def resolver(host: str, port: int):
+        seen_hosts.append(host)
+        assert port == target_port
+        return [_answer("127.0.0.1", port)]
+
+    guard = DownloaderEgressGuard(
+        resolver=resolver,
+        public_check=lambda address: address == "127.0.0.1",
+        bind_host="127.0.0.1",
+        bind_port=0,
+    )
+    await guard.ensure_started()
+    proc, service = await _start_aria2(tmp_path)
+
+    async def validated_as_public(uri: str) -> str:
+        return uri
+
+    monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
+    monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
+    monkeypatch.setattr(runtime_guard, "is_builtin_mode", lambda: True)
+    guarded = runtime_guard.GuardedTransferIntegrityAria2Service(
+        service.url, service.secret, 3
+    )
+    uri = f"https://sni.test:{target_port}/payload.bin"
+    try:
+        gid = await guarded.ensure_download(
+            uri,
+            {
+                "dir": str(tmp_path),
+                "out": "tls.bin",
+                "max-tries": "1",
+                "check-certificate": "false",
+            },
+            max_retries=1,
+            cached_downloads=[],
+        )
+        status = await _wait_status(service, gid)
+        assert status["status"] == "complete", status
+        assert (tmp_path / "tls.bin").read_bytes() == b"tls-path-ok"
+        assert seen_hosts == ["sni.test"]
+        assert state["connections"] == 1
+        assert state["sni"] == ["sni.test"]
+        assert len(state["hosts"]) == 1
+        assert state["hosts"][0].casefold().startswith("sni.test")
     finally:
         await _stop_aria2(proc, service)
         await guard.stop()
