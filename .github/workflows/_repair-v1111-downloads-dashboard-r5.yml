@@ -1,0 +1,98 @@
+name: Repair v1.0.11.1 Downloads and dashboard canonical owners r5
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-f500727-qualification
+    paths:
+      - .github/workflows/_repair-v1111-downloads-dashboard-r5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_SHA: eb8f44e239d1930fd93aaec70c1f055011d30dff
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 1.0.11-hotfix1
+          fetch-depth: 0
+
+      - name: Prove guarded base and load audit helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "1.0.11.1"
+          test -z "$(git status --porcelain)"
+          git fetch origin audit/v1.0.11.1-f500727-qualification
+          git show FETCH_HEAD:scripts/_repair_v1111_downloads_dashboard.py > /tmp/repair.py
+
+      - name: Apply canonical owner repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python /tmp/repair.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/static/ui-downloads-page.css')
+          p.write_text(p.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          pip install -r requirements-dev.txt
+
+      - name: Targeted canonical regression contracts
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            backend/tests/test_ui_downloads_correction_batch_contract.py \
+            backend/tests/test_v1111_canonical_frontend_contract.py \
+            backend/tests/test_ui_dashboard_contract.py
+
+      - name: Commit working branch repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$(git status --porcelain)"
+          git config user.name Xipher-Zero
+          git config user.email 68665477+Xipher-Zero@users.noreply.github.com
+          git add frontend/static/index.html \
+                  frontend/static/app.js \
+                  frontend/static/ui-downloads-runtime.js \
+                  frontend/static/ui-downloads-page.css \
+                  frontend/static/operator-title.js \
+                  frontend/static/style-v11.css \
+                  backend/tests/test_ui_downloads_correction_batch_contract.py \
+                  backend/tests/test_v1111_canonical_frontend_contract.py
+          git commit -m "fix: restore canonical Downloads composition"
+          git push origin HEAD:1.0.11-hotfix1
+          echo "NEW_CANDIDATE_SHA=$(git rev-parse HEAD)"
