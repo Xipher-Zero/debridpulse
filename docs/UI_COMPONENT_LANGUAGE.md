@@ -1,157 +1,159 @@
-# DebridPulse v1.0.11 Component Language
+# DebridPulse UI Component Language
 
-This document defines the reusable UI component language for the v1.0.11 interface. These primitives are presentation-only and do not change backend lifecycle semantics.
+This document defines the shared component language used by the DebridPulse v1.0.11.1 frontend. It complements `UI_DESIGN_TOKENS.md` and `UI_FRONTEND_ARCHITECTURE.md`: tokens define values, this document defines reusable visual/interaction families, and the architecture document defines source ownership.
 
-## General rule
+## Governing rule
 
-Rebuilt v1.0.11 surfaces use the `dp-*` component classes in `frontend/static/ui-components.css` together with the semantic tokens in `design-tokens.css`, geometry/type tokens in `ui-foundation.css`, and the icon rules in `icon-system.css`.
+Dashboard is the reference surface for shared visual language. A page may vary geometry or content where its function requires it, but common cards, controls, state semantics, typography, focus behavior, modal behavior, and interaction affordances should read as one application.
 
-Inherited markup remains where replacing it would create unnecessary behavioral risk. Shared compatibility styling may normalize that markup, but new presentation work should not introduce additional legacy class families.
+Stable presentation belongs in canonical CSS owners. Runtime code may update state/data and deliberate dynamic render roots; it should not reconstruct presentation layers after load.
 
-## Buttons
+## Naming and ownership
 
-Four normal roles are canonical:
+New or deliberately rebuilt markup uses `dp-*` component classes where a shared component abstraction exists. Existing inherited markup may continue to use historical class names when rebuilding it would add churn without product value; `ui-universal-language.css` and shared contracts bridge those supported surfaces onto the current language.
 
-- **Primary**: purple-to-blue gradient, reserved for the page's dominant commit action such as Add, Save, Sign In, or Apply.
-- **Secondary**: neutral raised surface with normal border; used for common actions that should remain visible without competing with the primary CTA.
-- **Ghost**: transparent/quiet action used for low-priority controls in headers and compact toolbars.
-- **Danger / Caution**: tinted semantic controls. Red means destructive or genuine failure-related action; amber means caution, degraded success, or recovery.
+Compatibility is not a license to create new legacy-class markup. Prefer the canonical component family for new work.
 
-Routine controls are 36px high. Small compact controls are 30px; large CTA/input-aligned controls are 42px. Icon-only buttons use the same 36px square geometry.
+## Surface hierarchy
 
-Do not put multiple gradient-primary buttons beside each other unless the workflow genuinely has multiple equally dominant commit actions.
+The visual hierarchy is intentionally shallow:
 
-## Fields
+1. application background/shell;
+2. primary page workspace or master card;
+3. secondary cards/panels inside that workspace;
+4. controls and data rows;
+5. transient overlays such as menus, tooltips, toasts, and modals.
 
-Inputs use the 42px geometry from the foundation contract, an 8px radius, dark inset surface / near-white light surface, and restrained border transitions.
+Nested surfaces should not accumulate borders and shadows merely because a legacy implementation did so. Use spacing, tone, and typography to separate structure before adding another visible frame.
 
-- Labels: 12px semibold secondary text.
-- Help/error copy: 11px.
-- Placeholder text is muted and is not the only field label.
-- Invalid fields use the red semantic border and expose textual/accessible error state.
-- Textareas resize vertically where the interaction permits it.
-- Search/password/icon-adorned fields use `.dp-input-wrap` where that shared wrapper owns the geometry.
+## Cards and panels
 
-## Checkboxes, radios, toggles
+Shared cards use the application surface/border/radius/elevation language from the token system. The exact component family depends on purpose:
 
-Native checkbox/radio controls retain native semantics and use the DP accent color. Binary settings toggles use the compact 38x22 treatment with a purple selected state.
+- master/workspace cards define the primary page region;
+- list/workspace surfaces hold tables, logs, or long dynamic content;
+- metric/KPI cards emphasize a value plus concise explanatory copy;
+- settings cards group one coherent configuration concern;
+- modal cards temporarily own focus and action priority.
 
-Color is not sufficient to convey state; labels and accessible state attributes remain required.
+Page-specific CSS may change grid span, min/max size, or responsive arrangement. It should not redefine the shared border/radius/elevation language without a documented reason.
 
-## Tabs
+## Typography
 
-Tabs use a quiet inset container, 38px total height, and a restrained purple selected surface. This applies to Settings, Help/License, Downloads filters where the interaction is genuinely tab-like, and similar segmented controls.
+Use the shared typography tokens and existing hierarchy rather than local arbitrary sizes.
 
-Active state is indicated through both color and background treatment. Do not use large filled-gradient tabs.
+- page title: highest application-page hierarchy;
+- page subtitle/flavor text: concise contextual explanation, visually subordinate;
+- card title: clear local hierarchy;
+- field/metric label: concise and scannable;
+- secondary/flavor text: lower contrast but still readable;
+- monospace: identifiers, paths, hashes, URLs, versions, and similar machine-oriented values.
 
-## Badges and status pills
+All-caps micro-labels are reserved for compact KPI/status language where the established design uses them; they are not a default heading style.
 
-Status pills are deliberately compact and semantic:
+## Buttons and utility controls
 
-- Done / success: green.
-- Active/downloading: blue.
-- Processing/extracting: amber.
-- Completed With Errors / caution: yellow-amber.
-- Error: red.
-- Paused: purple.
-- Ready / queued: neutral blue-slate.
-- Connectivity/external control: cyan.
+Buttons use the canonical button families and shared state behavior. Action prominence follows consequence and frequency:
 
-The error/caution split is mandatory. `Completed With Errors` is not a red error state.
+- primary: the main affirmative action in the local context;
+- ghost/secondary: normal utility actions;
+- danger: destructive or high-consequence actions;
+- icon/utility controls: compact shell/table actions with an accessible name.
 
-Routine duplicate/failover/operational-note events use neutral informational presentation unless the backend result is actually an error.
+Do not encode important state solely by color. Disabled controls remain readable and visibly unavailable. Loading state should preserve control geometry to avoid layout jumps.
 
-## Progress
+## Inputs and forms
 
-Standard progress bars are 6px; compact row progress is 3px. State mapping:
+Text inputs, password fields, selects/dropdowns, text areas, toggles, and checkbox/radio controls use shared field geometry and focus semantics. Page owners may set widths or responsive placement; shared controls retain their canonical interior padding, border, focus ring, disabled treatment, and theme behavior.
 
-- active: blue
-- complete: green
-- paused: purple
-- processing: amber
-- error: red
+Settings uses the established title/control/flavor-text relationship. Labels and explanatory copy should align with the actual control rather than with unrelated card geometry.
 
-Unknown-duration work may use indeterminate animation. `prefers-reduced-motion` disables nonessential motion.
+## Dropdowns
 
-## Cards
+Application dropdowns use the shared dropdown contract rather than browser/legacy per-page styling where the product owns the menu. The trigger determines the menu width/alignment unless the component has a deliberate different contract. Menus remain within the viewport at responsive sizes and use the current theme tokens.
 
-Normal cards use:
+## Status and semantic color
 
-- 12px radius
-- semantic surface gradient
-- normal border
-- restrained tokenized shadow
-- 18px body padding
-- 50px header target
+Status color is semantic rather than decorative. Shared state colors cover at least:
 
-Hierarchy comes from surface, border, and spacing more than large shadows. Avoid floating every panel aggressively.
+- success/completed;
+- active/informational;
+- caution/degraded/completed-with-errors;
+- error/failed;
+- paused/inactive/neutral.
 
-Section/card heading icons use the custom DP semantic icon system when the approved UI assigns one; ordinary controls use Lucide.
+The same semantic state should use the same family across badges, progress accents, event points, rails, and icon frames unless the component requires a lower-emphasis variant.
 
-## Tables
+## Icons
 
-Tables preserve the compact operational feel:
+Use the canonical icon system described by `UI_ICON_SYSTEM.md`.
 
-- 38px header
-- 52px row
-- 11px uppercase headers
-- 13px body
-- subtle row dividers
-- restrained hover tint
-- selected rows use the shared purple selection tint
+- DebridPulse-specific artwork is used where product identity or a domain-specific symbol matters;
+- Lucide is preferred for ordinary navigation/utility semantics;
+- UI-created frames, borders, and glows derive from shared tokens;
+- icons that are purely decorative are hidden from assistive technology;
+- icon-only actions require an accessible label/title appropriate to the control.
 
-Filenames remain proportional text and truncate to one line where necessary. Supporting metadata may use a smaller muted line. Numeric columns use tabular figures and right alignment where it helps scanning.
+## Tables and list workspaces
 
-Responsive pages may hide low-priority columns or horizontally scroll; do not crush important content into unreadable widths.
+Tables and long lists share row density, header hierarchy, hover/focus behavior, semantic state treatment, and scrollbar language. Page owners may control column widths or special responsive behavior, but generic table styling should not be duplicated in page-specific corrective layers.
 
-## Pagination
+Bulk-selection/action surfaces belong in the canonical page composition rather than being relocated after load by a finalization runtime.
 
-Pagination controls are compact 30px squares/segments. The current page uses the selected purple surface treatment. Pagination remains visually subordinate to the data itself.
+## KPI and sparkline language
 
-## Tooltips
+Dashboard KPI cards establish the shared metric language: prominent value, fully readable label/copy, semantic icon treatment, and quiet contextual sparkline where meaningful. Statistics may use denser analytical variants while preserving shared typography and semantic colors.
 
-Tooltips are allowed for icon-only controls and truncated values. They use an elevated semantic overlay and short copy. Tooltips are supplemental; critical instructions/statuses cannot exist only in hover content.
+Sparklines are supporting context, not the sole representation of a value or state. Their runtime only updates data geometry; the card structure and presentation remain source-owned.
 
-## Dialogs and drawers
+## Modals and transient overlays
 
-Dialogs use the established small/normal/large sizing hierarchy. Focus trapping, Escape behavior, and accessible names are required for interactive dialogs. Destructive Settings confirmations use the first-party modal contract rather than browser `confirm()`/`prompt()` UI.
+Modals must:
 
-## Toasts
+- trap focus while open;
+- expose a meaningful dialog name;
+- support keyboard dismissal where safe;
+- return focus to the invoking control on close;
+- keep destructive confirmation explicit;
+- use the canonical modal/backdrop contract.
 
-Toasts use a neutral panel with a thin semantic rail rather than a saturated colored block. Routine successful operations should not spam toasts.
+Menus, toasts, and other transient surfaces must not become alternate page-layout owners.
 
-- success: green rail
-- caution: amber rail
-- error: red rail
-- informational/default: purple rail
+## Responsive behavior
 
-## Loading and empty states
+Responsive rules should preserve task priority rather than merely shrink desktop geometry. Controls may wrap or stack, tables may become horizontally scrollable, and multi-column cards may collapse. Primary actions and essential state must remain discoverable.
 
-Skeletons are neutral surfaces, not bright animated gradients. Empty states remain compact and operational rather than marketing-style illustrations. Reduced-motion mode disables shimmer.
+Responsive corrections belong to the owning page or shared component stylesheet, not to a generic late override file.
 
-## Accessibility and interaction
+## Accessibility
 
-- Every interactive primitive has a visible `:focus-visible` treatment using the DP focus-ring token.
-- Icon-only controls have an accessible name.
-- Statuses use text/accessible labels in addition to color/icon treatment.
-- Disabled controls are visibly disabled and non-interactive.
-- `prefers-reduced-motion` disables nonessential transitions/animations.
-- Native semantics are preferred over ARIA recreation when practical.
+The shared minimum contract includes:
+
+- keyboard-reachable interactive controls;
+- visible focus indication;
+- semantic labels/ARIA state where native semantics are insufficient;
+- adequate text contrast in both themes;
+- non-color state cues where needed;
+- predictable focus lifecycle for dialogs and menus.
+
+`ui-accessibility-runtime.js` may augment supported inherited markup with semantics and keyboard behavior. It must not perform API work or act as a presentation-convergence layer.
 
 ## Interaction behavior where static mockups are silent
 
 The approved static references do not directly specify every hover, pressed, focus, disabled, loading, modal, toast, or reduced-motion state. DebridPulse therefore standardizes conservative extensions of the visible design language:
 
-- hover = modest surface/border lift, not large glow
-- pressed = subtle compression where useful
-- focus = visible purple focus ring
-- disabled = reduced emphasis while preserving readable labels
-- modal backdrop = restrained translucent overlay appropriate to the active theme
-- toast = neutral panel with semantic rail
-- motion = short and functional only
+- hover = modest surface/border lift, not large glow;
+- pressed = subtle compression where useful;
+- focus = visible purple focus ring;
+- disabled = reduced emphasis while preserving readable labels;
+- modal backdrop = restrained translucent overlay appropriate to the active theme;
+- toast = neutral panel with semantic rail;
+- motion = short and functional only.
 
 ## Release-state implementation
 
-The shell and all v1.0.11 pages now consume this language through the canonical shared sources plus explicitly documented live compatibility/calibration layers. `style-v11.css` is the stylesheet import root and `ui-presentation-loader.js` owns deterministic post-core presentation runtime sequencing.
+The v1.0.11.1 shell and pages consume this language from the canonical shared sources and direct page owners. `style-v11.css` is the stylesheet import root; canonical JavaScript page/runtime assets are loaded directly by the base document rather than sequenced through a presentation loader.
 
-The browser-validated 1.0.11 pre-release output is the acceptance boundary. Cleanup may remove unreachable duplicates, but a live layer is not deleted or reordered solely because its filename reflects an earlier implementation batch. Consolidating live calibration into a canonical owner is a separate behavior-preserving refactor and requires renewed qualification and browser comparison.
+Historical Dashboard batch/polish rules that remain behaviorally required have already been folded into `ui-dashboard.css`. The old batch files are not live runtime layers. Cleanup may remove unreachable source, but shared compatibility code with a supported consumer remains until a deliberate canonical rewrite replaces it.
+
+Any change to shared tokens, component contracts, or folded presentation rules requires renewed browser validation in both themes and the affected responsive contexts before accepting a new candidate boundary.
