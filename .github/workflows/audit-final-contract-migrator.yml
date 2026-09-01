@@ -29,20 +29,58 @@ jobs:
           from pathlib import Path
 
           version_path = Path('backend/tests/test_release_version_surface.py')
-          version_text = version_path.read_text(encoding='utf-8')
-          old = '''    # Normal end-user deployments track the promoted main image via latest,\n    # while staging/release branches retain immutable SHA publication only.\n    assert "type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}" in workflow\n'''
-          new = '''    # Fork Image is now immutable-only. Mutable aliases are owned by the\n    # exact-SHA Release Promotion gate after all independent qualifiers pass.\n    promotion = read(ROOT / ".github" / "workflows" / "release-promotion.yml")\n    assert "type=raw,value=latest" not in workflow\n    assert "type=ref,event=tag" not in workflow\n    assert 'target_tag="latest"' in promotion\n    assert 'target_tag="$GITHUB_REF_NAME"' in promotion\n    assert '"Fork Image"' in promotion\n'''
-          if version_text.count(old) != 1:
-              raise SystemExit('stale release-version ownership contract not found exactly once')
-          version_path.write_text(version_text.replace(old, new), encoding='utf-8')
+          version_lines = version_path.read_text(encoding='utf-8').splitlines()
+          output = []
+          replaced = 0
+          skip_comment = False
+          for line in version_lines:
+              stripped = line.strip()
+              if stripped == '# Normal end-user deployments track the promoted main image via latest,':
+                  skip_comment = True
+                  continue
+              if skip_comment and stripped == '# while staging/release branches retain immutable SHA publication only.':
+                  continue
+              if stripped.startswith('assert "type=raw,value=latest,enable=') and stripped.endswith('in workflow'):
+                  output.extend([
+                      '    # Fork Image is now immutable-only. Mutable aliases are owned by the',
+                      '    # exact-SHA Release Promotion gate after all independent qualifiers pass.',
+                      '    promotion = read(ROOT / ".github" / "workflows" / "release-promotion.yml")',
+                      '    assert "type=raw,value=latest" not in workflow',
+                      '    assert "type=ref,event=tag" not in workflow',
+                      '    assert \'target_tag="latest"\' in promotion',
+                      '    assert \'target_tag="$GITHUB_REF_NAME"\' in promotion',
+                      '    assert \'"Fork Image"\' in promotion',
+                  ])
+                  replaced += 1
+                  skip_comment = False
+                  continue
+              if skip_comment:
+                  raise SystemExit('unexpected release-version comment structure')
+              output.append(line)
+          if replaced != 1:
+              raise SystemExit(f'expected one stale latest assertion, replaced {replaced}')
+          version_path.write_text('\n'.join(output) + '\n', encoding='utf-8')
 
           scope_path = Path('backend/tests/test_v1_scope.py')
           scope_text = scope_path.read_text(encoding='utf-8')
-          old = '''def test_release_workflow_accepts_public_v1_tags():\n    workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()\n    release_helper = (REPO_ROOT / "release.py").read_text()\n    assert "- 'v*'" in workflow\n    assert "startsWith(github.ref, 'refs/tags/v')" in workflow\n    assert "DB_PATH=/app/data/debridpulse.db" in workflow\n    version = (REPO_ROOT / "VERSION").read_text().strip()\n    parsed = Version(version)\n    assert parsed.release[:2] == (1, 0)\n    assert 'tag = f"v{version}"' in release_helper\n    assert "internal-v{version}" not in release_helper\n'''
-          new = '''def test_release_workflow_accepts_public_v1_tags():\n    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()\n    promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()\n    release_helper = (REPO_ROOT / "release.py").read_text()\n    assert "- 'v*'" in image_workflow\n    assert "- 'v*'" in promotion_workflow\n    assert 'target_tag="$GITHUB_REF_NAME"' in promotion_workflow\n    assert "type=ref,event=tag" not in image_workflow\n    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow\n    version = (REPO_ROOT / "VERSION").read_text().strip()\n    parsed = Version(version)\n    assert parsed.release[:2] == (1, 0)\n    assert 'tag = f"v{version}"' in release_helper\n    assert "internal-v{version}" not in release_helper\n'''
-          if scope_text.count(old) != 1:
-              raise SystemExit('stale public-v1 tag contract not found exactly once')
-          scope_path.write_text(scope_text.replace(old, new), encoding='utf-8')
+          start = scope_text.index('def test_release_workflow_accepts_public_v1_tags():')
+          end = scope_text.index('\n\ndef test_operator_tab_title_uses_short_active_identity_and_queue_average():', start)
+          replacement = '''def test_release_workflow_accepts_public_v1_tags():
+    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()
+    promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()
+    release_helper = (REPO_ROOT / "release.py").read_text()
+    assert "- 'v*'" in image_workflow
+    assert "- 'v*'" in promotion_workflow
+    assert 'target_tag="$GITHUB_REF_NAME"' in promotion_workflow
+    assert "type=ref,event=tag" not in image_workflow
+    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow
+    version = (REPO_ROOT / "VERSION").read_text().strip()
+    parsed = Version(version)
+    assert parsed.release[:2] == (1, 0)
+    assert 'tag = f"v{version}"' in release_helper
+    assert "internal-v{version}" not in release_helper
+'''
+          scope_path.write_text(scope_text[:start] + replacement + scope_text[end:], encoding='utf-8')
           PY
           git diff --check
 
