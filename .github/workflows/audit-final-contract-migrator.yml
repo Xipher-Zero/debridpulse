@@ -65,21 +65,24 @@ jobs:
           scope_text = scope_path.read_text(encoding='utf-8')
           start = scope_text.index('def test_release_workflow_accepts_public_v1_tags():')
           end = scope_text.index('\n\ndef test_operator_tab_title_uses_short_active_identity_and_queue_average():', start)
-          replacement = '''def test_release_workflow_accepts_public_v1_tags():
-    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()
-    promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()
-    release_helper = (REPO_ROOT / "release.py").read_text()
-    assert "- 'v*'" in image_workflow
-    assert "- 'v*'" in promotion_workflow
-    assert 'target_tag="$GITHUB_REF_NAME"' in promotion_workflow
-    assert "type=ref,event=tag" not in image_workflow
-    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow
-    version = (REPO_ROOT / "VERSION").read_text().strip()
-    parsed = Version(version)
-    assert parsed.release[:2] == (1, 0)
-    assert 'tag = f"v{version}"' in release_helper
-    assert "internal-v{version}" not in release_helper
-'''
+          replacement_lines = [
+              'def test_release_workflow_accepts_public_v1_tags():',
+              '    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()',
+              '    promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()',
+              '    release_helper = (REPO_ROOT / "release.py").read_text()',
+              '    assert "- \'v*\'" in image_workflow',
+              '    assert "- \'v*\'" in promotion_workflow',
+              '    assert \'target_tag="$GITHUB_REF_NAME"\' in promotion_workflow',
+              '    assert "type=ref,event=tag" not in image_workflow',
+              '    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow',
+              '    version = (REPO_ROOT / "VERSION").read_text().strip()',
+              '    parsed = Version(version)',
+              '    assert parsed.release[:2] == (1, 0)',
+              '    assert \'tag = f"v{version}"\' in release_helper',
+              '    assert "internal-v{version}" not in release_helper',
+              '',
+          ]
+          replacement = '\n'.join(replacement_lines)
           scope_path.write_text(scope_text[:start] + replacement + scope_text[end:], encoding='utf-8')
           PY
           git diff --check
