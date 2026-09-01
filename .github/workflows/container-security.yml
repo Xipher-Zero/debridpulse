@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - '1.0.11'
+      - '1.0.12'
       - 'staging/**'
       - 'audit/**'
     tags:
@@ -16,6 +17,7 @@ on:
     branches:
       - main
       - '1.0.11'
+      - '1.0.12'
       - 'staging/**'
   schedule:
     - cron: '31 19 * * 2'
