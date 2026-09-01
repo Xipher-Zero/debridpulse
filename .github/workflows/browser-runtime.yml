@@ -7,6 +7,9 @@ on:
       - '1.0.11'
       - 'staging/**'
       - 'audit/**'
+    tags:
+      - 'v*'
+      - 'internal-v*'
   pull_request:
     branches:
       - main
@@ -78,11 +81,11 @@ jobs:
             fi
           done
 
-      - name: Install and audit Playwright Chromium
+      - name: Install and audit locked Playwright Chromium
         working-directory: frontend/browser
         run: |
           set -euo pipefail
-          npm install --ignore-scripts
+          npm ci --ignore-scripts
           npm audit --audit-level=high
           npx playwright install --with-deps chromium
 
