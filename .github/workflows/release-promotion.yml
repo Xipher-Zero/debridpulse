@@ -1,0 +1,237 @@
+name: Release Promotion
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+      - 'internal-v*'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact fully qualified commit SHA to verify and promote
+        required: true
+        type: string
+      target_tag:
+        description: Mutable release tag to update (latest, v*, or internal-v*)
+        required: true
+        type: string
+      dry_run:
+        description: Verify the complete promotion contract without changing a mutable tag
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  promote:
+    name: Verify exact SHA and promote mutable tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve candidate and target
+        id: release
+        shell: bash
+        env:
+          DISPATCH_SHA: ${{ inputs.candidate_sha }}
+          DISPATCH_TARGET: ${{ inputs.target_tag }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            candidate_sha="$DISPATCH_SHA"
+            target_tag="$DISPATCH_TARGET"
+            dry_run="$DISPATCH_DRY_RUN"
+          elif [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            candidate_sha="$GITHUB_SHA"
+            target_tag="latest"
+            dry_run="false"
+          elif [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_REF" == refs/tags/internal-v* ]]; then
+            candidate_sha="$GITHUB_SHA"
+            target_tag="$GITHUB_REF_NAME"
+            dry_run="false"
+          else
+            echo "Unsupported promotion trigger: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Candidate must be a full 40-character lowercase commit SHA: $candidate_sha"
+            exit 1
+          fi
+          if [[ ! "$target_tag" =~ ^(latest|v[0-9A-Za-z._-]+|internal-v[0-9A-Za-z._-]+)$ ]]; then
+            echo "Refusing unsupported mutable target tag: $target_tag"
+            exit 1
+          fi
+          if [ "$dry_run" != "true" ] && [ "$dry_run" != "false" ]; then
+            echo "Invalid dry_run value: $dry_run"
+            exit 1
+          fi
+
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "target_tag=$target_tag" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "source_tag=sha-${candidate_sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ steps.release.outputs.candidate_sha }}
+
+      - name: Read expected application version
+        id: version
+        shell: bash
+        run: echo "version=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify all qualification workflows succeeded for exact SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            "Tests"
+            "Browser Runtime"
+            "CodeQL"
+            "Container Security"
+            "Fork Image"
+          )
+
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${CANDIDATE_SHA}&per_page=100"
+          missing=()
+
+          for attempt in $(seq 1 120); do
+            payload="$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$api")"
+
+            missing=()
+            for workflow in "${required[@]}"; do
+              if jq -e \
+                --arg name "$workflow" \
+                --arg sha "$CANDIDATE_SHA" \
+                '.workflow_runs[] | select(.name == $name and .head_sha == $sha and .status == "completed" and .conclusion == "success")' \
+                <<< "$payload" >/dev/null; then
+                echo "QUALIFIED: $workflow @ $CANDIDATE_SHA"
+              else
+                missing+=("$workflow")
+              fi
+            done
+
+            if [ "${#missing[@]}" -eq 0 ]; then
+              break
+            fi
+
+            if [ "$attempt" -eq 120 ]; then
+              echo "Timed out waiting for successful exact-SHA qualification: ${missing[*]}"
+              jq -r \
+                --arg sha "$CANDIDATE_SHA" \
+                '.workflow_runs[] | select(.head_sha == $sha) | [.name, .status, (.conclusion // "pending"), (.head_branch // ""), .html_url] | @tsv' \
+                <<< "$payload" | sort -u
+              exit 1
+            fi
+
+            echo "Waiting for exact-SHA qualification: ${missing[*]}"
+            sleep 15
+          done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify immutable source image identity
+        id: source
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+          SOURCE_TAG: ${{ steps.release.outputs.source_tag }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          source_ref="${IMAGE_NAME}:${SOURCE_TAG}"
+          source_digest="$(docker buildx imagetools inspect "$source_ref" | awk '/^Digest:/ {print $2; exit}')"
+          if [[ ! "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Unable to resolve immutable source digest for $source_ref: $source_digest"
+            exit 1
+          fi
+
+          docker pull "${IMAGE_NAME}@${source_digest}"
+          image_version="$(docker image inspect "${IMAGE_NAME}@${source_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          image_revision="$(docker image inspect "${IMAGE_NAME}@${source_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+
+          if [ "$image_version" != "$EXPECTED_VERSION" ]; then
+            echo "Source OCI version mismatch: expected $EXPECTED_VERSION, got $image_version"
+            exit 1
+          fi
+          if [ "$image_revision" != "$CANDIDATE_SHA" ]; then
+            echo "Source OCI revision mismatch: expected $CANDIDATE_SHA, got $image_revision"
+            exit 1
+          fi
+
+          echo "source_digest=$source_digest" >> "$GITHUB_OUTPUT"
+          echo "Verified immutable source: $source_ref@$source_digest"
+
+      - name: Dry-run promotion contract
+        if: steps.release.outputs.dry_run == 'true'
+        shell: bash
+        run: |
+          echo "Dry run complete. Qualification and immutable source identity are valid."
+          echo "No mutable image tag was changed."
+
+      - name: Promote verified digest to mutable release tag
+        if: steps.release.outputs.dry_run == 'false'
+        shell: bash
+        env:
+          SOURCE_DIGEST: ${{ steps.source.outputs.source_digest }}
+          TARGET_TAG: ${{ steps.release.outputs.target_tag }}
+          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          source_ref="${IMAGE_NAME}@${SOURCE_DIGEST}"
+          target_ref="${IMAGE_NAME}:${TARGET_TAG}"
+          docker buildx imagetools create --tag "$target_ref" "$source_ref"
+
+          target_digest="$(docker buildx imagetools inspect "$target_ref" | awk '/^Digest:/ {print $2; exit}')"
+          if [ "$target_digest" != "$SOURCE_DIGEST" ]; then
+            echo "Promotion digest mismatch: source $SOURCE_DIGEST, target $target_digest"
+            exit 1
+          fi
+
+          docker pull "$target_ref"
+          target_version="$(docker image inspect "$target_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          target_revision="$(docker image inspect "$target_ref" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          if [ "$target_version" != "$EXPECTED_VERSION" ]; then
+            echo "Promoted OCI version mismatch: expected $EXPECTED_VERSION, got $target_version"
+            exit 1
+          fi
+          if [ "$target_revision" != "$CANDIDATE_SHA" ]; then
+            echo "Promoted OCI revision mismatch: expected $CANDIDATE_SHA, got $target_revision"
+            exit 1
+          fi
+
+          echo "Promoted $target_ref -> $SOURCE_DIGEST"
+          echo "Verified revision: $target_revision"
+          echo "Verified version:  $target_version"
