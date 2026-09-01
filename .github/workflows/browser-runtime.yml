@@ -1,0 +1,101 @@
+name: Browser Runtime
+
+on:
+  push:
+    branches:
+      - main
+      - '1.0.11'
+      - 'staging/**'
+      - 'audit/**'
+  pull_request:
+    branches:
+      - main
+      - '1.0.11'
+      - 'staging/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-runtime:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      IMAGE: debridpulse-browser:${{ github.sha }}
+      DP_BASE_URL: http://127.0.0.1:8080
+      DP_AUTH_BASE_URL: http://127.0.0.1:8081
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Build exact candidate container
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg APP_VERSION="$(cat VERSION)" \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            -t "$IMAGE" .
+
+      - name: Start open and password-authenticated candidates
+        run: |
+          set -euo pipefail
+          docker run -d --name dp-browser-open \
+            -p 127.0.0.1:8080:8080 \
+            "$IMAGE"
+
+          mkdir -p "$RUNNER_TEMP/dp-browser-auth-config"
+          docker run --rm --entrypoint python "$IMAGE" -c '
+          import json
+          from auth.passwords import hash_password
+          print(json.dumps({
+              "auth_password_enabled": True,
+              "auth_username": "browser",
+              "auth_password_hash": hash_password("browser-secret"),
+              "auth_oidc_enabled": False,
+          }))
+          ' > "$RUNNER_TEMP/dp-browser-auth-config/config.json"
+
+          docker run -d --name dp-browser-auth \
+            -p 127.0.0.1:8081:8080 \
+            -v "$RUNNER_TEMP/dp-browser-auth-config:/app/config" \
+            "$IMAGE"
+
+          for port in 8080 8081; do
+            ready=0
+            for _ in $(seq 1 90); do
+              if curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$ready" -ne 1 ]; then
+              docker logs dp-browser-open || true
+              docker logs dp-browser-auth || true
+              exit 1
+            fi
+          done
+
+      - name: Install Playwright Chromium
+        working-directory: frontend/browser
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run browser runtime contract
+        working-directory: frontend/browser
+        run: npm test
+
+      - name: Show candidate logs on failure
+        if: failure()
+        run: |
+          docker logs dp-browser-open || true
+          docker logs dp-browser-auth || true
+
+      - name: Stop candidate containers
+        if: always()
+        run: |
+          docker rm -f dp-browser-open dp-browser-auth >/dev/null 2>&1 || true
