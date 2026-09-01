@@ -782,29 +782,84 @@ function dashboardSparkCoordinates(values) {
   }));
 }
 
-function dashboardSmoothSparkPath(points) {
+function dashboardMonotoneSparkPath(points) {
   if (!Array.isArray(points) || points.length < 2) return '';
   const fmt = value => Number(value).toFixed(2);
   const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
-  const tension = 0.82;
-  let path = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+  const intervals = points.slice(0, -1).map((point, index) => {
+    const next = points[index + 1];
+    const width = next.x - point.x;
+    return {
+      width,
+      slope: width > 0 ? (next.y - point.y) / width : 0
+    };
+  });
+  const tangents = new Array(points.length).fill(0);
 
+  if (points.length === 2) {
+    tangents[0] = intervals[0].slope;
+    tangents[1] = intervals[0].slope;
+  } else {
+    const endpointTangent = (nearWidth, farWidth, nearSlope, farSlope) => {
+      if (!nearWidth || !farWidth || !nearSlope) return 0;
+      let tangent = (
+        ((2 * nearWidth + farWidth) * nearSlope) -
+        (nearWidth * farSlope)
+      ) / (nearWidth + farWidth);
+      if (tangent * nearSlope <= 0) return 0;
+      if (
+        nearSlope * farSlope < 0 &&
+        Math.abs(tangent) > Math.abs(3 * nearSlope)
+      ) {
+        tangent = 3 * nearSlope;
+      }
+      return tangent;
+    };
+
+    tangents[0] = endpointTangent(
+      intervals[0].width,
+      intervals[1].width,
+      intervals[0].slope,
+      intervals[1].slope
+    );
+    tangents[tangents.length - 1] = endpointTangent(
+      intervals[intervals.length - 1].width,
+      intervals[intervals.length - 2].width,
+      intervals[intervals.length - 1].slope,
+      intervals[intervals.length - 2].slope
+    );
+
+    for (let index = 1; index < points.length - 1; index++) {
+      const left = intervals[index - 1];
+      const right = intervals[index];
+      if (!left.slope || !right.slope || left.slope * right.slope <= 0) {
+        tangents[index] = 0;
+        continue;
+      }
+      const leftWeight = 2 * right.width + left.width;
+      const rightWeight = right.width + 2 * left.width;
+      tangents[index] = (leftWeight + rightWeight) / (
+        (leftWeight / left.slope) + (rightWeight / right.slope)
+      );
+    }
+  }
+
+  let path = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
   for (let index = 0; index < points.length - 1; index++) {
-    const p0 = points[Math.max(0, index - 1)];
-    const p1 = points[index];
-    const p2 = points[index + 1];
-    const p3 = points[Math.min(points.length - 1, index + 2)];
-    const lowY = Math.min(p1.y, p2.y);
-    const highY = Math.max(p1.y, p2.y);
+    const start = points[index];
+    const end = points[index + 1];
+    const width = end.x - start.x;
+    const lowY = Math.min(start.y, end.y);
+    const highY = Math.max(start.y, end.y);
     const cp1 = {
-      x: p1.x + ((p2.x - p0.x) / 6) * tension,
-      y: clamp(p1.y + ((p2.y - p0.y) / 6) * tension, lowY, highY)
+      x: start.x + width / 3,
+      y: clamp(start.y + (tangents[index] * width) / 3, lowY, highY)
     };
     const cp2 = {
-      x: p2.x - ((p3.x - p1.x) / 6) * tension,
-      y: clamp(p2.y - ((p3.y - p1.y) / 6) * tension, lowY, highY)
+      x: end.x - width / 3,
+      y: clamp(end.y - (tangents[index + 1] * width) / 3, lowY, highY)
     };
-    path += ` C ${fmt(cp1.x)} ${fmt(cp1.y)}, ${fmt(cp2.x)} ${fmt(cp2.y)}, ${fmt(p2.x)} ${fmt(p2.y)}`;
+    path += ` C ${fmt(cp1.x)} ${fmt(cp1.y)}, ${fmt(cp2.x)} ${fmt(cp2.y)}, ${fmt(end.x)} ${fmt(end.y)}`;
   }
   return path;
 }
@@ -823,7 +878,7 @@ function renderDashboardMetricHistory(samples) {
     if (!line || !fill || !point) return;
 
     const coordinates = dashboardSparkCoordinates(values);
-    const path = dashboardSmoothSparkPath(coordinates);
+    const path = dashboardMonotoneSparkPath(coordinates);
     card.dataset.dpMetric = metric.key;
     card.title = `${metric.label} — sparkline shows recent live samples of this exact card metric.`;
 
