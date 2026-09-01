@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 const canonicalViews = [
   ['dashboard', 'Dashboard'],
   ['torrents', 'Downloads'],
-  ['events', 'Event Log'],
+  ['events', 'Activity Log'],
   ['stats', 'Statistics'],
   ['settings', 'Settings'],
   ['help', 'Help & License'],
@@ -123,18 +123,21 @@ test('theme choice survives reload and canonical pages remain stable', async ({ 
   const runtime = observeRuntime(page);
   await page.goto('/');
 
-  const before = await page.evaluate(() => {
-    const explicit = document.documentElement.dataset.theme;
-    if (explicit === 'light' || explicit === 'dark') return explicit;
-    return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  });
+  const before = await page.evaluate(() => document.body.classList.contains('light') ? 'light' : 'dark');
   await page.locator('#theme-toggle').click();
-  const after = await page.evaluate(() => document.documentElement.dataset.theme);
-  expect(after).toBe(before === 'light' ? 'dark' : 'light');
+  const after = await page.evaluate(() => ({
+    applied: document.body.classList.contains('light') ? 'light' : 'dark',
+    stored: localStorage.getItem('theme'),
+  }));
+  const expected = before === 'light' ? 'dark' : 'light';
+  expect(after).toEqual({ applied: expected, stored: expected });
 
   await page.reload();
   await expect(page.locator('#view-dashboard')).toHaveClass(/\bactive\b/);
-  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(after);
+  expect(await page.evaluate(() => ({
+    applied: document.body.classList.contains('light') ? 'light' : 'dark',
+    stored: localStorage.getItem('theme'),
+  }))).toEqual({ applied: expected, stored: expected });
   await openView(page, 'settings', 'Settings');
   await openView(page, 'stats', 'Statistics');
   await openView(page, 'dashboard', 'Dashboard');
@@ -156,7 +159,7 @@ test('handled Event Log API failure stays inside the UI error lifecycle', async 
     });
   });
 
-  await openView(page, 'events', 'Event Log');
+  await openView(page, 'events', 'Activity Log');
   await expect.poll(() => injected).toBeGreaterThan(0);
   await expect(page.locator('.toast.error .dp-toast-copy')).toContainText('browser gate injected failure');
   await expect(page.locator('#view-events')).toHaveClass(/\bactive\b/);
