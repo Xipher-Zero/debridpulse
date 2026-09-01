@@ -47,12 +47,18 @@ async def _start_http_server(body: bytes = b"ok", content_type: str = "applicati
     return server, port, state
 
 
-def _test_tls_context(tmp_path: Path, state: dict) -> ssl.SSLContext:
+def _test_tls_context(tmp_path: Path, state: dict) -> tuple[ssl.SSLContext, Path]:
     openssl = shutil.which("openssl")
     if openssl is None:
         raise AssertionError("openssl is required for HTTPS/SNI downloader-boundary regression")
-    key = tmp_path / "sni-test.key"
-    cert = tmp_path / "sni-test.crt"
+
+    ca_key = tmp_path / "sni-test-ca.key"
+    ca_cert = tmp_path / "sni-test-ca.crt"
+    server_key = tmp_path / "sni-test.key"
+    server_csr = tmp_path / "sni-test.csr"
+    server_cert = tmp_path / "sni-test.crt"
+    server_ext = tmp_path / "sni-test.ext"
+
     subprocess.run(
         [
             openssl,
@@ -65,29 +71,89 @@ def _test_tls_context(tmp_path: Path, state: dict) -> ssl.SSLContext:
             "-days",
             "1",
             "-subj",
-            "/CN=sni.test",
+            "/CN=DebridPulse Test CA",
+            "-addext",
+            "basicConstraints=critical,CA:TRUE",
+            "-addext",
+            "keyUsage=critical,keyCertSign,cRLSign",
             "-keyout",
-            str(key),
+            str(ca_key),
             "-out",
-            str(cert),
+            str(ca_cert),
         ],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    subprocess.run(
+        [
+            openssl,
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-nodes",
+            "-subj",
+            "/CN=sni.test",
+            "-keyout",
+            str(server_key),
+            "-out",
+            str(server_csr),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    server_ext.write_text(
+        "\n".join(
+            (
+                "basicConstraints=critical,CA:FALSE",
+                "keyUsage=critical,digitalSignature,keyEncipherment",
+                "extendedKeyUsage=serverAuth",
+                "subjectAltName=DNS:sni.test",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            openssl,
+            "x509",
+            "-req",
+            "-in",
+            str(server_csr),
+            "-CA",
+            str(ca_cert),
+            "-CAkey",
+            str(ca_key),
+            "-CAcreateserial",
+            "-days",
+            "1",
+            "-sha256",
+            "-extfile",
+            str(server_ext),
+            "-out",
+            str(server_cert),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile=cert, keyfile=key)
+    context.load_cert_chain(certfile=server_cert, keyfile=server_key)
 
     def record_sni(_socket, server_name, _context):
         state["sni"].append(server_name)
 
     context.set_servername_callback(record_sni)
-    return context
+    return context, ca_cert
 
 
 async def _start_https_server(tmp_path: Path, body: bytes = b"tls-ok"):
     state = {"connections": 0, "sni": [], "hosts": []}
-    context = _test_tls_context(tmp_path, state)
+    context, ca_cert = _test_tls_context(tmp_path, state)
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         state["connections"] += 1
@@ -105,16 +171,18 @@ async def _start_https_server(tmp_path: Path, body: bytes = b"tls-ok"):
                 + body
             )
             await writer.drain()
+        except asyncio.IncompleteReadError:
+            pass
         finally:
             writer.close()
             await writer.wait_closed()
 
     server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=context)
     port = int(server.sockets[0].getsockname()[1])
-    return server, port, state
+    return server, port, state, ca_cert
 
 
-async def _start_aria2(tmp_path: Path):
+async def _start_aria2(tmp_path: Path, *, extra_args: tuple[str, ...] = ()):
     if shutil.which("aria2c") is None:
         pytest.skip("aria2c is required for downloader-boundary regression")
 
@@ -135,6 +203,7 @@ async def _start_aria2(tmp_path: Path):
         "--summary-interval=0",
         "--console-log-level=warn",
         "--auto-file-renaming=false",
+        *extra_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -184,7 +253,7 @@ async def _wait_status(service: Aria2Service, gid: str, terminal=("complete", "e
     raise AssertionError(f"aria2 job did not reach terminal state: {last}")
 
 
-def test_canonical_job_options_disable_metadata_following() -> None:
+async def test_canonical_job_options_disable_metadata_following() -> None:
     manager = TorrentManager()
     options = manager._aria2_job_options({"dir": "/download", "out": "payload.bin"})
     assert options["follow-torrent"] == "false"
@@ -327,7 +396,7 @@ async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
 async def test_guarded_https_preserves_original_hostname_and_tls_sni(
     tmp_path: Path, monkeypatch
 ) -> None:
-    target, target_port, state = await _start_https_server(tmp_path, b"tls-path-ok")
+    target, target_port, state, ca_cert = await _start_https_server(tmp_path, b"tls-path-ok")
     seen_hosts = []
 
     async def resolver(host: str, port: int):
@@ -342,7 +411,10 @@ async def test_guarded_https_preserves_original_hostname_and_tls_sni(
         bind_port=0,
     )
     await guard.ensure_started()
-    proc, service = await _start_aria2(tmp_path)
+    proc, service = await _start_aria2(
+        tmp_path,
+        extra_args=(f"--ca-certificate={ca_cert}",),
+    )
 
     async def validated_as_public(uri: str) -> str:
         return uri
@@ -361,7 +433,6 @@ async def test_guarded_https_preserves_original_hostname_and_tls_sni(
                 "dir": str(tmp_path),
                 "out": "tls.bin",
                 "max-tries": "1",
-                "check-certificate": "false",
             },
             max_retries=1,
             cached_downloads=[],
