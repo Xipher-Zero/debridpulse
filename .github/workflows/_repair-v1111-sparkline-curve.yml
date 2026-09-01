@@ -152,6 +152,11 @@ jobs:
           test_path.write_text(test)
           PY
 
+      - name: Install test dependencies
+        run: |
+          cd backend
+          python -m pip install -r requirements-dev.txt
+
       - name: Validate canonical curve implementation
         run: |
           node --check frontend/static/app.js
