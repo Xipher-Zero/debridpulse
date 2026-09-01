@@ -1,143 +1,131 @@
-# DebridPulse v1.0.11 Frontend Architecture
+# DebridPulse v1.0.11.1 Frontend Architecture
 
 ## Governing rule
 
-Dashboard is the accepted visual reference implementation for the application. Reusable visual decisions belong in shared tokens, components, or cross-page contracts. Page owners may add only geometry, behavior, content, or responsive requirements that are genuinely page-specific.
+The accepted v1.0.11.1 browser output is implemented directly by canonical owners. Stable page structure belongs in `frontend/static/index.html` or in the deliberate clean-room render owner for a page. Stable presentation belongs in the canonical CSS cascade. Runtime JavaScript owns application data, dynamic state, user actions, and narrowly scoped semantic/accessibility behavior; it must not recreate a second post-load presentation architecture.
 
-The accepted UI at the v1.0.11 RC baseline is the visual and behavioral contract. Architecture cleanup must preserve that output unless there is concrete evidence of a bug, accessibility defect, or security requirement.
+Dashboard remains the visual reference surface for shared language. Reusable visual decisions belong in shared tokens/components/contracts, while page owners retain only geometry, behavior, content, and responsive rules that are genuinely page-specific.
 
 ## Effective browser bootstrap
 
-The production browser path is deliberately layered but bounded:
+`frontend/static/index.html` is the packaged base document. It directly loads:
 
-1. `frontend/static/index.html` loads the compatibility stylesheet `style.css`, the v1.0.11 overlay `style-v11.css`, the synchronous first-paint theme bootstrap, and the parser-owned core runtimes.
-2. `/app.js` is served by the authentication route as `auth.js` followed by `app.js`. `auth.js` owns application-session/CSRF bootstrap and loads the independent authenticated-shell assets `auth-ux.css` and `auth-help.js`.
-3. `ui-theme-bootstrap.js` performs only first-paint palette restoration, then schedules `ui-presentation-loader.js` after `DOMContentLoaded`.
-4. `ui-presentation-loader.js` loads presentation-only styles and runtimes sequentially in an explicit order. Individual presentation failures are logged and skipped rather than preventing the core application from initializing.
-5. `style-v11.css` is the canonical stylesheet import root for the shared v1.0.11 visual system and page geometry.
+- `style.css`, the retained compatibility stylesheet;
+- `style-v11.css`, the canonical v1.0.11.1 stylesheet import root;
+- `ui-theme-bootstrap.js` synchronously for first-paint theme restoration;
+- the vendor Chart runtime;
+- `app.js`, `operator-title.js`, and the canonical page/cross-page runtimes as direct deferred scripts.
 
-`ui-theme-bootstrap.js` must remain free of application I/O and page-state ownership. The presentation loader is live runtime infrastructure; it is not migration debris.
+The authenticated `/app.js` response is composed by the backend authentication surface so session/CSRF bootstrap precedes the application script. Authentication may load its own auth-specific shell/help assets, but it does not own application page composition.
+
+`ui-theme-bootstrap.js` is first-paint policy only. It may restore the selected theme before paint and emit the theme state expected by the normal runtimes. It does not inject scripts or styles, perform application I/O, or sequence presentation layers.
+
+There is no live presentation-loader/finalization bootstrap. Retired `ui-presentation-loader.*`, `ui-page-finalization.*`, shell-runtime migration layers, and authentication polish/finalization layers are not part of the production load graph and must not be reintroduced as a corrective mechanism.
 
 ## Core runtime ownership
 
-- `app.js`: generic navigation, application API I/O, inherited operational rendering, transfer actions, and baseline Settings/Help markup that canonical presentation runtimes may replace or normalize.
-- `auth.js`: authenticated application bootstrap, same-origin CSRF injection, session refresh/logout, and independent auth shell/help assets.
+- `app.js`: generic navigation, application API transport, transfer data/actions, Dashboard data hydration, Event Log data/rendering, shared operational controls, and other inherited application behavior that is still intentionally common.
+- `auth.js`: application-session bootstrap, CSRF handling, login/logout/session behavior, and authentication-specific browser policy.
 - `operator-title.js`: operator-title state plus canonical utility/status icon integration and guarded core-runtime fallbacks.
-- `ui-runtime.js`: shared structural presentation for page headings, Dashboard presentation, Activity Log normalization, and Statistics KPI placement.
-- `ui-downloads-runtime.js`: Downloads presentation and row interaction normalization.
-- `ui-accessibility-runtime.js`: cross-cutting semantic/accessibility augmentation only; no application I/O.
-- `ui-presentation-loader.js`: deterministic post-core presentation sequencing.
+- `ui-runtime.js`: explicit-event coordination for shared shell/Dashboard/Event Log presentation that remains dynamic. It does not reconstruct canonical pages after load.
+- `ui-downloads-runtime.js`: Downloads filtering, pagination, row interaction, and canonical dynamic Downloads behavior.
+- `ui-accessibility-runtime.js`: cross-cutting semantics, focusability, ARIA state, and keyboard augmentation for inherited markup. It must not perform application I/O or own page composition.
+- `ui-statistics.js`: Statistics data/rendering and chart lifecycle for the base Statistics structure.
+- `ui-settings-page.js`: the deliberate clean-room Settings render owner. `#view-settings` is an empty base render root; this owner directly renders the accepted Settings architecture and emits its explicit lifecycle event.
+- `ui-help-page.js`: the deliberate clean-room Help render owner. `#view-help` is an empty base render root; this owner directly renders the accepted Help architecture and emits its explicit lifecycle event.
 
-## Static cascade ownership
+Feature-specific Settings and Help modules extend those canonical owners for bounded functions such as maintenance, notifications, aria2 live state, legal-document dialogs, and card icons. They are not post-load page-replacement layers.
 
-The `style-v11.css` cascade is ordered as:
+## Canonical page ownership
 
-1. design and language tokens
-2. foundation and component primitives
-3. shared dropdown, icon, universal, modal, and cross-page contracts
-4. shell owners
-5. Dashboard calibration
-6. page-specific geometry and content
-7. shared panel and transfer semantics
-8. cross-page visual accents
-9. shell signal field
+The supported application navigation contains exactly six surfaces:
 
-Purpose-based cross-page owners include:
+1. Dashboard
+2. Downloads
+3. Event Log
+4. Statistics
+5. Settings
+6. Help & License
 
-- `ui-utility-controls.css`: shared utility and recovery control presentation
-- `ui-visual-accents.css`: semantic glow, failure rail, scrollbar, event-point, and elevation accents
-- `ui-shell-signal-field.css`: text-only version datum and sidebar signal field
-- `ui-transfer-contract.css`: shared transfer-row status, progress, and action presentation
-- `ui-panel-surface-treatment.css`: shared large-panel interior richness
+Ownership is:
 
-`style.css` is the one retained compatibility stylesheet. The byte-identical, unreferenced `style-legacy.css` duplicate was removed during the RC adversarial cleanup and must not return.
+- **Dashboard** — stable markup in `index.html`; `ui-dashboard.css` owns the accepted Dashboard presentation, including calibration rules consolidated from historical batch/polish files; `app.js`/`ui-runtime.js` own dynamic data and explicit-event coordination.
+- **Downloads** — stable shell/table/filter/bulk structure in `index.html`; `ui-downloads-page.css` and `ui-downloads-desktop.css` own geometry; `ui-downloads-runtime.js` owns dynamic filtering/pagination/interaction.
+- **Event Log** — stable structure in `index.html`; `ui-activity-log-page.css` owns page presentation; `app.js` owns event data/rendering and `ui-runtime.js` handles bounded shared coordination.
+- **Statistics** — stable structure in `index.html`; `ui-statistics-page.css` owns page geometry and `ui-statistics.js` owns data/chart lifecycle.
+- **Settings** — empty `#view-settings` render root in `index.html`; `ui-settings-page.js` is the single clean-room page owner with feature-specific Settings modules/styles loaded directly.
+- **Help & License** — empty `#view-help` render root in `index.html`; `ui-help-page.js` is the single clean-room page owner with the legal-document module and Help styles loaded directly.
 
-## Page owners
+The retired `view-changelog`, `view-aria2queue`, and `view-support` surfaces have no supported inbound navigation path and are not packaged. Changelog access is the external repository link already exposed by the shell; aria2 operational controls live on supported Downloads/Settings surfaces; project/legal information lives under Help & License.
 
-The deliberate page owners are:
+## CSS ownership
 
-- Dashboard: `ui-dashboard.css`, live calibration layers described below, and final Dashboard owner `ui-dashboard-final.css`
-- Downloads: `ui-downloads-page.css`, `ui-downloads-desktop.css`, and `ui-downloads-runtime.js`
-- Activity Log: `ui-activity-log-page.css` plus structural normalization in `ui-runtime.js`
-- Statistics: `ui-statistics-page.css`, `ui-statistics.css`, and `ui-statistics.js`
-- Settings: clean-room `ui-settings-page.css` and `ui-settings-page.js`, with feature-specific Settings components loaded after it
-- Help: clean-room `ui-help-page.css` and `ui-help-page.js`, with Help chrome and local legal-document components
+`style.css` is the one intentionally retained inherited compatibility stylesheet. New stable presentation must not be added there when a canonical v1.0.11.1 owner exists.
 
-`ui-page-finalization.css` and `ui-page-finalization.js` own accepted cross-page details that are not yet rendered directly by every canonical page owner. The runtime uses one bounded MutationObserver on `#content`; it does not create one observer per page subtree.
+`style-v11.css` is the canonical import root. Its effective order is:
 
-## Canonical component language
+1. design/language tokens;
+2. foundation, components, dropdown/icon/universal/shared/modal contracts;
+3. application shell owners;
+4. canonical Dashboard owner and shared utility controls;
+5. page-specific Statistics, Event Log, Downloads, Settings, and Help owners;
+6. shared panel and transfer semantics;
+7. cross-page visual accents and shell signal field;
+8. directly required Settings/Help feature styles.
 
-New or deliberately rebuilt markup uses the `dp-*` component classes from `ui-components.css` and the shared token system.
+Historical `ui-dashboard-batch5.css`, `ui-dashboard-polish.css`, and `ui-dashboard-polish-final.css` are not live layers. Their accepted rules were folded, in source order where required, into `ui-dashboard.css`. Tests may forbid those retired filenames while continuing to protect the accepted rendered contract.
 
-The application still contains inherited markup and generated HTML. `ui-universal-language.css` bridges those live families onto the shared visual defaults. This bridge is compatibility infrastructure, not permission to add new legacy-class markup.
+## Intentionally retained compatibility surfaces
 
-## Interaction semantics
+Compatibility is retained only where it still has a supported runtime consumer:
 
-`ui-accessibility-runtime.js` is a cross-cutting semantic layer for inherited markup that cannot yet be rebuilt without broader churn. It may add roles, ARIA state, focusability, and keyboard activation while delegating actual actions to established application handlers. It must not perform API calls, transfer mutations, polling, or backend work.
+- `style.css` for inherited base classes not yet worth rebuilding;
+- common `app.js` helpers and application handlers used by supported pages;
+- the backend-composed authentication bootstrap;
+- accessibility augmentation for inherited markup that remains canonical product surface;
+- purpose-specific feature modules that extend Settings/Help without replacing their page owners.
 
-## 1.0.11 release browser validation
+Historical filenames, detached navigation, `display:none`, or prior use during the overhaul are not reasons to retain source. Reachability and supported ownership are the criteria.
 
-The consolidated candidate `dd6984c940ee9dcffd20d8566f568d6eec9cbd3d` was browser-validated after consolidation against the previously accepted local build. The user-visible application was reported as visually and behaviorally indistinguishable from that accepted baseline.
+## Runtime versus source-owned structure
 
-That validation proves the current effective load graph reproduces the accepted presentation. It does **not** prove that every live layer can be deleted or reordered. A source is dead only when it has no inbound path from the production bootstrap graph or another live runtime.
+Runtime code may:
 
-## Retained live calibration debt
+- fetch and render dynamic application data;
+- update progress/status/KPI/chart values;
+- respond to navigation and explicit lifecycle events;
+- manage filters, pagination, modals, focus, form state, authentication state, and user actions;
+- render Settings and Help because those two pages deliberately expose empty canonical render roots owned by their direct page scripts.
 
-The following layers are **live calibration**, not dead source. They remain because their rules are part of the browser-validated cascade and removing or folding them changes the candidate until revalidated.
+Runtime code must not:
 
-### Dashboard mixed calibration stack
+- reconstruct stable Dashboard/Downloads/Event Log/Statistics architecture that belongs in the base document;
+- inject a second stylesheet/script graph to converge the UI after load;
+- reintroduce finalization/polish/correction layers to override canonical owners;
+- resurrect unsupported views or hidden legacy navigation;
+- use a broad MutationObserver as a substitute for direct ownership when an explicit lifecycle event or source-owned structure is available.
 
-The following order-sensitive layers remain live:
+## Dead-source and reachability policy
 
-- `ui-dashboard-batch5.css`
-- `ui-dashboard-polish.css`
-- `ui-dashboard-polish-final.css`
+Before deleting a frontend source, check the complete supported inbound graph: direct `index.html` references, backend-composed browser assets, direct imports, runtime-created references that are still intentional, and tests/legal surfaces. A source with no supported inbound path should be physically removed rather than hidden or suppressed.
 
-They contain accepted rendering rules mixed across Dashboard, shell, provider, and transfer presentation. Their historical names are not desirable final ownership, but the current rules participate in the accepted cascade. A future fold must preserve their exact relative order in canonical owners and requires a new browser comparison.
+Conversely, shared code remains when a supported canonical surface still consumes it. Removal of an unreachable view does not justify deleting a shared API or helper used by Settings, Downloads, or another live page.
 
-### Settings Authentication sequence
+## Version ownership
 
-Authentication remains split across the clean-room Settings owner plus later presentation, OIDC, callback, resilience, and feature-specific layers. These files are loaded by `ui-presentation-loader.js` and are heavily regression-tested. They are therefore live implementation, not retained dead code.
+`VERSION` is the authoritative application version source and remains `1.0.11.1` for this corrective release.
 
-Further consolidation is allowed only as a behavior-preserving ownership refactor followed by full qualification and browser validation.
+- backend health/version/OpenAPI/statistics surfaces derive from `read_version()`;
+- the sidebar hydrates its visible version from application data;
+- the server-rendered login surface derives its version from the backend;
+- container metadata reads `VERSION` and propagates it to the OCI version label.
 
-### Cross-page finalization
+No independent user-visible release version should be hard-coded into presentation assets.
 
-`ui-page-finalization.js` still owns accepted copy, hierarchy, and Downloads bulk-strip placement that are not rendered directly by every page owner. Its observer scope is bounded to `#content`. Moving this behavior into direct page ownership is a future structural refactor, not dead-source deletion.
+## Qualification policy
 
-## Dead-source policy
+Static source contracts protect ownership, direct dependencies, retired-source non-recurrence, JavaScript syntax, and final semantic invariants. They are necessary but not sufficient.
 
-A frontend source is eligible for deletion only after the full reachability closure is checked across:
+Permanent CI also executes a deliberately narrow real-browser smoke contract. It protects bootstrap, the six canonical navigation surfaces, repeated/rapid navigation, representative reloads, Dashboard/Downloads/Statistics/Settings/Help runtime presence, authentication bootstrap, modal focus lifecycle, theme initialization, representative API failure behavior, and the absence of retired presentation-loader/finalization dependencies.
 
-- direct `index.html` script/style references
-- backend-composed browser assets such as `/app.js`
-- dynamically injected assets from live runtimes such as `auth.js` and `ui-shell-runtime.js`
-- `ui-theme-bootstrap.js` and `ui-presentation-loader.js`
-- `style-v11.css` imports
-- runtime-created script/link references
-- tests or packaged/legal surfaces that intentionally consume the source
-
-Historical naming is not evidence that a file is dead. Conversely, an unreachable byte-for-byte duplicate such as the retired `style-legacy.css` is not retained merely because it existed during implementation.
-
-## 1.0.11 version ownership
-
-`VERSION` is the authoritative release version source.
-
-- backend `/health`, `/version`, OpenAPI metadata, and `/api/stats` derive from `read_version()`
-- the main sidebar hydrates its visible version from `/api/stats`
-- the server-rendered login page renders `read_version()` directly
-- container build metadata reads `VERSION` and propagates it to the OCI version label
-
-No independent user-visible application version should be hardcoded in frontend presentation assets.
-
-## Test policy
-
-Frontend tests protect final ownership, effective load order, user-visible behavior, accessibility semantics, safety boundaries, accepted presentation contracts, and release-version propagation. Tests should describe behavior or ownership contracts rather than preserve historical filenames merely because they once existed.
-
-Live historical layers may be named in tests only when their presence/order is itself part of the currently accepted load graph. Dead-source cleanup should add a narrow regression contract when recurrence is plausible.
-
-## Readiness interpretation
-
-A green qualification proves the candidate passes the repository's regression, security, syntax, container, and packaging gates. Browser validation independently establishes user-visible parity for the tested candidate.
-
-The remaining Dashboard, Settings, and cross-page calibration layers are structural debt, but they are live and browser-validated. They are not classified as dead code and should not be deleted during release cleanup. Any further consolidation creates a new candidate boundary and requires the same qualification and browser comparison discipline used for the 1.0.11 release candidate.
+Any application-source change creates a new candidate SHA and requires qualification on that exact SHA. Browser qualification establishes runtime behavior for the tested candidate; it is not inferred from static contracts alone.
