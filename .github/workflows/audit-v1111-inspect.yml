@@ -1,0 +1,43 @@
+name: v1.0.11.1 audit inspection
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-post-release-remediation
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Inspect remediation ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== candidate ==='
+          git rev-parse HEAD
+          cat VERSION
+          echo '=== aria2 addUri / ensure_download / public-destination call sites ==='
+          grep -RInE 'addUri|ensure_download\(|validate_resolved_public_destination' backend/services backend/api backend/core || true
+          echo '=== canonical aria2 job policy ==='
+          grep -n -A55 -B5 'def _aria2_job_options' backend/services/manager_v2.py || true
+          echo '=== manager ensure_download contexts ==='
+          for n in $(grep -n 'ensure_download(' backend/services/manager_v2.py | cut -d: -f1); do
+            a=$((n-22)); [ "$a" -lt 1 ] && a=1
+            b=$((n+18))
+            echo "--- manager_v2.py:${a}-${b} ---"
+            sed -n "${a},${b}p" backend/services/manager_v2.py
+          done
+          echo '=== retired frontend symbols ==='
+          grep -RInE 'view-(changelog|aria2queue|support)|loadChangelog|loadAria2QueueView|aria2q-' frontend/static backend/tests || true
+          echo '=== bootstrap references ==='
+          grep -RInE 'presentation-loader|page-finalization|dashboard-(batch5|polish)|calibration' frontend/static docs backend/tests || true
+          echo '=== index scripts/styles ==='
+          grep -nE '<script|stylesheet' frontend/static/index.html
+          echo '=== style-v11 imports ==='
+          cat frontend/static/style-v11.css
+          echo '=== relevant API paths used by retired views ==='
+          grep -RInE "'/changelog'|'/aria2/downloads'|aria2/downloads" frontend/static/app.js backend/api || true
