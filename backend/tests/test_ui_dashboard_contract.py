@@ -96,7 +96,7 @@ def test_dashboard_keeps_one_primary_metric_row_and_statistics_owns_history_dire
     assert "moveDashboardKpisToStatistics" not in runtime
     assert "decorateHistoricalKpis" not in runtime
     assert 'class="dash-kpi-strip dash-kpi-strip--dashboard"' not in index
-    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
     assert 'class="dash-kpi-strip dp-stats-history-grid"' in stats_view
 
 
@@ -124,7 +124,7 @@ def test_dashboard_and_statistics_use_canonical_custom_semantic_assets() -> None
         "clock-outline.svg",
         "cube.svg",
     )
-    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Changelog -->')]
+    stats_view = index[index.index('<!-- Statistics -->'):index.index('<!-- Help -->')]
     missing = [asset for asset in statistics_assets if asset not in stats_view]
     assert not missing, f"Statistics is missing canonical assets: {missing}"
     assert "verified-badge.svg" not in stats_view
