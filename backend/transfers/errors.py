@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 import re
+import math
 from typing import Mapping
 from types import MappingProxyType
 
@@ -251,7 +252,10 @@ class NormalizedError:
         if self.severity not in {"info", "warning", "error", "critical"}:
             object.__setattr__(self, "severity", "error")
         if self.retry_after_seconds is not None:
-            object.__setattr__(self, "retry_after_seconds", max(0.0, float(self.retry_after_seconds)))
+            delay = float(self.retry_after_seconds)
+            if not math.isfinite(delay):
+                raise ValueError("Retry delay must be finite")
+            object.__setattr__(self, "retry_after_seconds", max(0.0, delay))
 
     @property
     def message(self) -> str:

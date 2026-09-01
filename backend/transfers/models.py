@@ -39,6 +39,21 @@ class ResourceState(StrEnum):
     UNKNOWN = "unknown"
 
 
+class TransferState(StrEnum):
+    ACCEPTED = "pending"
+    RESOLVING = "processing"
+    READY = "ready"
+    QUEUED = "queued"
+    TRANSFERRING = "downloading"
+    PAUSED = "paused"
+    VERIFYING = "verifying"
+    POST_PROCESSING = "extracting"
+    COMPLETED = "completed"
+    FAILED = "error"
+    CANCELLED = "cancelled"
+    DELETED = "deleted"
+
+
 class ExecutionState(StrEnum):
     QUEUED = "queued"
     TRANSFERRING = "transferring"
@@ -157,6 +172,7 @@ class ProviderObservation:
 
 @dataclass(frozen=True)
 class ResolutionResult:
+    """Candidates are alternatives for one request; manifests describe members."""
     state: ResourceState
     candidates: tuple[TransferCandidate, ...] = ()
     observation: ProviderObservation | None = None
@@ -228,4 +244,68 @@ class CleanupDirective:
 @dataclass(frozen=True)
 class HealthObservation:
     healthy: bool
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class Transfer:
+    id: int
+    name: str
+    state: TransferState
+    fingerprint: str = ""
+    source: str = ""
+    priority: int = 0
+    paused: bool = False
+    progress: float = 0.0
+    error: NormalizedError | None = None
+    epoch: int = 0
+
+
+@dataclass(frozen=True)
+class RequestRecord:
+    id: str
+    transfer_id: int
+    request: TransferRequest
+    state: str
+    parent_id: str | None = None
+    resource: ProviderResource | None = None
+    attempts: int = 0
+    retry_at: float = 0
+    error: NormalizedError | None = None
+    entry: SourceEntry | None = None
+
+
+@dataclass(frozen=True)
+class Artifact:
+    id: int
+    transfer_id: int
+    request_id: str
+    name: str
+    target: str
+    expected_bytes: int
+    state: str
+    candidates: tuple[TransferCandidate, ...] = field(repr=False)
+    selected: int = 0
+    execution: ExecutionHandle | None = None
+    retries: int = 0
+    retry_at: float = 0
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class ResolutionAttempt:
+    id: str
+    request_id: str
+    provider_id: str
+    state: str
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class ExecutionAttempt:
+    handle: ExecutionHandle
+    transfer_id: int
+    artifact_id: int
+    state: str
+    progress: TransferProgress = field(default_factory=TransferProgress)
     error: NormalizedError | None = None

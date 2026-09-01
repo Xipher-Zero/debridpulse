@@ -53,7 +53,7 @@ class Executor(Protocol):
     descriptor: IntegrationDescriptor
 
     def prepare(self, request: ExecutionRequest) -> ExecutionHandle:
-        """Allocate an opaque handle without I/O; core persists it before start."""
+        """Allocate a handle without remote contact; core persists it before start."""
         ...
 
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation: ...

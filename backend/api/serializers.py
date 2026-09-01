@@ -10,11 +10,15 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 import re
 from typing import Any
+import json
+
+from transfers.errors import NormalizedError
 
 from executors.aria2.client import Aria2DownloadStatus, aria2_download_to_dict
 
-_TORRENT_PRIVATE_FIELDS = frozenset({"magnet", "download_url"})
-_FILE_PRIVATE_FIELDS = frozenset({"source_url", "download_url"})
+_OPAQUE_FIELDS = frozenset({"payload", "context", "handle", "candidates", "resource", "redactions", "headers", "normalized_error"})
+_TORRENT_PRIVATE_FIELDS = frozenset({"magnet", "download_url"}) | _OPAQUE_FIELDS
+_FILE_PRIVATE_FIELDS = frozenset({"source_url", "download_url"}) | _OPAQUE_FIELDS
 _CAPABILITY_FIELDS = _TORRENT_PRIVATE_FIELDS | _FILE_PRIVATE_FIELDS
 _NAIVE_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$")
 _PRE_MATERIALIZATION_STATUSES = frozenset({
@@ -43,11 +47,21 @@ def _public_field(key: str, value: Any) -> Any:
 
 
 def _without_fields(value: Mapping[str, Any], private_fields: frozenset[str]) -> dict[str, Any]:
-    return {
+    result = {
         key: _public_field(key, item)
         for key, item in dict(value).items()
         if key not in private_fields
     }
+    error = value.get("normalized_error")
+    if error:
+        try:
+            normalized = NormalizedError.from_dict(json.loads(error) if isinstance(error, str) else error)
+        except (ValueError, TypeError, KeyError):
+            pass
+        else:
+            result["error"] = normalized.as_dict()
+            result["error_message"] = normalized.message
+    return result
 
 
 def public_torrent(value: Mapping[str, Any]) -> dict[str, Any]:

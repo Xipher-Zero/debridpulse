@@ -1,0 +1,355 @@
+"""Real persistence and lifecycle driven entirely by unrelated fake integrations."""
+import asyncio
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import pytest_asyncio
+
+import db.database as database
+from fake_integrations import MemoryExecutor, ParcelProvider
+from transfers.engine import TransferEngine
+from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
+from transfers.models import (
+    CleanupAuthority, ExecutionObservation, ExecutionRequest, ExecutionState,
+    OutcomeKind, Ownership, ResolutionResult, ResourceState, TransferOutcome,
+    TransferRequest, TransferState,
+)
+from transfers.policy import TransferPolicy
+from transfers.registry import IntegrationRegistry
+from transfers.repository import TransferRepository
+
+
+@pytest_asyncio.fixture
+async def core(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = TransferRepository()
+    registry = IntegrationRegistry()
+    provider = ParcelProvider()
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_provider(provider)
+    registry.register_executor(executor)
+    now = [1000.0]
+    policy = TransferPolicy(retry_delay=1, adoption_stability_seconds=0, max_active_executions=2)
+    engine = TransferEngine(repository, registry, download_root=str(tmp_path / "payloads"), policy=policy, clock=lambda: now[0])
+    await engine.initialize()
+    return SimpleNamespace(engine=engine, repository=repository, registry=registry, provider=provider, executor=executor, now=now)
+
+
+async def submit(core, payload="box", name="payload.bin"):
+    return await core.engine.submit((TransferRequest("parcel", payload, name=name),))
+
+
+def failure(category=Category.UNMAPPED_PROVIDER_ERROR, *, retryability=Retryability.UNKNOWN, recovery=Recovery.REQUIRE_OPERATOR, domain=Domain.PROVIDER):
+    return NormalizedError(domain, category, Stage.RESOLUTION, retryability, recovery)
+
+
+@pytest.mark.asyncio
+async def test_identity_is_durable_before_resolution_and_survives_completion(core):
+    transfer = await submit(core)
+    assert transfer.state == TransferState.ACCEPTED
+    assert not core.provider.calls
+    records = await core.repository.requests(transfer.id)
+    assert records[0].request.kind == "parcel"
+    await core.engine.tick()
+    artifacts = await core.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    handle = artifacts[0].execution
+    assert handle and handle.attempt_id != str(transfer.id)
+    core.executor.finish(handle)
+    await core.engine.tick()
+    completed = await core.repository.get(transfer.id)
+    assert completed.state == TransferState.COMPLETED
+    assert completed.progress == 100
+    attempts = await core.repository.executions(transfer.id)
+    assert len(attempts) == 1
+    assert attempts[0].handle == handle
+
+
+@pytest.mark.asyncio
+async def test_pause_accepts_requests_without_contact_and_resume_one_preserves_siblings(core):
+    await core.engine.pause_all()
+    first = await submit(core, "one", "one.bin")
+    second = await submit(core, "two", "two.bin")
+    await core.engine.tick()
+    assert core.provider.calls == []
+    assert (await core.repository.get(first.id)).state == TransferState.PAUSED
+    await core.engine.resume(first.id)
+    await core.engine.tick()
+    assert [value for operation, value in core.provider.calls if operation == "resolve"] == ["one"]
+    assert (await core.repository.get(second.id)).paused
+
+
+@pytest.mark.asyncio
+async def test_transient_retry_uses_durable_budget_and_elapsed_deadline(core):
+    error = failure(Category.PROVIDER_UNAVAILABLE, retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF)
+    core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)] * 5
+    transfer = await submit(core)
+    await core.engine.tick()
+    await core.engine.tick()
+    assert len(core.provider.calls) == 1
+    for advance in (1, 2, 10, 10):
+        core.now[0] += advance
+        await core.engine.tick()
+    assert len(core.provider.calls) == 3
+    record = (await core.repository.requests(transfer.id))[0]
+    assert record.attempts == 3
+    assert record.state == "failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [failure(), failure(Category.DESTINATION_BLOCKED, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)])
+async def test_unknown_and_security_failures_never_automatically_retry(core, error):
+    core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)]
+    transfer = await submit(core)
+    for _ in range(5):
+        await core.engine.tick()
+        core.now[0] += 1000
+    assert len(core.provider.calls) == 1
+    assert (await core.repository.get(transfer.id)).state == TransferState.FAILED
+    assert core.executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_provider_preparation_and_manifest_do_not_define_local_progress(core):
+    result = core.provider.parcel()
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).progress == 0
+    core.provider.resources[result.observation.resource.id] = replace(result.observation, state=ResourceState.AVAILABLE)
+    await core.engine.tick()
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    assert artifact.target.endswith("Parcel/folder/payload.bin")
+    assert artifact.execution is not None
+    assert (await core.repository.get(transfer.id)).state == TransferState.TRANSFERRING
+
+
+@pytest.mark.asyncio
+async def test_delete_wins_over_late_provider_resource_creation(core):
+    core.provider.entered, core.provider.release = asyncio.Event(), asyncio.Event()
+    result = core.provider.parcel(state=ResourceState.AVAILABLE)
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    running = asyncio.create_task(core.engine.tick())
+    await core.provider.entered.wait()
+    await core.engine.delete(transfer.id, remote=True)
+    core.provider.release.set()
+    await running
+    assert (await core.repository.get(transfer.id)).state == TransferState.DELETED
+    cleanup = [value for operation, value in core.provider.calls if operation == "cleanup"]
+    assert len(cleanup) == 1
+    assert cleanup[0].authority == CleanupAuthority.USER_REQUEST
+    assert not core.executor.calls
+
+
+@pytest.mark.asyncio
+async def test_delete_without_remote_authority_retains_even_created_resources(core):
+    result = core.provider.parcel()
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    await core.engine.tick()
+    await core.engine.delete(transfer.id, remote=False)
+    assert not [entry for entry in core.provider.calls if entry[0] == "cleanup"]
+
+
+@pytest.mark.asyncio
+async def test_restart_recovers_same_execution_and_does_not_dispatch_duplicate(core):
+    transfer = await submit(core)
+    await core.engine.tick()
+    original = (await core.repository.artifacts(transfer.id))[0].execution
+    restarted = TransferEngine(TransferRepository(), core.registry, download_root=core.engine.root, policy=core.engine.policy, clock=lambda: core.now[0])
+    await restarted.initialize()
+    await restarted.tick()
+    assert (await core.repository.artifacts(transfer.id))[0].execution == original
+    assert len([entry for entry in core.executor.calls if entry[0] == "start"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_completed_executor_observation_requires_actual_payload(core):
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution, materialize=False)
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).state == TransferState.FAILED
+    refreshed = (await core.repository.artifacts(transfer.id))[0]
+    assert refreshed.error.category == Category.MATERIALIZATION_FAILED
+
+
+@pytest.mark.asyncio
+async def test_manual_retry_preserves_completed_sibling_and_canonical_paths(core):
+    transfer = await core.engine.submit((TransferRequest("parcel", "one", name="one.bin"), TransferRequest("parcel", "two", name="two.bin")))
+    core.executor.start_errors = [None, failure(Category.UNMAPPED_EXECUTOR_ERROR, domain=Domain.EXECUTOR)]
+    await core.engine.tick()
+    before = await core.repository.artifacts(transfer.id)
+    core.executor.finish(before[0].execution)
+    await core.engine.tick()
+    assert await core.engine.retry(transfer.id)
+    await core.engine.tick()
+    after = await core.repository.artifacts(transfer.id)
+    assert after[0].execution == before[0].execution
+    assert after[0].state == "completed"
+    assert after[1].execution != before[1].execution
+    assert [(item.id, item.target) for item in before] == [(item.id, item.target) for item in after]
+    assert len(await core.repository.executions(transfer.id)) == 3
+
+
+@pytest.mark.asyncio
+async def test_explicit_reacquisition_revalidates_completed_history(core):
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    await core.engine.tick()
+    Path(artifact.target).unlink()
+    submitted = await submit(core)
+    assert submitted.id == transfer.id
+    await core.engine.tick()
+    repaired = (await core.repository.artifacts(transfer.id))[0]
+    assert repaired.execution != artifact.execution
+    assert repaired.target == artifact.target
+    assert repaired.state == "downloading"
+
+
+@pytest.mark.asyncio
+async def test_unknown_cleanup_failure_is_retained_without_retry_storm(core):
+    core.provider.cleanup_response = TransferOutcome(OutcomeKind.FAILURE, failure())
+    result = core.provider.parcel()
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    await core.engine.tick()
+    await core.engine.delete(transfer.id)
+    for _ in range(5):
+        core.now[0] += 1000
+        await core.engine.tick()
+    assert len([item for item in core.provider.calls if item[0] == "cleanup"]) == 1
+    resources = await core.repository.resources(transfer.id)
+    assert resources[0][2] == CleanupAuthority.USER_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_observed_inventory_resource_is_not_resubmitted_or_owned(core):
+    result = core.provider.parcel(state=ResourceState.AVAILABLE, ownership=Ownership.OBSERVED)
+    core.provider.inventory_items = (result.observation,)
+    await core.engine.reconcile_inventory()
+    await core.engine.tick()
+    assert not [item for item in core.provider.calls if item[0] == "resolve"]
+    transfer = (await core.repository.active())[0]
+    resource = (await core.repository.resources(transfer.id))[0][0]
+    assert resource.ownership == Ownership.OBSERVED
+    await core.engine._cleanup_resources(transfer.id)
+    assert not [item for item in core.provider.calls if item[0] == "cleanup"]
+
+
+@pytest.mark.asyncio
+async def test_empty_incomplete_inventory_does_not_delete_known_resource(core):
+    result = core.provider.parcel()
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    await core.engine.tick()
+    await core.engine.reconcile_inventory()
+    resource, state, _ = (await core.repository.resources(transfer.id))[0]
+    assert state == ResourceState.PREPARING
+    assert resource == result.observation.resource
+
+
+@pytest.mark.asyncio
+async def test_prepared_attempt_survives_crash_before_external_contact(core):
+    transfer = await submit(core)
+    record = (await core.repository.requests(transfer.id))[0]
+    await core.engine._resolve(record)
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    request = ExecutionRequest(artifact.candidates[0], artifact.target, "crash-before-start")
+    handle = core.executor.prepare(request)
+    assert await core.repository.prepare_execution(artifact, handle)
+    await core.engine.tick()
+    core.now[0] += 2
+    await core.engine.tick()
+    attempts = await core.repository.executions(transfer.id)
+    assert len(attempts) == 2
+    assert attempts[0].state == ExecutionState.ABSENT
+    assert len([item for item in core.executor.calls if item[0] == "start"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_uncertainty_reserves_slot_without_creating_replacement(core):
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.jobs[artifact.execution.attempt_id] = ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN,
+        error=failure(Category.UNMAPPED_EXECUTOR_ERROR, domain=Domain.EXECUTOR))
+    for _ in range(4):
+        core.now[0] += 1000
+        await core.engine.tick()
+    assert len(await core.repository.executions(transfer.id)) == 1
+    assert not await core.engine.retry(transfer.id)
+
+
+@pytest.mark.asyncio
+async def test_postprocessing_failure_is_recorded_separately_from_delivery(core):
+    class Processor:
+        descriptor = SimpleNamespace(id="unpacker")
+        async def process(self, transfer_id, paths):
+            assert Path(paths[0]).read_bytes() == b"done"
+            return TransferOutcome(OutcomeKind.FAILURE, NormalizedError(
+                Domain.POST_PROCESSING, Category.EXTRACTION_FAILED, Stage.POST_PROCESSING,
+                Retryability.NEVER, Recovery.REQUIRE_OPERATOR))
+    core.engine.postprocessors = (Processor(),)
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).state == TransferState.COMPLETED
+    async with database.get_db() as db:
+        outcomes = await db.fetchall("SELECT payload FROM transfer_outcomes WHERE transfer_id=?", (transfer.id,))
+    assert any("extraction_failed" in row["payload"] for row in outcomes)
+    assert len([item for item in core.provider.calls if item[0] == "resolve"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_provider_can_change_between_attempts_without_changing_transfer(core):
+    error = failure(Category.PROVIDER_UNAVAILABLE, retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF)
+    core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)]
+    transfer = await submit(core)
+    await core.engine.tick()
+    alternate = ParcelProvider("other-parcel")
+    core.registry.register_provider(alternate)
+    core.registry.mark_health(core.provider.descriptor.id, healthy=False)
+    core.now[0] += 1
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).state == TransferState.TRANSFERRING
+    async with database.get_db() as db:
+        attempts = await db.fetchall("SELECT provider_id FROM resolution_attempts ORDER BY rowid")
+    assert [row["provider_id"] for row in attempts] == ["parcel-lab", "other-parcel"]
+    assert len(await core.repository.active()) == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_can_change_on_retry_without_recreating_artifact(core):
+    core.executor.start_errors = [failure(Category.UNMAPPED_EXECUTOR_ERROR, domain=Domain.EXECUTOR)]
+    transfer = await submit(core)
+    await core.engine.tick()
+    before = (await core.repository.artifacts(transfer.id))[0]
+    alternate = MemoryExecutor(core.repository.authorize_execution)
+    alternate.descriptor = replace(alternate.descriptor, id="other-copy", priority=10)
+    core.registry.register_executor(alternate)
+    assert await core.engine.retry(transfer.id)
+    await core.engine.tick()
+    after = (await core.repository.artifacts(transfer.id))[0]
+    assert (after.id, after.target) == (before.id, before.target)
+    assert after.execution.executor_id == "other-copy"
+    assert len(await core.repository.executions(transfer.id)) == 2
+
+
+@pytest.mark.asyncio
+async def test_routing_preference_and_display_name_do_not_change_source_identity(core):
+    first = await core.engine.submit((TransferRequest("parcel", "same-input", name="one", preferred_provider="first"),))
+    second = await core.engine.submit((TransferRequest("parcel", "same-input", name="two", preferred_provider="second"),))
+    assert first.id == second.id
+    independent = await core.engine.submit((TransferRequest("parcel", "same-input"),), deduplicate=False)
+    assert independent.id != first.id

@@ -1,8 +1,8 @@
 """AllDebrid-native responses terminate here.
 
 Mappings are based on the existing integration and https://docs.alldebrid.com/.
-Explicit expired/no-peer descriptions are recognized because older deployments
-have encountered those descriptions with different numeric status assignments.
+Explicit expired/no-peer descriptions preserve the repository's existing
+regression fixtures, whose numeric assignments differ from the documented table.
 """
 from __future__ import annotations
 
@@ -181,6 +181,11 @@ def observation_from_native(native: dict, *, resource: ProviderResource | None =
         error = error_from_code(native_code, native.get("status"), stage=Stage.RECONCILIATION)
         if error.category == Category.UNMAPPED_PROVIDER_ERROR:
             state = ResourceState.UNKNOWN
+    fingerprint = str(native.get("hash") or "").lower()
+    if request is None and re.fullmatch(r"[a-f0-9]{40}", fingerprint):
+        request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + fingerprint,
+                                  str(native.get("filename") or native.get("name") or ""),
+                                  fingerprint, "alldebrid")
     return ProviderObservation(resource, state,
                                str(native.get("filename") or native.get("name") or ""),
-                               str(native.get("hash") or "").lower(), progress, error, request)
+                               fingerprint, progress, error, request)
