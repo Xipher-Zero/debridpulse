@@ -1,0 +1,375 @@
+name: Canonicalize Dashboard sparkline state
+
+on:
+  push:
+    branches:
+      - audit/v1.0.11.1-dashboard-sparklines
+    paths:
+      - .github/workflows/_repair-v1111-dashboard-sparklines.yml
+
+permissions:
+  contents: write
+
+env:
+  BASE_SHA: 8a678c26bcf87c9ea00835fc2c37f74935463ace
+  TARGET_BRANCH: 1.0.11.1-hotfix1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout guarded working branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 2
+
+      - name: Prove exact base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = 1.0.11.1
+          test -z "$(git status --porcelain)"
+          echo 'Existing Dashboard sparkline ownership:'
+          grep -R -n -E 'METRIC_HISTORY|makeSparkline|dashboard-stats-rendered|dp-card-spark' frontend/static backend/tests || true
+
+      - name: Move Dashboard sparklines into canonical base owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          index_path = Path('frontend/static/index.html')
+          app_path = Path('frontend/static/app.js')
+          runtime_path = Path('frontend/static/ui-runtime.js')
+          css_path = Path('frontend/static/ui-dashboard.css')
+          test_path = Path('backend/tests/test_dashboard_sparkline_canonical_owner.py')
+
+          html = index_path.read_text()
+          app = app_path.read_text()
+          runtime = runtime_path.read_text()
+          css = css_path.read_text()
+
+          assert 'class="dp-card-spark"' not in html
+
+          def spark_svg(index: int) -> str:
+              gid = f'dp-card-spark-fill-{index}'
+              return f'''        <svg class="dp-card-spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="{gid}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="currentColor" stop-opacity=".34"></stop>
+              <stop offset="100%" stop-color="currentColor" stop-opacity="0"></stop>
+            </linearGradient>
+          </defs>
+          <path class="dp-card-spark-fill" fill="url(#{gid})" d=""></path>
+          <path class="dp-card-spark-line" d=""></path>
+          <circle class="dp-card-spark-point" cx="50" cy="12" r="1.45" opacity="0"></circle>
+        </svg>
+'''
+
+          # Encode the accepted sparkline surface directly in each primary KPI card.
+          for idx, value_id in enumerate(('s-total', 's-completed', 's-active', 's-processing', 's-error', 's-size')):
+              marker = f'id="{value_id}"'
+              assert html.count(marker) == 1, value_id
+              start = html.index(marker)
+              tail = '          </div>\n        </div>'
+              close = html.index(tail, start) + len('          </div>\n')
+              html = html[:close] + spark_svg(idx) + html[close:]
+
+          assert html.count('class="dp-card-spark"') == 6
+          assert html.count('class="dp-card-spark-line"') == 6
+          assert '<polyline class="dp-card-spark-line"' not in html
+
+          # Remove the former presentation-runtime sparkline subsystem. The runtime
+          # may still decorate other legacy surfaces, but it no longer owns KPI
+          # state, creates sparkline DOM, or bridges loadStats through an event.
+          const_start = runtime.index('  const METRIC_HISTORY_KEY =')
+          const_end = runtime.index('  const SUBTITLES =', const_start)
+          runtime = runtime[:const_start] + runtime[const_end:]
+
+          funcs_start = runtime.index('  function numeric(value) {')
+          funcs_end = runtime.index('  function decorateDashboardHero() {', funcs_start)
+          runtime = runtime[:funcs_start] + runtime[funcs_end:]
+
+          runtime = runtime.replace(
+              '    Object.entries(heroIcons).forEach(function ([valueId, filename], index) {',
+              '    Object.entries(heroIcons).forEach(function ([valueId, filename]) {'
+          )
+          assert runtime.count('      makeSparkline(card, index);\n') == 1
+          runtime = runtime.replace('      makeSparkline(card, index);\n', '')
+          assert runtime.count('    renderDashboardMetricHistory(readMetricHistory());\n') == 1
+          runtime = runtime.replace('    renderDashboardMetricHistory(readMetricHistory());\n', '')
+          assert runtime.count('    installMetricHistoryHook();\n') == 1
+          runtime = runtime.replace('    installMetricHistoryHook();\n', '')
+
+          for retired in (
+              'METRIC_HISTORY_KEY', 'METRIC_HISTORY_LIMIT', 'METRIC_SAMPLE_INTERVAL_MS',
+              'HERO_METRICS', 'makeSparkline', 'sparklinePoints',
+              'renderDashboardMetricHistory', 'recordDashboardMetricHistory',
+              'installMetricHistoryHook', 'dpDashboardMetricLifecycle'
+          ):
+              assert retired not in runtime, retired
+
+          canonical = r'''
+const DASHBOARD_METRIC_HISTORY_KEY = 'debridpulse.dashboard.metric-history.v2';
+const DASHBOARD_METRIC_HISTORY_LIMIT = 30;
+const DASHBOARD_METRIC_SAMPLE_INTERVAL_MS = 15000;
+const DASHBOARD_HERO_METRICS = {
+  's-total':      {key: 'total',      label: 'Total downloads'},
+  's-completed':  {key: 'completed',  label: 'Completed'},
+  's-active':     {key: 'active',     label: 'Active now'},
+  's-processing': {key: 'processing', label: 'Processing'},
+  's-error':      {key: 'errors',     label: 'Errors'},
+  's-size':       {key: 'downloaded', label: 'Total downloaded'}
+};
+
+function dashboardMetricNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function readDashboardMetricHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DASHBOARD_METRIC_HISTORY_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(sample => sample && Number.isFinite(Number(sample.ts)))
+      .slice(-DASHBOARD_METRIC_HISTORY_LIMIT);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeDashboardMetricHistory(samples) {
+  try {
+    localStorage.setItem(
+      DASHBOARD_METRIC_HISTORY_KEY,
+      JSON.stringify(samples.slice(-DASHBOARD_METRIC_HISTORY_LIMIT))
+    );
+  } catch (_) {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+}
+
+function dashboardSparkCoordinates(values) {
+  if (!Array.isArray(values) || values.length < 2) return [];
+  const clean = values.map(dashboardMetricNumber);
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  const span = max - min;
+  return clean.map((value, index) => ({
+    x: (index / (clean.length - 1)) * 100,
+    y: span === 0 ? 12 : 20 - ((value - min) / span) * 16
+  }));
+}
+
+function dashboardSmoothSparkPath(points) {
+  if (!Array.isArray(points) || points.length < 2) return '';
+  const fmt = value => Number(value).toFixed(2);
+  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  const tension = 0.82;
+  let path = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
+
+  for (let index = 0; index < points.length - 1; index++) {
+    const p0 = points[Math.max(0, index - 1)];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = points[Math.min(points.length - 1, index + 2)];
+    const lowY = Math.min(p1.y, p2.y);
+    const highY = Math.max(p1.y, p2.y);
+    const cp1 = {
+      x: p1.x + ((p2.x - p0.x) / 6) * tension,
+      y: clamp(p1.y + ((p2.y - p0.y) / 6) * tension, lowY, highY)
+    };
+    const cp2 = {
+      x: p2.x - ((p3.x - p1.x) / 6) * tension,
+      y: clamp(p2.y - ((p3.y - p1.y) / 6) * tension, lowY, highY)
+    };
+    path += ` C ${fmt(cp1.x)} ${fmt(cp1.y)}, ${fmt(cp2.x)} ${fmt(cp2.y)}, ${fmt(p2.x)} ${fmt(p2.y)}`;
+  }
+  return path;
+}
+
+function renderDashboardMetricHistory(samples) {
+  Object.entries(DASHBOARD_HERO_METRICS).forEach(([valueId, metric]) => {
+    const value = document.getElementById(valueId);
+    const card = value?.closest('.dash-hero-stat');
+    const svg = card?.querySelector('.dp-card-spark');
+    if (!card || !svg) return;
+
+    const values = samples.map(sample => dashboardMetricNumber(sample[metric.key]));
+    const line = svg.querySelector('.dp-card-spark-line');
+    const fill = svg.querySelector('.dp-card-spark-fill');
+    const point = svg.querySelector('.dp-card-spark-point');
+    if (!line || !fill || !point) return;
+
+    const coordinates = dashboardSparkCoordinates(values);
+    const path = dashboardSmoothSparkPath(coordinates);
+    card.dataset.dpMetric = metric.key;
+    card.title = `${metric.label} — sparkline shows recent live samples of this exact card metric.`;
+
+    if (path) {
+      line.setAttribute('d', path);
+      fill.setAttribute('d', `${path} L 100 24 L 0 24 Z`);
+      point.setAttribute('opacity', '0');
+    } else if (values.length === 1) {
+      line.setAttribute('d', '');
+      fill.setAttribute('d', '');
+      point.setAttribute('cx', '50');
+      point.setAttribute('cy', '12');
+      point.setAttribute('opacity', '1');
+    } else {
+      line.setAttribute('d', '');
+      fill.setAttribute('d', '');
+      point.setAttribute('opacity', '0');
+    }
+  });
+}
+
+function recordDashboardMetricHistory(metrics) {
+  if (!metrics || typeof metrics !== 'object') return;
+  const snapshot = {
+    ts: Date.now(),
+    total: dashboardMetricNumber(metrics.total),
+    completed: dashboardMetricNumber(metrics.completed),
+    active: dashboardMetricNumber(metrics.active),
+    processing: dashboardMetricNumber(metrics.processing),
+    errors: dashboardMetricNumber(metrics.errors),
+    downloaded: dashboardMetricNumber(metrics.downloaded)
+  };
+  const samples = readDashboardMetricHistory();
+  const last = samples[samples.length - 1];
+  const changed = !last || Object.values(DASHBOARD_HERO_METRICS).some(metric =>
+    dashboardMetricNumber(last[metric.key]) !== snapshot[metric.key]
+  );
+  const due = !last || snapshot.ts - dashboardMetricNumber(last.ts) >= DASHBOARD_METRIC_SAMPLE_INTERVAL_MS;
+
+  if (changed || due) {
+    samples.push(snapshot);
+    while (samples.length > DASHBOARD_METRIC_HISTORY_LIMIT) samples.shift();
+    writeDashboardMetricHistory(samples);
+  }
+  renderDashboardMetricHistory(samples);
+}
+
+'''
+          marker = 'async function loadStats() {'
+          assert app.count(marker) == 1
+          app = app.replace(marker, canonical + marker)
+
+          # Preserve the general lifecycle event for other explicit consumers, but
+          # KPI history no longer depends on an event bridge.
+          old_stats_block = '''      document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
+      document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
+'''
+          new_stats_block = '''      document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
+      document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
+      recordDashboardMetricHistory({
+        total,
+        completed,
+        active: s.active_operations ?? s.active_downloads ?? 0,
+        processing: (Number(bs.processing) || 0) + (Number(bs.uploading) || 0),
+        errors: errCount,
+        downloaded: s.total_completed_bytes
+      });
+'''
+          assert app.count(old_stats_block) == 1
+          app = app.replace(old_stats_block, new_stats_block)
+
+          # Smooth path joins belong to the canonical Dashboard stylesheet.
+          css_old = '''  stroke-width: 1.55;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px currentColor);
+'''
+          css_new = '''  stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px currentColor);
+'''
+          assert css.count(css_old) == 1
+          css = css.replace(css_old, css_new)
+
+          test_path.write_text(r'''from pathlib import Path
+
+STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
+
+
+def test_dashboard_sparkline_surface_is_static_base_markup():
+    html = (STATIC / "index.html").read_text()
+    assert html.count('class="dp-card-spark"') == 6
+    assert html.count('class="dp-card-spark-line"') == 6
+    assert html.count('class="dp-card-spark-fill"') == 6
+    assert '<polyline class="dp-card-spark-line"' not in html
+
+
+def test_dashboard_sparkline_state_is_owned_by_load_stats_not_presentation_runtime():
+    app = (STATIC / "app.js").read_text()
+    runtime = (STATIC / "ui-runtime.js").read_text()
+    assert "recordDashboardMetricHistory({" in app
+    assert "debridpulse.dashboard.metric-history.v2" in app
+    assert "dashboardSmoothSparkPath" in app
+    assert " C ${fmt(cp1.x)}" in app
+    assert "makeSparkline" not in runtime
+    assert "installMetricHistoryHook" not in runtime
+    assert "METRIC_HISTORY_KEY" not in runtime
+    assert "dpDashboardMetricLifecycle" not in runtime
+
+
+def test_dashboard_sparkline_samples_use_same_visible_metric_universe_as_cards():
+    app = (STATIC / "app.js").read_text()
+    assert ".filter(([status]) => status !== 'deleted')" in app
+    assert "recordDashboardMetricHistory({\n        total,\n        completed," in app
+    assert "errors: errCount" in app
+    assert "downloaded: s.total_completed_bytes" in app
+
+
+def test_dashboard_sparkline_curve_has_canonical_rounded_paint():
+    css = (STATIC / "ui-dashboard.css").read_text()
+    assert "stroke-linecap: round;" in css
+    assert "stroke-linejoin: round;" in css
+''')
+
+          index_path.write_text(html)
+          app_path.write_text(app)
+          runtime_path.write_text(runtime)
+          css_path.write_text(css)
+          PY
+
+          git diff --check
+          node --check frontend/static/app.js
+          node --check frontend/static/ui-runtime.js
+          grep -R -n -E 'METRIC_HISTORY_KEY|makeSparkline|installMetricHistoryHook|dpDashboardMetricLifecycle' frontend/static/ui-runtime.js && exit 1 || true
+          test "$(grep -o 'class="dp-card-spark"' frontend/static/index.html | wc -l)" -eq 6
+          test "$(grep -o 'class="dp-card-spark-line"' frontend/static/index.html | wc -l)" -eq 6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Full regression before commit
+        shell: bash
+        env:
+          PYTHONPATH: backend
+        run: |
+          set -euo pipefail
+          pip install -r backend/requirements-dev.txt
+          cd backend
+          python -m pytest tests/ -q --tb=short
+
+      - name: Commit canonical correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git status --short
+          git add frontend/static/index.html frontend/static/app.js frontend/static/ui-runtime.js frontend/static/ui-dashboard.css backend/tests/test_dashboard_sparkline_canonical_owner.py
+          git commit -m 'fix: canonicalize Dashboard sparkline state'
+          git push origin HEAD:${TARGET_BRANCH}
+          echo "NEW_CANDIDATE_SHA=$(git rev-parse HEAD)"
