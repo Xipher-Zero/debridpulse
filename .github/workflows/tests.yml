@@ -37,11 +37,12 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
-      - name: Install aria2 downloader regression dependency
+      - name: Install downloader regression dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends aria2
+          sudo apt-get install -y --no-install-recommends aria2 openssl
           aria2c --version
+          openssl version
 
       - name: Install dependencies
         run: |
