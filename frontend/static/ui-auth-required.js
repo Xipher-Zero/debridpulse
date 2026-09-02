@@ -292,6 +292,7 @@
     const session = state.session;
     snapshotFields();
     const previous = active.keySelected ? active.keyMaterial : '';
+    const replacingKey = active.mode === 'key' && active.keySelected;
     try {
       if (!Number.isFinite(file.size) || file.size <= 0) {
         throw new Error('empty');
@@ -305,13 +306,17 @@
         throw new Error('invalid');
       }
       // File reads are asynchronous. Capture edits made while the key was being
-      // read before rebuilding the dialog around the selected key state.
+      // read before changing selected-key state. Replacing a key while already
+      // in key mode does not require rebuilding the form; keeping the existing
+      // DOM prevents in-flight field edits from racing a no-op mode transition.
       snapshotFields();
       active.keyMaterial = material;
       active.keySelected = true;
       active.mode = 'key';
       active.password = '';
-      renderActive({focus: false, capture: false});
+      if (!replacingKey) {
+        renderActive({focus: false, capture: false});
+      }
       setInlineError('');
       state.overlay?.querySelector('[data-dp-auth-secret]')?.focus();
     } catch (error) {
