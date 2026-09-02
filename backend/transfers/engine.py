@@ -12,8 +12,8 @@ from pathlib import Path
 import time
 from weakref import WeakValueDictionary
 
-from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, ExecutorInputContinuation, Inventory, Manifest,
-    PauseResume, ProviderInputContinuation, ResourceLookup)
+from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
+    Inventory, Manifest, PauseResume, ProviderInputContinuation, ResourceLookup)
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
@@ -467,10 +467,41 @@ class TransferEngine:
         candidate = artifact.candidates[artifact.selected]
         eligible = {item.descriptor.id: item for item in self.registry.eligible_executors(candidate)}
         executor = eligible.get(challenge.integration_id)
-        if not isinstance(executor, ExecutorInputContinuation):
-            return
         request = ExecutionRequest(candidate, artifact.target, challenge.operation_id)
         submitted = None
+
+        if (artifact.execution is not None
+                and artifact.execution.attempt_id == challenge.operation_id
+                and isinstance(executor, ExecutorInputRecovery)):
+            try:
+                async with self._dispatch_lock:
+                    if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
+                        return
+                    attempts = await self.repository.live_executions()
+                    occupied = sum(item.state in {"prepared", "queued", "transferring", "unknown"} for item in attempts)
+                    if occupied >= max(1, self.policy.max_active_executions):
+                        return
+                    submitted = await self.inputs.take(challenge)
+                    if submitted is None:
+                        return
+                    observed = await executor.start_with_input(request, artifact.execution, submitted)
+                    current = next(item for item in await self.repository.artifacts(challenge.transfer_id) if item.id == artifact.id)
+                    await self._execution_result(current, executor, observed)
+                    await self.challenges.current(challenge.transfer_id)
+            except Exception as exc:
+                secrets = submitted.secret_values() if submitted else ()
+                error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                    exc, integration_id=challenge.integration_id, domain=Domain.EXECUTOR, stage=Stage.QUEUE, secrets=secrets)
+                await self.challenges.clear(challenge)
+                await self.repository.artifact_state(artifact.id, "error", error=error)
+                await self.repository.outcome(challenge.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+            finally:
+                if submitted:
+                    submitted.discard()
+            return
+
+        if not isinstance(executor, ExecutorInputContinuation):
+            return
         try:
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
@@ -516,6 +547,13 @@ class TransferEngine:
             raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
         idle_seconds = await self.repository.execution_idle_seconds(observed, self.clock())
         await self.repository.execution(observed)
+        if (artifact.candidates and isinstance(executor, ExecutorInputRecovery)):
+            requirement = executor.input_requirement(artifact.candidates[artifact.selected], observed)
+            if requirement is not None:
+                if not isinstance(requirement, InputRequirement):
+                    raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                await self.challenges.wait_executor(artifact, executor.descriptor.id, observed.handle.attempt_id, requirement)
+                return
         if not await self._live(artifact.transfer_id):
             await executor.cancel(observed.handle)
             return
