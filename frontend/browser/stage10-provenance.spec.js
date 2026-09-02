@@ -8,8 +8,16 @@ async function openSettings(page) {
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
-async function setChecked(locator, value) {
-  if ((await locator.isChecked()) !== value) await locator.click();
+function integrationInput(page, identity) {
+  return page.locator(`[data-integration-enabled="${identity}"]`);
+}
+function integrationControl(page, identity) {
+  return page.locator(`label[for="dp-settings-integration-${identity}-enabled"]`);
+}
+async function setIntegrationChecked(page, identity, value) {
+  const input = integrationInput(page, identity);
+  if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();
+  await expect(input).toBeChecked({checked:value});
 }
 function listFixture(overrides = {}) {
   return {
@@ -24,12 +32,12 @@ test('Sources & Providers exposes canonical AllDebrid and General HTTP enable co
   await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
   await expect(page.locator('.dp-settings-debrid-services')).toContainText('Debrid Services');
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toContainText('AllDebrid');
-  await expect(page.locator('[data-integration-enabled="alldebrid"]')).toBeVisible();
+  await expect(integrationControl(page, 'alldebrid')).toBeVisible();
   await expect(page.locator('.dp-settings-general-sources')).toContainText('General Sources');
   const httpCard = page.locator('.dp-settings-provider-card--general-http');
   await expect(httpCard).toContainText('HTTP & HTTPS');
   await expect(httpCard).toContainText('Direct downloads from standard HTTP and HTTPS URLs.');
-  await expect(httpCard.locator('[data-integration-enabled="general_http"]')).toBeVisible();
+  await expect(integrationControl(page, 'general_http')).toBeVisible();
   await expect(httpCard.locator('input')).toHaveCount(1);
   for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);
   await page.screenshot({path:'test-results/stage10-settings-dark-desktop.png', fullPage:true});
@@ -44,31 +52,30 @@ test('both provider enable controls round-trip through the running backend and s
   const originalAd = original.integrations.alldebrid.enabled;
   const originalHttp = original.integrations.general_http.enabled;
   await openSettings(page);
-  const ad = page.locator('[data-integration-enabled="alldebrid"]');
-  const http = page.locator('[data-integration-enabled="general_http"]');
 
   const firstAd = !originalAd;
   const firstHttp = originalHttp || !firstAd;
-  await setChecked(ad, firstAd); await setChecked(http, firstHttp);
+  await setIntegrationChecked(page, 'alldebrid', firstAd);
+  await setIntegrationChecked(page, 'general_http', firstHttp);
   await page.locator('#view-settings [data-action="save"]').click();
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([firstAd, firstHttp]);
   await page.reload(); await openSettings(page);
-  await expect(page.locator('[data-integration-enabled="alldebrid"]')).toBeChecked({checked:firstAd});
-  await expect(page.locator('[data-integration-enabled="general_http"]')).toBeChecked({checked:firstHttp});
+  await expect(integrationInput(page, 'alldebrid')).toBeChecked({checked:firstAd});
+  await expect(integrationInput(page, 'general_http')).toBeChecked({checked:firstHttp});
 
   const secondAd = true;
   const secondHttp = !originalHttp;
-  await setChecked(page.locator('[data-integration-enabled="alldebrid"]'), secondAd);
-  await setChecked(page.locator('[data-integration-enabled="general_http"]'), secondHttp);
+  await setIntegrationChecked(page, 'alldebrid', secondAd);
+  await setIntegrationChecked(page, 'general_http', secondHttp);
   await page.locator('#view-settings [data-action="save"]').click();
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([secondAd, secondHttp]);
 
-  await setChecked(page.locator('[data-integration-enabled="alldebrid"]'), originalAd);
-  await setChecked(page.locator('[data-integration-enabled="general_http"]'), originalHttp);
+  await setIntegrationChecked(page, 'alldebrid', originalAd);
+  await setIntegrationChecked(page, 'general_http', originalHttp);
   await page.locator('#view-settings [data-action="save"]').click();
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
@@ -117,11 +124,12 @@ test('Details separates safe original resource, final provider, ordered failover
 });
 
 test('provider controls remain readable in light theme and narrow layout', async ({ page }) => {
-  await isolateExternalFonts(page); await page.setViewportSize({width:680,height:900}); await page.goto('/');
-  await page.locator('#theme-toggle').click(); await page.locator('#mobile-menu-btn').click();
-  await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+  await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
+  await page.locator('#theme-toggle').click();
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
+  await page.setViewportSize({width:680,height:900});
   const httpCard = page.locator('.dp-settings-provider-card--general-http'); await expect(httpCard).toBeVisible();
-  await expect(httpCard.locator('[data-integration-enabled="general_http"]')).toBeVisible();
+  await expect(integrationControl(page, 'general_http')).toBeVisible();
   const box = await httpCard.boundingBox(); expect(box.width).toBeLessThanOrEqual(680);
   await page.screenshot({path:'test-results/stage10-settings-light-narrow.png', fullPage:true});
 });
