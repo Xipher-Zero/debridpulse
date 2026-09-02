@@ -355,14 +355,18 @@ async def test_runtime_state_is_interpreted_by_provider_before_classifier_consum
     assert registry.eligible_providers(request) == (generic,)
 
 
-def test_classifier_source_has_no_provider_or_runtime_state_knowledge():
+def test_universal_applicability_and_routing_sources_have_no_provider_or_runtime_state_knowledge():
     backend = Path(__file__).resolve().parents[1]
-    source = (backend / "transfers" / "applicability.py").read_text(encoding="utf-8").casefold()
+    source = "\n".join(
+        (backend / "transfers" / name).read_text(encoding="utf-8").casefold()
+        for name in ("applicability.py", "registry.py")
+    )
     assert "providers." not in source
     assert "alldebrid" not in source
     assert "real-debrid" not in source
     assert "realdebrid" not in source
     assert "torbox" not in source
+    assert "alldebrid_hosts" not in source
     assert "runtime_state" not in source
     assert "aiohttp" not in source
     assert "httpx" not in source
