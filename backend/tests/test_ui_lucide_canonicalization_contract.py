@@ -63,6 +63,7 @@ def test_transfer_status_mapping_matches_debridpulse_semantics() -> None:
         "queued: {icon: 'clock3', label: 'Queued'",
         "pending: {icon: 'clock3', label: 'Pending'",
         "processing: {icon: 'loaderCircle', label: 'Processing'",
+        "input_required: {icon: 'triangleAlert', label: 'Input Required', className: 'input_required'",
         "extracting: {icon: 'packageOpen', label: 'Extracting'",
         "partial: {icon: 'triangleAlert', label: 'Partial'",
         "ready: {icon: 'play', label: 'Ready'",
