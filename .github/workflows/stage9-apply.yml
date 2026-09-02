@@ -5,15 +5,16 @@ on:
     branches:
       - '1.0.12'
     paths:
-      - 'tools/stage9_apply.py'
+      - 'backend/tests/test_route_provider_provenance.py'
+      - 'backend/tests/test_route_provider_provenance_audit.py'
       - '.github/workflows/stage9-apply.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  audit:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -29,54 +30,22 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Make temporary audit driver restart-safe
+      - name: Inspect source shape
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('tools/stage9_apply.py')
-          text = path.read_text()
-          old = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:
-              text = path.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
-              path.write_text(text.replace(old, new, 1))
-          '''
-          new = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:
-              text = path.read_text()
-              old_count = text.count(old)
-              new_count = text.count(new)
-              if old_count == 1:
-                  path.write_text(text.replace(old, new, 1))
-                  return
-              if old_count == 0 and new_count >= 1:
-                  return
-              raise SystemExit(f"{label}: expected one old or existing new match, found old={old_count} new={new_count}")
-          '''
-          if old not in text:
-              raise SystemExit('temporary audit driver helper shape changed')
-          path.write_text(text.replace(old, new, 1))
-          PY
-
-      - name: Apply Stage 9 patch
-        run: python tools/stage9_apply.py
-
-      - name: Inspect patch shape
-        run: |
-          git diff --check
-          git status --short
-          python -m compileall -q backend/transfers/repository.py backend/services/db_maintenance.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py
+          git diff --check 7133b7567d40662c27de24eeb0866cb6cd6e64ee..HEAD
+          python -m compileall -q backend/transfers/repository.py backend/services/db_maintenance.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_route_provider_provenance_audit.py
 
       - name: Install focused test dependencies
         run: |
           cd backend
           pip install -r requirements-dev.txt
 
-      - name: Run focused Stage 9 and surrounding regression tests
+      - name: Run complete Stage 9 focused and surrounding regression gate
         run: |
           cd backend
           python -m pytest \
             tests/test_route_provider_provenance.py \
+            tests/test_route_provider_provenance_audit.py \
             tests/test_initial_provider_routing.py \
             tests/test_application_runtime.py::test_database_wipe_backs_up_canonical_state_and_preserves_pause \
             tests/test_universal_lifecycle.py \
@@ -85,12 +54,3 @@ jobs:
             tests/test_alldebrid_host_runtime.py \
             tests/test_general_http_stage5_runtime.py \
             -q --tb=short
-
-      - name: Commit coherent Stage 9 audit batch
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add backend/transfers/repository.py backend/services/db_maintenance.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_general_http_stage5_runtime.py docs/ROUTE_PROVIDER_PROVENANCE.md docs/architecture/UNIVERSAL_TRANSFER_CORE.md CHANGELOG.md
-          git diff --cached --check
-          git commit -m 'Complete durable provenance audit corrections'
-          git push origin HEAD:1.0.12
