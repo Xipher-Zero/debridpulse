@@ -30,6 +30,82 @@ class Capability(StrEnum):
     RECONCILE = "reconcile"
 
 
+class InputReason(StrEnum):
+    AUTH_REQUIRED = "auth_required"
+
+
+class InputOrigin(StrEnum):
+    PROVIDER = "provider"
+    EXECUTOR = "executor"
+
+
+class InputMethod(StrEnum):
+    USERNAME_PASSWORD = "username_password"
+    USERNAME_PRIVATE_KEY = "username_private_key"
+
+
+class InputField(StrEnum):
+    USERNAME = "username"
+    PASSWORD = "password"
+    PRIVATE_KEY = "private_key"
+    PASSPHRASE = "passphrase"
+
+
+@dataclass(frozen=True)
+class InputFieldDescriptor:
+    name: InputField
+    required: bool
+
+
+@dataclass(frozen=True)
+class InputMethodDescriptor:
+    method: InputMethod
+    fields: tuple[InputFieldDescriptor, ...]
+
+    def __post_init__(self):
+        actual = {item.name: item.required for item in self.fields}
+        if len(actual) != len(self.fields):
+            raise ValueError("Authentication field descriptors must be unique")
+        if self.method == InputMethod.USERNAME_PASSWORD:
+            expected = {InputField.USERNAME: True, InputField.PASSWORD: True}
+        elif self.method == InputMethod.USERNAME_PRIVATE_KEY:
+            expected = {InputField.USERNAME: True, InputField.PRIVATE_KEY: True, InputField.PASSPHRASE: False}
+        else:
+            raise ValueError("Unsupported authentication method")
+        if actual != expected:
+            raise ValueError("Authentication method fields do not match the canonical contract")
+
+
+@dataclass(frozen=True)
+class InputRequirement:
+    reason: InputReason
+    methods: tuple[InputMethodDescriptor, ...]
+
+    def __post_init__(self):
+        if self.reason != InputReason.AUTH_REQUIRED:
+            raise ValueError("Unsupported input-required reason")
+        if not self.methods or len({item.method for item in self.methods}) != len(self.methods):
+            raise ValueError("Authentication challenges require unique accepted methods")
+
+
+@dataclass(frozen=True)
+class InputChallenge:
+    id: str
+    transfer_id: int
+    generation: int
+    reason: InputReason
+    origin: InputOrigin
+    integration_id: str
+    operation_id: str
+    methods: tuple[InputMethodDescriptor, ...]
+    request_id: str | None = None
+    artifact_id: int | None = None
+
+    @property
+    def requirement(self) -> InputRequirement:
+        return InputRequirement(self.reason, self.methods)
+
+
 class ResourceState(StrEnum):
     PREPARING = "preparing"
     AVAILABLE = "available"
@@ -42,6 +118,7 @@ class ResourceState(StrEnum):
 class TransferState(StrEnum):
     ACCEPTED = "pending"
     RESOLVING = "processing"
+    INPUT_REQUIRED = "input_required"
     READY = "ready"
     QUEUED = "queued"
     TRANSFERRING = "downloading"
@@ -191,6 +268,7 @@ class ResolutionResult:
     candidates: tuple[TransferCandidate, ...] = ()
     observation: ProviderObservation | None = None
     error: NormalizedError | None = None
+    input_required: InputRequirement | None = None
 
 
 @dataclass(frozen=True)

@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, uuid5
 from db.database import get_db
 from transfers import codec
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.input_required import public_challenge
 from transfers.models import (
     Artifact, ExecutionAttempt, ExecutionHandle, ExecutionObservation, ExecutionState,
     ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
@@ -180,6 +181,7 @@ class TransferRepository:
             resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
             providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
             events = await db.fetchall("SELECT id,torrent_id,level,message,created_at FROM events WHERE torrent_id=? ORDER BY id DESC LIMIT 50", (transfer_id,)) if details else []
+            input_challenge = await db.fetchone("SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
         def normalized(item, field="normalized_error"):
             error = codec.error(item.pop(field, None))
             item["error"] = error.as_dict() if error else None
@@ -192,6 +194,7 @@ class TransferRepository:
         result["resources"] = [dict(item) for item in resources]
         result["providers"] = sorted({item["provider_id"] for item in (*resources, *providers)})
         result["executors"] = sorted({item["download_client"] for item in files if item["download_client"]})
+        result["input_required"] = public_challenge(input_challenge)
         if details:
             result["files"] = []
             for row in files:
@@ -417,20 +420,22 @@ class TransferRepository:
                         AND e.state IN ('prepared','queued','transferring','paused','unknown')))""")
         return {str(row["local_path"]).casefold() for row in rows}
 
-    async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle) -> bool:
+    async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False) -> bool:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
-                WHERE f.id=? AND f.status='queued' AND f.execution_attempt_id IS NULL
-                AND t.status NOT IN ('deleted','completed') AND COALESCE(p.paused,0)=0""", (artifact.id,))
+                WHERE f.id=? AND f.status=? AND f.execution_attempt_id IS NULL
+                AND t.status NOT IN ('deleted','completed','cancelled') AND COALESCE(p.paused,0)=0""",
+                (artifact.id, "input_required" if from_input_required else "queued"))
             if not row:
                 return False
             await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate)
                 VALUES(?,?,?,?,?,'prepared',?)""", (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
                 codec.dump(artifact.candidates[artifact.selected]) if artifact.candidates else None))
             await db.execute("""UPDATE download_files SET execution_attempt_id=?,download_client=?,retry_count=retry_count+1,
-                normalized_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""", (handle.attempt_id, handle.executor_id, artifact.id))
+                status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (handle.attempt_id, handle.executor_id, int(from_input_required), artifact.id))
             await db.commit()
         return True
 

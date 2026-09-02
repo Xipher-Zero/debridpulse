@@ -752,6 +752,40 @@ async def delete_torrent(torrent_id: int, from_alldebrid: bool = True, applicati
         raise HTTPException(404, "Transfer not found")
 
 
+@router.post("/torrents/{torrent_id}/input")
+async def submit_transfer_input(torrent_id: int, request: Request, application: ApplicationService = Depends(get_application)):
+    raw = await request.body()
+    if len(raw) > 512 * 1024:
+        raise HTTPException(413, "Authentication input is too large")
+    try:
+        body = _json.loads(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Authentication input must be a JSON object") from None
+    finally:
+        raw = b""
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Authentication input must be a JSON object")
+    challenge_id = body.get("challenge_id")
+    method = body.get("method")
+    if not isinstance(challenge_id, str) or not challenge_id or not isinstance(method, str) or not method:
+        raise HTTPException(400, "challenge_id and method are required")
+    values = {name: body[name] for name in ("username", "password", "private_key", "passphrase") if name in body}
+    try:
+        return await application.submit_input(torrent_id, challenge_id=challenge_id, method=method, values=values)
+    except KeyError:
+        raise HTTPException(404, "Transfer not found") from None
+    except ValueError:
+        raise HTTPException(409, "Authentication input was not accepted") from None
+
+
+@router.post("/torrents/{torrent_id}/cancel")
+async def cancel_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
+    try:
+        return await application.cancel(torrent_id)
+    except KeyError:
+        raise HTTPException(404, "Transfer not found") from None
+
+
 @router.post("/torrents/{torrent_id}/retry")
 async def retry_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
     try:

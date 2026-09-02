@@ -114,6 +114,22 @@ class ApplicationService:
         item = await self.submit(requests, name=direct_link_collection_name([], urls), source="direct_link", deduplicate=False)
         return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 
+
+    async def submit_input(self, transfer_id, *, challenge_id, method, values):
+        async with self.application_operation():
+            challenge = await self.engine.submit_input(transfer_id, challenge_id, method, values)
+            self.resolution_wakeup.set()
+            self.execution_wakeup.set()
+            await self._publish(transfer_id)
+            return {"ok": True, "accepted": True, "id": transfer_id, "challenge_id": challenge.id}
+
+    async def cancel(self, transfer_id):
+        async with self.application_operation():
+            await self.require(transfer_id)
+            await self.engine.cancel(transfer_id)
+            await self._publish(transfer_id)
+            return {"ok": True}
+
     async def pause(self, transfer_id):
         async with self.application_operation():
             await self.require(transfer_id)

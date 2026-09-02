@@ -72,14 +72,18 @@ class IntegrationRegistry:
             ))
         return providers[0]
 
-    def executor_for(self, candidate: TransferCandidate) -> Executor:
+    def eligible_executors(self, candidate: TransferCandidate) -> tuple[Executor, ...]:
         schemes = {endpoint.scheme for endpoint in candidate.endpoints}
         matches = [executor for executor in self.executors.values()
                    if executor.descriptor.enabled and executor.descriptor.id not in self._unhealthy
                    and schemes & executor.descriptor.schemes]
+        return tuple(sorted(matches, key=lambda item: (-item.descriptor.priority, item.descriptor.id)))
+
+    def executor_for(self, candidate: TransferCandidate) -> Executor:
+        matches = self.eligible_executors(candidate)
         if not matches:
             raise TransferError(NormalizedError(
                 Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE,
                 retryability=Retryability.NEVER,
             ))
-        return sorted(matches, key=lambda item: (-item.descriptor.priority, item.descriptor.id))[0]
+        return matches[0]

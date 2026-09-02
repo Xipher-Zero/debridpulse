@@ -12,17 +12,19 @@ from pathlib import Path
 import time
 from weakref import WeakValueDictionary
 
-from transfers.contracts import BatchObservation, CandidateRefresh, Cleanup, Inventory, Manifest, PauseResume, ResourceLookup
+from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, ExecutorInputContinuation, Inventory, Manifest,
+    PauseResume, ProviderInputContinuation, ResourceLookup)
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
 from transfers.filesystem import destination, payload_matches, retire_partial, safe_name, stable_payload, validate_target
+from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
-    ExecutionObservation, ExecutionRequest, ExecutionState, OutcomeKind, Ownership,
-    RequestRecord, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
+    ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
+    OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
     TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
@@ -36,6 +38,8 @@ class TransferEngine:
                  download_root: str, policy: TransferPolicy | None = None, postprocessors=(), clock=time.time):
         self.repository = repository
         self.registry = registry
+        self.challenges = InputChallengeStore(clock=clock)
+        self.inputs = EphemeralInputBroker(clock=clock)
         self.root = str(Path(download_root).resolve())
         self.policy = policy or TransferPolicy()
         self.postprocessors = tuple(postprocessors)
@@ -53,6 +57,7 @@ class TransferEngine:
 
     async def initialize(self):
         await self.repository.initialize()
+        await self.challenges.initialize()
 
     def configure_policy(self, policy):
         """Called only after application admission has drained active work."""
@@ -61,7 +66,7 @@ class TransferEngine:
 
     async def _live(self, transfer_id: int, *, admission=False) -> bool:
         transfer = await self.repository.get(transfer_id)
-        if not transfer or transfer.state in {TransferState.DELETED, TransferState.COMPLETED}:
+        if not transfer or transfer.state in {TransferState.DELETED, TransferState.COMPLETED, TransferState.CANCELLED}:
             return False
         return not admission or (not transfer.paused and not await self.repository.globally_paused())
 
@@ -97,6 +102,11 @@ class TransferEngine:
                 async with lock:
                     if not await self._live(transfer.id, admission=True):
                         return
+                    challenge = await self.challenges.current(transfer.id)
+                    if challenge:
+                        if challenge.origin == InputOrigin.PROVIDER:
+                            await self._continue_provider_input(challenge)
+                        return
                     records = await self.repository.requests(transfer.id)
                     await asyncio.gather(*(self._process_request(record) for record in records))
             await asyncio.gather(*(resolve_transfer(transfer) for transfer in transfers))
@@ -131,9 +141,12 @@ class TransferEngine:
         async with self._execution_cycle_lock:
             transfers = await self.repository.active()
             artifacts_by_transfer = {transfer.id: await self.repository.artifacts(transfer.id) for transfer in transfers}
+            challenges = {transfer.id: await self.challenges.current(transfer.id) for transfer in transfers}
             grouped = {}
-            for artifacts in artifacts_by_transfer.values():
-                for artifact in artifacts:
+            for transfer in transfers:
+                if challenges[transfer.id]:
+                    continue
+                for artifact in artifacts_by_transfer[transfer.id]:
                     if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
                         grouped.setdefault(artifact.execution.executor_id, []).append(artifact.execution)
             observations = {}
@@ -159,6 +172,11 @@ class TransferEngine:
                     for handle in handles:
                         observations[handle.attempt_id] = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
             for transfer in transfers:
+                challenge = challenges[transfer.id]
+                if challenge:
+                    if challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
+                        await self._continue_executor_input(challenge, artifacts_by_transfer[transfer.id])
+                    continue
                 await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations)
 
     async def _process_executions(self, transfer_id, artifacts, observations):
@@ -240,24 +258,7 @@ class TransferEngine:
                 if attempt is None:
                     return
                 result = await provider.resolve(record.request)
-            if not isinstance(result, ResolutionResult):
-                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
-            live = await self.repository.resolution(attempt, result)
-            if not live:
-                if await self.repository.delete_remote_requested(record.transfer_id):
-                    await self._cleanup_resources(record.transfer_id, explicit=True)
-                return
-            if result.error:
-                await self._request_failure(record, result.error, attempts=record.attempts + 1)
-            elif result.candidates:
-                await self._materialize(record, result.candidates)
-            elif result.observation:
-                if result.observation.name and record.parent_id is None:
-                    await self.repository.rename(record.transfer_id, safe_name(result.observation.name))
-                if result.observation.state == ResourceState.AVAILABLE:
-                    await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
-            else:
-                raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
+            await self._apply_resolution(record, attempt, provider, result)
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
@@ -265,6 +266,73 @@ class TransferEngine:
             if attempt:
                 await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
             await self._request_failure(record, error, attempts=record.attempts + (1 if attempt else 0))
+
+
+    async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
+                                *, challenge: InputChallenge | None = None):
+        if not isinstance(result, ResolutionResult):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+        if result.input_required:
+            if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
+                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+            if not isinstance(provider, ProviderInputContinuation):
+                raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
+                                                retryability=Retryability.NEVER))
+            if challenge:
+                await self.challenges.replace(challenge, result.input_required)
+            else:
+                await self.challenges.wait_provider(attempt, result.input_required, provider.descriptor.id)
+            return
+        live = await self.repository.resolution(attempt, result)
+        if challenge:
+            await self.challenges.clear(challenge)
+            await self.inputs.clear(challenge.id)
+        if not live:
+            if await self.repository.delete_remote_requested(record.transfer_id):
+                await self._cleanup_resources(record.transfer_id, explicit=True)
+            return
+        if result.error:
+            await self._request_failure(record, result.error, attempts=record.attempts + 1)
+        elif result.candidates:
+            await self._materialize(record, result.candidates)
+        elif result.observation:
+            if result.observation.name and record.parent_id is None:
+                await self.repository.rename(record.transfer_id, safe_name(result.observation.name))
+            if result.observation.state == ResourceState.AVAILABLE:
+                await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
+        else:
+            raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
+
+    async def _continue_provider_input(self, challenge: InputChallenge):
+        if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
+            return
+        records = await self.repository.requests(challenge.transfer_id)
+        record = next((item for item in records if item.id == challenge.request_id), None)
+        if record is None or record.state != "input_required":
+            await self.challenges.clear(challenge)
+            await self.inputs.clear(challenge.id)
+            return
+        eligible = {item.descriptor.id: item for item in self.registry.eligible_providers(record.request)}
+        provider = eligible.get(challenge.integration_id)
+        if not isinstance(provider, ProviderInputContinuation):
+            return
+        submitted = await self.inputs.take(challenge)
+        if submitted is None:
+            return
+        try:
+            result = await provider.resolve_with_input(record.request, submitted)
+            attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")
+            await self._apply_resolution(record, attempt, provider, result, challenge=challenge)
+        except Exception as exc:
+            secrets = submitted.secret_values()
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                exc, integration_id=challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)
+            attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")
+            await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
+            await self.challenges.clear(challenge)
+            await self._request_failure(record, error, attempts=record.attempts + 1)
+        finally:
+            submitted.discard()
 
     async def _observe_resource(self, record: RequestRecord):
         provider = self.registry.providers.get(record.resource.provider_id) if record.resource else None
@@ -352,7 +420,15 @@ class TransferEngine:
                 await self._refresh(artifact)
                 return
             request = ExecutionRequest(candidate, artifact.target, new_identity())
-            handle = executor.prepare(request)
+            prepared = executor.prepare(request)
+            if isinstance(prepared, InputRequirement):
+                if not isinstance(executor, ExecutorInputContinuation):
+                    raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE, domain=Domain.REQUEST, retryability=Retryability.NEVER))
+                await self.challenges.wait_executor(artifact, executor.descriptor.id, request.attempt_id, prepared)
+                return
+            if not isinstance(prepared, ExecutionHandle) or prepared.executor_id != executor.descriptor.id or prepared.attempt_id != request.attempt_id:
+                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
+            handle = prepared
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(artifact.transfer_id, admission=True):
                     return
@@ -372,6 +448,62 @@ class TransferEngine:
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.QUEUE)
             await self.repository.artifact_state(artifact.id, "error", error=error)
+
+
+    async def _continue_executor_input(self, challenge: InputChallenge, artifacts):
+        if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
+            return
+        artifact = next((item for item in artifacts if item.id == challenge.artifact_id), None)
+        if artifact is None or artifact.state != "input_required" or not artifact.candidates:
+            await self.challenges.clear(challenge)
+            await self.inputs.clear(challenge.id)
+            return
+        candidate = artifact.candidates[artifact.selected]
+        eligible = {item.descriptor.id: item for item in self.registry.eligible_executors(candidate)}
+        executor = eligible.get(challenge.integration_id)
+        if not isinstance(executor, ExecutorInputContinuation):
+            return
+        request = ExecutionRequest(candidate, artifact.target, challenge.operation_id)
+        submitted = None
+        try:
+            async with self._dispatch_lock:
+                if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
+                    return
+                attempts = await self.repository.live_executions()
+                occupied = sum(item.state in {"prepared", "queued", "transferring", "unknown"} for item in attempts)
+                if occupied >= max(1, self.policy.max_active_executions):
+                    return
+                submitted = await self.inputs.take(challenge)
+                if submitted is None:
+                    return
+                prepared = executor.prepare_with_input(request, submitted)
+                if isinstance(prepared, InputRequirement):
+                    await self.challenges.replace(challenge, prepared)
+                    return
+                if not isinstance(prepared, ExecutionHandle) or prepared.executor_id != challenge.integration_id or prepared.attempt_id != challenge.operation_id:
+                    raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
+                if not await self.repository.prepare_execution(artifact, prepared, from_input_required=True):
+                    return
+                handle = prepared
+            await self.challenges.clear(challenge)
+            try:
+                observed = await executor.start(request, handle)
+            except Exception as exc:
+                observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                    error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR,
+                                          stage=Stage.QUEUE, secrets=submitted.secret_values()))
+            current = next(item for item in await self.repository.artifacts(challenge.transfer_id) if item.id == artifact.id)
+            await self._execution_result(current, executor, observed)
+        except Exception as exc:
+            secrets = submitted.secret_values() if submitted else ()
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                exc, integration_id=challenge.integration_id, domain=Domain.EXECUTOR, stage=Stage.QUEUE, secrets=secrets)
+            await self.challenges.clear(challenge)
+            await self.repository.artifact_state(artifact.id, "error", error=error)
+            await self.repository.outcome(challenge.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+        finally:
+            if submitted:
+                submitted.discard()
 
     async def _execution_result(self, artifact, executor, observed):
         if not isinstance(observed, ExecutionObservation) or observed.handle != artifact.execution:
@@ -541,6 +673,11 @@ class TransferEngine:
         if not await self._live(transfer_id):
             return
         transfer = await self.repository.get(transfer_id)
+        challenge = await self.challenges.current(transfer_id)
+        if challenge:
+            if transfer.state != TransferState.INPUT_REQUIRED:
+                await self.repository.state(transfer_id, TransferState.INPUT_REQUIRED)
+            return
         requests = await self.repository.requests(transfer_id)
         artifacts = await self.repository.artifacts(transfer_id)
         pending = any(item.state in {"pending", "waiting", "waiting_parent", "resolving", "materializing"} for item in requests)
@@ -715,7 +852,7 @@ class TransferEngine:
                     await self.repository.artifact_state(artifact.id, "queued", release=True)
             except Exception as exc:
                 results.append(unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.EXECUTION))
-        if not results:
+        if not results and not await self.challenges.current(transfer_id):
             await self.repository.state(transfer_id, TransferState.QUEUED if resume else TransferState.PAUSED)
         return tuple(results)
 
@@ -755,6 +892,8 @@ class TransferEngine:
             transfer = await self.repository.get(transfer_id)
             if transfer is None:
                 raise KeyError(transfer_id)
+            if await self.challenges.current(transfer_id):
+                return False
             if transfer.state == TransferState.DELETED and not reacquire:
                 return False
             if any(pending for _resource, _state, pending in await self.repository.resources(transfer_id)):
@@ -809,7 +948,41 @@ class TransferEngine:
             await self.repository.pause_intent(transfer_id, False)
             return True
 
+
+    async def submit_input(self, transfer_id: int, challenge_id: str, method: str, values):
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None:
+            raise KeyError(transfer_id)
+        challenge = await self.challenges.current(transfer_id)
+        if transfer.state != TransferState.INPUT_REQUIRED or challenge is None or challenge.id != challenge_id:
+            raise InputSubmissionRejected("Input challenge is stale")
+        await self.inputs.submit(challenge, method, values)
+        return challenge
+
+    async def cancel(self, transfer_id: int):
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None:
+            raise KeyError(transfer_id)
+        challenge = await self.challenges.current(transfer_id)
+        if challenge:
+            await self.inputs.clear(challenge.id)
+            await self.challenges.clear_transfer(transfer_id)
+        for artifact in await self.repository.artifacts(transfer_id):
+            if artifact.execution:
+                executor = self.registry.executors.get(artifact.execution.executor_id)
+                if executor:
+                    outcome = await executor.cancel(artifact.execution)
+                    await self.repository.outcome(transfer_id, outcome, attempt_id=artifact.execution.attempt_id)
+            if artifact.state != "completed":
+                await self.repository.artifact_state(artifact.id, "cancelled")
+        await self.repository.state(transfer_id, TransferState.CANCELLED)
+        return True
+
     async def delete(self, transfer_id: int, *, remote=True):
+        challenge = await self.challenges.current(transfer_id)
+        if challenge:
+            await self.inputs.clear(challenge.id)
+        await self.challenges.clear_transfer(transfer_id)
         # Persist the tombstone before waiting on any integration. Every async
         # completion path rechecks it, including late provider resource creation.
         await self.repository.delete(transfer_id, remote=remote)

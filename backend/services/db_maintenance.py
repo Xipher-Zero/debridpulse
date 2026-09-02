@@ -40,6 +40,7 @@ TABLES = [
     "postprocess_attempts",
     "application_events",
     "integration_runtime_state",
+    "transfer_input_challenges",
     "schema_migrations",
 ]
 
@@ -60,6 +61,7 @@ _TABLE_ORDER = {
     "postprocess_attempts": "transfer_id,processor_id",
     "application_events": "id",
     "integration_runtime_state": "integration_id,state_key",
+    "transfer_input_challenges": "transfer_id",
     "schema_migrations": "version",
 }
 
@@ -235,6 +237,7 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         # configuration. An explicit whole-database wipe deliberately purges it;
         # ordinary integration disablement never reaches this path.
         await db.execute("DELETE FROM integration_runtime_state")
+        await db.execute("DELETE FROM transfer_input_challenges")
         for table in ("application_events", "postprocess_attempts", "transfer_outcomes", "execution_attempts", "resolution_attempts", "provider_resources"):
             await db.execute(f"DELETE FROM {table}")
         await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")

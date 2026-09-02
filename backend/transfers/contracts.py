@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from transfers.input_required import SubmittedInput
 from transfers.models import (
     CleanupDirective, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
-    HealthObservation, IntegrationDescriptor, ProviderObservation,
+    HealthObservation, InputRequirement, IntegrationDescriptor, ProviderObservation,
     ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
     TransferOutcome, TransferRequest, SourceEntry, ArtifactFingerprint,
 )
@@ -16,6 +17,11 @@ class Provider(Protocol):
     descriptor: IntegrationDescriptor
 
     async def resolve(self, request: TransferRequest) -> ResolutionResult: ...
+
+
+@runtime_checkable
+class ProviderInputContinuation(Protocol):
+    async def resolve_with_input(self, request: TransferRequest, submitted: SubmittedInput) -> ResolutionResult: ...
 
 
 @runtime_checkable
@@ -52,8 +58,8 @@ class Health(Protocol):
 class Executor(Protocol):
     descriptor: IntegrationDescriptor
 
-    def prepare(self, request: ExecutionRequest) -> ExecutionHandle:
-        """Allocate a handle without remote contact; core persists it before start."""
+    def prepare(self, request: ExecutionRequest) -> ExecutionHandle | InputRequirement:
+        """Allocate a handle or request transient input without remote mutation."""
         ...
 
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation: ...
@@ -63,6 +69,11 @@ class Executor(Protocol):
     def resumable_paths(self, target: str) -> tuple[str, ...]:
         """Executor-owned sidecars which prevent adoption as a complete payload."""
         ...
+
+
+@runtime_checkable
+class ExecutorInputContinuation(Protocol):
+    def prepare_with_input(self, request: ExecutionRequest, submitted: SubmittedInput) -> ExecutionHandle | InputRequirement: ...
 
 
 @runtime_checkable

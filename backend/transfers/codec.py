@@ -8,6 +8,7 @@ import json
 from typing import Mapping
 
 from transfers.errors import NormalizedError
+from transfers.input_required import SubmittedInput
 from transfers.models import (
     Endpoint, ExecutionHandle, IntegrityMetadata, Ownership, ProviderResource,
     TransferCandidate, TransferRequest, SourceEntry, SourceIdentity,
@@ -15,6 +16,8 @@ from transfers.models import (
 
 
 def _value(value):
+    if isinstance(value, SubmittedInput):
+        raise TypeError("Transient input cannot be persisted")
     if isinstance(value, NormalizedError):
         return _value(value.as_dict(diagnostics=True))
     if isinstance(value, Enum):
