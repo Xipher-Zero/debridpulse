@@ -140,6 +140,13 @@ async function chooseKey(page, contents, name = 'id_test') {
     mimeType: 'text/plain',
     buffer: Buffer.from(contents),
   });
+  // setFiles resolves after dispatching the change event, not after the
+  // runtime's asynchronous File.text() handler completes. Wait for ingestion
+  // to clear the file input before tests begin editing credential fields.
+  await page.waitForFunction(() => {
+    const input = document.querySelector('[data-dp-auth-key-input]');
+    return !!input && input.files && input.files.length === 0;
+  });
 }
 
 const validKeyA = '-----BEGIN OPENSSH PRIVATE KEY-----\nZmFrZS1rZXktQQ==\n-----END OPENSSH PRIVATE KEY-----\n';
