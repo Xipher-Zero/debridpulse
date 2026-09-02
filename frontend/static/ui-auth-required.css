@@ -1,0 +1,88 @@
+/* DebridPulse v1.0.12 generic Authentication Required modal.
+ * Reuses the Settings confirmation-dialog structure/material without its
+ * destructive warning/danger treatment.
+ */
+.dp-auth-required-dialog {
+  width: min(560px, 100%);
+  border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 46%, var(--dp-border-subtle));
+}
+
+.dp-auth-required-header {
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--dp-accent-purple-bright) 78%, transparent);
+}
+
+.dp-auth-required-body {
+  gap: 14px;
+}
+
+.dp-auth-required-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.dp-auth-required-field .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.dp-auth-required-error {
+  min-height: 18px;
+  color: var(--dp-state-error);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dp-auth-required-error[data-tone="info"] {
+  color: var(--dp-text-secondary);
+}
+
+.dp-auth-required-error[hidden] {
+  display: none;
+}
+
+.dp-auth-required-footer {
+  align-items: center;
+}
+
+.dp-auth-required-key {
+  min-width: 138px;
+}
+
+.dp-auth-required-key.is-selected {
+  border-color: color-mix(in srgb, var(--dp-state-success) 66%, var(--dp-border-subtle));
+  background: color-mix(in srgb, var(--dp-state-success) 13%, var(--dp-button-secondary-bg));
+  color: var(--dp-state-success);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dp-state-success) 22%, transparent);
+}
+
+.dp-auth-required-dialog[aria-busy="true"] .dp-settings-confirm-title::after {
+  content: ' · Working';
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@media (max-width: 620px) {
+  .dp-auth-required-overlay {
+    padding: 12px;
+  }
+
+  .dp-auth-required-dialog {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+  }
+
+  .dp-auth-required-body {
+    padding: 18px 16px 16px;
+  }
+
+  .dp-auth-required-footer {
+    flex-direction: column-reverse;
+  }
+
+  .dp-auth-required-footer .btn {
+    width: 100%;
+  }
+}

@@ -28,4 +28,14 @@
     return typeof category === 'string' && Object.prototype.hasOwnProperty.call(labels, category) ? category : 'internal_error';
   }
   window.DPFailureSemantics = Object.freeze({labels: labels, classify: classify});
+
+  /* Load the generic Item 4 interaction independently of native error semantics.
+     The runtime waits for app.js before it performs any API work. */
+  if (!document.querySelector('script[data-dp-auth-required-runtime]')) {
+    const runtime = document.createElement('script');
+    runtime.src = '/ui-auth-required.js?v=1';
+    runtime.async = false;
+    runtime.dataset.dpAuthRequiredRuntime = '1';
+    document.head.appendChild(runtime);
+  }
 })();

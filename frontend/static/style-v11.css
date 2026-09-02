@@ -18,6 +18,7 @@
 @import url('/ui-universal-language.css?v=20');
 @import url('/ui-shared-contract.css?v=31');
 @import url('/ui-modal-contract.css?v=25');
+@import url('/ui-auth-required.css?v=1');
 
 /* Shared application shell. */
 @import url('/ui-shell.css?v=21');

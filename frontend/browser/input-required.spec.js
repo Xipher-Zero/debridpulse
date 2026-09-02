@@ -17,7 +17,7 @@ function observeRuntime(page) {
   return errors;
 }
 
-test('INPUT_REQUIRED renders as a neutral nonterminal transfer state without a modal or error treatment', async ({ page }) => {
+test('INPUT_REQUIRED remains a neutral nonterminal transfer state while AUTH_REQUIRED invokes the generic modal', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   const item = {
@@ -68,7 +68,11 @@ test('INPUT_REQUIRED renders as a neutral nonterminal transfer state without a m
   await expect(status.locator('.badge-error')).toHaveCount(0);
   await expect(row.locator('.dp-terminal-error-progress')).toHaveCount(0);
 
-  // Item 4 owns the generic authentication modal. Item 3 must not create one.
-  await expect(page.locator('[data-dp-input-required-modal]')).toHaveCount(0);
+  const modal = page.locator('[data-dp-input-required-modal]');
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('#dp-auth-required-title')).toHaveText('Authentication Required');
+  await expect(modal.locator('[data-dp-auth-username]')).toBeVisible();
+  await expect(modal.locator('[data-dp-auth-secret-label]')).toHaveText('Password');
+  await expect(modal.locator('[data-dp-auth-key]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
