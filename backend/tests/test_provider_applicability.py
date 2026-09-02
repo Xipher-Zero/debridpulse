@@ -227,13 +227,13 @@ def test_non_url_request_sent_to_parser_is_not_misclassified():
 
 
 @pytest.mark.parametrize(
-    "request",
+    "transfer_request",
     [
         TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40),
         TransferRequest("torrent", b"d4:infod4:name1:xee"),
     ],
 )
-def test_magnet_and_torrent_remain_static_capability_routing(request):
+def test_magnet_and_torrent_remain_static_capability_routing(transfer_request):
     provider = ProviderApplicabilityInput(
         "static",
         frozenset({"magnet", "torrent"}),
@@ -243,7 +243,7 @@ def test_magnet_and_torrent_remain_static_capability_routing(request):
             specialized_hosts=(HostClaim("example.test", HostClaimScope.DOMAIN),),
         ),
     )
-    assert _classes(request, provider) == [
+    assert _classes(transfer_request, provider) == [
         ("static", ApplicabilityClass.STATIC)
     ]
 
