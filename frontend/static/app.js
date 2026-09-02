@@ -160,6 +160,60 @@ function sourceLabel(source) {
   return labels[key] || esc(key) || '—';
 }
 
+function transferProviderPresentation(t) {
+  const completed = String(t?.status || '') === 'completed';
+  const name = completed ? t?.delivering_provider_name : t?.current_provider_name;
+  if (name) return {label: String(name), state: 'known'};
+  if (completed && t?.provider_provenance_status === 'unknown_legacy') {
+    return {label: 'Unknown', state: 'unknown'};
+  }
+  if (!completed && !t?.current_provider_id) {
+    return {label: 'Pending', state: 'pending'};
+  }
+  return {label: 'Unknown', state: 'unknown'};
+}
+
+function providerChip(t) {
+  const provider = transferProviderPresentation(t);
+  return `<span class="dp-provider-chip" data-provider-state="${provider.state}">${esc(provider.label)}</span>`;
+}
+
+function routeOutcomePresentation(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const labels = {
+    completed: 'Completed',
+    succeeded: 'Completed',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    superseded: 'Superseded',
+    resolved: 'Resolved',
+    active: 'In Progress',
+    started: 'In Progress',
+    prepared: 'In Progress',
+    unknown: 'Unknown',
+  };
+  return {label: labels[normalized] || 'Unknown', state: normalized || 'unknown'};
+}
+
+function renderRouteHistory(t) {
+  const attempts = Array.isArray(t?.route_attempts) ? t.route_attempts : [];
+  if (!attempts.length) {
+    const message = t?.provider_provenance_status === 'unknown_legacy'
+      ? 'Provider history was not recorded for this legacy transfer.'
+      : 'No provider route has been established yet.';
+    return `<div class="dp-detail-route-empty">${esc(message)}</div>`;
+  }
+  return `<div class="dp-detail-route-list">${attempts.map((attempt, index) => {
+    const provider = attempt.provider_name || 'Unknown';
+    const outcome = routeOutcomePresentation(attempt.outcome);
+    return `<div class="dp-detail-route-row">
+      <span class="dp-detail-route-order">${index + 1}</span>
+      <span class="dp-detail-route-provider">${esc(provider)}</span>
+      <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}">${esc(outcome.label)}</span>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 function sanitizeErrorMsg(message) {
   const text = String(message || 'Request failed');
   return text.length > 500 ? text.slice(0, 497) + '...' : text;
@@ -1036,7 +1090,7 @@ async function loadRecent() {
         <td>
           <div class="t-name" title="${esc(t.name)||''}">${esc(t.name)||'(unnamed)'}</div>
           ${is_active ? `<div class="dash-row-bar"><div class="dash-row-bar-fill" style="width:${pct_val}%;background:var(--blue)"></div></div>` : ''}
-          ${t.source === 'direct_link' ? `<div class="t-hash" style="font-size:10px;color:var(--text3)" title="Direct debrid link transfer">🔗 Direct link</div>` : ''}
+          <div class="dp-transfer-provider-meta">${providerChip(t)}</div>
         </td>
         <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
         <td data-role="transfer-progress">${progress(t.progress,t.status)}</td>
@@ -1288,8 +1342,9 @@ async function loadTorrents() {
         <div class="t-name">${esc(t.name)||'(unnamed)'}</div>
         <div class="t-hash">${(t.hash||'').substring(0,16)}${t.hash?'…':''}</div>
       </td>
-      <td class="sz">
-        <div>${sourceLabel(t.source)}</div>
+      <td class="sz dp-downloads-provider-cell">
+        ${providerChip(t)}
+        <span class="dp-transfer-source-label">${sourceLabel(t.source)}</span>
         ${t.label?`<span class="lbl-badge">🏷 ${esc(t.label)}</span>`:''}
       </td>
       <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
@@ -1523,16 +1578,17 @@ async function showDetail(id) {
         t.name || 'Torrent Details';
     }
 
+    const providerPresentation = transferProviderPresentation(t);
     if (modalBody) modalBody.innerHTML = `
       <div class="detail-grid">
         <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
-        <div><div class="dk">Provider</div><div class="dv">${esc((t.providers || []).join(', ') || '—')}</div></div>
+        <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
         <div><div class="dk">Progress</div><div class="dv">${(t.progress||0).toFixed(1)}%</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
-        <div><div class="dk">Source</div><div class="dv">${sourceLabel(t.source)}</div></div>
-        <div><div class="dk">Downloader</div><div class="dv">${esc((t.executors || []).join(', ') || '—')}</div></div>
+        <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>
         <div><div class="dk">Completed</div><div class="dv">${fmtDate(t.completed_at)}</div></div>
+        <div class="dp-detail-original-resource" style="grid-column:1/-1"><div class="dk">Original Resource</div><div class="dv">${esc(t.original_resource || '—')}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
@@ -1540,6 +1596,18 @@ async function showDetail(id) {
         ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
         ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
+      <div class="card dp-detail-section-card dp-detail-route-history">
+        <div class="card-header"><span class="card-title">Route History</span></div>
+        <div class="dp-detail-route-body">${renderRouteHistory(t)}</div>
+      </div>
+      <details class="dp-detail-advanced">
+        <summary>Advanced acquisition details</summary>
+        <div class="dp-detail-advanced-grid">
+          <div><span>Executor</span><strong>${esc((t.executors || []).join(', ') || '—')}</strong></div>
+          <div><span>Current Provider ID</span><strong>${esc(t.current_provider_id || '—')}</strong></div>
+          <div><span>Delivering Provider ID</span><strong>${esc(t.delivering_provider_id || '—')}</strong></div>
+        </div>
+      </details>
       ${t.files&&t.files.length?`
         <div class="card dp-detail-section-card dp-detail-files-card">
           <div class="card-header">

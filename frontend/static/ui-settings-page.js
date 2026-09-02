@@ -452,7 +452,24 @@
       </div>`;
   }
 
+  function integrationHeaderToggle(identity, value, displayName, extraClass = '') {
+    const safeIdentity = String(identity || '').replace(/[^a-z0-9_-]/gi, '-');
+    const id = `dp-settings-integration-${safeIdentity}-enabled`;
+    return `
+      <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable ${html(extraClass)}" for="${id}">
+        <span class="toggle-info"><span class="tl">Enable</span></span>
+        <span class="toggle">
+          <input id="${id}" data-integration-enabled="${html(identity)}" type="checkbox" ${checked(value)}
+                 aria-label="Enable ${html(displayName)} provider route">
+          <span class="ttrack"></span>
+        </span>
+      </label>`;
+  }
+
   function sourcesPanel(s) {
+    const integrations = s.integrations || {};
+    const allDebrid = integrations.alldebrid || {};
+    const generalHttp = integrations.general_http || {};
     const providerIdentity = `
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
         <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
@@ -488,11 +505,23 @@
     `, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
+      action: integrationHeaderToggle('alldebrid', allDebrid.enabled !== false, 'AllDebrid', 'dp-settings-provider-header-enable'),
     });
 
-    return groupCard('Debrid Services', provider, {
+    const generalHttpCard = card('HTTP & HTTPS', `
+      <p class="dp-settings-copy dp-settings-provider-minimal-copy">Direct downloads from standard HTTP and HTTPS URLs.</p>
+    `, {
+      className: 'dp-settings-provider-card dp-settings-provider-card--general-http',
+      action: integrationHeaderToggle('general_http', generalHttp.enabled !== false, 'HTTP & HTTPS', 'dp-settings-provider-header-enable'),
+    });
+
+    const debridServices = groupCard('Debrid Services', provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
+    const generalSources = groupCard('General Sources', generalHttpCard, {
+      className: 'dp-settings-source-group dp-settings-general-sources',
+    });
+    return debridServices + generalSources;
   }
 
   function downloadsPanel(s) {
@@ -1361,11 +1390,36 @@
       .filter(Boolean);
   }
 
+  function integrationPayload(current) {
+    const result = {};
+    const currentIntegrations = current?.integrations || {};
+    for (const [identity, entry] of Object.entries(currentIntegrations)) {
+      const options = Object.fromEntries(
+        Object.entries(entry?.options || {}).filter(([key]) => !key.endsWith('_configured'))
+      );
+      result[identity] = {
+        enabled: entry?.enabled !== false,
+        priority: Number(entry?.priority || 0),
+        options,
+      };
+    }
+    for (const identity of ['alldebrid', 'general_http']) {
+      const input = root()?.querySelector(`[data-integration-enabled="${identity}"]`);
+      const previous = result[identity] || {enabled: true, priority: 0, options: {}};
+      result[identity] = {
+        ...previous,
+        enabled: input ? !!input.checked : previous.enabled !== false,
+      };
+    }
+    return result;
+  }
+
   function nonAuthPayload() {
     const current = state.settings || {};
     const maxDownloads = intOf('aria2_max_active_downloads', Number(current.max_concurrent_downloads ?? 3));
     return {
       ...current,
+      integrations: integrationPayload(current),
       clear_secrets: clearSecrets(),
       alldebrid_api_key: valueOf('alldebrid_api_key'),
       alldebrid_rate_limit_per_minute: intOf('alldebrid_rate_limit_per_minute', 60),

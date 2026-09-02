@@ -101,6 +101,7 @@ async def test_provider_a_failure_provider_b_delivery_is_append_only_and_restart
 
     presentation = await repository.presentation(transfer.id, details=True)
     assert presentation["delivering_provider_id"] == "provider_b"
+    assert presentation["current_provider_id"] == "provider_b"
     assert presentation["providers"] == ["provider_b"]
     assert presentation["historical_providers"] == ["provider_a", "provider_b"]
     assert [item["id"] for item in presentation["route_attempts"]] == [attempt_a.id, attempt_b.id]
@@ -240,6 +241,7 @@ async def test_general_http_provider_identity_is_persisted_at_route_time(tmp_pat
     await _materialize_and_execute(repository, record, result.candidates[0], attempt_id="general-http-execution")
     presentation = await repository.presentation(transfer.id, details=True)
     assert presentation["delivering_provider_id"] == "general_http"
+    assert presentation["current_provider_id"] == "general_http"
     assert presentation["route_attempts"][0]["provider_id"] == "general_http"
     assert presentation["execution_attempts"][0]["provider_id"] == "general_http"
     assert "capability=secret" not in codec.dump(presentation["route_attempts"])

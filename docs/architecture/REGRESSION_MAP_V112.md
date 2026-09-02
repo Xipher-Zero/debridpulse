@@ -116,3 +116,9 @@ routing/provenance stages. No protocol-specific authentication UI is authorized.
 The consolidated final report records the actual final SHA, run/job evidence,
 totals, image digest and residual findings outside the qualified source tree, so
 adding the evidence does not silently alter the candidate being qualified.
+
+## Roadmap Item 10 — Sources & Providers UI + provenance presentation
+
+Permanent coverage includes canonical integration names and enablement persistence; AllDebrid and General HTTP(S) settings controls; current provider vs verified delivering provider; ordered multi-route history; legacy unknown provenance; safe original-resource redaction; absence of frontend URL-derived provider inference; and Recent Activity, Downloads, Details, light-theme, and narrow-layout Browser Runtime cases.
+
+Item 9 provenance and Item 8 routing remain the authoritative backend contracts beneath this presentation layer.

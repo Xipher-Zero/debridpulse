@@ -67,3 +67,10 @@ def test_legacy_out_of_range_policy_clamps_to_the_same_canonical_values():
     assert result.aria2_poll_interval_seconds == result.transfer_policy.execution_poll_interval_seconds == 2
     assert result.aria2_error_retry_count == result.transfer_policy.execution_retry_count == 0
     assert result.poll_interval_seconds == result.transfer_policy.provider_poll_interval_seconds == 5
+
+def test_public_integration_metadata_exposes_canonical_provider_names():
+    normalized = normalize_settings(AppSettings(), definitions)
+    public = public_integrations(normalized, definitions)
+    assert public["alldebrid"]["name"] == "AllDebrid"
+    assert public["general_http"]["name"] == "HTTP & HTTPS"
+    assert public["general_http"]["options"] == {}

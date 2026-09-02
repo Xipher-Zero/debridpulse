@@ -338,7 +338,8 @@ class TransferRepository:
                 f.blocked,f.block_reason,f.retry_count,f.mirror_group_id,f.mirror_state,f.updated_at,f.normalized_error,
                 e.progress AS execution_progress FROM download_files f
                 LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id WHERE f.torrent_id=? ORDER BY f.id""", (transfer_id,))
-            requests = await db.fetchall("SELECT id,state,error,payload,metadata FROM transfer_requests WHERE transfer_id=?", (transfer_id,))
+            requests = await db.fetchall("""SELECT id,state,error,payload,metadata FROM transfer_requests
+                WHERE transfer_id=? ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,ordinal,id""", (transfer_id,))
             resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
             providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
             route_attempts = await db.fetchall("""SELECT p.resolution_attempt_id AS id,p.request_id,p.ordinal,p.operation,p.previous_attempt_id,
@@ -364,7 +365,9 @@ class TransferRepository:
         result["resources"] = [dict(item) for item in resources]
         historical_providers = sorted({item["provider_id"] for item in (*resources, *providers) if item.get("provider_id")})
         delivering_providers = sorted({item["provider_id"] for item in execution_history if item.get("delivered") and item.get("provider_id")})
+        current_provider_id = next((item["provider_id"] for item in reversed(route_attempts) if item.get("provider_id")), None)
         result["historical_providers"] = historical_providers
+        result["current_provider_id"] = current_provider_id
         result["delivering_provider_ids"] = delivering_providers
         result["delivering_provider_id"] = delivering_providers[0] if len(delivering_providers) == 1 else None
         result["provider_provenance_status"] = "recorded" if delivering_providers else "unknown_legacy" if result["status"] == "completed" else "pending"
@@ -372,6 +375,7 @@ class TransferRepository:
         result["executors"] = sorted({item["download_client"] for item in files if item["download_client"]})
         result["input_required"] = public_challenge(input_challenge)
         if details:
+            result["request"] = codec.load(requests[0]["payload"], {}) if requests else None
             result["files"] = []
             for row in files:
                 item = normalized(dict(row))

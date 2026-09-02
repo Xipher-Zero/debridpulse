@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.12 development — Sources & Providers UI + provenance presentation
+
+- Added Sources & Providers enablement controls for AllDebrid and General HTTP(S) using canonical integration configuration.
+- Added compact provider provenance to Recent Activity and Downloads.
+- Added safe original-resource, final/current provider, ordered route history, and subordinate executor details to transfer Details.
+- Provenance presentation consumes durable Item 9 history and never reconstructs provider identity from submitted URLs or current routing state.
+
 ## [1.0.12] — Universal transfer architecture
 
 - Replaced inherited managers, gateways and captured-method coordinators with one universal lifecycle owner, durable request/resource/attempt identities and capability routing.

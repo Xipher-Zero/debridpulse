@@ -851,3 +851,12 @@ body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
   line-height: 1.35;
 }
 body.dp-v11-structural #view-settings .dp-settings-header-subtitle::after { content: none !important; }
+
+/* Roadmap Item 10: Sources & Providers. */
+body.dp-v11-structural #view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
+body.dp-v11-structural #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
+body.dp-v11-structural #view-settings .dp-settings-provider-minimal-copy { margin-bottom:0; }
+@media (max-width:700px) {
+  body.dp-v11-structural #view-settings .dp-settings-provider-card > .card-header { gap:10px; }
+  body.dp-v11-structural #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
+}

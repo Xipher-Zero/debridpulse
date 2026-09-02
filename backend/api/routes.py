@@ -14,7 +14,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional, AsyncGenerator, Literal
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import Depends, APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
@@ -66,6 +66,7 @@ def _sql_date(field: str) -> str:
     return f"DATE({field}, 'localtime')"
 
 from application.dependencies import get_application
+from transfers import codec
 from application.service import ApplicationService
 from executors.aria2.runtime import runtime as aria2_runtime
 from services.event_bus import bind_publisher
@@ -177,6 +178,70 @@ def _public_settings(settings: AppSettings, definitions=()) -> dict:
     data["database_backend"] = "sqlite"
     data["timezone"] = (os.getenv("TZ", "UTC") or "UTC").strip() or "UTC"
     return data
+
+
+def _provider_display_name(identity: str | None, definitions) -> str | None:
+    if not identity:
+        return None
+    return next((definition.name for definition in definitions if definition.id == identity), None)
+
+
+def _safe_original_resource(request_payload) -> str | None:
+    """Return a normal-user source label without returning capability-bearing data."""
+    if not request_payload:
+        return None
+    try:
+        request = codec.request(request_payload)
+    except (TypeError, ValueError, KeyError):
+        return None
+
+    kind = str(request.kind or "").strip().lower()
+    raw = request.payload.decode("utf-8", "replace") if isinstance(request.payload, bytes) else str(request.payload or "")
+
+    if kind in {"http", "https"}:
+        try:
+            parsed = urlparse(raw)
+            if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+                raise ValueError("not a safe HTTP source")
+            host = parsed.hostname
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            try:
+                if parsed.port is not None:
+                    host = f"{host}:{parsed.port}"
+            except ValueError:
+                pass
+            path = parsed.path or "/"
+            safe = urlunparse((parsed.scheme.lower(), host, path, "", "", ""))
+            if parsed.query:
+                safe += "?…"
+            return sanitize_log_value(safe, max_length=180)
+        except ValueError:
+            return request.name or "HTTP/HTTPS resource"
+
+    if kind == "magnet" or raw.lower().startswith("magnet:?"):
+        return sanitize_log_value(raw, max_length=180)
+
+    if isinstance(request.payload, bytes) or kind in {"torrent", "torrent_file", "file"}:
+        return request.name or "Torrent file"
+
+    return request.name or (f"{kind.upper()} resource" if kind else "Source resource")
+
+
+def _public_transfer_presentation(value, definitions) -> dict:
+    """Decorate durable provenance with neutral display metadata before stripping capabilities."""
+    raw_request = value.get("request") if isinstance(value, dict) else None
+    result = public_payload(value)
+    result["current_provider_name"] = _provider_display_name(result.get("current_provider_id"), definitions)
+    result["delivering_provider_name"] = _provider_display_name(result.get("delivering_provider_id"), definitions)
+
+    for attempt in result.get("route_attempts", []) or []:
+        attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)
+    for attempt in result.get("execution_attempts", []) or []:
+        attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)
+
+    result["original_resource"] = _safe_original_resource(raw_request)
+    return result
 
 
 def _password_auth_binding(settings: AppSettings) -> tuple[bool, str, str]:
@@ -600,7 +665,9 @@ async def list_torrents(
             f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
         )
         total = total_row["cnt"] if total_row else 0
-        return {"items": [public_payload(await application.repository.presentation(row["id"])) for row in rows], "total": total}
+        return {"items": [_public_transfer_presentation(
+            await application.repository.presentation(row["id"]), application.definitions
+        ) for row in rows], "total": total}
 
 
 @router.post("/torrents/add-magnet")
@@ -740,7 +807,7 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     item = await application.repository.presentation(torrent_id, details=True)
     if item is None:
         raise HTTPException(404, "Transfer not found")
-    return public_payload(item)
+    return _public_transfer_presentation(item, application.definitions)
 
 
 @router.delete("/torrents/{torrent_id}")

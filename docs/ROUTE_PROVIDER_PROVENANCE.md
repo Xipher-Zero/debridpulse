@@ -34,3 +34,11 @@ The completed-provider projection is derived from the execution attempt that pas
 ## Scope
 
 Item 9 does not add general automatic cross-provider failover policy and does not add the later provenance timeline/dashboard/badge/filter UI. It makes those later capabilities safe because their data source is durable history rather than reconstruction.
+
+## Item 10 presentation contract
+
+Roadmap Item 10 projects this durable history into the normal UI without reconstructing it. Recent Activity and Downloads use the current durable route for active transfers and the verified delivering provider for completed transfers. Details presents the safe original resource separately from the provider route and keeps route attempts in the Item 9 durable order.
+
+Provider labels come from integration definitions. If a historical provider is no longer registered, the stable provider ID remains in the API while the normal UI falls back to a neutral unknown label. Current enablement, current applicability, current AllDebrid host data, executor identity, and the submitted URL never rewrite historical provenance.
+
+The Settings Sources & Providers controls update the canonical integration `enabled` state. AllDebrid and General HTTP(S) do not have parallel frontend enablement flags.

@@ -43,5 +43,6 @@ def public_integrations(settings, definitions):
     for identity, entry in settings.integrations.items():
         definition = known.get(identity)
         result[identity] = {"enabled": entry.enabled, "priority": entry.priority,
+                            "name": definition.name if definition else None,
                             "options": definition.public_options(entry.options) if definition else {}}
     return result
