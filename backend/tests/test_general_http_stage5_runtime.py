@@ -191,6 +191,8 @@ async def test_definitive_401_wrong_then_correct_credentials_complete_same_trans
     username = "stage5-user-sentinel"
     wrong = "stage5-wrong-password-sentinel"
     password = "stage5-correct-password-sentinel"
+    wrong_header = "Basic " + base64.b64encode(f"{username}:{wrong}".encode()).decode()
+    correct_header = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
     server, port, state = await _start_http(b"authenticated-direct-http", username=username, password=password)
     repository, engine, proc, service, downloads = await _runtime(tmp_path, monkeypatch)
     uri = f"http://127.0.0.1:{port}/protected.bin"
@@ -224,11 +226,22 @@ async def test_definitive_401_wrong_then_correct_credentials_complete_same_trans
 
         await engine.submit_input(transfer.id, second.id, "username_password", {"username": username, "password": password})
 
-        async def completed():
+        async def completed_without_rechallenge():
             current = await repository.get(transfer.id)
+            challenge = await engine.challenges.current(transfer.id)
+            if challenge is not None and challenge.id != second.id:
+                pattern = ["none" if item is None else "wrong" if item == wrong_header else "correct" if item == correct_header else "other"
+                           for item in state["requests"]]
+                raise AssertionError(f"corrected credentials were rechallenged; request pattern={pattern}")
+            if current.state == TransferState.FAILED:
+                artifact = (await repository.artifacts(transfer.id))[0]
+                attempt = (await repository.executions(transfer.id))[0]
+                pattern = ["none" if item is None else "wrong" if item == wrong_header else "correct" if item == correct_header else "other"
+                           for item in state["requests"]]
+                raise AssertionError(f"corrected credentials failed; artifact={artifact.state} attempt={attempt.state} request pattern={pattern}")
             return current if current.state == TransferState.COMPLETED else None
 
-        current = await _until(engine, completed, label="authenticated HTTP completion")
+        current = await _until(engine, completed_without_rechallenge, label="authenticated HTTP completion")
         artifact = (await repository.artifacts(transfer.id))[0]
         assert current.id == transfer.id
         assert artifact.execution.attempt_id == first_attempt
@@ -237,12 +250,14 @@ async def test_definitive_401_wrong_then_correct_credentials_complete_same_trans
         assert (downloads / "protected.bin").read_bytes() == b"authenticated-direct-http"
         assert await engine.challenges.current(transfer.id) is None
         assert state["authorized"] == 1
+        assert state["requests"][0] is None
+        assert wrong_header in state["requests"]
+        assert correct_header in state["requests"]
 
         persisted = await _db_text()
         for secret in (username, wrong, password):
             assert secret not in persisted
             assert secret not in repr(artifact.execution)
-        assert all(value is None or not value.startswith("Basic ") for value in state["requests"][:-1])
     finally:
         await _stop_aria2(proc, service)
         server.close()
