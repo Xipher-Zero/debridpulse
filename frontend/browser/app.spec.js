@@ -276,6 +276,29 @@ test('handled Event Log API failure stays inside the UI error lifecycle', async 
   expect(unexpectedErrors).toEqual([]);
 });
 
+test('canonical failure category renders without native parsing or detail enrichment', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const runtime = observeRuntime(page);
+  const item = {
+    id: 901, name: 'Canonical failure fixture', status: 'error', progress: 37,
+    size_bytes: 100, source: 'manual', hash: '', label: '',
+    created_at: '2026-09-01T00:00:00Z',
+    error: { category: 'disk_full', domain: 'local_resource' },
+    error_message: 'Unrelated native text LINK_DOWN',
+  };
+  await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({items: [item], total: 1}),
+  }));
+  await page.goto('/');
+  await openView(page, 'torrents', 'Downloads');
+  const row = page.locator('#t-tbody tr[data-torrent-id="901"]');
+  await expect(row.locator('[data-role="transfer-status"]')).toHaveText('Disk Full');
+  await expect(row.locator('[data-dp-failure-code]')).toHaveAttribute('data-dp-failure-code', 'disk_full');
+  await expect(row.locator('.dp-terminal-error-progress')).toHaveAttribute('data-dp-actual-progress', '37');
+  expect(runtime.requests.filter(url => new URL(url).pathname === '/api/torrents/901')).toEqual([]);
+  expect(runtime.errors).toEqual([]);
+});
+
 test('Help legal modal traps lifecycle and restores opener focus', async ({ page }) => {
   await isolateExternalFonts(page);
   const runtime = observeRuntime(page);

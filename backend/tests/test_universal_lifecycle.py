@@ -470,3 +470,49 @@ async def test_file_selection_cannot_change_after_execution_was_created(core):
     with pytest.raises(TransferError) as rejected:
         await core.engine.select_artifact(transfer.id, artifact.id, selected=False)
     assert rejected.value.error.category == Category.RESOURCE_STATE_CONFLICT
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [3, 5])
+async def test_multiple_mirrors_keep_one_physical_artifact_and_do_not_cycle_on_local_failure(core, count):
+    candidates = [replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", str(i))) for i in range(count)]
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (item,)) for item in candidates]
+    core.executor.start_errors = [NormalizedError(Domain.LOCAL_RESOURCE, Category.DISK_FULL, Stage.EXECUTION,
+        Retryability.AFTER_RESOURCE_CHANGE, Recovery.REQUIRE_OPERATOR)]
+    transfer = await core.engine.submit(tuple(TransferRequest("parcel", str(i)) for i in range(count)))
+    await core.engine.tick()
+    await core.engine.tick()
+    artifact, = await core.repository.artifacts(transfer.id)
+    assert len(artifact.candidates) == count
+    assert artifact.selected == 0
+    assert len([call for call in core.executor.calls if call[0] == "start"]) == 1
+    assert artifact.error.category == Category.DISK_FULL
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retries, delay", [(0, 0), (2, 0), (2, 10)])
+async def test_resolution_retry_budget_and_zero_delay_drive_actual_attempts(core, retries, delay):
+    core.engine.policy = replace(core.engine.policy, resolution_max_attempts=retries + 1, resolution_retry_delay=delay)
+    error = failure(Category.PROVIDER_UNAVAILABLE, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)
+    core.provider.responses = [ResolutionResult(ResourceState.UNAVAILABLE, error=error)] * (retries + 1)
+    await submit(core)
+    await core.engine.resolve_pending()
+    await core.engine.resolve_pending()
+    assert len(core.provider.calls) == (2 if retries and not delay else 1)
+    for _ in range(5):
+        core.now[0] += 1000
+        await core.engine.resolve_pending()
+    assert len(core.provider.calls) == retries + 1
+
+
+@pytest.mark.parametrize("left_size,right_size,expected", [
+    (0, 0, False), (1000, 1001, True), (1000, 1002, False),
+    (1024**4, 1024**4 + 512 * 1024**2, True),
+    (1024**4, 1024**4 + 512 * 1024**2 + 1, False),
+])
+def test_mirror_size_boundaries_are_conservative(left_size, right_size, expected):
+    from transfers.mirrors import comparable
+    provider = ParcelProvider()
+    left = replace(provider.candidate("Same.bin"), expected_bytes=left_size, source_identity=SourceIdentity("host", "one"))
+    right = replace(provider.candidate("same.bin"), expected_bytes=right_size, source_identity=SourceIdentity("host", "two"))
+    assert comparable(left, right) is expected

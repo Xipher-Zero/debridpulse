@@ -51,7 +51,7 @@ from core.config_validator import validate_and_sanitise
 
 
 router = APIRouter()
-logger = logging.getLogger("alldebrid.auth")
+logger = logging.getLogger("debridpulse.auth")
 
 
 class OidcVerificationRequest(BaseModel):

@@ -42,3 +42,28 @@ def test_unknown_plugin_settings_remain_private_and_are_retained():
     normalized = normalize_settings(settings, definitions)
     assert normalized.integrations["future-plugin"].options["unexpected_credential"] == "secret-material"
     assert public_integrations(normalized, definitions)["future-plugin"]["options"] == {}
+
+
+def test_transfer_policy_translates_legacy_settings_and_survives_partial_updates():
+    from transfers.settings import TransferSettings
+    previous = normalize_settings(AppSettings(aria2_error_retry_count=0, upload_fail_retry_delay_minutes=0), definitions)
+    assert previous.transfer_policy.execution_retry_count == 0
+    assert previous.transfer_policy.resolution_retry_delay_minutes == 0
+    draft = AppSettings(transfer_policy=TransferSettings(resolution_concurrency=7))
+    changed = normalize_settings(draft, definitions, previous=previous, supplied_fields={"transfer_policy"})
+    assert changed.transfer_policy.resolution_concurrency == 7
+    assert changed.transfer_policy.execution_retry_count == 0
+    assert changed.aria2_error_retry_count == 0
+    legacy = changed.model_copy(update={"max_concurrent_downloads": 8})
+    changed = normalize_settings(legacy, definitions, previous=changed, supplied_fields={"max_concurrent_downloads"})
+    assert changed.transfer_policy.max_concurrent_executions == 8
+    assert changed.aria2_max_active_downloads == 8
+
+
+def test_legacy_out_of_range_policy_clamps_to_the_same_canonical_values():
+    result = normalize_settings(AppSettings(max_concurrent_downloads=500, aria2_poll_interval_seconds=0,
+        aria2_error_retry_count=-1, poll_interval_seconds=1), definitions)
+    assert result.max_concurrent_downloads == result.transfer_policy.max_concurrent_executions == 20
+    assert result.aria2_poll_interval_seconds == result.transfer_policy.execution_poll_interval_seconds == 2
+    assert result.aria2_error_retry_count == result.transfer_policy.execution_retry_count == 0
+    assert result.poll_interval_seconds == result.transfer_policy.provider_poll_interval_seconds == 5

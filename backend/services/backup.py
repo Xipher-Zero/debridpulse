@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-logger = logging.getLogger("alldebrid.backup")
+logger = logging.getLogger("debridpulse.backup")
 
 _BACKUP_DIR_RE = re.compile(r"^\d{8}_\d{6}(?:_[0-9a-f]{8}|_[0-9a-f]{32})?$")
 _BACKUP_RUN_LOCK = asyncio.Lock()

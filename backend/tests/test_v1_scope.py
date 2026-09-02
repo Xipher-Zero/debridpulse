@@ -42,7 +42,7 @@ REMOVED_ROUTE_MARKERS = {
 def test_v1_identity_is_debridpulse_everywhere_it_is_centralized():
     assert APP_NAME == "DebridPulse"
     assert APP_SHORT_NAME == "DebridPulse"
-    assert APP_METADATA_TITLE == "DebridPulse — AllDebrid + aria2 Download Manager"
+    assert APP_METADATA_TITLE == "DebridPulse — Universal Transfer Manager"
     assert REPOSITORY_URL == "https://github.com/Xipher-Zero/debridpulse"
 
 

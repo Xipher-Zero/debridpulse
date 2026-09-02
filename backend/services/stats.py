@@ -20,7 +20,7 @@ import aiohttp
 
 from core.branding import APP_SHORT_NAME
 
-logger = logging.getLogger("alldebrid.stats")
+logger = logging.getLogger("debridpulse.stats")
 
 
 def _cfg():

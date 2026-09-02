@@ -17,7 +17,7 @@ from integrations.catalog import definitions
 from integrations.configuration import normalize_settings
 from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers.errors import Category
-from transfers.models import ExecutionState, TransferProgress, ResolutionResult, ResourceState, TransferState
+from transfers.models import ExecutionState, TransferProgress, ResolutionResult, ResourceState, TransferState, SourceEntry, TransferRequest
 
 
 @pytest.mark.asyncio
@@ -169,3 +169,66 @@ async def test_invalid_archive_retains_payload_and_reports_postprocessing_failur
     assert view["status"] == TransferState.COMPLETED
     assert view["extraction_status"] == "error"
     assert Path(artifact.target).read_bytes() == b"done"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [0, 4])
+async def test_successful_execution_establishes_size_when_provider_size_is_unknown(core, size):
+    candidate = replace(core.provider.candidate(), expected_bytes=0)
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (candidate,))]
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    target = Path(artifact.target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"x" * size)
+    job = core.executor.jobs[artifact.execution.attempt_id]
+    core.executor.jobs[artifact.execution.attempt_id] = replace(job, state=ExecutionState.SUCCEEDED, progress=TransferProgress(size, size))
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).state == TransferState.COMPLETED
+    assert (await core.repository.artifacts(transfer.id))[0].expected_bytes == size
+
+
+@pytest.mark.asyncio
+async def test_payload_disappearing_after_member_verification_blocks_final_completion(core, monkeypatch):
+    import transfers.engine as module
+    result = core.provider.parcel(state=ResourceState.AVAILABLE)
+    resource = result.observation.resource
+    core.provider.members[resource.id] = tuple(SourceEntry(f"{name}.bin", 4, f"{name}.bin", TransferRequest("parcel-member", name)) for name in ("first", "second"))
+    core.provider.responses = [result]
+    transfer = await submit(core)
+    await core.engine.tick()
+    await core.engine.tick()
+    first, second = await core.repository.artifacts(transfer.id)
+    core.executor.finish(first.execution)
+    core.executor.finish(second.execution)
+    original = module.stable_payload
+    async def verify(path, *args, **kwargs):
+        valid = await original(path, *args, **kwargs)
+        if path == second.target:
+            Path(first.target).unlink(missing_ok=True)
+        return valid
+    monkeypatch.setattr(module, "stable_payload", verify)
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).state != TransferState.COMPLETED
+    latest = {item.id: item for item in await core.repository.artifacts(transfer.id)}
+    assert latest[first.id].state == "queued"
+    assert latest[first.id].target == first.target
+    assert latest[second.id].state == "completed"
+
+
+@pytest.mark.asyncio
+async def test_extraction_notification_flag_is_independent_of_download_notifications(core, monkeypatch):
+    from application.observability import Observability
+    from postprocessors.archive.processor import ArchivePostProcessor
+    core.engine.postprocessors = (ArchivePostProcessor(),)
+    transfer = await submit(core, name="invalid.zip")
+    await core.engine.tick()
+    core.executor.finish((await core.repository.artifacts(transfer.id))[0].execution)
+    await core.engine.tick()
+    notifier = SimpleNamespace(send_extract_failed=AsyncMock(), send_complete=AsyncMock())
+    monkeypatch.setattr("application.observability.NotificationService", lambda: SimpleNamespace(client=lambda: notifier))
+    monkeypatch.setattr("application.observability.get_settings", lambda: SimpleNamespace(discord_notify_added=False, discord_notify_finished=False, discord_notify_error=False, discord_notify_extract=True))
+    await Observability(core.repository).deliver()
+    notifier.send_extract_failed.assert_awaited_once()
+    notifier.send_complete.assert_not_awaited()

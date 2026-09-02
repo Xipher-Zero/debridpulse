@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Tuple
 
 from core.logging_utils import sanitize_log_value
 
-logger = logging.getLogger("alldebrid.config")
+logger = logging.getLogger("debridpulse.config")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

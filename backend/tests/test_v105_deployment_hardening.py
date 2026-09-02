@@ -9,10 +9,10 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
-def test_release_install_surfaces_track_current_version_and_public_health_endpoint():
+def test_install_surfaces_preserve_published_image_and_public_health_endpoint():
     root = Path(__file__).resolve().parents[2]
-    version = (root / "VERSION").read_text().strip()
-    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"
+    # The development candidate is not a published production release.
+    expected_image = "ghcr.io/xipher-zero/debridpulse:v1.0.11.1"
     compose = (root / "docker-compose.yml").read_text()
     readme = (root / "README.md").read_text()
     project_page = (root / "index.html").read_text()

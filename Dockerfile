@@ -4,9 +4,9 @@ WORKDIR /app
 
 ARG APP_VERSION=unknown
 ARG VCS_REF=unknown
-LABEL org.opencontainers.image.title="DebridPulse: AllDebrid + aria2 Download Manager"
+LABEL org.opencontainers.image.title="DebridPulse: Universal Transfer Manager"
 LABEL org.opencontainers.image.version="${APP_VERSION}"
-LABEL org.opencontainers.image.description="AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2"
+LABEL org.opencontainers.image.description="Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution"
 LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/debridpulse"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"

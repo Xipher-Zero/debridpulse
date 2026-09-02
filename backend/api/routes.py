@@ -77,7 +77,7 @@ from api.serializers import (
 )
 from executors.aria2.presentation import public_aria2_download
 
-logger = logging.getLogger("alldebrid.routes")
+logger = logging.getLogger("debridpulse.routes")
 router = APIRouter()
 
 
@@ -679,8 +679,8 @@ async def check_torrent_duplicate(body: dict):
     from services.duplicates import check_before_add
 
     candidate = _duplicate_candidate_from_payload(body, source=str(body.get("source") or "preview"))
-    if not (candidate.infohash or candidate.magnet or candidate.title or candidate.alldebrid_id):
-        raise HTTPException(400, "title, magnet, hash, infohash, or alldebrid_id is required")
+    if not (candidate.infohash or candidate.magnet or candidate.title or candidate.resource_id):
+        raise HTTPException(400, "title, magnet, hash, infohash, or resource_id is required")
     decision = await check_before_add(candidate)
     return {"ok": True, "duplicate": decision.as_dict()}
 
@@ -1320,64 +1320,66 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
     Apply global aria2 options at runtime.
     Accepts: max_download_speed (bytes/s, 0=unlimited), max_upload_speed.
     """
-    cfg = get_settings()
-    external = getattr(cfg, "aria2_mode", "external") != "builtin"
-    options: dict = {}
-    cfg_updates: dict = {}
-    if "max_download_speed" in body:
-        val = int(body["max_download_speed"])
-        options["max-overall-download-limit"] = str(val)
-        cfg_updates["aria2_max_download_limit"] = val
-    if "max_upload_speed" in body:
-        val = int(body["max_upload_speed"])
-        options["max-overall-upload-limit"] = str(val)
-        cfg_updates["aria2_max_upload_limit"] = val
-    if "max_concurrent_downloads" in body:
-        val = max(1, int(body["max_concurrent_downloads"]))
-        if not external:
-            options["max-concurrent-downloads"] = str(val)
-        # Persist in both application fields so the Manager semaphore and
-        # ADC-owned GID dispatcher remain aligned.
-        cfg_updates["aria2_max_active_downloads"] = val
-        cfg_updates["max_concurrent_downloads"] = val
-    if external and any(
-        key in body for key in ("max_download_speed", "max_upload_speed")
-    ):
-        raise HTTPException(
-            409,
-            "Global bandwidth limits are read-only for an external shared aria2 daemon",
-        )
-    if not options and not cfg_updates:
-        raise HTTPException(400, "No valid options provided")
-    try:
-        if not external:
-            await application.integration_admin("aria2").change_global_options(options)
-        # Persist so the limits survive an aria2 restart
-        if cfg_updates:
-            current = load_settings()
-            for k, v in cfg_updates.items():
-                setattr(current, k, v)
-            save_settings(current)
-            apply_settings(current)
-        # If max_concurrent_downloads changed, reset the Manager Semaphore so
-        # the next _start_download picks up the new limit immediately.
-        if "max_concurrent_downloads" in cfg_updates:
-            application.configure()
-            try:
-                await application.reconcile_executions()
-            except Exception as exc:
-                logger.debug("aria2 quick slot dispatch skipped: %s", sanitize_exception(exc))
-        return {
-            "ok": True,
-            "mode": "external" if external else "builtin",
-            "applied": (
-                {"adc-max-concurrent-downloads": cfg_updates["max_concurrent_downloads"]}
-                if external
-                else options
-            ),
-        }
-    except Exception as e:
-        raise HTTPException(502, _sanitize_error(e))
+    async with application.configuration_admission():
+        cfg = get_settings()
+        external = getattr(cfg, "aria2_mode", "external") != "builtin"
+        options: dict = {}
+        cfg_updates: dict = {}
+        if "max_download_speed" in body:
+            val = int(body["max_download_speed"])
+            options["max-overall-download-limit"] = str(val)
+            cfg_updates["aria2_max_download_limit"] = val
+        if "max_upload_speed" in body:
+            val = int(body["max_upload_speed"])
+            options["max-overall-upload-limit"] = str(val)
+            cfg_updates["aria2_max_upload_limit"] = val
+        if "max_concurrent_downloads" in body:
+            val = max(1, int(body["max_concurrent_downloads"]))
+            if not external:
+                options["max-concurrent-downloads"] = str(val)
+            # Keep the legacy input and universal execution limit consistent.
+            cfg_updates["aria2_max_active_downloads"] = val
+            cfg_updates["max_concurrent_downloads"] = val
+        if external and any(
+            key in body for key in ("max_download_speed", "max_upload_speed")
+        ):
+            raise HTTPException(
+                409,
+                "Global bandwidth limits are read-only for an external shared aria2 daemon",
+            )
+        if not options and not cfg_updates:
+            raise HTTPException(400, "No valid options provided")
+        try:
+            if not external:
+                await application.integration_admin("aria2").change_global_options(options)
+            # Persist so the limits survive an aria2 restart
+            if cfg_updates:
+                current = load_settings()
+                for k, v in cfg_updates.items():
+                    setattr(current, k, v)
+                from integrations.configuration import normalize_settings
+                current = normalize_settings(current, application.definitions, supplied_fields=set(cfg_updates))
+                save_settings(current)
+                apply_settings(current)
+            # Reconfigure only after active application operations have drained.
+            if "max_concurrent_downloads" in cfg_updates:
+                application.configure()
+                try:
+                    await application.reconcile_executions()
+                except Exception as exc:
+                    logger.debug("aria2 quick slot dispatch skipped: %s", sanitize_exception(exc))
+            return {
+                "ok": True,
+                "mode": "external" if external else "builtin",
+                "applied": (
+                    {"adc-max-concurrent-downloads": cfg_updates["max_concurrent_downloads"]}
+                    if external
+                    else options
+                ),
+            }
+        except Exception as e:
+            raise HTTPException(502, _sanitize_error(e))
+
 
 
 

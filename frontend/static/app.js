@@ -151,8 +151,9 @@ function sourceLabel(source) {
     direct_link: 'Direct link',
     manual: 'Magnet link',
     manual_file: 'Torrent file',
-    alldebrid_existing: 'AllDebrid import',
-    import_existing: 'AllDebrid import',
+    alldebrid_existing: 'Provider inventory',
+    import_existing: 'Provider inventory',
+    inventory: 'Provider inventory',
     api: 'API'
   };
   const key = String(source || '').trim();

@@ -1,0 +1,701 @@
+{
+  "description": "Dependency-removal census captured during the canonical runtime cutover. Retired denotes tests tied to superseded owners, not accepted behavior retirement. See REGRESSION_MAP_V112.md for replacement scope and limits.",
+  "legacy_owner_test_census": [
+    {
+      "file": "test_aria2_result_retention.py",
+      "retired": [
+        "test_reconciliation_preserves_inert_stopped_results",
+        "test_builtin_housekeeping_reapplies_tuning_without_result_cleanup",
+        "test_external_housekeeping_remains_observation_only"
+      ],
+      "retained": [
+        "test_builtin_automatic_purge_preserves_bounded_result_state",
+        "test_builtin_explicit_force_purge_remains_available",
+        "test_external_force_purge_remains_blocked"
+      ]
+    },
+    {
+      "file": "test_audit_remediation.py",
+      "retired": [
+        "test_manifest_collision_rejected_after_sanitization",
+        "test_manifest_duplicate_entry_same_identity_is_not_collision",
+        "test_dns_policy_rejects_private_or_mixed_answers",
+        "test_dns_policy_accepts_public_answers",
+        "test_delete_waits_for_inflight_materialization",
+        "test_delete_cancels_inflight_direct_link_preparation",
+        "test_delete_serializes_with_aria2_dispatch",
+        "test_upload_failure_retry_delay_aborts_when_delete_wins",
+        "test_expired_reimport_cleans_new_provider_object_if_delete_wins",
+        "test_completed_magnet_resubmit_bypasses_historical_skip",
+        "test_explicit_resubmit_clears_completed_delete_intent",
+        "test_active_magnet_still_uses_existing_duplicate_gate",
+        "test_explicit_delete_honors_provider_deletion_for_completed_import",
+        "test_explicit_delete_tolerates_already_cleaned_owned_completed_provider"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_bound_parent_progress_contract.py",
+      "retired": [
+        "test_bound_architecture_excludes_predispatch_source_errors_from_parent_progress",
+        "test_bound_architecture_keeps_real_physical_error_in_parent_progress"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_delete_lock_order.py",
+      "retired": [
+        "test_delete_does_not_wait_for_aria2_state_lock"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_delete_tombstone_persistence.py",
+      "retired": [
+        "test_reconcile_primes_persisted_delete_tombstones",
+        "test_manual_import_primes_persisted_delete_tombstones",
+        "test_full_sync_primes_persisted_delete_tombstones"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_mirror_dedupe.py",
+      "retired": [
+        "test_cross_hoster_same_name_and_exact_size_collapses_to_one_logical_file",
+        "test_three_working_real_world_mirrors_classify_both_alternates",
+        "test_five_working_mirror_hosts_dispatch_only_first_logical_file",
+        "test_paused_unstarted_mirrors_can_be_classified_before_resume",
+        "test_same_filename_with_different_exact_size_is_not_collapsed",
+        "test_same_size_with_different_resolved_filename_is_not_collapsed",
+        "test_unknown_size_is_never_treated_as_verified_mirror_identity",
+        "test_same_hoster_url_variants_are_not_collapsed_by_metadata_alone",
+        "test_existing_running_mirror_is_preferred_over_pending_alternate",
+        "test_already_dispatched_duplicate_is_never_reclassified",
+        "test_collapse_preserves_duplicate_rows_and_excludes_them_from_logical_size",
+        "test_captured_physical_dispatch_is_always_preceded_by_mirror_classification",
+        "test_concurrent_physical_dispatches_cannot_cross_classification_boundary",
+        "test_advance_queue_locked_classifies_duplicates_even_before_scheduled_dispatch",
+        "test_transfer_control_service_uses_mirror_aware_authoritative_queue"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_mirror_failover.py",
+      "retired": [
+        "test_source_specific_failure_promotes_first_standby",
+        "test_local_disk_failure_does_not_cycle_standbys",
+        "test_source_unlock_failure_without_gid_is_failover_eligible",
+        "test_local_aria2_dispatch_failure_without_gid_is_not_failover_eligible",
+        "test_success_after_failover_is_plain_done_and_unused_standby_is_retained",
+        "test_failover_schema_and_dispatch_contract_are_persisted"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_mirror_scale_tolerance.py",
+      "retired": [
+        "test_observed_megaup_metadata_variance_collapses_with_exact_mirror",
+        "test_large_file_relative_variance_can_exceed_two_mib_and_still_match",
+        "test_relative_variance_over_point_one_percent_is_rejected",
+        "test_512_mib_catastrophe_guard_allows_boundary_when_relative_delta_is_small",
+        "test_512_mib_catastrophe_guard_rejects_larger_delta_even_below_point_one_percent"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_mirror_size_variance.py",
+      "retired": [
+        "test_real_world_megaup_metadata_variance_collapses_with_exact_mirror",
+        "test_size_variance_over_two_mib_can_collapse_when_relative_delta_is_small",
+        "test_size_variance_over_point_one_percent_is_not_collapsed_even_when_absolute_delta_is_small"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_result_authority.py",
+      "retired": [
+        "test_completed_payload_with_failed_sources_is_success_with_warning",
+        "test_completed_payload_with_only_duplicate_mirrors_is_plain_success",
+        "test_real_physical_aria2_error_remains_failure_and_pushes_terminal_state",
+        "test_false_terminal_error_can_be_repaired_from_completed_physical_payload",
+        "test_terminal_history_reservation_does_not_force_suffix",
+        "test_active_transfer_path_still_forces_suffix",
+        "test_existing_file_always_forces_suffix_even_with_deleted_history",
+        "test_same_batch_second_physical_name_is_reserved_without_disk_file"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_result_idempotence.py",
+      "retired": [
+        "test_completed_direct_link_parent_is_not_finalized_twice"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_link_retry_guard.py",
+      "retired": [
+        "test_retry_preserves_complete_and_resumable_paths",
+        "test_retry_keeps_confirmed_live_aria2_job",
+        "test_retry_confirms_snapshot_miss_before_clearing_gid",
+        "test_retry_can_recover_source_outcome_without_rebuilding_siblings",
+        "test_transfer_service_uses_retry_guard_engine"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_direct_links.py",
+      "retired": [
+        "test_removed_source_can_reuse_its_original_target_path",
+        "test_live_owner_blocks_deleted_history_path_reuse",
+        "test_direct_link_preparation_seeds_non_deleted_live_paths",
+        "test_link_down_keeps_code_and_is_not_retried",
+        "test_submission_persists_parent_and_schedules_generation",
+        "test_dashboard_and_downloads_page_match_unified_transfer_ui"
+      ],
+      "retained": [
+        "test_normalizes_deduplicates_and_preserves_order",
+        "test_rejects_non_http_input",
+        "test_caps_each_batch_at_one_hundred_links",
+        "test_derives_safe_filename",
+        "test_collection_name_uses_resolved_multipart_base",
+        "test_collection_name_does_not_invent_common_name",
+        "test_collection_name_falls_back_to_source_identifier",
+        "test_schema_migrates_original_source_url",
+        "test_returns_immediate_unlocked_link",
+        "test_polls_delayed_generation_at_documented_interval",
+        "test_dashboard_is_a_fixed_at_a_glance_view"
+      ]
+    },
+    {
+      "file": "test_download_logic.py",
+      "retired": [
+        "test_terminal_statuses_defined",
+        "test_non_terminal_statuses",
+        "test_error_is_terminal",
+        "test_ready_status",
+        "test_processing_status",
+        "test_ready_status_code_4",
+        "test_error_status",
+        "test_unknown_code_maps_gracefully",
+        "test_safe_rel_path"
+      ],
+      "retained": [
+        "test_restartable_statuses_in_full_sync",
+        "test_all_blocked_finalizes",
+        "test_all_done_finalizes",
+        "test_still_active_does_not_finalize",
+        "test_error_with_no_active_does_not_complete",
+        "test_partial_done_does_not_finalize",
+        "test_safe_name_strips_dangerous_chars",
+        "test_safe_name_strips_leading_dots",
+        "test_safe_name_normal_stays_intact",
+        "test_safe_name_preserves_normal",
+        "test_restartable_set_excludes_in_progress",
+        "test_max_concurrent_downloads_clamped",
+        "test_aria2_max_active_clamped",
+        "test_stuck_timeout_clamped",
+        "test_poll_interval_minimum"
+      ]
+    },
+    {
+      "file": "test_extraction_lifecycle.py",
+      "retired": [
+        "test_completed_zip_runs_through_post_download_extraction",
+        "test_delete_archive_disabled_retains_source_without_cleanup_event",
+        "test_inaccessible_rar_is_visible_failure_not_silent_skip",
+        "test_extraction_events_form_durable_operator_audit"
+      ],
+      "retained": [
+        "test_extract_archives_reports_missing_archive",
+        "test_part_rar_cleanup_uses_only_db_known_archive_set_members",
+        "test_traditional_rar_set_uses_rar_root_and_owns_numbered_volumes",
+        "test_cleanup_failure_is_reported_separately_from_source_selection",
+        "test_extraction_state_is_persisted_and_operator_visible",
+        "test_external_extraction_stages_inside_destination",
+        "test_frontend_surfaces_extraction_failure_toast"
+      ]
+    },
+    {
+      "file": "test_full_audit_remediation_20260824.py",
+      "retired": [
+        "test_systemic_provider_unlock_failure_is_not_source_specific",
+        "test_link_specific_provider_code_remains_source_specific",
+        "test_provider_unlock_failure_without_gid_is_not_failover_eligible",
+        "test_aria2_jobs_refuse_http_redirects",
+        "test_real_world_three_hoster_tolerance_collapses_in_full_path"
+      ],
+      "retained": [
+        "test_extraction_refuses_to_overwrite_existing_regular_file",
+        "test_extraction_never_scans_unrelated_preexisting_nested_archive",
+        "test_nested_archive_created_by_current_extraction_still_extracts",
+        "test_current_schema_contract_includes_extraction_and_mirror_columns",
+        "test_concurrent_extractions_cannot_clobber_same_new_target",
+        "test_sample_fingerprints_request_identity_bytes_and_refuse_redirects"
+      ]
+    },
+    {
+      "file": "test_manager_v2.py",
+      "retired": [
+        "test_safe_rel_path_sanitizes_segments",
+        "test_normalize_provider_state_ready",
+        "test_normalize_provider_state_error",
+        "test_normalize_provider_state_processing",
+        "test_normalize_provider_state_queued",
+        "test_pause_all_targets_each_active_owned_parent",
+        "test_resume_all_only_targets_paused_owned_parents",
+        "test_individual_pause_holds_dispatched_and_pending_children",
+        "test_individual_resume_restores_dispatchable_child_states",
+        "test_resume_during_global_pause_does_not_bypass_global_gate",
+        "test_global_pause_is_a_strict_dispatch_gate",
+        "test_queue_advance_dispatches_files_then_materializes_ready_parent",
+        "test_ready_successor_scheduler_claims_priority_order_immediately",
+        "test_ready_parent_scheduler_deduplicates_tasks_before_they_start",
+        "test_pausing_primary_immediately_schedules_ready_successor",
+        "test_start_download_rechecks_pause_after_waiting_for_preparation_slot",
+        "test_individual_pause_waits_for_in_progress_state_reconciliation",
+        "test_missing_provider_object_is_retained_as_visible_error",
+        "test_provider_failure_cleanup_retains_local_error_history",
+        "test_finalize_marks_completed_when_all_files_done",
+        "test_finalize_does_not_complete_when_files_still_active",
+        "test_finalize_updates_large_total_size_without_case_expression",
+        "test_delete_magnet_keeps_completed_status",
+        "test_duplicate_file_entries_skipped",
+        "test_reconcile_startup_finalizes_completed_torrent_when_aria2_entry_is_gone",
+        "test_sync_downloads_treats_removed_as_lost_not_completed",
+        "test_fetch_ready_files_raises_transient_when_status_is_ready_but_files_are_missing",
+        "test_start_download_defers_transient_missing_files_without_failing_torrent",
+        "test_fetch_ready_files_raises_transient_when_status_unavailable",
+        "test_completed_count_not_reset_to_deleted",
+        "test_add_magnet_final_duplicate_guard_skips_alldebrid_upload",
+        "test_add_torrent_file_duplicate_skips_alldebrid_upload",
+        "test_startup_reconcile_removes_duplicate_aria2_jobs",
+        "test_build_aria2_indexes_tracks_path_and_uri",
+        "test_aria2_slot_limit_uses_dedicated_setting",
+        "test_aria2_slot_limit_fallback_to_max_concurrent",
+        "test_paused_aria2_jobs_do_not_consume_download_slots",
+        "test_aria2_job_options_reuse_deterministic_target_path",
+        "test_builtin_aria2_path_mapping_ignores_external_download_root",
+        "test_external_aria2_path_mapping_uses_remote_download_root",
+        "test_apply_aria2_memory_tuning_preserves_external_daemon_policy",
+        "test_apply_aria2_tuning_enforces_safety_in_builtin_mode",
+        "test_test_aria2_uses_configured_query_windows",
+        "test_run_aria2_housekeeping_preserves_external_daemon_and_uses_query_windows",
+        "test_apply_provider_update_notifies_when_all_debrid_reports_no_peers",
+        "test_auto_extract_uses_completed_download_paths_without_folder_scan"
+      ],
+      "retained": [
+        "test_flatten_files_preserves_nested_path",
+        "test_automatic_provider_paths_do_not_use_deleted_state",
+        "test_connection_error_classified_as_aria2_connection_error",
+        "test_get_all_returns_empty_on_connection_error",
+        "test_get_all_returns_empty_on_rpc_error",
+        "test_get_all_aggregates_all_three_endpoints",
+        "test_get_memory_diagnostics_reports_counts_and_options",
+        "test_get_memory_diagnostics_respects_custom_windows",
+        "test_ensure_download_retry_on_connection_error",
+        "test_ensure_download_deduplication_by_uri",
+        "test_ensure_download_deduplication_by_path",
+        "test_ensure_download_concurrent_same_uri_serialized",
+        "test_by_status_completed_field_used_in_stats",
+        "test_send_added_uses_added_webhook_url",
+        "test_send_added_falls_back_to_main_webhook",
+        "test_send_added_includes_source_field",
+        "test_deduplication_suppresses_duplicate_within_window",
+        "test_send_complete_includes_metadata_fields",
+        "test_send_error_includes_reason",
+        "test_send_error_includes_provider_context_fields",
+        "test_no_send_when_webhook_empty",
+        "test_send_logs_exception_type_when_error_message_is_empty",
+        "test_success_rate_calculation",
+        "test_success_rate_zero_when_no_terminal",
+        "test_success_rate_100_percent",
+        "test_by_status_completed_visible",
+        "test_post_retries_after_empty_response",
+        "test_decode_json_body_reports_invalid_payload",
+        "test_builtin_aria2_uses_fixed_internal_rpc_secret",
+        "test_builtin_runtime_command_uses_download_folder_not_external_root",
+        "test_builtin_runtime_rotates_oversized_log_file",
+        "test_aria2_download_payload_reports_progress_and_files"
+      ]
+    },
+    {
+      "file": "test_pause_resume_reliability.py",
+      "retired": [
+        "test_reliability_layer_is_explicitly_bound_without_runtime_patching",
+        "test_pause_rpc_failure_is_not_reported_as_success",
+        "test_resume_rpc_failure_is_not_reported_as_success",
+        "test_missing_gid_requires_repeated_explicit_not_found",
+        "test_non_missing_rpc_error_never_becomes_missing_gid",
+        "test_unexpected_aria2_state_is_not_claimed_paused",
+        "test_selective_pause_blocks_provider_ready_scheduling_immediately",
+        "test_pause_arriving_during_magnet_materialization_is_reapplied",
+        "test_individual_resume_global_pause_semantics_live_in_control_service",
+        "test_dispatcher_grandfathers_over_limit_jobs_instead_of_removing_gids",
+        "test_provider_source_is_preserved_before_generated_url_overwrite",
+        "test_queue_refill_is_deferred_outside_operator_request_path",
+        "test_lost_gid_recovery_preserves_completed_siblings_when_source_known",
+        "test_reconciliation_confirms_gid_before_caching_missing_state",
+        "test_pause_intent_table_keeps_resume_tombstone_for_restart_semantics"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_release_audit_corrections.py",
+      "retired": [
+        "test_aria2_retry_claims_budget_removes_failed_gid_then_restarts_once",
+        "test_live_aria2_gid_is_not_duplicated_by_error_recovery",
+        "test_aria2_retry_delay_defers_without_consuming_budget",
+        "test_aria2_retry_ceiling_prevents_another_attempt",
+        "test_failed_aria2_restart_still_consumes_claimed_attempt",
+        "test_release_corrections_use_canonical_owners"
+      ],
+      "retained": [
+        "test_tar_lzma_uses_exact_codec_then_validated_tar",
+        "test_retry_delay_zero_is_a_valid_immediate_retry_configuration"
+      ]
+    },
+    {
+      "file": "test_restart_resume_recovery.py",
+      "retired": [
+        "test_application_binds_restart_resumable_coordinator",
+        "test_exact_payload_and_aria2_sidecar_are_detected",
+        "test_stale_paused_gid_is_parked_for_same_path_redispatch",
+        "test_restart_recovery_keeps_physical_manifest_and_never_reallocates_path",
+        "test_resume_paths_preflight_missing_built_in_gids_before_inherited_resume",
+        "test_restart_recovery_does_not_replace_clean_builtin_session_policy"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_retry_provider_identity.py",
+      "retired": [
+        "test_retry_clears_confirmed_deleted_provider_id_before_wait"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_settings_aria2_live_escape_hatch.py",
+      "retired": [
+        "test_builtin_low_level_remove_delegates_without_dp_state_mutation",
+        "test_builtin_engine_remove_calls_aria2_only"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_settings_runtime_contract_census.py",
+      "retired": [
+        "test_upload_retry_count_zero_disables_automatic_requeue",
+        "test_upload_retry_delay_zero_requeues_without_sleep",
+        "test_retired_file_filter_policy_is_physically_pruned_but_manual_blocking_and_labels_remain"
+      ],
+      "retained": [
+        "test_effective_settings_numeric_limits_match_server_contract",
+        "test_active_settings_runtime_contains_no_retired_file_filter_surface"
+      ]
+    },
+    {
+      "file": "test_transfer_integrity.py",
+      "retired": [
+        "test_exact_stable_existing_target_is_adopted_without_aria2",
+        "test_missing_target_is_pending_even_after_historical_completion",
+        "test_wrong_size_existing_target_is_pending",
+        "test_unknown_provider_size_is_not_adopted",
+        "test_aria2_sidecar_routes_existing_payload_through_aria2",
+        "test_existing_candidate_that_disappears_before_finalisation_is_requeued",
+        "test_mixed_existing_and_missing_manifest_downloads_only_missing_file",
+        "test_two_missing_files_in_otherwise_complete_manifest_stay_queued",
+        "test_stopped_complete_result_does_not_satisfy_fresh_builtin_dispatch",
+        "test_live_paused_result_remains_reusable_for_builtin_resume",
+        "test_runtime_service_root_uses_guarded_integrity_engine"
+      ],
+      "retained": [
+        "test_integrity_policy_requires_exact_stable_manifest_match"
+      ]
+    },
+    {
+      "file": "test_ui_progress_semantics.py",
+      "retired": [
+        "test_ready_provider_progress_is_not_presented_as_local_progress"
+      ],
+      "retained": [
+        "test_pre_materialization_states_always_present_zero_progress",
+        "test_local_transfer_states_preserve_real_progress"
+      ]
+    },
+    {
+      "file": "test_ui_responsiveness.py",
+      "retired": [
+        "test_progress_only_sse_updates_rows_without_forcing_full_render",
+        "test_pass3_polling_noops_do_not_refresh_transfer_freshness",
+        "test_pass3_import_reconciliation_does_not_touch_stable_rows",
+        "test_pass3_provider_noop_handles_zero_status_code_and_paused_delivery"
+      ],
+      "retained": [
+        "test_live_refresh_keeps_action_nodes_stable_and_coalesces_core_loaders",
+        "test_async_controls_acknowledge_clicks_immediately",
+        "test_detail_modal_opens_before_detail_request_finishes",
+        "test_settings_put_response_is_reused_without_followup_get",
+        "test_dashboard_unified_add_button_has_its_own_pending_target",
+        "test_settings_remote_tests_hold_pending_state_through_remote_test",
+        "test_settings_aria2_queue_refresh_is_coalesced_and_actions_acknowledge"
+      ]
+    },
+    {
+      "file": "test_v103_release_contract.py",
+      "retired": [
+        "test_v103_staging_candidate_preserves_external_aria2_global_policy"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_v105_architecture.py",
+      "retired": [
+        "test_service_root_and_explicit_components_exist",
+        "test_runtime_monkey_patching_is_removed",
+        "test_entrypoints_use_transfer_service",
+        "test_reconciliation_keeps_v104_snapshot_and_negative_cache_invariants"
+      ],
+      "retained": [
+        "test_sqlite_is_the_only_runtime_database",
+        "test_security_contracts",
+        "test_removed_runtime_scope_is_not_exposed_in_frontend",
+        "test_fastapi_lifespan_has_single_context_manager_boundary"
+      ]
+    },
+    {
+      "file": "test_v105_audit_regressions.py",
+      "retired": [
+        "test_scheduler_download_cycle_uses_service_root",
+        "test_external_aria2_gateway_cannot_change_global_options",
+        "test_builtin_aria2_gateway_can_change_global_options",
+        "test_operational_tables_are_first_class_and_wipe_resets_runtime"
+      ],
+      "retained": [
+        "test_notification_boundary_preserves_null_object_and_added_webhook",
+        "test_notification_requeue_and_update_paths_have_resolved_symbols",
+        "test_scheduler_update_notifications_use_service_boundary",
+        "test_database_json_backup_includes_operational_tables",
+        "test_online_backup_captures_committed_wal_state",
+        "test_service_permission_error_maps_to_http_403",
+        "test_browser_security_rejects_cross_origin_mutation",
+        "test_browser_security_allows_same_origin_and_nonbrowser_clients",
+        "test_readme_describes_sqlite_only_runtime"
+      ]
+    },
+    {
+      "file": "test_v105_performance_architecture.py",
+      "retired": [
+        "test_reconciliation_keeps_snapshot_reuse_and_negative_cache",
+        "test_provider_poll_does_not_nest_download_reconciliation",
+        "test_external_aria2_ownership_cache_remains_durable",
+        "test_explicit_architecture_replaces_patch_bootstrap"
+      ],
+      "retained": [
+        "test_v105_version_and_instrumentation",
+        "test_aria2_multicall_and_auth_are_preserved",
+        "test_sqlite_hot_indexes_are_preserved"
+      ]
+    },
+    {
+      "file": "test_v105_reconciliation_races.py",
+      "retired": [
+        "test_reconcile_reads_global_pause_only_after_state_lock"
+      ],
+      "retained": []
+    },
+    {
+      "file": "test_v106_audit_contracts.py",
+      "retired": [
+        "test_external_gateway_rejects_foreign_gid",
+        "test_alldebrid_client_rate_limits_multipart_uploads",
+        "test_direct_link_intake_is_durable_while_pause_all_is_active",
+        "test_pause_all_defers_provider_intake_instead_of_rejecting_it",
+        "test_paused_magnet_intake_does_not_contact_provider",
+        "test_paused_torrent_file_intake_does_not_contact_provider",
+        "test_deferred_direct_link_drain_starts_after_resume",
+        "test_deleting_deferred_torrent_purges_stored_payload"
+      ],
+      "retained": [
+        "test_transfer_service_has_no_transparent_legacy_fallback",
+        "test_state_machine_does_not_import_http_layer",
+        "test_state_machine_uses_repository_instead_of_database_layer",
+        "test_public_serializers_strip_capability_urls",
+        "test_backup_rotation_requires_ownership_manifest",
+        "test_database_wipe_requires_verified_quiescence",
+        "test_entrypoint_does_not_recursive_chown_downloads_by_default",
+        "test_scheduler_has_single_reconciliation_loop",
+        "test_zip_preflight_rejects_file_count_budget",
+        "test_external_staging_rejects_symlink_output",
+        "test_7z_listing_budget_is_validated_before_extraction",
+        "test_materialization_engine_publishes_without_importing_http_layer",
+        "test_rar_extraction_fails_closed_without_preflight_capable_7z",
+        "test_update_check_loop_has_failure_safe_backoff",
+        "test_v106_transitional_and_mediainfo_residue_removed",
+        "test_alldebrid_retry_attempts_are_individually_rate_limited",
+        "test_dashboard_has_one_mixed_submission_control",
+        "test_dashboard_recent_activity_uses_viewport_slack",
+        "test_dead_indexer_css_is_physically_removed",
+        "test_external_extractor_has_live_staging_budget_watch",
+        "test_security_and_compose_document_current_boundaries",
+        "test_scheduler_exception_logging_is_sanitized",
+        "test_recovery_route_survives_without_transitional_wrapper"
+      ]
+    },
+    {
+      "file": "test_v106_corrective_regressions.py",
+      "retired": [
+        "test_provider_quiescence_waits_for_inflight_operation",
+        "test_provider_delete_requires_positive_local_ownership",
+        "test_transfer_service_gate_blocks_resume_and_intake_during_wipe_admission"
+      ],
+      "retained": [
+        "test_orphan_cleanup_never_treats_unknown_as_delete_authority",
+        "test_database_maintenance_gate_drains_existing_and_rejects_new_sessions",
+        "test_database_wipe_suspends_scheduler_and_holds_exclusive_gate",
+        "test_database_wipe_route_releases_quiescence_in_finally",
+        "test_settings_secret_merge_preserve_replace_clear",
+        "test_frontend_escape_helpers_execute_against_malicious_payload",
+        "test_bulk_actions_are_schema_limited",
+        "test_codeql_covers_browser_javascript",
+        "test_dependency_docs_match_removed_runtime_components",
+        "test_sqlite_default_source_is_not_legacy_watch_authority",
+        "test_application_maintenance_gate_drains_admitted_work_and_rejects_new_work",
+        "test_database_wipe_rechecks_pause_after_application_admission_drain",
+        "test_database_wipe_application_gate_covers_execution_opening_boundaries",
+        "test_dead_disk_guard_pause_path_removed",
+        "test_mutating_http_requests_share_application_maintenance_admission",
+        "test_database_wipe_refreshes_disabled_setting_after_admission_drain",
+        "test_disk_guard_disable_clears_gate_before_dispatch_kick"
+      ]
+    },
+    {
+      "file": "test_v106_external_aria2_ownership.py",
+      "retired": [
+        "test_external_foreign_gid_never_reaches_strict_transfer_control_rpc"
+      ],
+      "retained": [
+        "test_parent_pause_resume_mutations_use_strict_owned_helpers"
+      ]
+    },
+    {
+      "file": "test_v106_final_audit.py",
+      "retired": [
+        "test_provider_quiescence_cancellation_reopens_admission",
+        "test_persisted_error_boundary_redacts_capability"
+      ],
+      "retained": [
+        "test_application_maintenance_acquisition_cancellation_reopens_gate",
+        "test_database_maintenance_acquisition_cancellation_reopens_gate",
+        "test_aria2_failure_never_exposes_capability_and_uri_lock_is_released",
+        "test_failed_builtin_aria2_start_is_transactional",
+        "test_api_timestamps_are_explicit_utc_and_sql_buckets_are_local",
+        "test_frontend_uses_configured_timezone_for_legacy_and_explicit_utc",
+        "test_backup_ids_are_unique_and_backward_compatible",
+        "test_v1_metadata_does_not_claim_multiple_providers",
+        "test_disk_guard_comment_matches_runtime_contract",
+        "test_scheduler_stop_intent_is_marked_before_interruptible_await"
+      ]
+    },
+    {
+      "file": "test_v106_final_corrective_pass.py",
+      "retired": [
+        "test_exact_capability_is_removed_from_persisted_errors",
+        "test_provider_gateway_tracks_read_only_file_preview_and_test_calls"
+      ],
+      "retained": [
+        "test_aria2_success_logging_never_formats_request_uri",
+        "test_routes_do_not_bypass_provider_gateway",
+        "test_dockerfile_uses_current_v1_oci_identity",
+        "test_lifespan_shutdown_is_finally_guarded",
+        "test_event_and_snapshot_routes_use_public_timestamp_serialization",
+        "test_public_payload_normalizes_event_timestamp",
+        "test_missing_gid_recovery_log_omits_capability_url"
+      ]
+    },
+    {
+      "file": "test_v1_scope.py",
+      "retired": [
+        "test_global_pause_control_exposes_mixed_selective_pause_state",
+        "test_watch_folder_ingestion_is_not_shipped_in_v1"
+      ],
+      "retained": [
+        "test_v1_identity_is_debridpulse_everywhere_it_is_centralized",
+        "test_removed_services_and_qbit_router_are_not_shipped",
+        "test_removed_settings_are_not_accepted_by_v1_model",
+        "test_removed_api_routes_are_not_registered",
+        "test_api_has_no_duplicate_method_and_path_registrations",
+        "test_frontend_and_runtime_lock_have_no_legacy_surface",
+        "test_release_surfaces_do_not_advertise_removed_watch_folder_workflow",
+        "test_v1_runtime_database_scope_is_sqlite_only",
+        "test_unified_submission_input_expands_to_five_lines",
+        "test_release_workflow_accepts_public_v1_tags",
+        "test_operator_tab_title_uses_short_active_identity_and_queue_average",
+        "test_dashboard_recent_activity_exposes_pause_resume_but_not_remove",
+        "test_topbar_uses_live_aria2_speed_with_human_download_units",
+        "test_statistics_history_strip_omits_duplicate_database_and_queue_health_tiles",
+        "test_inherited_file_preview_and_block_routes_are_hardened",
+        "test_removed_postgres_migration_documentation_is_not_shipped"
+      ]
+    }
+  ],
+  "additional_obsolete_structure_checks": [
+    [
+      "test_v106_corrective_regressions.py",
+      "test_orphan_cleanup_never_treats_unknown_as_delete_authority"
+    ],
+    [
+      "test_v106_corrective_regressions.py",
+      "test_database_wipe_application_gate_covers_execution_opening_boundaries"
+    ],
+    [
+      "test_v106_corrective_regressions.py",
+      "test_dead_disk_guard_pause_path_removed"
+    ],
+    [
+      "test_v106_corrective_regressions.py",
+      "test_disk_guard_disable_clears_gate_before_dispatch_kick"
+    ],
+    [
+      "test_download_logic.py",
+      "test_restartable_set_excludes_in_progress"
+    ],
+    [
+      "test_v106_audit_contracts.py",
+      "test_transfer_service_has_no_transparent_legacy_fallback"
+    ],
+    [
+      "test_v106_audit_contracts.py",
+      "test_state_machine_does_not_import_http_layer"
+    ],
+    [
+      "test_v106_audit_contracts.py",
+      "test_state_machine_uses_repository_instead_of_database_layer"
+    ],
+    [
+      "test_v106_audit_contracts.py",
+      "test_materialization_engine_publishes_without_importing_http_layer"
+    ],
+    [
+      "test_transfer_integrity.py",
+      "test_integrity_policy_requires_exact_stable_manifest_match"
+    ],
+    [
+      "test_manager_v2.py",
+      "test_automatic_provider_paths_do_not_use_deleted_state"
+    ],
+    [
+      "test_v106_final_corrective_pass.py",
+      "test_routes_do_not_bypass_provider_gateway"
+    ],
+    [
+      "test_v106_final_corrective_pass.py",
+      "test_missing_gid_recovery_log_omits_capability_url"
+    ],
+    [
+      "test_v106_external_aria2_ownership.py",
+      "test_parent_pause_resume_mutations_use_strict_owned_helpers"
+    ]
+  ],
+  "additional_native_client_retirements": "Four ensure_download/URL-and-path-adoption tests were retired when the client adoption path was deleted. Executor contracts cover durable-handle authorization, absence confirmation and collision refusal."
+}

@@ -133,7 +133,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
             aria2_max_active_downloads=1,
         )
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
-        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, configure=MagicMock(), reconcile_executions=AsyncMock())
+        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, definitions=(), configuration_admission=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
 
         def fake_save(cfg):
             saved["cfg"] = cfg

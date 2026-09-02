@@ -21,7 +21,7 @@ from pathlib import Path
 from core.config import get_settings
 from db.database import get_db
 
-logger = logging.getLogger("alldebrid.db_maintenance")
+logger = logging.getLogger("debridpulse.db_maintenance")
 
 TABLES = [
     "torrents",
@@ -39,6 +39,7 @@ TABLES = [
     "transfer_outcomes",
     "postprocess_attempts",
     "application_events",
+    "schema_migrations",
 ]
 
 _TABLE_ORDER = {
@@ -57,6 +58,7 @@ _TABLE_ORDER = {
     "transfer_outcomes": "id",
     "postprocess_attempts": "transfer_id,processor_id",
     "application_events": "id",
+    "schema_migrations": "version",
 }
 
 _BACKUP_DIR_RE = re.compile(r"^\d{8}_\d{6}(?:_[0-9a-f]{8}|_[0-9a-f]{32})?$")
@@ -247,7 +249,7 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         await db.commit()
 
     logger.warning("Database wipe completed")
-    return {"ok": True, "wiped_tables": TABLES}
+    return {"ok": True, "wiped_tables": [table for table in TABLES if table not in {"transfer_controls", "schema_migrations"}]}
 
 
 async def cleanup_old_events(keep_days: int = 30) -> dict:

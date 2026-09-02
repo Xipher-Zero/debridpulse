@@ -21,5 +21,4 @@ definition = IntegrationDefinition(
     secret_fields=frozenset({"api_key"}),
     legacy_fields=(("alldebrid_api_key", "api_key"), ("alldebrid_agent", "agent"),
                    ("alldebrid_rate_limit_per_minute", "rate_limit_per_minute")),
-    ownership_fields=frozenset({"api_key"}),
 )

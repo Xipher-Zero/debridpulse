@@ -69,6 +69,60 @@ async def test_actual_api_drives_fake_provider_and_executor_without_native_id(ru
 
 
 @pytest.mark.asyncio
+async def test_duplicate_preview_validates_empty_input_and_accepts_core_resource_identity(runtime):
+    _application, provider, _executor, client = runtime
+    assert (await client.post("/api/torrents/check-duplicate", json={})).status_code == 400
+    response = await client.post("/api/torrents/check-duplicate", json={"resource_id": "unknown-core-resource"})
+    assert response.status_code == 200, response.text
+    assert response.json()["duplicate"]["is_duplicate"] is False
+    assert provider.calls == []
+
+
+@pytest.mark.asyncio
+async def test_database_wipe_backs_up_canonical_state_and_preserves_pause(runtime, tmp_path, monkeypatch):
+    import json
+    from core.config import AppSettings
+    application, _provider, _executor, client = runtime
+    response = await client.post("/api/links/add", json={"links": ["https://fake.example/payload"]})
+    await application.resolve_pending()
+    await application.reconcile_executions()
+    cfg = AppSettings(db_wipe_enabled=True, paused=True, db_backup_before_wipe=True, db_backup_folder=str(tmp_path / "backups"))
+    monkeypatch.setattr("api.routes.get_settings", lambda: cfg)
+    monkeypatch.setattr("services.db_maintenance.get_settings", lambda: cfg)
+    monkeypatch.setattr("api.routes.scheduler_runtime.scheduler_running", lambda: False)
+    wiped = await client.post("/api/admin/database/wipe", json={"confirm": True})
+    assert wiped.status_code == 200, wiped.text
+    report = wiped.json()
+    backup = json.loads(Path(report["backup"]["file"]).read_text())
+    assert len(backup["tables"]["execution_attempts"]) == 1
+    assert backup["tables"]["torrents"][0]["id"] == response.json()["id"]
+    assert await application.repository.globally_paused()
+    assert await application.repository.active() == ()
+    async with database.get_db() as db:
+        assert await db.fetchall("PRAGMA foreign_key_check") == []
+
+
+@pytest.mark.asyncio
+async def test_database_wipe_refuses_unknown_execution_state(runtime, monkeypatch):
+    from core.config import AppSettings
+    from transfers.models import ExecutionObservation, ExecutionState
+    from unittest.mock import AsyncMock
+    application, _provider, executor, client = runtime
+    response = await client.post("/api/links/add", json={"links": ["https://fake.example/payload"]})
+    await application.resolve_pending()
+    await application.reconcile_executions()
+    artifact = (await application.repository.artifacts(response.json()["id"]))[0]
+    executor.pause = AsyncMock(return_value=ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN))
+    executor.observe = AsyncMock(return_value=ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN))
+    cfg = AppSettings(db_wipe_enabled=True, paused=True, db_backup_before_wipe=False)
+    monkeypatch.setattr("api.routes.get_settings", lambda: cfg)
+    monkeypatch.setattr("api.routes.scheduler_runtime.scheduler_running", lambda: False)
+    wiped = await client.post("/api/admin/database/wipe", json={"confirm": True})
+    assert wiped.status_code == 409, wiped.text
+    assert await application.repository.get(response.json()["id"]) is not None
+
+
+@pytest.mark.asyncio
 async def test_api_pause_defers_intake_and_resume_one_preserves_siblings(runtime):
     application, provider, _executor, client = runtime
     assert (await client.post("/api/processing/pause")).status_code == 200

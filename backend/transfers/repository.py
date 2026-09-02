@@ -261,11 +261,11 @@ class TransferRepository:
             await db.commit()
         return await self.get(transfer_id), created
 
-    async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None) -> bool:
+    async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None, verified=False) -> bool:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("SELECT status,progress,lifecycle_epoch,normalized_error FROM torrents WHERE id=?", (transfer_id,))
-            if not row or not transition_allowed(TransferState(row["status"]), target, operator=operator):
+            if not row or not transition_allowed(TransferState(row["status"]), target, operator=operator, verified=verified):
                 return False
             if expected_epoch is not None and row["lifecycle_epoch"] != expected_epoch:
                 return False
@@ -412,7 +412,9 @@ class TransferRepository:
     async def occupied_paths(self) -> set[str]:
         async with get_db() as db:
             rows = await db.fetchall("""SELECT f.local_path FROM download_files f JOIN torrents t ON t.id=f.torrent_id
-                WHERE t.status NOT IN ('deleted','completed','error') AND f.local_path IS NOT NULL""")
+                WHERE f.local_path IS NOT NULL AND (t.status NOT IN ('deleted','completed','error')
+                    OR EXISTS (SELECT 1 FROM execution_attempts e WHERE e.id=f.execution_attempt_id AND e.authorized=1
+                        AND e.state IN ('prepared','queued','transferring','paused','unknown')))""")
         return {str(row["local_path"]).casefold() for row in rows}
 
     async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle) -> bool:

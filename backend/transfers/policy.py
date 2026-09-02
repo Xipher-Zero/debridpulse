@@ -10,7 +10,7 @@ from transfers.models import TransferState
 _TERMINAL = {TransferState.COMPLETED, TransferState.DELETED}
 
 
-def transition_allowed(current: TransferState, target: TransferState, *, operator=False) -> bool:
+def transition_allowed(current: TransferState, target: TransferState, *, operator=False, verified=False) -> bool:
     if current == target:
         return True
     if current == TransferState.DELETED:
@@ -20,7 +20,7 @@ def transition_allowed(current: TransferState, target: TransferState, *, operato
     if target == TransferState.DELETED:
         return True
     if current == TransferState.FAILED:
-        return operator or target in {TransferState.RESOLVING, TransferState.QUEUED, TransferState.PAUSED}
+        return operator or (verified and target in {TransferState.COMPLETED, TransferState.POST_PROCESSING}) or target in {TransferState.RESOLVING, TransferState.QUEUED, TransferState.PAUSED}
     return target in set(TransferState) - {TransferState.ACCEPTED}
 
 

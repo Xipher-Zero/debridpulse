@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.12] — Universal transfer architecture
+
+- Replaced inherited managers, gateways and captured-method coordinators with one universal lifecycle owner, durable request/resource/attempt identities and capability routing.
+- Isolated AllDebrid protocol handling and aria2 execution behind independent contracts. Native errors become canonical, multidimensional failures; unknown and security failures never trigger blind retries.
+- Preserved deferred intake, durable pause intent, capacity-aware resume, stable retry paths, completed siblings, mirror failover, owned cleanup and secure archive post-processing.
+- Added transactional v1 data migration with a verified backup, integration configuration namespaces, universal transfer policy settings and canonical API/browser error presentation.
+- Added deterministic provider/executor proofs through the real database, application and HTTP paths, plus permanent ownership and architecture regressions.
+- Corrected unsafe native URL/path adoption and hidden native retries. Existing payloads require verified possession; a terminal parent cannot release a path while execution remains uncertain.
+
 ## [1.0.11] — 2026-08-31
 
 ### UI overhaul and release consolidation

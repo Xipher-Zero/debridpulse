@@ -11,7 +11,7 @@ from services.notification_service import NotificationService
 
 application = None
 
-logger = logging.getLogger("alldebrid.scheduler")
+logger = logging.getLogger("debridpulse.scheduler")
 _tasks = []
 
 
@@ -55,7 +55,7 @@ async def sync_status_loop():
                 await application.resolve_pending()
         except Exception as exc:
             logger.error("Resolution cycle failed: %s", sanitize_exception(exc))
-        await _wait_for_work(application.resolution_wakeup, max(1, get_settings().poll_interval_seconds))
+        await _wait_for_work(application.resolution_wakeup, max(1, application.engine.policy.resource_poll_interval))
 
 
 async def _wait_for_work(event, timeout):

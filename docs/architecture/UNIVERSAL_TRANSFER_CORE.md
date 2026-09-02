@@ -201,6 +201,12 @@ Existing flat settings are translated by definitions. Blank secret drafts preser
 saved secrets; explicit clears remove them. Public settings return configuration
 flags, never credentials. Unknown plugin options remain private.
 
+`transfer_policy` holds universal execution and resolution retry budgets, their
+delays, independent concurrency limits, observation cadences and the stall timeout.
+The previous flat retry and polling fields remain translated API/configuration
+inputs; the production engine reads the universal policy. Credentials can be
+rotated to restore authentication without discarding durable resource identity.
+
 Configuration updates drain in-flight application operations before replacing
 integration instances. Connection or path changes that would abandon live
 execution/resource references are rejected before settings are saved. Ordinary
@@ -227,3 +233,6 @@ retry/recovery policy, persistence read model or browser failure classifier. The
 parcel and memory implementations provide small executable examples. Real-Debrid,
 Premiumize, TorBox and other transports remain future integrations, not placeholder
 implementations in the core.
+
+The behavioral replacement census and qualification procedure are documented in
+[REGRESSION_MAP_V112.md](REGRESSION_MAP_V112.md).

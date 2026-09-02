@@ -24,7 +24,7 @@ from core.branding import APP_SHORT_NAME, REPOSITORY_URL
 from core.logging_utils import sanitize_exception
 from core.version import read_version
 
-logger = logging.getLogger("alldebrid.notify")
+logger = logging.getLogger("debridpulse.notify")
 
 APP_NAME    = APP_SHORT_NAME
 APP_VERSION = read_version()

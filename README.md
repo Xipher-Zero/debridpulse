@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/logo.svg" width="96" alt="DebridPulse Logo"/>
   <h1>DebridPulse</h1>
-  <p><strong>A self-hosted AllDebrid download client for direct links, magnets, and torrent files.</strong><br/>AllDebrid processing · aria2 downloads · unified transfer tracking · recovery · observability</p>
+  <p><strong>Self-hosted transfer orchestration for direct links, magnets, and torrent files.</strong><br/>Universal lifecycle · AllDebrid resolution · aria2 execution · recovery · observability</p>
 
   [![License](https://img.shields.io/github/license/Xipher-Zero/debridpulse?style=flat-square)](LICENSE)
   [![Tests](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/tests.yml?style=flat-square&label=tests)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/tests.yml)
@@ -15,7 +15,9 @@
 
 ## What is DebridPulse?
 
-**DebridPulse** is a self-hosted debrid download manager for direct links, magnet links, and `.torrent` files. V1 submits work through AllDebrid and manages the resulting transfers through aria2.
+**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. The included AllDebrid provider resolves direct links, magnets and `.torrent` files; the independent aria2 executor downloads the resulting files. Identity, lifecycle, retry, ownership, recovery and post-processing belong to the core.
+
+The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence and how to add a provider or executor. Version `1.0.12` is developed on the `1.0.12` branch. Production image examples below retain the published `1.0.11.1` tag until an explicit release promotion.
 
 The normal workflow is intentionally simple:
 
@@ -352,7 +354,7 @@ Backend requirements are under `backend/`.
 
 ```bash
 cd backend
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python -m pytest tests -v
 ```
 
@@ -364,47 +366,18 @@ uvicorn main:app --reload --port 8080
 
 The primary implementation areas are:
 
-```text
-backend/
-  api/
-    routes.py
-    auth_routes.py
-    auth_config_routes.py
-    serializers.py
-  auth/
-    manager.py
-    middleware.py
-    passwords.py
-    sessions.py
-    oidc.py
-    pending_oidc.py
-    api_tokens.py
-    transitions.py
-  core/
-    scheduler.py
-  services/
-    transfer_service.py
-    transfer_repository.py
-    transfer_state_machine.py
-    transfer_control_service.py
-    dispatch_coordinator.py
-    reconciliation_service.py
-    provider_gateway.py
-    aria2_gateway.py
-    ownership_ledger.py
-    extraction_safety.py
-    manager_v2.py        # V1 provider/materialization implementation
-  db/
-    database.py
+| Area | Responsibility |
+| --- | --- |
+| `backend/transfers/` | Universal contracts, lifecycle, policy and persistence |
+| `backend/application/` | Commands, composition and observability |
+| `backend/integrations/` | Modular definitions and configuration |
+| `backend/providers/alldebrid/` | AllDebrid protocol and native translation |
+| `backend/executors/aria2/` | aria2 execution, ownership and administration |
+| `backend/postprocessors/archive/` | Secure archive extraction |
+| `backend/api/`, `backend/auth/` | HTTP boundaries and authentication |
+| `backend/db/migrations/` | Transactional database upgrades |
+| `frontend/static/`, `frontend/browser/` | Browser application and runtime tests |
 
-frontend/static/
-  index.html
-  app.js
-  auth.js
-  ui-settings-page.js
-  auth-help.js
-  style.css
-```
 
 Runtime dependencies are exactly pinned through `backend/requirements.in` → `backend/requirements.txt`. Python runtime license metadata is checked against `licenses/python-runtime.json`; published images also carry BuildKit provenance and SBOM attestations. See [`docs/DEPENDENCY_LICENSES.md`](docs/DEPENDENCY_LICENSES.md).
 
@@ -414,9 +387,9 @@ Runtime dependencies are exactly pinned through `backend/requirements.in` → `b
 
 DebridPulse favors a focused responsibility:
 
-> **Submit work to AllDebrid, retrieve the resulting files, download them reliably, and make that lifecycle observable and recoverable.**
+> **Resolve sources, transfer files reliably, and make delivery observable and recoverable.**
 
-Features that improve that workflow belong naturally in DebridPulse. Provider-specific integrations belong behind the DebridPulse provider layer; V1 uses AllDebrid as its provider backend.
+Features that improve that workflow belong naturally in DebridPulse. Providers and executors are independent implementations of canonical contracts. AllDebrid and aria2 are the production implementations included today.
 
 Recreating an entire media-management or indexer ecosystem inside the download client does not.
 

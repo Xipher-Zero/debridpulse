@@ -1,5 +1,6 @@
 """Namespace persistence and legacy input translation driven by definitions."""
 from integrations.definition import IntegrationSettings
+from transfers.settings import normalize_transfer_settings
 
 
 def normalize_settings(settings, definitions, *, previous=None, supplied_fields=None, clear_legacy_secrets=()):
@@ -32,7 +33,8 @@ def normalize_settings(settings, definitions, *, previous=None, supplied_fields=
         namespaces[definition.id] = IntegrationSettings(enabled=enabled, priority=priority, options=validated)
         for legacy, option in definition.legacy_fields:
             translated[legacy] = validated[option]
-    return settings.model_copy(update={**translated, "integrations": namespaces})
+    return normalize_transfer_settings(settings.model_copy(update={**translated, "integrations": namespaces}),
+        previous=previous, supplied_fields=supplied_fields)
 
 
 def public_integrations(settings, definitions):

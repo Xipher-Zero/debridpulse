@@ -18,7 +18,7 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.filesystem import destination, retire_partial, safe_name, stable_payload
+from transfers.filesystem import destination, payload_matches, retire_partial, safe_name, stable_payload, validate_target
 from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
     ExecutionObservation, ExecutionRequest, ExecutionState, OutcomeKind, Ownership,
@@ -165,26 +165,35 @@ class TransferEngine:
         for artifact in artifacts:
             if not await self._live(transfer_id, admission=True):
                 break
-            if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
-                executor = self.registry.executors.get(artifact.execution.executor_id)
-                if executor is None:
-                    error = self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RECONCILIATION, domain=Domain.REQUEST, retryability=Retryability.NEVER)
-                    await self.repository.artifact_state(artifact.id, "error", error=error)
-                    continue
-                try:
-                    observed = observations.get(artifact.execution.attempt_id)
-                    if observed is None:
-                        observed = await executor.observe(artifact.execution)
-                except Exception as exc:
-                    observed = ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN,
-                        error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION))
-                if observed.state == ExecutionState.PAUSED and isinstance(executor, PauseResume):
-                    observed = await self._resume_execution(artifact, executor)
-                await self._execution_result(artifact, executor, observed)
-            elif artifact.state == "queued" and artifact.retry_at <= self.clock():
-                await self._dispatch(artifact)
-            elif artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
-                await self._refresh(artifact)
+            try:
+                if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
+                    executor = self.registry.executors.get(artifact.execution.executor_id)
+                    if executor is None:
+                        error = self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RECONCILIATION, domain=Domain.REQUEST, retryability=Retryability.NEVER)
+                        await self.repository.artifact_state(artifact.id, "error", error=error)
+                        continue
+                    try:
+                        observed = observations.get(artifact.execution.attempt_id)
+                        if observed is None:
+                            observed = await executor.observe(artifact.execution)
+                    except Exception as exc:
+                        observed = ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN,
+                            error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION))
+                    if not isinstance(observed, ExecutionObservation) or observed.handle != artifact.execution:
+                        raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                    if observed.state == ExecutionState.PAUSED and isinstance(executor, PauseResume):
+                        observed = await self._resume_execution(artifact, executor)
+                    await self._execution_result(artifact, executor, observed)
+                elif artifact.state == "queued" and artifact.retry_at <= self.clock():
+                    await self._dispatch(artifact)
+                elif artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
+                    await self._refresh(artifact)
+            except Exception as exc:
+                error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
+                    integration_id=artifact.execution.executor_id if artifact.execution else "",
+                    domain=Domain.RECONCILIATION, stage=Stage.RECONCILIATION)
+                await self.repository.artifact_state(artifact.id, "error", error=error)
+                await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
         await self._aggregate(transfer_id)
 
     async def _request_failure(self, record: RequestRecord, error: NormalizedError, *, attempts=None, waiting=False):
@@ -331,6 +340,7 @@ class TransferEngine:
 
     async def _dispatch(self, artifact: Artifact):
         try:
+            validate_target(self.root, artifact.target)
             candidate = artifact.candidates[artifact.selected]
             executor = self.registry.executor_for(candidate)
             sidecars = executor.resumable_paths(artifact.target)
@@ -397,13 +407,14 @@ class TransferEngine:
                 retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)
             await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.SUCCEEDED:
+            validate_target(self.root, artifact.target)
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
             size = artifact.expected_bytes or observed.progress.total_bytes
             valid = await stable_payload(artifact.target, size, sidecars=executor.resumable_paths(artifact.target),
                                          integrity=candidate.integrity if candidate else (), delay=self.policy.adoption_stability_seconds,
                                          allow_empty=size == 0)
             if valid:
-                await self.repository.artifact_state(artifact.id, "completed")
+                await self.repository.artifact_state(artifact.id, "completed", expected_bytes=size)
             else:
                 error = self._error(Category.MATERIALIZATION_FAILED, Stage.VERIFICATION, domain=Domain.INTEGRITY,
                                     retryability=Retryability.AFTER_RESOURCE_CHANGE)
@@ -556,18 +567,57 @@ class TransferEngine:
         elif artifacts and all(item.state == "cancelled" for item in artifacts):
             await self.repository.state(transfer_id, TransferState.CANCELLED, progress=progress)
         elif not artifacts and await self.repository.blocked_artifact_count(transfer_id):
-            if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=0):
+            if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=0, verified=True):
                 await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.SKIPPED, detail="No selected artifacts"))
 
     async def _complete(self, transfer_id: int, artifacts):
+        if (await self.repository.get(transfer_id)).state == TransferState.POST_PROCESSING:
+            return
+        # Earlier members can disappear while later members are being verified.
+        # Recheck possession at the completion boundary before publishing success
+        # or letting a processor consume the paths.
+        for artifact in artifacts:
+            try:
+                validate_target(self.root, artifact.target)
+            except TransferError as exc:
+                await self.repository.artifact_state(artifact.id, "error", error=exc.error)
+                await self.repository.state(transfer_id, TransferState.FAILED, error=exc.error)
+                return
+            executor = None
+            try:
+                candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+                executor = self.registry.executors.get(artifact.execution.executor_id) if artifact.execution else self.registry.executor_for(candidate) if candidate else None
+                if executor is None:
+                    raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.VERIFICATION,
+                        domain=Domain.REQUEST, retryability=Retryability.NEVER))
+                sidecars = executor.resumable_paths(artifact.target)
+                if await asyncio.to_thread(payload_matches, artifact.target, artifact.expected_bytes,
+                                           sidecars, allow_empty=artifact.execution is not None):
+                    continue
+                if artifact.execution:
+                    result = await executor.cancel(artifact.execution)
+                    if not isinstance(result, TransferOutcome) or result.kind not in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED}:
+                        error = result.error if isinstance(result, TransferOutcome) and result.error else self._error(
+                            Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION)
+                        raise TransferError(error)
+                await self.repository.artifact_state(artifact.id, "queued", release=True)
+                await self.repository.state(transfer_id, TransferState.QUEUED)
+                return
+            except Exception as exc:
+                error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
+                    integration_id=executor.descriptor.id if executor else "", domain=Domain.EXECUTOR, stage=Stage.VERIFICATION)
+                await self.repository.artifact_state(artifact.id, "error", error=error)
+                await self.repository.state(transfer_id, TransferState.FAILED, error=error)
+                await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+                return
         if self.postprocessors:
-            await self.repository.state(transfer_id, TransferState.POST_PROCESSING, progress=100)
+            await self.repository.state(transfer_id, TransferState.POST_PROCESSING, progress=100, verified=True)
             await self.repository.queue_postprocessing(transfer_id, self.postprocessors, tuple(item.target for item in artifacts))
             return
         await self._delivered(transfer_id)
 
     async def _delivered(self, transfer_id):
-        if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=100):
+        if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=100, verified=True):
             await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.SUCCESS))
             if self.policy.cleanup_after_completion:
                 await self._cleanup_resources(transfer_id)
@@ -768,6 +818,8 @@ class TransferEngine:
             if executor:
                 outcome = await executor.cancel(attempt.handle)
                 await self.repository.outcome(transfer_id, outcome, attempt_id=attempt.handle.attempt_id)
+                if outcome.kind == OutcomeKind.CANCELLED:
+                    await self.repository.execution(ExecutionObservation(attempt.handle, ExecutionState.CANCELLED, attempt.progress))
         if remote:
             await self._cleanup_resources(transfer_id, explicit=True)
 

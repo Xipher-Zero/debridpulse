@@ -16,15 +16,25 @@ def safe_name(value: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(value))[:200].strip().lstrip(".") or "download"
 
 
+def validate_target(root: str, target: str) -> Path:
+    path = Path(target)
+    try:
+        base, resolved = Path(root).resolve(), path.resolve()
+        valid = path.is_absolute() and not path.is_symlink() and resolved != base and resolved.is_relative_to(base)
+    except (OSError, RuntimeError):
+        valid = False
+    if not valid:
+        raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Stage.VERIFICATION))
+    return path
+
+
 def destination(root: str, relative: str) -> Path:
     raw = PurePosixPath(str(relative).replace("\\", "/"))
     if raw.is_absolute() or ".." in raw.parts or not raw.parts:
         raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Stage.CANDIDATE_PREPARATION))
     base = Path(root).resolve()
     path = base.joinpath(*(safe_name(part) for part in raw.parts))
-    if path.is_symlink() or not path.resolve().is_relative_to(base):
-        raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Stage.CANDIDATE_PREPARATION))
-    return path
+    return validate_target(root, str(path))
 
 
 def directory_contains(path: Path) -> bool:

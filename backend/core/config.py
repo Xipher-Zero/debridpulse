@@ -9,13 +9,15 @@ from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
 from core.secure_files import atomic_write_json
 from integrations.definition import IntegrationSettings
+from transfers.settings import TransferSettings
 
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "/app/config/config.json"))
-logger = logging.getLogger("alldebrid.config")
+logger = logging.getLogger("debridpulse.config")
 
 
 class AppSettings(BaseModel):
     integrations: dict[str, IntegrationSettings] = Field(default_factory=dict, repr=False)
+    transfer_policy: TransferSettings | None = None
     # AllDebrid
     alldebrid_api_key: str = ""
     alldebrid_agent: str = APP_SHORT_NAME

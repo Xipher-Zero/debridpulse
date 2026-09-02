@@ -58,8 +58,8 @@ jobs:
           tags: |
             type=sha,prefix=sha-,format=short
           labels: |
-            org.opencontainers.image.title=DebridPulse: AllDebrid + aria2 Download Manager
-            org.opencontainers.image.description=AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2
+            org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
+            org.opencontainers.image.description=Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -120,7 +120,7 @@ jobs:
 
           expected_version="${{ steps.version.outputs.version }}"
           expected_revision="${GITHUB_SHA}"
-          expected_title="DebridPulse: AllDebrid + aria2 Download Manager"
+          expected_title="DebridPulse: Universal Transfer Manager"
           image_ref="local/debridpulse:${GITHUB_SHA}"
 
           image_version="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
@@ -240,8 +240,8 @@ jobs:
           tags: |
             type=sha,prefix=sha-,format=short
           labels: |
-            org.opencontainers.image.title=DebridPulse: AllDebrid + aria2 Download Manager
-            org.opencontainers.image.description=AllDebrid-backed download manager for direct links, magnets, and torrent files via aria2
+            org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
+            org.opencontainers.image.description=Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -257,7 +257,7 @@ jobs:
 
           expected_version="${{ steps.version.outputs.version }}"
           expected_revision="${GITHUB_SHA}"
-          expected_title="DebridPulse: AllDebrid + aria2 Download Manager"
+          expected_title="DebridPulse: Universal Transfer Manager"
           generated_version="$(jq -r '.labels["org.opencontainers.image.version"] // empty' <<< "$METADATA_JSON")"
           generated_revision="$(jq -r '.labels["org.opencontainers.image.revision"] // empty' <<< "$METADATA_JSON")"
           generated_title="$(jq -r '.labels["org.opencontainers.image.title"] // empty' <<< "$METADATA_JSON")"
