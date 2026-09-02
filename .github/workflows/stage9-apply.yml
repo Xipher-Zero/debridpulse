@@ -1,12 +1,6 @@
 name: Stage 9 Apply
 
 on:
-  push:
-    branches:
-      - '1.0.12'
-    paths:
-      - 'tools/stage9_apply.py'
-      - '.github/workflows/stage9-apply.yml'
   workflow_dispatch:
 
 permissions:
@@ -30,10 +24,7 @@ jobs:
           python-version: '3.12'
 
       - name: Apply Stage 9 patch
-        run: |
-          sed -i 's#docs/UNIVERSAL_TRANSFER_CORE.md#docs/architecture/UNIVERSAL_TRANSFER_CORE.md#g' tools/stage9_apply.py
-          python tools/stage9_apply.py
-          sed -i 's/Category.EXECUTION_FAILED/Category.TRANSFER_FAILED/g' backend/tests/test_route_provider_provenance.py
+        run: python tools/stage9_apply.py
 
       - name: Inspect patch shape
         run: |
@@ -46,16 +37,25 @@ jobs:
           cd backend
           pip install -r requirements-dev.txt
 
-      - name: Run focused Stage 9 and routing tests
+      - name: Run focused Stage 9 and surrounding regression tests
         run: |
           cd backend
-          python -m pytest tests/test_route_provider_provenance.py tests/test_initial_provider_routing.py -q --tb=short
+          python -m pytest \
+            tests/test_route_provider_provenance.py \
+            tests/test_initial_provider_routing.py \
+            tests/test_application_runtime.py::test_database_wipe_backs_up_canonical_state_and_preserves_pause \
+            tests/test_universal_lifecycle.py \
+            tests/test_universal_migration.py \
+            tests/test_provider_applicability.py \
+            tests/test_alldebrid_host_runtime.py \
+            tests/test_general_http_stage5_runtime.py \
+            -q --tb=short
 
-      - name: Commit coherent Stage 9 batch
+      - name: Commit coherent Stage 9 audit batch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add backend/transfers/repository.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_general_http_stage5_runtime.py docs/ROUTE_PROVIDER_PROVENANCE.md docs/architecture/UNIVERSAL_TRANSFER_CORE.md CHANGELOG.md
+          git add backend/transfers/repository.py backend/services/db_maintenance.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_general_http_stage5_runtime.py docs/ROUTE_PROVIDER_PROVENANCE.md docs/architecture/UNIVERSAL_TRANSFER_CORE.md CHANGELOG.md
           git diff --cached --check
-          git commit -m 'Implement durable route and provider provenance'
+          git commit -m 'Complete durable provenance audit corrections'
           git push origin HEAD:1.0.12
