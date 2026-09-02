@@ -158,6 +158,10 @@ class ProviderRuntimeStateStore:
     async def stop(self) -> None:
         return None
 
+    async def maintain(self) -> None:
+        """Lifecycle maintenance hook; persistence has no periodic work."""
+        return None
+
     async def load(self, integration_id: str, state_key: str = _DEFAULT_STATE_KEY) -> RuntimeStateRecord | None:
         await self.initialize()
         integration_id = self._identity(integration_id, field="integration_id")
