@@ -62,7 +62,7 @@ _SCHEMA = (
         transition_kind TEXT, transition_reason TEXT, candidate_summary TEXT NOT NULL DEFAULT '[]',
         outcome TEXT NOT NULL DEFAULT 'started', history_quality TEXT NOT NULL DEFAULT 'recorded',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(request_id,ordinal))""",
+        UNIQUE(transfer_id,ordinal))""",
     """CREATE TABLE IF NOT EXISTS execution_attempt_provenance (
         execution_attempt_id TEXT PRIMARY KEY REFERENCES execution_attempts(id),
         route_attempt_id TEXT REFERENCES resolution_attempts(id),
@@ -228,9 +228,9 @@ class TransferRepository:
             JOIN transfer_requests r ON r.id=a.request_id
             LEFT JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
             WHERE p.resolution_attempt_id IS NULL
-            ORDER BY r.transfer_id,a.request_id,a.created_at,a.id""")
+            ORDER BY r.transfer_id,a.created_at,a.id""")
         for row in route_rows:
-            ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM route_attempt_provenance WHERE request_id=?", (row["request_id"],))
+            ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM route_attempt_provenance WHERE transfer_id=?", (row["transfer_id"],))
             ordinal = int(ordinal_row["n"] or 0) + 1
             candidates = ()
             if row.get("result"):
@@ -285,7 +285,10 @@ class TransferRepository:
         previous = await db.fetchone("""SELECT a.id,a.provider_id,a.error,p.ordinal,p.outcome
             FROM resolution_attempts a JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
             WHERE a.request_id=? AND a.id!=? ORDER BY p.ordinal DESC LIMIT 1""", (request_id, attempt_id))
-        ordinal = int(previous["ordinal"] or 0) + 1 if previous else 1
+        ordinal_row = await db.fetchone(
+            "SELECT COALESCE(MAX(ordinal),0) AS n FROM route_attempt_provenance WHERE transfer_id=?", (transfer_id,)
+        )
+        ordinal = int(ordinal_row["n"] or 0) + 1
         previous_id = previous["id"] if previous else None
         transition_kind = None
         transition_reason = None
@@ -342,7 +345,7 @@ class TransferRepository:
                 p.transition_kind,p.transition_reason,p.candidate_summary,p.outcome,p.history_quality,a.provider_id,
                 a.state AS resolution_state,a.created_at,a.updated_at FROM route_attempt_provenance p
                 JOIN resolution_attempts a ON a.id=p.resolution_attempt_id WHERE p.transfer_id=?
-                ORDER BY p.created_at,p.request_id,p.ordinal,p.resolution_attempt_id""", (transfer_id,))
+                ORDER BY p.ordinal,p.resolution_attempt_id""", (transfer_id,))
             execution_history = await db.fetchall("""SELECT e.id,e.artifact_id,e.executor_id,e.state AS execution_state,e.created_at,e.updated_at,
                 p.route_attempt_id,p.provider_id,p.candidate_id,p.candidate_source,p.ordinal,p.outcome,p.delivered,p.history_quality
                 FROM execution_attempt_provenance p JOIN execution_attempts e ON e.id=p.execution_attempt_id

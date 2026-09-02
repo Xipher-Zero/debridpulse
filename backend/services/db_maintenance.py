@@ -35,7 +35,9 @@ TABLES = [
     "transfer_requests",
     "provider_resources",
     "resolution_attempts",
+    "route_attempt_provenance",
     "execution_attempts",
+    "execution_attempt_provenance",
     "transfer_outcomes",
     "postprocess_attempts",
     "application_events",
@@ -56,7 +58,9 @@ _TABLE_ORDER = {
     "transfer_requests": "id",
     "provider_resources": "id",
     "resolution_attempts": "id",
+    "route_attempt_provenance": "transfer_id,ordinal",
     "execution_attempts": "id",
+    "execution_attempt_provenance": "transfer_id,artifact_id,ordinal",
     "transfer_outcomes": "id",
     "postprocess_attempts": "transfer_id,processor_id",
     "application_events": "id",
@@ -238,7 +242,11 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         # ordinary integration disablement never reaches this path.
         await db.execute("DELETE FROM integration_runtime_state")
         await db.execute("DELETE FROM transfer_input_challenges")
-        for table in ("application_events", "postprocess_attempts", "transfer_outcomes", "execution_attempts", "resolution_attempts", "provider_resources"):
+        for table in (
+            "application_events", "postprocess_attempts", "transfer_outcomes",
+            "execution_attempt_provenance", "route_attempt_provenance",
+            "execution_attempts", "resolution_attempts", "provider_resources",
+        ):
             await db.execute(f"DELETE FROM {table}")
         await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")
         await db.execute("DELETE FROM transfer_requests")
