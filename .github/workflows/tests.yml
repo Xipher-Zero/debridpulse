@@ -75,7 +75,7 @@ jobs:
         run: |
           find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
           node --check frontend/browser/playwright.config.js
-          node --check frontend/browser/app.spec.js
+          find frontend/browser -maxdepth 1 -name '*.spec.js' -print0 | sort -z | xargs -0 -n1 node --check
 
   security:
     runs-on: ubuntu-latest
