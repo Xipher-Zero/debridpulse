@@ -1,1 +1,0 @@
-Item 3 development validation trigger. Remove before candidate freeze.
