@@ -294,7 +294,10 @@ async def test_unsupported_route_has_no_provider_or_executor_side_effects(
     transfer = await engine.submit((
         TransferRequest("https", SUPPORTED_URL, name="unsupported.bin"),
     ))
-    await engine.resolve_pending()
+    # A normal engine cycle performs initial routing, then canonical parent
+    # aggregation. Unsupported selection fails before begin_resolution, so the
+    # execution/reconciliation half has no external work to observe or start.
+    await engine.tick()
 
     request = (await repository.requests(transfer.id))[0]
     current = await repository.get(transfer.id)
