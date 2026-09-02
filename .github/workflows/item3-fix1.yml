@@ -52,3 +52,5 @@ jobs:
           fi
           git commit -m "fix: canonicalize input challenge schema ownership"
           git push origin HEAD:1.0.12
+
+# Triggered after workflow creation so GitHub evaluates the correction job.
