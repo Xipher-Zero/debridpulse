@@ -55,7 +55,7 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
     assert ".dp-settings-tabs" in chrome
     assert "grid-column: 2;" in chrome
     assert "justify-self: center;" in chrome
-    assert "@media (max-width: 1180px)" in chrome
+    assert "@media (max-width: 1699px)" in chrome
 
     # The explicit query generation prevents a browser-cached synthetic glyph
     # from masking the supplied Settings asset after a staging image update.

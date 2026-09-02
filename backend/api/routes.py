@@ -232,15 +232,18 @@ def _public_transfer_presentation(value, definitions) -> dict:
     """Decorate durable provenance with neutral display metadata before stripping capabilities."""
     raw_request = value.get("request") if isinstance(value, dict) else None
     result = public_payload(value)
-    result["current_provider_name"] = _provider_display_name(result.get("current_provider_id"), definitions)
-    result["delivering_provider_name"] = _provider_display_name(result.get("delivering_provider_id"), definitions)
+    if "current_provider_id" in result:
+        result["current_provider_name"] = _provider_display_name(result.get("current_provider_id"), definitions)
+    if "delivering_provider_id" in result:
+        result["delivering_provider_name"] = _provider_display_name(result.get("delivering_provider_id"), definitions)
 
     for attempt in result.get("route_attempts", []) or []:
         attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)
     for attempt in result.get("execution_attempts", []) or []:
         attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)
 
-    result["original_resource"] = _safe_original_resource(raw_request)
+    if raw_request is not None:
+        result["original_resource"] = _safe_original_resource(raw_request)
     return result
 
 

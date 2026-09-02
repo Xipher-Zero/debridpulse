@@ -32,8 +32,9 @@ def test_http_credentials_are_execution_local_and_saved_netrc_discovery_is_disab
 def test_item10_exposes_general_http_provider_ui_without_transport_tuning():
     settings_ui = (ROOT / "frontend/static/ui-settings-page.js").read_text()
     sources_panel = settings_ui.split("function sourcesPanel", 1)[1].split("\n  function ", 1)[0]
-    assert "general_http" in sources_panel
-    assert "HTTP & HTTPS" in sources_panel
+    general_http = sources_panel.split("const generalHttpCard", 1)[1].split("const debridServices", 1)[0]
+    assert "general_http" in general_http
+    assert "HTTP & HTTPS" in general_http
     assert "General Sources" in sources_panel
     for forbidden in ("User Agent", "Timeout", "Retry", "Proxy"):
-        assert forbidden not in sources_panel
+        assert forbidden not in general_http

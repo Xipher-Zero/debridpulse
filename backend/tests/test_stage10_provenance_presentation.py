@@ -58,6 +58,11 @@ def test_unknown_historical_provider_keeps_stable_id_without_inventing_label():
     assert result["route_attempts"][0]["provider_name"] is None
 
 
+def test_minimal_projection_does_not_add_null_display_fields():
+    result = _public_transfer_presentation({"id": 13, "name": "minimal"}, definitions)
+    assert result == {"id": 13, "name": "minimal"}
+
+
 def test_original_resource_redacts_userinfo_query_fragment_and_magnet_trackers():
     http = _safe_original_resource(_request(
         "https", "https://user:password@example.test/path/file?api_key=secret&x=1#frag", "file"
