@@ -179,6 +179,10 @@ async def test_real_general_http_transfer_uses_general_provider_and_aria2(tmp_pa
         assert (downloads / "ordinary.bin").read_bytes() == b"ordinary-direct-http"
         presentation = await repository.presentation(transfer.id, details=True)
         assert presentation["providers"] == ["general_http"]
+        assert presentation["delivering_provider_id"] == "general_http"
+        assert presentation["route_attempts"][0]["provider_id"] == "general_http"
+        assert presentation["execution_attempts"][0]["provider_id"] == "general_http"
+        assert presentation["execution_attempts"][0]["delivered"] is True
         assert presentation["executors"] == ["aria2"]
         assert state["authorized"] == 1
     finally:

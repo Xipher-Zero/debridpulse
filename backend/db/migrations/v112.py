@@ -188,6 +188,9 @@ async def migrate(*, external_executor: bool, globally_paused: bool = False) -> 
             count += 1
         await db.execute("""INSERT INTO transfer_controls(key,value) VALUES('paused',?)
             ON CONFLICT(key) DO NOTHING""", ("1" if globally_paused else "0",))
+        # Item 9 backfills only provider/candidate/execution facts already present
+        # in canonical migration output; it never classifies legacy URLs.
+        await repository._backfill_provenance(db)
         violations = await db.fetchall("PRAGMA foreign_key_check")
         if violations:
             raise RuntimeError("Migration refused: database contains foreign-key violations")

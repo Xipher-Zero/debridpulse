@@ -248,3 +248,7 @@ implementations in the core.
 
 The behavioral replacement census and qualification procedure are documented in
 [REGRESSION_MAP_V112.md](REGRESSION_MAP_V112.md).
+
+## Roadmap Item 9: durable route/provider provenance
+
+Provider/resolution attempts and executor attempts now have durable provider-neutral provenance links. Historical provider identity is captured at route time, candidate identity is recorded without endpoint secrets, verified artifact delivery identifies the actual delivering execution/provider, and current routing/applicability state is never used to rewrite history. See `ROUTE_PROVIDER_PROVENANCE.md`.

@@ -53,6 +53,29 @@ _SCHEMA = (
         executor_id TEXT NOT NULL, handle TEXT NOT NULL, state TEXT NOT NULL,
         authorized INTEGER NOT NULL DEFAULT 1, progress TEXT, error TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS route_attempt_provenance (
+        resolution_attempt_id TEXT PRIMARY KEY REFERENCES resolution_attempts(id),
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        request_id TEXT NOT NULL REFERENCES transfer_requests(id),
+        ordinal INTEGER NOT NULL CHECK(ordinal > 0), operation TEXT NOT NULL,
+        previous_attempt_id TEXT REFERENCES resolution_attempts(id),
+        transition_kind TEXT, transition_reason TEXT, candidate_summary TEXT NOT NULL DEFAULT '[]',
+        outcome TEXT NOT NULL DEFAULT 'started', history_quality TEXT NOT NULL DEFAULT 'recorded',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(request_id,ordinal))""",
+    """CREATE TABLE IF NOT EXISTS execution_attempt_provenance (
+        execution_attempt_id TEXT PRIMARY KEY REFERENCES execution_attempts(id),
+        route_attempt_id TEXT REFERENCES resolution_attempts(id),
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        ordinal INTEGER NOT NULL CHECK(ordinal > 0), provider_id TEXT, candidate_id TEXT, candidate_source TEXT,
+        outcome TEXT NOT NULL DEFAULT 'prepared', delivered INTEGER NOT NULL DEFAULT 0,
+        history_quality TEXT NOT NULL DEFAULT 'recorded',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(artifact_id,ordinal))""",
+    "CREATE INDEX IF NOT EXISTS idx_route_provenance_transfer ON route_attempt_provenance(transfer_id,request_id,ordinal)",
+    "CREATE INDEX IF NOT EXISTS idx_execution_provenance_transfer ON execution_attempt_provenance(transfer_id,artifact_id,ordinal)",
+    "CREATE INDEX IF NOT EXISTS idx_execution_provenance_route ON execution_attempt_provenance(route_attempt_id)",
     """CREATE TABLE IF NOT EXISTS transfer_outcomes (
         id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
         attempt_id TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL,
@@ -149,7 +172,142 @@ class TransferRepository:
                     if column not in existing:
                         await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
+            await self._backfill_provenance(db)
             await db.commit()
+
+    @staticmethod
+    def _safe_candidate_source(candidate):
+        source = candidate.source_identity if candidate else None
+        if source is not None:
+            return {"scope": str(source.scope), "key": str(source.key)}
+        return {"scope": "candidate", "key": str(candidate.id)} if candidate else None
+
+    @classmethod
+    def _candidate_summary(cls, candidates):
+        return codec.dump([
+            {
+                "candidate_id": str(candidate.id),
+                "provider_id": str(candidate.provider_id or ""),
+                "ordinal": ordinal,
+                "source": cls._safe_candidate_source(candidate),
+            }
+            for ordinal, candidate in enumerate(candidates, start=1)
+        ])
+
+    @staticmethod
+    def _execution_outcome(state):
+        value = str(state)
+        if value == "succeeded":
+            return "succeeded"
+        if value in {"failed", "absent"}:
+            return "failed"
+        if value == "cancelled":
+            return "cancelled"
+        if value == "unknown":
+            return "unknown"
+        return "active"
+
+    @classmethod
+    async def _candidate_route(cls, db, transfer_id, candidate):
+        if candidate is None or not candidate.id or not candidate.provider_id:
+            return None
+        rows = await db.fetchall("""SELECT p.resolution_attempt_id,p.ordinal,p.candidate_summary,a.provider_id
+            FROM route_attempt_provenance p JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+            WHERE p.transfer_id=? AND a.provider_id=? ORDER BY p.ordinal DESC,a.updated_at DESC,a.id DESC""",
+            (transfer_id, candidate.provider_id))
+        for row in rows:
+            for item in codec.load(row["candidate_summary"], []):
+                if str(item.get("candidate_id") or "") == str(candidate.id):
+                    return row["resolution_attempt_id"]
+        return None
+
+    @classmethod
+    async def _backfill_provenance(cls, db):
+        """Idempotently migrate only facts already durably present before Item 9."""
+        route_rows = await db.fetchall("""SELECT a.*,r.transfer_id FROM resolution_attempts a
+            JOIN transfer_requests r ON r.id=a.request_id
+            LEFT JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
+            WHERE p.resolution_attempt_id IS NULL
+            ORDER BY r.transfer_id,a.request_id,a.created_at,a.id""")
+        for row in route_rows:
+            ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM route_attempt_provenance WHERE request_id=?", (row["request_id"],))
+            ordinal = int(ordinal_row["n"] or 0) + 1
+            candidates = ()
+            if row.get("result"):
+                try:
+                    payload = codec.load(row["result"], {})
+                    candidates = tuple(codec.candidate(value) for value in payload.get("candidates", []))
+                except (TypeError, ValueError, KeyError):
+                    candidates = ()
+            outcome = "failed" if row["state"] == "failed" else "resolved" if row["state"] == "succeeded" else "unknown"
+            await db.execute("""INSERT OR IGNORE INTO route_attempt_provenance(
+                resolution_attempt_id,transfer_id,request_id,ordinal,operation,candidate_summary,outcome,history_quality)
+                VALUES(?,?,?,?,?,?,?,'legacy_known')""",
+                (row["id"], row["transfer_id"], row["request_id"], ordinal, "legacy", cls._candidate_summary(candidates), outcome))
+
+        execution_rows = await db.fetchall("""SELECT e.*,f.status AS artifact_status,f.execution_attempt_id AS current_execution_id,
+                f.candidates AS artifact_candidates,f.selected_candidate
+            FROM execution_attempts e JOIN download_files f ON f.id=e.artifact_id
+            LEFT JOIN execution_attempt_provenance p ON p.execution_attempt_id=e.id
+            WHERE p.execution_attempt_id IS NULL
+            ORDER BY e.transfer_id,e.artifact_id,e.created_at,e.id""")
+        for row in execution_rows:
+            candidate = None
+            if row.get("candidate"):
+                try:
+                    candidate = codec.candidate(codec.load(row["candidate"]))
+                except (TypeError, ValueError, KeyError):
+                    candidate = None
+            if candidate is None and row.get("current_execution_id") == row["id"] and row.get("artifact_candidates"):
+                try:
+                    candidates = [codec.candidate(value) for value in codec.load(row["artifact_candidates"], [])]
+                    selected = int(row.get("selected_candidate") or 0)
+                    candidate = candidates[selected] if 0 <= selected < len(candidates) else None
+                except (TypeError, ValueError, KeyError, IndexError):
+                    candidate = None
+            provider_id = str(candidate.provider_id) if candidate and candidate.provider_id else None
+            route_attempt_id = await cls._candidate_route(db, row["transfer_id"], candidate) if candidate else None
+            ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (row["artifact_id"],))
+            ordinal = int(ordinal_row["n"] or 0) + 1
+            delivered = bool(provider_id and row["state"] == "succeeded" and row.get("artifact_status") == "completed" and row.get("current_execution_id") == row["id"])
+            await db.execute("""INSERT OR IGNORE INTO execution_attempt_provenance(
+                execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
+                outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (row["id"], route_attempt_id, row["transfer_id"], row["artifact_id"], ordinal, provider_id,
+                 str(candidate.id) if candidate else None, codec.dump(cls._safe_candidate_source(candidate)) if candidate else None,
+                 "completed" if delivered else cls._execution_outcome(row["state"]), int(delivered),
+                 "legacy_known" if provider_id else "legacy_unknown"))
+            if delivered and route_attempt_id:
+                await db.execute("UPDATE route_attempt_provenance SET outcome='completed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (route_attempt_id,))
+
+    @classmethod
+    async def _begin_route_provenance(cls, db, attempt_id, transfer_id, request_id, provider_id, *, operation):
+        previous = await db.fetchone("""SELECT a.id,a.provider_id,a.error,p.ordinal,p.outcome
+            FROM resolution_attempts a JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
+            WHERE a.request_id=? AND a.id!=? ORDER BY p.ordinal DESC LIMIT 1""", (request_id, attempt_id))
+        ordinal = int(previous["ordinal"] or 0) + 1 if previous else 1
+        previous_id = previous["id"] if previous else None
+        transition_kind = None
+        transition_reason = None
+        if previous:
+            if operation == "refresh":
+                transition_kind = "candidate_refresh"
+                transition_reason = "candidate_refresh"
+            elif previous["provider_id"] != provider_id:
+                transition_kind = "provider_change"
+                transition_reason = "route_reselected"
+            else:
+                transition_kind = "resolution_retry"
+                transition_reason = "retry"
+            error = codec.error(previous.get("error"))
+            if error is not None:
+                transition_reason = str(error.category.value)
+            if previous.get("outcome") in {"started", "resolved", "unknown"}:
+                await db.execute("UPDATE route_attempt_provenance SET outcome='superseded',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (previous_id,))
+        await db.execute("""INSERT INTO route_attempt_provenance(
+            resolution_attempt_id,transfer_id,request_id,ordinal,operation,previous_attempt_id,transition_kind,transition_reason,
+            candidate_summary,outcome,history_quality) VALUES(?,?,?,?,?,?,?,?,?,'started','recorded')""",
+            (attempt_id, transfer_id, request_id, ordinal, operation, previous_id, transition_kind, transition_reason, codec.dump([])))
 
     @staticmethod
     def _transfer(row) -> Transfer | None:
@@ -180,6 +338,15 @@ class TransferRepository:
             requests = await db.fetchall("SELECT id,state,error,payload,metadata FROM transfer_requests WHERE transfer_id=?", (transfer_id,))
             resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
             providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
+            route_attempts = await db.fetchall("""SELECT p.resolution_attempt_id AS id,p.request_id,p.ordinal,p.operation,p.previous_attempt_id,
+                p.transition_kind,p.transition_reason,p.candidate_summary,p.outcome,p.history_quality,a.provider_id,
+                a.state AS resolution_state,a.created_at,a.updated_at FROM route_attempt_provenance p
+                JOIN resolution_attempts a ON a.id=p.resolution_attempt_id WHERE p.transfer_id=?
+                ORDER BY p.created_at,p.request_id,p.ordinal,p.resolution_attempt_id""", (transfer_id,))
+            execution_history = await db.fetchall("""SELECT e.id,e.artifact_id,e.executor_id,e.state AS execution_state,e.created_at,e.updated_at,
+                p.route_attempt_id,p.provider_id,p.candidate_id,p.candidate_source,p.ordinal,p.outcome,p.delivered,p.history_quality
+                FROM execution_attempt_provenance p JOIN execution_attempts e ON e.id=p.execution_attempt_id
+                WHERE p.transfer_id=? ORDER BY p.created_at,p.artifact_id,p.ordinal,p.execution_attempt_id""", (transfer_id,))
             events = await db.fetchall("SELECT id,torrent_id,level,message,created_at FROM events WHERE torrent_id=? ORDER BY id DESC LIMIT 50", (transfer_id,)) if details else []
             input_challenge = await db.fetchone("SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
         def normalized(item, field="normalized_error"):
@@ -192,7 +359,13 @@ class TransferRepository:
         result["blocked_count"] = sum(bool(item["blocked"]) for item in files)
         result["source_failure_count"] = sum(item["state"] == "failed" for item in requests)
         result["resources"] = [dict(item) for item in resources]
-        result["providers"] = sorted({item["provider_id"] for item in (*resources, *providers)})
+        historical_providers = sorted({item["provider_id"] for item in (*resources, *providers) if item.get("provider_id")})
+        delivering_providers = sorted({item["provider_id"] for item in execution_history if item.get("delivered") and item.get("provider_id")})
+        result["historical_providers"] = historical_providers
+        result["delivering_provider_ids"] = delivering_providers
+        result["delivering_provider_id"] = delivering_providers[0] if len(delivering_providers) == 1 else None
+        result["provider_provenance_status"] = "recorded" if delivering_providers else "unknown_legacy" if result["status"] == "completed" else "pending"
+        result["providers"] = delivering_providers if result["status"] == "completed" and delivering_providers else historical_providers
         result["executors"] = sorted({item["download_client"] for item in files if item["download_client"]})
         result["input_required"] = public_challenge(input_challenge)
         if details:
@@ -210,6 +383,17 @@ class TransferRepository:
                     error = codec.error(item["error"])
                     result["source_outcomes"].append({"id": item["id"], "name": request.name or "Source request", "status": "error",
                         "error": error.as_dict() if error else None, "error_message": error.message if error else None})
+            result["route_attempts"] = []
+            for row in route_attempts:
+                item = dict(row)
+                item["candidates"] = codec.load(item.pop("candidate_summary"), [])
+                result["route_attempts"].append(item)
+            result["execution_attempts"] = []
+            for row in execution_history:
+                item = dict(row)
+                item["candidate_source"] = codec.load(item.get("candidate_source"), None)
+                item["delivered"] = bool(item.get("delivered"))
+                result["execution_attempts"].append(item)
             result["events"] = [dict(item) for item in events]
         return result
 
@@ -310,6 +494,7 @@ class TransferRepository:
                 return None
             await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1 WHERE id=?", (request_id,))
             await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state) VALUES(?,?,?,'started')", (identity, request_id, provider_id))
+            await self._begin_route_provenance(db, identity, row["transfer_id"], request_id, provider_id, operation="resolve")
             await db.commit()
         return ResolutionAttempt(identity, request_id, provider_id, "started")
 
@@ -338,6 +523,9 @@ class TransferRepository:
             error = codec.dump(result.error) if result.error else None
             status = "failed" if result.error else "succeeded"
             await db.execute("UPDATE resolution_attempts SET state=?,error=?,result=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (status, error, codec.dump(result), attempt.id))
+            await db.execute("""UPDATE route_attempt_provenance SET outcome=?,candidate_summary=?,updated_at=CURRENT_TIMESTAMP
+                WHERE resolution_attempt_id=?""",
+                ("failed" if result.error else "resolved", self._candidate_summary(result.candidates), attempt.id))
             resource = codec.dump(result.observation.resource) if result.observation else None
             request_state = "failed" if result.error else "waiting" if result.observation and not result.candidates else "materializing" if result.candidates else "resolved"
             if row["status"] != "deleted":
@@ -348,9 +536,15 @@ class TransferRepository:
 
     async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending", consume_attempt=False) -> None:
         async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            error_blob = codec.dump(error)
+            started = await db.fetchall("SELECT id FROM resolution_attempts WHERE request_id=? AND state='started'", (request_id,))
+            for item in started:
+                await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (error_blob, item["id"]))
+                await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (item["id"],))
             await db.execute("""UPDATE transfer_requests SET state=?,error=?,retry_at=?,attempts=attempts+? WHERE id=?
                 AND transfer_id IN (SELECT id FROM torrents WHERE status!='deleted')""",
-                (retry_state if retry_at is not None else "failed", codec.dump(error), retry_at or 0, int(consume_attempt), request_id))
+                (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
             await db.commit()
 
     async def manifest(self, record: RequestRecord, entries: tuple[SourceEntry, ...]) -> None:
@@ -430,9 +624,19 @@ class TransferRepository:
                 (artifact.id, "input_required" if from_input_required else "queued"))
             if not row:
                 return False
+            candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+            route_attempt_id = await self._candidate_route(db, artifact.transfer_id, candidate)
+            ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (artifact.id,))
+            ordinal = int(ordinal_row["n"] or 0) + 1
             await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate)
                 VALUES(?,?,?,?,?,'prepared',?)""", (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
-                codec.dump(artifact.candidates[artifact.selected]) if artifact.candidates else None))
+                codec.dump(candidate) if candidate else None))
+            await db.execute("""INSERT INTO execution_attempt_provenance(
+                execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
+                outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?, 'prepared',0,'recorded')""",
+                (handle.attempt_id, route_attempt_id, artifact.transfer_id, artifact.id, ordinal,
+                 candidate.provider_id if candidate and candidate.provider_id else None, str(candidate.id) if candidate else None,
+                 codec.dump(self._safe_candidate_source(candidate)) if candidate else None))
             await db.execute("""UPDATE download_files SET execution_attempt_id=?,download_client=?,retry_count=retry_count+1,
                 status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (handle.attempt_id, handle.executor_id, int(from_input_required), artifact.id))
@@ -478,6 +682,8 @@ class TransferRepository:
             revoked = observation.error is not None and observation.error.category == Category.OWNERSHIP_CONFLICT
             await db.execute("""UPDATE execution_attempts SET state=?,progress=?,error=?,authorized=CASE WHEN ? THEN 0 ELSE authorized END,
                 updated_at=CURRENT_TIMESTAMP WHERE id=?""", (observation.state, codec.dump(observation.progress), error, revoked, handle.attempt_id))
+            await db.execute("UPDATE execution_attempt_provenance SET outcome=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=?",
+                             (self._execution_outcome(observation.state), handle.attempt_id))
             states = {ExecutionState.TRANSFERRING: "downloading", ExecutionState.QUEUED: "queued", ExecutionState.PAUSED: "paused",
                       ExecutionState.SUCCEEDED: "verifying", ExecutionState.FAILED: "error", ExecutionState.CANCELLED: "cancelled",
                       ExecutionState.ABSENT: "lost", ExecutionState.UNKNOWN: "unknown"}
@@ -488,11 +694,21 @@ class TransferRepository:
 
     async def artifact_state(self, artifact_id: int, state: str, *, error=None, retry_at=0, release=False, selected=None, expected_bytes=None):
         async with get_db() as db:
-            await db.execute("""UPDATE download_files SET status=?,normalized_error=?,retry_at=?,
+            await db.execute("BEGIN IMMEDIATE")
+            current = await db.fetchone("SELECT execution_attempt_id FROM download_files WHERE id=?", (artifact_id,))
+            cursor = await db.execute("""UPDATE download_files SET status=?,normalized_error=?,retry_at=?,
                 execution_attempt_id=CASE WHEN ? THEN NULL ELSE execution_attempt_id END,
                 selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND torrent_id IN (SELECT id FROM torrents WHERE status!='deleted')""",
                 (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id))
+            if cursor.rowcount and state == "completed" and current and current.get("execution_attempt_id"):
+                execution_id = current["execution_attempt_id"]
+                await db.execute("""UPDATE execution_attempt_provenance SET delivered=1,outcome='completed',updated_at=CURRENT_TIMESTAMP
+                    WHERE execution_attempt_id=?""", (execution_id,))
+                route = await db.fetchone("SELECT route_attempt_id FROM execution_attempt_provenance WHERE execution_attempt_id=?", (execution_id,))
+                if route and route.get("route_attempt_id"):
+                    await db.execute("UPDATE route_attempt_provenance SET outcome='completed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?",
+                                     (route["route_attempt_id"],))
             await db.commit()
 
     async def executions(self, transfer_id: int | None = None) -> tuple[ExecutionAttempt, ...]:
@@ -618,14 +834,19 @@ class TransferRepository:
     async def begin_refresh(self, record: RequestRecord, provider_id: str):
         identity = new_identity()
         async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
             await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state) VALUES(?,?,?,'started')",
                              (identity, record.id, provider_id))
+            await self._begin_route_provenance(db, identity, record.transfer_id, record.id, provider_id, operation="refresh")
             await db.commit()
         return ResolutionAttempt(identity, record.id, provider_id, "started")
 
     async def resolved_candidates(self, request_id: str):
         async with get_db() as db:
-            row = await db.fetchone("SELECT result FROM resolution_attempts WHERE request_id=? AND state='succeeded' ORDER BY rowid DESC LIMIT 1", (request_id,))
+            row = await db.fetchone("""SELECT a.result FROM resolution_attempts a
+                LEFT JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
+                WHERE a.request_id=? AND a.state='succeeded'
+                ORDER BY COALESCE(p.ordinal,0) DESC,a.updated_at DESC,a.id DESC LIMIT 1""", (request_id,))
         result = codec.load(row["result"], {}) if row else {}
         return tuple(codec.candidate(value) for value in result.get("candidates", []))
 

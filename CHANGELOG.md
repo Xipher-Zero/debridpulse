@@ -5210,3 +5210,9 @@ Full patch history: [GitHub Releases](https://github.com/kroeberd/alldebrid-clie
 - Rich Discord embeds
 - Bidirectional database migration
 - Expanded statistics
+
+### Durable route/provider provenance (Roadmap Item 9)
+
+- Persist provider-route ordering, transitions, candidate identity, executor linkage, normalized outcomes, and verified delivering-provider provenance under the existing logical transfer identity.
+- Preserve legacy unknown provenance without URL/classifier inference and expose safe historical route/execution attempts through transfer detail.
+- Keep automatic cross-provider failover policy and the full provenance UI deferred.
