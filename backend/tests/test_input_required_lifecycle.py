@@ -92,6 +92,16 @@ async def base(tmp_path, monkeypatch):
     return repository, registry, engine, now
 
 
+@pytest.mark.asyncio
+async def test_canonical_database_initialization_owns_challenge_schema(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "schema.sqlite3")
+    await database.init_db()
+    async with database.get_db() as db:
+        columns = {row["name"] for row in await db.fetchall("PRAGMA table_info(transfer_input_challenges)")}
+    assert {"transfer_id", "challenge_id", "generation", "reason", "origin", "integration_id",
+            "operation_id", "request_id", "artifact_id", "methods", "created_at", "updated_at"} <= columns
+
+
 async def db_text():
     async with database.get_db() as db:
         names = [row["name"] for row in await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'") if not row["name"].startswith("sqlite_")]

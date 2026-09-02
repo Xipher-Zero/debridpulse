@@ -253,6 +253,29 @@ RUNTIME_STATE_SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_integration_runtime_state_updated ON integration_runtime_state(integration_id, updated_at)",
 )
 
+INPUT_CHALLENGE_SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS transfer_input_challenges (
+        transfer_id INTEGER PRIMARY KEY REFERENCES torrents(id),
+        challenge_id TEXT NOT NULL UNIQUE,
+        generation INTEGER NOT NULL CHECK(generation > 0),
+        reason TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        integration_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        request_id TEXT,
+        artifact_id INTEGER,
+        methods TEXT NOT NULL,
+        created_at REAL NOT NULL,
+        updated_at REAL NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_transfer_input_challenge_id ON transfer_input_challenges(challenge_id)",
+)
+
+_INPUT_CHALLENGE_COLUMNS = {
+    "transfer_id", "challenge_id", "generation", "reason", "origin", "integration_id",
+    "operation_id", "request_id", "artifact_id", "methods", "created_at", "updated_at",
+}
+
 _RUNTIME_STATE_COLUMNS = {
     "integration_id",
     "state_key",
@@ -369,6 +392,7 @@ async def _init_db_sqlite():
             )
         """)
         await db.execute(RUNTIME_STATE_SCHEMA[0])
+        await db.execute(INPUT_CHALLENGE_SCHEMA[0])
         for col, defn in _SCHEMA_COLUMNS_TORRENTS:
             await _ensure_column(db, "torrents", col, defn)
         for col, defn in _SCHEMA_COLUMNS_FILES:
@@ -394,6 +418,7 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_events_torrent_id ON events (torrent_id)",
             "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at)",
             RUNTIME_STATE_SCHEMA[1],
+            INPUT_CHALLENGE_SCHEMA[1],
         ]:
             await idx_db.execute(ddl)
         await idx_db.commit()
@@ -405,6 +430,7 @@ async def _init_db_sqlite():
             "download_files": {"id", "torrent_id", "status", "blocked"}
             | {name for name, _ in _SCHEMA_COLUMNS_FILES},
             "integration_runtime_state": _RUNTIME_STATE_COLUMNS,
+            "transfer_input_challenges": _INPUT_CHALLENGE_COLUMNS,
         }
         missing_by_table: dict[str, list[str]] = {}
         for table, expected in required.items():

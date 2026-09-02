@@ -19,24 +19,6 @@ from transfers.models import (
 )
 
 
-_SCHEMA = (
-    """CREATE TABLE IF NOT EXISTS transfer_input_challenges (
-        transfer_id INTEGER PRIMARY KEY REFERENCES torrents(id),
-        challenge_id TEXT NOT NULL UNIQUE,
-        generation INTEGER NOT NULL CHECK(generation > 0),
-        reason TEXT NOT NULL,
-        origin TEXT NOT NULL,
-        integration_id TEXT NOT NULL,
-        operation_id TEXT NOT NULL,
-        request_id TEXT,
-        artifact_id INTEGER,
-        methods TEXT NOT NULL,
-        created_at REAL NOT NULL,
-        updated_at REAL NOT NULL
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_transfer_input_challenge_id ON transfer_input_challenges(challenge_id)",
-)
-
 _TERMINAL_FOR_INPUT = {"completed", "deleted", "cancelled"}
 
 
@@ -214,10 +196,9 @@ class InputChallengeStore:
         self.clock = clock
 
     async def initialize(self):
-        async with get_db() as db:
-            for statement in _SCHEMA:
-                await db.execute(statement)
-            await db.commit()
+        # Canonical DB initialization owns schema creation. This store owns only
+        # challenge lifecycle rows.
+        return None
 
     async def current(self, transfer_id: int) -> InputChallenge | None:
         async with get_db() as db:
