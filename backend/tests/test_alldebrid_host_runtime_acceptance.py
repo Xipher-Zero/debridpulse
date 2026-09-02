@@ -123,6 +123,7 @@ async def test_daily_refresh_cadence_is_deterministic_and_not_premature(tmp_path
 @pytest.mark.asyncio
 async def test_submission_and_resolution_census_never_refreshes_host_inventory(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "census.sqlite3")
+    await database.init_db()
     download_root = tmp_path / "downloads"
     download_root.mkdir()
 
