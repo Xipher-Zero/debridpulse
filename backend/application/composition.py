@@ -44,7 +44,22 @@ def configure(application):
     if runtime_state is None:
         runtime_state = ProviderRuntimeStateStore()
         application.runtime_state = runtime_state
-    application.lifecycle = (runtime_state, administration)
+
+    # AllDebrid's supported-host inventory is provider maintenance, not request
+    # routing. Keep one coordinator across registry rebuilds so enable/disable
+    # transitions are observed while each new provider instance is rebound.
+    from providers.alldebrid.host_runtime import AllDebridHostMaintenance
+    host_maintenance = getattr(application, "alldebrid_host_maintenance", None)
+    initial_host_binding = host_maintenance is None
+    if host_maintenance is None:
+        host_maintenance = AllDebridHostMaintenance(runtime_state)
+        application.alldebrid_host_maintenance = host_maintenance
+    host_maintenance.bind(
+        registry.providers.get("alldebrid"),
+        initial=initial_host_binding,
+    )
+
+    application.lifecycle = (runtime_state, host_maintenance, administration)
     from application.observability import Observability
     application.observability = Observability(application.repository)
 
