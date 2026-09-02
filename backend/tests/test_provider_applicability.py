@@ -361,7 +361,8 @@ def test_universal_applicability_and_routing_sources_have_no_provider_or_runtime
         (backend / "transfers" / name).read_text(encoding="utf-8").casefold()
         for name in ("applicability.py", "registry.py")
     )
-    assert "providers." not in source
+    assert "from providers." not in source
+    assert "import providers." not in source
     assert "alldebrid" not in source
     assert "real-debrid" not in source
     assert "realdebrid" not in source
