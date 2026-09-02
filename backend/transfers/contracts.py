@@ -28,6 +28,19 @@ class ApplicabilitySource(Protocol):
 
 
 @runtime_checkable
+class RequestApplicabilitySource(Protocol):
+    """Provider-local request interpretation returning only neutral applicability facts.
+
+    Use this only when a provider's validated native semantics cannot be safely
+    flattened into the host-only applicability snapshot. The provider performs
+    that interpretation without I/O and returns the neutral Item 6 value for
+    the current request; native schemas and pattern syntax never cross here.
+    """
+
+    def applicability_for(self, request: TransferRequest) -> ProviderApplicability: ...
+
+
+@runtime_checkable
 class ProviderInputContinuation(Protocol):
     async def resolve_with_input(self, request: TransferRequest, submitted: SubmittedInput) -> ResolutionResult: ...
 
