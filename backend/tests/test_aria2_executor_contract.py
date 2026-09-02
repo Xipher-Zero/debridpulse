@@ -213,7 +213,7 @@ def test_path_escape_is_security_failure(execution, tmp_path):
 @pytest.mark.parametrize("code,category,retryability", [
     ("9", Category.DISK_FULL, Retryability.AFTER_RESOURCE_CHANGE),
     ("19", Category.DNS_FAILURE, Retryability.BACKOFF),
-    ("24", Category.AUTHENTICATION_FAILED, Retryability.AFTER_REAUTH),
+    ("24", Category.CANDIDATE_EXPIRED, Retryability.AFTER_RERESOLUTION),
     ("23", Category.UNSAFE_REDIRECT, Retryability.NEVER),
     ("32", Category.CHECKSUM_MISMATCH, Retryability.AFTER_RERESOLUTION),
     ("1", Category.UNMAPPED_EXECUTOR_ERROR, Retryability.UNKNOWN),
