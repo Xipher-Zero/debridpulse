@@ -5,6 +5,7 @@ Auth: Authorization: Bearer <apikey> header only.
 All mutating calls use POST.
 
 Key endpoints:
+  POST /v4.1/user/hosts     — account-usable supported-host inventory
   POST /v4.1/magnet/status  — status (id=X for single, no id for all)
   POST /v4/magnet/status    — deprecated fallback for "get all"
   POST /v4/magnet/files     — get download links for ready magnets
@@ -45,8 +46,6 @@ class AllDebridAPIError(Exception):
         self.code = str(code or "UNKNOWN")
         self.message = str(message or "")
         super().__init__(f"AllDebrid [{self.code}]: {self.message}")
-
-
 
 
 class AllDebridService:
@@ -111,6 +110,10 @@ class AllDebridService:
     async def get_user(self) -> Dict:
         return await self._post(API_V4, "user")
 
+    async def get_user_hosts(self) -> Dict:
+        """Return AllDebrid's account-usable supported-host inventory."""
+        return await self._post(API_V41, "user/hosts")
+
     # ── Magnets ───────────────────────────────────────────────────────────────
 
     async def upload_magnet(self, magnet: str) -> Dict:
@@ -125,7 +128,6 @@ class AllDebridService:
         if err:
             if isinstance(err, dict):
                 code = err.get("code") or "UNKNOWN"
-                # AllDebrid sometimes echoes the magnet URL as the error message — replace with a clear description
                 raw_msg = str(err.get("message") or "")
                 msg = raw_msg if not raw_msg.startswith("magnet:") else f"AllDebrid rejected the magnet (code: {code})"
             else:
@@ -171,14 +173,13 @@ class AllDebridService:
             return raw if isinstance(raw, list) else []
         except Exception as e:
             if magnet_id:
-                raise  # per-ID failure is a real error
+                raise
             err = str(e)
             if not any(kw in err for kw in
                        ("DISCONTINUED", "discontinued", "deprecated", "migrate")):
                 raise
             logger.debug(f"v4.1 get-all unavailable, trying v4: {err}")
 
-        # Fallback: deprecated /v4/magnet/status
         try:
             data = await self._post(API_V4, "magnet/status", payload)
             raw = data.get("magnets", [])
@@ -236,9 +237,6 @@ class AllDebridService:
                 )
             raise Exception("AllDebrid returned no download link or delayed generation ID")
 
-        # AllDebrid requires delayed generations to be polled no faster than
-        # every five seconds. Keep the filename/size returned by link/unlock
-        # and merge the final URL when generation completes.
         for _attempt in range(120):
             await asyncio.sleep(5)
             delayed = await self._post(
@@ -262,7 +260,7 @@ class AllDebridService:
         raise Exception("AllDebrid delayed link generation timed out after 10 minutes")
 
     async def close(self):
-        pass  # no persistent session to close
+        pass
 
 
 def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
@@ -285,4 +283,3 @@ def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
         elif "e" in node and isinstance(node["e"], list):
             result.extend(flatten_files(node["e"], current))
     return result
-
