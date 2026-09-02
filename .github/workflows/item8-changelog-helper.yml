@@ -1,0 +1,60 @@
+name: Item8 Changelog Helper
+
+on:
+  push:
+    branches: ["1.0.12"]
+
+permissions:
+  contents: write
+
+jobs:
+  update-changelog:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: 1.0.12
+      - name: Insert Roadmap Item 8 changelog entry
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("CHANGELOG.md")
+          text = path.read_text(encoding="utf-8")
+          marker = "- Added deterministic initial provider routing"
+          if marker in text:
+              raise SystemExit(0)
+
+          anchor = (
+              "- Added AllDebrid-owned dynamic supported-host retrieval through the existing paced v4.1 client, "
+              "provider-local domain/regex/availability/quota interpretation, opaque Item 2 last-known-good persistence, "
+              "maintenance-only approximately 24-hour refresh, restart and disable/re-enable recovery, and neutral HTTP(S) "
+              "`SPECIALIZED` claim publication. Ordinary URL, magnet, and torrent submission never refreshes host inventory; "
+              "magnet/torrent remain provider-declared `STATIC` request-type capabilities.\n"
+          )
+          entry = (
+              "- Added deterministic initial provider routing: enabled healthy `SPECIALIZED` URL matches suppress `GENERIC` "
+              "matches before neutral preferred-provider/priority/stable-ID selection; when no specialized match survives, "
+              "eligible generic providers handle the request; when no eligible provider remains, routing returns canonical "
+              "non-retryable `UNSUPPORTED_REQUEST` without provider/executor contact. AllDebrid and General HTTP(S) now "
+              "converge transparently through provider-owned applicability while magnet/torrent static routing and later "
+              "cross-provider failure/failover policy remain unchanged.\n"
+          )
+          if anchor not in text:
+              raise SystemExit("Item 7 changelog anchor not found")
+          path.write_text(text.replace(anchor, anchor + entry, 1), encoding="utf-8")
+          PY
+      - name: Commit changelog
+        shell: bash
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "item8: document deterministic initial routing in changelog"
+          git push origin HEAD:1.0.12
