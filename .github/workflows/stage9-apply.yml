@@ -1,0 +1,58 @@
+name: Stage 9 Apply
+
+on:
+  push:
+    branches:
+      - '1.0.12'
+    paths:
+      - 'tools/stage9_apply.py'
+      - '.github/workflows/stage9-apply.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: '1.0.12'
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Apply Stage 9 patch
+        run: python tools/stage9_apply.py
+
+      - name: Inspect patch shape
+        run: |
+          git diff --check
+          git status --short
+          python -m compileall -q backend/transfers/repository.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py
+
+      - name: Install focused test dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+
+      - name: Run focused Stage 9 and routing tests
+        run: |
+          cd backend
+          python -m pytest tests/test_route_provider_provenance.py tests/test_initial_provider_routing.py -q --tb=short
+
+      - name: Commit coherent Stage 9 batch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/transfers/repository.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_general_http_stage5_runtime.py docs/ROUTE_PROVIDER_PROVENANCE.md docs/UNIVERSAL_TRANSFER_CORE.md CHANGELOG.md
+          git diff --cached --check
+          git commit -m 'Implement durable route and provider provenance'
+          git push origin HEAD:1.0.12
