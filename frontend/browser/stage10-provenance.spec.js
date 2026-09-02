@@ -32,6 +32,10 @@ test('Sources & Providers exposes canonical AllDebrid and General HTTP enable co
   await expect(httpCard.locator('[data-integration-enabled="general_http"]')).toBeVisible();
   await expect(httpCard.locator('input')).toHaveCount(1);
   for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);
+  await page.screenshot({path:'test-results/stage10-settings-dark-desktop.png', fullPage:true});
+  await page.locator('#theme-toggle').click();
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
+  await page.screenshot({path:'test-results/stage10-settings-light-desktop.png', fullPage:true});
 });
 
 test('both provider enable controls round-trip through the running backend and survive reload', async ({ page }) => {
@@ -109,6 +113,7 @@ test('Details separates safe original resource, final provider, ordered failover
   await expect(rows.nth(1)).toContainText('HTTP & HTTPS'); await expect(rows.nth(1)).toContainText('Completed');
   await expect(page.locator('.detail-grid')).not.toContainText('aria2');
   await page.locator('.dp-detail-advanced > summary').click(); await expect(page.locator('.dp-detail-advanced-grid')).toContainText('aria2');
+  await page.screenshot({path:'test-results/stage10-details-failover-dark-desktop.png', fullPage:true});
 });
 
 test('provider controls remain readable in light theme and narrow layout', async ({ page }) => {
@@ -118,4 +123,5 @@ test('provider controls remain readable in light theme and narrow layout', async
   const httpCard = page.locator('.dp-settings-provider-card--general-http'); await expect(httpCard).toBeVisible();
   await expect(httpCard.locator('[data-integration-enabled="general_http"]')).toBeVisible();
   const box = await httpCard.boundingBox(); expect(box.width).toBeLessThanOrEqual(680);
+  await page.screenshot({path:'test-results/stage10-settings-light-narrow.png', fullPage:true});
 });
