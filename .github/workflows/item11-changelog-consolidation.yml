@@ -1,0 +1,68 @@
+name: Item 11 changelog consolidation
+
+on:
+  push:
+    branches:
+      - '1.0.12'
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    if: github.event.head_commit.message == 'Apply Item 11 changelog consolidation'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: '1.0.12'
+          fetch-depth: 0
+
+      - name: Consolidate current v1.0.12 changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('CHANGELOG.md')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = {
+              '## v1.0.12 development — Sources & Providers UI + provenance presentation':
+                  '## v1.0.12 development — First multi-provider HTTP(S) slice',
+              'The generic authentication modal and saved-credential work remain deferred.':
+                  'The generic authentication modal is now implemented for supported `AUTH_REQUIRED` challenges; saved credentials remain deliberately out of scope.',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one occurrence of {old!r}, found {count}')
+              text = text.replace(old, new, 1)
+
+          anchor = '- Provenance presentation consumes durable Item 9 history and never reconstructs provider identity from submitted URLs or current routing state.\n'
+          addition = (
+              '- Consolidated and qualified the complete first multi-provider HTTP(S) slice across dynamic AllDebrid applicability, General HTTP(S), deterministic routing, HTTP authentication, same-transfer continuation, durable provenance, restart/recovery, provider enablement, and truthful presentation.\n'
+              '- Added a permanent integrated Item 11 qualification gate while retaining canonical lower-level regression owners and the existing production failover boundary.\n'
+          )
+          if text.count(anchor) != 1:
+              raise SystemExit('expected one v1.0.12 development provenance anchor')
+          text = text.replace(anchor, anchor + addition, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git rm .github/workflows/item11-changelog-consolidation.yml
+          git diff --check
+          git diff -- CHANGELOG.md .github/workflows/item11-changelog-consolidation.yml
+
+      - name: Commit self-removing consolidation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Xipher-Zero'
+          git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
+          git add CHANGELOG.md .github/workflows/item11-changelog-consolidation.yml
+          git commit -m 'docs: consolidate v1.0.12 multi-provider changelog'
+          git push origin HEAD:1.0.12
