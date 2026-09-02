@@ -28,10 +28,12 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r backend/requirements-dev.txt
       - name: Compile and focused architecture tests
+        working-directory: backend
+        env:
+          PYTHONPATH: .
         shell: bash
         run: |
-          python -m compileall -q backend
-          cd backend
+          python -m compileall -q .
           pytest -q \
             tests/test_input_required_lifecycle.py \
             tests/test_input_required_api.py \
