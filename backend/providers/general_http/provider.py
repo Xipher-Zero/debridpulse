@@ -43,5 +43,6 @@ class GeneralHttpProvider:
             name=name,
             endpoints=(Endpoint(scheme, address),),
             provider_id=self.descriptor.id,
+            context={"accepted_input_methods": ("username_password",)},
         )
         return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
