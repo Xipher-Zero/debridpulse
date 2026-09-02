@@ -765,9 +765,14 @@ async def submit_transfer_input(torrent_id: int, request: Request, application: 
         raw = b""
     if not isinstance(body, dict):
         raise HTTPException(400, "Authentication input must be a JSON object")
+    allowed_fields = {"challenge_id", "method", "username", "password", "private_key", "passphrase"}
+    if set(body) - allowed_fields:
+        body.clear()
+        raise HTTPException(400, "Authentication input contains unsupported fields")
     challenge_id = body.get("challenge_id")
     method = body.get("method")
     if not isinstance(challenge_id, str) or not challenge_id or not isinstance(method, str) or not method:
+        body.clear()
         raise HTTPException(400, "challenge_id and method are required")
     values = {name: body[name] for name in ("username", "password", "private_key", "passphrase") if name in body}
     try:
@@ -776,6 +781,9 @@ async def submit_transfer_input(torrent_id: int, request: Request, application: 
         raise HTTPException(404, "Transfer not found") from None
     except ValueError:
         raise HTTPException(409, "Authentication input was not accepted") from None
+    finally:
+        values.clear()
+        body.clear()
 
 
 @router.post("/torrents/{torrent_id}/cancel")

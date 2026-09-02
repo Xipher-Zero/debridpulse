@@ -501,3 +501,27 @@ async def test_cancelled_transfer_is_terminal_for_scheduler_inventory(base):
     for _ in range(3):
         await engine.tick()
     assert provider.resolve_calls + provider.continuation_calls == before
+
+
+@pytest.mark.asyncio
+async def test_provider_continuation_reacquires_resolution_capacity_before_consuming_secret(base):
+    repository, registry, engine, _ = base
+    provider = AuthParcelProvider()
+    registry.register_provider(provider)
+    registry.register_executor(MemoryExecutor(repository.authorize_execution))
+    transfer = await engine.submit((TransferRequest("auth-parcel", "opaque-source"),))
+    await engine.tick()
+    challenge = await engine.challenges.current(transfer.id)
+    await engine.submit_input(transfer.id, challenge.id, "username_password", {
+        "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
+
+    await engine._resolution_slots.acquire()
+    task = asyncio.create_task(engine.resolve_pending())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert provider.continuation_calls == 0
+    assert await engine.inputs.has(challenge)
+    engine._resolution_slots.release()
+    await task
+    assert provider.continuation_calls == 1
+    assert not await engine.inputs.has(challenge)

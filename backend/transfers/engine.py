@@ -313,15 +313,23 @@ class TransferEngine:
         provider = eligible.get(challenge.integration_id)
         if not isinstance(provider, ProviderInputContinuation):
             return
-        submitted = await self.inputs.take(challenge)
-        if submitted is None:
-            return
+        submitted = None
         try:
-            result = await provider.resolve_with_input(record.request, submitted)
+            # Waiting for input releases provider capacity. Reacquire the normal
+            # resolution slot before consuming the transient secret bundle so
+            # continuation cannot bypass provider concurrency or retain secrets
+            # while merely waiting for capacity.
+            async with self._resolution_slots:
+                if not await self._live(challenge.transfer_id, admission=True):
+                    return
+                submitted = await self.inputs.take(challenge)
+                if submitted is None:
+                    return
+                result = await provider.resolve_with_input(record.request, submitted)
             attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")
             await self._apply_resolution(record, attempt, provider, result, challenge=challenge)
         except Exception as exc:
-            secrets = submitted.secret_values()
+            secrets = submitted.secret_values() if submitted else ()
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)
             attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")
@@ -329,7 +337,8 @@ class TransferEngine:
             await self.challenges.clear(challenge)
             await self._request_failure(record, error, attempts=record.attempts + 1)
         finally:
-            submitted.discard()
+            if submitted:
+                submitted.discard()
 
     async def _observe_resource(self, record: RequestRecord):
         provider = self.registry.providers.get(record.resource.provider_id) if record.resource else None
