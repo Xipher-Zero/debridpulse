@@ -1,128 +1,83 @@
 # AllDebrid Dynamic Supported-Host Runtime State
 
-Roadmap Item 7 makes AllDebrid's own account host inventory the source of its
-HTTP/HTTPS `SPECIALIZED` applicability while preserving the provider-neutral
-routing introduced in Item 6.
+AllDebrid's account host inventory is the provider-owned source of its HTTP(S) `SPECIALIZED` applicability. Native AllDebrid semantics terminate under `backend/providers/alldebrid/`; the universal runtime-state, classifier and routing layers remain neutral.
 
-## Native source and boundary
+## Native source and provider boundary
 
-AllDebrid host maintenance uses the existing authenticated AllDebrid client and
-its canonical request pacing/error path against `v4.1/user/hosts`. The native
-payload is interpreted only under `providers/alldebrid/`.
+`backend/providers/alldebrid/host_runtime.py` owns the authenticated maintenance path for `v4.1/user/hosts` and the complete interpretation of its native payload.
 
-The provider-owned model keeps these concepts separate:
+The provider keeps distinct:
 
-- **Structural host support**: a validated host record and its native `domains`.
-  This alone produces neutral HTTP/HTTPS specialized host claims.
-- **Current host availability**: native optional `status`. This is retained as
-  transient host-local information and does not remove structural support.
-- **Provider health**: remains the existing registry/provider health concept.
-  One unavailable host does not make the AllDebrid integration unhealthy.
-- **Account limits**: `quota`, `quotaMax`, `quotaType`, and `limitSimuDl`, when
-  returned, remain AllDebrid-local operational facts and do not affect hostname
-  applicability.
+- **Structural support** — validated domains plus native URL regexp semantics; this determines whether the concrete request may become a neutral specialized claim.
+- **Current host availability** — optional native `status`; temporary unavailability does not erase structural support.
+- **Provider health** — the neutral registry health concept; one unavailable host does not make AllDebrid globally unhealthy.
+- **Account facts** — quota/limit fields remain provider-local and do not become universal routing policy.
 
-AllDebrid's native `regexps` (and the documented singular `regexp`
-compatibility form) are validated and retained inside the provider snapshot.
-They are not emitted to or executed by the neutral classifier. Item 7's
-structural routing question is whether the provider claims the parsed
-hostname; native URL-format regex semantics remain provider-local.
-
-Every native domain/alias becomes a canonical **exact-host** Item 6 claim for
-HTTP and HTTPS. Exact-host claims deliberately reject substring and unrelated
-subdomain matches. The classifier retains its existing IDNA, trailing-dot,
-port, userinfo, IP, and boundary-safe hostname behavior.
+Native `regexps` (plus the supported singular compatibility form) are validated, compiled and evaluated only inside AllDebrid. A domain-boundary check occurs before a native regexp match can become a canonical exact-host/scheme applicability result. The classifier/router never receive or execute native regex syntax.
 
 ## Neutral persistence and last-known-good
 
-The dataset is stored through Item 2's existing neutral provider runtime-state
-facility:
+AllDebrid persists its validated snapshot through the neutral provider runtime-state facility:
 
 - integration id: `alldebrid`
 - state key: `supported-hosts`
-- provider schema marker: `alldebrid-supported-hosts-v1`
-- payload: deterministic provider-owned JSON bytes
-- freshness: neutral `observed_at` / `stale_after` metadata
+- schema marker: `alldebrid-supported-hosts-v1`
+- payload: deterministic provider-owned bytes
+- freshness metadata: neutral timestamps
 - replacement: generation-guarded atomic replace
 
-No AllDebrid-specific table or universal database column exists. The runtime
-store does not parse the payload.
+`backend/integrations/runtime_state.py` owns only storage mechanics and neutral metadata. It never parses AllDebrid payloads.
 
-A fetched snapshot is fully validated before replacement. If network,
-authentication/provider, rate-limit, timeout, malformed-payload, validation, or
-persistence work fails, the previous durable snapshot is left unchanged.
-Stale-but-valid last-known-good data remains usable for structural claims while
-maintenance recovery continues. An incompatible/corrupt retained snapshot is
-not interpreted and exposes no claims until maintenance obtains a valid
-replacement.
+A new snapshot replaces the previous generation only after successful fetch, validation and persistence. Initial refresh failure with no snapshot leaves no fake usable state. A later refresh failure leaves the previous valid LKG generation intact. Corrupt/incompatible retained payloads expose no claims until maintenance obtains a valid replacement.
 
-The snapshot contains no API key, authorization header, submitted credential,
-signed transfer URL, or challenge secret. Diagnostics do not log the raw
-native host/account payload.
+The provider snapshot contains no API key, authorization header, submitted HTTP credential, signed transfer URL or auth challenge secret.
 
 ## Refresh policy
 
-Host inventory refresh is integration maintenance, never transfer submission.
+Host inventory refresh is maintenance work, never transfer submission.
 
-An enabled AllDebrid integration refreshes when:
+An enabled AllDebrid provider refreshes when:
 
 - no usable snapshot exists;
-- the retained snapshot reaches its approximately 24-hour freshness boundary;
-- the integration transitions from disabled to enabled.
+- the retained snapshot reaches its provider-defined freshness boundary (currently approximately 24 hours);
+- AllDebrid transitions from disabled to enabled.
 
-A fresh snapshot restored at application startup is loaded without an immediate
-network refresh. On restart a stale valid snapshot can still reconstruct
-claims, while the normal maintenance loop separately refreshes it.
+A fresh snapshot is restored on startup without an immediate host-inventory fetch. A stale but structurally valid LKG snapshot may reconstruct claims according to the established provider policy while normal maintenance independently refreshes it.
 
-Refreshes are serialized for this dataset. Runtime-state generation checks
-prevent a slower/stale writer from overwriting a newer successful generation.
-A bounded retry delay prevents the one-minute application maintenance cadence
-from becoming a provider-local retry storm after failure.
+Refreshes are serialized. Neutral generation checks prevent a slower writer from overwriting a newer successful generation, and provider-local retry cadence prevents the application maintenance loop from creating a refresh storm after failure.
 
-Disabling AllDebrid removes it through the existing descriptor/registry enabled
-filter and stops host maintenance; it does **not** delete runtime state.
-Re-enabling can reuse retained state during maintenance and independently
-triggers a refresh.
+Disabling AllDebrid removes it from routing eligibility and stops maintenance activity without deleting retained runtime state. Re-enabling can restore retained claims and independently schedules refresh according to provider policy.
 
-Ordinary URL, magnet, and torrent submission never invokes the host endpoint,
-including when the snapshot is stale. Classification consumes only the
-already-available applicability snapshot.
+Ordinary supported/unsupported URL admission, magnet admission, torrent admission, provider selection and resolution perform zero host-inventory calls. Routing consumes only already-exposed neutral applicability.
 
-## Routing result
+## Routing relationship
 
-For a validated native host domain:
+For a concrete URL structurally supported by the current usable AllDebrid snapshot:
 
-1. AllDebrid emits a neutral `SPECIALIZED` HTTP/HTTPS host claim.
-2. General HTTP & HTTPS continues to emit `GENERIC`.
-3. Item 6 suppresses generic providers when any specialized provider matches.
-4. Existing neutral preference/priority/stable-ID ordering applies within the
-   surviving class.
+1. AllDebrid's request-aware applicability evaluates its provider-local domains/regexps.
+2. AllDebrid exposes a neutral `SPECIALIZED` exact-host/scheme result.
+3. General HTTP & HTTPS independently exposes `GENERIC` HTTP(S).
+4. The neutral registry suppresses generic providers because a matching specialized provider exists.
+5. Existing neutral same-class selection policy applies.
 
-For an unclaimed hostname, AllDebrid emits no specialized match and General
-HTTP & HTTPS remains eligible.
+For an unclaimed URL, AllDebrid exposes no specialized result and General HTTP & HTTPS remains eligible when enabled.
 
-There is no AllDebrid-name branch in the classifier and General HTTP & HTTPS
-contains no AllDebrid knowledge.
+Missing state or an initial refresh failure does not make the classifier understand AllDebrid failure state; it simply means AllDebrid has no specialized claim to expose. A failed refresh with valid LKG leaves the previously exposed provider claims intact. The classifier/router do not inspect timestamps, current host availability, quota/account fields or refresh errors.
 
-## Magnet and torrent preservation
+Magnet/torrent eligibility remains an independent static provider capability and is not gated by dynamic URL host state.
 
-Magnet/torrent routing is not hard-coded to AllDebrid. AllDebrid declares
-`magnet` and `torrent` in its integration descriptor's `request_types`, exactly
-like any other provider may do. Item 6 classifies eligible providers declaring
-those request types as `STATIC`.
+## Provenance, settings and presentation
 
-Dynamic AllDebrid URL host state does not gate, create, or interpret those
-capabilities. A missing, stale, corrupt, or failed host snapshot therefore has
-no effect on AllDebrid's separately declared magnet/torrent eligibility.
+The AllDebrid Enable control in Sources & Providers updates the canonical backend provider enablement used by the registry. There is no frontend-only enablement path and disabling the provider does not destroy its runtime snapshot.
 
-## Deferred work
+When AllDebrid is actually selected, route/candidate/executor provenance is persisted by the neutral repository. Historical AllDebrid delivery remains historical AllDebrid delivery after restart or later changes to host inventory/configuration. Recent Activity, Downloads and Details consume that durable history; they do not classify the URL again.
 
-Roadmap Item 7 adds no host-inventory UI, provider/provenance UI, quota UI,
-manual refresh endpoint/button, credential persistence, new transport, or
-Universal Transfer Core lifecycle policy. Those remain later-roadmap concerns.
+AllDebrid host inventory itself is not exposed as a user-facing host list/quota surface by this slice.
 
-## Native regexp applicability and the neutral contract gap
+## Security boundary
 
-AllDebrid documents `regexps` as validators for supported URLs. A host-only claim cannot safely represent those path-sensitive native semantics: flattening `example.com/path-shape` to an unconditional `example.com` claim can suppress the generic HTTP provider for URLs AllDebrid does not actually support.
+A specialized AllDebrid claim is a routing fact, not destination trust. DNS/egress controls, redirect policy, TLS/SNI validation, signed-source sanitization, credential secrecy, filesystem ownership and executor authorization remain mandatory after provider resolution.
 
-Item 7 therefore uses the provider-neutral `RequestApplicabilitySource` contract only where a provider must interpret validated native semantics that the static host claim cannot express. AllDebrid executes its own cached native regexps locally and returns a normal `ProviderApplicability` containing only the exact hostname/scheme that already matched. The registry and classifier never receive, persist, parse, or execute AllDebrid regex syntax. Domain-boundary checks are applied before a native regexp result can become a neutral claim, preventing substring lookalikes. This path is in-memory and performs no network I/O; maintenance remains the only host-inventory refresh path.
+No AllDebrid hostname list, native alias, native regexp, native availability/status, native payload schema or endpoint semantics belongs in the universal classifier/core.
+
+See [PROVIDER_APPLICABILITY.md](PROVIDER_APPLICABILITY.md) and [MULTI_PROVIDER_HTTP_SLICE.md](MULTI_PROVIDER_HTTP_SLICE.md) for the neutral routing and complete converged ownership map.

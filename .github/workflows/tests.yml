@@ -60,6 +60,22 @@ jobs:
           cd backend
           ruff check api application auth core db executors integrations postprocessors providers services transfers main.py --select F821,F822,F823
 
+      - name: Run Roadmap Item 11 multi-provider matrix
+        run: |
+          set -o pipefail
+          cd backend
+          mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/item11_qualification.txt)
+          python -m pytest "${cases[@]}" -v --tb=short 2>&1 | tee "$RUNNER_TEMP/item11.log"
+
+      - name: Upload Item 11 qualification output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: item11-qualification-${{ github.sha }}
+          path: ${{ runner.temp }}/item11.log
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Run all tests
         run: |
           set -o pipefail

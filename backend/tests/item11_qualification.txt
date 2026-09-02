@@ -1,0 +1,27 @@
+# Roadmap Item 11 permanent multi-provider qualification manifest.
+#
+# Each entry is a canonical production-path regression owner. The manifest
+# deliberately composes existing qualified suites instead of copying their
+# assertions into a parallel Item 11 implementation layer.
+tests/test_item11_multi_provider_slice.py
+tests/test_initial_provider_routing.py
+tests/test_provider_applicability.py
+tests/test_alldebrid_pattern_applicability.py
+tests/test_alldebrid_provider_contract.py
+tests/test_alldebrid_host_runtime.py
+tests/test_alldebrid_host_runtime_acceptance.py
+tests/test_general_http_provider.py
+tests/test_general_http_stage5_architecture.py
+tests/test_general_http_stage5_auth_boundaries.py
+tests/test_general_http_stage5_https.py
+tests/test_general_http_stage5_runtime.py
+tests/test_input_required_lifecycle.py
+tests/test_input_required_acceptance.py
+tests/test_route_provider_provenance.py
+tests/test_route_provider_provenance_audit.py
+tests/test_integration_configuration.py
+tests/test_stage10_provenance_presentation.py
+tests/test_stage10_settings_admission.py
+tests/test_settings_architecture_ui.py
+tests/test_ui_settings_chrome_batch_contract.py
+tests/test_v1111_aria2_security_boundary.py
