@@ -1,0 +1,127 @@
+name: Stage 10 Correction Driver
+
+on:
+  push:
+    branches:
+      - '1.0.12'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: '1.0.12'
+
+      - name: Apply exact qualification corrections
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              "backend/tests/test_application_runtime.py",
+              '''    assert "handle" not in str(detail) and "context" not in str(detail)\n    assert "https://fake.example" not in str(detail)\n''',
+              '''    assert "handle" not in str(detail) and "context" not in str(detail)\n    assert detail["original_resource"] == "https://fake.example/payload"\n    assert "request" not in detail\n''',
+          )
+
+          replace(
+              "backend/tests/test_general_http_stage5_architecture.py",
+              '''def test_item5_does_not_pull_general_http_provider_ui_forward():\n    settings_ui = (ROOT / "frontend/static/ui-settings-page.js").read_text()\n    assert "general_http" not in settings_ui\n    assert "General HTTP" not in settings_ui\n    assert "HTTP & HTTPS" not in settings_ui\n''',
+              '''def test_item10_exposes_general_http_provider_ui_without_transport_tuning():\n    settings_ui = (ROOT / "frontend/static/ui-settings-page.js").read_text()\n    sources_panel = settings_ui.split("function sourcesPanel", 1)[1].split("\\n  function ", 1)[0]\n    assert "general_http" in sources_panel\n    assert "HTTP & HTTPS" in sources_panel\n    assert "General Sources" in sources_panel\n    for forbidden in ("User Agent", "Timeout", "Retry", "Proxy"):\n        assert forbidden not in sources_panel\n''',
+          )
+
+          replace(
+              "backend/tests/test_v106_final_corrective_pass.py",
+              '''    assert 'return public_payload(item)' in detail\n    assert "return public_payload(rows)" in events\n''',
+              '''    presentation = source.split("def _public_transfer_presentation", 1)[1].split("def _password_auth_binding", 1)[0]\n    assert "result = public_payload(value)" in presentation\n    assert "return _public_transfer_presentation(item, application.definitions)" in detail\n    assert "return public_payload(rows)" in events\n''',
+          )
+
+          replace(
+              "backend/tests/test_webhook_settings_integration.py",
+              '''                application=SimpleNamespace(repository=SimpleNamespace(presentation=AsyncMock(return_value=db.rows[0]))),\n''',
+              '''                application=SimpleNamespace(\n                    repository=SimpleNamespace(presentation=AsyncMock(return_value=db.rows[0])),\n                    definitions=(),\n                ),\n''',
+          )
+
+          replace(
+              "frontend/browser/stage10-provenance.spec.js",
+              '''async function setIntegrationChecked(page, identity, value) {\n  const input = integrationInput(page, identity);\n  if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();\n  await expect(input).toBeChecked({checked:value});\n}\nfunction listFixture(overrides = {}) {\n''',
+              '''async function setIntegrationChecked(page, identity, value) {\n  const input = integrationInput(page, identity);\n  if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();\n  await expect(input).toBeChecked({checked:value});\n}\nasync function saveSettings(page) {\n  const responsePromise = page.waitForResponse(\n    response => response.url().endsWith('/api/settings') && response.request().method() === 'PUT',\n    {timeout:20000},\n  );\n  await page.locator('#view-settings [data-action="save"]').click();\n  const response = await responsePromise;\n  expect(response.ok()).toBeTruthy();\n}\nfunction listFixture(overrides = {}) {\n''',
+          )
+
+          stage10 = Path("frontend/browser/stage10-provenance.spec.js")
+          text = stage10.read_text()
+          old_save = '''  await page.locator('#view-settings [data-action="save"]').click();\n'''
+          count = text.count(old_save)
+          if count != 4:
+              raise SystemExit(f"stage10 browser spec: expected four save-click occurrences including helper, got {count}")
+          # Preserve the helper's own click and replace the three round-trip direct clicks.
+          first = text.find(old_save)
+          positions = []
+          start = first + len(old_save)
+          while True:
+              pos = text.find(old_save, start)
+              if pos < 0:
+                  break
+              positions.append(pos)
+              start = pos + len(old_save)
+          if len(positions) != 3:
+              raise SystemExit(f"stage10 browser spec: expected three round-trip save clicks, got {len(positions)}")
+          offset = 0
+          for pos in positions:
+              pos += offset
+              text = text[:pos] + "  await saveSettings(page);\n" + text[pos + len(old_save):]
+              offset += len("  await saveSettings(page);\n") - len(old_save)
+          stage10.write_text(text)
+
+          replace(
+              "frontend/browser/stage10-provenance.spec.js",
+              '''  for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);\n  await page.screenshot({path:'test-results/stage10-settings-dark-desktop.png', fullPage:true});\n''',
+              '''  for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);\n  const headerCopy = await page.locator('.dp-settings-header-copy').boundingBox();\n  const tabsBox = await page.locator('.dp-settings-tabs').boundingBox();\n  expect(headerCopy.y + headerCopy.height).toBeLessThanOrEqual(tabsBox.y + 1);\n  await page.screenshot({path:'test-results/stage10-settings-dark-desktop.png', fullPage:true});\n''',
+          )
+
+          replace(
+              "frontend/static/ui-settings-chrome.css",
+              '''@media (max-width: 1180px) {\n''',
+              '''/* The six-tab strip needs more horizontal room than the Settings workspace\n   has at ordinary desktop widths once the sidebar and shell gutters are removed.\n   Stack the copy and centered navigation before those grid tracks can overlap. */\n@media (max-width: 1699px) {\n''',
+          )
+          PY
+
+      - name: Verify corrected patch shape
+        run: |
+          set -euo pipefail
+          git diff --check
+          node --check frontend/browser/stage10-provenance.spec.js
+          python -m compileall -q backend/tests
+          grep -q "max-width: 1699px" frontend/static/ui-settings-chrome.css
+          grep -q "await saveSettings(page);" frontend/browser/stage10-provenance.spec.js
+
+      - name: Commit corrected canonical tree
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/stage10-correction-driver.yml
+          git add \
+            backend/tests/test_application_runtime.py \
+            backend/tests/test_general_http_stage5_architecture.py \
+            backend/tests/test_v106_final_corrective_pass.py \
+            backend/tests/test_webhook_settings_integration.py \
+            frontend/browser/stage10-provenance.spec.js \
+            frontend/static/ui-settings-chrome.css
+          git diff --cached --check
+          git commit -m "fix: qualify Stage 10 provider presentation"
+          git push origin HEAD:1.0.12
