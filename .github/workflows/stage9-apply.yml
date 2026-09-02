@@ -30,7 +30,9 @@ jobs:
           python-version: '3.12'
 
       - name: Apply Stage 9 patch
-        run: python tools/stage9_apply.py
+        run: |
+          sed -i 's#docs/UNIVERSAL_TRANSFER_CORE.md#docs/architecture/UNIVERSAL_TRANSFER_CORE.md#g' tools/stage9_apply.py
+          python tools/stage9_apply.py
 
       - name: Inspect patch shape
         run: |
@@ -52,7 +54,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add backend/transfers/repository.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_general_http_stage5_runtime.py docs/ROUTE_PROVIDER_PROVENANCE.md docs/UNIVERSAL_TRANSFER_CORE.md CHANGELOG.md
+          git add backend/transfers/repository.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py backend/tests/test_general_http_stage5_runtime.py docs/ROUTE_PROVIDER_PROVENANCE.md docs/architecture/UNIVERSAL_TRANSFER_CORE.md CHANGELOG.md
           git diff --cached --check
           git commit -m 'Implement durable route and provider provenance'
           git push origin HEAD:1.0.12
