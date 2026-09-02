@@ -14,7 +14,6 @@ if old not in text:
 repo.write_text(text.replace(old, new, 1))
 
 addition = r'''
-
 async def test_completed_without_proven_delivery_does_not_promote_historical_provider(tmp_path, monkeypatch):
     repository = await _repository(tmp_path, monkeypatch, "unknown-completed.sqlite3")
     transfer, record = await _admit(repository, TransferRequest("https", "https://example.test/unproven", name="unproven.bin"))
@@ -63,6 +62,6 @@ async def test_restart_mid_provider_transition_preserves_order_and_can_complete_
 content = tests.read_text()
 marker = "test_completed_without_proven_delivery_does_not_promote_historical_provider"
 if marker not in content:
-    tests.write_text(content.rstrip() + addition + "\n")
+    tests.write_text(content.rstrip() + "\n\n" + addition.strip() + "\n")
 
 print("Stage 9 audit corrections applied")
