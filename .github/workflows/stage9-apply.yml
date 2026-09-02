@@ -33,6 +33,7 @@ jobs:
         run: |
           sed -i 's#docs/UNIVERSAL_TRANSFER_CORE.md#docs/architecture/UNIVERSAL_TRANSFER_CORE.md#g' tools/stage9_apply.py
           python tools/stage9_apply.py
+          sed -i 's/Category.EXECUTION_FAILED/Category.TRANSFER_FAILED/g' backend/tests/test_route_provider_provenance.py
 
       - name: Inspect patch shape
         run: |
