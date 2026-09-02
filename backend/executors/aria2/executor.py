@@ -124,10 +124,14 @@ class Aria2Executor:
 
     def input_requirement(self, candidate, observed: ExecutionObservation) -> InputRequirement | None:
         accepted = {str(item) for item in candidate.context.get("accepted_input_methods", ())}
+        # aria2 code 24 remains the generic candidate-expiry signal for
+        # non-auth-capable candidates. Only a candidate that explicitly
+        # advertises transient username/password input interprets that same
+        # definitive native signal as an authentication challenge.
         if (InputMethod.USERNAME_PASSWORD.value in accepted
                 and observed.state == ExecutionState.FAILED
                 and observed.error is not None
-                and observed.error.category == Category.AUTHENTICATION_FAILED):
+                and observed.error.native_code == "24"):
             return auth_required(username_password())
         return None
 
@@ -226,8 +230,10 @@ class Aria2Executor:
         try:
             gid = await self._check(handle, "resume")
             before = await self.observe(handle)
-            if (before.state != ExecutionState.FAILED or before.error is None
-                    or before.error.category != Category.AUTHENTICATION_FAILED):
+            accepted = {str(item) for item in request.candidate.context.get("accepted_input_methods", ())}
+            if (InputMethod.USERNAME_PASSWORD.value not in accepted
+                    or before.state != ExecutionState.FAILED or before.error is None
+                    or before.error.native_code != "24"):
                 raise self._failure(Category.RESOURCE_STATE_CONFLICT, domain=Domain.LIFECYCLE)
             await self._check(handle, "resume")
             try:
