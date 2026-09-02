@@ -44,8 +44,11 @@ jobs:
             tests/test_provider_runtime_state_maintenance.py \
             tests/test_provider_runtime_state_transactions.py \
             tests/test_database_schema.py \
-            tests/test_transfer_universal_contract.py \
-            tests/test_transfer_boundaries.py
+            tests/test_universal_contracts.py \
+            tests/test_universal_boundaries.py \
+            tests/test_universal_lifecycle.py \
+            tests/test_universal_hardening.py \
+            tests/test_transfer_integrity.py
       - name: Commit canonical hardening
         shell: bash
         run: |
