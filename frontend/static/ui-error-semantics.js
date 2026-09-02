@@ -30,8 +30,10 @@
   window.DPFailureSemantics = Object.freeze({labels: labels, classify: classify});
 
   /* Load the generic Item 4 interaction independently of native error semantics.
-     The runtime waits for app.js before it performs any API work. */
-  if (!document.querySelector('script[data-dp-auth-required-runtime]')) {
+     Browser-only bootstrapping is guarded so the semantics module remains usable
+     by source-level Node tests without constructing a DOM. */
+  if (typeof document !== 'undefined'
+      && !document.querySelector('script[data-dp-auth-required-runtime]')) {
     const runtime = document.createElement('script');
     runtime.src = '/ui-auth-required.js?v=1';
     runtime.async = false;
