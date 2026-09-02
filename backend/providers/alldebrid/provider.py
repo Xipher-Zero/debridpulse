@@ -39,9 +39,9 @@ def normalized_boundary(stage):
 
 
 class AllDebridProvider:
-    applicability = ProviderApplicability(
-        generic_schemes=frozenset({"http", "https"}),
-    )
+    # HTTP(S) applicability is runtime-derived from AllDebrid's own validated
+    # supported-host snapshot. Magnet/torrent remain descriptor request types.
+    applicability = ProviderApplicability()
 
     def __init__(self, api_key: str = "", agent: str = "DebridPulse", *, client=None):
         self.client = client if client is not None else AllDebridService(api_key, agent)
