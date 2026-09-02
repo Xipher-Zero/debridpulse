@@ -141,10 +141,10 @@
     return active.keySelected ? 'Key supplied · Replace key' : 'Select Keyfile';
   }
 
-  function renderActive({focus = true} = {}) {
+  function renderActive({focus = true, capture = true} = {}) {
     const active = state.active;
     if (!active) return;
-    if (state.overlay) snapshotFields();
+    if (capture && state.overlay) snapshotFields();
 
     active.mode = chooseMode(active);
     const allowed = allowedModes(active.challenge);
@@ -162,6 +162,7 @@
       overlay.dataset.dpAuthRequiredOverlay = '1';
       document.body.appendChild(overlay);
       document.body.classList.add('dp-settings-confirm-open');
+      document.addEventListener('keydown', handleDocumentKeydown, true);
       state.overlay = overlay;
     }
 
@@ -240,14 +241,15 @@
     }
   }
 
+  function handleDocumentKeydown(event) {
+    if (event.key !== 'Escape' || !state.overlay) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!state.busy && !state.cancelling) cancelActive();
+  }
+
   function handleKeydown(event) {
-    if (!state.overlay) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      if (!state.busy && !state.cancelling) cancelActive();
-      return;
-    }
-    if (event.key !== 'Tab') return;
+    if (!state.overlay || event.key !== 'Tab') return;
     const dialog = state.overlay.querySelector('[data-dp-input-required-modal]');
     const focusable = Array.from(dialog?.querySelectorAll(
       'button:not([disabled]), input:not([disabled]):not([type="file"])'
@@ -287,6 +289,7 @@
     const file = input && input.files && input.files[0];
     if (!active || !file || state.busy || state.cancelling) return;
 
+    snapshotFields();
     const previous = active.keySelected ? active.keyMaterial : '';
     try {
       if (!Number.isFinite(file.size) || file.size <= 0) {
@@ -303,7 +306,7 @@
       active.keySelected = true;
       active.mode = 'key';
       active.password = '';
-      renderActive({focus: false});
+      renderActive({focus: false, capture: false});
       setInlineError('');
       state.overlay?.querySelector('[data-dp-auth-secret]')?.focus();
     } catch (error) {
@@ -438,7 +441,7 @@
     else if (!allowed.key) active.passphrase = '';
 
     active.mode = chooseMode(active);
-    renderActive({focus: false});
+    renderActive({focus: false, capture: false});
     setInlineError(
       remoteRejected
         ? 'Authentication failed. Check your credentials and try again.'
@@ -474,6 +477,7 @@
     if (state.active) clearSecretObject(state.active);
     state.active = null;
 
+    document.removeEventListener('keydown', handleDocumentKeydown, true);
     if (state.overlay) {
       state.overlay.onkeydown = null;
       state.overlay.onclick = null;
