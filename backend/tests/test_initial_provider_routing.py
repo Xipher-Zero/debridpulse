@@ -15,11 +15,19 @@ from providers.alldebrid.host_runtime import (
 from providers.alldebrid.provider import AllDebridProvider
 from providers.general_http.provider import GeneralHttpProvider
 from transfers.engine import TransferEngine
-from transfers.errors import Category, Domain, Retryability, Stage, TransferError
+from transfers.errors import (
+    Category,
+    Domain,
+    NormalizedError,
+    Retryability,
+    Stage,
+    TransferError,
+)
 from transfers.models import TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
+from transfers.requests import normalize_direct_links
 
 
 SUPPORTED_URL = "https://rapidgator.net/example"
@@ -55,6 +63,20 @@ class CountingGeneralHttpProvider(GeneralHttpProvider):
     async def resolve(self, request):
         self.calls += 1
         return await super().resolve(request)
+
+
+class FailingSpecializedProvider(SpecializedFixtureProvider):
+    """A selected provider that fails after routing has already completed."""
+
+    async def resolve(self, request):
+        self.calls.append(request)
+        raise TransferError(NormalizedError(
+            Domain.PROVIDER,
+            Category.PROVIDER_UNAVAILABLE,
+            Stage.RESOLUTION,
+            integration_id=self.descriptor.id,
+            retryability=Retryability.NEVER,
+        ))
 
 
 def alldebrid_snapshot() -> AllDebridHostSnapshot:
@@ -255,6 +277,11 @@ def test_no_eligible_provider_returns_canonical_nonretryable_unsupported_route()
     assert error.integration_id == ""
 
 
+def test_malformed_url_is_rejected_before_unsupported_route_selection():
+    with pytest.raises(ValueError, match="absolute HTTP or HTTPS URL"):
+        normalize_direct_links(["not-a-url"])
+
+
 def test_unhealthy_specialized_with_no_healthy_generic_is_unsupported():
     registry = IntegrationRegistry()
     specialized = SpecializedFixtureProvider("alpha", host="shared.example")
@@ -316,6 +343,47 @@ async def test_unsupported_route_has_no_provider_or_executor_side_effects(
     assert http.calls == 0
     assert await repository.executions(transfer.id) == ()
     assert await repository.artifacts(transfer.id) == ()
+
+
+@pytest.mark.asyncio
+async def test_selected_specialized_provider_failure_does_not_fall_back_to_generic(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "provider-failure.sqlite3")
+    await database.init_db()
+
+    specialized = FailingSpecializedProvider("alpha", host="shared.example")
+    generic = CountingGeneralHttpProvider()
+    registry = IntegrationRegistry()
+    registry.register_provider(specialized)
+    registry.register_provider(generic)
+    repository = TransferRepository()
+    engine = TransferEngine(
+        repository,
+        registry,
+        download_root=str(tmp_path / "downloads"),
+        policy=TransferPolicy(),
+    )
+    await engine.initialize()
+
+    transfer = await engine.submit((
+        TransferRequest(
+            "https",
+            "https://shared.example/file",
+            name="provider-failure.bin",
+        ),
+    ))
+    await engine.tick()
+
+    request = (await repository.requests(transfer.id))[0]
+    assert len(specialized.calls) == 1
+    assert generic.calls == 0
+    assert request.attempts == 1
+    assert request.error is not None
+    assert request.error.domain == Domain.PROVIDER
+    assert request.error.category == Category.PROVIDER_UNAVAILABLE
+    assert request.error.category != Category.UNSUPPORTED_REQUEST
 
 
 def test_magnet_and_torrent_keep_static_request_type_routing():
