@@ -1,27 +1,40 @@
 # General HTTP & HTTPS provider
 
-Roadmap Item 5 introduces `general_http`, DebridPulse's first general/non-debrid
+Roadmap Item 5 introduced `general_http`, DebridPulse's first general/non-debrid
 provider. It is intentionally small: the provider resolves ordinary `http` and
 `https` requests into canonical transfer candidates, while the universal transfer
 core retains lifecycle ownership and aria2 remains the byte-transfer executor.
+Roadmap Item 6 now places that provider behind the provider-neutral applicability
+classifier documented in [PROVIDER_APPLICABILITY.md](PROVIDER_APPLICABILITY.md).
 
-## Stage 5 ownership boundary
+## Ownership boundary
 
-`backend/providers/general_http/` owns only request validation and candidate
-resolution. It does not fetch content, probe origins, import aria2, depend on
-AllDebrid, classify hosts, or decide retry/failover policy. The production catalog
-registers it like every other integration, with enabled state and priority supplied
-through the existing backend integration configuration model.
+`backend/providers/general_http/` owns only request validation, its canonical
+applicability declaration, and candidate resolution. It does not fetch content,
+probe origins, import aria2, depend on AllDebrid, classify arbitrary hosts, or
+decide retry/failover policy. The production catalog registers it like every other
+integration, with enabled state and priority supplied through the existing backend
+integration configuration model.
 
-Item 5 deliberately does not add a dedicated Sources & Providers settings surface.
-It also does not implement specialized-versus-generic routing. AllDebrid and General
-HTTP may both advertise HTTP(S); when both are eligible, the neutral registry's
-existing preferred-provider, enabled-state, priority, and stable-ID rules decide
-which provider is selected. A later roadmap stage owns host-aware classification.
+General HTTP & HTTPS declares `http` and `https` as `GENERIC` applicability. It
+claims no hosts as `SPECIALIZED`. When no healthy enabled provider contributes a
+matching specialized claim, General HTTP & HTTPS remains eligible and the existing
+neutral preferred-provider/priority/stable-ID rules order it against other generic
+providers. When at least one matching specialized claim exists, generic candidates
+are suppressed for ordinary routing before same-class ordering is applied.
+
+AllDebrid dynamic host-support plumbing remains Roadmap Item 7. Item 6 does not add
+an AllDebrid host list, fetch or parse AllDebrid host data, persist host-support
+records, or teach the universal classifier any provider-specific host knowledge.
+
+Item 5 deliberately did not add a dedicated Sources & Providers settings surface,
+and Item 6 remains backend routing architecture only. No routing-choice or host
+claim UI is introduced here.
 
 URLs containing embedded user information are rejected before durable request
 persistence and again at the provider boundary. Ordinary URLs are attempted without
-pre-prompting for credentials.
+pre-prompting for credentials. Applicability parsing uses only the parsed hostname
+for host matching and does not persist or log raw userinfo.
 
 ## HTTP resource authentication
 
@@ -47,22 +60,24 @@ specific retry after a definitive authorization challenge.
 
 ## Explicit non-goals
 
-Item 5 does not discover or automate HTML login forms, cookies, browser sessions,
-OAuth, OIDC, SAML, JavaScript challenges, CAPTCHA flows, or site-specific login
-behavior. HTTP 403, 404, 5xx responses and DNS/TLS/security failures are not
+General HTTP does not discover or automate HTML login forms, cookies, browser
+sessions, OAuth, OIDC, SAML, JavaScript challenges, CAPTCHA flows, or site-specific
+login behavior. HTTP 403, 404, 5xx responses and DNS/TLS/security failures are not
 reclassified as credential requests.
 
 The executor continues to enforce the existing destination and filesystem safety
 boundary: public-address validation, DNS-rebinding protection, redirect suppression,
 certificate verification, SNI/hostname identity, core-assigned destination paths,
-and aria2 ownership authorization remain in force.
+and aria2 ownership authorization remain in force. A specialized applicability
+claim is never treated as authorization to bypass those checks.
 
 ## Qualification boundary
 
-Stage 5 qualification exercises deterministic direct HTTP and HTTPS transfers via
-General HTTP -> universal core -> real aria2, including TLS hostname/SNI identity.
-It also exercises a real HTTP authentication origin through initial challenge,
-wrong credentials, replacement input, and successful continuation; negative
-403/404/5xx and HTML-form cases; neutral AllDebrid/General-HTTP overlap routing;
-secret-persistence checks; generic browser input handling; and the normal security,
-static-analysis, container, and multi-architecture image gates.
+Stage 6 preserves deterministic direct HTTP and HTTPS transfers through real
+General HTTP -> universal core -> aria2, including TLS hostname/SNI identity and the
+existing HTTP authentication challenge/continuation cases. Its new routing proof
+uses a deterministic provider-neutral specialized fixture: a matching specialized
+claim suppresses General HTTP's generic match, an unrelated host leaves General
+HTTP eligible, and disabling the specialized provider restores the generic path.
+The runtime-derived fixture proves provider-owned opaque state can be translated
+into canonical claims without the classifier reading native state.
