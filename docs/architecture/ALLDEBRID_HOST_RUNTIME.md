@@ -120,3 +120,9 @@ no effect on AllDebrid's separately declared magnet/torrent eligibility.
 Roadmap Item 7 adds no host-inventory UI, provider/provenance UI, quota UI,
 manual refresh endpoint/button, credential persistence, new transport, or
 Universal Transfer Core lifecycle policy. Those remain later-roadmap concerns.
+
+## Native regexp applicability and the neutral contract gap
+
+AllDebrid documents `regexps` as validators for supported URLs. A host-only claim cannot safely represent those path-sensitive native semantics: flattening `example.com/path-shape` to an unconditional `example.com` claim can suppress the generic HTTP provider for URLs AllDebrid does not actually support.
+
+Item 7 therefore uses the provider-neutral `RequestApplicabilitySource` contract only where a provider must interpret validated native semantics that the static host claim cannot express. AllDebrid executes its own cached native regexps locally and returns a normal `ProviderApplicability` containing only the exact hostname/scheme that already matched. The registry and classifier never receive, persist, parse, or execute AllDebrid regex syntax. Domain-boundary checks are applied before a native regexp result can become a neutral claim, preventing substring lookalikes. This path is in-memory and performs no network I/O; maintenance remains the only host-inventory refresh path.

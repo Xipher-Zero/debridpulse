@@ -18,7 +18,9 @@ from typing import Any, Callable, Mapping
 
 from core.logging_utils import sanitize_exception
 from integrations.runtime_state import RuntimeStateConflict, RuntimeStateRecord
-from transfers.applicability import HostClaim, HostClaimScope, ProviderApplicability
+from transfers.applicability import (
+    HostClaim, HostClaimScope, ProviderApplicability, parse_url_applicability,
+)
 
 logger = logging.getLogger("alldebrid.hosts")
 
@@ -68,6 +70,45 @@ class AllDebridHostSnapshot:
             )
             for domain in domains
         )
+
+
+class AllDebridRequestApplicability:
+    """Evaluate native URL regexps locally and emit only neutral Item 6 facts.
+
+    AllDebrid documents ``regexps`` as the supported-link validators. Host-only
+    claims cannot express path/query restrictions, so native expressions stay
+    here and only an already-matched request hostname crosses the boundary.
+    """
+
+    def __init__(self, snapshot: AllDebridHostSnapshot | None) -> None:
+        self._compiled = tuple(
+            (host, tuple(re.compile(pattern) for pattern in host.regexps))
+            for host in (() if snapshot is None else snapshot.hosts)
+        )
+
+    @staticmethod
+    def _within_domain(hostname: str, domain: str) -> bool:
+        return hostname == domain or hostname.endswith("." + domain)
+
+    def __call__(self, request) -> ProviderApplicability:
+        view = parse_url_applicability(request)
+        if view is None or view.scheme not in {"http", "https"}:
+            return ProviderApplicability()
+        raw = request.payload if isinstance(request.payload, str) else ""
+        if not raw or len(raw) > _MAX_PATTERN_LENGTH:
+            return ProviderApplicability()
+
+        for host, patterns in self._compiled:
+            if not any(self._within_domain(view.hostname, domain) for domain in host.domains):
+                continue
+            if not any(pattern.search(raw) for pattern in patterns):
+                continue
+            return ProviderApplicability(
+                specialized_hosts=(
+                    HostClaim(view.hostname, HostClaimScope.EXACT, frozenset({view.scheme})),
+                )
+            )
+        return ProviderApplicability()
 
 
 def _text(value: Any, *, field: str) -> str:
@@ -310,7 +351,7 @@ class AllDebridHostMaintenance:
         self._record = None
         self._snapshot = None
         if provider is not None:
-            self._apply_claims(provider, ())
+            self._apply_snapshot(provider, None)
         current_enabled = bool(provider is not None and provider.descriptor.enabled)
         if not initial and current_enabled and not previous_enabled:
             self._refresh_on_enable = True
@@ -319,10 +360,12 @@ class AllDebridHostMaintenance:
         self._next_retry_at = 0.0
 
     @staticmethod
-    def _apply_claims(provider, claims: tuple[HostClaim, ...]) -> None:
+    def _apply_snapshot(provider, snapshot: AllDebridHostSnapshot | None) -> None:
+        claims = snapshot.claims if snapshot is not None else ()
         provider.applicability = ProviderApplicability(
             specialized_hosts=tuple(claims)
         )
+        provider.applicability_for = AllDebridRequestApplicability(snapshot)
 
     @staticmethod
     async def _fetch_native_hosts(provider):
@@ -366,7 +409,7 @@ class AllDebridHostMaintenance:
             return
 
         self._loaded_provider = provider
-        self._apply_claims(provider, ())
+        self._apply_snapshot(provider, None)
         self._record = None
         self._snapshot = None
         try:
@@ -394,7 +437,7 @@ class AllDebridHostMaintenance:
             )
             return
         self._snapshot = snapshot
-        self._apply_claims(provider, snapshot.claims)
+        self._apply_snapshot(provider, snapshot)
 
     async def _refresh(self) -> None:
         async with self._refresh_lock:
@@ -444,7 +487,7 @@ class AllDebridHostMaintenance:
             self._loaded_provider = provider
             self._refresh_on_enable = False
             self._next_retry_at = 0.0
-            self._apply_claims(provider, snapshot.claims)
+            self._apply_snapshot(provider, snapshot)
             logger.info(
                 "AllDebrid supported-host snapshot refreshed (%d services, %d host claims)",
                 len(snapshot.hosts),
