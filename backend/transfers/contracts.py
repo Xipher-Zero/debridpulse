@@ -77,6 +77,15 @@ class ExecutorInputContinuation(Protocol):
 
 
 @runtime_checkable
+class ExecutorInputRecovery(Protocol):
+    """Continue an already-started execution after a definitive input challenge."""
+
+    def input_requirement(self, candidate: TransferCandidate, observation: ExecutionObservation) -> InputRequirement | None: ...
+    async def start_with_input(self, request: ExecutionRequest, handle: ExecutionHandle,
+                               submitted: SubmittedInput) -> ExecutionObservation: ...
+
+
+@runtime_checkable
 class PauseResume(Protocol):
     async def pause(self, handle: ExecutionHandle) -> ExecutionObservation: ...
     async def resume(self, handle: ExecutionHandle) -> ExecutionObservation: ...
