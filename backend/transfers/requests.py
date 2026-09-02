@@ -62,6 +62,8 @@ def normalize_direct_links(values: List[str]) -> List[str]:
         parsed = urlparse(value)
         if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
             raise ValueError("Every link must be an absolute HTTP or HTTPS URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("Credentials embedded in URLs are not supported")
         if value not in seen:
             normalized.append(value)
             seen.add(value)
@@ -72,6 +74,7 @@ def normalize_direct_links(values: List[str]) -> List[str]:
             f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once"
         )
     return normalized
+
 
 
 def direct_link_filename(url: str, fallback_index: int = 1) -> str:
@@ -94,6 +97,7 @@ def direct_link_filename(url: str, fallback_index: int = 1) -> str:
     return candidate or f"debrid-link-{fallback_index}"
 
 
+
 def _direct_link_collection_base(filename: str) -> str:
     """Return a conservative collection stem for known multipart filenames."""
     name = safe_name(str(filename or "").strip())
@@ -109,6 +113,7 @@ def _direct_link_collection_base(filename: str) -> str:
             if base:
                 return base
     return name
+
 
 
 def direct_link_collection_name(
@@ -143,4 +148,3 @@ def direct_link_collection_name(
 
     fallback = direct_link_filename(urls[0], 1)
     return safe_name(f"{fallback} + {total - 1} more")
-
