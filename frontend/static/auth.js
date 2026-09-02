@@ -150,10 +150,10 @@
 
     const response = await nativeFetch(input, options);
     if (sameOrigin && response.status === 401 && window.location.pathname !== '/login') {
-      csrfToken = '';
-      sessionState = null;
-      syncSidebarSessionUi(null);
-      redirectToLogin();
+      // A 401 from an application endpoint is not, by itself, proof that the
+      // DebridPulse browser session expired. Confirm against the canonical
+      // session endpoint before deciding whether navigation to /login is valid.
+      await refreshSession({force: true});
     }
     return response;
   };
