@@ -8,6 +8,7 @@ configuration and transfer lifecycle persistence.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from dataclasses import dataclass
 
@@ -48,7 +49,10 @@ class RuntimeStateRecord:
 
     def is_stale(self, *, now: float | None = None) -> bool:
         """Evaluate provider-declared absolute staleness metadata neutrally."""
-        return self.stale_after is not None and (time.time() if now is None else float(now)) >= self.stale_after
+        current = time.time() if now is None else float(now)
+        if not math.isfinite(current):
+            raise ValueError("now must be a finite UTC epoch timestamp")
+        return self.stale_after is not None and current >= self.stale_after
 
 
 _SCHEMA = (
@@ -99,7 +103,17 @@ class ProviderRuntimeStateStore:
         return bytes(value)
 
     @staticmethod
-    def _record(row) -> RuntimeStateRecord | None:
+    def _timestamp(value: float, *, field: str) -> float:
+        try:
+            normalized = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{field} must be a finite UTC epoch timestamp") from exc
+        if not math.isfinite(normalized):
+            raise ValueError(f"{field} must be a finite UTC epoch timestamp")
+        return normalized
+
+    @classmethod
+    def _record(cls, row) -> RuntimeStateRecord | None:
         if row is None:
             return None
         try:
@@ -111,11 +125,11 @@ class ProviderRuntimeStateStore:
                 raise ValueError("blank required metadata")
             if not isinstance(payload, (bytes, bytearray, memoryview)):
                 raise TypeError("payload is not a SQLite BLOB")
-            observed_at = float(row["observed_at"])
-            stale_after = None if row["stale_after"] is None else float(row["stale_after"])
-            successful_at = float(row["successful_at"])
-            created_at = float(row["created_at"])
-            updated_at = float(row["updated_at"])
+            observed_at = cls._timestamp(row["observed_at"], field="observed_at")
+            stale_after = None if row["stale_after"] is None else cls._timestamp(row["stale_after"], field="stale_after")
+            successful_at = cls._timestamp(row["successful_at"], field="successful_at")
+            created_at = cls._timestamp(row["created_at"], field="created_at")
+            updated_at = cls._timestamp(row["updated_at"], field="updated_at")
             generation = int(row["generation"])
             if generation <= 0:
                 raise ValueError("generation must be positive")
@@ -214,10 +228,10 @@ class ProviderRuntimeStateStore:
         state_key = self._identity(state_key, field="state_key", default=_DEFAULT_STATE_KEY)
         schema_version = self._identity(schema_version, field="schema_version")
         payload = self._payload(payload)
-        now = time.time()
-        observed_at = now if observed_at is None else float(observed_at)
-        successful_at = observed_at if successful_at is None else float(successful_at)
-        stale_after = None if stale_after is None else float(stale_after)
+        now = self._timestamp(time.time(), field="updated_at")
+        observed_at = now if observed_at is None else self._timestamp(observed_at, field="observed_at")
+        successful_at = observed_at if successful_at is None else self._timestamp(successful_at, field="successful_at")
+        stale_after = None if stale_after is None else self._timestamp(stale_after, field="stale_after")
         if expected_generation is not None and int(expected_generation) < 0:
             raise ValueError("expected_generation must be non-negative")
 
@@ -235,7 +249,7 @@ class ProviderRuntimeStateStore:
                             f"Runtime-state generation changed from {expected_generation} to {current_generation}"
                         )
                     generation = current_generation + 1
-                    created_at = float(current["created_at"]) if current else now
+                    created_at = self._timestamp(current["created_at"], field="created_at") if current else now
                     await db.execute(
                         """INSERT INTO integration_runtime_state(
                             integration_id,state_key,schema_version,payload,observed_at,stale_after,
@@ -264,6 +278,8 @@ class ProviderRuntimeStateStore:
                     await db.rollback()
                     raise
         except RuntimeStateConflict:
+            raise
+        except RuntimeStateCorrupt:
             raise
         except Exception as exc:
             raise RuntimeStateStorageError("Could not replace integration runtime state") from exc
