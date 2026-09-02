@@ -41,6 +41,7 @@
     pending: {icon: 'clock3', label: 'Pending', className: 'pending'},
     uploading: {icon: 'upload', label: 'Uploading', className: 'uploading'},
     processing: {icon: 'loaderCircle', label: 'Processing', className: 'processing'},
+    input_required: {icon: 'triangleAlert', label: 'Input Required', className: 'input_required'},
     extracting: {icon: 'packageOpen', label: 'Extracting', className: 'extracting'},
     queued: {icon: 'clock3', label: 'Queued', className: 'queued'},
     paused: {icon: 'pause', label: 'Paused', className: 'paused'},
