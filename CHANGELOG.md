@@ -13,7 +13,8 @@
 - Added bounded input-submission API handling, restart/migration/leakage/concurrency proofs, and minimal browser-safe `input_required` presentation. The generic authentication modal and saved-credential work remain deferred.
 - Added centralized provider-neutral URL applicability parsing and normalization with canonical scheme/host/port handling, explicit exact-host/domain-scope claims, deliberate IDNA/IP semantics, and no destructive rewriting of transfer endpoints.
 - Added `SPECIALIZED` and `GENERIC` provider applicability: matching specialized claims suppress generic URL handlers while existing preferred-provider/priority/stable-ID ordering remains authoritative within the surviving class. General HTTP & HTTPS now contributes generic `http`/`https` applicability; magnet and torrent remain static request-type routing.
-- Added deterministic static and runtime-derived specialized-claim proofs while keeping provider runtime payload interpretation, freshness and host knowledge outside the universal classifier. AllDebrid dynamic host-support fetching/parsing/persistence remains explicitly deferred to Roadmap Item 7.
+- Added deterministic static and runtime-derived specialized-claim proofs while keeping provider runtime payload interpretation, freshness and host knowledge outside the universal classifier.
+- Added AllDebrid-owned dynamic supported-host retrieval through the existing paced v4.1 client, provider-local domain/regex/availability/quota interpretation, opaque Item 2 last-known-good persistence, maintenance-only approximately 24-hour refresh, restart and disable/re-enable recovery, and neutral HTTP(S) `SPECIALIZED` claim publication. Ordinary URL, magnet, and torrent submission never refreshes host inventory; magnet/torrent remain provider-declared `STATIC` request-type capabilities.
 
 ## [1.0.11] — 2026-08-31
 
