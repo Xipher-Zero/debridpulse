@@ -8,6 +8,7 @@ Roadmap Item 10 is a presentation/configuration layer over the qualified provide
 - `General Sources` groups non-service-specific providers.
 - `HTTP & HTTPS` is the first General Sources provider and contains only its enablement control plus concise explanatory text.
 - Both controls round-trip through `AppSettings.integrations[provider_id].enabled`.
+- The Settings PUT route owns the stronger configuration-maintenance admission directly and is excluded from the generic mutation-operation wrapper, avoiding a cross-task self-deadlock at the Starlette middleware boundary.
 - No frontend-only enablement state, duplicate backend setting, provider priority control, or HTTP/aria2 tuning surface is introduced.
 
 ## Transfer lists
