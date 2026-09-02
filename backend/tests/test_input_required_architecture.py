@@ -1,10 +1,16 @@
-"""Permanent semantic architecture guards for Roadmap Item 3."""
+"""Permanent semantic architecture guards for Roadmap Items 3 and 4."""
 from __future__ import annotations
+
+from pathlib import Path
 
 from db import database
 from transfers.input_required import username_password, username_private_key
 from transfers.models import InputField, InputMethod, TransferState
 from transfers.policy import transition_allowed
+
+
+ROOT = Path(__file__).resolve().parents[2]
+AUTH_RUNTIME = ROOT / "frontend" / "static" / "ui-auth-required.js"
 
 
 def test_authentication_methods_are_exact_and_passphrase_is_not_a_method() -> None:
@@ -47,3 +53,49 @@ def test_input_required_is_nonterminal_in_the_universal_transition_policy() -> N
     assert transition_allowed(TransferState.INPUT_REQUIRED, TransferState.QUEUED)
     assert transition_allowed(TransferState.INPUT_REQUIRED, TransferState.PAUSED)
     assert not transition_allowed(TransferState.COMPLETED, TransferState.INPUT_REQUIRED)
+
+
+def test_item4_browser_runtime_uses_only_neutral_challenge_contract() -> None:
+    source = AUTH_RUNTIME.read_text(encoding="utf-8").lower()
+    required = {
+        "input_required",
+        "auth_required",
+        "username_password",
+        "username_private_key",
+        "challenge_id",
+        "passphrase",
+    }
+    assert required <= {token for token in required if token in source}
+
+    # Integration/protocol knowledge must not enter the generic modal runtime.
+    forbidden = {
+        "alldebrid",
+        "aria2",
+        "sftp",
+        "rsync",
+        "location.protocol",
+        "url.protocol",
+        "url.scheme",
+        "hostname",
+    }
+    assert not any(token in source for token in forbidden)
+
+
+def test_item4_browser_runtime_has_no_secret_persistence_apis() -> None:
+    source = AUTH_RUNTIME.read_text(encoding="utf-8").lower()
+    forbidden = {
+        "localstorage",
+        "sessionstorage",
+        "indexeddb",
+        "document.cookie",
+        "navigator.credentials",
+    }
+    assert not any(token in source for token in forbidden)
+
+
+def test_item4_browser_runtime_closes_from_challenge_resolution_not_transfer_activity() -> None:
+    source = AUTH_RUNTIME.read_text(encoding="utf-8")
+    assert "if (!isAuthTransfer(item))" in source
+    assert "finishActive();" in source
+    assert "downloading" not in source.lower()
+    assert "transferring" not in source.lower()
