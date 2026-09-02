@@ -29,6 +29,35 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Make temporary audit driver restart-safe
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/stage9_apply.py')
+          text = path.read_text()
+          old = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              path.write_text(text.replace(old, new, 1))
+          '''
+          new = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text()
+              old_count = text.count(old)
+              new_count = text.count(new)
+              if old_count == 1:
+                  path.write_text(text.replace(old, new, 1))
+                  return
+              if old_count == 0 and new_count >= 1:
+                  return
+              raise SystemExit(f"{label}: expected one old or existing new match, found old={old_count} new={new_count}")
+          '''
+          if old not in text:
+              raise SystemExit('temporary audit driver helper shape changed')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Apply Stage 9 patch
         run: python tools/stage9_apply.py
 
