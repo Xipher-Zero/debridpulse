@@ -1,62 +1,36 @@
-name: Item 3 Final Presentation and Docs
+name: Item 3 Development Scaffolding Cleanup
 
 on:
   push:
     branches: ["1.0.12"]
     paths:
-      - "dev/item3_finalize_patch.py"
       - ".github/workflows/item3-fix1.yml"
 
 permissions:
   contents: write
 
 jobs:
-  apply-and-focus:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 1.0.12
           fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
-      - name: Apply final presentation and docs patch
-        run: python dev/item3_finalize_patch.py
-      - name: Install dependencies
-        run: python -m pip install -r backend/requirements-dev.txt
-      - name: Compile and focused architecture tests
-        working-directory: backend
-        env:
-          PYTHONPATH: .
-        shell: bash
-        run: |
-          python -m compileall -q .
-          pytest -q \
-            tests/test_input_required_lifecycle.py \
-            tests/test_input_required_api.py \
-            tests/test_input_required_acceptance.py \
-            tests/test_input_required_architecture.py \
-            tests/test_ui_transfer_contract.py \
-            tests/test_universal_contracts.py \
-            tests/test_universal_boundaries.py
-      - name: JavaScript syntax
-        shell: bash
-        run: |
-          node --check frontend/static/app.js
-          node --check frontend/browser/input-required.spec.js
-      - name: Commit canonical finalization
+      - name: Remove all Item 3 development scaffolding
         shell: bash
         run: |
           git config user.name "debridpulse-item3-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add CHANGELOG.md docs backend/tests/test_ui_transfer_contract.py frontend/static/ui-transfer-contract.css
+          git rm \
+            .github/workflows/item3-dev-patch.yml \
+            .github/workflows/item3-fix1.yml \
+            dev/item3-validation-marker.txt \
+            dev/item3_finalize_patch.py \
+            dev/item3_fix1.py \
+            dev/item3_fix2.py \
+            dev/item3_fix3.py \
+            dev/item3_patch.py
           git diff --cached --check
-          if git diff --cached --quiet; then
-            echo "No generated changes"
-            exit 0
-          fi
-          git commit -m "docs: finalize input-required architecture and presentation"
+          git commit -m "chore: remove Item 3 development scaffolding"
           git push origin HEAD:1.0.12
