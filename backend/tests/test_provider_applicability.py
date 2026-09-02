@@ -147,6 +147,12 @@ def test_disabled_providers_do_not_contribute_applicability():
     ]
 
 
+def test_disabled_generic_provider_does_not_contribute_applicability():
+    request = TransferRequest("https", "https://ordinary.test/file")
+    generic = _input("generic", generic=("https",), enabled=False)
+    assert classify_provider_applicability(request, (generic,)) == ()
+
+
 def test_port_userinfo_case_and_trailing_dot_do_not_change_host_matching():
     specialized = _input(
         "special",
@@ -273,6 +279,19 @@ def test_registry_preserves_neutral_preference_priority_and_specialized_preceden
     request = TransferRequest("https", "https://files.example.test/file")
     assert registry.eligible_providers(request) == (high, low)
     preferred = replace(request, preferred_provider="special-low")
+    assert registry.eligible_providers(preferred) == (low, high)
+
+
+def test_registry_preserves_neutral_preference_priority_among_generic_matches():
+    registry = IntegrationRegistry()
+    low = GenericFixtureProvider("generic-low", priority=1)
+    high = GenericFixtureProvider("generic-high", priority=5)
+    registry.register_provider(low)
+    registry.register_provider(high)
+
+    request = TransferRequest("https", "https://ordinary.test/file")
+    assert registry.eligible_providers(request) == (high, low)
+    preferred = replace(request, preferred_provider="generic-low")
     assert registry.eligible_providers(preferred) == (low, high)
 
 
