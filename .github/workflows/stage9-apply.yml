@@ -1,6 +1,12 @@
 name: Stage 9 Apply
 
 on:
+  push:
+    branches:
+      - '1.0.12'
+    paths:
+      - 'tools/stage9_apply.py'
+      - '.github/workflows/stage9-apply.yml'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +36,7 @@ jobs:
         run: |
           git diff --check
           git status --short
-          python -m compileall -q backend/transfers/repository.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py
+          python -m compileall -q backend/transfers/repository.py backend/services/db_maintenance.py backend/db/migrations/v112.py backend/tests/test_route_provider_provenance.py
 
       - name: Install focused test dependencies
         run: |
