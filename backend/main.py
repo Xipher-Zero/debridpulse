@@ -205,6 +205,10 @@ async def transfer_error_handler(_request: Request, exc: TransferError):
 
 _MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _DATABASE_WIPE_PATH = "/api/admin/database/wipe"
+# These routes own a stronger maintenance admission inside the endpoint. Wrapping
+# them in application_operation() here would put the outer request and downstream
+# endpoint in different Starlette tasks and make maintenance wait on its own request.
+_SELF_MAINTAINED_MUTATION_PATHS = {"/api/settings"}
 _AUTH_MUTATION_PATHS = {
     "/login",
     "/api/auth/logout",
@@ -218,6 +222,7 @@ async def application_mutation_admission_middleware(request: Request, call_next)
     if (
         request.method.upper() in _MUTATING_HTTP_METHODS
         and request.url.path != _DATABASE_WIPE_PATH
+        and request.url.path not in _SELF_MAINTAINED_MUTATION_PATHS
         and request.url.path not in _AUTH_MUTATION_PATHS
     ):
         try:
