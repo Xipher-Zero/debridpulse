@@ -28,5 +28,6 @@ Presentation is derived from Item 9 records. It never derives historical provide
 
 - Provider enablement is exercised through the running application's real settings PUT path and verified again through the persisted settings API and reload state; the browser contract waits for the actual PUT response rather than assuming an arbitrary persistence deadline.
 - Original-resource presentation is intentionally limited to the safe projection above. The private raw transfer request remains excluded from the public transfer payload.
+- Presentation decoration is shape-preserving for rows that contain no provider/source facts: it does not add meaningless null display fields to unrelated or minimal API projections.
 - Desktop visual qualification asserts that the Settings header copy and tab navigation do not overlap. At constrained desktop workspace widths the master header stacks before the six-tab strip can collide; wider workspaces retain the centered single-row navigation.
 - Dark desktop, light desktop, narrow light Settings, and failover Details evidence are retained by Browser Runtime for inspection against the exact candidate SHA.
