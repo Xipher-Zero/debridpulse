@@ -56,10 +56,31 @@ class IntegrationRegistry:
         else:
             self._unhealthy.add(integration_id)
 
+    @staticmethod
+    def _provider_selection_key(provider: Provider, request: TransferRequest):
+        """Established neutral same-class provider ordering."""
+        return (
+            provider.descriptor.id != request.preferred_provider,
+            -provider.descriptor.priority,
+            provider.descriptor.id,
+        )
+
+    @staticmethod
+    def _applicability_for(provider: Provider, request: TransferRequest):
+        # A request-aware source handles genuine provider-native semantics
+        # (for example path-sensitive support) locally and exposes only the
+        # neutral applicability value. Static sources retain the Item 6
+        # snapshot contract; providers with neither use request_types only.
+        if isinstance(provider, RequestApplicabilitySource):
+            return provider.applicability_for(request)
+        if isinstance(provider, ApplicabilitySource):
+            return provider.applicability
+        return None
+
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE) -> tuple[Provider, ...]:
-        # Health remains an existing routing precondition. Applicability then
-        # suppresses generic URL handlers before the established neutral
-        # preference/priority/stable-identity order is observed.
+        # Existing health semantics are a routing precondition: disabled,
+        # unhealthy, incapable, or request-type-incompatible providers never
+        # participate in applicability class construction.
         candidates = [
             provider for provider in self.providers.values()
             if provider.descriptor.enabled
@@ -67,35 +88,31 @@ class IntegrationRegistry:
             and capability in provider.descriptor.capabilities
             and request.kind in provider.descriptor.request_types
         ]
-        candidates.sort(key=lambda provider: (
-            provider.descriptor.id != request.preferred_provider,
-            -provider.descriptor.priority, provider.descriptor.id,
-        ))
-
-        def applicability_for(provider):
-            # A request-aware source handles genuine provider-native semantics
-            # (for example path-sensitive support) locally and exposes only the
-            # neutral applicability value. Static sources retain the Item 6
-            # snapshot contract; providers with neither use request_types only.
-            if isinstance(provider, RequestApplicabilitySource):
-                return provider.applicability_for(request)
-            if isinstance(provider, ApplicabilitySource):
-                return provider.applicability
-            return None
 
         inputs = tuple(
             ProviderApplicabilityInput(
                 provider.descriptor.id,
                 provider.descriptor.request_types,
                 provider.descriptor.enabled,
-                applicability_for(provider),
+                self._applicability_for(provider, request),
             )
             for provider in candidates
         )
-        applicable = {
+        applicable_ids = {
             match.provider_id for match in classify_provider_applicability(request, inputs)
         }
-        return tuple(provider for provider in candidates if provider.descriptor.id in applicable)
+
+        # Item 6 returns only one applicable class: SPECIALIZED when any such
+        # match exists, otherwise GENERIC (or STATIC for non-URL request types).
+        # Filter first so generic providers never enter ordinary selection when
+        # a specialized set exists. Only the resulting same-class set reaches
+        # the established neutral preference/priority/stable-identity policy.
+        applicable = [
+            provider for provider in candidates
+            if provider.descriptor.id in applicable_ids
+        ]
+        applicable.sort(key=lambda provider: self._provider_selection_key(provider, request))
+        return tuple(applicable)
 
     def provider_for(self, request: TransferRequest) -> Provider:
         providers = self.eligible_providers(request)
