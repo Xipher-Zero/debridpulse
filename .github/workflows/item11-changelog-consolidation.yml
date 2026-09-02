@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   consolidate:
-    if: github.event.head_commit.message == 'Apply Item 11 changelog consolidation'
+    if: github.event.head_commit.message == 'Apply Item 11 changelog consolidation retry'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact branch head
@@ -63,6 +63,6 @@ jobs:
           set -euo pipefail
           git config user.name 'Xipher-Zero'
           git config user.email '68665477+Xipher-Zero@users.noreply.github.com'
-          git add CHANGELOG.md .github/workflows/item11-changelog-consolidation.yml
+          git add CHANGELOG.md
           git commit -m 'docs: consolidate v1.0.12 multi-provider changelog'
           git push origin HEAD:1.0.12
