@@ -289,6 +289,7 @@
     const file = input && input.files && input.files[0];
     if (!active || !file || state.busy || state.cancelling) return;
 
+    const session = state.session;
     snapshotFields();
     const previous = active.keySelected ? active.keyMaterial : '';
     try {
@@ -299,9 +300,13 @@
         throw new Error('large');
       }
       const material = await file.text();
+      if (state.active !== active || state.session !== session || state.busy || state.cancelling) return;
       if (!structurallyValidPrivateKey(material)) {
         throw new Error('invalid');
       }
+      // File reads are asynchronous. Capture edits made while the key was being
+      // read before rebuilding the dialog around the selected key state.
+      snapshotFields();
       active.keyMaterial = material;
       active.keySelected = true;
       active.mode = 'key';
