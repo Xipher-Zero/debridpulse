@@ -1,17 +1,17 @@
-name: Item 3 Schema Correction
+name: Item 3 Scheduling Hardening
 
 on:
   push:
     branches: ["1.0.12"]
     paths:
-      - "dev/item3_fix1.py"
+      - "dev/item3_fix2.py"
       - ".github/workflows/item3-fix1.yml"
 
 permissions:
   contents: write
 
 jobs:
-  fix-and-focus:
+  apply-and-focus:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,8 +23,8 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
-      - name: Apply schema correction
-        run: python dev/item3_fix1.py
+      - name: Apply scheduling hardening
+        run: python dev/item3_fix2.py
       - name: Install dependencies
         run: python -m pip install -r backend/requirements-dev.txt
       - name: Compile and undefined-name checks
@@ -34,12 +34,19 @@ jobs:
           python -m pip install ruff
           cd backend
           ruff check api application auth core db executors integrations postprocessors providers services transfers main.py --select F821,F822,F823
-      - name: Focused correction tests
+      - name: Focused Item 3 tests
         working-directory: backend
         env:
           PYTHONPATH: .
-        run: pytest -q tests/test_provider_runtime_state_maintenance.py tests/test_input_required_lifecycle.py tests/test_provider_runtime_state_transactions.py tests/test_database_schema.py
-      - name: Commit canonical correction
+        run: |
+          pytest -q \
+            tests/test_input_required_lifecycle.py \
+            tests/test_provider_runtime_state_maintenance.py \
+            tests/test_provider_runtime_state_transactions.py \
+            tests/test_database_schema.py \
+            tests/test_transfer_universal_contract.py \
+            tests/test_transfer_boundaries.py
+      - name: Commit canonical hardening
         shell: bash
         run: |
           git config user.name "debridpulse-item3-bot"
@@ -50,7 +57,5 @@ jobs:
             echo "No generated changes"
             exit 0
           fi
-          git commit -m "fix: canonicalize input challenge schema ownership"
+          git commit -m "fix: harden input-required scheduling semantics"
           git push origin HEAD:1.0.12
-
-# Triggered after workflow creation so GitHub evaluates the correction job.
