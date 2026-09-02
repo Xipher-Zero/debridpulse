@@ -6,6 +6,7 @@ from core.config import get_settings, save_settings, apply_settings
 from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
 from integrations.definition import IntegrationEnvironment
+from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.engine import TransferEngine
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -39,7 +40,11 @@ def configure(application):
     from executors.aria2.admin import Aria2Administration
     administration = Aria2Administration(registry.executors["aria2"], application.repository, application)
     application.admins = {"aria2": administration}
-    application.lifecycle = (administration,)
+    runtime_state = getattr(application, "runtime_state", None)
+    if runtime_state is None:
+        runtime_state = ProviderRuntimeStateStore()
+        application.runtime_state = runtime_state
+    application.lifecycle = (runtime_state, administration)
     from application.observability import Observability
     application.observability = Observability(application.repository)
 

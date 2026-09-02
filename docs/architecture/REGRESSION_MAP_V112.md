@@ -33,6 +33,7 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 | SSRF, DNS rebinding, redirects, TLS identity/SNI, metadata disabled, shared-daemon boundaries | `test_v1111_aria2_security_boundary.py`, `test_security_hardening_v106.py`, `test_v106_external_aria2_ownership.py`, `test_aria2_executor_contract.py` |
 | Separate post-processing outcomes; real ZIP extraction, retention, invalid archive preservation, no-archive skip, interrupted claim recovery | `test_universal_hardening.py`, `test_universal_lifecycle.py`, `test_universal_parity.py`, `test_extractor.py`, `test_extraction_lifecycle.py` |
 | Namespaced settings and legacy translation, credential preservation/clear, ownership-sensitive changes, admission drain | `test_integration_configuration.py`, `test_universal_hardening.py`, `test_webhook_settings_integration.py`, retained authentication/settings suites |
+| Neutral integration runtime-state persistence: opaque payload fidelity, provider/key isolation, schema markers, timestamps/staleness, restart recovery, provider-owned validation, last-known-good retention, compare-and-swap atomicity, disable/re-enable retention, transactional migration failure, and architecture boundaries | `test_provider_runtime_state.py`, `fake_runtime_state_provider.py`, `docs/architecture/PROVIDER_RUNTIME_STATE.md` |
 | Upgrade retains parent/artifact identity, pause, source outcomes and ownership; verified backup and rollback | `test_universal_migration.py` |
 | Real HTTP database wipe, canonical table backup, durable pause, uncertainty refusal; exclusive gates | `test_application_runtime.py`, `test_v106_corrective_regressions.py`, `test_v106_final_audit.py` |
 | Common error domains and safe unknown/security policy; sanitized diagnostics; no native error parsing in UI | `test_universal_contracts.py`, `test_universal_boundaries.py`, `test_ui_error_semantics_contract.py`, `frontend/browser/app.spec.js` |
@@ -47,6 +48,8 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 - Post-processing failure is reported separately from successful byte delivery.
 - Native client retries no longer hide attempts from core policy.
 - Reconfiguration cannot abandon referenced daemon/path ownership, and it drains admitted operations before replacing integrations.
+- Provider runtime state is operational persistence, not user configuration or transfer history. Disablement does not imply deletion, and the neutral store never interprets provider payload fields.
+- Runtime-state replacement is atomic; provider validation happens before replacement, and optional generation compare-and-swap prevents stale refreshes from overwriting newer known-good state.
 - The source version is 1.0.12 while production installation examples remain on the published 1.0.11.1 image until explicit promotion.
 
 ## Qualification procedure and limits
@@ -59,11 +62,21 @@ paths, vulnerability report and fixable High/Critical gate), and Fork Image
 (build/smoke, OCI identity and immutable multi-architecture publication) against
 that exact SHA. A fix creates a new candidate and resets every gate.
 
+Roadmap Item 2 additionally requires the real SQLite runtime-state tests to prove
+fresh schema creation, upgrade preservation, idempotency, transactional rollback,
+opaque restart persistence, provider/key isolation, provider-owned schema and
+payload interpretation, stale metadata, last-known-good retention, concurrent
+replacement behavior, and disable/re-enable retention. The neutral implementation
+must remain absent from transfer-core parsing and concrete provider packages.
+
 The five real aria2 integration tests require `aria2c` and OpenSSL, installed by CI.
 A local environment lacking aria2 may skip those tests; such a local result does
 not substitute for the full CI gate. Deterministic provider responses prove the
 integration contract, not a live account transaction. Additional production
 providers and executors remain future work; fake implementations are test fixtures.
+There is intentionally no production consumer of provider runtime-state persistence
+in Roadmap Item 2. AllDebrid dynamic host-support, HTTP(S), classifier/applicability,
+authentication-flow/UI, provenance and later routing remain deferred.
 
 The consolidated final report records the actual final SHA, run links, totals,
 image digest and residual findings outside the qualified source tree, so adding
