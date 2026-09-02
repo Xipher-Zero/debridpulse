@@ -54,7 +54,9 @@ def test_event_and_snapshot_routes_use_public_timestamp_serialization():
         '@router.get("/admin/performance")', 1
     )[0]
     snapshots = source.split("async def list_stats_snapshots", 1)[1].split("@router", 1)[0]
-    assert 'return public_payload(item)' in detail
+    presentation = source.split("def _public_transfer_presentation", 1)[1].split("def _password_auth_binding", 1)[0]
+    assert "result = public_payload(value)" in presentation
+    assert "return _public_transfer_presentation(item, application.definitions)" in detail
     assert "return public_payload(rows)" in events
     assert 'return {"snapshots": public_payload(rows)}' in snapshots
 

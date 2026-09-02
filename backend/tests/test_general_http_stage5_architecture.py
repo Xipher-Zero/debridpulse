@@ -29,8 +29,11 @@ def test_http_credentials_are_execution_local_and_saved_netrc_discovery_is_disab
     assert 'InputMethod.USERNAME_PASSWORD.value in accepted' in executor
 
 
-def test_item5_does_not_pull_general_http_provider_ui_forward():
+def test_item10_exposes_general_http_provider_ui_without_transport_tuning():
     settings_ui = (ROOT / "frontend/static/ui-settings-page.js").read_text()
-    assert "general_http" not in settings_ui
-    assert "General HTTP" not in settings_ui
-    assert "HTTP & HTTPS" not in settings_ui
+    sources_panel = settings_ui.split("function sourcesPanel", 1)[1].split("\n  function ", 1)[0]
+    assert "general_http" in sources_panel
+    assert "HTTP & HTTPS" in sources_panel
+    assert "General Sources" in sources_panel
+    for forbidden in ("User Agent", "Timeout", "Retry", "Proxy"):
+        assert forbidden not in sources_panel

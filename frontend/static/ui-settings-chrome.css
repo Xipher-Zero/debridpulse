@@ -282,7 +282,10 @@ body.dp-v11-structural #view-settings button[data-action='test-alldebrid'] .dp-s
   content: url('/icons/lucide/flask-conical.svg?v=2');
 }
 
-@media (max-width: 1180px) {
+/* The six-tab strip needs more horizontal room than the Settings workspace
+   has at ordinary desktop widths once the sidebar and shell gutters are removed.
+   Stack the copy and centered navigation before those grid tracks can overlap. */
+@media (max-width: 1699px) {
   body.dp-v11-structural #view-settings .dp-settings-master-header {
     grid-template-columns: minmax(0, 1fr);
   }

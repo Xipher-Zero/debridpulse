@@ -195,7 +195,10 @@ class TorrentListingRouteTests(unittest.IsolatedAsyncioTestCase):
                 search="Example",
                 limit=0,
                 offset=0,
-                application=SimpleNamespace(repository=SimpleNamespace(presentation=AsyncMock(return_value=db.rows[0]))),
+                application=SimpleNamespace(
+                    repository=SimpleNamespace(presentation=AsyncMock(return_value=db.rows[0])),
+                    definitions=(),
+                ),
             )
 
         self.assertEqual(result["total"], 1)

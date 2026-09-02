@@ -19,6 +19,15 @@ async function setIntegrationChecked(page, identity, value) {
   if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();
   await expect(input).toBeChecked({checked:value});
 }
+async function saveSettings(page) {
+  const responsePromise = page.waitForResponse(
+    response => response.url().endsWith('/api/settings') && response.request().method() === 'PUT',
+    {timeout:20000},
+  );
+  await page.locator('#view-settings [data-action="save"]').click();
+  const response = await responsePromise;
+  expect(response.ok()).toBeTruthy();
+}
 function listFixture(overrides = {}) {
   return {
     id:901, name:'Stage 10 fixture', status:'completed', progress:100, size_bytes:1024,
@@ -40,6 +49,9 @@ test('Sources & Providers exposes canonical AllDebrid and General HTTP enable co
   await expect(integrationControl(page, 'general_http')).toBeVisible();
   await expect(httpCard.locator('input')).toHaveCount(1);
   for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);
+  const headerCopy = await page.locator('.dp-settings-header-copy').boundingBox();
+  const tabsBox = await page.locator('.dp-settings-tabs').boundingBox();
+  expect(headerCopy.y + headerCopy.height).toBeLessThanOrEqual(tabsBox.y + 1);
   await page.screenshot({path:'test-results/stage10-settings-dark-desktop.png', fullPage:true});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
@@ -57,7 +69,7 @@ test('both provider enable controls round-trip through the running backend and s
   const firstHttp = originalHttp || !firstAd;
   await setIntegrationChecked(page, 'alldebrid', firstAd);
   await setIntegrationChecked(page, 'general_http', firstHttp);
-  await page.locator('#view-settings [data-action="save"]').click();
+  await saveSettings(page);
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([firstAd, firstHttp]);
@@ -69,14 +81,14 @@ test('both provider enable controls round-trip through the running backend and s
   const secondHttp = !originalHttp;
   await setIntegrationChecked(page, 'alldebrid', secondAd);
   await setIntegrationChecked(page, 'general_http', secondHttp);
-  await page.locator('#view-settings [data-action="save"]').click();
+  await saveSettings(page);
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([secondAd, secondHttp]);
 
   await setIntegrationChecked(page, 'alldebrid', originalAd);
   await setIntegrationChecked(page, 'general_http', originalHttp);
-  await page.locator('#view-settings [data-action="save"]').click();
+  await saveSettings(page);
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([originalAd, originalHttp]);

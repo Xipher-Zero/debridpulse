@@ -62,7 +62,8 @@ async def test_actual_api_drives_fake_provider_and_executor_without_native_id(ru
     assert detail["files"][0]["status"] == "completed"
     assert detail["executors"] == [executor.descriptor.id]
     assert "handle" not in str(detail) and "context" not in str(detail)
-    assert "https://fake.example" not in str(detail)
+    assert detail["original_resource"] == "https://fake.example/payload"
+    assert "request" not in detail
     assert (await client.post(f"/api/torrents/{transfer_id}/retry")).status_code == 200
     assert (await client.delete(f"/api/torrents/{transfer_id}?from_alldebrid=false")).status_code == 200
     assert (await application.repository.get(transfer_id)).state == "deleted"
