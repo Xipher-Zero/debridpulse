@@ -176,6 +176,10 @@ class Aria2Executor:
             password = submitted.value(InputField.PASSWORD)
             if not username or not password:
                 raise self._failure(Category.INVALID_REQUEST, Stage.QUEUE, domain=Domain.REQUEST)
+            # Input exists only because a real HTTP authorization challenge was
+            # already observed. Send the submitted correction directly so an
+            # aria2 challenge cache cannot replay a superseded credential.
+            options["http-auth-challenge"] = "false"
             options["http-user"] = username
             options["http-passwd"] = password
         headers = []
