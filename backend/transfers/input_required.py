@@ -214,7 +214,8 @@ class InputChallengeStore:
             if row["origin"] == InputOrigin.PROVIDER.value:
                 stale = stale or row["resolution_state"] != "input_required" or row["request_state"] != "input_required"
             else:
-                stale = stale or row["artifact_state"] != "input_required" or row["execution_attempt_id"] is not None
+                execution_id = row["execution_attempt_id"]
+                stale = stale or row["artifact_state"] != "input_required" or execution_id not in {None, row["operation_id"]}
             if stale:
                 await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
                 await db.commit()
@@ -258,7 +259,9 @@ class InputChallengeStore:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT f.torrent_id,t.status,f.status AS artifact_state,f.execution_attempt_id FROM download_files f
                 JOIN torrents t ON t.id=f.torrent_id WHERE f.id=?""", (artifact.id,))
-            if not row or row["status"] in _TERMINAL_FOR_INPUT or row["artifact_state"] != "queued" or row["execution_attempt_id"] is not None:
+            prestart = bool(row and row["artifact_state"] == "queued" and row["execution_attempt_id"] is None)
+            challenged_execution = bool(row and row["artifact_state"] == "error" and row["execution_attempt_id"] == operation_id)
+            if not row or row["status"] in _TERMINAL_FOR_INPUT or not (prestart or challenged_execution):
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
             identity, generation = await self._next(db, artifact.transfer_id)
             challenge = InputChallenge(identity, artifact.transfer_id, generation, requirement.reason, InputOrigin.EXECUTOR,
