@@ -1,11 +1,13 @@
 # Changelog
 
-## v1.0.12 development — Sources & Providers UI + provenance presentation
+## v1.0.12 development — First multi-provider HTTP(S) slice
 
 - Added Sources & Providers enablement controls for AllDebrid and General HTTP(S) using canonical integration configuration.
 - Added compact provider provenance to Recent Activity and Downloads.
 - Added safe original-resource, final/current provider, ordered route history, and subordinate executor details to transfer Details.
 - Provenance presentation consumes durable Item 9 history and never reconstructs provider identity from submitted URLs or current routing state.
+- Consolidated and qualified the complete first multi-provider HTTP(S) slice across dynamic AllDebrid applicability, General HTTP(S), deterministic routing, HTTP authentication, same-transfer continuation, durable provenance, restart/recovery, provider enablement, and truthful presentation.
+- Added a permanent integrated Item 11 qualification gate while retaining canonical lower-level regression owners and the existing production failover boundary.
 
 ## [1.0.12] — Universal transfer architecture
 
@@ -17,7 +19,7 @@
 - Corrected unsafe native URL/path adoption and hidden native retries. Existing payloads require verified possession; a terminal parent cannot release a path while execution remains uncertain.
 - Added neutral nonterminal `INPUT_REQUIRED` with initial `AUTH_REQUIRED`, durable non-secret challenge identity/generation, transient one-transfer credential delivery, and same-transfer provider/executor continuation.
 - Added `username_password` and `username_private_key` challenge descriptors; private-key passphrase is optional and is not a separate authentication method. Authentication waits preserve retry budgets and ordinary capacity, survive restart without persisting secrets, and remain subordinate to pause/cancel/delete/capacity controls.
-- Added bounded input-submission API handling, restart/migration/leakage/concurrency proofs, and minimal browser-safe `input_required` presentation. The generic authentication modal and saved-credential work remain deferred.
+- Added bounded input-submission API handling, restart/migration/leakage/concurrency proofs, and minimal browser-safe `input_required` presentation. The generic authentication modal is now implemented for supported `AUTH_REQUIRED` challenges; saved credentials remain deliberately out of scope.
 - Added centralized provider-neutral URL applicability parsing and normalization with canonical scheme/host/port handling, explicit exact-host/domain-scope claims, deliberate IDNA/IP semantics, and no destructive rewriting of transfer endpoints.
 - Added `SPECIALIZED` and `GENERIC` provider applicability: matching specialized claims suppress generic URL handlers while existing preferred-provider/priority/stable-ID ordering remains authoritative within the surviving class. General HTTP & HTTPS now contributes generic `http`/`https` applicability; magnet and torrent remain static request-type routing.
 - Added deterministic static and runtime-derived specialized-claim proofs while keeping provider runtime payload interpretation, freshness and host knowledge outside the universal classifier.
