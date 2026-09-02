@@ -38,6 +38,7 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
         "--dp-badge-color: var(--dp-state-success)",
         ".badge-uploading",
         ".badge-queued",
+        ".badge-input_required",
         "--dp-badge-color: var(--dp-state-active)",
         ".badge-processing",
         ".badge-extracting",

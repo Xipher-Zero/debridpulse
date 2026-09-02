@@ -60,7 +60,10 @@ whose result is unknown requires evidence or operator action before resubmission
 
 The SQLite schema contains `transfer_requests`, `provider_resources`,
 `resolution_attempts`, `execution_attempts`, `transfer_outcomes`, `transfer_controls`,
-`postprocess_attempts` and `application_events`. Existing parent/artifact table
+`postprocess_attempts`, `application_events` and the non-secret
+`transfer_input_challenges` metadata table. Submitted authentication values are
+process-local and are never part of that schema or integration runtime state.
+Existing parent/artifact table
 names (`torrents`, `download_files`) and numeric IDs remain part of the persisted
 format. Native legacy columns are decoded by the v1 upgrade, not by runtime policy.
 
@@ -74,9 +77,12 @@ ownership record do not gain mutation authority during migration.
 
 The `TransferState` enum is the authoritative lifecycle vocabulary. Its serialized
 values preserve the supported UI/API states: accepted (`pending`), resolving
-(`processing`), ready, queued, transferring (`downloading`), paused, verifying,
-post-processing (`extracting`), completed, failed (`error`), cancelled and deleted.
-Provider resource states and executor states are separate observations.
+(`processing`), ready, queued, transferring (`downloading`), paused, input required
+(`input_required`), verifying, post-processing (`extracting`), completed, failed
+(`error`), cancelled and deleted. Provider resource states and executor states are
+separate observations. `INPUT_REQUIRED` is nonterminal: it preserves the logical
+transfer identity while a durable non-secret challenge waits for transient input.
+See [INPUT_REQUIRED_LIFECYCLE.md](INPUT_REQUIRED_LIFECYCLE.md).
 
 Provider preparation or cache readiness never means local download completion.
 The engine derives local progress from selected physical artifacts. Failed source
@@ -108,15 +114,21 @@ manifest that omits an expected child records a visible source failure.
 
 Providers implement `Provider.resolve` plus only the capabilities they advertise:
 `ResourceLookup`, `Manifest`, `CandidateRefresh`, `Inventory`, `Cleanup` and `Health`.
-The registry validates advertised protocol implementations at registration.
+A provider that can suspend for external input returns the neutral `InputRequirement`
+and implements `resolve_with_input`; submitted values are delivered only to that
+provider for the current challenge. The registry validates advertised protocol
+implementations at registration.
 Provider selection considers enabled state, registered health, supported request
 kind, capability, optional preference, priority, then stable ID ordering. Health
 affects routing when observations are registered with `mark_health`; selection
 itself does not make an implicit network call.
 
 Executors implement `prepare`, `start`, `observe`, `cancel` and `resumable_paths`.
-Optional protocols include `PauseResume`, `BatchObservation`, `CandidateSampling`
-and `Health`. Selection uses supported endpoint schemes, enabled state, registered
+An executor may return the same neutral `InputRequirement` from `prepare` before
+external mutation and continue through `prepare_with_input`; executor credentials
+remain independent of provider credentials. Optional protocols include `PauseResume`,
+`BatchObservation`, `CandidateSampling` and `Health`. Selection uses supported
+endpoint schemes, enabled state, registered
 health and priority. A batch observation must account for every requested handle;
 a failed or incomplete snapshot never proves absence. The aria2 boundary confirms
 missing handles individually and does not adopt jobs by matching URL or path.

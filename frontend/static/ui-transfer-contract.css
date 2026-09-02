@@ -37,7 +37,8 @@ body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-downloadin
   --dp-badge-color: var(--dp-state-success);
 }
 body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-uploading,
-body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-queued {
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-queued,
+body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-input_required {
   --dp-badge-color: var(--dp-state-active);
 }
 body.dp-v11-structural :is(#dash-tbody, #t-tbody, #modal-body) .badge-processing,

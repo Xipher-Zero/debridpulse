@@ -8,6 +8,9 @@
 - Added transactional v1 data migration with a verified backup, integration configuration namespaces, universal transfer policy settings and canonical API/browser error presentation.
 - Added deterministic provider/executor proofs through the real database, application and HTTP paths, plus permanent ownership and architecture regressions.
 - Corrected unsafe native URL/path adoption and hidden native retries. Existing payloads require verified possession; a terminal parent cannot release a path while execution remains uncertain.
+- Added neutral nonterminal `INPUT_REQUIRED` with initial `AUTH_REQUIRED`, durable non-secret challenge identity/generation, transient one-transfer credential delivery, and same-transfer provider/executor continuation.
+- Added `username_password` and `username_private_key` challenge descriptors; private-key passphrase is optional and is not a separate authentication method. Authentication waits preserve retry budgets and ordinary capacity, survive restart without persisting secrets, and remain subordinate to pause/cancel/delete/capacity controls.
+- Added bounded input-submission API handling, restart/migration/leakage/concurrency proofs, and minimal browser-safe `input_required` presentation. The generic authentication modal and saved-credential work remain deferred.
 
 ## [1.0.11] — 2026-08-31
 
