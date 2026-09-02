@@ -18,7 +18,6 @@ from typing import Any, Callable, Mapping
 
 from core.logging_utils import sanitize_exception
 from integrations.runtime_state import RuntimeStateConflict, RuntimeStateRecord
-from providers.alldebrid.client import API_V41
 from transfers.applicability import HostClaim, HostClaimScope, ProviderApplicability
 
 logger = logging.getLogger("alldebrid.hosts")
@@ -327,11 +326,10 @@ class AllDebridHostMaintenance:
 
     @staticmethod
     async def _fetch_native_hosts(provider):
-        # Keep the network operation inside the established AllDebrid client so
-        # Authorization, rate pacing, timeout and error normalization stay
-        # canonical. Existing provider code already uses ``_post`` as the
-        # native client primitive for operations without a dedicated wrapper.
-        return await provider.client._post(API_V41, "user/hosts")
+        # Authentication, pacing, timeout and native error handling stay inside
+        # the canonical AllDebrid client method; maintenance owns only cadence,
+        # validation, persistence and applicability publication.
+        return await provider.client.get_user_hosts()
 
     async def start(self) -> None:
         """Restore persisted claims only; startup itself performs no host fetch."""
