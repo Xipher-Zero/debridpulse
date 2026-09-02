@@ -6,7 +6,7 @@ Roadmap Item 2 adds one neutral durable facility for integration/provider operat
 
 Configuration expresses operator intent: enablement, credentials or credential references, priority, and user-selected options. It remains in the existing settings/configuration model.
 
-Runtime state is operational data learned or maintained by an integration while running. The canonical owner is `backend/integrations/runtime_state.py`, backed by the application SQLite database through `db.database.get_db()`.
+Runtime state is operational data learned or maintained by an integration while running. The canonical data-access owner is `backend/integrations/runtime_state.py`, backed by the application SQLite database through `db.database.get_db()`. The generic table/index DDL belongs to the canonical SQLite schema in `backend/db/database.py`, so a fresh database or compatible upgrade receives the schema during ordinary database initialization before provider activity. The store defensively runs the same idempotent DDL when used independently in tests or tooling; there is one shared schema definition, not two competing schema owners.
 
 The neutral store knows only:
 
@@ -24,7 +24,7 @@ The neutral store does **not** know provider payload fields, native service/host
 
 Payloads are stored as SQLite `BLOB` values. An integration serializes, deserializes, validates, and interprets those bytes. The persisted `schema_version` is returned verbatim so the integration can decide whether retained state is current, migratable, or incompatible.
 
-Malformed provider payloads are therefore not interpreted or repaired by the neutral layer. Malformed neutral metadata is reported as a bounded runtime-state corruption error. Provider payload corruption cannot mutate transfer lifecycle records because runtime state occupies a separate table and repository.
+Malformed provider payloads are therefore not interpreted or repaired by the neutral layer. Malformed neutral metadata is reported as a bounded runtime-state corruption error. Non-finite neutral timestamps are rejected before a replacement transaction begins. Provider payload corruption cannot mutate transfer lifecycle records because runtime state occupies a separate table and repository.
 
 ## Durable schema and isolation
 
@@ -34,7 +34,7 @@ The schema is generic:
 
 The composite primary key `(integration_id, state_key)` provides deterministic restart identity, provider isolation, and independent namespaces without provider-specific columns. The schema contains no concrete provider names.
 
-Schema creation is transactional and idempotent. The runtime-state store participates in the application lifecycle and initializes after the existing v1.0.12 transfer migration and canonical transfer repository initialization. Existing SQLite application data is left intact.
+Schema creation is transactional and idempotent. Canonical SQLite initialization creates and verifies the runtime-state table and index for fresh and compatible existing databases; store initialization uses that same DDL defensively and does not invent provider-payload migration markers. Existing SQLite application data is left intact.
 
 The application's JSON database-maintenance path has an explicit canonical-table allowlist rather than exporting every SQLite table automatically. `integration_runtime_state` is therefore explicitly included in that backup list, including opaque BLOB payloads through the existing base64-safe JSON encoder. Routine event cleanup does not touch runtime state. An explicit administrator database wipe deliberately removes runtime-state rows along with the other application operational data; provider disablement does not.
 
@@ -42,7 +42,7 @@ The application's JSON database-maintenance path has an explicit canonical-table
 
 Provider-specific validation occurs before `ProviderRuntimeStateStore.replace()` is called. A failed fetch, malformed candidate, or incompatible candidate therefore never reaches the durable replacement operation and cannot overwrite the existing record.
 
-A successful replacement occurs in one `BEGIN IMMEDIATE` SQLite transaction and updates payload plus all metadata together. The optional `expected_generation` compare-and-swap guard prevents an older concurrent refresh from overwriting a newer successful result. A generation conflict is surfaced to the integration rather than guessed around by universal code.
+A successful replacement occurs in one `BEGIN IMMEDIATE` SQLite transaction and updates payload plus all metadata together. The optional `expected_generation` compare-and-swap guard prevents an older concurrent refresh from overwriting a newer successful result. A generation conflict is surfaced to the integration rather than guessed around by universal code. A forced SQLite failure during replacement rolls back the candidate and leaves the previous known-good payload and metadata unchanged.
 
 ## Freshness
 
@@ -72,7 +72,7 @@ A future integration should:
 6. on restart, `load()` the record and perform provider-owned compatibility/validation;
 7. decide whether stale or incompatible state may be migrated, refreshed, ignored, or explicitly purged.
 
-The permanent proof fixture uses arbitrary telemetry/calibration observations unrelated to debrid hosts or supported domains. It demonstrates opaque serialization, provider-owned validation, schema incompatibility handling, restart recovery, isolation, last-known-good retention, compare-and-swap concurrency, disable/re-enable retention, and backup/wipe maintenance behavior against the real SQLite implementation.
+The permanent proof fixtures use arbitrary telemetry/calibration and counter observations unrelated to debrid hosts or supported domains. They demonstrate opaque serialization, provider-owned validation, cross-provider schema incompatibility, restart recovery, identity/key isolation, last-known-good retention, compare-and-swap concurrency, disable/re-enable retention, canonical fresh-database initialization, transaction rollback, and backup/wipe maintenance behavior against the real SQLite implementation.
 
 ## Deferred production consumer
 

@@ -12,7 +12,7 @@ import math
 import time
 from dataclasses import dataclass
 
-from db.database import get_db
+from db.database import RUNTIME_STATE_SCHEMA, get_db
 
 
 _DEFAULT_STATE_KEY = "default"
@@ -55,24 +55,6 @@ class RuntimeStateRecord:
         return self.stale_after is not None and current >= self.stale_after
 
 
-_SCHEMA = (
-    """CREATE TABLE IF NOT EXISTS integration_runtime_state (
-        integration_id TEXT NOT NULL,
-        state_key TEXT NOT NULL,
-        schema_version TEXT NOT NULL,
-        payload BLOB NOT NULL,
-        observed_at REAL NOT NULL,
-        stale_after REAL,
-        successful_at REAL NOT NULL,
-        created_at REAL NOT NULL,
-        updated_at REAL NOT NULL,
-        generation INTEGER NOT NULL CHECK(generation > 0),
-        PRIMARY KEY(integration_id, state_key)
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_integration_runtime_state_updated ON integration_runtime_state(integration_id, updated_at)",
-)
-
-
 class ProviderRuntimeStateStore:
     """SQLite-backed neutral persistence for opaque integration-owned state.
 
@@ -87,7 +69,7 @@ class ProviderRuntimeStateStore:
 
     @staticmethod
     def _schema_statements() -> tuple[str, ...]:
-        return _SCHEMA
+        return RUNTIME_STATE_SCHEMA
 
     @staticmethod
     def _identity(value: str, *, field: str, default: str | None = None) -> str:

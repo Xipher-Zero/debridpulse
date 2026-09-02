@@ -236,6 +236,36 @@ _SCHEMA_COLUMNS_FILES = [
     ("updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
 ]
 
+RUNTIME_STATE_SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS integration_runtime_state (
+        integration_id TEXT NOT NULL,
+        state_key TEXT NOT NULL,
+        schema_version TEXT NOT NULL,
+        payload BLOB NOT NULL,
+        observed_at REAL NOT NULL,
+        stale_after REAL,
+        successful_at REAL NOT NULL,
+        created_at REAL NOT NULL,
+        updated_at REAL NOT NULL,
+        generation INTEGER NOT NULL CHECK(generation > 0),
+        PRIMARY KEY(integration_id, state_key)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_integration_runtime_state_updated ON integration_runtime_state(integration_id, updated_at)",
+)
+
+_RUNTIME_STATE_COLUMNS = {
+    "integration_id",
+    "state_key",
+    "schema_version",
+    "payload",
+    "observed_at",
+    "stale_after",
+    "successful_at",
+    "created_at",
+    "updated_at",
+    "generation",
+}
+
 
 async def init_db():
     await _init_db_sqlite()
@@ -338,6 +368,7 @@ async def _init_db_sqlite():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute(RUNTIME_STATE_SCHEMA[0])
         for col, defn in _SCHEMA_COLUMNS_TORRENTS:
             await _ensure_column(db, "torrents", col, defn)
         for col, defn in _SCHEMA_COLUMNS_FILES:
@@ -362,6 +393,7 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_local_path ON download_files (local_path)",
             "CREATE INDEX IF NOT EXISTS idx_events_torrent_id ON events (torrent_id)",
             "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at)",
+            RUNTIME_STATE_SCHEMA[1],
         ]:
             await idx_db.execute(ddl)
         await idx_db.commit()
@@ -372,6 +404,7 @@ async def _init_db_sqlite():
             "torrents": {"id", "hash", "status"} | {name for name, _ in _SCHEMA_COLUMNS_TORRENTS},
             "download_files": {"id", "torrent_id", "status", "blocked"}
             | {name for name, _ in _SCHEMA_COLUMNS_FILES},
+            "integration_runtime_state": _RUNTIME_STATE_COLUMNS,
         }
         missing_by_table: dict[str, list[str]] = {}
         for table, expected in required.items():

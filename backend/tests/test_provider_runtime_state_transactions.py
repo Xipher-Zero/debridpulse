@@ -8,6 +8,37 @@ from integrations.runtime_state import ProviderRuntimeStateStore, RuntimeStateSt
 
 
 @pytest.mark.asyncio
+async def test_canonical_database_initialization_creates_runtime_state_schema(tmp_path, monkeypatch):
+    db_path = tmp_path / "canonical-init.sqlite3"
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+
+    await database.init_db()
+
+    async with aiosqlite.connect(db_path) as db:
+        table = await (await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='integration_runtime_state'"
+        )).fetchone()
+        index = await (await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_integration_runtime_state_updated'"
+        )).fetchone()
+        columns = await (await db.execute("PRAGMA table_info(integration_runtime_state)" )).fetchall()
+    assert table == ("integration_runtime_state",)
+    assert index == ("idx_integration_runtime_state_updated",)
+    assert {row[1] for row in columns} == {
+        "integration_id",
+        "state_key",
+        "schema_version",
+        "payload",
+        "observed_at",
+        "stale_after",
+        "successful_at",
+        "created_at",
+        "updated_at",
+        "generation",
+    }
+
+
+@pytest.mark.asyncio
 async def test_failed_replacement_transaction_rolls_back_to_last_known_good(tmp_path, monkeypatch):
     db_path = tmp_path / "replacement-rollback.sqlite3"
     monkeypatch.setattr(database, "DB_PATH", db_path)
