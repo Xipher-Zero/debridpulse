@@ -39,6 +39,7 @@ TABLES = [
     "transfer_outcomes",
     "postprocess_attempts",
     "application_events",
+    "integration_runtime_state",
     "schema_migrations",
 ]
 
@@ -58,6 +59,7 @@ _TABLE_ORDER = {
     "transfer_outcomes": "id",
     "postprocess_attempts": "transfer_id,processor_id",
     "application_events": "id",
+    "integration_runtime_state": "integration_id,state_key",
     "schema_migrations": "version",
 }
 
@@ -229,6 +231,10 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         raise RuntimeError("Database wipe requires verified quiesced transfer state")
     async with get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
+        # Operational integration state is application database state, not user
+        # configuration. An explicit whole-database wipe deliberately purges it;
+        # ordinary integration disablement never reaches this path.
+        await db.execute("DELETE FROM integration_runtime_state")
         for table in ("application_events", "postprocess_attempts", "transfer_outcomes", "execution_attempts", "resolution_attempts", "provider_resources"):
             await db.execute(f"DELETE FROM {table}")
         await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")

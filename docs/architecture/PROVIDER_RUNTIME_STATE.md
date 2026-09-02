@@ -34,7 +34,9 @@ The schema is generic:
 
 The composite primary key `(integration_id, state_key)` provides deterministic restart identity, provider isolation, and independent namespaces without provider-specific columns. The schema contains no concrete provider names.
 
-Schema creation is transactional and idempotent. The runtime-state store participates in the application lifecycle and initializes after the existing v1.0.12 transfer migration and canonical transfer repository initialization. Existing SQLite application data is left intact. Because the data lives in the canonical SQLite database, whole-database backup/maintenance operations include it automatically. An application database wipe deliberately removes it with the rest of application state; provider disablement does not.
+Schema creation is transactional and idempotent. The runtime-state store participates in the application lifecycle and initializes after the existing v1.0.12 transfer migration and canonical transfer repository initialization. Existing SQLite application data is left intact.
+
+The application's JSON database-maintenance path has an explicit canonical-table allowlist rather than exporting every SQLite table automatically. `integration_runtime_state` is therefore explicitly included in that backup list, including opaque BLOB payloads through the existing base64-safe JSON encoder. Routine event cleanup does not touch runtime state. An explicit administrator database wipe deliberately removes runtime-state rows along with the other application operational data; provider disablement does not.
 
 ## Last-known-good and atomic replacement
 
@@ -70,7 +72,7 @@ A future integration should:
 6. on restart, `load()` the record and perform provider-owned compatibility/validation;
 7. decide whether stale or incompatible state may be migrated, refreshed, ignored, or explicitly purged.
 
-The permanent proof fixture uses arbitrary telemetry/calibration observations unrelated to debrid hosts or supported domains. It demonstrates opaque serialization, provider-owned validation, schema incompatibility handling, restart recovery, isolation, last-known-good retention, compare-and-swap concurrency, and disable/re-enable retention against the real SQLite implementation.
+The permanent proof fixture uses arbitrary telemetry/calibration observations unrelated to debrid hosts or supported domains. It demonstrates opaque serialization, provider-owned validation, schema incompatibility handling, restart recovery, isolation, last-known-good retention, compare-and-swap concurrency, disable/re-enable retention, and backup/wipe maintenance behavior against the real SQLite implementation.
 
 ## Deferred production consumer
 
