@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from core.branding import APP_SHORT_NAME
 from integrations.definition import IntegrationDefinition
+from transfers.applicability import ProviderApplicability
 
 
 class AllDebridOptions(BaseModel):
@@ -13,7 +14,11 @@ class AllDebridOptions(BaseModel):
 
 def build(options, environment):
     from providers.alldebrid.provider import AllDebridProvider
-    return AllDebridProvider(options.api_key, options.agent)
+    provider = AllDebridProvider(options.api_key, options.agent)
+    # URL applicability is populated from AllDebrid's persisted/native host
+    # inventory. Magnet/torrent remain neutral descriptor request-type claims.
+    provider.applicability = ProviderApplicability()
+    return provider
 
 
 definition = IntegrationDefinition(
