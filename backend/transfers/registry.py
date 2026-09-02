@@ -6,7 +6,7 @@ from transfers.applicability import (
 )
 from transfers.contracts import (
     ApplicabilitySource, CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
-    ResourceLookup, Manifest,
+    RequestApplicabilitySource, ResourceLookup, Manifest,
 )
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import Capability, TransferCandidate, TransferRequest
@@ -71,12 +71,24 @@ class IntegrationRegistry:
             provider.descriptor.id != request.preferred_provider,
             -provider.descriptor.priority, provider.descriptor.id,
         ))
+
+        def applicability_for(provider):
+            # A request-aware source handles genuine provider-native semantics
+            # (for example path-sensitive support) locally and exposes only the
+            # neutral applicability value. Static sources retain the Item 6
+            # snapshot contract; providers with neither use request_types only.
+            if isinstance(provider, RequestApplicabilitySource):
+                return provider.applicability_for(request)
+            if isinstance(provider, ApplicabilitySource):
+                return provider.applicability
+            return None
+
         inputs = tuple(
             ProviderApplicabilityInput(
                 provider.descriptor.id,
                 provider.descriptor.request_types,
                 provider.descriptor.enabled,
-                provider.applicability if isinstance(provider, ApplicabilitySource) else None,
+                applicability_for(provider),
             )
             for provider in candidates
         )
