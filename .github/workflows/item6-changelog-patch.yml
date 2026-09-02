@@ -1,0 +1,49 @@
+name: Item 6 changelog patch
+
+on:
+  push:
+    branches:
+      - '1.0.12'
+    paths:
+      - '.github/workflows/item6-changelog-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: '1.0.12'
+
+      - name: Update Item 6 changelog
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('CHANGELOG.md')
+          text = path.read_text(encoding='utf-8')
+          marker = '- Added bounded input-submission API handling, restart/migration/leakage/concurrency proofs, and minimal browser-safe `input_required` presentation. The generic authentication modal and saved-credential work remain deferred.\n'
+          addition = '''- Added centralized provider-neutral URL applicability parsing and normalization with canonical scheme/host/port handling, explicit exact-host/domain-scope claims, deliberate IDNA/IP semantics, and no destructive rewriting of transfer endpoints.\n- Added `SPECIALIZED` and `GENERIC` provider applicability: matching specialized claims suppress generic URL handlers while existing preferred-provider/priority/stable-ID ordering remains authoritative within the surviving class. General HTTP & HTTPS now contributes generic `http`/`https` applicability; magnet and torrent remain static request-type routing.\n- Added deterministic static and runtime-derived specialized-claim proofs while keeping provider runtime payload interpretation, freshness and host knowledge outside the universal classifier. AllDebrid dynamic host-support fetching/parsing/persistence remains explicitly deferred to Roadmap Item 7.\n'''
+          if addition in text:
+              raise SystemExit(0)
+          if marker not in text:
+              raise SystemExit('Item 6 changelog insertion marker not found')
+          path.write_text(text.replace(marker, marker + addition, 1), encoding='utf-8')
+          PY
+
+      - name: Commit changelog
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CHANGELOG.md
+          git commit -m 'Document Roadmap Item 6 applicability changes'
+          git push origin HEAD:1.0.12
