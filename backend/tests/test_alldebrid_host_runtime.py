@@ -73,14 +73,17 @@ class FakeClient:
         self.host_calls = 0
         self.delay = False
 
-    async def _post(self, base, endpoint, data=None):
-        assert endpoint == "user/hosts"
+    async def get_user_hosts(self):
         self.host_calls += 1
         if self.delay:
             await asyncio.sleep(0)
         if self.error is not None:
             raise self.error
         return self.response
+
+    async def _post(self, base, endpoint, data=None):
+        assert endpoint == "user/hosts"
+        return await self.get_user_hosts()
 
 
 class StaticFixtureProvider:
@@ -116,7 +119,6 @@ def test_native_parser_keeps_structural_availability_and_quota_distinct():
     assert host.simultaneous_downloads_remaining == 2
     assert len(host.regexps) == 2
 
-    # Transient availability and quota do not remove structural claims.
     assert {claim.host for claim in snapshot.claims} == {
         "example.test",
         "files.example.test",
@@ -169,9 +171,10 @@ def test_native_parser_accepts_documented_singular_regexp_compatibility():
 def test_snapshot_round_trip_is_provider_owned_and_contains_no_credentials():
     snapshot = parse_native_host_snapshot(native_hosts())
     payload = encode_host_snapshot(snapshot)
+    lowered = payload.lower()
     assert b"example.test" in payload
-    assert b"apikey" not in payload.casefold()
-    assert b"authorization" not in payload.casefold()
+    assert b"apikey" not in lowered
+    assert b"authorization" not in lowered
     assert decode_host_snapshot(payload) == snapshot
 
 
@@ -210,7 +213,6 @@ async def test_no_snapshot_refresh_persists_claims_and_routes_specialized_over_g
     assert registry.eligible_providers(unsupported) == (generic,)
     assert registry.eligible_providers(false_boundary) == (generic,)
 
-    # Host-local status=False did not mark the integration globally unhealthy.
     registry.mark_health("alldebrid", healthy=False)
     assert registry.eligible_providers(supported) == (generic,)
     registry.mark_health("alldebrid", healthy=True)
@@ -240,7 +242,6 @@ async def test_restart_restores_fresh_snapshot_without_network_fetch(tmp_path, m
         "example.test",
         "files.example.test",
     }
-    # A fresh startup snapshot is not treated as a disable->enable transition.
     await second_maintenance.maintain()
     assert client.host_calls == 1
 
@@ -265,7 +266,6 @@ async def test_stale_submission_is_network_free_then_maintenance_refreshes(
     registry.register_provider(generic)
     registry.register_provider(alldebrid)
 
-    # Classification/submission-side routing consumes retained claims only.
     assert registry.provider_for(
         TransferRequest("https", "https://example.test/stale")
     ) is alldebrid
@@ -345,7 +345,6 @@ async def test_disable_retains_state_and_reenable_reuses_then_refreshes(
 
     reenabled = AllDebridProvider(client=client)
     maintenance.bind(reenabled)
-    # Re-enable evaluation happens through provider maintenance, not submission.
     await maintenance.maintain()
     assert client.host_calls == 2
     assert reenabled.applicability.specialized_hosts
@@ -401,8 +400,6 @@ async def test_incompatible_or_corrupt_snapshot_exposes_no_claims_until_refresh(
 
 def test_magnet_and_torrent_are_neutral_provider_declared_static_capabilities():
     alldebrid = AllDebridProvider(client=FakeClient())
-    # Dynamic URL applicability is deliberately empty here. Magnet/torrent
-    # eligibility still comes from each provider's descriptor request_types.
     alldebrid.applicability = ProviderApplicability()
     other = StaticFixtureProvider()
     registry = IntegrationRegistry()
