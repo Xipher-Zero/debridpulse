@@ -106,7 +106,7 @@ async function installFixture(page, initialItems, onSubmit) {
 
     const cancel = path.match(/^\/api\/torrents\/(\d+)\/cancel$/);
     if (cancel && method === 'POST') {
-      const id = Number(input[1]);
+      const id = Number(cancel[1]);
       cancellations.push(id);
       const item = items.get(id);
       if (item) state.set({...item, status: 'cancelled', input_required: null});
