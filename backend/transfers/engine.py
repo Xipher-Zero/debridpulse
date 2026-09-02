@@ -144,8 +144,6 @@ class TransferEngine:
             challenges = {transfer.id: await self.challenges.current(transfer.id) for transfer in transfers}
             grouped = {}
             for transfer in transfers:
-                if challenges[transfer.id]:
-                    continue
                 for artifact in artifacts_by_transfer[transfer.id]:
                     if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
                         grouped.setdefault(artifact.execution.executor_id, []).append(artifact.execution)
@@ -173,13 +171,12 @@ class TransferEngine:
                         observations[handle.attempt_id] = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
             for transfer in transfers:
                 challenge = challenges[transfer.id]
-                if challenge:
-                    if challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
-                        await self._continue_executor_input(challenge, artifacts_by_transfer[transfer.id])
-                    continue
-                await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations)
+                await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations,
+                                               dispatch_allowed=challenge is None)
+                if challenge and challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
+                    await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
 
-    async def _process_executions(self, transfer_id, artifacts, observations):
+    async def _process_executions(self, transfer_id, artifacts, observations, *, dispatch_allowed=True):
         for artifact in artifacts:
             if not await self._live(transfer_id, admission=True):
                 break
@@ -202,9 +199,9 @@ class TransferEngine:
                     if observed.state == ExecutionState.PAUSED and isinstance(executor, PauseResume):
                         observed = await self._resume_execution(artifact, executor)
                     await self._execution_result(artifact, executor, observed)
-                elif artifact.state == "queued" and artifact.retry_at <= self.clock():
+                elif dispatch_allowed and artifact.state == "queued" and artifact.retry_at <= self.clock():
                     await self._dispatch(artifact)
-                elif artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
+                elif dispatch_allowed and artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
                     await self._refresh(artifact)
             except Exception as exc:
                 error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,

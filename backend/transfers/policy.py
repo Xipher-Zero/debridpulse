@@ -7,7 +7,7 @@ from transfers.errors import Domain, NormalizedError, Recovery, Retryability
 from transfers.models import TransferState
 
 
-_TERMINAL = {TransferState.COMPLETED, TransferState.DELETED}
+_TERMINAL = {TransferState.COMPLETED, TransferState.DELETED, TransferState.CANCELLED}
 
 
 def transition_allowed(current: TransferState, target: TransferState, *, operator=False, verified=False) -> bool:
@@ -16,6 +16,8 @@ def transition_allowed(current: TransferState, target: TransferState, *, operato
     if current == TransferState.DELETED:
         return operator and target == TransferState.ACCEPTED
     if current == TransferState.COMPLETED:
+        return target == TransferState.DELETED or (operator and target in {TransferState.ACCEPTED, TransferState.QUEUED})
+    if current == TransferState.CANCELLED:
         return target == TransferState.DELETED or (operator and target in {TransferState.ACCEPTED, TransferState.QUEUED})
     if target == TransferState.DELETED:
         return True

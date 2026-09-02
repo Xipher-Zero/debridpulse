@@ -230,7 +230,7 @@ class TransferRepository:
         async with get_db() as db:
             rows = await db.fetchall("""SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
-                WHERE t.status NOT IN ('completed','deleted')
+                WHERE t.status NOT IN ('completed','deleted','cancelled')
                 AND EXISTS(SELECT 1 FROM transfer_requests r WHERE r.transfer_id=t.id)
                 ORDER BY t.priority DESC,t.id""")
         return tuple(self._transfer(row) for row in rows)
