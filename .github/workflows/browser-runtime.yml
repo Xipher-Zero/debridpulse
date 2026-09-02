@@ -95,6 +95,15 @@ jobs:
         working-directory: frontend/browser
         run: npm test
 
+      - name: Upload Stage 10 visual verification
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stage10-visual-verification-${{ github.sha }}
+          path: frontend/browser/test-results/stage10-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Show candidate logs on failure
         if: failure()
         run: |
