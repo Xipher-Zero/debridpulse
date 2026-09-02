@@ -1,8 +1,11 @@
 """Integration discovery and capability routing, independent of concrete plugins."""
 from __future__ import annotations
 
+from transfers.applicability import (
+    ProviderApplicabilityInput, classify_provider_applicability,
+)
 from transfers.contracts import (
-    CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
+    ApplicabilitySource, CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
     ResourceLookup, Manifest,
 )
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
@@ -54,14 +57,33 @@ class IntegrationRegistry:
             self._unhealthy.add(integration_id)
 
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE) -> tuple[Provider, ...]:
-        matches = [provider for provider in self.providers.values()
-                   if provider.descriptor.enabled and provider.descriptor.id not in self._unhealthy
-                   and request.kind in provider.descriptor.request_types
-                   and capability in provider.descriptor.capabilities]
-        return tuple(sorted(matches, key=lambda provider: (
+        # Health remains an existing routing precondition. Applicability then
+        # suppresses generic URL handlers before the established neutral
+        # preference/priority/stable-identity order is observed.
+        candidates = [
+            provider for provider in self.providers.values()
+            if provider.descriptor.enabled
+            and provider.descriptor.id not in self._unhealthy
+            and capability in provider.descriptor.capabilities
+            and request.kind in provider.descriptor.request_types
+        ]
+        candidates.sort(key=lambda provider: (
             provider.descriptor.id != request.preferred_provider,
             -provider.descriptor.priority, provider.descriptor.id,
-        )))
+        ))
+        inputs = tuple(
+            ProviderApplicabilityInput(
+                provider.descriptor.id,
+                provider.descriptor.request_types,
+                provider.descriptor.enabled,
+                provider.applicability if isinstance(provider, ApplicabilitySource) else None,
+            )
+            for provider in candidates
+        )
+        applicable = {
+            match.provider_id for match in classify_provider_applicability(request, inputs)
+        }
+        return tuple(provider for provider in candidates if provider.descriptor.id in applicable)
 
     def provider_for(self, request: TransferRequest) -> Provider:
         providers = self.eligible_providers(request)

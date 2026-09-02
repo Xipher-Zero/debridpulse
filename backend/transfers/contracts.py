@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from transfers.applicability import ProviderApplicability
 from transfers.input_required import SubmittedInput
 from transfers.models import (
     CleanupDirective, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
@@ -17,6 +18,13 @@ class Provider(Protocol):
     descriptor: IntegrationDescriptor
 
     async def resolve(self, request: TransferRequest) -> ResolutionResult: ...
+
+
+@runtime_checkable
+class ApplicabilitySource(Protocol):
+    """Provider-owned canonical applicability snapshot; no native state crosses this boundary."""
+
+    applicability: ProviderApplicability
 
 
 @runtime_checkable

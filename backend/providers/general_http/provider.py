@@ -1,6 +1,7 @@
 """Resolution-only provider for ordinary HTTP and HTTPS resources."""
 from urllib.parse import urlparse
 
+from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
 from transfers.filesystem import safe_name
 from transfers.models import (
@@ -11,6 +12,9 @@ from transfers.requests import direct_link_filename
 
 
 class GeneralHttpProvider:
+    applicability = ProviderApplicability(
+        generic_schemes=frozenset({"http", "https"}),
+    )
     descriptor = IntegrationDescriptor(
         "general_http", "HTTP & HTTPS", frozenset({Capability.RESOLVE}),
         request_types=frozenset({"http", "https"}),

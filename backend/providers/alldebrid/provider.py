@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from providers.alldebrid.client import AllDebridService, API_V4, flatten_files
 from services.network_safety import validate_provider_download_url
 from providers.alldebrid.translation import observation_from_native, resource_from_native, translate_error
+from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
 from transfers.models import (
     Capability, CleanupAuthority, CleanupDirective, Endpoint, HealthObservation,
@@ -38,6 +39,10 @@ def normalized_boundary(stage):
 
 
 class AllDebridProvider:
+    applicability = ProviderApplicability(
+        generic_schemes=frozenset({"http", "https"}),
+    )
+
     def __init__(self, api_key: str = "", agent: str = "DebridPulse", *, client=None):
         self.client = client if client is not None else AllDebridService(api_key, agent)
         self._secrets = (api_key,)
