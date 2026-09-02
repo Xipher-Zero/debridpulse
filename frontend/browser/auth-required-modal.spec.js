@@ -106,7 +106,7 @@ async function installFixture(page, initialItems, onSubmit) {
 
     const cancel = path.match(/^\/api\/torrents\/(\d+)\/cancel$/);
     if (cancel && method === 'POST') {
-      const id = Number(cancel[1]);
+      const id = Number(input[1]);
       cancellations.push(id);
       const item = items.get(id);
       if (item) state.set({...item, status: 'cancelled', input_required: null});
@@ -182,11 +182,13 @@ test('key selection is challenge-driven, validates locally, becomes textual gree
 
 test('password authentication keeps the modal open while busy and closes when the challenge resolves even if the transfer is only queued', async ({ page }) => {
   await isolateExternalFonts(page);
+  let releaseSubmission;
+  const submissionGate = new Promise(resolve => { releaseSubmission = resolve; });
   const fixture = await installFixture(
     page,
     [authItem(1003, 'challenge-password-success', 1, [passwordMethod()])],
     async ({id, state}) => {
-      await new Promise(resolve => setTimeout(resolve, 180));
+      await submissionGate;
       state.set(authItem(id, 'resolved', 2, [], 'queued'));
     },
   );
@@ -198,6 +200,7 @@ test('password authentication keeps the modal open while busy and closes when th
   await expect(modal).toBeVisible();
   await expect(modal).toHaveAttribute('aria-busy', 'true');
   await expect(modal.locator('[data-dp-auth-continue]')).toHaveText('Authenticating…');
+  releaseSubmission();
   await expect(modal).toBeHidden();
 
   expect(fixture.submissions).toHaveLength(1);
