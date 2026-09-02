@@ -34,6 +34,7 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 | Separate post-processing outcomes; real ZIP extraction, retention, invalid archive preservation, no-archive skip, interrupted claim recovery | `test_universal_hardening.py`, `test_universal_lifecycle.py`, `test_universal_parity.py`, `test_extractor.py`, `test_extraction_lifecycle.py` |
 | Namespaced settings and legacy translation, credential preservation/clear, ownership-sensitive changes, admission drain | `test_integration_configuration.py`, `test_universal_hardening.py`, `test_webhook_settings_integration.py`, retained authentication/settings suites |
 | Neutral integration runtime-state persistence: opaque payload fidelity, provider/key isolation, schema markers, timestamps/staleness, restart recovery, provider-owned validation, last-known-good retention, compare-and-swap atomicity, disable/re-enable retention, transactional migration failure, and architecture boundaries | `test_provider_runtime_state.py`, `fake_runtime_state_provider.py`, `docs/architecture/PROVIDER_RUNTIME_STATE.md` |
+| Neutral `INPUT_REQUIRED`/`AUTH_REQUIRED`: same transfer identity, durable non-secret challenge generation, provider/executor continuation, optional private-key passphrase, no retry-budget consumption, pause/cancel/delete/capacity behavior, restart, stale/duplicate rejection, sibling execution observation, API bounds, backup/SQLite/log leakage sentinels, and browser-neutral presentation | `test_input_required_lifecycle.py`, `test_input_required_api.py`, `test_input_required_acceptance.py`, `test_input_required_architecture.py`, `frontend/browser/input-required.spec.js`, `docs/architecture/INPUT_REQUIRED_LIFECYCLE.md` |
 | Upgrade retains parent/artifact identity, pause, source outcomes and ownership; verified backup and rollback | `test_universal_migration.py` |
 | Real HTTP database wipe, canonical table backup, durable pause, uncertainty refusal; exclusive gates | `test_application_runtime.py`, `test_v106_corrective_regressions.py`, `test_v106_final_audit.py` |
 | Common error domains and safe unknown/security policy; sanitized diagnostics; no native error parsing in UI | `test_universal_contracts.py`, `test_universal_boundaries.py`, `test_ui_error_semantics_contract.py`, `frontend/browser/app.spec.js` |
@@ -50,6 +51,9 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 - Reconfiguration cannot abandon referenced daemon/path ownership, and it drains admitted operations before replacing integrations.
 - Provider runtime state is operational persistence, not user configuration or transfer history. Disablement does not imply deletion, and the neutral store never interprets provider payload fields.
 - Runtime-state replacement is atomic; provider validation happens before replacement, and optional generation compare-and-swap prevents stale refreshes from overwriting newer known-good state.
+- `INPUT_REQUIRED` is a nonterminal transfer condition rather than an error or retry. Authentication waits preserve the top-level transfer identity and do not consume the automatic resolution retry budget merely because user input is absent.
+- Challenge metadata, integration runtime state and submitted authentication bundles are separate categories. Only the non-secret challenge descriptor is durable; submitted username/password/private-key/passphrase values remain process-local and are never stored in the Item 2 runtime-state table.
+- `username_private_key` has an optional `passphrase` field. Passphrase is not a separate authentication method and is not universally required.
 - The source version is 1.0.12 while production installation examples remain on the published 1.0.11.1 image until explicit promotion.
 
 ## Qualification procedure and limits
@@ -69,14 +73,25 @@ payload interpretation, stale metadata, last-known-good retention, concurrent
 replacement behavior, and disable/re-enable retention. The neutral implementation
 must remain absent from transfer-core parsing and concrete provider packages.
 
+Roadmap Item 3 adds exact proofs that `INPUT_REQUIRED` remains nonterminal; the
+same logical transfer resumes after fresh input; provider and executor challenge
+ownership remain independent; challenge generations reject stale responses; waits
+do not burn the retry budget or ordinary execution capacity; pause/global pause,
+cancel and delete retain their authority; current external sibling work remains
+observable; and submitted authentication values never reach durable SQLite rows,
+runtime state, backup payloads, application/API responses or captured logs. The
+browser gate must render `input_required` without treating it as terminal failure
+and without introducing the Roadmap Item 4 authentication modal.
+
 The five real aria2 integration tests require `aria2c` and OpenSSL, installed by CI.
 A local environment lacking aria2 may skip those tests; such a local result does
 not substitute for the full CI gate. Deterministic provider responses prove the
 integration contract, not a live account transaction. Additional production
 providers and executors remain future work; fake implementations are test fixtures.
 There is intentionally no production consumer of provider runtime-state persistence
-in Roadmap Item 2. AllDebrid dynamic host-support, HTTP(S), classifier/applicability,
-authentication-flow/UI, provenance and later routing remain deferred.
+in Roadmap Item 2. The generic authentication modal, saved credential discovery,
+HTTP(S), classifier/applicability, AllDebrid dynamic host-support, provenance and
+later routing remain deferred beyond Roadmap Item 3.
 
 The consolidated final report records the actual final SHA, run links, totals,
 image digest and residual findings outside the qualified source tree, so adding
