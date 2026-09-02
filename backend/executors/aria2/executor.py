@@ -19,10 +19,11 @@ from executors.aria2.translation import exception_failure, is_missing, observati
 from services.downloader_egress_guard import downloader_egress_guard
 from services.network_safety import DestinationLookupError, sampled_public_artifact_fingerprint, validate_resolved_public_destination
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
+from transfers.input_required import SubmittedInput, auth_required, username_password
 from transfers.models import (
     ArtifactFingerprint, CancellationInitiator, Capability, ExecutionHandle, ExecutionObservation,
-    ExecutionRequest, ExecutionState, ExecutionSnapshot, HealthObservation, IntegrationDescriptor,
-    OutcomeKind, TransferOutcome,
+    ExecutionRequest, ExecutionState, ExecutionSnapshot, HealthObservation, InputField, InputMethod,
+    InputRequirement, IntegrationDescriptor, OutcomeKind, TransferOutcome,
 )
 
 
@@ -121,13 +122,23 @@ class Aria2Executor:
         result = await sampled_public_artifact_fingerprint(endpoint.address, headers=dict(endpoint.headers))
         return ArtifactFingerprint(*result) if result else None
 
+    def input_requirement(self, candidate, observed: ExecutionObservation) -> InputRequirement | None:
+        accepted = {str(item) for item in candidate.context.get("accepted_input_methods", ())}
+        if (InputMethod.USERNAME_PASSWORD.value in accepted
+                and observed.state == ExecutionState.FAILED
+                and observed.error is not None
+                and observed.error.category == Category.AUTHENTICATION_FAILED):
+            return auth_required(username_password())
+        return None
+
     def _remote_target(self, target: Path) -> str:
         if not self.configuration.remote_root:
             return str(target)
         relative = target.relative_to(Path(self.configuration.local_root).resolve())
         return str(PurePosixPath(self.configuration.remote_root) / PurePosixPath(relative.as_posix()))
 
-    async def _options(self, request: ExecutionRequest, handle: ExecutionHandle) -> tuple[str, dict]:
+    async def _options(self, request: ExecutionRequest, handle: ExecutionHandle,
+                       submitted: SubmittedInput | None = None) -> tuple[str, dict]:
         endpoint = next((item for item in request.candidate.endpoints if item.scheme in self.descriptor.schemes), None)
         if endpoint is None or urlsplit(endpoint.address).scheme != endpoint.scheme:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE)
@@ -151,12 +162,22 @@ class Aria2Executor:
             "allow-overwrite": "true", "auto-file-renaming": "false",
             "follow-torrent": "false", "follow-metalink": "false",
             "max-http-redirection": "0", "check-certificate": "true",
-            "max-tries": "1",
+            "max-tries": "1", "no-netrc": "true", "http-auth-challenge": "true",
+            "http-user": "", "http-passwd": "",
             "split": str(max(1, cfg.split)), "min-split-size": cfg.minimum_split_size,
             "max-connection-per-server": str(max(1, cfg.connections_per_server)),
             "continue": "true" if cfg.continue_downloads else "false",
             "pause": "true" if request.paused else "false", **guarded,
         }
+        if submitted is not None:
+            if submitted.method != InputMethod.USERNAME_PASSWORD:
+                raise self._failure(Category.INVALID_REQUEST, Stage.QUEUE, domain=Domain.REQUEST)
+            username = submitted.value(InputField.USERNAME)
+            password = submitted.value(InputField.PASSWORD)
+            if not username or not password:
+                raise self._failure(Category.INVALID_REQUEST, Stage.QUEUE, domain=Domain.REQUEST)
+            options["http-user"] = username
+            options["http-passwd"] = password
         headers = []
         for key, value in endpoint.headers.items():
             if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
@@ -192,6 +213,34 @@ class Aria2Executor:
             # A lost acknowledgement leaves an uncertain execution, not a
             # failed artifact and not permission to create another native job.
             error = exception_failure(exc, stage=Stage.QUEUE, secrets=self._secrets(handle))
+            uncertain = error.recovery == Recovery.RECONCILE or error.retryability == Retryability.UNKNOWN
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
+
+    async def start_with_input(self, request: ExecutionRequest, handle: ExecutionHandle,
+                               submitted: SubmittedInput) -> ExecutionObservation:
+        secrets = self._secrets(handle) + submitted.secret_values()
+        try:
+            gid = await self._check(handle, "resume")
+            before = await self.observe(handle)
+            if (before.state != ExecutionState.FAILED or before.error is None
+                    or before.error.category != Category.AUTHENTICATION_FAILED):
+                raise self._failure(Category.RESOURCE_STATE_CONFLICT, domain=Domain.LIFECYCLE)
+            await self._check(handle, "resume")
+            try:
+                await self.client._call("aria2.removeDownloadResult", [gid])
+            except Exception as exc:
+                if not is_missing(exc, gid):
+                    raise
+            address, options = await self._options(request, handle, submitted)
+            await self._check(handle, "resume")
+            returned = await self.client._call("aria2.addUri", [[address], options])
+            if str(returned) != gid:
+                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+            return ExecutionObservation(handle, ExecutionState.PAUSED if request.paused else ExecutionState.QUEUED)
+        except _AdmissionDeferred:
+            return await self.observe(handle)
+        except Exception as exc:
+            error = exception_failure(exc, stage=Stage.QUEUE, secrets=secrets)
             uncertain = error.recovery == Recovery.RECONCILE or error.retryability == Retryability.UNKNOWN
             return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
 
