@@ -365,7 +365,7 @@ class TransferRepository:
         result["delivering_provider_ids"] = delivering_providers
         result["delivering_provider_id"] = delivering_providers[0] if len(delivering_providers) == 1 else None
         result["provider_provenance_status"] = "recorded" if delivering_providers else "unknown_legacy" if result["status"] == "completed" else "pending"
-        result["providers"] = delivering_providers if result["status"] == "completed" and delivering_providers else historical_providers
+        result["providers"] = delivering_providers if result["status"] == "completed" else historical_providers
         result["executors"] = sorted({item["download_client"] for item in files if item["download_client"]})
         result["input_required"] = public_challenge(input_challenge)
         if details:
