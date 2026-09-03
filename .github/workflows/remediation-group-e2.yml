@@ -1,0 +1,85 @@
+name: Remediation Group E2
+
+on:
+  push:
+    branches: [1.0.12]
+    paths:
+      - '.github/remediation-group-e2.py'
+      - '.github/workflows/remediation-group-e2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Apply E2 canonical ownership
+        run: python .github/remediation-group-e2.py
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
+      - name: E2 ownership and surrounding frontend contracts
+        run: |
+          set -uo pipefail
+          status=0
+          PYTHONPATH=backend pytest -q \
+            backend/tests/test_uiarch001_e1_ownership.py \
+            backend/tests/test_uiarch001_e2_ownership.py \
+            backend/tests/test_ui_runtime_architecture_contract.py \
+            backend/tests/test_ui_frontend_deep_audit_contract.py \
+            backend/tests/test_ui_provider_status_contract.py \
+            backend/tests/test_ui_desktop_downloads_batch_contract.py \
+            backend/tests/test_ui_activity_log_page_contract.py \
+            backend/tests/test_ui_downloads_correction_batch_contract.py \
+            backend/tests/test_ui_downloads_final_contract.py \
+            backend/tests/test_ui_downloads_structural_contract.py \
+            backend/tests/test_ui_downloads_polish_contract.py \
+            backend/tests/test_ui_dropdown_contract.py \
+            backend/tests/test_ui_shell_contract.py \
+            backend/tests/test_ui_shell_seam_contract.py \
+            backend/tests/test_ui_shell_signal_field_contract.py \
+            backend/tests/test_v1111_canonical_frontend_contract.py \
+            2>&1 | tee .github/e2-focused-gate-failure.txt || status=$?
+          if [ "$status" -ne 0 ]; then
+            git config user.name debridpulse-remediation
+            git config user.email actions@users.noreply.github.com
+            git add .github/e2-focused-gate-failure.txt
+            git commit -m 'chore: capture E2 focused gate failure'
+            git push origin HEAD:1.0.12
+            exit "$status"
+          fi
+          rm -f .github/e2-focused-gate-failure.txt
+      - name: Frontend ownership and syntax static gate
+        run: |
+          set -euo pipefail
+          for file in frontend/static/*.js; do node --check "$file"; done
+          test ! -e frontend/static/ui-runtime.js
+          test ! -e frontend/static/ui-downloads-runtime.js
+          test ! -e frontend/static/ui-shell-provider-status-v2.css
+          ! grep -R -n 'ui-shell-provider-status-v2.css' frontend/static backend/tests
+          ! grep -n -E 'normalizeActivityNaming|normalizeDownloadsLegacyPresentation|normalizeProviderPremiumLabel|installProviderStatusPresentation|dpProviderObserved' frontend/static/ui-accessibility-runtime.js
+          grep -q '<span class="nav-label">Activity Log</span>' frontend/static/index.html
+          ! grep -q '<span class="nav-label">Event Log</span>' frontend/static/index.html
+          grep -q "events:'Activity Log'" frontend/static/app.js
+          grep -q 'dp-provider-premium-until' frontend/static/app.js
+          grep -q 'dp-provider-premium-days' frontend/static/app.js
+          git diff --check
+      - name: Commit coherent E2 canonicalization
+        run: |
+          set -euo pipefail
+          rm .github/remediation-group-e2.py .github/workflows/remediation-group-e2.yml
+          git config user.name debridpulse-remediation
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'refactor: finish frontend canonical ownership'
+          git push origin HEAD:1.0.12
