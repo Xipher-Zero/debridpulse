@@ -313,7 +313,7 @@ async def test_postprocessing_failure_is_recorded_separately_from_delivery(core)
 
 
 @pytest.mark.asyncio
-async def test_provider_can_change_between_attempts_without_changing_transfer(core):
+async def test_provider_retry_stays_bound_to_original_route(core):
     error = failure(Category.PROVIDER_UNAVAILABLE, retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF)
     core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)]
     transfer = await submit(core)
@@ -323,10 +323,12 @@ async def test_provider_can_change_between_attempts_without_changing_transfer(co
     core.registry.mark_health(core.provider.descriptor.id, healthy=False)
     core.now[0] += 1
     await core.engine.tick()
-    assert (await core.repository.get(transfer.id)).state == TransferState.TRANSFERRING
     async with database.get_db() as db:
         attempts = await db.fetchall("SELECT provider_id FROM resolution_attempts ORDER BY rowid")
-    assert [row["provider_id"] for row in attempts] == ["parcel-lab", "other-parcel"]
+    assert [row["provider_id"] for row in attempts] == ["parcel-lab"]
+    assert not [call for call in alternate.calls if call[0] == "resolve"]
+    details = await core.repository.presentation(transfer.id, details=True)
+    assert {item["provider_id"] for item in details["route_attempts"]} == {"parcel-lab"}
     assert len(await core.repository.active()) == 1
 
 

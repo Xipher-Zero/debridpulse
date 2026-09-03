@@ -8,7 +8,7 @@ from transfers.contracts import (
     ApplicabilitySource, CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
     RequestApplicabilitySource, ResourceLookup, Manifest,
 )
-from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
+from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
 from transfers.models import Capability, TransferCandidate, TransferRequest
 
 
@@ -122,6 +122,34 @@ class IntegrationRegistry:
                 retryability=Retryability.NEVER,
             ))
         return providers[0]
+
+    def provider_for_bound_route(self, provider_id: str, request: TransferRequest) -> Provider:
+        """Recover an existing route without reopening global provider selection.
+
+        Applicability is an initial-routing fact. Once selected, the durable route
+        remains authoritative across retries and restart. Enablement/health retain
+        their existing admitted-work semantics, but neither may select a replacement.
+        """
+        provider = self.providers.get(provider_id)
+        if (provider is None or Capability.RESOLVE not in provider.descriptor.capabilities
+                or request.kind not in provider.descriptor.request_types):
+            raise TransferError(NormalizedError(
+                Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,
+                retryability=Retryability.NEVER, integration_id=provider_id,
+            ))
+        if not provider.descriptor.enabled:
+            raise TransferError(NormalizedError(
+                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
+                retryability=Retryability.NEVER, recovery=Recovery.FAIL,
+                integration_id=provider_id,
+            ))
+        if provider_id in self._unhealthy:
+            raise TransferError(NormalizedError(
+                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
+                retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF,
+                integration_id=provider_id,
+            ))
+        return provider
 
     def eligible_executors(self, candidate: TransferCandidate) -> tuple[Executor, ...]:
         schemes = {endpoint.scheme for endpoint in candidate.endpoints}

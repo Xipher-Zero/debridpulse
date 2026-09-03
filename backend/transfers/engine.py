@@ -25,7 +25,7 @@ from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
     OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
-    TransferState, new_identity,
+    TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
@@ -73,6 +73,46 @@ class TransferEngine:
     @staticmethod
     def _error(category, stage, *, domain=Domain.INTERNAL, retryability=Retryability.UNKNOWN, recovery=Recovery.REQUIRE_OPERATOR):
         return NormalizedError(domain, category, stage, retryability=retryability, recovery=recovery)
+
+    @classmethod
+    def _authoritative_provider_result(cls, provider_id: str, result: ResolutionResult) -> ResolutionResult:
+        """Validate and stamp provider output with the selected route identity."""
+        if not isinstance(result, ResolutionResult):
+            raise TransferError(cls._error(
+                Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
+                retryability=Retryability.NEVER,
+            ))
+
+        def authoritative_resource(value):
+            if value is None:
+                return None
+            if value.provider_id and value.provider_id != provider_id:
+                raise TransferError(cls._error(
+                    Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
+                    retryability=Retryability.NEVER,
+                ))
+            return value if value.provider_id == provider_id else replace(value, provider_id=provider_id)
+
+        candidates = []
+        for candidate in result.candidates:
+            if not isinstance(candidate, TransferCandidate):
+                raise TransferError(cls._error(
+                    Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
+                    retryability=Retryability.NEVER,
+                ))
+            if candidate.provider_id and candidate.provider_id != provider_id:
+                raise TransferError(cls._error(
+                    Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
+                    retryability=Retryability.NEVER,
+                ))
+            candidates.append(replace(
+                candidate, provider_id=provider_id, resource=authoritative_resource(candidate.resource),
+            ))
+
+        observation = result.observation
+        if observation is not None:
+            observation = replace(observation, resource=authoritative_resource(observation.resource))
+        return replace(result, candidates=tuple(candidates), observation=observation)
 
     async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, reacquire=True, deduplicate=True):
         if not requests or len(requests) > 100 or any(not isinstance(item, TransferRequest) or not item.kind or not item.payload for item in requests):
@@ -247,7 +287,11 @@ class TransferEngine:
                     await self._cleanup_pending()
                     if any(resource.id == record.resource.id and pending for resource, _state, pending in await self.repository.resources(record.transfer_id)):
                         raise TransferError(self._error(Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP))
-            provider = self.registry.provider_for(record.request)
+            bound_provider_id = await self.repository.bound_route_provider(record.id)
+            provider = (
+                self.registry.provider_for_bound_route(bound_provider_id, record.request)
+                if bound_provider_id else self.registry.provider_for(record.request)
+            )
             async with self._resolution_slots:
                 if not await self._live(record.transfer_id, admission=True):
                     return
@@ -267,8 +311,7 @@ class TransferEngine:
 
     async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
                                 *, challenge: InputChallenge | None = None):
-        if not isinstance(result, ResolutionResult):
-            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+        result = self._authoritative_provider_result(provider.descriptor.id, result)
         if result.input_required:
             if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))

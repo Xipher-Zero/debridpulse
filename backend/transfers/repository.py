@@ -490,6 +490,17 @@ class TransferRepository:
                                    row["parent_id"], codec.resource(codec.load(row["resource"])), row["attempts"],
                                    row["retry_at"], codec.error(row["error"]), codec.entry(codec.load(row["metadata"]))) for row in rows)
 
+    async def bound_route_provider(self, request_id: str) -> str | None:
+        """Return the provider owning the latest durable route for this request."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT a.provider_id FROM route_attempt_provenance p
+                JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                WHERE a.request_id=? ORDER BY p.ordinal DESC LIMIT 1""",
+                (request_id,),
+            )
+        return str(row["provider_id"]) if row and row.get("provider_id") else None
+
     async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
         identity = new_identity()
         async with get_db() as db:
@@ -517,6 +528,16 @@ class TransferRepository:
             (resource.id, transfer_id, resource.provider_id, codec.dump(resource), state))
 
     async def resolution(self, attempt: ResolutionAttempt, result: ResolutionResult) -> bool:
+        # Defense in depth: route identity is selected by the universal core.
+        identities = [candidate.provider_id for candidate in result.candidates]
+        identities.extend(candidate.resource.provider_id for candidate in result.candidates if candidate.resource)
+        if result.observation:
+            identities.append(result.observation.resource.provider_id)
+        if any(identity and identity != attempt.provider_id for identity in identities):
+            raise TransferError(NormalizedError(
+                Domain.PROVIDER, Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION,
+                integration_id=attempt.provider_id,
+            ))
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT r.transfer_id,t.status FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
