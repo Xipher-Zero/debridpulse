@@ -42,6 +42,30 @@ def test_fork_image_only_publishes_immutable_sha_tags() -> None:
     assert "Publication tag is not SHA-only" in workflow
 
 
+def test_fork_image_publishes_and_verifies_canonical_manifest_annotations() -> None:
+    workflow = _workflow("fork-image.yml")
+
+    expected = (
+        "org.opencontainers.image.title=DebridPulse: Universal Transfer Manager",
+        "org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution",
+        "org.opencontainers.image.version=${{ steps.version.outputs.version }}",
+        "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+        "org.opencontainers.image.revision=${{ github.sha }}",
+        "org.opencontainers.image.licenses=GPL-2.0-or-later",
+    )
+    for annotation in expected:
+        assert annotation in workflow
+
+    assert "GENERATED_ANNOTATIONS: ${{ steps.meta.outputs.annotations }}" in workflow
+    assert "annotations: ${{ steps.meta.outputs.annotations }}" in workflow
+    assert "Published OCI index title mismatch" in workflow
+    assert "Published OCI index description mismatch" in workflow
+    assert "Published OCI index version mismatch" in workflow
+    assert "Published OCI index revision mismatch" in workflow
+    assert "Published OCI index source mismatch" in workflow
+    assert "Published OCI index license mismatch" in workflow
+
+
 def test_security_qualification_consumes_exact_published_platform_digests() -> None:
     workflow = _workflow("container-security.yml")
 
