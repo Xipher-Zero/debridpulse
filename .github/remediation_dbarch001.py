@@ -26,6 +26,13 @@ def remove_line_ranges(source: str, ranges: list[tuple[int, int]]) -> str:
     return "".join(lines)
 
 
+def replace_exact(path: Path, old: str, new: str, *, label: str) -> None:
+    source = path.read_text()
+    if old not in source:
+        raise RuntimeError(f"{label} changed")
+    path.write_text(source.replace(old, new, 1))
+
+
 repo_source = REPOSITORY.read_text()
 schema, schema_start, schema_end = assigned_literal(repo_source, "_SCHEMA")
 columns, columns_start, columns_end = assigned_literal(repo_source, "_COLUMNS")
@@ -99,4 +106,50 @@ if old_runtime_initialize not in runtime_source:
 runtime_source = runtime_source.replace(old_runtime_initialize, new_runtime_initialize, 1)
 RUNTIME_STATE.write_text(runtime_source)
 
-TEST.write_text('''from __future__ import annotations\n\nimport sqlite3\n\nimport pytest\n\nimport db.database as database\nfrom integrations.runtime_state import ProviderRuntimeStateStore, RuntimeStateStorageError\nfrom transfers.repository import TransferRepository\n\n\ndef _use_database(monkeypatch, tmp_path):\n    path = tmp_path / "dbarch.sqlite3"\n    monkeypatch.setattr(database, "DB_PATH", path)\n    return path\n\n\n@pytest.mark.asyncio\nasync def test_repository_runtime_initializer_cannot_create_absent_database(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    with pytest.raises(RuntimeError, match="bootstrap must run first"):\n        await TransferRepository().initialize()\n    assert not path.exists()\n\n\n@pytest.mark.asyncio\nasync def test_provider_runtime_state_initializer_cannot_create_absent_database(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    with pytest.raises(RuntimeStateStorageError):\n        await ProviderRuntimeStateStore().initialize()\n    assert not path.exists()\n\n\n@pytest.mark.asyncio\nasync def test_database_bootstrap_owns_schema_then_runtime_initializers_only_validate(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    await database.init_db()\n    assert path.exists()\n    await TransferRepository().initialize()\n    await ProviderRuntimeStateStore().initialize()\n\n\n@pytest.mark.asyncio\nasync def test_repository_initializer_rejects_missing_canonical_table_without_repair(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    await database.init_db()\n    with sqlite3.connect(path) as conn:\n        conn.execute("DROP TABLE transfer_outcomes")\n        conn.commit()\n    with pytest.raises(RuntimeError, match="transfer repository schema is incomplete"):\n        await TransferRepository().initialize()\n    with sqlite3.connect(path) as conn:\n        present = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='transfer_outcomes'").fetchone()\n    assert present is None\n\n\n@pytest.mark.asyncio\nasync def test_runtime_state_initializer_rejects_missing_table_without_repair(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    await database.init_db()\n    with sqlite3.connect(path) as conn:\n        conn.execute("DROP TABLE integration_runtime_state")\n        conn.commit()\n    with pytest.raises(RuntimeStateStorageError):\n        await ProviderRuntimeStateStore().initialize()\n    with sqlite3.connect(path) as conn:\n        present = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='integration_runtime_state'").fetchone()\n    assert present is None\n\n\ndef test_runtime_components_contain_no_schema_mutation_authority():\n    repository_source = (Path(__file__).parents[1] / "transfers/repository.py").read_text()\n    runtime_source = (Path(__file__).parents[1] / "integrations/runtime_state.py").read_text()\n    for source in (repository_source, runtime_source):\n        upper = source.upper()\n        assert "CREATE TABLE" not in upper\n        assert "ALTER TABLE" not in upper\n        assert "CREATE INDEX" not in upper\n'''.replace('import pytest\n', 'import pytest\nfrom pathlib import Path\n'))
+TEST.write_text('''from __future__ import annotations\n\nimport sqlite3\n\nimport pytest\nfrom pathlib import Path\n\nimport db.database as database\nfrom integrations.runtime_state import ProviderRuntimeStateStore, RuntimeStateStorageError\nfrom transfers.repository import TransferRepository\n\n\ndef _use_database(monkeypatch, tmp_path):\n    path = tmp_path / "dbarch.sqlite3"\n    monkeypatch.setattr(database, "DB_PATH", path)\n    return path\n\n\n@pytest.mark.asyncio\nasync def test_repository_runtime_initializer_cannot_create_absent_database(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    with pytest.raises(RuntimeError, match="bootstrap must run first"):\n        await TransferRepository().initialize()\n    assert not path.exists()\n\n\n@pytest.mark.asyncio\nasync def test_provider_runtime_state_initializer_cannot_create_absent_database(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    with pytest.raises(RuntimeStateStorageError):\n        await ProviderRuntimeStateStore().initialize()\n    assert not path.exists()\n\n\n@pytest.mark.asyncio\nasync def test_database_bootstrap_owns_schema_then_runtime_initializers_only_validate(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    await database.init_db()\n    assert path.exists()\n    await TransferRepository().initialize()\n    await ProviderRuntimeStateStore().initialize()\n\n\n@pytest.mark.asyncio\nasync def test_repository_initializer_rejects_missing_canonical_table_without_repair(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    await database.init_db()\n    with sqlite3.connect(path) as conn:\n        conn.execute("DROP TABLE transfer_outcomes")\n        conn.commit()\n    with pytest.raises(RuntimeError, match="transfer repository schema is incomplete"):\n        await TransferRepository().initialize()\n    with sqlite3.connect(path) as conn:\n        present = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='transfer_outcomes'").fetchone()\n    assert present is None\n\n\n@pytest.mark.asyncio\nasync def test_runtime_state_initializer_rejects_missing_table_without_repair(monkeypatch, tmp_path):\n    path = _use_database(monkeypatch, tmp_path)\n    await database.init_db()\n    with sqlite3.connect(path) as conn:\n        conn.execute("DROP TABLE integration_runtime_state")\n        conn.commit()\n    with pytest.raises(RuntimeStateStorageError):\n        await ProviderRuntimeStateStore().initialize()\n    with sqlite3.connect(path) as conn:\n        present = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='integration_runtime_state'").fetchone()\n    assert present is None\n\n\ndef test_runtime_components_contain_no_schema_mutation_authority():\n    repository_source = (Path(__file__).parents[1] / "transfers/repository.py").read_text()\n    runtime_source = (Path(__file__).parents[1] / "integrations/runtime_state.py").read_text()\n    for source in (repository_source, runtime_source):\n        upper = source.upper()\n        assert "CREATE TABLE" not in upper\n        assert "ALTER TABLE" not in upper\n        assert "CREATE INDEX" not in upper\n''')
+
+# Runtime-state semantic tests now enter through the canonical database bootstrap
+# rather than relying on the runtime store to create its own persistence schema.
+state_tests = ROOT / "backend/tests/test_provider_runtime_state.py"
+state_source = state_tests.read_text()
+state_source = state_source.replace("import pytest\n", "import pytest\nimport pytest_asyncio\n", 1)
+old_fixture = '''@pytest.fixture\ndef isolated_database(tmp_path, monkeypatch):\n    path = tmp_path / "runtime-state.sqlite3"\n    monkeypatch.setattr(database, "DB_PATH", path)\n    return path\n'''
+new_fixture = '''@pytest_asyncio.fixture\nasync def isolated_database(tmp_path, monkeypatch):\n    path = tmp_path / "runtime-state.sqlite3"\n    monkeypatch.setattr(database, "DB_PATH", path)\n    await database.init_db()\n    return path\n'''
+if old_fixture not in state_source:
+    raise RuntimeError("runtime-state isolated database fixture changed")
+state_source = state_source.replace(old_fixture, new_fixture, 1)
+start = state_source.index("@pytest.mark.asyncio\nasync def test_schema_failure_rolls_back_without_false_partial_success")
+end = state_source.index("\n\n@pytest.mark.asyncio\nasync def test_database_open_failure_is_reported_as_bounded_storage_error", start)
+replacement = '''@pytest.mark.asyncio\nasync def test_runtime_initializer_rejects_missing_schema_without_repair(isolated_database):\n    async with aiosqlite.connect(isolated_database) as db:\n        await db.execute("DROP TABLE integration_runtime_state")\n        await db.commit()\n\n    with pytest.raises(RuntimeStateStorageError):\n        await ProviderRuntimeStateStore().initialize()\n\n    async with aiosqlite.connect(isolated_database) as db:\n        present = await (await db.execute(\n            "SELECT name FROM sqlite_master WHERE type='table' AND name='integration_runtime_state'"\n        )).fetchone()\n    assert present is None\n'''
+state_source = state_source[:start] + replacement + state_source[end:]
+state_tests.write_text(state_source)
+
+metadata_tests = ROOT / "backend/tests/test_provider_runtime_state_metadata.py"
+replace_exact(
+    metadata_tests,
+    '    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"non-finite-{field}.sqlite3")\n    store = ProviderRuntimeStateStore()\n',
+    '    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"non-finite-{field}.sqlite3")\n    await database.init_db()\n    store = ProviderRuntimeStateStore()\n',
+    label="runtime-state metadata bootstrap",
+)
+
+isolation_tests = ROOT / "backend/tests/test_provider_runtime_state_provider_isolation.py"
+replace_exact(
+    isolation_tests,
+    '    monkeypatch.setattr(database, "DB_PATH", tmp_path / "provider-isolation.sqlite3")\n    store = ProviderRuntimeStateStore()\n',
+    '    monkeypatch.setattr(database, "DB_PATH", tmp_path / "provider-isolation.sqlite3")\n    await database.init_db()\n    store = ProviderRuntimeStateStore()\n',
+    label="provider-isolation bootstrap",
+)
+
+transaction_tests = ROOT / "backend/tests/test_provider_runtime_state_transactions.py"
+transaction_source = transaction_tests.read_text()
+old_replacement_setup = '''    db_path = tmp_path / "replacement-rollback.sqlite3"\n    monkeypatch.setattr(database, "DB_PATH", db_path)\n    store = ProviderRuntimeStateStore()\n'''
+new_replacement_setup = '''    db_path = tmp_path / "replacement-rollback.sqlite3"\n    monkeypatch.setattr(database, "DB_PATH", db_path)\n    await database.init_db()\n    store = ProviderRuntimeStateStore()\n'''
+if old_replacement_setup not in transaction_source:
+    raise RuntimeError("runtime-state replacement transaction setup changed")
+transaction_source = transaction_source.replace(old_replacement_setup, new_replacement_setup, 1)
+old_marker_call = '''        await db.commit()\n\n    await ProviderRuntimeStateStore().initialize()\n\n    async with aiosqlite.connect(db_path) as db:\n'''
+new_marker_call = '''        await db.commit()\n\n    await database.init_db()\n    await ProviderRuntimeStateStore().initialize()\n\n    async with aiosqlite.connect(db_path) as db:\n'''
+if old_marker_call not in transaction_source:
+    raise RuntimeError("migration marker runtime-state setup changed")
+transaction_source = transaction_source.replace(old_marker_call, new_marker_call, 1)
+transaction_tests.write_text(transaction_source)
