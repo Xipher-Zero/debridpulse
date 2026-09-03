@@ -11,15 +11,19 @@ def _normalized_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).casefold()
 
 
-def _locked_runtime_packages() -> dict[str, str]:
+def _locked_packages(path: Path) -> dict[str, str]:
     packages: dict[str, str] = {}
-    for raw_line in (REPO_ROOT / "backend/requirements.txt").read_text().splitlines():
+    for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith(("#", "--")):
             continue
         name, version = line.split("==", 1)
         packages[_normalized_name(name)] = version.split(";", 1)[0].strip()
     return packages
+
+
+def _locked_runtime_packages() -> dict[str, str]:
+    return _locked_packages(REPO_ROOT / "backend/requirements.txt")
 
 
 def _runtime_license_manifest() -> dict:
@@ -35,6 +39,12 @@ def test_runtime_license_inventory_matches_lock_exactly():
         for item in manifest["packages"]
     }
     assert inventoried == _locked_runtime_packages()
+
+
+def test_dev_lock_contains_every_exact_runtime_dependency():
+    runtime = _locked_runtime_packages()
+    development = _locked_packages(REPO_ROOT / "backend/requirements-dev.txt")
+    assert {name: development.get(name) for name in runtime} == runtime
 
 
 def test_human_runtime_license_inventory_covers_machine_manifest_exact_versions():
