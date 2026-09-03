@@ -1,0 +1,64 @@
+name: Second-Pass DBARCH-001 Remediation
+
+on:
+  push:
+    branches: ['1.0.12']
+    paths:
+      - '.github/remediation_dbarch001.py'
+      - '.github/workflows/remediation-dbarch001.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  remediate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Apply centralized schema authority remediation
+        run: python .github/remediation_dbarch001.py
+      - name: Install backend test dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt ruff
+      - name: Run DBARCH and persistence migration regressions
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_second_pass_dbarch001.py \
+            tests/test_database_migration_ownership.py \
+            tests/test_database_schema.py \
+            tests/test_provider_runtime_state.py \
+            tests/test_provider_runtime_state_maintenance.py \
+            tests/test_provider_runtime_state_metadata.py \
+            tests/test_provider_runtime_state_provider_isolation.py \
+            tests/test_provider_runtime_state_transactions.py \
+            tests/test_universal_migration.py \
+            tests/test_application_runtime.py \
+            tests/test_canonical_runtime_architecture.py
+      - name: Static ownership checks
+        run: |
+          set -euo pipefail
+          ruff check backend/db/database.py backend/transfers/repository.py backend/integrations/runtime_state.py backend/tests/test_second_pass_dbarch001.py --select F821,F822,F823
+          python -m compileall -q backend/db backend/transfers backend/integrations backend/tests/test_second_pass_dbarch001.py
+          git diff --check
+      - name: Commit coherent DBARCH-001 correction
+        run: |
+          set -euo pipefail
+          rm .github/remediation_dbarch001.py
+          rm .github/workflows/remediation-dbarch001.yml
+          git config user.name debridpulse-remediation
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: centralize sqlite schema mutation authority'
+          git push origin HEAD:1.0.12
