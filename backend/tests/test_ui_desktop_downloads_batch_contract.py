@@ -25,12 +25,12 @@ def test_downloads_desktop_filter_contract_and_details_removal():
     assert "onclick.includes('showDetail(')" in runtime
 
 
-def test_downloads_desktop_column_rebalance_expands_progress():
+def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_progress():
     css = read("ui-downloads-desktop.css")
     assert "nth-child(2) { width: 25%; }" in css
-    assert "nth-child(3) { width: 8%; }" in css
+    assert "nth-child(3) { width: 13%; }" in css
     assert "nth-child(4) { width: 13%; }" in css
-    assert "nth-child(5) { width: 25%; }" in css
+    assert "nth-child(5) { width: 20%; }" in css
     assert "nth-child(7) { width: 8%; }" in css
     assert "nth-child(8) { width: 190px; }" in css
     assert "table-layout: fixed" in css
