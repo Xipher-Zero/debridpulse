@@ -10,6 +10,7 @@ import pytest
 import db.database as database
 import services.db_maintenance as db_maintenance
 from fake_integrations import MemoryExecutor
+from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
 from transfers.input_required import auth_required, username_password
 from transfers.models import (
@@ -36,6 +37,10 @@ class AcceptanceAuthProvider:
             frozenset({Capability.RESOLVE}),
             request_types=frozenset({"acceptance-auth"}),
         )
+
+    @property
+    def applicability(self):
+        return ProviderApplicability()
 
     async def resolve(self, request):
         return ResolutionResult(ResourceState.UNKNOWN, input_required=auth_required(username_password()))

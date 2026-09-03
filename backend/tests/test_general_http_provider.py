@@ -7,6 +7,7 @@ import pytest
 from integrations.definition import IntegrationEnvironment, IntegrationSettings
 from providers.general_http.definition import definition
 from providers.general_http.provider import GeneralHttpProvider
+from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, TransferError
 from transfers.models import Capability, IntegrationDescriptor, TransferRequest
 from transfers.registry import IntegrationRegistry
@@ -19,6 +20,10 @@ class StubHttpProvider:
             identity, identity, frozenset({Capability.RESOLVE}),
             request_types=frozenset({"http", "https"}), enabled=enabled, priority=priority,
         )
+
+    @property
+    def applicability(self):
+        return ProviderApplicability(generic_schemes=frozenset({"http", "https"}))
 
     async def resolve(self, request):
         raise AssertionError("routing tests must not execute providers")

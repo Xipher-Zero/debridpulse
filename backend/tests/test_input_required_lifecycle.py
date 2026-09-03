@@ -9,6 +9,7 @@ import pytest_asyncio
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers import codec
+from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
 from transfers.input_required import (InputSubmissionRejected, auth_required, username_password, username_private_key, validate_submission)
 from transfers.models import (
@@ -27,6 +28,10 @@ class AuthParcelProvider:
                                                 request_types=frozenset({"auth-parcel"}))
         self.resolve_calls = 0
         self.continuation_calls = 0
+
+    @property
+    def applicability(self):
+        return ProviderApplicability()
 
     async def resolve(self, request):
         self.resolve_calls += 1
@@ -48,6 +53,10 @@ class StaticProvider:
         self.scheme = scheme
         self.descriptor = IntegrationDescriptor("static-parcel", "Static parcel", frozenset({Capability.RESOLVE}),
                                                 request_types=frozenset({"key-parcel"}))
+
+    @property
+    def applicability(self):
+        return ProviderApplicability()
 
     async def resolve(self, request):
         candidate = TransferCandidate("key.bin", (Endpoint(self.scheme, self.scheme + ":payload"),), expected_bytes=4,
@@ -303,6 +312,11 @@ async def test_existing_sibling_execution_remains_observed_while_provider_challe
         def __init__(self):
             self.descriptor = IntegrationDescriptor("mixed", "Mixed", frozenset({Capability.RESOLVE}),
                                                     request_types=frozenset({"mixed"}))
+
+        @property
+        def applicability(self):
+            return ProviderApplicability()
+
         async def resolve(self, request):
             if request.payload == "needs-auth":
                 return ResolutionResult(ResourceState.UNKNOWN, input_required=auth_required(username_password()))

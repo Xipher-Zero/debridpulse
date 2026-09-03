@@ -2,6 +2,7 @@
 from dataclasses import replace
 from pathlib import Path
 
+from transfers.applicability import ProviderApplicability
 from transfers.models import (
     Capability, CleanupDirective, Endpoint, ExecutionHandle, ExecutionObservation,
     ExecutionState, IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
@@ -24,6 +25,10 @@ class ParcelProvider:
         self.cleanup_response = TransferOutcome(OutcomeKind.SUCCESS)
         self.entered = None
         self.release = None
+
+    @property
+    def applicability(self):
+        return ProviderApplicability()
 
     def candidate(self, name="payload.bin", *, payload="parcel"):
         return TransferCandidate(name, (Endpoint("memory", f"memory:{payload}"),), expected_bytes=4,
