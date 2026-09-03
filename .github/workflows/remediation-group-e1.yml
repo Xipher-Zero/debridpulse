@@ -32,7 +32,8 @@ jobs:
           python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
       - name: E1 ownership and surrounding UI contracts
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          status=0
           PYTHONPATH=backend pytest -q \
             backend/tests/test_uiarch001_e1_ownership.py \
             backend/tests/test_ui_runtime_architecture_contract.py \
@@ -45,7 +46,17 @@ jobs:
             backend/tests/test_ui_shell_seam_contract.py \
             backend/tests/test_ui_shell_signal_field_contract.py \
             backend/tests/test_ui_provider_status_contract.py \
-            backend/tests/test_v1111_canonical_frontend_contract.py
+            backend/tests/test_v1111_canonical_frontend_contract.py \
+            2>&1 | tee .github/e1-focused-gate-failure.txt || status=$?
+          if [ "$status" -ne 0 ]; then
+            git config user.name debridpulse-remediation
+            git config user.email actions@users.noreply.github.com
+            git add .github/e1-focused-gate-failure.txt
+            git commit -m 'chore: capture E1 focused gate failure'
+            git push origin HEAD:1.0.12
+            exit "$status"
+          fi
+          rm -f .github/e1-focused-gate-failure.txt
       - name: Inspect residual correction-runtime contracts
         run: |
           set -euo pipefail
