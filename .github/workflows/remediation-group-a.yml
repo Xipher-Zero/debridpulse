@@ -19,8 +19,10 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
-      - name: Apply remediation
-        run: python .github/remediation-group-a.py
+      - name: Apply remediation and contract correction
+        run: |
+          python .github/remediation-group-a.py
+          python .github/remediation-group-a-contract.py
       - name: Install test dependencies
         run: pip install -r backend/requirements-dev.txt
       - name: Focused adversarial and surrounding regression tests
@@ -29,14 +31,14 @@ jobs:
       - name: Compile and undefined-name checks
         working-directory: backend
         run: |
-          python -m compileall -q transfers tests/test_audit_remediation_group_a.py
-          ruff check transfers tests/test_audit_remediation_group_a.py --select F821,F822,F823
+          python -m compileall -q transfers tests/test_audit_remediation_group_a.py tests/test_universal_lifecycle.py
+          ruff check transfers tests/test_audit_remediation_group_a.py tests/test_universal_lifecycle.py --select F821,F822,F823
       - name: Commit coherent Group A remediation
         run: |
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
-          git rm .github/workflows/remediation-group-a.yml .github/remediation-group-a.py
-          git add backend/transfers/engine.py backend/transfers/registry.py backend/transfers/repository.py backend/tests/test_audit_remediation_group_a.py
+          git rm .github/workflows/remediation-group-a.yml .github/remediation-group-a.py .github/remediation-group-a-contract.py
+          git add backend/transfers/engine.py backend/transfers/registry.py backend/transfers/repository.py backend/tests/test_audit_remediation_group_a.py backend/tests/test_universal_lifecycle.py
           git diff --cached --check
           git commit -m 'fix: isolate provider routes and enforce provenance authority'
           git push origin HEAD:1.0.12
