@@ -1,0 +1,135 @@
+name: Candidate Runtime Qualification
+
+on:
+  push:
+    branches:
+      - '1.0.12'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact event revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          test "$(tr -d '\r\n' < VERSION)" = "1.0.12"
+          echo "revision=$actual"
+
+      - name: Build exact candidate runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg APP_VERSION=1.0.12 \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --tag "local/debridpulse-runtime:${GITHUB_SHA}" \
+            .
+
+      - name: Qualify non-root runtime, writable paths, app, archive, HTTP, and providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="local/debridpulse-runtime:${GITHUB_SHA}"
+          container="debridpulse-candidate-runtime"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+
+          docker run --detach \
+            --name "$container" \
+            --env PUID=99 \
+            --env PGID=100 \
+            --env CONFIG_PATH=/app/config/config.json \
+            --env DB_PATH=/app/data/debridpulse.db \
+            "$image"
+
+          healthy=0
+          for _ in $(seq 1 40); do
+            if docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/health > /tmp/dp-health.json; then
+              healthy=1
+              break
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then
+            docker inspect "$container" || true
+            docker logs "$container" || true
+            exit 1
+          fi
+
+          echo 'Verifying effective non-root application identity'
+          uid="$(docker exec "$container" sh -c "awk '/^Uid:/ {print \$2}' /proc/1/status")"
+          gid="$(docker exec "$container" sh -c "awk '/^Gid:/ {print \$2}' /proc/1/status")"
+          test "$uid" = "99"
+          test "$gid" = "100"
+
+          echo 'Verifying runtime paths are writable by the application identity'
+          docker exec --user 99:100 "$container" sh -c '
+            set -eu
+            printf runtime > /app/data/.candidate-write
+            printf runtime > /app/config/.candidate-write
+            printf runtime > /download/.candidate-write
+            rm /app/data/.candidate-write /app/config/.candidate-write /download/.candidate-write
+          '
+
+          echo 'Verifying application and OCI identity'
+          health="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/health)"
+          test "$(jq -r '.version // empty' <<< "$health")" = "1.0.12"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "1.0.12"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GITHUB_SHA"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.title" }}')" = "DebridPulse: Universal Transfer Manager"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" = "https://github.com/Xipher-Zero/debridpulse"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = "GPL-2.0-or-later"
+
+          echo 'Verifying provider-specific HTTP status surface does not synthesize generic health'
+          provider_status="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/integration-status/alldebrid)"
+          test "$(jq -r '.integration // empty' <<< "$provider_status")" = "alldebrid"
+          case "$(jq -r '.state // empty' <<< "$provider_status")" in
+            disabled|unconfigured|auth_required|healthy|unhealthy) ;;
+            *) echo "Unexpected AllDebrid runtime state: $provider_status"; exit 1 ;;
+          esac
+
+          echo 'Verifying deterministic production provider contracts inside the image'
+          docker exec --user 99:100 "$container" python -c '
+          import asyncio
+          from providers.general_http.provider import GeneralHttpProvider
+          from transfers.models import TransferRequest
+          async def main():
+              provider = GeneralHttpProvider()
+              result = await provider.resolve(TransferRequest("https", "https://downloads.example/file.bin", name="file.bin"))
+              assert len(result.candidates) == 1
+              candidate = result.candidates[0]
+              assert candidate.provider_id == "general_http"
+              assert candidate.endpoints[0].scheme == "https"
+              assert candidate.endpoints[0].address == "https://downloads.example/file.bin"
+          asyncio.run(main())
+          '
+
+          echo 'Verifying archive runtime and RAR capability'
+          docker exec "$container" dpkg-query -W 7zip 7zip-rar aria2 gosu
+          docker exec "$container" sh -c '7z i | grep -qi rar'
+          docker exec --user 99:100 "$container" sh -c '
+            set -eu
+            rm -rf /tmp/debridpulse-candidate-7z
+            mkdir -p /tmp/debridpulse-candidate-7z/input /tmp/debridpulse-candidate-7z/output
+            printf "candidate-runtime\n" > /tmp/debridpulse-candidate-7z/input/payload.txt
+            (cd /tmp/debridpulse-candidate-7z/input && 7z a -bd -y ../archive.7z payload.txt >/dev/null)
+            7z x -bd -y /tmp/debridpulse-candidate-7z/archive.7z -o/tmp/debridpulse-candidate-7z/output >/dev/null
+            grep -q candidate-runtime /tmp/debridpulse-candidate-7z/output/payload.txt
+          '
+
+          echo 'Candidate runtime qualification passed'
