@@ -9,8 +9,34 @@ permissions:
   contents: write
 
 jobs:
-  probe:
+  apply:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe write-capable runner
-        run: echo remediation-write-runner-ok
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: 1.0.12
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Apply remediation
+        run: python .github/remediation-group-a.py
+      - name: Install test dependencies
+        run: pip install -r backend/requirements-dev.txt
+      - name: Focused adversarial and surrounding regression tests
+        working-directory: backend
+        run: python -m pytest tests/test_audit_remediation_group_a.py tests/test_initial_provider_routing.py tests/test_route_provider_provenance.py tests/test_route_provider_provenance_audit.py tests/test_universal_lifecycle.py -q --tb=short
+      - name: Compile and undefined-name checks
+        working-directory: backend
+        run: |
+          python -m compileall -q transfers tests/test_audit_remediation_group_a.py
+          ruff check transfers tests/test_audit_remediation_group_a.py --select F821,F822,F823
+      - name: Commit coherent Group A remediation
+        run: |
+          git config user.name debridpulse-remediation
+          git config user.email actions@users.noreply.github.com
+          git rm .github/workflows/remediation-group-a.yml .github/remediation-group-a.py
+          git add backend/transfers/engine.py backend/transfers/registry.py backend/transfers/repository.py backend/tests/test_audit_remediation_group_a.py
+          git diff --cached --check
+          git commit -m 'fix: isolate provider routes and enforce provenance authority'
+          git push origin HEAD:1.0.12
