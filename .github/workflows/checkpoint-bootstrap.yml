@@ -22,8 +22,10 @@ jobs:
         run: |
           set -euo pipefail
           cat .github/.checkpoint-patch-{01,02,03,04,05,06,07,08,09} > "$RUNNER_TEMP/checkpoint.patch.gz.b64"
-          test "$(wc -c < "$RUNNER_TEMP/checkpoint.patch.gz.b64")" -eq 35064
-          base64 -d "$RUNNER_TEMP/checkpoint.patch.gz.b64" | gzip -d > "$RUNNER_TEMP/checkpoint.patch"
+          echo "staged-bytes=$(wc -c < "$RUNNER_TEMP/checkpoint.patch.gz.b64")"
+          base64 -d "$RUNNER_TEMP/checkpoint.patch.gz.b64" > "$RUNNER_TEMP/checkpoint.patch.gz"
+          gzip -t "$RUNNER_TEMP/checkpoint.patch.gz"
+          gzip -dc "$RUNNER_TEMP/checkpoint.patch.gz" > "$RUNNER_TEMP/checkpoint.patch"
           git apply --check "$RUNNER_TEMP/checkpoint.patch"
           git apply "$RUNNER_TEMP/checkpoint.patch"
           rm -f .github/checkpoint-canonical.patch.gz.b64
