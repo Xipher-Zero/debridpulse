@@ -17,7 +17,7 @@ def test_quick_start_is_rewritten_for_normal_application_users():
 
     required_orientation = (
         "Getting started with DebridPulse",
-        "DebridPulse is the application you use to submit, track, and manage downloads.",
+        "DebridPulse is the application you use to submit, route, track, and manage downloads.",
         "AllDebrid is the online service",
         "API key is a private credential",
         "aria2 is the component that performs the actual file transfer.",

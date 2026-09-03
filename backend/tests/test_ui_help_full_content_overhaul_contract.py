@@ -22,7 +22,7 @@ def test_how_it_works_explains_current_multi_stage_pipeline_without_legacy_fixed
     for phrase in (
         "How DebridPulse moves a download",
         "1. Intake",
-        "2. Provider preparation",
+        "2. Provider resolution",
         "3. Transfer planning",
         "4. aria2 delivery",
         "5. Verification and finish",
