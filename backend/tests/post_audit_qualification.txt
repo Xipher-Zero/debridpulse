@@ -1,4 +1,5 @@
 # Permanent focused post-audit v1.0.12 six-finding qualification gate.
+# Frozen-candidate push marker: changes to the qualified tree require qualification from zero.
 # ROUTE-001 + CORE-001
 tests/test_audit_remediation_group_a.py
 # STATE-001
