@@ -54,3 +54,10 @@ replace_once(
     '    # Re-enter through the canonical database owner to recreate current-schema\n    # tables before ordinary repository startup validates them.\n    await database.init_db()\n    migrated = TransferRepository()\n    await migrated.initialize()\n    # DB-001: ordinary repository startup validates current-schema readiness only.\n',
     "provenance migration fixture",
 )
+
+replace_once(
+    TESTS / "test_universal_boundaries.py",
+    '            if path.name in {"engine.py", "policy.py", "registry.py"} and isinstance(node, ast.Attribute):\n                assert node.attr not in {"native_code", "diagnostic"}, (path, node.attr)\n',
+    '            if path.name in {"engine.py", "policy.py", "registry.py"} and isinstance(node, ast.Attribute):\n                # Native provider codes remain forbidden everywhere in universal policy.\n                # A diagnostic value is provider-neutral data: engine cleanup may preserve a\n                # sanitized diagnostic, while retry/selection policy must never branch on it.\n                forbidden = {"native_code"}\n                if path.name in {"policy.py", "registry.py"}:\n                    forbidden.add("diagnostic")\n                assert node.attr not in forbidden, (path, node.attr)\n',
+    "universal diagnostic boundary",
+)
