@@ -37,16 +37,6 @@
     syncNavigationState();
   }
 
-  function normalizeActivityNaming() {
-    const navLabel = document.querySelector('#sidebar .nav-item[data-view="events"] .nav-label');
-    if (navLabel && navLabel.textContent.trim() === 'Event Log') navLabel.textContent = 'Activity Log';
-
-    const cardTitle = document.querySelector('#view-events .card-title');
-    if (cardTitle && cardTitle.textContent.trim() === 'Event Log') cardTitle.textContent = 'Activity Log';
-
-    const pageTitle = document.getElementById('page-title');
-    if (pageTitle && pageTitle.textContent.trim() === 'Event Log') pageTitle.textContent = 'Activity Log';
-  }
 
 
   function syncFilterGroup(group, label) {
@@ -152,47 +142,8 @@
     bindKeyboardActivation(close);
   }
 
-  function normalizeDownloadsLegacyPresentation() {
-    const pagination = document.getElementById('torrent-pagination');
-    if (!pagination) return;
-    /* The old static markup painted a divider inline. The Downloads page now
-       owns footer geometry and intentionally has no separator, so remove the
-       legacy inline source instead of fighting it with a CSS !important. */
-    pagination.style.removeProperty('border-top');
-  }
 
-  function normalizeProviderPremiumLabel() {
-    const label = document.getElementById('lbl-premium');
-    if (!label || label.querySelector('.dp-provider-premium-until')) return;
 
-    const raw = (label.textContent || '').replace(/\s+/g, ' ').trim();
-    const match = raw.match(/^Premium until (\d{2}\.\d{2}\.\d{4}) \((\d+) days(?: remaining)?\)$/i);
-    if (!match) return;
-
-    const until = document.createElement('span');
-    until.className = 'dp-provider-premium-until';
-    until.textContent = 'AllDebrid Premium until ' + match[1];
-
-    const remaining = document.createElement('span');
-    remaining.className = 'dp-provider-premium-days';
-    remaining.textContent = '(' + match[2] + ' days remaining)';
-
-    label.replaceChildren(until, remaining);
-  }
-
-  function installProviderStatusPresentation() {
-    const label = document.getElementById('lbl-premium');
-    if (!label) return;
-    normalizeProviderPremiumLabel();
-
-    if (label.dataset.dpProviderObserved === '1') return;
-    label.dataset.dpProviderObserved = '1';
-    new MutationObserver(normalizeProviderPremiumLabel).observe(label, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
-  }
 
   /* ── Universal select dropdowns ──────────────────────────────────────── */
   function shouldEnhanceSelect(select) {
@@ -643,7 +594,6 @@
 
     document.addEventListener('debridpulse:navigation', function () {
       queueMicrotask(function () {
-        normalizeActivityNaming();
         installNavigationSemantics();
         installFilterSemantics();
         installTabSemantics();
@@ -662,13 +612,10 @@
 
   function initializeAccessibilityContract() {
     installNavigationSemantics();
-    normalizeActivityNaming();
     installFilterSemantics();
     installTabSemantics();
     installDashboardErrorCardSemantics();
     installModalCloseSemantics();
-    normalizeDownloadsLegacyPresentation();
-    installProviderStatusPresentation();
     installUniversalSelectDropdowns();
     installAccessibilityLifecycle();
   }

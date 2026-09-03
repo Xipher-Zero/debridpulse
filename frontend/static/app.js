@@ -76,7 +76,7 @@ function nav(el) {
   }
 
   const titles = {
-    dashboard:'Dashboard', torrents:'Downloads', events:'Event Log',
+    dashboard:'Dashboard', torrents:'Downloads', events:'Activity Log',
     stats:'Statistics', settings:'Settings', help:'Help & License',
   };
   const subtitles = {
@@ -2157,8 +2157,8 @@ function _updatePremiumLabel(r) {
   const mm = String(d.getMonth()+1).padStart(2,'0');
   const yyyy = d.getFullYear();
   const days = Math.ceil((d - Date.now()) / 86400000);
-  const daysLabel = days > 0 ? `${days} days` : 'expired';
-  lbl.innerHTML = `Premium until ${dd}.${mm}.${yyyy} (${daysLabel})`;
+  const daysLabel = days > 0 ? `(${days} days remaining)` : '(expired)';
+  lbl.innerHTML = `<span class="dp-provider-premium-until">AllDebrid Premium until ${dd}.${mm}.${yyyy}</span><span class="dp-provider-premium-days">${daysLabel}</span>`;
   row.style.display = '';
 }
 

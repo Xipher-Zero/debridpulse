@@ -72,54 +72,54 @@ body.dp-v11-structural #sidebar .sidebar-footer #premium-row[style*="display: no
 
 body.dp-v11-structural #sidebar .sidebar-footer #premium-row:not([style*="display:none"]):not([style*="display: none"]) {
   display: flex !important;
-  width: 100%;
   align-items: center !important;
   justify-content: center !important;
-  gap: 10px !important;
-  margin: 0 0 6px !important;
+  gap: 5px !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin: 0 auto 6px !important;
   padding: 0 0 9px !important;
 }
 
 body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
   position: static !important;
-  grid-column: auto !important;
-  justify-self: auto !important;
+  inset: auto !important;
+  transform: none !important;
   flex: 0 0 36px !important;
   width: 36px !important;
   min-width: 36px !important;
   height: 36px !important;
-  margin: 0 !important;
-  top: auto !important;
+  margin: 0 -8px !important;
+  background-position: center !important;
   background-size: 36px 36px !important;
+  background-repeat: no-repeat !important;
 }
 
 body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium {
-  grid-column: auto !important;
   display: flex !important;
-  flex: 0 1 auto;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: auto !important;
-  max-width: 156px !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content !important;
+  max-width: none !important;
   margin: 0 !important;
-  white-space: normal !important;
   text-align: center !important;
+  white-space: normal !important;
   font-size: 10.5px !important;
   line-height: 1.38 !important;
   letter-spacing: -.012em !important;
 }
 
-/* The presentation runtime owns the complete visible copy so the two-line
-   subscription state is deterministic. Suppress the older CSS prefix. */
+/* app.js emits the complete two-line subscription state directly. */
 body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium::before {
   content: none !important;
 }
 
 body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-until,
 body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-days {
-  display: block;
-  white-space: nowrap;
+  display: block !important;
+  white-space: nowrap !important;
 }
 body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-premium-days {
   margin-top: 1px;

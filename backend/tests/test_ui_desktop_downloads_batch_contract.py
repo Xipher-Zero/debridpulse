@@ -35,7 +35,8 @@ def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_prog
 
 
 def test_provider_subscription_is_one_centered_crown_and_copy_unit():
-    css = read("ui-shell-provider-status-v2.css")
+    css = read("ui-shell-provider-status.css")
+    assert not (STATIC / "ui-shell-provider-status-v2.css").exists()
     assert "display: flex !important" in css
     assert "justify-content: center !important" in css
     assert "gap: 5px !important" in css
@@ -47,7 +48,6 @@ def test_provider_subscription_is_one_centered_crown_and_copy_unit():
     assert "transform: none !important" in css
     assert ".dp-provider-premium-days" in css
     assert "white-space: nowrap !important" in css
-
 
 def test_detail_modal_scrolls_inside_frame_with_thicker_scrollbar():
     css = read("ui-modal-contract.css")
@@ -64,12 +64,11 @@ def test_new_contract_layers_live_in_correct_cascade_sections():
     style = read("style-v11.css")
     modal = style.index("ui-modal-contract.css?v=25")
     shell = style.index("ui-shell.css?v=21")
-    provider_base = style.index("ui-shell-provider-status.css?v=24")
-    provider_v2 = style.index("ui-shell-provider-status-v2.css?v=28")
+    provider = style.index("ui-shell-provider-status.css?v=24")
     downloads_base = style.index("ui-downloads-page.css?v=28")
     downloads_desktop = style.index("ui-downloads-desktop.css?v=28")
     transfer = style.index("ui-transfer-contract.css?v=31")
-
-    assert modal < shell
-    assert provider_base < provider_v2
+    assert modal < shell < provider
     assert downloads_base < downloads_desktop < transfer
+    assert "ui-shell-provider-status-v2.css" not in style
+    assert style.count("ui-shell-provider-status.css") == 1

@@ -130,26 +130,20 @@ def test_accepted_authentication_structure_and_copy_exist_independent_of_layerin
 
 def test_cross_cutting_accessibility_runtime_remains_semantic_and_io_free() -> None:
     source = read(A11Y_RUNTIME)
-
     required = (
-        "aria-current",
-        "aria-pressed",
-        "role', 'group'",
-        "role', 'tablist'",
-        "role', 'tab'",
-        "ArrowRight",
-        "ArrowLeft",
-        "Home",
-        "End",
-        "View downloads with errors",
-        "Close details",
+        "aria-current", "aria-pressed", "role', 'group'", "role', 'tablist'",
+        "role', 'tab'", "ArrowRight", "ArrowLeft", "Home", "End",
+        "View downloads with errors", "Close details", "dp-dropdown-shell",
     )
     missing = [fragment for fragment in required if fragment not in source]
     assert not missing, f"Accessibility semantics are missing: {missing}"
-
-    for forbidden in ("fetch(", "/api/", "XMLHttpRequest", "EventSource"):
+    for forbidden in (
+        "fetch(", "/api/", "XMLHttpRequest", "EventSource",
+        "normalizeActivityNaming", "normalizeDownloadsLegacyPresentation",
+        "normalizeProviderPremiumLabel", "installProviderStatusPresentation",
+        "dpProviderObserved", "lbl-premium", "torrent-pagination",
+    ):
         assert forbidden not in source
-
 
 def test_error_semantics_startup_is_bounded_and_not_busy_polled():
     source = ERROR_RUNTIME.read_text()

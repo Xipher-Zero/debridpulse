@@ -97,7 +97,6 @@ def test_v11_cache_generations_remain_targeted() -> None:
         "/ui-shell.css": "21",
         "/ui-shell-structural.css": "30",
         "/ui-shell-provider-status.css": "24",
-        "/ui-shell-provider-status-v2.css": "28",
         "/ui-utility-controls.css": "23",
         "/ui-statistics-page.css": "22",
         "/ui-activity-log-page.css": "30",
@@ -113,6 +112,7 @@ def test_v11_cache_generations_remain_targeted() -> None:
     }
     for path, version in expected.items():
         assert generations[path] == version
+    assert "/ui-shell-provider-status-v2.css" not in generations
 
 
 

@@ -50,7 +50,8 @@ def test_dashboard_recover_all_uses_exact_activity_refresh_utility_geometry() ->
     assert ".dp-activity-refresh .dp-utility-icon" in controls
 
 def test_provider_premium_group_centers_visible_crown_and_copy_as_one_block() -> None:
-    css = read("ui-shell-provider-status-v2.css")
+    css = read("ui-shell-provider-status.css")
+    assert not (STATIC / "ui-shell-provider-status-v2.css").exists()
     assert "display: flex !important" in css
     assert "width: max-content !important" in css
     assert "margin: 0 auto 6px !important" in css
