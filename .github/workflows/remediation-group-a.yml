@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'chore: stage remediation group A'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -47,7 +46,7 @@ jobs:
           replace_once(
               'backend/transfers/repository.py',
               '''    async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:\n''',
-              '''    async def bound_route_provider(self, request_id: str) -> str | None:\n        """Return the provider that owns the current durable route for a request.\n\n        This reads route provenance only; it never reclassifies the source.\n        """\n        async with get_db() as db:\n            row = await db.fetchone(\n                """SELECT a.provider_id FROM route_attempt_provenance p\n                JOIN resolution_attempts a ON a.id=p.resolution_attempt_id\n                WHERE a.request_id=? ORDER BY p.ordinal DESC,a.updated_at DESC,a.id DESC LIMIT 1""",\n                (request_id,),\n            )\n        return str(row["provider_id"]) if row and row.get("provider_id") else None\n\n    async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:\n''',
+              '''    async def bound_route_provider(self, request_id: str) -> str | None:\n        """Return the provider that owns the current durable route for a request.\n\n        This reads route provenance only; it never reclassifies the source.\n        """\n        async with get_db() as db:\n            row = await db.fetchone(\n                """SELECT a.provider_id FROM route_attempt_provenance p\n                JOIN resolution_attempts a ON a.id=p.resolution_attempt_id\n                WHERE a.request_id=? ORDER BY p.ordinal DESC LIMIT 1""",\n                (request_id,),\n            )\n        return str(row["provider_id"]) if row and row.get("provider_id") else None\n\n    async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:\n''',
           )
           replace_once(
               'backend/transfers/repository.py',
@@ -122,9 +121,6 @@ async def test_retry_stays_bound_when_fresh_selection_would_choose_other_provide
     await c.engine.resolve_pending()
     assert [call for call in c.first.calls if call[0] == 'resolve']
     assert not [call for call in c.second.calls if call[0] == 'resolve']
-
-    # Disable the bound provider. A fresh global decision would choose B, but
-    # ordinary retry must preserve A and fail/wait inside that route instead.
     c.first.descriptor = replace(c.first.descriptor, enabled=False)
     await c.engine.resolve_pending()
     assert not [call for call in c.second.calls if call[0] == 'resolve']
@@ -150,9 +146,6 @@ async def test_restart_recovers_bound_provider_without_reclassification(tmp_path
     c.first.responses = [ResolutionResult(ResourceState.UNKNOWN, error=retryable_failure())]
     transfer = await c.engine.submit((TransferRequest('parcel', 'box', name='payload.bin'),), deduplicate=False)
     await c.engine.resolve_pending()
-
-    # Make B the provider a fresh selection would prefer, then restart. The
-    # persisted route still owns A.
     c.first.descriptor = replace(c.first.descriptor, priority=0)
     c.second.descriptor = replace(c.second.descriptor, priority=100)
     restarted = TransferEngine(TransferRepository(), c.registry, download_root=c.engine.root,
