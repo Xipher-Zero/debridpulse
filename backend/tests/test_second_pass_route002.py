@@ -1,37 +1,4 @@
-from pathlib import Path
-
-
-def replace_once(path: str, old: str, new: str) -> None:
-    p = Path(path)
-    text = p.read_text()
-    if text.count(old) != 1:
-        raise SystemExit(f"{path}: expected one match, got {text.count(old)}")
-    p.write_text(text.replace(old, new, 1))
-
-REGISTRY = "backend/transfers/registry.py"
-ENGINE = "backend/transfers/engine.py"
-GATE = "backend/tests/post_audit_qualification.txt"
-TEST = Path("backend/tests/test_second_pass_route002.py")
-
-replace_once(
-    REGISTRY,
-    '''    def provider_for_bound_route(self, provider_id: str, request: TransferRequest) -> Provider:\n        """Recover an existing route without reopening global provider selection.\n\n        Applicability is an initial-routing fact. Once selected, the durable route\n        remains authoritative across retries and restart. Enablement/health retain\n        their existing admitted-work semantics, but neither may select a replacement.\n        """\n        provider = self.providers.get(provider_id)\n        if (provider is None or Capability.RESOLVE not in provider.descriptor.capabilities\n                or request.kind not in provider.descriptor.request_types):\n            raise TransferError(NormalizedError(\n                Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,\n                retryability=Retryability.NEVER, integration_id=provider_id,\n            ))\n        if not provider.descriptor.enabled:\n            raise TransferError(NormalizedError(\n                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,\n                retryability=Retryability.NEVER, recovery=Recovery.FAIL,\n                integration_id=provider_id,\n            ))\n        if provider_id in self._unhealthy:\n            raise TransferError(NormalizedError(\n                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,\n                retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF,\n                integration_id=provider_id,\n            ))\n        return provider\n''',
-    '''    def _provider_for_bound_owner(self, provider_id: str, request: TransferRequest, *, require_health: bool) -> Provider:\n        provider = self.providers.get(provider_id)\n        if (provider is None or Capability.RESOLVE not in provider.descriptor.capabilities\n                or request.kind not in provider.descriptor.request_types):\n            raise TransferError(NormalizedError(\n                Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,\n                retryability=Retryability.NEVER, recovery=Recovery.FAIL, integration_id=provider_id,\n            ))\n        if not provider.descriptor.enabled:\n            # Administrative disablement is an explicit admitted-work hard stop;\n            # it never reopens provider competition for an existing route.\n            raise TransferError(NormalizedError(\n                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,\n                retryability=Retryability.NEVER, recovery=Recovery.FAIL,\n                integration_id=provider_id,\n            ))\n        if require_health and provider_id in self._unhealthy:\n            raise TransferError(NormalizedError(\n                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,\n                retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF,\n                integration_id=provider_id,\n            ))\n        return provider\n\n    def provider_for_bound_route(self, provider_id: str, request: TransferRequest) -> Provider:\n        """Recover an existing route without reopening global provider selection."""\n        return self._provider_for_bound_owner(provider_id, request, require_health=True)\n\n    def provider_for_bound_continuation(self, provider_id: str, request: TransferRequest) -> Provider:\n        """Continue provider-owned interaction through its persisted route owner.\n\n        Applicability and transient health can change while a human supplies input.\n        Neither fact is route ownership. Administrative disablement remains an\n        explicit hard stop, but no replacement provider is ever selected here.\n        """\n        return self._provider_for_bound_owner(provider_id, request, require_health=False)\n'''
-)
-
-replace_once(
-    ENGINE,
-    '''        eligible = {item.descriptor.id: item for item in self.registry.eligible_providers(record.request)}\n        provider = eligible.get(challenge.integration_id)\n        if not isinstance(provider, ProviderInputContinuation):\n            return\n        submitted = None\n        try:\n''',
-    '''        submitted = None\n        bound_provider_id = await self.repository.bound_route_provider(record.id)\n        try:\n            # ROUTE-002: initial classification chooses an owner; persisted route\n            # state owns every continuation. Never recalculate global eligibility.\n            if not bound_provider_id or bound_provider_id != challenge.integration_id:\n                raise TransferError(self._error(\n                    Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION, domain=Domain.LIFECYCLE,\n                    retryability=Retryability.NEVER, recovery=Recovery.FAIL,\n                    integration_id=bound_provider_id or challenge.integration_id,\n                ))\n            provider = self.registry.provider_for_bound_continuation(bound_provider_id, record.request)\n            if not isinstance(provider, ProviderInputContinuation):\n                raise TransferError(self._error(\n                    Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,\n                    retryability=Retryability.NEVER, recovery=Recovery.FAIL,\n                    integration_id=bound_provider_id,\n                ))\n'''
-)
-
-replace_once(
-    ENGINE,
-    '''            attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")\n            await self._apply_resolution(record, attempt, provider, result, challenge=challenge)\n        except Exception as exc:\n            secrets = submitted.secret_values() if submitted else ()\n            error = exc.error if isinstance(exc, TransferError) else unknown_failure(\n                exc, integration_id=challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)\n            attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")\n''',
-    '''            attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id, "input_required")\n            await self._apply_resolution(record, attempt, provider, result, challenge=challenge)\n        except Exception as exc:\n            secrets = submitted.secret_values() if submitted else ()\n            error = exc.error if isinstance(exc, TransferError) else unknown_failure(\n                exc, integration_id=bound_provider_id or challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)\n            attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id or challenge.integration_id, "input_required")\n'''
-)
-
-TEST.write_text(r'''"""Second-pass ROUTE-002 persisted route ownership contracts."""
+"""Second-pass ROUTE-002 persisted route ownership contracts."""
 from dataclasses import replace
 
 import pytest
@@ -213,10 +180,3 @@ async def test_route002_admin_disable_is_explicit_hard_stop_not_reroute(routed):
     current = await repository.get(transfer.id)
     assert current.state == TransferState.FAILED
     assert current.error and current.error.category.value == "provider_unavailable"
-''')
-
-replace_once(
-    GATE,
-    '# STATE-001 + STATE-002\ntests/test_audit_remediation_state.py\ntests/test_second_pass_state002.py\n',
-    '# STATE-001 + STATE-002 + ROUTE-002\ntests/test_audit_remediation_state.py\ntests/test_second_pass_state002.py\ntests/test_second_pass_route002.py\n',
-)

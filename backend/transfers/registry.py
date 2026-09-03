@@ -123,33 +123,42 @@ class IntegrationRegistry:
             ))
         return providers[0]
 
-    def provider_for_bound_route(self, provider_id: str, request: TransferRequest) -> Provider:
-        """Recover an existing route without reopening global provider selection.
-
-        Applicability is an initial-routing fact. Once selected, the durable route
-        remains authoritative across retries and restart. Enablement/health retain
-        their existing admitted-work semantics, but neither may select a replacement.
-        """
+    def _provider_for_bound_owner(self, provider_id: str, request: TransferRequest, *, require_health: bool) -> Provider:
         provider = self.providers.get(provider_id)
         if (provider is None or Capability.RESOLVE not in provider.descriptor.capabilities
                 or request.kind not in provider.descriptor.request_types):
             raise TransferError(NormalizedError(
                 Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,
-                retryability=Retryability.NEVER, integration_id=provider_id,
+                retryability=Retryability.NEVER, recovery=Recovery.FAIL, integration_id=provider_id,
             ))
         if not provider.descriptor.enabled:
+            # Administrative disablement is an explicit admitted-work hard stop;
+            # it never reopens provider competition for an existing route.
             raise TransferError(NormalizedError(
                 Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
                 retryability=Retryability.NEVER, recovery=Recovery.FAIL,
                 integration_id=provider_id,
             ))
-        if provider_id in self._unhealthy:
+        if require_health and provider_id in self._unhealthy:
             raise TransferError(NormalizedError(
                 Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
                 retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF,
                 integration_id=provider_id,
             ))
         return provider
+
+    def provider_for_bound_route(self, provider_id: str, request: TransferRequest) -> Provider:
+        """Recover an existing route without reopening global provider selection."""
+        return self._provider_for_bound_owner(provider_id, request, require_health=True)
+
+    def provider_for_bound_continuation(self, provider_id: str, request: TransferRequest) -> Provider:
+        """Continue provider-owned interaction through its persisted route owner.
+
+        Applicability and transient health can change while a human supplies input.
+        Neither fact is route ownership. Administrative disablement remains an
+        explicit hard stop, but no replacement provider is ever selected here.
+        """
+        return self._provider_for_bound_owner(provider_id, request, require_health=False)
 
     def eligible_executors(self, candidate: TransferCandidate) -> tuple[Executor, ...]:
         schemes = {endpoint.scheme for endpoint in candidate.endpoints}

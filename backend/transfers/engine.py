@@ -353,12 +353,24 @@ class TransferEngine:
             await self.challenges.clear(challenge)
             await self.inputs.clear(challenge.id)
             return
-        eligible = {item.descriptor.id: item for item in self.registry.eligible_providers(record.request)}
-        provider = eligible.get(challenge.integration_id)
-        if not isinstance(provider, ProviderInputContinuation):
-            return
         submitted = None
+        bound_provider_id = await self.repository.bound_route_provider(record.id)
         try:
+            # ROUTE-002: initial classification chooses an owner; persisted route
+            # state owns every continuation. Never recalculate global eligibility.
+            if not bound_provider_id or bound_provider_id != challenge.integration_id:
+                raise TransferError(self._error(
+                    Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION, domain=Domain.LIFECYCLE,
+                    retryability=Retryability.NEVER, recovery=Recovery.FAIL,
+                    integration_id=bound_provider_id or challenge.integration_id,
+                ))
+            provider = self.registry.provider_for_bound_continuation(bound_provider_id, record.request)
+            if not isinstance(provider, ProviderInputContinuation):
+                raise TransferError(self._error(
+                    Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
+                    retryability=Retryability.NEVER, recovery=Recovery.FAIL,
+                    integration_id=bound_provider_id,
+                ))
             # Waiting for input releases provider capacity. Reacquire the normal
             # resolution slot before consuming the transient secret bundle so
             # continuation cannot bypass provider concurrency or retain secrets
@@ -370,13 +382,13 @@ class TransferEngine:
                 if submitted is None:
                     return
                 result = await provider.resolve_with_input(record.request, submitted)
-            attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")
+            attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id, "input_required")
             await self._apply_resolution(record, attempt, provider, result, challenge=challenge)
         except Exception as exc:
             secrets = submitted.secret_values() if submitted else ()
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
-                exc, integration_id=challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)
-            attempt = ResolutionAttempt(challenge.operation_id, record.id, challenge.integration_id, "input_required")
+                exc, integration_id=bound_provider_id or challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)
+            attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id or challenge.integration_id, "input_required")
             await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
             await self.challenges.clear(challenge)
             await self._request_failure(record, error, attempts=record.attempts + 1)
