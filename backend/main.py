@@ -38,16 +38,53 @@ configure_logging(
     bool(getattr(_log_cfg, "log_pretty", False)),
     getattr(_log_cfg, "log_format", "plain"),
 )
-logger = logging.getLogger("alldebrid.main")
+logger = logging.getLogger("debridpulse.main")
 
 # persistence initialization on startup
 
 
+async def _prepare_startup_settings_and_migrate():
+    """Establish one sanitized settings authority before migration decisions.
+
+    v1.0.12 migration can mint durable executor mutation authority, so it must
+    never interpret a stale pre-sanitization ``aria2_mode``.  Keep the legacy
+    tolerant load/repair behavior, but fail closed if a safe effective settings
+    object cannot be established before the ownership-sensitive migration.
+    """
+    try:
+        from core.config import get_settings, apply_settings, save_settings
+        from core.config_validator import validate_and_sanitise
+
+        raw = get_settings()
+        cfg = validate_and_sanitise(raw)
+        if cfg is not raw:
+            save_settings(cfg)
+            apply_settings(cfg)
+    except Exception as exc:
+        detail = sanitize_exception(exc)
+        logger.error(
+            "Configuration validation failed before ownership-sensitive migration: %s",
+            detail,
+        )
+        raise RuntimeError(
+            "Configuration validation failed before ownership-sensitive migration"
+        ) from exc
+
+    from db.migrations.v112 import migrate
+    await migrate(
+        external_executor=cfg.aria2_mode == "external",
+        globally_paused=cfg.paused,
+    )
+    return cfg
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from core.config import get_settings as _gs
-    cfg = _gs()
+    # v1.0.12 migration owns database classification and the legacy backup
+    # boundary. No current initializer may touch a predecessor database first.
+    # Sanitized settings are authoritative before this ownership-sensitive step.
+    cfg = await _prepare_startup_settings_and_migrate()
+
     password_enabled = password_auth_enabled(cfg)
     oidc_enabled = oidc_auth_enabled(cfg)
     interactive_enabled = interactive_auth_enabled(cfg)
@@ -74,21 +111,6 @@ async def lifespan(app: FastAPI):
         if not oidc_auth_ready(cfg):
             logger.error("OpenID Connect is enabled but its local configuration is incomplete; OIDC is unavailable and protected access remains fail-closed unless another configured mechanism is usable")
 
-    try:
-        from core.config import get_settings, apply_settings, save_settings
-        from core.config_validator import validate_and_sanitise
-        raw = get_settings()
-        clean = validate_and_sanitise(raw)
-        if clean is not raw:
-            save_settings(clean)
-            apply_settings(clean)
-    except Exception as exc:
-        logger.warning("Config validation skipped due to error: %s", sanitize_exception(exc))
-
-    # v1.0.12 migration owns database classification and the legacy backup
-    # boundary. No current initializer may touch a predecessor database first.
-    from db.migrations.v112 import migrate
-    await migrate(external_executor=cfg.aria2_mode == "external", globally_paused=cfg.paused)
     from application.composition import application as default_application
     application = getattr(app.state, "application", default_application)
     app.state.application = application
@@ -182,8 +204,9 @@ except ValueError:
 app = FastAPI(
     title=APP_METADATA_TITLE,
     description=(
-        "Self-hosted debrid transfer manager for direct links, magnets, and torrent files. "
-        "V1 includes the AllDebrid provider backend.\n\n"
+        "Self-hosted DebridPulse runtime built around the Universal Transfer Core for "
+        "direct links, magnets, and torrent files. The current multi-provider model "
+        "includes AllDebrid and General HTTP(S) acquisition providers with aria2 execution.\n\n"
         "## API structure\n\n"
         "| Prefix | Description |\n"
         "|--------|-------------|\n"

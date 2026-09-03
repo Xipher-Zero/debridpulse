@@ -16,6 +16,8 @@ import re
 import time
 from typing import Any, Callable, Mapping
 
+import re2
+
 from core.logging_utils import sanitize_exception
 from integrations.runtime_state import RuntimeStateConflict, RuntimeStateRecord
 from transfers.applicability import (
@@ -30,8 +32,20 @@ HOST_SCHEMA_VERSION = "alldebrid-supported-hosts-v1"
 HOST_SOURCE = "v4.1/user/hosts"
 HOST_REFRESH_SECONDS = 24 * 60 * 60
 HOST_REFRESH_RETRY_SECONDS = 15 * 60
-_MAX_PATTERN_LENGTH = 8192
+
+# Provider-controlled applicability data is intentionally bounded before it can
+# become durable LKG state.  RE2 supplies the computational boundary for each
+# expression; these aggregate budgets bound the amount of safe work retained in
+# one provider snapshot.
+_MAX_HOST_RECORDS = 2048
+_MAX_DOMAINS_PER_HOST = 128
 _MAX_PATTERNS_PER_HOST = 128
+_MAX_TOTAL_DOMAINS = 8192
+_MAX_TOTAL_PATTERNS = 8192
+_MAX_PATTERN_LENGTH = 8192
+_MAX_TOTAL_PATTERN_BYTES = 512 * 1024
+_MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
+_MAX_MATCH_URL_LENGTH = 8192
 _DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.ASCII)
 
 
@@ -78,11 +92,15 @@ class AllDebridRequestApplicability:
     AllDebrid documents ``regexps`` as the supported-link validators. Host-only
     claims cannot express path/query restrictions, so native expressions stay
     here and only an already-matched request hostname crosses the boundary.
+
+    Provider expressions are compiled and evaluated by RE2.  Unlike Python's
+    backtracking ``re`` matcher, RE2 provides linear-time matching and therefore
+    prevents a provider-controlled expression from monopolizing the worker.
     """
 
     def __init__(self, snapshot: AllDebridHostSnapshot | None) -> None:
         self._compiled = tuple(
-            (host, tuple(re.compile(pattern) for pattern in host.regexps))
+            (host, tuple(_compile_provider_pattern(pattern) for pattern in host.regexps))
             for host in (() if snapshot is None else snapshot.hosts)
         )
 
@@ -95,7 +113,7 @@ class AllDebridRequestApplicability:
         if view is None or view.scheme not in {"http", "https"}:
             return ProviderApplicability()
         raw = request.payload if isinstance(request.payload, str) else ""
-        if not raw or len(raw) > _MAX_PATTERN_LENGTH:
+        if not raw or len(raw) > _MAX_MATCH_URL_LENGTH:
             return ProviderApplicability()
 
         for host, patterns in self._compiled:
@@ -155,6 +173,16 @@ def _normalize_domain(value: Any) -> str:
     return address.compressed.casefold()
 
 
+def _compile_provider_pattern(pattern: str):
+    """Compile an externally supplied expression with the bounded RE2 engine."""
+    try:
+        return re2.compile(pattern)
+    except Exception as exc:
+        raise AllDebridHostSnapshotError(
+            "host regexp is malformed or uses unsupported unsafe features"
+        ) from exc
+
+
 def _native_regexps(record: Mapping[str, Any]) -> tuple[str, ...]:
     # Current v4.1 documentation names this field ``regexps``.  The service
     # examples have historically also shown singular ``regexp``; accept that
@@ -179,12 +207,10 @@ def _native_regexps(record: Mapping[str, Any]) -> tuple[str, ...]:
     patterns: list[str] = []
     for item in values:
         pattern = _text(item, field="regexp")
-        if len(pattern) > _MAX_PATTERN_LENGTH:
+        encoded = pattern.encode("utf-8")
+        if len(pattern) > _MAX_PATTERN_LENGTH or len(encoded) > _MAX_PATTERN_LENGTH:
             raise AllDebridHostSnapshotError("host regexp is too long")
-        try:
-            re.compile(pattern)
-        except re.error as exc:
-            raise AllDebridHostSnapshotError("host regexp is malformed") from exc
+        _compile_provider_pattern(pattern)
         patterns.append(pattern)
     return tuple(patterns)
 
@@ -201,6 +227,8 @@ def _native_host(service_id: str, record: Any) -> AllDebridHost:
     raw_domains = record.get("domains")
     if not isinstance(raw_domains, list) or not raw_domains:
         raise AllDebridHostSnapshotError("host domains must be a non-empty list")
+    if len(raw_domains) > _MAX_DOMAINS_PER_HOST:
+        raise AllDebridHostSnapshotError("host has too many domains")
     domains = tuple(dict.fromkeys(_normalize_domain(item) for item in raw_domains))
     regexps = _native_regexps(record)
 
@@ -230,25 +258,53 @@ def _native_host(service_id: str, record: Any) -> AllDebridHost:
     )
 
 
+def _native_snapshot_size(data: Any) -> int:
+    try:
+        encoded = json.dumps(
+            data, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AllDebridHostSnapshotError("host inventory is not valid JSON data") from exc
+    return len(encoded)
+
+
 def parse_native_host_snapshot(data: Any) -> AllDebridHostSnapshot:
     """Validate one successful ``/v4.1/user/hosts`` data object.
 
     Structural support is the presence of a validated host/domain entry.
     ``status`` and account-limit fields are retained separately and never decide
-    whether a structural applicability claim exists.
+    whether a structural applicability claim exists.  A replacement snapshot is
+    completely bounded and validated before maintenance may persist it as LKG.
     """
     if not isinstance(data, Mapping):
         raise AllDebridHostSnapshotError("host inventory data must be an object")
+    if _native_snapshot_size(data) > _MAX_SNAPSHOT_BYTES:
+        raise AllDebridHostSnapshotError("host inventory exceeds snapshot size limit")
     raw_hosts = data.get("hosts")
     if not isinstance(raw_hosts, Mapping) or not raw_hosts:
         raise AllDebridHostSnapshotError("host inventory must contain hosts")
-    hosts = tuple(
-        _native_host(str(service_id), record)
-        for service_id, record in sorted(raw_hosts.items(), key=lambda item: str(item[0]))
-    )
+    if len(raw_hosts) > _MAX_HOST_RECORDS:
+        raise AllDebridHostSnapshotError("host inventory has too many services")
+
+    hosts: list[AllDebridHost] = []
+    total_domains = 0
+    total_patterns = 0
+    total_pattern_bytes = 0
+    for service_id, record in sorted(raw_hosts.items(), key=lambda item: str(item[0])):
+        host = _native_host(str(service_id), record)
+        total_domains += len(host.domains)
+        total_patterns += len(host.regexps)
+        total_pattern_bytes += sum(len(pattern.encode("utf-8")) for pattern in host.regexps)
+        if total_domains > _MAX_TOTAL_DOMAINS:
+            raise AllDebridHostSnapshotError("host inventory has too many domains")
+        if total_patterns > _MAX_TOTAL_PATTERNS:
+            raise AllDebridHostSnapshotError("host inventory has too many regexps")
+        if total_pattern_bytes > _MAX_TOTAL_PATTERN_BYTES:
+            raise AllDebridHostSnapshotError("host inventory regexp data is too large")
+        hosts.append(host)
     if not hosts:
         raise AllDebridHostSnapshotError("host inventory is empty")
-    return AllDebridHostSnapshot(hosts)
+    return AllDebridHostSnapshot(tuple(hosts))
 
 
 def encode_host_snapshot(snapshot: AllDebridHostSnapshot) -> bytes:
@@ -272,16 +328,22 @@ def encode_host_snapshot(snapshot: AllDebridHostSnapshot) -> bytes:
             for host in snapshot.hosts
         ],
     }
-    return json.dumps(
+    payload = json.dumps(
         document, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
+    if len(payload) > _MAX_SNAPSHOT_BYTES:
+        raise AllDebridHostSnapshotError("encoded host snapshot exceeds size limit")
+    return payload
 
 
 def decode_host_snapshot(payload: bytes) -> AllDebridHostSnapshot:
     if not isinstance(payload, (bytes, bytearray, memoryview)):
         raise AllDebridHostSnapshotError("host snapshot payload must be bytes")
+    raw_payload = bytes(payload)
+    if len(raw_payload) > _MAX_SNAPSHOT_BYTES:
+        raise AllDebridHostSnapshotError("host snapshot payload exceeds size limit")
     try:
-        document = json.loads(bytes(payload).decode("utf-8"))
+        document = json.loads(raw_payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AllDebridHostSnapshotError("host snapshot payload is corrupt") from exc
     if not isinstance(document, Mapping) or document.get("source") != HOST_SOURCE:
@@ -289,6 +351,8 @@ def decode_host_snapshot(payload: bytes) -> AllDebridHostSnapshot:
     raw_hosts = document.get("hosts")
     if not isinstance(raw_hosts, list) or not raw_hosts:
         raise AllDebridHostSnapshotError("host snapshot hosts are missing")
+    if len(raw_hosts) > _MAX_HOST_RECORDS:
+        raise AllDebridHostSnapshotError("host snapshot has too many services")
 
     native_hosts: dict[str, dict[str, Any]] = {}
     for raw in raw_hosts:

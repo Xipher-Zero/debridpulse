@@ -27,14 +27,17 @@ permissions:
   contents: read
   actions: read
   packages: write
+  attestations: read
 
 env:
   IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/container-security/v1
+  RUNTIME_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/candidate-runtime/v1
 
 jobs:
   promote:
-    name: Verify exact SHA and promote mutable tag
+    name: Verify exact qualified digest and promote mutable tag
     runs-on: ubuntu-latest
 
     steps:
@@ -106,12 +109,12 @@ jobs:
             "Browser Runtime"
             "CodeQL"
             "Container Security"
+            "Candidate Runtime Qualification"
             "Fork Image"
           )
 
           api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${CANDIDATE_SHA}&per_page=100"
           missing=()
-
           for attempt in $(seq 1 120); do
             payload="$(curl --fail --silent --show-error \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -135,16 +138,10 @@ jobs:
             if [ "${#missing[@]}" -eq 0 ]; then
               break
             fi
-
             if [ "$attempt" -eq 120 ]; then
               echo "Timed out waiting for successful exact-SHA qualification: ${missing[*]}"
-              jq -r \
-                --arg sha "$CANDIDATE_SHA" \
-                '.workflow_runs[] | select(.head_sha == $sha) | [.name, .status, (.conclusion // "pending"), (.head_branch // ""), .html_url] | @tsv' \
-                <<< "$payload" | sort -u
               exit 1
             fi
-
             echo "Waiting for exact-SHA qualification: ${missing[*]}"
             sleep 15
           done
@@ -159,7 +156,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify immutable source image identity
+      - name: Verify immutable source manifest and child identities
         id: source
         shell: bash
         env:
@@ -171,46 +168,31 @@ jobs:
 
           source_ref="${IMAGE_NAME}:${SOURCE_TAG}"
           source_digest=""
+          manifest_json=""
           for attempt in $(seq 1 12); do
-            inspect_output=""
-            if inspect_output="$(docker buildx imagetools inspect "$source_ref" 2>&1)"; then
-              source_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect_output")"
+            if inspect="$(docker buildx imagetools inspect "$source_ref" 2>/dev/null)" && \
+               manifest_json="$(docker buildx imagetools inspect --raw "$source_ref" 2>/dev/null)"; then
+              source_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect")"
               if [[ "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
                 break
               fi
-              echo "Source digest not yet available for $source_ref on attempt ${attempt}/12"
-            else
-              echo "Source registry visibility check failed for $source_ref on attempt ${attempt}/12"
             fi
-            if [ "$attempt" -lt 12 ]; then
-              sleep 5
-            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-
           if [[ ! "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "Unable to resolve immutable source digest for $source_ref after retries: ${source_digest:-<empty>}"
+            echo "Unable to resolve immutable source digest for $source_ref"
             exit 1
           fi
 
-          pulled=0
-          for attempt in $(seq 1 12); do
-            if docker pull "${IMAGE_NAME}@${source_digest}"; then
-              pulled=1
-              break
-            fi
-            echo "Immutable source pull failed on attempt ${attempt}/12"
-            if [ "$attempt" -lt 12 ]; then
-              sleep 5
-            fi
+          amd64_digest="$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest][0] // empty' <<< "$manifest_json")"
+          arm64_digest="$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64") | .digest][0] // empty' <<< "$manifest_json")"
+          for value in "$amd64_digest" "$arm64_digest"; do
+            [[ "$value" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Missing platform child digest: $value"; exit 1; }
           done
-          if [ "$pulled" -ne 1 ]; then
-            echo "Unable to pull immutable source after retries: ${IMAGE_NAME}@${source_digest}"
-            exit 1
-          fi
 
-          image_version="$(docker image inspect "${IMAGE_NAME}@${source_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
-          image_revision="$(docker image inspect "${IMAGE_NAME}@${source_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
-
+          docker pull --platform linux/amd64 "${IMAGE_NAME}@${amd64_digest}"
+          image_version="$(docker image inspect "${IMAGE_NAME}@${amd64_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          image_revision="$(docker image inspect "${IMAGE_NAME}@${amd64_digest}" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
           if [ "$image_version" != "$EXPECTED_VERSION" ]; then
             echo "Source OCI version mismatch: expected $EXPECTED_VERSION, got $image_version"
             exit 1
@@ -221,13 +203,69 @@ jobs:
           fi
 
           echo "source_digest=$source_digest" >> "$GITHUB_OUTPUT"
+          echo "amd64_digest=$amd64_digest" >> "$GITHUB_OUTPUT"
+          echo "arm64_digest=$arm64_digest" >> "$GITHUB_OUTPUT"
           echo "Verified immutable source: $source_ref@$source_digest"
+
+      - name: Verify signed security and runtime attestations target exact source digest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.release.outputs.candidate_sha }}
+          SOURCE_DIGEST: ${{ steps.source.outputs.source_digest }}
+          AMD64_DIGEST: ${{ steps.source.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ steps.source.outputs.arm64_digest }}
+        run: |
+          set -euo pipefail
+          subject="oci://${IMAGE_NAME}@${SOURCE_DIGEST}"
+
+          gh attestation verify "$subject" \
+            -R "$GITHUB_REPOSITORY" \
+            --predicate-type "$SECURITY_PREDICATE_TYPE" \
+            --format json > security-attestations.json
+
+          gh attestation verify "$subject" \
+            -R "$GITHUB_REPOSITORY" \
+            --predicate-type "$RUNTIME_PREDICATE_TYPE" \
+            --format json > runtime-attestations.json
+
+          jq -e \
+            --arg sha "$CANDIDATE_SHA" \
+            --arg manifest "$SOURCE_DIGEST" \
+            --arg amd64 "$AMD64_DIGEST" \
+            --arg arm64 "$ARM64_DIGEST" \
+            'any(.[]; .verificationResult.statement.predicate as $p |
+              $p.commit_sha == $sha and
+              $p.manifest_digest == $manifest and
+              $p.platforms["linux/amd64"].digest == $amd64 and
+              $p.platforms["linux/amd64"].vulnerability_gate == "passed" and
+              $p.platforms["linux/arm64"].digest == $arm64 and
+              $p.platforms["linux/arm64"].vulnerability_gate == "passed" and
+              $p.result == "success")' security-attestations.json >/dev/null
+
+          jq -e \
+            --arg sha "$CANDIDATE_SHA" \
+            --arg manifest "$SOURCE_DIGEST" \
+            --arg amd64 "$AMD64_DIGEST" \
+            --arg arm64 "$ARM64_DIGEST" \
+            'any(.[]; .verificationResult.statement.predicate as $p |
+              $p.commit_sha == $sha and
+              $p.manifest_digest == $manifest and
+              $p.platforms["linux/amd64"].digest == $amd64 and
+              $p.platforms["linux/amd64"].runtime == "passed" and
+              $p.platforms["linux/amd64"].non_root == "passed" and
+              $p.platforms["linux/arm64"].digest == $arm64 and
+              $p.platforms["linux/arm64"].runtime == "passed" and
+              $p.platforms["linux/arm64"].non_root == "passed" and
+              $p.result == "success")' runtime-attestations.json >/dev/null
+
+          echo "QUALIFIED_DIGEST == PROMOTED_SOURCE_DIGEST: $SOURCE_DIGEST"
 
       - name: Dry-run promotion contract
         if: steps.release.outputs.dry_run == 'true'
         shell: bash
         run: |
-          echo "Dry run complete. Qualification and immutable source identity are valid."
+          echo "Dry run complete. Exact-SHA workflows, OCI digest, child digests, and signed qualification attestations are valid."
           echo "No mutable image tag was changed."
 
       - name: Promote verified digest to mutable release tag
@@ -247,53 +285,21 @@ jobs:
 
           target_digest=""
           for attempt in $(seq 1 12); do
-            inspect_output=""
-            if inspect_output="$(docker buildx imagetools inspect "$target_ref" 2>&1)"; then
-              target_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect_output")"
-              if [ "$target_digest" = "$SOURCE_DIGEST" ]; then
-                break
-              fi
-              echo "Promotion target not converged on attempt ${attempt}/12: expected $SOURCE_DIGEST, got ${target_digest:-<empty>}"
-            else
-              echo "Promotion target visibility check failed on attempt ${attempt}/12"
+            if inspect="$(docker buildx imagetools inspect "$target_ref" 2>/dev/null)"; then
+              target_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect")"
+              if [ "$target_digest" = "$SOURCE_DIGEST" ]; then break; fi
             fi
-            if [ "$attempt" -lt 12 ]; then
-              sleep 5
-            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
           done
-
           if [ "$target_digest" != "$SOURCE_DIGEST" ]; then
-            echo "Promotion digest mismatch after retries: source $SOURCE_DIGEST, target ${target_digest:-<empty>}"
+            echo "Promotion digest mismatch: source $SOURCE_DIGEST, target ${target_digest:-<empty>}"
             exit 1
           fi
 
-          pulled=0
-          for attempt in $(seq 1 12); do
-            if docker pull "$target_ref"; then
-              pulled=1
-              break
-            fi
-            echo "Promoted target pull failed on attempt ${attempt}/12"
-            if [ "$attempt" -lt 12 ]; then
-              sleep 5
-            fi
-          done
-          if [ "$pulled" -ne 1 ]; then
-            echo "Unable to pull promoted target after retries: $target_ref"
-            exit 1
-          fi
-
+          docker pull --platform linux/amd64 "$target_ref"
           target_version="$(docker image inspect "$target_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
           target_revision="$(docker image inspect "$target_ref" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
-          if [ "$target_version" != "$EXPECTED_VERSION" ]; then
-            echo "Promoted OCI version mismatch: expected $EXPECTED_VERSION, got $target_version"
-            exit 1
-          fi
-          if [ "$target_revision" != "$CANDIDATE_SHA" ]; then
-            echo "Promoted OCI revision mismatch: expected $CANDIDATE_SHA, got $target_revision"
-            exit 1
-          fi
+          test "$target_version" = "$EXPECTED_VERSION"
+          test "$target_revision" = "$CANDIDATE_SHA"
 
           echo "Promoted $target_ref -> $SOURCE_DIGEST"
-          echo "Verified revision: $target_revision"
-          echo "Verified version:  $target_version"

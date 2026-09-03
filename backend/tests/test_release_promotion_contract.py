@@ -42,7 +42,43 @@ def test_fork_image_only_publishes_immutable_sha_tags() -> None:
     assert "Publication tag is not SHA-only" in workflow
 
 
-def test_mutable_promotion_requires_all_exact_sha_qualification_workflows() -> None:
+def test_security_qualification_consumes_exact_published_platform_digests() -> None:
+    workflow = _workflow("container-security.yml")
+
+    assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA:0:7}"' in workflow
+    assert "docker build --pull" not in workflow
+    assert "docker build " not in workflow
+    assert "docker/build-push-action" not in workflow
+    assert 'platform.architecture == "amd64"' in workflow
+    assert 'platform.architecture == "arm64"' in workflow
+    assert 'arch: [amd64, arm64]' in workflow
+    assert "${{ env.IMAGE_NAME }}@${{ env.CHILD_DIGEST }}" in workflow
+    assert "Block fixable high or critical vulnerabilities on exact child" in workflow
+    assert "actions/attest@" in workflow
+    assert "subject-digest: ${{ needs.identity.outputs.manifest_digest }}" in workflow
+    assert "container-security/v1" in workflow
+
+
+def test_runtime_qualification_consumes_exact_children_without_rebuild() -> None:
+    workflow = _workflow("candidate-runtime-qualification.yml")
+
+    assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA:0:7}"' in workflow
+    assert "docker build " not in workflow
+    assert "docker/build-push-action" not in workflow
+    assert 'platform.architecture == "amd64"' in workflow
+    assert 'platform.architecture == "arm64"' in workflow
+    assert 'arch: [amd64, arm64]' in workflow
+    assert "docker/setup-qemu-action@" in workflow
+    assert 'docker pull --platform "linux/${{ matrix.arch }}" "$image"' in workflow
+    assert '--platform "linux/${{ matrix.arch }}"' in workflow
+    assert 'uid" = "99"' in workflow
+    assert 'gid" = "100"' in workflow
+    assert "actions/attest@" in workflow
+    assert "subject-digest: ${{ needs.identity.outputs.manifest_digest }}" in workflow
+    assert "candidate-runtime/v1" in workflow
+
+
+def test_mutable_promotion_requires_exact_sha_workflows_and_signed_digest_evidence() -> None:
     workflow = _workflow("release-promotion.yml")
 
     for required in (
@@ -50,6 +86,7 @@ def test_mutable_promotion_requires_all_exact_sha_qualification_workflows() -> N
         '"Browser Runtime"',
         '"CodeQL"',
         '"Container Security"',
+        '"Candidate Runtime Qualification"',
         '"Fork Image"',
     ):
         assert required in workflow
@@ -59,10 +96,20 @@ def test_mutable_promotion_requires_all_exact_sha_qualification_workflows() -> N
     assert '.status == "completed"' in workflow
     assert '.conclusion == "success"' in workflow
     assert 'source_tag=sha-${candidate_sha:0:7}' in workflow
+    assert 'platform.architecture == "amd64"' in workflow
+    assert 'platform.architecture == "arm64"' in workflow
     assert 'image_revision" != "$CANDIDATE_SHA"' in workflow
+    assert "gh attestation verify" in workflow
+    assert "container-security/v1" in workflow
+    assert "candidate-runtime/v1" in workflow
+    assert '$p.manifest_digest == $manifest' in workflow
+    assert '$p.platforms["linux/amd64"].digest == $amd64' in workflow
+    assert '$p.platforms["linux/arm64"].digest == $arm64' in workflow
+    assert "QUALIFIED_DIGEST == PROMOTED_SOURCE_DIGEST" in workflow
     assert 'docker buildx imagetools create --tag "$target_ref" "$source_ref"' in workflow
     assert 'target_digest" != "$SOURCE_DIGEST"' in workflow
-    assert 'target_revision" != "$CANDIDATE_SHA"' in workflow
+    assert "docker build " not in workflow
+    assert "docker/build-push-action" not in workflow
 
 
 def test_release_tag_pushes_run_every_independent_qualifier() -> None:
@@ -71,6 +118,7 @@ def test_release_tag_pushes_run_every_independent_qualifier() -> None:
         "browser-runtime.yml",
         "codeql.yml",
         "container-security.yml",
+        "candidate-runtime-qualification.yml",
         "fork-image.yml",
     ):
         workflow = _workflow(name)

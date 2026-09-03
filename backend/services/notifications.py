@@ -4,7 +4,7 @@ Discord webhook notifications with rich embeds.
 Features:
 - Structured embeds with fields instead of raw text
 - Clear color coding per event type
-- Separate webhook URL for torrent-added events
+- Separate webhook URL for transfer-added events
 - Deduplication: same message within 30s is suppressed (keyed on url+title+description)
 - Rate limiting: minimum 2s between messages per URL
 - Discord 429 handling with retry_after
@@ -65,12 +65,12 @@ COLOR_INFO    = 0x3B82F6   # Blue    — general
 COLOR_SUCCESS = 0x22C55E   # Green   — completed
 COLOR_WARNING = 0xF59E0B   # Yellow  — warning / partial
 COLOR_ERROR   = 0xEF4444   # Red     — error
-COLOR_ADDED   = 0x8B5CF6   # Purple  — torrent added
+COLOR_ADDED   = 0x8B5CF6   # Purple  — transfer added
 COLOR_PARTIAL = 0xF97316   # Orange  — filtered files
 
 # ── Throttling ────────────────────────────────────────────────────────────────
 _RATE_LIMIT_SECONDS   = 2.0
-_DEDUP_WINDOW_SECONDS = 10.0  # Reduced from 30s — prevents suppressing different torrents with same name
+_DEDUP_WINDOW_SECONDS = 10.0  # Reduced from 30s — prevents suppressing different transfers with same name
 
 
 def _fmt_bytes(b: int) -> str:
@@ -144,7 +144,7 @@ class NotificationService:
             fields.extend(extra_fields)
         await self._send(
             url=self.added_webhook_url,
-            title="📥 Torrent Added",
+            title="📥 Transfer Added",
             description=f"**{name}**",
             color=COLOR_ADDED,
             fields=fields,
@@ -364,7 +364,7 @@ class NotificationService:
             return
 
         # Deduplication: same content within 30s → skip
-        # Key includes description to avoid suppressing different torrents with same event type
+        # Key includes description to avoid suppressing different transfers with same event type
         dedup_key = hashlib.md5(
             f"{url}|{title}|{description[:200]}".encode(),
             usedforsecurity=False,

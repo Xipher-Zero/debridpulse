@@ -26,6 +26,7 @@ the lock file and `licenses/python-runtime.json`.
 | cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause |
 | fastapi | 0.141.1 | MIT |
 | frozenlist | 1.8.0 | Apache-2.0 |
+| google-re2 | 1.1.20251105 | BSD-3-Clause |
 | h11 | 0.16.0 | MIT |
 | httpcore | 1.0.9 | BSD-3-Clause |
 | httptools | 0.8.0 | MIT |
@@ -49,10 +50,12 @@ the lock file and `licenses/python-runtime.json`.
 The 1.0.6 native-authentication work directly depends on `argon2-cffi` for
 Argon2id local-password verification, `authlib` for OpenID Connect/JWT protocol
 handling, and `httpx` for bounded outbound OIDC discovery/token/JWKS requests.
+The v1.0.12 provider-runtime hardening directly depends on `google-re2` so
+externally supplied AllDebrid applicability expressions execute with RE2's
+linear-time matching semantics instead of Python backtracking regex behavior.
 Their transitive cryptographic/HTTP dependencies are included in the table and
-machine-readable runtime manifest above. The package/license pairs for the new
-stack were cross-checked against the corresponding upstream/PyPI metadata when
-the lock was generated.
+machine-readable runtime manifest above. Package/license pairs are cross-checked
+against the corresponding upstream/PyPI metadata when the lock is generated.
 
 ## Container components
 

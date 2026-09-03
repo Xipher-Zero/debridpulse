@@ -1,5 +1,7 @@
-# Runtime/container security gate for DebridPulse.
-# Complements pip-audit/CodeQL/Bandit by scanning the image that is actually shipped.
+# Artifact-centric runtime/container security gate for DebridPulse.
+# This workflow never rebuilds the candidate. It waits for Fork Image to publish
+# the immutable SHA artifact, resolves the exact manifest/child digests, and
+# scans those registry objects directly.
 name: Container Security
 
 on:
@@ -13,106 +15,162 @@ on:
     tags:
       - 'v*'
       - 'internal-v*'
-  pull_request:
-    branches:
-      - main
-      - '1.0.11'
-      - '1.0.12'
-      - 'staging/**'
   schedule:
     - cron: '31 19 * * 2'
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write
+  id-token: write
+  attestations: write
 
 env:
-  IMAGE_REF: local/debridpulse:security-${{ github.sha }}
+  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/container-security/v1
 
 jobs:
-  image-security:
-    name: Image vulnerability and non-root validation
+  identity:
+    name: Resolve immutable candidate identity
     runs-on: ubuntu-latest
-
+    outputs:
+      manifest_digest: ${{ steps.identity.outputs.manifest_digest }}
+      amd64_digest: ${{ steps.identity.outputs.amd64_digest }}
+      arm64_digest: ${{ steps.identity.outputs.arm64_digest }}
+      source_ref: ${{ steps.identity.outputs.source_ref }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Build release image for security validation
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for and resolve exact published candidate
+        id: identity
         shell: bash
         run: |
           set -euo pipefail
-          docker build --pull \
-            --build-arg APP_VERSION="$(tr -d '\r\n' < VERSION)" \
-            --build-arg VCS_REF="${GITHUB_SHA}" \
-            --tag "${IMAGE_REF}" \
-            .
+          source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA:0:7}"
+          manifest_digest=""
+          manifest_json=""
 
-      - name: Validate non-root runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          container_name="debridpulse-nonroot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          cleanup() { docker rm -f "$container_name" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-
-          docker run --detach \
-            --name "$container_name" \
-            --env PUID=12345 \
-            --env PGID=12345 \
-            --env CONFIG_PATH=/app/config/config.json \
-            --env DB_PATH=/app/data/debridpulse.db \
-            "${IMAGE_REF}"
-
-          healthy=0
-          for _ in $(seq 1 30); do
-            if docker exec "$container_name" \
-              curl --fail --silent --show-error \
-              http://127.0.0.1:8080/api/health >/dev/null; then
-              healthy=1
-              break
+          for attempt in $(seq 1 120); do
+            if inspect="$(docker buildx imagetools inspect "$source_ref" 2>/dev/null)" && \
+               manifest_json="$(docker buildx imagetools inspect --raw "$source_ref" 2>/dev/null)"; then
+              manifest_digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect")"
+              if [[ "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                break
+              fi
             fi
-            if [ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != "true" ]; then
-              break
+            if [ "$attempt" -eq 120 ]; then
+              echo "Immutable candidate was not published for exact SHA $GITHUB_SHA"
+              exit 1
             fi
-            sleep 2
+            sleep 5
           done
 
-          if [ "$healthy" -ne 1 ]; then
-            docker logs "$container_name" || true
+          amd64_digest="$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest][0] // empty' <<< "$manifest_json")"
+          arm64_digest="$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64") | .digest][0] // empty' <<< "$manifest_json")"
+          for value in "$amd64_digest" "$arm64_digest"; do
+            if [[ ! "$value" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Published manifest is missing an expected linux platform child: $value"
+              exit 1
+            fi
+          done
+          if [ "$amd64_digest" = "$arm64_digest" ]; then
+            echo "Platform child digests unexpectedly collapse to the same artifact"
             exit 1
           fi
 
-          pid_uid="$(docker exec "$container_name" cat /proc/1/status | awk '/^Uid:/{print $2}')"
-          pid_gid="$(docker exec "$container_name" cat /proc/1/status | awk '/^Gid:/{print $2}')"
-          test "$pid_uid" = "12345"
-          test "$pid_gid" = "12345"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+          echo "manifest_digest=$manifest_digest" >> "$GITHUB_OUTPUT"
+          echo "amd64_digest=$amd64_digest" >> "$GITHUB_OUTPUT"
+          echo "arm64_digest=$arm64_digest" >> "$GITHUB_OUTPUT"
+          echo "manifest=$manifest_digest"
+          echo "linux/amd64=$amd64_digest"
+          echo "linux/arm64=$arm64_digest"
 
-          docker exec --user 12345:12345 "$container_name" sh -c '
-            set -eu
-            touch /app/data/.nonroot-smoke
-            touch /app/config/.nonroot-smoke
-            touch /download/.nonroot-smoke
-            rm -f /app/data/.nonroot-smoke /app/config/.nonroot-smoke /download/.nonroot-smoke
-          '
-
-      - name: Report runtime vulnerabilities
+  scan:
+    name: Scan exact ${{ matrix.arch }} child
+    needs: identity
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    env:
+      CHILD_DIGEST: ${{ matrix.arch == 'amd64' && needs.identity.outputs.amd64_digest || needs.identity.outputs.arm64_digest }}
+    steps:
+      - name: Report exact-child runtime vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: '${{ env.IMAGE_REF }}'
+          image-ref: '${{ env.IMAGE_NAME }}@${{ env.CHILD_DIGEST }}'
           format: 'table'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH,MEDIUM'
           ignore-unfixed: false
           exit-code: '0'
 
-      - name: Block fixable high or critical runtime vulnerabilities
+      - name: Block fixable high or critical vulnerabilities on exact child
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: '${{ env.IMAGE_REF }}'
+          image-ref: '${{ env.IMAGE_NAME }}@${{ env.CHILD_DIGEST }}'
           format: 'table'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           exit-code: '1'
+
+  evidence:
+    name: Attest exact candidate security qualification
+    needs: [identity, scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write machine-verifiable security predicate
+        shell: bash
+        env:
+          MANIFEST_DIGEST: ${{ needs.identity.outputs.manifest_digest }}
+          AMD64_DIGEST: ${{ needs.identity.outputs.amd64_digest }}
+          ARM64_DIGEST: ${{ needs.identity.outputs.arm64_digest }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg commit_sha "$GITHUB_SHA" \
+            --arg manifest_digest "$MANIFEST_DIGEST" \
+            --arg amd64_digest "$AMD64_DIGEST" \
+            --arg arm64_digest "$ARM64_DIGEST" \
+            '{
+              schema_version: 1,
+              commit_sha: $commit_sha,
+              manifest_digest: $manifest_digest,
+              platforms: {
+                "linux/amd64": {digest: $amd64_digest, vulnerability_gate: "passed"},
+                "linux/arm64": {digest: $arm64_digest, vulnerability_gate: "passed"}
+              },
+              policy: "no fixable HIGH or CRITICAL runtime vulnerabilities",
+              result: "success"
+            }' > container-security-evidence.json
+          cat container-security-evidence.json
+
+      - name: Upload security evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: container-security-${{ github.sha }}
+          path: container-security-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Sign security qualification for exact OCI manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ needs.identity.outputs.manifest_digest }}
+          predicate-type: ${{ env.SECURITY_PREDICATE_TYPE }}
+          predicate-path: container-security-evidence.json
+          push-to-registry: true
+          create-storage-record: false
