@@ -13,6 +13,7 @@ import db.database as database
 from api.routes import router
 from application.service import ApplicationService
 from fake_integrations import MemoryExecutor, ParcelProvider
+from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
 from transfers.errors import TransferError, Category, Domain, NormalizedError, Retryability, Recovery, Stage
 from transfers.models import TransferRequest, ResolutionResult, ResourceState, TransferOutcome, OutcomeKind, IntegrationDescriptor
@@ -28,6 +29,11 @@ async def runtime(tmp_path, monkeypatch):
     repository = TransferRepository()
     registry = IntegrationRegistry()
     provider = ParcelProvider()
+    monkeypatch.setattr(
+        ParcelProvider,
+        "applicability",
+        property(lambda _provider: ProviderApplicability(generic_schemes=frozenset({"http", "https"}))),
+    )
     provider.descriptor = replace(provider.descriptor, request_types=frozenset({"parcel", "http", "https", "magnet", "torrent"}))
     executor = MemoryExecutor(repository.authorize_execution)
     registry.register_provider(provider)

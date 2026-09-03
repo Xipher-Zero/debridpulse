@@ -1,10 +1,10 @@
-/* DebridPulse v1.0.11 cross-cutting interaction accessibility.
+/* DebridPulse v1.0.12 cross-cutting accessibility and dropdown semantics.
  *
- * Presentation/interaction semantics only. This module does not call the API,
- * alter transfer state, or replace established app.js behavior; it makes the
- * inherited clickable-div surfaces keyboard-operable, keeps ARIA state in
- * sync with the existing active-class contract, and normalizes a small number
- * of legacy presentation-only DOM details that cannot live in CSS alone.
+ * This module does not call the API, alter transfer state, replace established
+ * app.js behavior, or repair canonical presentation. It makes inherited
+ * clickable controls keyboard-operable, keeps ARIA state synchronized with the
+ * active-class contract, and projects native-select dropdown semantics for
+ * dynamically rendered controls.
  */
 (function () {
   'use strict';

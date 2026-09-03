@@ -68,6 +68,10 @@ Permanent tests prove semantic ownership rather than historical coexistence. In 
 - `test_ui_frontend_deep_audit_contract.py` proves a bounded first-paint bootstrap, unique effective asset loading, I/O-free accessibility runtime, and CI syntax coverage.
 - page/component contract tests preserve the approved dark/light and responsive presentation.
 
+## Permanent browser validation
+
+The `Browser Runtime` workflow is permanent CI and provides the real-browser smoke contract across the six canonical navigation surfaces. It validates the canonical render owners directly, including responsive/theme behavior and visual checkpoints; it does not depend on retired presentation-loader/finalization dependencies or any post-render corrective pass. Removed correction runtimes must not be reintroduced as a corrective mechanism to satisfy browser validation.
+
 ## Compatibility retained intentionally
 
 The filename `style-v11.css` is retained because it is the established canonical import-bundle URL and renaming it provides no architectural gain; its contents now document current v1.0.12 ownership. `style.css` remains an accepted baseline dependency. `ui-accessibility-runtime.js` remains because dynamic accessibility and dropdown projection is a legitimate cross-cutting concern. None of these retained pieces is permitted to repair canonical page markup after render.

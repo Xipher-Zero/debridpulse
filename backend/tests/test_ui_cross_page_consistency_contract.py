@@ -29,7 +29,7 @@ def test_downloads_footer_has_no_separator_and_uses_shared_bottom_datum() -> Non
     assert "calc(100vh - var(--dp-shell-header)" not in downloads
     assert "#torrent-pagination" in downloads
     assert "border-top: 0;" in downloads
-    assert "removeProperty('border-top')" in runtime
+    assert "removeProperty('border-top')" not in runtime
 
 
 def test_downloads_pager_uses_canonical_material_bridge() -> None:
@@ -43,6 +43,7 @@ def test_downloads_pager_uses_canonical_material_bridge() -> None:
 
 def test_provider_status_is_three_centered_shell_zones() -> None:
     provider = read_static("ui-shell-provider-status.css")
+    app = read_static("app.js")
     runtime = read_static("ui-accessibility-runtime.js")
     assert "#sidebar .sidebar-footer::before" in provider
     assert "justify-content: center !important" in provider
@@ -50,9 +51,10 @@ def test_provider_status_is_three_centered_shell_zones() -> None:
     assert '#premium-row[style*="display:none"]' in provider
     assert "#lbl-premium::before" in provider
     assert "content: none !important" in provider
-    assert "AllDebrid Premium until " in runtime
-    assert "days remaining)" in runtime
-    assert "MutationObserver(normalizeProviderPremiumLabel)" in runtime
+    assert "dp-provider-premium-until" in app
+    assert "dp-provider-premium-days" in app
+    assert "normalizeProviderPremiumLabel" not in runtime
+    assert "AllDebrid Premium until " not in runtime
 
 
 def test_quick_add_focus_resets_to_universal_field_language() -> None:

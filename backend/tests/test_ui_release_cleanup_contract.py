@@ -17,11 +17,10 @@ def test_retired_duplicate_legacy_stylesheet_is_absent() -> None:
 def test_release_docs_record_permanent_browser_validation_without_legacy_live_layers() -> None:
     architecture = (DOCS / "UI_FRONTEND_ARCHITECTURE.md").read_text(encoding="utf-8").lower()
     assert "permanent ci" in architecture
+    assert "browser runtime" in architecture
     assert "real-browser smoke contract" in architecture
     assert "six canonical navigation surfaces" in architecture
     assert "retired presentation-loader/finalization dependencies" in architecture
     assert "live calibration" not in architecture
-    assert "there is no live presentation-loader/finalization bootstrap" in architecture
-    assert "retired `ui-presentation-loader.*`" in architecture
-    assert "`ui-page-finalization.*`" in architecture
+    assert "`ui-runtime.js` and `ui-downloads-runtime.js` are physically absent" in architecture
     assert "must not be reintroduced as a corrective mechanism" in architecture

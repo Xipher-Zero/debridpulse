@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from transfers.applicability import ProviderApplicability
 from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, safe_context, safe_diagnostic,
@@ -68,6 +69,10 @@ class MinimalProvider:
     def __init__(self, name, kinds=("synthetic",), priority=0):
         self.descriptor = IntegrationDescriptor(name, name, frozenset({Capability.RESOLVE}),
                                                 frozenset(kinds), priority=priority)
+
+    @property
+    def applicability(self):
+        return ProviderApplicability()
 
     async def resolve(self, request):
         return ResolutionResult(ResourceState.AVAILABLE)
