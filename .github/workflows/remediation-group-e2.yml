@@ -23,6 +23,22 @@ jobs:
           python-version: '3.12'
       - name: Apply E2 canonical ownership
         run: python .github/remediation-group-e2.py
+      - name: Migrate shell cache ownership contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/tests/test_ui_shell_contract.py')
+          source = path.read_text(encoding='utf-8')
+          old = '        "/ui-shell-provider-status-v2.css": "28",\n'
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one stale provider-status-v2 cache entry, found {source.count(old)}')
+          source = source.replace(old, '', 1)
+          anchor = '    for path, version in expected.items():\n        assert generations[path] == version\n'
+          replacement = anchor + '    assert "/ui-shell-provider-status-v2.css" not in generations\n'
+          if source.count(anchor) != 1:
+              raise SystemExit(f'expected one cache assertion anchor, found {source.count(anchor)}')
+          path.write_text(source.replace(anchor, replacement, 1), encoding='utf-8')
+          PY
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
