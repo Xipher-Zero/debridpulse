@@ -165,6 +165,13 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Log in to GHCR for attestation publication
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Sign security qualification for exact OCI manifest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
