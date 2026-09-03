@@ -449,7 +449,7 @@ class TransferRepository:
             params = (now, transfer_id) if transfer_id is not None else (now,)
             rows = await db.fetchall(
                 """SELECT e.* FROM execution_attempts e JOIN torrents t ON t.id=e.transfer_id
-                    WHERE e.cleanup_state='pending' AND e.cleanup_retry_at<=?
+                    WHERE e.cleanup_state IN ('pending','blocked') AND e.cleanup_retry_at<=?
                     AND t.status IN ('cancelled','deleted')""" + where_transfer +
                 " ORDER BY e.transfer_id,e.created_at,e.id",
                 params,
@@ -459,10 +459,20 @@ class TransferRepository:
     async def claim_execution_cleanup(self, attempt_id: str, *, now: float, lease_until: float) -> bool:
         async with get_db() as db:
             cursor = await db.execute(
-                """UPDATE execution_attempts SET cleanup_attempts=cleanup_attempts+1,
-                    cleanup_retry_at=?,updated_at=CURRENT_TIMESTAMP
-                    WHERE id=? AND cleanup_state='pending' AND cleanup_retry_at<=?""",
+                """UPDATE execution_attempts SET cleanup_state='pending',cleanup_retry_at=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND cleanup_state IN ('pending','blocked') AND cleanup_retry_at<=?""",
                 (lease_until, attempt_id, now),
+            )
+            await db.commit()
+        return cursor.rowcount == 1
+
+    async def execution_cleanup_attempt(self, attempt_id: str) -> bool:
+        """Consume one destructive executor-cancel attempt after a cleanup lease is held."""
+        async with get_db() as db:
+            cursor = await db.execute(
+                """UPDATE execution_attempts SET cleanup_attempts=cleanup_attempts+1,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND cleanup_state='pending'""",
+                (attempt_id,),
             )
             await db.commit()
         return cursor.rowcount == 1
@@ -861,10 +871,24 @@ class TransferRepository:
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value""", ("1" if paused else "0",))
             await db.commit()
 
-    async def delete(self, transfer_id: int, *, remote: bool):
+    async def delete(self, transfer_id: int, *, remote: bool, now: float = 0) -> None:
+        """Atomically tombstone a transfer and retain responsibility for launched executions."""
         async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
             await db.execute("""UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
                 updated_at=CURRENT_TIMESTAMP WHERE id=?""", (int(remote), transfer_id))
+            await db.execute(
+                """UPDATE execution_attempts SET cleanup_state='pending',
+                    cleanup_attempts=CASE WHEN cleanup_state IN ('pending','blocked') THEN cleanup_attempts ELSE 0 END,
+                    cleanup_retry_at=CASE
+                        WHEN cleanup_state IN ('pending','blocked') AND cleanup_retry_at>? THEN cleanup_retry_at
+                        ELSE ? END,
+                    cleanup_error=CASE WHEN cleanup_state IN ('pending','blocked') THEN cleanup_error ELSE NULL END,
+                    updated_at=CURRENT_TIMESTAMP
+                    WHERE transfer_id=? AND authorized=1
+                    AND state IN ('prepared','queued','transferring','paused','unknown')""",
+                (now, now, transfer_id),
+            )
             await db.commit()
 
     async def delete_remote_requested(self, transfer_id: int) -> bool:

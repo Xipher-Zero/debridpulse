@@ -120,21 +120,26 @@ async def test_state002_failed_cancel_survives_restart_and_converges(core):
 
 
 @pytest.mark.asyncio
-async def test_state002_repeated_failures_are_bounded_and_obligation_remains_truthful(core):
+async def test_state002_repeated_failures_bound_destructive_pressure_without_abandoning_reconciliation(core):
     transfer, artifact = await executing(core)
     error = transient_cleanup_error()
+    calls = 0
 
     async def fail_cancel(_handle):
+        nonlocal calls
+        calls += 1
         return TransferOutcome(OutcomeKind.FAILURE, error)
 
     core.executor.cancel = fail_cancel
     for _ in range(4):
         await core.engine.cancel(transfer.id)
     status = await core.repository.execution_cleanup_status(artifact.execution.attempt_id)
+    assert calls == 3
     assert status["attempts"] == 3
-    assert status["state"] == "blocked"
+    assert status["state"] == "pending"
     assert status["error"] == error
     assert status["authorized"] is True
+    assert status["retry_at"] > core.clock()
     assert (await core.repository.get(transfer.id)).state == TransferState.CANCELLED
 
 

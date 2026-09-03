@@ -1098,28 +1098,35 @@ class TransferEngine:
             integration_id=executor_id, diagnostic=native.diagnostic,
         )
 
+    def _execution_cleanup_poll_at(self, now: float) -> float:
+        """Bound reconciliation pressure without ever ending cleanup ownership."""
+        cadence = min(float(self.policy.resource_poll_interval), float(self.policy.max_retry_delay))
+        return now + max(1.0, cadence)
+
     async def _cleanup_executions_pending(self, *, transfer_id: int | None = None):
         errors = []
         now = self.clock()
-        for attempt, attempts, _previous_error in await self.repository.pending_execution_cleanup(
+        for attempt, attempts, previous_error in await self.repository.pending_execution_cleanup(
             now, transfer_id=transfer_id,
         ):
             handle = attempt.handle
+            poll_at = self._execution_cleanup_poll_at(now)
+            if not await self.repository.claim_execution_cleanup(
+                handle.attempt_id, now=now, lease_until=poll_at,
+            ):
+                continue
+
             executor = self.registry.executors.get(handle.executor_id)
             if executor is None:
                 error = self._error(
                     Category.UNSUPPORTED_CAPABILITY, Stage.CLEANUP, domain=Domain.CLEANUP,
                     retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
                 )
-                await self.repository.execution_cleanup_retry(handle.attempt_id, error, None)
+                await self.repository.execution_cleanup_retry(handle.attempt_id, error, poll_at)
                 errors.append(error)
                 continue
 
-            lease_until = now + max(1.0, float(self.policy.retry_delay))
-            if not await self.repository.claim_execution_cleanup(
-                handle.attempt_id, now=now, lease_until=lease_until,
-            ):
-                continue
+            cancel_attempted = False
             try:
                 observed = await executor.observe(handle)
                 if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
@@ -1134,7 +1141,25 @@ class TransferEngine:
                 }:
                     await self.repository.execution_cleanup_complete(handle.attempt_id)
                     continue
+                if observed.error is not None:
+                    await self.repository.execution_cleanup_retry(handle.attempt_id, observed.error, poll_at)
+                    errors.append(observed.error)
+                    continue
 
+                destructive_allowed = attempts < max(1, self.policy.max_attempts)
+                if destructive_allowed and previous_error is not None and attempts:
+                    destructive_allowed = self.policy.retry(previous_error, attempts, now).automatic
+                if not destructive_allowed:
+                    error = previous_error or self._error(
+                        Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,
+                        retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,
+                    )
+                    await self.repository.execution_cleanup_retry(handle.attempt_id, error, poll_at)
+                    continue
+
+                if not await self.repository.execution_cleanup_attempt(handle.attempt_id):
+                    continue
+                cancel_attempted = True
                 outcome = await executor.cancel(handle)
                 if not isinstance(outcome, TransferOutcome):
                     raise TransferError(self._error(
@@ -1149,15 +1174,18 @@ class TransferEngine:
                     )
                     raise TransferError(error)
 
-                # A successful/cancelled executor outcome is the executor contract's
-                # termination acknowledgement. Do not require a second observation: a
-                # concurrent late-completion observation is history, not grounds to reopen
-                # cleanup or the already-terminal logical transfer.
+                # The executor contract treats success/cancelled/skipped as an
+                # authoritative termination acknowledgement. Late terminal history
+                # cannot reopen cleanup or the already-terminal logical transfer.
                 await self.repository.execution_cleanup_complete(handle.attempt_id)
             except Exception as exc:
                 error = self._executor_cleanup_exception(handle.executor_id, exc)
-                decision = self.policy.retry(error, attempts + 1, now)
-                await self.repository.execution_cleanup_retry(handle.attempt_id, error, decision.retry_at)
+                retry_at = poll_at
+                if cancel_attempted:
+                    decision = self.policy.retry(error, attempts + 1, now)
+                    if decision.retry_at is not None:
+                        retry_at = decision.retry_at
+                await self.repository.execution_cleanup_retry(handle.attempt_id, error, retry_at)
                 errors.append(error)
         return tuple(errors)
 
@@ -1166,16 +1194,10 @@ class TransferEngine:
         if challenge:
             await self.inputs.clear(challenge.id)
         await self.challenges.clear_transfer(transfer_id)
-        # Persist the tombstone before waiting on any integration. Every async
-        # completion path rechecks it, including late provider resource creation.
-        await self.repository.delete(transfer_id, remote=remote)
-        for attempt in await self.repository.executions(transfer_id):
-            executor = self.registry.executors.get(attempt.handle.executor_id)
-            if executor:
-                outcome = await executor.cancel(attempt.handle)
-                await self.repository.outcome(transfer_id, outcome, attempt_id=attempt.handle.attempt_id)
-                if outcome.kind == OutcomeKind.CANCELLED:
-                    await self.repository.execution(ExecutionObservation(attempt.handle, ExecutionState.CANCELLED, attempt.progress))
+        # Tombstone logical lifecycle and establish external cleanup responsibility
+        # atomically before any executor I/O. Delete cannot abandon a launched writer.
+        await self.repository.delete(transfer_id, remote=remote, now=self.clock())
+        await self._cleanup_executions_pending(transfer_id=transfer_id)
         if remote:
             await self._cleanup_resources(transfer_id, explicit=True)
 

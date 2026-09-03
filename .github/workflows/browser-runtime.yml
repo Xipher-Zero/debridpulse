@@ -91,11 +91,33 @@ jobs:
           npm audit --audit-level=high
           npx playwright install --with-deps chromium
 
-      - name: Run browser runtime contract
+      - name: Inventory and run browser runtime contract
         working-directory: frontend/browser
         run: |
-          set -o pipefail
-          npm test 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+          set -euo pipefail
+          NO_COLOR=1 npx playwright test --config=playwright.config.js --list 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
+          discovered="$(sed -nE 's/.*Total: ([0-9]+) tests? in .*/\1/p' "$RUNNER_TEMP/playwright-list.log" | tail -n1)"
+
+          set +e
+          NO_COLOR=1 npm test 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+          test_status=${PIPESTATUS[0]}
+          set -e
+
+          running="$(sed -nE 's/.*Running ([0-9]+) tests? using .*/\1/p' "$RUNNER_TEMP/playwright.log" | tail -n1)"
+          passed="$(sed -nE 's/^[[:space:]]*([0-9]+) passed.*/\1/p' "$RUNNER_TEMP/playwright.log" | tail -n1)"
+          printf 'discovered=%s\nrunning=%s\npassed=%s\n' "$discovered" "$running" "$passed" | tee "$RUNNER_TEMP/playwright-counts.txt"
+          {
+            echo '### Browser Runtime qualification inventory'
+            echo
+            cat "$RUNNER_TEMP/playwright-counts.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test "$test_status" -eq 0
+          test -n "$discovered"
+          test -n "$running"
+          test -n "$passed"
+          test "$discovered" -eq "$running"
+          test "$running" -eq "$passed"
 
       - name: Upload browser qualification diagnostics
         if: always()
@@ -103,7 +125,9 @@ jobs:
         with:
           name: browser-qualification-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/playwright-list.log
             ${{ runner.temp }}/playwright.log
+            ${{ runner.temp }}/playwright-counts.txt
             frontend/browser/test-results
           if-no-files-found: warn
           retention-days: 14
