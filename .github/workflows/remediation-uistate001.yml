@@ -1,0 +1,52 @@
+name: Second-Pass UISTATE-001 Remediation
+
+on:
+  push:
+    branches: ['1.0.12']
+    paths:
+      - '.github/remediation_uistate001.py'
+      - '.github/workflows/remediation-uistate001.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  remediate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Apply provider-status temporal authority remediation
+        run: python .github/remediation_uistate001.py
+      - name: Install browser dependencies
+        run: |
+          cd frontend
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run deterministic provider-status generation browser tests
+        run: |
+          set -euo pipefail
+          cd frontend
+          npx playwright test browser/provider-status-generation.spec.js --project=chromium
+      - name: JavaScript syntax and diff checks
+        run: |
+          set -euo pipefail
+          node --check frontend/static/app.js
+          node --check frontend/browser/provider-status-generation.spec.js
+          git diff --check
+      - name: Commit coherent UISTATE-001 correction
+        run: |
+          set -euo pipefail
+          rm .github/remediation_uistate001.py
+          rm .github/workflows/remediation-uistate001.yml
+          git config user.name debridpulse-remediation
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: make provider status generation authoritative'
+          git push origin HEAD:1.0.12
