@@ -22,6 +22,7 @@ from core.branding import APP_SHORT_NAME
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.version import read_version
+from providers.alldebrid.admin import runtime_status as alldebrid_runtime_status
 from providers.alldebrid.client import AllDebridService
 from executors.aria2.client import Aria2Service
 from services.notifications import NotificationService
@@ -191,6 +192,13 @@ async def get_extraction_passwords():
     only this purpose-built Settings surface returns the actual newline list.
     """
     return {"passwords": str(get_settings().extraction_password or "")}
+
+
+@router.get("/integration-status/alldebrid")
+async def get_alldebrid_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Return AllDebrid-specific status without inferring from generic health."""
+    provider = application.engine.registry.providers.get("alldebrid")
+    return await alldebrid_runtime_status(provider)
 
 
 @router.post("/settings/validate-alldebrid")

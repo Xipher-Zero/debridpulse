@@ -529,9 +529,38 @@ function updateAria2ngLink() {
   }
 }
 
+function renderAllDebridStatus(status) {
+  const state = String(status?.state || 'unknown');
+  const username = String(status?.username || '').trim();
+  const presentation = {
+    disabled:      ['warn',  'AllDebrid: disabled'],
+    unconfigured:  ['warn',  'AllDebrid: not configured'],
+    auth_required: ['error', 'AllDebrid: authentication required'],
+    healthy:       ['ok',    `AllDebrid: ${username || 'online'}`],
+    unhealthy:     ['error', 'AllDebrid: unavailable'],
+    unknown:       ['check', 'AllDebrid: status unknown'],
+  }[state] || ['check', 'AllDebrid: status unknown'];
+  setDot('api', presentation[0], presentation[1]);
+  if (state === 'healthy') _updatePremiumLabel(status);
+  else _updatePremiumLabel(null);
+}
+
+async function loadAllDebridStatus() {
+  try {
+    const status = await api('GET', '/integration-status/alldebrid');
+    renderAllDebridStatus(status);
+    return status;
+  } catch (_) {
+    // Failure of the generic application/API path cannot establish provider
+    // failure. Preserve that distinction by rendering a neutral unknown state.
+    renderAllDebridStatus({state:'unknown'});
+    return null;
+  }
+}
+
 async function checkConnections() {
-  // AllDebrid dot is already set by loadStats() — skip duplicate /stats call
   const cfg = settingsData || {};
+  await loadAllDebridStatus();
 
   // aria2 check — retry once if first attempt fails
   if (cfg.aria2_url || cfg.aria2_mode === 'builtin') {
@@ -555,17 +584,6 @@ async function checkConnections() {
   }
   updateAria2ngLink();
 
-}
-
-
-async function checkPremiumStatus() {
-  try {
-    const cfg = settingsData;
-    if (!cfg || !cfg.alldebrid_api_key_configured) return;
-    const r = await api('POST', '/settings/test-alldebrid');
-    _updatePremiumLabel(r);
-    setDot('api', 'ok', `AllDebrid: ${r.username||'online'}`);
-  } catch { /* silent — dot already set by checkConnections */ }
 }
 
 function setDot(id, state, label) {
@@ -958,7 +976,6 @@ async function loadStats() {
       const bs = s.by_status || {};
       pausedTransferCount = Math.max(0, Number(bs.paused) || 0);
       renderTopbarActions();
-      setDot('api', 'ok', 'AllDebrid: online');
       // ── stat cards ─────────────────────────────────────────────────────
       // Soft-deleted rows remain in /stats for diagnostics/duplicate revival,
       // but they are intentionally absent from the normal Downloads view.
@@ -2772,21 +2789,9 @@ async function triggerStatsSnapshot(button) {
   // Start background tasks immediately — do not wait for stats
   loadRecent().catch(() => {});
   checkConnections().catch(() => {});
-  checkPremiumStatus().catch(() => {});
 
-  if (!statsLoaded) {
-
-    setDot(
-      'api',
-      'error',
-      'AllDebrid: Error'
-    );
-  }
-
-  setInterval(
-    checkPremiumStatus,
-    12 * 60 * 60 * 1000
-  );
+  // Generic statistics availability says nothing about provider health.
+  // checkConnections() owns the provider-specific status surface.
 
   // ── Server-Sent Events — live updates without 15 s polling ──────────────
   // Falls back to polling if SSE is unavailable (proxy, browser quirk, etc.)
