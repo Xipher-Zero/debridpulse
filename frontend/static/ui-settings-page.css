@@ -283,7 +283,7 @@ body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   align-items: start;
   gap: 32px;
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 body.dp-v11-structural #view-settings .dp-settings-download-path-stack,
