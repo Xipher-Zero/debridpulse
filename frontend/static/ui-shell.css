@@ -332,9 +332,6 @@ body.light #sidebar {
   border-right-color: var(--dp-border-default);
   box-shadow: 8px 0 26px rgba(45,61,96,.04);
 }
-body.light .nav-item.active {
-  color: var(--dp-text-primary);
-}
 body.light #topbar {
   background: rgba(255,255,255,.86);
   border-bottom-color: var(--dp-border-default);
