@@ -58,11 +58,10 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
 
 /* The dark-theme selected state is intentionally bright on a dark accent
    surface. In light theme the same inherited bright text washed out against
-   the pale lavender selected surface, so the active labels use the canonical
-   primary text token while the accent rail/background/icon continue to carry
-   selection identity. */
-body.light.dp-v11-structural #view-settings .dp-settings-tabs .stab[aria-selected='true'],
-body.light.dp-v11-structural:has(#view-settings.active) #sidebar .nav-item[data-view='settings'].active {
+   the pale lavender selected surface, so the active tab label uses the
+   canonical primary text token while the accent surface/icon retain selection
+   identity. Sidebar contrast remains owned by ui-shell.css. */
+body.light.dp-v11-structural #view-settings .dp-settings-tabs .stab[aria-selected='true'] {
   color: var(--dp-text-primary);
 }
 
