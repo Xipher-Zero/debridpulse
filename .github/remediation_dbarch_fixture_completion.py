@@ -31,6 +31,7 @@ old = '    monkeypatch.setattr(database, "DB_PATH", tmp_path / "patterns-static.
 new = '    monkeypatch.setattr(database, "DB_PATH", tmp_path / "patterns-static.sqlite3")\n    await database.init_db()\n    store = ProviderRuntimeStateStore()\n'
 if old not in source:
     raise RuntimeError("AllDebrid static capability fixture changed")
+source = source.replace(old, new, 1)
 pattern.write_text(source)
 
 replace_once(
