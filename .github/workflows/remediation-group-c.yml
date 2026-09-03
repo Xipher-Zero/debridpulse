@@ -121,8 +121,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd backend
-          pytest -q tests/test_database_* tests/test_universal_migration.py
+          PYTHONPATH=backend pytest -q backend/tests/test_database_* backend/tests/test_universal_migration.py
       - name: Compile and undefined-name checks
         shell: bash
         run: |
