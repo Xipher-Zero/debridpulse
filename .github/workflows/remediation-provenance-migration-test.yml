@@ -1,0 +1,74 @@
+name: Provenance Migration Ownership Test Remediation
+
+on:
+  push:
+    branches: [1.0.12]
+    paths:
+      - '.github/workflows/remediation-provenance-migration-test.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  remediate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Correct stale provenance migration ownership test
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/tests/test_route_provider_provenance.py')
+          source = path.read_text(encoding='utf-8')
+          old = '''    migrated = TransferRepository()\n    await migrated.initialize()\n    first = await migrated.presentation(transfer.id, details=True)\n    assert first["delivering_provider_id"] == "durably_known_provider"\n    assert first["route_attempts"][0]["history_quality"] == "legacy_known"\n    assert first["execution_attempts"][0]["history_quality"] == "legacy_known"\n    assert first["execution_attempts"][0]["route_attempt_id"] == "legacy-route"\n\n    await migrated.initialize()\n    async with database.get_db() as db:\n        route_count = (await db.fetchone("SELECT COUNT(*) AS n FROM route_attempt_provenance"))["n"]\n        execution_count = (await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempt_provenance"))["n"]\n    assert route_count == 1\n    assert execution_count == 1\n'''
+          new = '''    migrated = TransferRepository()\n    await migrated.initialize()\n    # DB-001: ordinary repository startup owns current-schema readiness only.\n    # Historical provenance reconstruction is invoked by the v1.0.12 migration owner.\n    async with database.get_db() as db:\n        assert (await db.fetchone("SELECT COUNT(*) AS n FROM route_attempt_provenance"))["n"] == 0\n        assert (await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempt_provenance"))["n"] == 0\n        await migrated._backfill_provenance(db)\n        await db.commit()\n\n    first = await migrated.presentation(transfer.id, details=True)\n    assert first["delivering_provider_id"] == "durably_known_provider"\n    assert first["route_attempts"][0]["history_quality"] == "legacy_known"\n    assert first["execution_attempts"][0]["history_quality"] == "legacy_known"\n    assert first["execution_attempts"][0]["route_attempt_id"] == "legacy-route"\n\n    async with database.get_db() as db:\n        await migrated._backfill_provenance(db)\n        await db.commit()\n        route_count = (await db.fetchone("SELECT COUNT(*) AS n FROM route_attempt_provenance"))["n"]\n        execution_count = (await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempt_provenance"))["n"]\n    assert route_count == 1\n    assert execution_count == 1\n'''
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one stale provenance block, found {source.count(old)}')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
+      - name: Focused provenance and DB ownership regression
+        run: |
+          set -euo pipefail
+          PYTHONPATH=backend pytest -q \
+            backend/tests/test_route_provider_provenance.py \
+            backend/tests/test_database_migration_ownership.py
+      - name: Architecture ownership static gate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          repo_source = Path('backend/transfers/repository.py').read_text(encoding='utf-8')
+          migration_source = Path('backend/db/migrations/v112.py').read_text(encoding='utf-8')
+          tree = ast.parse(repo_source)
+          cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'TransferRepository')
+          initialize = next(node for node in cls.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'initialize')
+          init_text = ast.get_source_segment(repo_source, initialize) or ''
+          assert '_backfill_provenance' not in init_text, 'repository initialize must not own historical migration backfill'
+          assert 'await repository._backfill_provenance(db)' in migration_source, 'v112 migration must remain provenance backfill owner'
+          PY
+          ruff check backend/tests/test_route_provider_provenance.py --select F821,F822,F823
+          python -m compileall -q backend/tests/test_route_provider_provenance.py
+          git diff --check
+      - name: Commit coherent test correction
+        run: |
+          set -euo pipefail
+          rm .github/workflows/remediation-provenance-migration-test.yml
+          git config user.name debridpulse-remediation
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'test: align provenance backfill with migration ownership'
+          git push origin HEAD:1.0.12
