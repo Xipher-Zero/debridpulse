@@ -8,6 +8,16 @@ async function openSettings(page) {
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
+async function primaryTextColor(page) {
+  return page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--dp-text-primary)';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+}
 function integrationInput(page, identity) {
   return page.locator(`[data-integration-enabled="${identity}"]`);
 }
@@ -55,6 +65,9 @@ test('Sources & Providers exposes canonical AllDebrid and General HTTP enable co
   await page.screenshot({path:'test-results/checkpoint-settings-dark-desktop.png', fullPage:true});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
+  const primaryText = await primaryTextColor(page);
+  await expect(page.locator('.dp-settings-tabs .stab[aria-selected="true"]')).toHaveCSS('color', primaryText);
+  await expect(page.locator('#sidebar .nav-item[data-view="settings"].active')).toHaveCSS('color', primaryText);
   await page.screenshot({path:'test-results/checkpoint-settings-light-desktop.png', fullPage:true});
 });
 
