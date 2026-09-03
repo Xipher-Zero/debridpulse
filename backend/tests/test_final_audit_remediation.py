@@ -11,7 +11,6 @@ import pytest
 
 import core.config as config
 import db.database as database
-import main
 import providers.alldebrid.host_runtime as host_runtime
 from integrations.runtime_state import RuntimeStateConflict, RuntimeStateRecord
 from providers.alldebrid.host_runtime import (
@@ -33,6 +32,14 @@ from transfers.models import TransferRequest
 
 
 PREDECESSOR = Path(__file__).with_name("fixtures") / "v1.0.11.1.sql"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _main(monkeypatch):
+    """Import the production composition with its checked-in frontend available."""
+    monkeypatch.setenv("STATIC_DIR", str(REPO_ROOT / "frontend" / "static"))
+    import main as app_main
+    return app_main
 
 
 def _request(url: str) -> TransferRequest:
@@ -58,6 +65,7 @@ async def test_startup_sanitization_is_authoritative_for_external_aria2_migratio
     tmp_path, monkeypatch
 ):
     """A malformed legacy mode must not mint authority over a foreign aria2 GID."""
+    main = _main(monkeypatch)
     db_path = tmp_path / "legacy.db"
     with sqlite3.connect(db_path) as conn:
         conn.executescript(PREDECESSOR.read_text())
@@ -111,6 +119,7 @@ async def test_startup_sanitization_is_authoritative_for_external_aria2_migratio
 
 @pytest.mark.asyncio
 async def test_startup_refuses_ownership_migration_without_validated_settings(monkeypatch):
+    main = _main(monkeypatch)
     called = False
 
     def explode(_settings):
@@ -324,7 +333,8 @@ async def test_generic_transfer_added_notification_is_provider_neutral(monkeypat
     assert "torrent" not in captured["title"].casefold()
 
 
-def test_application_metadata_owns_the_multi_provider_runtime():
+def test_application_metadata_owns_the_multi_provider_runtime(monkeypatch):
+    main = _main(monkeypatch)
     assert main.logger.name == "debridpulse.main"
     description = main.app.description
     assert "Universal Transfer Core" in description
