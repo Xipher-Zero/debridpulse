@@ -332,7 +332,7 @@ body.light.dp-v11-structural #sidebar {
 body.light.dp-v11-structural .nav-item { color: #555b78; }
 body.light.dp-v11-structural .nav-item:hover { color: #1c2037; background: #f0edff; }
 body.light.dp-v11-structural .nav-item.active {
-  color: #24184a;
+  color: var(--dp-text-primary);
   background: linear-gradient(90deg, #e9deff, #f3edff 82%, #f8f6ff);
 }
 body.light.dp-v11-structural .sidebar-footer {
