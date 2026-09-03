@@ -28,16 +28,66 @@ jobs:
           path = Path('backend/transfers/applicability.py')
           source = path.read_text(encoding='utf-8')
 
-          old_generic = '''def _generic_match(view: UrlApplicabilityView, item: ProviderApplicabilityInput) -> bool:\n    facts = item.applicability\n    if facts is None:\n        # Compatibility for existing providers that have only the canonical\n        # request-type declaration. Explicit applicability replaces this legacy\n        # URL-generic interpretation and can therefore be specialized-only.\n        return view.scheme in {str(kind).casefold() for kind in item.request_types}\n    return view.scheme in {str(scheme).casefold() for scheme in facts.generic_schemes}\n'''
-          new_generic = '''def _generic_match(view: UrlApplicabilityView, item: ProviderApplicabilityInput) -> bool:\n    facts = item.applicability\n    if facts is None:\n        # Applicability is an explicit provider contract. Missing facts must not\n        # be reinterpreted from request_types, which would create a second URL\n        # classifier and let undeclared providers enter generic competition.\n        return False\n    return view.scheme in {str(scheme).casefold() for scheme in facts.generic_schemes}\n'''
+          old_generic = '''    facts = item.applicability
+    if facts is None:
+        # Compatibility for existing providers that have only the canonical
+        # request-type declaration. Explicit applicability replaces this legacy
+        # URL-generic interpretation and can therefore be specialized-only.
+        return view.scheme in {str(kind).casefold() for kind in item.request_types}
+    try:
+'''
+          new_generic = '''    facts = item.applicability
+    if facts is None:
+        # Applicability is an explicit provider contract. Missing facts must not
+        # be reinterpreted from request_types, which would create a second URL
+        # classifier and let undeclared providers enter generic competition.
+        return False
+    try:
+'''
           if source.count(old_generic) != 1:
-              raise SystemExit('generic fallback anchor mismatch')
+              raise SystemExit(f'generic fallback anchor mismatch: {source.count(old_generic)}')
           source = source.replace(old_generic, new_generic, 1)
 
-          old_static = '''        explicit_url_kind = payload_marks_url or any(\n            normalized_kind in {str(s).casefold() for s in facts.generic_schemes}\n            or normalized_kind\n            in {\n                str(s).casefold()\n                for claim in facts.specialized_hosts\n                for s in claim.schemes\n            }\n            for item in inputs\n            if (facts := item.applicability) is not None\n        )\n        if explicit_url_kind:\n            return ()\n        static = tuple(\n            ProviderApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)\n            for item in inputs\n            if normalized_kind in {str(kind).casefold() for kind in item.request_types}\n        )\n        return static\n'''
-          new_static = '''        declared = tuple(item for item in inputs if item.applicability is not None)\n        explicit_url_kind = payload_marks_url or any(\n            normalized_kind in {str(s).casefold() for s in facts.generic_schemes}\n            or normalized_kind\n            in {\n                str(s).casefold()\n                for claim in facts.specialized_hosts\n                for s in claim.schemes\n            }\n            for item in declared\n            if (facts := item.applicability) is not None\n        )\n        if explicit_url_kind:\n            return ()\n        static = tuple(\n            ProviderApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)\n            for item in declared\n            if normalized_kind in {str(kind).casefold() for kind in item.request_types}\n        )\n        return static\n'''
+          old_static = '''        explicit_url_kind = payload_marks_url or any(
+            item.applicability is not None
+            and (
+                kind in {
+                    str(scheme).casefold() for scheme in item.applicability.generic_schemes
+                }
+                or any(
+                    kind in {str(scheme).casefold() for scheme in claim.schemes}
+                    for claim in item.applicability.specialized_hosts
+                )
+            )
+            for item in inputs
+        )
+        if explicit_url_kind:
+            return ()
+        return tuple(
+            ApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)
+            for item in inputs
+        )
+'''
+          new_static = '''        declared = tuple(item for item in inputs if item.applicability is not None)
+        explicit_url_kind = payload_marks_url or any(
+            kind in {
+                str(scheme).casefold() for scheme in item.applicability.generic_schemes
+            }
+            or any(
+                kind in {str(scheme).casefold() for scheme in claim.schemes}
+                for claim in item.applicability.specialized_hosts
+            )
+            for item in declared
+        )
+        if explicit_url_kind:
+            return ()
+        return tuple(
+            ApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)
+            for item in declared
+        )
+'''
           if source.count(old_static) != 1:
-              raise SystemExit('static fallback anchor mismatch')
+              raise SystemExit(f'static fallback anchor mismatch: {source.count(old_static)}')
           path.write_text(source.replace(old_static, new_static, 1), encoding='utf-8')
 
           test = Path('backend/tests/test_applicability_explicit_contract.py')
