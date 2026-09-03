@@ -75,11 +75,13 @@ test('checkpoint visually captures Recent Activity and Downloads provider indica
   const httpProviderChip = page.locator('#t-tbody tr[data-torrent-id="952"] .dp-provider-chip');
   await expect(httpProviderChip).toHaveText('HTTP & HTTPS');
   await expect(page.locator('#t-tbody tr[data-torrent-id="953"] .dp-provider-chip')).toHaveText('Unknown');
-  await expect(page.locator('#view-torrents thead')).toContainText('Provider / Source');
+  const providerHeading = page.locator('#view-torrents thead th').filter({ hasText: 'Provider / Source' });
+  await expect(providerHeading).toHaveCount(1);
   expect(await httpProviderChip.evaluate(chip => {
     const chipRect = chip.getBoundingClientRect();
     const cellRect = chip.closest('td').getBoundingClientRect();
     return chip.scrollWidth <= chip.clientWidth && chipRect.right <= cellRect.right + 0.5;
   })).toBe(true);
+  expect(await providerHeading.evaluate(heading => heading.scrollWidth <= heading.clientWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/checkpoint-downloads-provider-dark-desktop.png', fullPage: true });
 });
