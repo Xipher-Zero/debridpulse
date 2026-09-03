@@ -9,8 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 APP = STATIC / "app.js"
 SHELL_RUNTIME = STATIC / "operator-title.js"
-PRESENTATION_RUNTIME = STATIC / "ui-runtime.js"
-DOWNLOADS_RUNTIME = STATIC / "ui-downloads-runtime.js"
 TRANSFER = STATIC / "ui-transfer-contract.css"
 ICONS = STATIC / "icon-system.css"
 
@@ -73,24 +71,20 @@ def test_transfer_status_mapping_matches_debridpulse_semantics() -> None:
     assert not missing, f"canonical transfer mappings are missing: {missing}"
 
 
-def test_page_runtimes_consume_canonical_icons_without_private_svg_maps() -> None:
-    dashboard = PRESENTATION_RUNTIME.read_text(encoding="utf-8")
-    downloads = DOWNLOADS_RUNTIME.read_text(encoding="utf-8")
-
-    for runtime in (dashboard, downloads):
-        assert "window.DPIcons" in runtime
-        assert "const paths =" not in runtime
-        assert "data-dp-lucide" in runtime
-
-    assert "arrow.innerHTML = utilitySvg('chevronDown')" in dashboard
-    assert "normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh')" in dashboard
-    assert "normalizeUtilityButton(refresh, 'refresh')" in dashboard
-    assert "utilitySvg('refresh')" in downloads
-    assert "utilitySvg('chevronLeft')" in downloads
-    assert "utilitySvg('chevronRight')" in downloads
-    assert "'Delete', 'trash2'" in downloads
-    assert "label = 'Now'; iconName = 'download'" in downloads
-
+def test_page_owners_consume_canonical_icons_without_private_svg_maps() -> None:
+    index = (STATIC / "index.html").read_text(encoding="utf-8")
+    app = APP.read_text(encoding="utf-8")
+    shell = SHELL_RUNTIME.read_text(encoding="utf-8")
+    for icon in ("refresh", "chevronLeft", "chevronRight", "trash2", "pause", "play"):
+        assert f"{icon}:" in shell
+    assert 'data-dp-lucide="refresh"' in index
+    assert 'data-dp-lucide="pause"' in index
+    assert 'data-dp-lucide="play"' in index
+    assert 'data-dp-lucide="trash2"' in index
+    assert "window.DPIcons.svg" in app
+    assert "const paths =" not in app
+    assert not (STATIC / "ui-runtime.js").exists()
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
 
 def test_status_badges_are_rectangular_and_include_details_overlay() -> None:
     css = TRANSFER.read_text(encoding="utf-8")

@@ -139,84 +139,9 @@
   });
 
 
-  function decorateNavigation() {
-    const iconByView = {
-      dashboard: 'dashboard', torrents: 'download', events: 'logs',
-      stats: 'statistics', settings: 'settings', help: 'help'
-    };
-    document.querySelectorAll('#sidebar .nav-item[data-view]').forEach(function (item) {
-      const holder = item.querySelector('.icon');
-      const iconName = iconByView[item.dataset.view];
-      if (holder && iconName) holder.innerHTML = lucideSvg(iconName);
-    });
-  }
-
-  function decorateMobileMenu() {
-    const button = document.getElementById('mobile-menu-btn');
-    if (button) button.innerHTML = lucideSvg('menu');
-  }
-
   function renderThemeGlyph(isLight) {
     const button = document.getElementById('theme-toggle');
     if (!button) return;
     button.innerHTML = lucideSvg(isLight ? 'sun' : 'moon');
   }
-
-  function decorateAria2CapChevron() {
-    const arrow = document.querySelector('#aria2-cap-toggle span[aria-hidden="true"]');
-    if (arrow && !arrow.querySelector('[data-dp-lucide="chevronDown"]')) {
-      arrow.innerHTML = lucideSvg('chevronDown');
-    }
-  }
-
-  function decorateActionButton(id, iconName) {
-    const button = document.getElementById(id);
-    if (!button || button.dataset.pending === '1') return;
-    decorateButton(button, iconName, button.dataset.defaultLabel || button.textContent.trim(), 'dpShellLabel');
-  }
-
-  function decorateTopbarActions() {
-    decorateActionButton('btn-pause-all', 'pause');
-    decorateActionButton('btn-resume-all', 'play');
-    decorateActionButton('btn-resume-paused', 'play');
-    decorateAria2CapChevron();
-  }
-
-  function bindThemeToggle() {
-    const button = document.getElementById('theme-toggle');
-    const control = button && button.closest('.sidebar-theme-control');
-    const topbar = document.getElementById('topbar');
-    if (!button || !control || !topbar) return;
-    control.classList.add('topbar-theme-control');
-    if (control.parentElement !== topbar) topbar.appendChild(control);
-    renderThemeGlyph(document.body.classList.contains('light'));
-  }
-
-  function initializeShellPresentation() {
-    decorateNavigation();
-    decorateMobileMenu();
-    renderThemeGlyph(document.body.classList.contains('light'));
-    decorateTopbarActions();
-    bindThemeToggle();
-
-    const actionHost = document.getElementById('topbar-actions');
-    if (actionHost && !actionHost.dataset.dpShellObserved) {
-      actionHost.dataset.dpShellObserved = '1';
-      new MutationObserver(function () { decorateTopbarActions(); })
-        .observe(actionHost, {childList: true, subtree: true, characterData: true});
-    }
-  }
-
-  initializeShellPresentation();
-  document.addEventListener('DOMContentLoaded', initializeShellPresentation, {once: true});
-})();
-
-(function () {
-  'use strict';
-  if (document.querySelector('script[data-dp-ui-runtime]')) return;
-  const script = document.createElement('script');
-  script.src = '/ui-runtime.js?v=24';
-  script.defer = true;
-  script.dataset.dpUiRuntime = '1';
-  document.head.appendChild(script);
 })();

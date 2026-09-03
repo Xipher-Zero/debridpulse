@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
 APP = STATIC / "app.js"
-RUNTIME = STATIC / "ui-runtime.js"
 STATS = STATIC / "ui-statistics.js"
 STATS_CSS = STATIC / "ui-statistics-page.css"
 STATS_ICON = STATIC / "icons" / "dp" / "statistics.svg"
@@ -46,30 +45,20 @@ def statistics_detail_io_owners() -> list[str]:
 def test_statistics_composition_is_direct_static_owner_not_runtime_convergence() -> None:
     view = statistics_view()
     source = read(STATS)
-    runtime = read(RUNTIME)
+    app = read(APP)
     style = read(STATIC / "style-v11.css")
-    for fragment in (
-        'class="view card dp-statistics-master" id="view-stats"',
-        'class="card-header dp-stats-master-header"',
-        'class="card-body dp-stats-master-body"',
-        'class="dash-kpi-strip dp-stats-history-grid"',
-        'class="scard dp-stats-chart dp-list-workspace-surface"',
-        'class="dp-stats-breakdown-grid"',
-        "By the Numbers",
-        "Because vibes are not a performance metric.",
-    ):
+    for fragment in ('class="view card dp-statistics-master" id="view-stats"', 'class="card-header dp-stats-master-header"', 'class="card-body dp-stats-master-body"', 'class="dash-kpi-strip dp-stats-history-grid"', 'class="scard dp-stats-chart dp-list-workspace-surface"', 'class="dp-stats-breakdown-grid"', "By the Numbers", "Because vibes are not a performance metric."):
         assert fragment in view
     assert "split-grid" not in view
     assert "📈" not in view
     assert "ensureStatisticsArchitecture" not in source
     assert "decorateChartHeader" not in source
     assert "applySharedSurfaceClass" not in source
-    assert "moveDashboardKpisToStatistics" not in runtime
-    assert "decorateHistoricalKpis" not in runtime
+    assert "moveDashboardKpisToStatistics" not in app
+    assert "decorateHistoricalKpis" not in app
     assert "dash-kpi-strip--dashboard" not in read(INDEX)
     assert not (STATIC / "ui-statistics.css").exists()
     assert "/ui-statistics.css" not in style
-
 
 def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_base() -> None:
     view = statistics_view()
@@ -107,11 +96,10 @@ def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_bas
 
 
 def test_queue_health_compatibility_surface_is_physically_removed() -> None:
-    combined = "\n".join(read(path) for path in (INDEX, APP, RUNTIME, STATS))
+    combined = chr(10).join(read(path) for path in (INDEX, APP, STATS))
     assert "i-queue-health" not in combined
     assert "i-queue-copy" not in combined
     assert "Queue Health" not in statistics_view()
-
 
 def test_breakdowns_keep_reviewed_labels_adaptive_top_ten_and_two_column_behavior() -> None:
     source = read(STATS)

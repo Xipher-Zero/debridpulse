@@ -13,7 +13,7 @@ STYLE = STATIC / "style-v11.css"
 TOKENS = STATIC / "ui-language-tokens.css"
 UNIVERSAL = STATIC / "ui-universal-language.css"
 DOWNLOADS = STATIC / "ui-downloads-page.css"
-RUNTIME = STATIC / "ui-downloads-runtime.js"
+APP = STATIC / "app.js"
 OPERATOR = STATIC / "operator-title.js"
 ICON = STATIC / "icons" / "dp" / "card-download.svg"
 REMOVED_ICON = STATIC / "icons" / "dp" / "green-download-button.svg"
@@ -114,41 +114,33 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
     assert not present, f"Downloads page reintroduced copied base material: {present}"
 
 
-def test_downloads_runtime_carries_header_copy_search_and_empty_language() -> None:
-    runtime = RUNTIME.read_text(encoding="utf-8")
-    required = (
-        "card-download.svg?v=11",
-        "Download Queue",
-        "download tracked",
-        "downloads tracked",
-        "Search downloads…",
-        "No downloads yet. Add a link, magnet, or torrent file to get started.",
-        "No downloads match your current filters.",
-        "No downloads match your search.",
-        "document.getElementById('dash-tbody')",
-        "Showing all ",
-        "matching downloads",
-        "dp-pager-current",
-        "chevronLeft",
-        "chevronRight",
-        "Refresh downloads",
-        "dp-downloads-table-wrap",
+def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
+    app = APP.read_text(encoding="utf-8")
+    index = (STATIC / "index.html").read_text(encoding="utf-8")
+    required_app = (
+        "download tracked", "downloads tracked", "No downloads yet. Add a link, magnet, or torrent file to get started.",
+        "No downloads match your current filters.", "No downloads match your search.",
+        "Showing all ", "matching downloads", "dp-pager-current", "chevronLeft", "chevronRight",
+        "function renderTorrentPagination(", "function setFilter(",
     )
-    missing = [fragment for fragment in required if fragment not in runtime]
-    assert not missing, f"Downloads runtime contract is missing: {missing}"
-    assert "card-document-stack.svg" not in runtime
-    assert "green-download-button.svg" not in runtime
-    assert "api('POST'" not in runtime
-    assert "api('DELETE'" not in runtime
+    missing = [fragment for fragment in required_app if fragment not in app]
+    assert not missing, f"Downloads direct app owner is missing: {missing}"
+    for fragment in ("card-download.svg?v=11", "Download Queue", "Search downloads…", "Refresh downloads", "dp-downloads-table-wrap"):
+        assert fragment in index
+    assert "card-document-stack.svg" not in index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]
+    assert "green-download-button.svg" not in index
+    assert "api('POST'" in app
+    assert "'DELETE'," in app
+    assert "`/torrents/${id}?from_alldebrid=true`" in app
 
-
-def test_downloads_runtime_is_loaded_once_by_the_canonical_document() -> None:
+def test_downloads_correction_runtime_is_absent_from_canonical_document() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
     index = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert '<script src="/ui-downloads-runtime.js?v=24" defer data-dp-downloads-runtime="1"></script>' in index
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
+    assert "/ui-downloads-runtime.js" not in index
+    assert "data-dp-downloads-runtime" not in index
     assert "data-dp-downloads-runtime" not in operator
     assert "/ui-downloads-runtime.js" not in operator
-
 
 def test_downloads_header_uses_registered_download_true_vector() -> None:
     text = ICON.read_text(encoding="utf-8")

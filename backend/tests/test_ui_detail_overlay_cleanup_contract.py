@@ -18,22 +18,20 @@ def test_visible_download_total_excludes_soft_deleted_rows() -> None:
 
 def test_bulk_toolbar_right_side_owns_count_and_clear_selection() -> None:
     app = read("app.js")
-    runtime = read("ui-downloads-runtime.js")
     page = read("ui-downloads-page.css")
     index = read("index.html")
     view = index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]
     assert "_selectedIds.size + ' Selected'" in app
-    assert "'Clear Selections', 'x', 'dp-downloads-bulk-action--clear'" in runtime
     assert view.index("bulkAction('pause',this)") < view.index("bulkAction('resume',this)")
     assert view.index("bulkAction('resume',this)") < view.index("bulkAction('reset',this)")
     assert view.index("bulkAction('reset',this)") < view.index("bulkAction('delete',this)")
     assert 'class="dp-downloads-bulk-status"' in view
     assert 'id="bulk-count" class="dp-downloads-bulk-count"' in view
-    assert 'onclick="clearSelection()">Clear Selections</button>' in view
-    assert "actions.append(" not in runtime
-    assert "status.append(" not in runtime
+    assert 'data-default-label="Clear Selections"' in view
+    assert 'data-dp-lucide="x"' in view
+    assert 'onclick="clearSelection()"' in view
     assert "gap: 10px;" in page
-
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
 
 def test_details_modal_consumes_canonical_card_primitives() -> None:
     index = read("index.html")

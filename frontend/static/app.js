@@ -18,10 +18,11 @@ function renderTopbarActions() {
   // Create these controls once. Replacing their DOM nodes during live refreshes
   // can swallow pointer-up/click events when an SSE update lands mid-click.
   if (el.dataset.initialized !== '1') {
+    const icon = (name) => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
     el.innerHTML = `
-      <button id="btn-resume-all" class="btn btn-primary" onclick="resumeProcessing()" style="display:none">Resume All</button>
-      <button id="btn-resume-paused" class="btn btn-primary" onclick="resumePausedDownloads()" style="display:none">Resume Paused</button>
-      <button id="btn-pause-all" class="btn btn-ghost" onclick="pauseProcessing()">Pause All</button>
+      <button id="btn-resume-all" class="btn btn-primary" data-default-label="Resume All" onclick="resumeProcessing()" style="display:none">${icon('play')}<span>Resume All</span></button>
+      <button id="btn-resume-paused" class="btn btn-primary" data-default-label="Resume Paused" onclick="resumePausedDownloads()" style="display:none">${icon('play')}<span>Resume Paused</span></button>
+      <button id="btn-pause-all" class="btn btn-ghost" data-default-label="Pause All" onclick="pauseProcessing()">${icon('pause')}<span>Pause All</span></button>
     `;
     el.dataset.initialized = '1';
   }
@@ -50,7 +51,9 @@ function renderTopbarActions() {
     resumePausedBtn.dataset.defaultLabel = label;
 
     if (resumePausedBtn.dataset.pending !== '1') {
-      resumePausedBtn.textContent = label;
+      const copy = resumePausedBtn.querySelector('span:last-child');
+      if (copy) copy.textContent = label;
+      else resumePausedBtn.textContent = label;
     }
   }
 }
@@ -73,14 +76,20 @@ function nav(el) {
   }
 
   const titles = {
-    dashboard:'Dashboard',
-    torrents:'Downloads',
-    events:'Event Log',
-    stats:'Statistics',
-    settings:'Settings',
-    help:'Help & License',
+    dashboard:'Dashboard', torrents:'Downloads', events:'Event Log',
+    stats:'Statistics', settings:'Settings', help:'Help & License',
+  };
+  const subtitles = {
+    dashboard:'Overview of your download activities and system status.',
+    torrents:'Inspect, filter, and control queued and active transfers.',
+    events:'Recent transfer activity, decisions, warnings, and errors.',
+    stats:'Historical transfer performance and completion metrics.',
+    settings:'Configure providers, downloads, notifications, and system behavior.',
+    help:'Usage guidance, project information, and licensing.',
   };
   document.getElementById('page-title').textContent = titles[v] || v;
+  const subtitle = document.getElementById('page-subtitle');
+  if (subtitle) subtitle.textContent = subtitles[v] || '';
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title:titles[v]||v}}));
   if (v === 'dashboard') { loadStats(); loadRecent(); }
   if (v === 'torrents')  loadTorrents();
@@ -983,6 +992,7 @@ async function loadStats() {
       const total = Object.entries(bs)
         .filter(([status]) => status !== 'deleted')
         .reduce((sum, [, count]) => sum + (Number(count) || 0), 0);
+      updateDownloadsTrackedCopy(total);
       const completed = s.completed_count ?? bs.completed ?? 0;
       document.getElementById('s-total').textContent = total;
       document.getElementById('s-completed').textContent = completed;
@@ -1094,12 +1104,14 @@ async function loadRecent() {
     const {items} = await api('GET', `/torrents?limit=${recentLimit}`);
     const tb = document.getElementById('dash-tbody');
     if (!items.length) {
-      tb.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon">⬇️</div>No transfers yet. Add a magnet, torrent file, or debrid link to start.</div></td></tr>';
+      tb.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>No downloads yet. Add a link, magnet, or torrent file to get started.</div></td></tr>';
+      const countEl = document.getElementById('dash-activity-count');
+      if (countEl) countEl.textContent = 'Recent transfer history';
       return;
     }
     // Update activity count
     const countEl = document.getElementById('dash-activity-count');
-    if (countEl) countEl.textContent = items.length + ' most recent';
+    if (countEl) countEl.textContent = items.length + ' most recent download' + (items.length === 1 ? '' : 's');
     tb.innerHTML = items.map(t => {
       const pct_val = t.progress != null ? Math.round(t.progress) : 0;
       const is_active = ['downloading','queued'].includes(t.status);
@@ -1115,8 +1127,8 @@ async function loadRecent() {
         <td class="sz">${fmtDate(t.created_at)}</td>
         <td onclick="event.stopPropagation()">
           <div class="actions">
-            ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" onclick="event.stopPropagation();pauseT(${t.id},this)" title="Pause this download">⏸ Pause</button>` : ''}
-            ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" onclick="event.stopPropagation();resumeT(${t.id},this)" title="Resume this download">▶ Resume</button>` : ''}
+            ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)" title="Pause this download">Pause</button>` : ''}
+            ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)" title="Resume this download">Resume</button>` : ''}
           </div>
         </td>
       </tr>`;
@@ -1326,6 +1338,86 @@ async function addDashboardEntries() {
 
 // ── Torrents ───────────────────────────────────────────────────────────────
 
+function activeDownloadFilterStatus() {
+  return document.querySelector('#view-torrents .filter-tabs .ftab.active')?.dataset.dpStatus || '';
+}
+
+function downloadPaginationSummary(total, from, to) {
+  const search = document.getElementById('torrent-search');
+  if (search && search.value.trim()) {
+    if (total <= 0) return 'No downloads match your search';
+    if (total === 1 && from === 1 && to === 1) return 'Showing 1 matching download';
+    if (from === 1 && to === total) return 'Showing all ' + total + ' matching downloads';
+    return 'Showing ' + from + '–' + to + ' of ' + total + ' matching downloads';
+  }
+  const status = activeDownloadFilterStatus();
+  const language = {
+    '': ['No Items Added Yet', 'Showing 1 Added Item', n => 'Showing ' + n + ' Added Items'],
+    downloading: ['No Active Downloads', '1 Active Download', n => n + ' Active Downloads'],
+    paused: ['No Paused Downloads', '1 Paused Download', n => n + ' Paused Downloads'],
+    processing: ['No Downloads Currently Processing', '1 Download Currently Processing', n => n + ' Downloads Currently Processing'],
+    ready: ['No Downloads in Ready State', '1 Download in Ready State', n => n + ' Downloads in Ready State'],
+    completed: ['No Downloads Completed Yet', '1 Download Completed', n => n + ' Downloads Completed'],
+    error: ['No Downloads Have Errors', '1 Download Has Errors', n => n + ' Downloads Have Errors'],
+  }[status];
+  if (!language) return total === 1 ? '1 Download' : total + ' Downloads';
+  return total <= 0 ? language[0] : total === 1 ? language[1] : language[2](total);
+}
+
+function renderTorrentPagination(total, limit, offset) {
+  const normalizedTotal = Math.max(0, Number(total) || 0);
+  const normalizedLimit = Math.max(1, Number(limit) || 25);
+  const normalizedOffset = Math.max(0, Number(offset) || 0);
+  const totalPages = Math.max(1, Math.ceil(normalizedTotal / normalizedLimit));
+  const current = Math.min(totalPages, Math.floor(normalizedOffset / normalizedLimit) + 1);
+  torrentPage = current;
+  const info = document.getElementById('torrent-page-info');
+  const buttons = document.getElementById('torrent-page-btns');
+  if (!info || !buttons) return;
+  const from = normalizedTotal === 0 ? 0 : normalizedOffset + 1;
+  const to = Math.min(normalizedOffset + normalizedLimit, normalizedTotal);
+  info.textContent = downloadPaginationSummary(normalizedTotal, from, to);
+  const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
+  const controls = [];
+  if (current > 1) controls.push('<button type="button" class="dp-pager-btn" aria-label="Previous page" onclick="goToTorrentPage(' + (current - 1) + ')">' + icon('chevronLeft') + '</button>');
+  controls.push('<button type="button" class="dp-pager-btn dp-pager-current" aria-current="page" aria-label="Page ' + current + ', current page">' + current + '</button>');
+  if (current < totalPages) controls.push('<button type="button" class="dp-pager-btn" aria-label="Next page" onclick="goToTorrentPage(' + (current + 1) + ')">' + icon('chevronRight') + '</button>');
+  buttons.innerHTML = controls.join('');
+}
+
+function setFilter(element, status) {
+  document.querySelectorAll('#view-torrents .filter-tabs .ftab').forEach(tab => {
+    tab.classList.remove('active');
+    tab.setAttribute('aria-selected', 'false');
+  });
+  if (element) {
+    element.classList.add('active');
+    element.setAttribute('aria-selected', 'true');
+  }
+  currentFilter = status;
+  torrentPage = 1;
+  clearSelection();
+  loadTorrents();
+}
+
+function updateDownloadsTrackedCopy(total) {
+  const count = Math.max(0, Number(total) || 0);
+  const copy = count === 1
+    ? '1 download tracked. It followed instructions.'
+    : count + ' downloads tracked. Most of them followed instructions.';
+  const title = document.getElementById('torrent-card-title');
+  const subtitle = title?.querySelector('.dp-downloads-subtitle');
+  if (subtitle) subtitle.textContent = copy;
+  if (title) title.setAttribute('aria-label', 'Download Queue. ' + copy);
+}
+
+function downloadEmptyMessage() {
+  const search = document.getElementById('torrent-search');
+  if (search && search.value.trim()) return 'No downloads match your search.';
+  if (activeDownloadFilterStatus()) return 'No downloads match your current filters.';
+  return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
+}
+
 function onTorrentSearchInput() {
   currentTorrentSearch = (document.getElementById('torrent-search')?.value || '').trim();
   torrentPage = 1;
@@ -1349,13 +1441,15 @@ async function loadTorrents() {
     torrentTotal = total ?? items.length;
     const tb = document.getElementById('t-tbody');
     renderTorrentPagination(torrentTotal, _limit, _offset);
+    clearSelection();
     if (!items.length) {
-      tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon">⬇️</div>${currentTorrentSearch || currentFilter ? 'No downloads match the current filter or search.' : 'No downloads found.'}</div></td></tr>`;
+      tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
       return;
     }
-    tb.innerHTML = items.map(t => `<tr data-torrent-id="${t.id}" data-status="${esc(t.status)}" draggable="true" ondragstart="onTorrentDragStart(event,${t.id})" ondragend="onTorrentDragEnd(event)" ondragover="onTorrentDragOver(event,${t.id})" ondrop="onTorrentDrop(event,${t.id})">
+    const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
+    tb.innerHTML = items.map(t => `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" tabindex="0" onclick="if(!event.target.closest('button,input,a,select,textarea,label,[role=button]'))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" onchange="onCheckboxChange()"/></td>
-      <td onclick="showDetail(${t.id})" style="cursor:pointer">
+      <td>
         <div class="t-name">${esc(t.name)||'(unnamed)'}</div>
         <div class="t-hash">${(t.hash||'').substring(0,16)}${t.hash?'…':''}</div>
       </td>
@@ -1368,14 +1462,13 @@ async function loadTorrents() {
       <td data-role="transfer-progress">${progress(t.progress,t.status)}</td>
       <td class="sz">${fmtSize(t.size_bytes)}</td>
       <td class="sz">${fmtDate(t.created_at)}</td>
-      <td>
+      <td onclick="event.stopPropagation()">
         <div class="actions">
-          <button class="btn btn-ghost btn-sm" onclick="showDetail(${t.id})">Details</button>
-          ${t.status==='ready' || t.status==='pending' ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();downloadNow(${t.id},this)" title="Move to front of queue">⬇ Now</button>` : ''}
-          ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" onclick="pauseT(${t.id},this)">⏸</button>` : ''}
-          ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" onclick="resumeT(${t.id},this)">▶</button>` : ''}
-          ${t.status==='error'?`<button class="btn btn-blue btn-sm" onclick="retryT(${t.id},this)">↻</button>`:''}
-          <button class="btn btn-danger btn-sm" onclick="deleteT(${t.id},event,this)">✕</button>
+          ${t.status==='ready' || t.status==='pending' ? `<button class="btn btn-primary btn-sm" data-default-label="Now" onclick="event.stopPropagation();downloadNow(${t.id},this)" title="Move to front of queue">${icon('download')}<span>Now</span></button>` : ''}
+          ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)">Pause</button>` : ''}
+          ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)">Resume</button>` : ''}
+          ${t.status==='error'?`<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)">Retry</button>`:''}
+          <button class="btn btn-danger btn-sm" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>
         </div>
       </td>
     </tr>`).join('');
@@ -1865,10 +1958,10 @@ function filterEvents() {
     return;
   }
   el.innerHTML = evs.map(ev=>`
-    <div class="event-item">
-      <div class="elevel ${esc(ev.level)}"></div>
-      <div><div class="emsg">${esc(ev.message)}</div>${ev.torrent_name?`<div class="ename">${esc(ev.torrent_name)}</div>`:''}</div>
-      <div class="etime">${fmtDate(ev.created_at)}</div>
+    <div class="dp-activity-row">
+      <div class="elevel dp-activity-level ${esc(ev.level)}"></div>
+      <div class="dp-activity-copy"><div class="emsg dp-activity-message">${esc(ev.message)}</div>${ev.torrent_name?`<div class="ename dp-activity-transfer">${esc(ev.torrent_name)}</div>`:''}</div>
+      <div class="etime dp-activity-time">${fmtDate(ev.created_at)}</div>
     </div>`).join('');
   document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));
 }

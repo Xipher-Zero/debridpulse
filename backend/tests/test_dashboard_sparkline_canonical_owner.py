@@ -13,7 +13,6 @@ def test_dashboard_sparkline_surface_is_static_base_markup():
 
 def test_dashboard_sparkline_state_is_owned_by_load_stats_not_presentation_runtime():
     app = (STATIC / "app.js").read_text()
-    runtime = (STATIC / "ui-runtime.js").read_text()
     assert "recordDashboardMetricHistory({" in app
     assert "debridpulse.dashboard.metric-history.v2" in app
     assert "dashboardMonotoneSparkPath" in app
@@ -24,11 +23,7 @@ def test_dashboard_sparkline_state_is_owned_by_load_stats_not_presentation_runti
     assert "clamp(start.y + (tangents[index] * width) / 3" in app
     assert "dashboardSmoothSparkPath" not in app
     assert "const tension = 0.82;" not in app
-    assert "makeSparkline" not in runtime
-    assert "installMetricHistoryHook" not in runtime
-    assert "METRIC_HISTORY_KEY" not in runtime
-    assert "dpDashboardMetricLifecycle" not in runtime
-
+    assert not (STATIC / "ui-runtime.js").exists()
 
 def test_dashboard_sparkline_samples_use_same_visible_metric_universe_as_cards():
     app = (STATIC / "app.js").read_text()

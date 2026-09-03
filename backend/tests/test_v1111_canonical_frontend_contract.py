@@ -11,8 +11,6 @@ SETTINGS = STATIC / "ui-settings-page.js"
 HELP = STATIC / "ui-help-page.js"
 HELP_LEGAL = STATIC / "ui-help-license-documents.js"
 STATS = STATIC / "ui-statistics.js"
-RUNTIME = STATIC / "ui-runtime.js"
-DOWNLOADS = STATIC / "ui-downloads-runtime.js"
 BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 VERSION = ROOT / "VERSION"
 README = ROOT / "README.md"
@@ -46,14 +44,13 @@ def test_canonical_pages_are_direct_required_dependencies_without_legacy_loader(
         "ui-settings-authentication-oidc.js",
         "ui-settings-authentication-callback.js",
     )
+    retired = retired + ("ui-runtime.js", "ui-downloads-runtime.js")
     for name in retired:
         assert not (STATIC / name).exists(), f"retired presentation layer returned: {name}"
         assert name not in html
 
     order = [
         script_position(html, "app.js"),
-        script_position(html, "ui-runtime.js"),
-        script_position(html, "ui-downloads-runtime.js"),
         script_position(html, "ui-statistics.js"),
         script_position(html, "ui-help-page.js"),
         script_position(html, "ui-help-license-documents.js"),
@@ -80,8 +77,6 @@ def test_app_does_not_regain_page_specific_owners() -> None:
         "function getFormSettings(",
         "function switchSettingsTab(",
         "function loadDetailedStats(",
-        "function renderTorrentPagination(",
-        "function setFilter(",
     )
     for fragment in forbidden:
         assert fragment not in app
@@ -262,14 +257,12 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
 def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> None:
     source = read(STATS)
     html = read(INDEX)
-    runtime = read(RUNTIME)
     style = read(STATIC / "style-v11.css")
     view = html[html.index('<!-- Statistics -->'):html.index('<!-- Help -->')]
     for fragment in (
         "window.loadDetailedStats = loadDetailedStats;",
         "window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});",
-        "statisticsPurpleGradient",
-        "debridpulse:theme-changed",
+        "statisticsPurpleGradient", "debridpulse:theme-changed",
     ):
         assert fragment in source
     for fragment in (
@@ -283,12 +276,11 @@ def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> N
     assert "Completions — last 7 days" not in view
     assert "ensureStatisticsArchitecture" not in source
     assert "decorateChartHeader" not in source
-    assert "moveDashboardKpisToStatistics" not in runtime
     assert "dash-kpi-strip--dashboard" not in html
     assert not (STATIC / "ui-statistics.css").exists()
     assert "/ui-statistics.css" not in style
     assert "window.loadDetailedStats = wrapped" not in source
-
+    assert not (STATIC / "ui-runtime.js").exists()
 
 def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
     source = read(STATS)
@@ -308,40 +300,30 @@ def test_statistics_keeps_reviewed_kpis_breakdowns_and_chart_header() -> None:
         assert fragment in source
 
 
-def test_runtime_coordination_uses_explicit_events_not_page_convergence_observation() -> None:
-    runtime = read(RUNTIME)
+def test_canonical_coordination_uses_explicit_events_not_page_convergence_observation() -> None:
     app = read(APP)
-    downloads = read(DOWNLOADS)
+    operator = read(STATIC / "operator-title.js")
     for event in (
-        "debridpulse:navigation",
-        "debridpulse:dashboard-recent-rendered",
-        "debridpulse:activity-rendered",
+        "debridpulse:navigation", "debridpulse:dashboard-recent-rendered",
+        "debridpulse:activity-rendered", "debridpulse:dashboard-stats-rendered",
     ):
-        assert event in runtime
-    # Dashboard statistics are emitted by the canonical data owner and may be
-    # consumed by other page runtimes, but the KPI sparklines no longer depend
-    # on a presentation-runtime event bridge.
-    assert "debridpulse:dashboard-stats-rendered" in app
-    assert "debridpulse:dashboard-stats-rendered" in downloads
-    assert "debridpulse:dashboard-stats-rendered" not in runtime
-    assert "new MutationObserver" not in runtime
-    assert "window.loadStats =" not in runtime
+        assert event in app
+    assert "new MutationObserver" not in operator
+    assert "window.loadStats =" not in operator
+    assert not (STATIC / "ui-runtime.js").exists()
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
 
-
-def test_downloads_pagination_filtering_are_not_owned_by_app() -> None:
+def test_downloads_pagination_filtering_are_owned_directly_by_app() -> None:
     app = read(APP)
-    downloads = read(DOWNLOADS)
-    assert "function renderTorrentPagination(" not in app
-    assert "function setFilter(" not in app
-    assert "renderTorrentPagination" in downloads
-    assert "setFilter" in downloads
-    assert "debridpulse:downloads-rendered" in app or "debridpulse:downloads-rendered" in downloads
+    assert "function renderTorrentPagination(" in app
+    assert "function setFilter(" in app
+    assert "renderTorrentPagination" in app
+    assert "setFilter" in app
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
 
-
-
-def test_downloads_static_owner_is_the_accepted_integrated_composition() -> None:
+def test_downloads_static_and_dynamic_owners_are_the_accepted_integrated_composition() -> None:
     html = read(INDEX)
-    source = read(DOWNLOADS)
+    app = read(APP)
     page_css = read(STATIC / "ui-downloads-page.css")
     operator = read(STATIC / "operator-title.js")
     view = html[html.index('id="view-torrents"'):html.index('<!-- Events -->')]
@@ -350,14 +332,14 @@ def test_downloads_static_owner_is_the_accepted_integrated_composition() -> None
     assert 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in view
     assert view.index('id="torrent-search"') < view.index('id="bulk-bar"') < view.index('class="dp-downloads-table-wrap"')
     assert 'id="torrent-page-size"' not in view
-    assert 'Most of them followed instructions.' in source
-    assert "bar.replaceChildren(header)" not in source
-    assert "insertBefore(bar" not in source
-    assert "bar.classList.add('dp-card'" not in source
+    assert 'Most of them followed instructions.' in app
+    assert "bar.replaceChildren(header)" not in app
+    assert "insertBefore(bar" not in app
+    assert "bar.classList.add('dp-card'" not in app
     assert "Canonical integrated multi-selection strip" not in page_css
     assert "data-dp-downloads-runtime" not in operator
-    assert '/ui-downloads-runtime.js?v=24' in html
-
+    assert '/ui-downloads-runtime.js' not in html
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
 
 def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
     html = read(INDEX)
@@ -381,25 +363,19 @@ def test_v112_candidate_preserves_v1111_production_install_references() -> None:
 
 def test_core_canonical_owners_do_not_reintroduce_historical_wrapper_patterns() -> None:
     sources = {
-        "settings": read(SETTINGS),
-        "help": read(HELP),
-        "statistics": read(STATS),
-        "runtime": read(RUNTIME),
-        "downloads": read(DOWNLOADS),
+        "app": read(APP), "settings": read(SETTINGS), "help": read(HELP),
+        "statistics": read(STATS), "operator": read(STATIC / "operator-title.js"),
     }
     forbidden = (
-        "baseRenderSettings",
-        "legacyRender",
-        "previous.apply",
-        "window.loadSettings = wrapped",
-        "window.loadDetailedStats = wrapped",
+        "baseRenderSettings", "legacyRender", "previous.apply",
+        "window.loadSettings = wrapped", "window.loadDetailedStats = wrapped",
         "window.api = wrapped",
     )
     for name, source in sources.items():
         for fragment in forbidden:
             assert fragment not in source, f"{name} regained wrapper pattern {fragment}"
-
-
+    assert not (STATIC / "ui-runtime.js").exists()
+    assert not (STATIC / "ui-downloads-runtime.js").exists()
 
 def test_retired_unreachable_views_and_owners_are_not_packaged() -> None:
     html = read(INDEX)

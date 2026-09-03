@@ -11,35 +11,24 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_activity_log_keeps_approved_content_but_uses_structural_runtime() -> None:
+def test_activity_log_keeps_approved_content_with_direct_structural_owners() -> None:
     css = read("ui-activity-log-page.css")
-    runtime = read("ui-runtime.js")
+    index = read("index.html")
+    app = read("app.js")
     manifest = read("icons/dp/manifest.json")
-
-    assert "decorateActivityLog" in runtime
-    assert "normalizeActivityRows" in runtime
-    assert "document.svg" in runtime
-    assert "Activity Log" in runtime
-    assert "Recent transfer activity, decisions, warnings, and errors." in runtime
-    assert "Refresh activity log" in runtime
+    view = index[index.index('id="view-events"'):index.index('<!-- Statistics -->')]
+    assert "dp-activity-card" in view
+    assert "document.svg" in view
+    assert "Activity Log" in view
+    assert "Everything DebridPulse thought was worth mentioning." in view
+    assert "Refresh activity log" in view
+    assert 'data-dp-lucide="refresh"' in view
+    assert "function loadEvents(" in app
+    assert "function filterEvents(" in app
     assert '"document": "document.svg"' in manifest
-    assert '.nav-item[data-view="events"] .nav-label' in css
-    assert "content: 'Activity Log';" in css
-    assert "Recent transfer activity, decisions, warnings, and errors." in css
-
-    required = (
-        ".dp-activity-card",
-        ".dp-activity-card-title",
-        ".dp-activity-search-band",
-        ".dp-activity-list",
-        ".dp-activity-row",
-        ".dp-activity-message",
-        ".dp-activity-transfer",
-        ".dp-activity-time",
-    )
+    required = (".dp-activity-card", ".dp-activity-card-title", ".dp-activity-search-band", ".dp-activity-list", ".dp-activity-row", ".dp-activity-message", ".dp-activity-transfer", ".dp-activity-time")
     missing = [selector for selector in required if selector not in css]
     assert not missing, f"Activity rebuild is missing structural selectors: {missing}"
-
 
 def test_activity_log_fills_shell_and_scrolls_only_rebuilt_event_viewport() -> None:
     css = read("ui-activity-log-page.css")

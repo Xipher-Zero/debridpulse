@@ -8,22 +8,20 @@ def read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
-def test_downloads_desktop_filter_contract_and_details_removal():
-    runtime = read("ui-downloads-runtime.js")
-    expected = [
-        "{status: '', label: 'All'}",
-        "{status: 'downloading', label: 'Downloading'}",
-        "{status: 'paused', label: 'Paused'}",
-        "{status: 'processing', label: 'Processing'}",
-        "{status: 'ready', label: 'Ready'}",
-        "{status: 'completed', label: 'Done'}",
-        "{status: 'error', label: 'Error'}",
-    ]
+def test_downloads_desktop_filter_contract_and_details_are_directly_owned():
+    index = read("index.html")
+    app = read("app.js")
+    expected = (
+        'data-dp-status=""', 'data-dp-status="downloading"', 'data-dp-status="paused"',
+        'data-dp-status="processing"', 'data-dp-status="ready"',
+        'data-dp-status="completed"', 'data-dp-status="error"',
+    )
     for fragment in expected:
-        assert fragment in runtime
-    assert "normalizeDownloadRowActions" in runtime
-    assert "onclick.includes('showDetail(')" in runtime
-
+        assert fragment in index
+    assert "function setFilter(" in app
+    assert "dp-downloads-detail-row" in app
+    assert "showDetail(${t.id})" in app
+    assert 'draggable="true"' not in app
 
 def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_progress():
     css = read("ui-downloads-desktop.css")

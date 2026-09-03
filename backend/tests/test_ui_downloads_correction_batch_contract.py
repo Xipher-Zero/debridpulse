@@ -1,5 +1,4 @@
-"""Final Dashboard / Downloads / Activity correction batch contracts."""
-
+"""Canonical Dashboard / Downloads / Activity ownership contracts."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,24 +16,16 @@ def test_activity_document_keeps_51px_box_with_optical_padding_only() -> None:
     assert "padding: 3px !important" in css
 
 
-def test_downloads_refresh_uses_shared_recovery_control_and_exact_glyph() -> None:
+def test_downloads_refresh_uses_shared_canonical_icon_owner() -> None:
     controls = read("ui-utility-controls.css")
     page = read("ui-downloads-page.css")
-    downloads = read("ui-downloads-runtime.js")
-    runtime = read("ui-runtime.js")
+    index = read("index.html")
     icons = read("operator-title.js")
-    geometry = 'M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5'
-
-    # Exact geometry lives once in the canonical Lucide runtime. Page runtimes
-    # consume that authority instead of carrying their own duplicate SVG paths.
-    assert geometry in icons
-    assert "window.DPIcons" in runtime
-    assert "window.DPIcons" in downloads
-    assert "const paths =" not in runtime
-    assert "const paths =" not in downloads
-    assert "normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh')" in runtime
-    assert "normalizeUtilityButton(refresh, 'refresh')" in runtime
-    assert "refresh.innerHTML = utilitySvg('refresh') + '<span>Refresh</span>';" in downloads
+    assert "const LUCIDE" in icons
+    assert "refresh:" in icons
+    assert 'class="btn btn-ghost btn-sm dp-downloads-refresh"' in index
+    assert 'data-default-label="Refresh"' in index
+    assert 'data-dp-lucide="refresh"' in index
     assert "#view-torrents .dp-downloads-refresh" in controls
     assert "width: 38px" not in page
     assert "display: inline-grid !important" not in page
@@ -42,7 +33,6 @@ def test_downloads_refresh_uses_shared_recovery_control_and_exact_glyph() -> Non
 
 
 def test_bulk_selection_is_integrated_static_band_with_reviewed_action_order() -> None:
-    runtime = read("ui-downloads-runtime.js")
     icons = read("operator-title.js")
     page = read("ui-downloads-page.css")
     transfer = read("ui-transfer-contract.css")
@@ -51,21 +41,12 @@ def test_bulk_selection_is_integrated_static_band_with_reviewed_action_order() -
     assert 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in downloads
     assert downloads.index('id="torrent-search"') < downloads.index('id="bulk-bar"') < downloads.index('class="dp-downloads-table-wrap"')
     assert downloads.index("bulkAction('pause',this)") < downloads.index("bulkAction('resume',this)") < downloads.index("bulkAction('reset',this)") < downloads.index("bulkAction('delete',this)")
-    assert 'class="dp-downloads-bulk-status"' in downloads
     assert 'id="bulk-count" class="dp-downloads-bulk-count"' in downloads
-    assert 'onclick="clearSelection()">Clear Selections</button>' in downloads
-    bulk_owner = runtime[runtime.index('function decorateBulkSelectionToolbar'):runtime.index('function filterStatusFromTab')]
-    assert "bar.replaceChildren(header)" not in runtime
-    assert "bar.classList.add('dp-card'" not in runtime
-    assert "insertBefore(bar" not in runtime
-    assert "document.createElement('div')" not in bulk_owner
-    for icon_name in ("pause:", "play:", "refresh:", "trash2:", "x:"):
-        assert icon_name in icons
-    for usage in ("'Pause', 'pause'", "'Resume', 'play'", "'Reset', 'refresh'", "'Delete', 'trash2'", "'Clear Selections', 'x'"):
-        assert usage in runtime
-    assert "const paths =" not in runtime
+    for label, icon in (("Pause", "pause"), ("Resume", "play"), ("Reset", "refresh"), ("Delete", "trash2"), ("Clear Selections", "x")):
+        assert f'data-default-label="{label}"' in downloads
+        assert f'data-dp-lucide="{icon}"' in downloads
+        assert f"{icon}:" in icons
     assert "#bulk-bar.dp-downloads-bulk-card.visible" in page
-    assert "Canonical integrated multi-selection strip" not in page
     assert "dp-downloads-bulk-separator" in page
     assert "dp-downloads-bulk-status" in page
     assert "dp-downloads-bulk-action--pause" in transfer
@@ -73,17 +54,25 @@ def test_bulk_selection_is_integrated_static_band_with_reviewed_action_order() -
     assert "dp-downloads-bulk-action--reset" in transfer
 
 
+def test_downloads_behavior_is_owned_directly_by_app() -> None:
+    app = read("app.js")
+    for fragment in (
+        "function renderTorrentPagination(", "function setFilter(",
+        "function updateDownloadsTrackedCopy(", "function downloadEmptyMessage(",
+        "No Downloads Currently Processing", "No Downloads Completed Yet",
+        "dp-downloads-detail-row", 'data-default-label="Pause"',
+        'data-default-label="Resume"', 'data-default-label="Retry"',
+        'data-default-label="Remove"',
+    ):
+        assert fragment in app
+    assert 'draggable="true"' not in app
+    assert "ondragstart=" not in app
 
-def test_batch_cache_generations_are_explicit() -> None:
-    style = read("style-v11.css")
-    operator = read("operator-title.js")
+
+def test_e1_correction_runtimes_are_retired() -> None:
     index = read("index.html")
-    assert "/style-v11.css?v=26" in index
-    assert "/ui-runtime.js?v=24" in operator
-    assert "/ui-utility-controls.css?v=23" in style
-    assert "/ui-downloads-page.css?v=28" in style
-    assert "/ui-feature-icon-contract.css?v=4" in style
-    assert "/ui-transfer-contract.css?v=31" in style
-    assert "data-dp-downloads-runtime" not in operator
-    assert "/ui-downloads-runtime.js?v=24" in index
-    assert "/operator-title.js?v=24" in index
+    icons = read("operator-title.js")
+    for name in ("ui-runtime.js", "ui-downloads-runtime.js"):
+        assert not (STATIC / name).exists()
+        assert name not in index
+        assert name not in icons

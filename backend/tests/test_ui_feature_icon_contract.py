@@ -38,14 +38,16 @@ def test_kpi_and_isolated_glows_keep_distinct_color_ownership() -> None:
 
 
 def test_dashboard_recover_all_uses_exact_activity_refresh_utility_geometry() -> None:
-    runtime = read("ui-runtime.js")
+    index = read("index.html")
     controls = read("ui-utility-controls.css")
-    assert "normalizeUtilityButton(document.getElementById('btn-recover-all'), 'refresh');" in runtime
-    assert "normalizeUtilityButton(refresh, 'refresh');" in runtime
-    assert "normalizeDpButton(document.getElementById('btn-recover-all'), 'retry-borderless.svg');" not in runtime
+    dashboard = index[index.index('id="view-dashboard"'):index.index('id="view-torrents"')]
+    events = index[index.index('id="view-events"'):index.index('<!-- Statistics -->')]
+    assert 'id="btn-recover-all"' in dashboard
+    assert 'data-dp-lucide="refresh"' in dashboard
+    assert 'class="btn btn-ghost btn-sm dp-activity-refresh"' in events
+    assert 'data-dp-lucide="refresh"' in events
     assert "#btn-recover-all .dp-utility-icon" in controls
     assert ".dp-activity-refresh .dp-utility-icon" in controls
-
 
 def test_provider_premium_group_centers_visible_crown_and_copy_as_one_block() -> None:
     css = read("ui-shell-provider-status-v2.css")
