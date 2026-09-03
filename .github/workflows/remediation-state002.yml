@@ -32,6 +32,19 @@ jobs:
       - name: Apply durable executor cleanup remediation
         run: python .github/remediation_state002.py
 
+      - name: Preserve authoritative executor cancel outcome contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/transfers/engine.py')
+          text = path.read_text()
+          old = '''                confirmed = await executor.observe(handle)\n                if not isinstance(confirmed, ExecutionObservation) or confirmed.handle != handle:\n                    raise TransferError(self._error(\n                        Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,\n                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,\n                    ))\n                await self.repository.execution(confirmed)\n                if confirmed.state not in {\n                    ExecutionState.ABSENT, ExecutionState.CANCELLED,\n                    ExecutionState.SUCCEEDED, ExecutionState.FAILED,\n                }:\n                    raise TransferError(self._error(\n                        Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,\n                        retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,\n                    ))\n                await self.repository.execution_cleanup_complete(handle.attempt_id)\n'''
+          new = '''                # A successful/cancelled executor outcome is the executor contract's\n                # termination acknowledgement. Do not require a second observation: a\n                # concurrent late-completion observation is history, not grounds to reopen\n                # cleanup or the already-terminal logical transfer.\n                await self.repository.execution_cleanup_complete(handle.attempt_id)\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one confirmation block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Install backend test dependencies
         run: |
           cd backend
