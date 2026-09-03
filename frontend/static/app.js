@@ -10,6 +10,12 @@ let _torrentSearchTimer = null;
 let settingsData = {};
 let aria2DownloadsTimer = null;
 let pausedTransferCount = 0;
+let allDebridStatusGeneration = 0;
+
+function invalidateAllDebridStatus() {
+  allDebridStatusGeneration += 1;
+  return allDebridStatusGeneration;
+}
 
 function renderTopbarActions() {
   const el = document.getElementById('topbar-actions');
@@ -61,6 +67,9 @@ function renderTopbarActions() {
 // ── Nav ────────────────────────────────────────────────────────────────────
 function nav(el) {
   if (!el) return;
+  // Navigation establishes a new presentation generation. An HTTP response
+  // initiated by an older surface may finish later, but may not become truth.
+  invalidateAllDebridStatus();
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   const v = el.dataset.view;
@@ -555,11 +564,17 @@ function renderAllDebridStatus(status) {
 }
 
 async function loadAllDebridStatus() {
+  // UISTATE-001: request completion order is not temporal authority. Each
+  // refresh owns a generation and only the newest still-valid observation may
+  // update the provider presentation.
+  const generation = invalidateAllDebridStatus();
   try {
     const status = await api('GET', '/integration-status/alldebrid');
+    if (generation !== allDebridStatusGeneration) return null;
     renderAllDebridStatus(status);
     return status;
   } catch (_) {
+    if (generation !== allDebridStatusGeneration) return null;
     // Failure of the generic application/API path cannot establish provider
     // failure. Preserve that distinction by rendering a neutral unknown state.
     renderAllDebridStatus({state:'unknown'});
@@ -2016,6 +2031,10 @@ async function triggerFullSync(button) {
 
 async function saveSettings(button) {
   setButtonPending(button, true, 'Saving…');
+  // A pre-save status observation describes the old provider configuration.
+  // Invalidate it before the settings mutation begins; the post-save refresh
+  // will establish the next authoritative generation.
+  invalidateAllDebridStatus();
 
   try {
     const activeTab =

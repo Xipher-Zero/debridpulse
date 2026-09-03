@@ -1,70 +1,4 @@
-from pathlib import Path
-
-
-def replace_once(path: str, old: str, new: str) -> None:
-    p = Path(path)
-    text = p.read_text(encoding="utf-8")
-    count = text.count(old)
-    if count != 1:
-        raise SystemExit(f"{path}: expected exactly one match, found {count}")
-    p.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-APP = "frontend/static/app.js"
-SPEC = Path("frontend/browser/provider-status-generation.spec.js")
-
-replace_once(
-    APP,
-    "let pausedTransferCount = 0;\n",
-    "let pausedTransferCount = 0;\nlet allDebridStatusGeneration = 0;\n\nfunction invalidateAllDebridStatus() {\n  allDebridStatusGeneration += 1;\n  return allDebridStatusGeneration;\n}\n",
-)
-
-replace_once(
-    APP,
-    "function nav(el) {\n  if (!el) return;\n",
-    "function nav(el) {\n  if (!el) return;\n  // Navigation establishes a new presentation generation. An HTTP response\n  // initiated by an older surface may finish later, but may not become truth.\n  invalidateAllDebridStatus();\n",
-)
-
-old = """async function loadAllDebridStatus() {
-  try {
-    const status = await api('GET', '/integration-status/alldebrid');
-    renderAllDebridStatus(status);
-    return status;
-  } catch (_) {
-    // Failure of the generic application/API path cannot establish provider
-    // failure. Preserve that distinction by rendering a neutral unknown state.
-    renderAllDebridStatus({state:'unknown'});
-    return null;
-  }
-}
-"""
-new = """async function loadAllDebridStatus() {
-  // UISTATE-001: request completion order is not temporal authority. Each
-  // refresh owns a generation and only the newest still-valid observation may
-  // update the provider presentation.
-  const generation = invalidateAllDebridStatus();
-  try {
-    const status = await api('GET', '/integration-status/alldebrid');
-    if (generation !== allDebridStatusGeneration) return null;
-    renderAllDebridStatus(status);
-    return status;
-  } catch (_) {
-    if (generation !== allDebridStatusGeneration) return null;
-    // Failure of the generic application/API path cannot establish provider
-    // failure. Preserve that distinction by rendering a neutral unknown state.
-    renderAllDebridStatus({state:'unknown'});
-    return null;
-  }
-}
-"""
-replace_once(APP, old, new)
-
-replace_once(
-    APP,
-    "async function saveSettings(button) {\n  setButtonPending(button, true, 'Saving…');\n",
-    "async function saveSettings(button) {\n  setButtonPending(button, true, 'Saving…');\n  // A pre-save status observation describes the old provider configuration.\n  // Invalidate it before the settings mutation begins; the post-save refresh\n  // will establish the next authoritative generation.\n  invalidateAllDebridStatus();\n",
-)
-
-SPEC.write_text(r'''const { test, expect } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({
@@ -167,4 +101,3 @@ test('UISTATE-001-F obsolete request error cannot replace newer provider truth',
   await c.resolve(0, {detail:'old failure'}, 503); await r1;
   expect(await label(page)).toBe('AllDebrid: authoritative');
 });
-''', encoding="utf-8")
