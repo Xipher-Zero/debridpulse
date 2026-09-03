@@ -68,7 +68,8 @@ def test_dependency_license_inventory_explicitly_requires_reaudit_after_deferred
 def test_notice_preserves_legal_attribution_without_obsolete_single_provider_product_framing():
     notice = _text("NOTICE")
     assert notice.startswith("DebridPulse — Universal Transfer Manager\n")
-    assert "GPL" in notice
+    assert "GNU General Public License" in notice
+    assert "version 2 or (at your option) any later version" in notice
     assert "kroeberd/alldebrid-client release" in notice
     assert "AllDebrid + aria2 Download Manager" not in notice
 
