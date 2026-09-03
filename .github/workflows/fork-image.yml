@@ -246,27 +246,18 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=GPL-2.0-or-later
-          annotations: |
-            org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
-            org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=GPL-2.0-or-later
 
       - name: Verify generated image metadata and immutable tag policy
         shell: bash
         env:
           METADATA_JSON: ${{ steps.meta.outputs.json }}
           GENERATED_TAGS: ${{ steps.meta.outputs.tags }}
-          GENERATED_ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
         run: |
           set -euo pipefail
 
           expected_version="${{ steps.version.outputs.version }}"
           expected_revision="${GITHUB_SHA}"
           expected_title="DebridPulse: Universal Transfer Manager"
-          expected_description="Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution"
           generated_version="$(jq -r '.labels["org.opencontainers.image.version"] // empty' <<< "$METADATA_JSON")"
           generated_revision="$(jq -r '.labels["org.opencontainers.image.revision"] // empty' <<< "$METADATA_JSON")"
           generated_title="$(jq -r '.labels["org.opencontainers.image.title"] // empty' <<< "$METADATA_JSON")"
@@ -288,21 +279,6 @@ jobs:
             echo "Generated OCI license mismatch: expected GPL-2.0-or-later, got $generated_license"
             exit 1
           fi
-
-          require_annotation() {
-            local expected="$1"
-            if ! grep -Fq -- "$expected" <<< "$GENERATED_ANNOTATIONS"; then
-              echo "Missing canonical OCI manifest annotation: $expected"
-              printf 'Generated annotations:\n%s\n' "$GENERATED_ANNOTATIONS"
-              exit 1
-            fi
-          }
-          require_annotation "org.opencontainers.image.title=$expected_title"
-          require_annotation "org.opencontainers.image.description=$expected_description"
-          require_annotation "org.opencontainers.image.version=$expected_version"
-          require_annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
-          require_annotation "org.opencontainers.image.revision=$expected_revision"
-          require_annotation "org.opencontainers.image.licenses=GPL-2.0-or-later"
 
           mapfile -t generated_tags < <(printf '%s\n' "$GENERATED_TAGS" | sed '/^[[:space:]]*$/d')
           if [ "${#generated_tags[@]}" -ne 1 ]; then
@@ -327,7 +303,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
+          annotations: |
+            index:org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
+            index:org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution
+            index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            index:org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+            index:org.opencontainers.image.licenses=GPL-2.0-or-later
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
             VCS_REF=${{ github.sha }}
