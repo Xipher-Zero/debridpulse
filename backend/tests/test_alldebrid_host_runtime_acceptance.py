@@ -90,6 +90,7 @@ class CensusClient:
 
 async def runtime_store(tmp_path: Path, monkeypatch, name: str):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / name)
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     await store.start()
     return store

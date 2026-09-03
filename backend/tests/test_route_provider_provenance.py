@@ -204,9 +204,12 @@ async def test_item8_style_rows_backfill_known_facts_idempotently_without_url_in
         await db.execute("UPDATE torrents SET status='completed' WHERE id=?", (transfer.id,))
         await db.commit()
 
+    # Re-enter through the canonical database owner to recreate current-schema
+    # tables before ordinary repository startup validates them.
+    await database.init_db()
     migrated = TransferRepository()
     await migrated.initialize()
-    # DB-001: ordinary repository startup owns current-schema readiness only.
+    # DB-001: ordinary repository startup validates current-schema readiness only.
     # Historical provenance reconstruction is invoked by the v1.0.12 migration owner.
     async with database.get_db() as db:
         assert (await db.fetchone("SELECT COUNT(*) AS n FROM route_attempt_provenance"))["n"] == 0

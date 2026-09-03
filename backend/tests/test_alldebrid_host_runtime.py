@@ -101,6 +101,7 @@ class StaticFixtureProvider:
 
 async def runtime_store(tmp_path, monkeypatch, name):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / name)
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     await store.start()
     return store

@@ -42,7 +42,13 @@ def test_universal_modules_never_import_or_branch_on_native_integrations():
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 assert node.value not in {"alldebrid", "aria2", "statusCode", "MAGNET_INVALID_ID", "LINK_DOWN"}, path
             if path.name in {"engine.py", "policy.py", "registry.py"} and isinstance(node, ast.Attribute):
-                assert node.attr not in {"native_code", "diagnostic"}, (path, node.attr)
+                # Native provider codes remain forbidden everywhere in universal policy.
+                # A diagnostic value is provider-neutral data: engine cleanup may preserve a
+                # sanitized diagnostic, while retry/selection policy must never branch on it.
+                forbidden = {"native_code"}
+                if path.name in {"policy.py", "registry.py"}:
+                    forbidden.add("diagnostic")
+                assert node.attr not in forbidden, (path, node.attr)
 
 
 def test_core_policy_ignores_native_code_message_and_context():

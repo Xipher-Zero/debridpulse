@@ -41,6 +41,7 @@ def provider_ids(registry, request):
 @pytest.mark.asyncio
 async def test_native_regex_is_interpreted_inside_alldebrid_before_neutral_routing(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "patterns.sqlite3")
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     await store.start()
 
@@ -89,6 +90,7 @@ async def test_native_regex_is_interpreted_inside_alldebrid_before_neutral_routi
 @pytest.mark.asyncio
 async def test_native_pattern_interpretation_does_not_change_static_magnet_torrent_claims(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "patterns-static.sqlite3")
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     await store.start()
 

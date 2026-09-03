@@ -329,6 +329,7 @@ def test_real_general_http_is_generic_and_is_suppressed_by_neutral_specialized_p
 async def test_runtime_state_is_interpreted_by_provider_before_classifier_consumes_claims(tmp_path, monkeypatch):
     db_path = tmp_path / "applicability-runtime.sqlite3"
     monkeypatch.setattr(database, "DB_PATH", db_path)
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     provider = RuntimeClaimProvider(store)
     generic = GeneralHttpProvider()
