@@ -177,8 +177,9 @@ class TransferEngine:
             await self._request_failure(record, error)
 
     async def reconcile_executions(self):
-        """Observe each current attempt once, then dispatch in transfer priority order."""
+        """Reconcile cleanup obligations, then active execution attempts."""
         async with self._execution_cycle_lock:
+            await self._cleanup_executions_pending()
             transfers = await self.repository.active()
             artifacts_by_transfer = {transfer.id: await self.repository.artifacts(transfer.id) for transfer in transfers}
             challenges = {transfer.id: await self.challenges.current(transfer.id) for transfer in transfers}
@@ -1052,64 +1053,101 @@ class TransferEngine:
             transfer = await self.repository.get(transfer_id)
             if transfer is None:
                 raise KeyError(transfer_id)
-            if transfer.state == TransferState.CANCELLED:
-                return ()
 
-            # The durable lifecycle decision wins before executor I/O. The epoch
-            # closes the delete/retry race and state() supplies the canonical
-            # compare-and-transition boundary used by the rest of the engine.
-            if not await self.repository.state(
-                transfer_id, TransferState.CANCELLED, expected_epoch=transfer.epoch,
+            # STATE-002: logical cancellation and external termination are separate
+            # durable facts. Persist both the terminal parent and every outstanding
+            # execution cleanup obligation before contacting an executor.
+            if not await self.repository.cancel_with_execution_cleanup(
+                transfer_id, expected_epoch=transfer.epoch, now=self.clock(),
             ):
                 current = await self.repository.get(transfer_id)
-                if current and current.state == TransferState.CANCELLED:
-                    return ()
-                raise TransferError(self._error(
-                    Category.RESOURCE_STATE_CONFLICT, Stage.EXECUTION, domain=Domain.LIFECYCLE,
-                    retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
-                ))
+                if not current or current.state != TransferState.CANCELLED:
+                    raise TransferError(self._error(
+                        Category.RESOURCE_STATE_CONFLICT, Stage.EXECUTION, domain=Domain.LIFECYCLE,
+                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                    ))
 
             challenge = await self.challenges.current(transfer_id)
             if challenge:
                 await self.inputs.clear(challenge.id)
                 await self.challenges.clear_transfer(transfer_id)
 
-            cleanup_errors = []
-            for artifact in await self.repository.artifacts(transfer_id):
-                if artifact.execution:
-                    executor = self.registry.executors.get(artifact.execution.executor_id)
-                    if executor is None:
-                        error = self._error(
-                            Category.UNSUPPORTED_CAPABILITY, Stage.EXECUTION, domain=Domain.REQUEST,
-                            retryability=Retryability.NEVER,
-                        )
-                        outcome = TransferOutcome(OutcomeKind.FAILURE, error)
-                    else:
-                        try:
-                            outcome = await executor.cancel(artifact.execution)
-                            if not isinstance(outcome, TransferOutcome):
-                                raise TransferError(self._error(
-                                    Category.INVALID_ADAPTER_RESPONSE, Stage.EXECUTION, domain=Domain.EXECUTOR,
-                                    retryability=Retryability.NEVER,
-                                ))
-                        except Exception as exc:
-                            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
-                                exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.EXECUTION,
-                            )
-                            outcome = TransferOutcome(OutcomeKind.FAILURE, error)
-                    await self.repository.outcome(transfer_id, outcome, attempt_id=artifact.execution.attempt_id)
-                    if outcome.kind in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED}:
-                        attempt = next((item for item in await self.repository.executions(transfer_id)
-                                        if item.handle == artifact.execution), None)
-                        progress = attempt.progress if attempt else None
-                        await self.repository.execution(ExecutionObservation(
-                            artifact.execution, ExecutionState.CANCELLED, progress or TransferProgress(),
-                        ))
-                    elif outcome.error:
-                        cleanup_errors.append(outcome.error)
-                if artifact.state != "completed":
-                    await self.repository.artifact_state(artifact.id, "cancelled")
-            return tuple(cleanup_errors)
+            return await self._cleanup_executions_pending(transfer_id=transfer_id)
+
+    def _executor_cleanup_exception(self, executor_id: str, exc: Exception) -> NormalizedError:
+        if isinstance(exc, TransferError):
+            return exc.error
+        native = unknown_failure(
+            exc, integration_id=executor_id, domain=Domain.EXECUTOR, stage=Stage.CLEANUP,
+        )
+        return NormalizedError(
+            Domain.CLEANUP, Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP,
+            retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,
+            integration_id=executor_id, diagnostic=native.diagnostic,
+        )
+
+    async def _cleanup_executions_pending(self, *, transfer_id: int | None = None):
+        errors = []
+        now = self.clock()
+        for attempt, attempts, _previous_error in await self.repository.pending_execution_cleanup(
+            now, transfer_id=transfer_id,
+        ):
+            handle = attempt.handle
+            executor = self.registry.executors.get(handle.executor_id)
+            if executor is None:
+                error = self._error(
+                    Category.UNSUPPORTED_CAPABILITY, Stage.CLEANUP, domain=Domain.CLEANUP,
+                    retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                )
+                await self.repository.execution_cleanup_retry(handle.attempt_id, error, None)
+                errors.append(error)
+                continue
+
+            lease_until = now + max(1.0, float(self.policy.retry_delay))
+            if not await self.repository.claim_execution_cleanup(
+                handle.attempt_id, now=now, lease_until=lease_until,
+            ):
+                continue
+            try:
+                observed = await executor.observe(handle)
+                if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
+                    raise TransferError(self._error(
+                        Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,
+                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                    ))
+                await self.repository.execution(observed)
+                if observed.state in {
+                    ExecutionState.ABSENT, ExecutionState.CANCELLED,
+                    ExecutionState.SUCCEEDED, ExecutionState.FAILED,
+                }:
+                    await self.repository.execution_cleanup_complete(handle.attempt_id)
+                    continue
+
+                outcome = await executor.cancel(handle)
+                if not isinstance(outcome, TransferOutcome):
+                    raise TransferError(self._error(
+                        Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,
+                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                    ))
+                await self.repository.outcome(attempt.transfer_id, outcome, attempt_id=handle.attempt_id)
+                if outcome.kind not in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED, OutcomeKind.SKIPPED}:
+                    error = outcome.error or self._error(
+                        Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,
+                        retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,
+                    )
+                    raise TransferError(error)
+
+                # A successful/cancelled executor outcome is the executor contract's
+                # termination acknowledgement. Do not require a second observation: a
+                # concurrent late-completion observation is history, not grounds to reopen
+                # cleanup or the already-terminal logical transfer.
+                await self.repository.execution_cleanup_complete(handle.attempt_id)
+            except Exception as exc:
+                error = self._executor_cleanup_exception(handle.executor_id, exc)
+                decision = self.policy.retry(error, attempts + 1, now)
+                await self.repository.execution_cleanup_retry(handle.attempt_id, error, decision.retry_at)
+                errors.append(error)
+        return tuple(errors)
 
     async def delete(self, transfer_id: int, *, remote=True):
         challenge = await self.challenges.current(transfer_id)

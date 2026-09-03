@@ -89,7 +89,11 @@ _COLUMNS = {
     "transfer_requests": {"metadata": "TEXT"},
     "provider_resources": {"cleanup_attempts": "INTEGER NOT NULL DEFAULT 0", "cleanup_retry_at": "REAL NOT NULL DEFAULT 0", "cleanup_blocked": "INTEGER NOT NULL DEFAULT 0"},
     "resolution_attempts": {"result": "TEXT"},
-    "execution_attempts": {"candidate": "TEXT", "progress_at": "REAL"},
+    "execution_attempts": {
+        "candidate": "TEXT", "progress_at": "REAL",
+        "cleanup_state": "TEXT", "cleanup_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "cleanup_retry_at": "REAL NOT NULL DEFAULT 0", "cleanup_error": "TEXT",
+    },
     "download_files": {
         "request_id": "TEXT", "candidates": "TEXT", "selected_candidate": "INTEGER NOT NULL DEFAULT 0",
         "execution_attempt_id": "TEXT", "normalized_error": "TEXT", "retry_at": "REAL NOT NULL DEFAULT 0",
@@ -475,6 +479,112 @@ class TransferRepository:
                 await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
             await db.commit()
         return True
+
+    async def cancel_with_execution_cleanup(self, transfer_id: int, *, expected_epoch: int, now: float) -> bool:
+        """Atomically close logical lifecycle and persist external cleanup responsibility."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                "SELECT status,progress,lifecycle_epoch,normalized_error FROM torrents WHERE id=?",
+                (transfer_id,),
+            )
+            if not row:
+                return False
+            current = TransferState(row["status"])
+            if current == TransferState.CANCELLED:
+                await db.commit()
+                return True
+            if not transition_allowed(current, TransferState.CANCELLED) or row["lifecycle_epoch"] != expected_epoch:
+                return False
+
+            await db.execute(
+                """UPDATE torrents SET status='cancelled',normalized_error=NULL,error_message=NULL,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (transfer_id,),
+            )
+            await db.execute(
+                "INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer cancelled')",
+                (transfer_id,),
+            )
+            await db.execute(
+                "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'cancelled',NULL)",
+                (transfer_id,),
+            )
+            await db.execute(
+                """UPDATE execution_attempts SET cleanup_state='pending',cleanup_attempts=0,
+                    cleanup_retry_at=?,cleanup_error=NULL
+                    WHERE transfer_id=? AND authorized=1
+                    AND state IN ('prepared','queued','transferring','paused','unknown')
+                    AND id IN (SELECT execution_attempt_id FROM download_files
+                        WHERE torrent_id=? AND execution_attempt_id IS NOT NULL)""",
+                (now, transfer_id, transfer_id),
+            )
+            await db.execute(
+                """UPDATE download_files SET status='cancelled',normalized_error=NULL,updated_at=CURRENT_TIMESTAMP
+                    WHERE torrent_id=? AND status!='completed'""",
+                (transfer_id,),
+            )
+            await db.commit()
+        return True
+
+    async def pending_execution_cleanup(self, now: float, *, transfer_id: int | None = None):
+        async with get_db() as db:
+            where_transfer = " AND e.transfer_id=?" if transfer_id is not None else ""
+            params = (now, transfer_id) if transfer_id is not None else (now,)
+            rows = await db.fetchall(
+                """SELECT e.* FROM execution_attempts e JOIN torrents t ON t.id=e.transfer_id
+                    WHERE e.cleanup_state='pending' AND e.cleanup_retry_at<=?
+                    AND t.status IN ('cancelled','deleted')""" + where_transfer +
+                " ORDER BY e.transfer_id,e.created_at,e.id",
+                params,
+            )
+        return tuple((self._execution_attempt(row), int(row["cleanup_attempts"] or 0), codec.error(row["cleanup_error"])) for row in rows)
+
+    async def claim_execution_cleanup(self, attempt_id: str, *, now: float, lease_until: float) -> bool:
+        async with get_db() as db:
+            cursor = await db.execute(
+                """UPDATE execution_attempts SET cleanup_attempts=cleanup_attempts+1,
+                    cleanup_retry_at=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND cleanup_state='pending' AND cleanup_retry_at<=?""",
+                (lease_until, attempt_id, now),
+            )
+            await db.commit()
+        return cursor.rowcount == 1
+
+    async def execution_cleanup_retry(self, attempt_id: str, error: NormalizedError, retry_at: float | None) -> None:
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE execution_attempts SET cleanup_state=?,cleanup_error=?,cleanup_retry_at=?,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=? AND cleanup_state='pending'""",
+                ("pending" if retry_at is not None else "blocked", codec.dump(error), retry_at or 0, attempt_id),
+            )
+            await db.commit()
+
+    async def execution_cleanup_complete(self, attempt_id: str) -> None:
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE execution_attempts SET cleanup_state='complete',cleanup_error=NULL,cleanup_retry_at=0,
+                    authorized=0,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (attempt_id,),
+            )
+            await db.commit()
+
+    async def execution_cleanup_status(self, attempt_id: str):
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT cleanup_state,cleanup_attempts,cleanup_retry_at,cleanup_error,authorized,state FROM execution_attempts WHERE id=?",
+                (attempt_id,),
+            )
+        if not row:
+            return None
+        return {
+            "state": row["cleanup_state"],
+            "attempts": int(row["cleanup_attempts"] or 0),
+            "retry_at": float(row["cleanup_retry_at"] or 0),
+            "error": codec.error(row["cleanup_error"]),
+            "authorized": bool(row["authorized"]),
+            "execution_state": row["state"],
+        }
 
     async def pause_intent(self, transfer_id: int, paused: bool) -> None:
         async with get_db() as db:

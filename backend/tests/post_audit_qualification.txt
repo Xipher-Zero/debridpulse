@@ -2,8 +2,9 @@
 # Frozen-candidate push marker: changes to the qualified tree require qualification from zero.
 # ROUTE-001 + CORE-001
 tests/test_audit_remediation_group_a.py
-# STATE-001
+# STATE-001 + STATE-002
 tests/test_audit_remediation_state.py
+tests/test_second_pass_state002.py
 # DB-001
 tests/test_database_migration_ownership.py
 # UIARCH-002 provider-specific health presentation
