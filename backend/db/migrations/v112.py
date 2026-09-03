@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
@@ -24,6 +25,111 @@ from transfers.models import SourceEntry, TransferRequest
 from transfers.repository import TransferRepository
 
 
+
+_CURRENT_MARKER = "1.0.12"
+_LEGACY_REQUIRED_TABLES = frozenset({"torrents", "download_files", "events"})
+_CURRENT_CANONICAL_TABLES = frozenset({
+    "transfer_requests", "provider_resources", "execution_attempts", "route_attempt_provenance",
+})
+_LEGACY_STATUS_REPR_MAP = {
+    "TorrentStatus.PROCESSING": "processing",
+    "TorrentStatus.UPLOADING": "uploading",
+    "TorrentStatus.READY": "ready",
+    "TorrentStatus.ERROR": "error",
+    "TorrentStatus.COMPLETED": "completed",
+    "TorrentStatus.DELETED": "deleted",
+    "TorrentStatus.QUEUED": "queued",
+    "TorrentStatus.DOWNLOADING": "downloading",
+    "TorrentStatus.PENDING": "pending",
+    "TorrentStatus.PAUSED": "paused",
+}
+
+
+def _readonly(path: Path):
+    return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+
+
+def _schema_state(path: Path | None = None) -> str:
+    """Classify without opening SQLite in a mode that can create or mutate files."""
+    source = Path(path or database.DB_PATH)
+    if not source.exists() or source.stat().st_size == 0:
+        return "fresh"
+    try:
+        with _readonly(source) as conn:
+            check = conn.execute("PRAGMA quick_check").fetchone()
+            if not check or check[0] != "ok":
+                raise RuntimeError("Database inspection failed integrity verification")
+            tables = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )}
+            if not tables:
+                return "fresh"
+            if "schema_migrations" in tables:
+                marked = conn.execute(
+                    "SELECT 1 FROM schema_migrations WHERE version=?", (_CURRENT_MARKER,)
+                ).fetchone()
+                if marked:
+                    return "current"
+            if not _LEGACY_REQUIRED_TABLES.issubset(tables):
+                raise RuntimeError("Unsupported database schema; migration refused before mutation")
+            canonical = tables & _CURRENT_CANONICAL_TABLES
+            if canonical:
+                backup = source.with_name(source.name + ".pre-v112.sqlite3")
+                if not backup.exists():
+                    raise RuntimeError(
+                        "Unversioned canonical schema has no verified predecessor backup; migration refused"
+                    )
+            return "legacy"
+    except sqlite3.DatabaseError as exc:
+        raise RuntimeError("Database inspection failed before migration") from exc
+
+
+def _validate_predecessor_backup(path: Path) -> None:
+    try:
+        with _readonly(path) as conn:
+            check = conn.execute("PRAGMA quick_check").fetchone()
+            if not check or check[0] != "ok":
+                raise RuntimeError("Existing pre-migration backup failed verification")
+            tables = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )}
+            if not _LEGACY_REQUIRED_TABLES.issubset(tables):
+                raise RuntimeError("Pre-migration backup is not a supported predecessor schema")
+            if tables & _CURRENT_CANONICAL_TABLES:
+                raise RuntimeError("Pre-migration backup already contains v1.0.12 canonical schema")
+            if "schema_migrations" in tables and conn.execute(
+                "SELECT 1 FROM schema_migrations WHERE version=?", (_CURRENT_MARKER,)
+            ).fetchone():
+                raise RuntimeError("Pre-migration backup is already marked current")
+    except sqlite3.DatabaseError as exc:
+        raise RuntimeError("Pre-migration backup failed verification") from exc
+
+
+async def _ensure_current_schema(repository: TransferRepository) -> None:
+    # These are current-schema definition owners only. Legacy data has already
+    # been inspected and backed up before this function is reachable.
+    await database.init_db()
+    await repository.initialize()
+
+
+async def _mark_current() -> None:
+    async with database.get_db() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY,applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+        await db.execute("INSERT OR IGNORE INTO schema_migrations(version) VALUES(?)", (_CURRENT_MARKER,))
+        violations = await db.fetchall("PRAGMA foreign_key_check")
+        if violations:
+            raise RuntimeError("Current schema refused: database contains foreign-key violations")
+        await db.commit()
+
+
+async def _repair_legacy_statuses(db) -> None:
+    for bad_value, good_value in _LEGACY_STATUS_REPR_MAP.items():
+        await db.execute("UPDATE torrents SET status=? WHERE status=?", (good_value, bad_value))
+
+
 def _identity(kind, value):
     return uuid5(NAMESPACE_URL, f"debridpulse:v112:{kind}:{value}").hex
 
@@ -32,10 +138,7 @@ async def _backup() -> Path:
     source_path = Path(database.DB_PATH)
     final = source_path.with_name(source_path.name + ".pre-v112.sqlite3")
     if final.exists():
-        async with aiosqlite.connect(final) as existing:
-            check = await (await existing.execute("PRAGMA quick_check")).fetchone()
-            if check != ("ok",):
-                raise RuntimeError("Existing pre-migration backup failed verification")
+        _validate_predecessor_backup(final)
         return final
     temporary = final.with_name(final.name + ".tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -46,6 +149,7 @@ async def _backup() -> Path:
             check = await (await target.execute("PRAGMA quick_check")).fetchone()
             if check != ("ok",):
                 raise RuntimeError("Pre-migration backup failed verification")
+        _validate_predecessor_backup(temporary)
         os.replace(temporary, final)
     finally:
         temporary.unlink(missing_ok=True)
@@ -82,17 +186,24 @@ def _error(message, *, execution=False):
 
 
 async def migrate(*, external_executor: bool, globally_paused: bool = False) -> dict:
-    async with database.get_db() as db:
-        present = await db.fetchone("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'")
-        if present and await db.fetchone("SELECT version FROM schema_migrations WHERE version='1.0.12'"):
-            return {"migrated": False}
-    backup = await _backup()
+    state = _schema_state()
     repository = TransferRepository()
-    await repository.initialize()
+    if state == "fresh":
+        await _ensure_current_schema(repository)
+        await _mark_current()
+        return {"migrated": False}
+    if state == "current":
+        await _ensure_current_schema(repository)
+        return {"migrated": False}
+
+    # The predecessor image is captured before either current schema owner runs.
+    backup = await _backup()
+    await _ensure_current_schema(repository)
     count = 0
     async with database.get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
         await db.execute("CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY,applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)")
+        await _repair_legacy_statuses(db)
         parents = await db.fetchall("SELECT * FROM torrents ORDER BY id")
         owned = {row["gid"] for row in await db.fetchall("SELECT gid FROM debridpulse_aria2_owned_gids")}
         for parent in parents:
@@ -194,6 +305,6 @@ async def migrate(*, external_executor: bool, globally_paused: bool = False) -> 
         violations = await db.fetchall("PRAGMA foreign_key_check")
         if violations:
             raise RuntimeError("Migration refused: database contains foreign-key violations")
-        await db.execute("INSERT INTO schema_migrations(version) VALUES('1.0.12')")
+        await db.execute("INSERT INTO schema_migrations(version) VALUES(?)", (_CURRENT_MARKER,))
         await db.commit()
     return {"migrated": True, "transfers": count, "backup": str(backup)}

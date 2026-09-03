@@ -444,35 +444,3 @@ async def _init_db_sqlite():
             raise RuntimeError(f"Required SQLite schema is incomplete: {missing_by_table}")
         logger.info("SQLite schema verified — all required runtime columns present")
     logger.info("SQLite database initialised: %s", DB_PATH)
-
-    _STATUS_REPR_MAP = {
-        "TorrentStatus.PROCESSING": "processing",
-        "TorrentStatus.UPLOADING": "uploading",
-        "TorrentStatus.READY": "ready",
-        "TorrentStatus.ERROR": "error",
-        "TorrentStatus.COMPLETED": "completed",
-        "TorrentStatus.DELETED": "deleted",
-        "TorrentStatus.QUEUED": "queued",
-        "TorrentStatus.DOWNLOADING": "downloading",
-        "TorrentStatus.PENDING": "pending",
-        "TorrentStatus.PAUSED": "paused",
-    }
-    async with aiosqlite.connect(DB_PATH) as fix_db:
-        for bad_val, good_val in _STATUS_REPR_MAP.items():
-            cur = await fix_db.execute(
-                "SELECT COUNT(*) FROM torrents WHERE status = ?",
-                (bad_val,),
-            )
-            (count,) = await cur.fetchone()
-            if count:
-                logger.warning(
-                    "Repairing %d torrent(s) with corrupted status %r → %r",
-                    count,
-                    bad_val,
-                    good_val,
-                )
-                await fix_db.execute(
-                    "UPDATE torrents SET status = ? WHERE status = ?",
-                    (good_val, bad_val),
-                )
-        await fix_db.commit()

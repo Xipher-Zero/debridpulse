@@ -16,7 +16,7 @@ from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, Ex
     Inventory, Manifest, PauseResume, ProviderInputContinuation, ResourceLookup)
 from transfers import codec
 from transfers.errors import (
-    Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
+    Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
 from transfers.filesystem import destination, payload_matches, retire_partial, safe_name, stable_payload, validate_target

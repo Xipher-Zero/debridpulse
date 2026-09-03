@@ -172,7 +172,6 @@ class TransferRepository:
                     if column not in existing:
                         await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
-            await self._backfill_provenance(db)
             await db.commit()
 
     @staticmethod

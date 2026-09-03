@@ -16,7 +16,9 @@ from transfers.repository import TransferRepository
 @pytest_asyncio.fixture
 async def legacy(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
-    await database.init_db()
+    fixture = Path(__file__).with_name("fixtures") / "v1.0.11.1.sql"
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.executescript(fixture.read_text())
     return tmp_path
 
 

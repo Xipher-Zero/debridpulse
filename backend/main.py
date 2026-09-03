@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import uuid
@@ -28,7 +27,7 @@ from core.config import get_settings as _get_log_settings
 from core.logging_utils import configure_logging, log_startup_banner, sanitize_exception, sanitize_log_value
 from core.scheduler import start_scheduler, stop_scheduler
 from core.version import read_version
-from db.database import DatabaseMaintenanceActive, init_db, DB_PATH
+from db.database import DatabaseMaintenanceActive
 from application.dependencies import get_application
 from services.maintenance_gate import ApplicationMaintenanceActive
 from transfers.errors import TransferError
@@ -86,12 +85,13 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Config validation skipped due to error: %s", sanitize_exception(exc))
 
-    await init_db()
+    # v1.0.12 migration owns database classification and the legacy backup
+    # boundary. No current initializer may touch a predecessor database first.
+    from db.migrations.v112 import migrate
+    await migrate(external_executor=cfg.aria2_mode == "external", globally_paused=cfg.paused)
     from application.composition import application as default_application
     application = getattr(app.state, "application", default_application)
     app.state.application = application
-    from db.migrations.v112 import migrate
-    await migrate(external_executor=cfg.aria2_mode == "external", globally_paused=cfg.paused)
     await application.engine.initialize()
     await application.engine.recover_postprocessing()
     await application.start_integrations()
