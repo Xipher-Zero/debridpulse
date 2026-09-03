@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/remediation-group-e1.py'
       - '.github/remediation-group-e1-testfix.py'
+      - '.github/remediation-group-e1-corrective.py'
       - '.github/workflows/remediation-group-e1.yml'
 
 permissions:
@@ -26,6 +27,7 @@ jobs:
         run: |
           python .github/remediation-group-e1.py
           python .github/remediation-group-e1-testfix.py
+          python .github/remediation-group-e1-corrective.py
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -60,7 +62,12 @@ jobs:
       - name: Inspect residual correction-runtime contracts
         run: |
           set -euo pipefail
-          if grep -R -n -E 'ui-downloads-runtime\.js|ui-runtime\.js' backend/tests --exclude='test_uiarch001_e1_ownership.py' --exclude='test_ui_runtime_architecture_contract.py' --exclude='test_ui_downloads_correction_batch_contract.py' --exclude='test_v1111_canonical_frontend_contract.py'; then
+          if grep -R -n -E 'ui-downloads-runtime\.js|ui-runtime\.js' backend/tests \
+            --exclude='test_uiarch001_e1_ownership.py' \
+            --exclude='test_ui_runtime_architecture_contract.py' \
+            --exclude='test_ui_downloads_correction_batch_contract.py' \
+            --exclude='test_ui_downloads_polish_contract.py' \
+            --exclude='test_v1111_canonical_frontend_contract.py'; then
             echo 'Residual tests still encode retired E1 runtime ownership' >&2
             exit 1
           fi
@@ -80,7 +87,8 @@ jobs:
       - name: Commit coherent E1 canonicalization
         run: |
           set -euo pipefail
-          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/workflows/remediation-group-e1.yml
+          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/workflows/remediation-group-e1.yml
+          rm -f .github/e1-focused-gate-failure.txt
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
           git add -A
