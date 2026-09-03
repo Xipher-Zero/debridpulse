@@ -8,6 +8,7 @@ on:
       - '.github/remediation-group-e1-testfix.py'
       - '.github/remediation-group-e1-corrective.py'
       - '.github/remediation-group-e1-corrective2.py'
+      - '.github/remediation-group-e1-corrective3.py'
       - '.github/workflows/remediation-group-e1.yml'
 
 permissions:
@@ -30,14 +31,14 @@ jobs:
           python .github/remediation-group-e1-testfix.py
           python .github/remediation-group-e1-corrective.py
           python .github/remediation-group-e1-corrective2.py
+          python .github/remediation-group-e1-corrective3.py
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
       - name: E1 ownership and surrounding UI contracts
         run: |
-          set -uo pipefail
-          status=0
+          set -euo pipefail
           PYTHONPATH=backend pytest -q \
             backend/tests/test_uiarch001_e1_ownership.py \
             backend/tests/test_ui_runtime_architecture_contract.py \
@@ -51,28 +52,36 @@ jobs:
             backend/tests/test_ui_shell_signal_field_contract.py \
             backend/tests/test_ui_provider_status_contract.py \
             backend/tests/test_v1111_canonical_frontend_contract.py \
-            2>&1 | tee .github/e1-focused-gate-failure.txt || status=$?
-          if [ "$status" -ne 0 ]; then
-            git config user.name debridpulse-remediation
-            git config user.email actions@users.noreply.github.com
-            git add .github/e1-focused-gate-failure.txt
-            git commit -m 'chore: capture E1 focused gate failure'
-            git push origin HEAD:1.0.12
-            exit "$status"
-          fi
-          rm -f .github/e1-focused-gate-failure.txt
+            backend/tests/test_ui_dashboard_contract.py \
+            backend/tests/test_ui_activity_log_page_contract.py \
+            backend/tests/test_ui_statistics_contract.py \
+            backend/tests/test_ui_lucide_canonicalization_contract.py \
+            backend/tests/test_dashboard_sparkline_canonical_owner.py \
+            backend/tests/test_ui_feature_icon_contract.py \
+            backend/tests/test_ui_detail_overlay_cleanup_contract.py
       - name: Inspect residual correction-runtime contracts
         run: |
           set -euo pipefail
-          if grep -R -n -E 'ui-downloads-runtime\.js|ui-runtime\.js' backend/tests \
-            --exclude='test_uiarch001_e1_ownership.py' \
-            --exclude='test_ui_runtime_architecture_contract.py' \
-            --exclude='test_ui_downloads_correction_batch_contract.py' \
-            --exclude='test_ui_downloads_polish_contract.py' \
-            --exclude='test_v1111_canonical_frontend_contract.py'; then
-            echo 'Residual tests still encode retired E1 runtime ownership' >&2
-            exit 1
-          fi
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          tests = Path('backend/tests')
+          patterns = (
+              re.compile(r'''\bread\(\s*["']ui-(?:downloads-)?runtime\.js["']\s*\)'''),
+              re.compile(r'''STATIC\s*/\s*["']ui-(?:downloads-)?runtime\.js["']\s*\)\.read_text'''),
+              re.compile(r'''^\s*(?:RUNTIME|PRESENTATION_RUNTIME|DOWNLOADS_RUNTIME)\s*=\s*STATIC\s*/\s*["']ui-(?:downloads-)?runtime\.js["']''', re.M),
+          )
+          hits = []
+          for path in sorted(tests.glob('*.py')):
+              source = path.read_text(encoding='utf-8')
+              for pattern in patterns:
+                  for match in pattern.finditer(source):
+                      line = source.count('\n', 0, match.start()) + 1
+                      hits.append(f'{path}:{line}:{match.group(0)}')
+          if hits:
+              raise SystemExit('Residual tests still actively depend on retired E1 runtimes:\n' + '\n'.join(hits))
+          PY
       - name: Frontend syntax and ownership static gate
         run: |
           set -euo pipefail
@@ -89,7 +98,7 @@ jobs:
       - name: Commit coherent E1 canonicalization
         run: |
           set -euo pipefail
-          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/remediation-group-e1-corrective2.py .github/workflows/remediation-group-e1.yml
+          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/remediation-group-e1-corrective2.py .github/remediation-group-e1-corrective3.py .github/workflows/remediation-group-e1.yml
           rm -f .github/e1-focused-gate-failure.txt
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
