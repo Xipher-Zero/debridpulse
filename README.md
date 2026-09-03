@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/logo.svg" width="96" alt="DebridPulse Logo"/>
   <h1>DebridPulse</h1>
-  <p><strong>Self-hosted transfer orchestration for direct links, magnets, and torrent files.</strong><br/>Universal lifecycle · AllDebrid resolution · aria2 execution · recovery · observability</p>
+  <p><strong>Self-hosted transfer orchestration for direct links, magnets, and torrent files.</strong><br/>Universal lifecycle · AllDebrid + General HTTP(S) providers · aria2 execution · recovery · observability</p>
 
   [![License](https://img.shields.io/github/license/Xipher-Zero/debridpulse?style=flat-square)](LICENSE)
   [![Tests](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/tests.yml?style=flat-square&label=tests)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/tests.yml)
@@ -15,18 +15,19 @@
 
 ## What is DebridPulse?
 
-**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. The included AllDebrid provider resolves direct links, magnets and `.torrent` files; the independent aria2 executor downloads the resulting files. Identity, lifecycle, retry, ownership, recovery and post-processing belong to the core.
+**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. The current `1.0.12` development architecture has two production providers: **AllDebrid** for magnets, `.torrent` files, and dynamically supported HTTP(S) hosts; and **HTTP & HTTPS** for ordinary direct HTTP(S) acquisition. The independent aria2 executor performs physical HTTP(S) delivery. Identity, lifecycle, retry, ownership, recovery, authentication continuation, and post-processing belong to the Universal Transfer Core rather than either provider or executor.
 
-The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence and how to add a provider or executor. Version `1.0.12` is developed on the `1.0.12` branch. Production image examples below retain the published `1.0.11.1` tag until an explicit release promotion.
+The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries. The [current two-provider architecture](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) records the implemented and qualified development support matrix. Version `1.0.12` is developed on the `1.0.12` branch; it is **not yet a released v1.0.12 baseline**. Production image examples below therefore retain the published `1.0.11.1` tag until an explicit release promotion.
 
-The normal workflow is intentionally simple:
+The current workflow is intentionally deterministic:
 
-1. Submit an ordinary HTTP/HTTPS hoster link, magnet link, or `.torrent` file.
-2. DebridPulse sends it to AllDebrid for unlocking or torrent processing.
-3. AllDebrid produces downloadable HTTP(S) file URLs.
-4. DebridPulse dispatches those files to aria2.
-5. The resulting transfer is tracked through the Dashboard, Downloads view, statistics, and event log.
-6. Failed or expired transfers can be retried or recovered without rebuilding the download manually.
+1. Submit an HTTP/HTTPS link, magnet link, or `.torrent` file.
+2. DebridPulse creates one durable logical transfer before provider or executor work.
+3. For HTTP(S), enabled provider applicability is classified neutrally: a matching `SPECIALIZED` claim (currently AllDebrid host support) suppresses `GENERIC` handlers; otherwise the enabled **HTTP & HTTPS** provider can produce a direct candidate. Magnets and torrent files remain AllDebrid request types.
+4. The selected provider resolves the source into canonical candidates. AllDebrid may produce unlocked HTTP(S) URLs; General HTTP(S) preserves the validated direct resource as the candidate.
+5. DebridPulse selects aria2 through the executor boundary and performs the physical transfer.
+6. Provider route, candidate, executor, and final-delivery provenance remain durable so the UI can report what actually happened without inferring history from the URL.
+7. Failed or expired work can be retried or recovered according to universal policy without rebuilding the logical download manually.
 
 DebridPulse can manage its own built-in aria2 instance or safely use a shared external aria2 daemon.
 
@@ -38,6 +39,8 @@ DebridPulse can manage its own built-in aria2 instance or safely use a shared ex
 |---|---|
 | **Unified Dashboard submission** | Paste HTTP/HTTPS direct links and magnet URIs into one mixed-input control, or use the same Add action with an empty field to choose a `.torrent` file |
 | **Batch link submission** | Submit up to 100 unique direct links in one tracked transaction |
+| **Two-provider HTTP(S) routing** | AllDebrid dynamically claims supported hosts as `SPECIALIZED`; General HTTP(S) supplies the `GENERIC` direct-download path when no specialized claim wins |
+| **Durable provider provenance** | Recent Activity, Downloads, and Details show current/final provider and ordered route history from persisted facts rather than URL inference |
 | **Magnet links** | Submit one or more magnets through AllDebrid |
 | **Torrent files** | Upload `.torrent` files directly to AllDebrid |
 | **Pause-safe intake** | Pause All stops processing, not intake: new links, magnets, and `.torrent` files are recorded locally and begin provider work after Resume All |
@@ -62,18 +65,18 @@ DebridPulse can manage its own built-in aria2 instance or safely use a shared ex
 
 ## Direct-link downloads
 
-Direct hoster links are first-class DebridPulse transfers rather than untracked aria2 jobs.
+Direct HTTP(S) resources are first-class DebridPulse transfers rather than untracked aria2 jobs.
 
 Paste one or more HTTP/HTTPS links into the unified Dashboard submission field (direct links and magnets may be mixed, one item per line). DebridPulse then:
 
-1. validates and records the original URL;
-2. asks AllDebrid to unlock the link;
-3. waits for delayed generation when required;
-4. records the generated file information;
-5. submits the generated download URL to aria2;
-6. tracks progress with the rest of the download queue.
+1. validates and durably records the original resource;
+2. evaluates enabled provider applicability without contacting a provider;
+3. routes a current AllDebrid-supported host to AllDebrid as `SPECIALIZED`, otherwise routes an eligible ordinary HTTP(S) resource to the `GENERIC` **HTTP & HTTPS** provider;
+4. records the selected provider route and canonical candidate;
+5. dispatches the candidate to aria2;
+6. tracks progress and durable provider/executor provenance with the rest of the download queue.
 
-The original source URL is retained. If an AllDebrid-generated URL expires, DebridPulse can generate a new one during retry or recovery.
+When AllDebrid is the selected provider, delayed generation and later candidate refresh remain provider-owned behavior. When General HTTP(S) is selected, aria2 receives the validated direct resource; conventional HTTP authentication is requested only after a genuine supported authentication challenge. The same logical transfer continues after corrected credentials.
 
 A single submission can contain up to **100 unique links**.
 
@@ -92,6 +95,21 @@ For a torrent submission:
 5. DebridPulse tracks the complete transfer lifecycle locally.
 
 The local aria2 daemon does **not** need to participate in BitTorrent swarms. AllDebrid performs the torrent-side work and aria2 downloads the resulting files.
+
+---
+
+## Current v1.0.12 development support matrix
+
+This matrix describes the **implemented and qualified current two-provider development architecture**, not a released or final v1.0.12 provider/protocol set.
+
+| Integration / source | Current support | Notes |
+|---|---|---|
+| **AllDebrid** | Magnets, `.torrent` files, and HTTP(S) resources currently claimed by AllDebrid's validated dynamic supported-host state | Provider owns native host inventory, aliases/regex interpretation, availability and LKG/freshness semantics |
+| **HTTP & HTTPS** | Generic direct `http` and `https` resources | Produces direct candidates for aria2; conventional HTTP resource username/password authentication is supported after a genuine challenge |
+| **aria2** | Current HTTP(S) executor | Executes/observes native work; does not own universal provider routing, logical lifecycle, or universal retry policy |
+| **Deferred Items 12–16** | FTP, SCP, SFTP/SSH, rsync, additional providers/executors/dependencies, and richer routing/failover work where later roadmap decisions require them | Not implemented by this checkpoint; their final design and dependency set remain future work |
+
+The generic Authentication Required component can represent `username_private_key` plus an optional passphrase, but that neutral UI capability is **not a claim that SSH/SFTP/SCP production support exists today**.
 
 ---
 
@@ -145,7 +163,7 @@ Open:
 http://your-server:8080
 ```
 
-Go to **Settings → General** and configure your AllDebrid API key. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
+Go to **Settings → Sources & Providers**. Enable the sources you intend to use and configure the AllDebrid API key when AllDebrid is enabled. **HTTP & HTTPS** intentionally has only its canonical enable control. If the installation is reachable by users or networks you do not fully trust, configure native access control under **Settings → Authentication** before exposing it beyond that trusted boundary.
 
 ### Docker image
 
@@ -183,13 +201,14 @@ Adjust the paths and UID/GID for your system.
 
 The primary supported configuration is available through **Settings**.
 
-### General
+### Sources & Providers
 
-Configure:
+The current qualified development tree exposes:
 
-- AllDebrid API key;
-- AllDebrid agent name;
-- disk-space guard and provider retry/rate-limit behavior.
+- **AllDebrid** — enablement, API key, agent identity, and provider maintenance/rate-limit controls;
+- **General Sources → HTTP & HTTPS** — one canonical enable control and no speculative protocol-specific tuning.
+
+Provider enablement is backend-owned configuration. `enabled`, `configured`, provider health, and current host availability are distinct facts.
 
 ### Authentication
 

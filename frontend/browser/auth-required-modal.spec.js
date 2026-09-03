@@ -163,6 +163,7 @@ test('password-only AUTH_REQUIRED renders the generic neutral modal without key 
   await expect(modal.locator('[data-dp-auth-key]')).toHaveCount(0);
   await expect(modal.locator('[data-dp-auth-cancel]')).toBeVisible();
   await expect(modal.locator('[data-dp-auth-continue]')).toBeVisible();
+  await page.screenshot({path:'test-results/checkpoint-auth-password-dark-desktop.png', fullPage:true});
 });
 
 test('key selection is challenge-driven, validates locally, becomes textual green state, and switches Password to optional Passphrase', async ({ page }) => {
@@ -185,6 +186,7 @@ test('key selection is challenge-driven, validates locally, becomes textual gree
   await expect(modal.locator('[data-dp-auth-key]')).toContainText('Key supplied');
   await expect(modal.locator('[data-dp-auth-secret-label]')).toHaveText('Passphrase');
   await expect(modal.locator('[data-dp-auth-secret]')).not.toHaveAttribute('required', '');
+  await page.screenshot({path:'test-results/checkpoint-auth-key-dark-desktop.png', fullPage:true});
 });
 
 test('password authentication keeps the modal open while busy and closes when the challenge resolves even if the transfer is only queued', async ({ page }) => {
@@ -241,6 +243,7 @@ test('rejected password authentication preserves session fields, adopts the rege
   await expect(modal.locator('[data-dp-auth-username]')).toHaveValue('retry-user-sentinel');
   await expect(modal.locator('[data-dp-auth-secret]')).toHaveValue('wrong-password-sentinel');
   await expect(modal.locator('[data-dp-auth-continue]')).toBeEnabled();
+  await page.screenshot({path:'test-results/checkpoint-auth-rejected-dark-desktop.png', fullPage:true});
 
   await modal.locator('[data-dp-auth-secret]').fill('correct-password-sentinel');
   await modal.locator('[data-dp-auth-continue]').click();
@@ -466,4 +469,5 @@ test('modal keeps dialog semantics, focus containment, light-theme readability h
   expect(geometry.top).toBeGreaterThanOrEqual(0);
   expect(geometry.bottom).toBeLessThanOrEqual(800);
   expect(geometry.width).toBeGreaterThan(300);
+  await page.screenshot({path:'test-results/checkpoint-auth-light-mobile.png', fullPage:true});
 });

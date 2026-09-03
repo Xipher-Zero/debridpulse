@@ -1,5 +1,6 @@
 # Runtime dependency license inventory
 
+> **Checkpoint scope:** This dependency/license inventory applies to the current qualified v1.0.12 **two-provider development tree**. It is not the final eventual v1.0.12 dependency/license closure. Deferred Items 12–16 must trigger a fresh third-party/license audit if they add libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
 This inventory covers every Python package pinned in
 `backend/requirements.txt`. Package names and versions are enforced by
 `backend/tests/test_license_policy.py`; a dependency change must update both

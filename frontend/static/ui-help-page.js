@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 clean-room Help & Documentation page.
+/* DebridPulse canonical Help & Documentation page.
  *
  * Help deliberately does not consume the inherited Help tab markup or legacy
  * tab lifecycle. This runtime owns the current user-facing documentation,
@@ -45,20 +45,21 @@
       <section class="dp-help-document" aria-labelledby="dp-help-quickstart-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-quickstart-heading">Getting started with DebridPulse</h2>
-          <p>A guided first setup for connecting AllDebrid, choosing where files are stored, and adding your first download.</p>
+          <p>A guided first setup for choosing sources, connecting AllDebrid when you use it, selecting storage, and adding your first download.</p>
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p><b>DebridPulse is the application you use to submit, track, and manage downloads.</b> AllDebrid is the online service that prepares the links, magnets, and torrent files you give to DebridPulse. A component called <b>aria2</b> then performs the actual file transfer and writes the files to your storage.</p>
-          <p>DebridPulse includes its own built-in copy of aria2, so most users do not need to install or configure a separate download engine. For a basic setup, you normally only need an AllDebrid API key and a download location.</p>
+          <p><b>DebridPulse is the application you use to submit, route, track, and manage downloads.</b> The current provider layer includes <b>AllDebrid</b> for magnets, torrent files, and HTTP/HTTPS hosts that AllDebrid currently supports, plus a generic <b>HTTP &amp; HTTPS</b> source for ordinary direct web downloads. A separate component called <b>aria2</b> performs the physical HTTP/HTTPS transfer and writes files to your storage.</p>
+          <p>DebridPulse includes its own built-in copy of aria2, so most users do not need a separate download engine. An AllDebrid API key is required for AllDebrid routes, while generic HTTP/HTTPS direct downloads use the separate HTTP &amp; HTTPS provider when it is enabled.</p>
         </div>
 
         <article class="dp-help-inset">
           <h3>Before you begin</h3>
           <div class="dp-help-copy dp-help-prose">
-            <p>You will need an <b>AllDebrid account</b> and somewhere DebridPulse is allowed to save downloaded files. If DebridPulse was installed for you, those pieces may already be prepared.</p>
+            <p>You will need somewhere DebridPulse is allowed to save downloaded files. You also need an <b>AllDebrid account</b> if you intend to submit magnets, torrent files, or use AllDebrid-supported HTTP/HTTPS hosts. If DebridPulse was installed for you, those pieces may already be prepared.</p>
             <ul>
-              <li><b>AllDebrid account:</b> DebridPulse currently uses AllDebrid as its debrid provider. A debrid provider is an online service that prepares supported downloads for you instead of making your DebridPulse system perform that work directly.</li>
+              <li><b>AllDebrid account:</b> AllDebrid is the current specialized debrid provider. It prepares supported sources remotely; DebridPulse does not route every ordinary HTTP/HTTPS URL through it.</li>
+              <li><b>HTTP &amp; HTTPS source:</b> The generic direct provider can hand ordinary HTTP/HTTPS resources to aria2 without an AllDebrid unlock when no enabled specialized provider claims that resource.</li>
               <li><b>Download storage:</b> This can be a folder on the computer running DebridPulse, a mounted NAS share, or another location made available to the application.</li>
               <li><b>Login protection:</b> If DebridPulse can be reached by people or devices you do not fully trust, configure <b>Settings → Authentication</b> before exposing it. Username &amp; Password is the simplest protection for most users.</li>
             </ul>
@@ -78,7 +79,7 @@
           ${step(2, 'Confirm where downloads will be stored', `
             <div class="dp-help-prose">
               <p>Open <b>Settings → Downloads → Download Engine</b>. The default mode is <b>Built-in aria2</b>, which is the recommended choice unless you already operate a separate aria2 server.</p>
-              <p><b>aria2 is the component that performs the actual file transfer.</b> DebridPulse decides what should be downloaded, gets a usable file link from AllDebrid, and gives that link to aria2. Built-in mode means DebridPulse runs and manages aria2 for you.</p>
+              <p><b>aria2 is the component that performs the actual file transfer.</b> DebridPulse selects a provider first, obtains a canonical HTTP/HTTPS candidate from that provider, and gives the candidate to aria2. An AllDebrid route may use an unlocked provider URL; a General HTTP &amp; HTTPS route uses the validated direct resource. Built-in mode means DebridPulse runs and manages aria2 for you.</p>
               <p>The <b>Built-in Download Folder</b> tells DebridPulse where files should be written. The normal container path is <code>/download</code>.</p>
               <p>If you installed DebridPulse with Docker, DebridPulse runs inside an isolated environment called a <b>container</b>. A path such as <code>/download</code> is the folder name as DebridPulse sees it inside that container. During installation, that folder is normally connected to a real folder on your computer, NAS, or server. For example, a folder named <code>/mnt/downloads</code> on the host system might be made available to DebridPulse as <code>/download</code>.</p>
               <p>If downloads are already appearing in the correct place, you do not need to change this path.</p>
@@ -89,7 +90,7 @@
             <div class="dp-help-prose">
               <p>Return to the <b>Dashboard</b>. The main Add field accepts the common source types DebridPulse supports.</p>
               <ul>
-                <li><b>HTTP or HTTPS link:</b> A normal web link to content supported by AllDebrid. DebridPulse asks AllDebrid to turn it into a usable download link.</li>
+                <li><b>HTTP or HTTPS link:</b> DebridPulse evaluates current provider applicability. An enabled AllDebrid-supported host is routed to AllDebrid; otherwise an eligible ordinary web resource can use the generic HTTP &amp; HTTPS provider directly.</li>
                 <li><b>Magnet link:</b> A special link that usually begins with <code>magnet:?</code> and describes torrent content without requiring a separate torrent file.</li>
                 <li><b>.torrent file:</b> A small metadata file that describes torrent content. To choose one, leave the Add text field empty and use the same Add control to select the file.</li>
               </ul>
@@ -99,9 +100,9 @@
 
           ${step(4, 'Understand what happens after you click Add', `
             <div class="dp-help-prose">
-              <p>For a normal HTTP or HTTPS source, DebridPulse sends the source to AllDebrid. AllDebrid prepares or <b>unlocks</b> it, which means it produces a downloadable file link that DebridPulse can use. Some sources are ready immediately, while others need time to be generated.</p>
+              <p>For HTTP or HTTPS, DebridPulse first applies the neutral routing rule: a current specialized provider claim wins over a generic one. Today that means an enabled AllDebrid-supported host routes through AllDebrid, while an unrelated HTTP/HTTPS resource can route through the generic HTTP &amp; HTTPS provider when enabled.</p>
               <p>For a magnet or <code>.torrent</code> file, AllDebrid handles the torrent activity on its own service. When the files are ready, AllDebrid provides normal HTTP or HTTPS download links.</p>
-              <p>DebridPulse then gives those downloadable links to aria2, which transfers the files to your configured storage. Your DebridPulse aria2 process does <b>not</b> need to join the torrent swarm.</p>
+              <p>DebridPulse gives the selected provider's canonical candidate to aria2, which transfers the files to your configured storage. Your DebridPulse aria2 process does <b>not</b> need to join the torrent swarm.</p>
               <p>DebridPulse keeps the original source and the transfer history so it can retry or recover many problems later without making you enter the download again.</p>
             </div>`) }
 
@@ -159,13 +160,13 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p><b>A source is the link, magnet, or torrent file you give to DebridPulse.</b> DebridPulse records that source, asks AllDebrid to prepare downloadable files, then hands the resulting file links to aria2 for the physical transfer to your storage.</p>
-          <p>This separation matters because a provider can still be preparing content even though no local bytes are moving yet, and a local download can fail even after AllDebrid has finished its part.</p>
+          <p><b>A source is the link, magnet, or torrent file you give to DebridPulse.</b> DebridPulse records that source, selects an eligible provider through neutral applicability/routing, and hands the provider's canonical candidate to aria2 for physical delivery.</p>
+          <p>This separation matters because provider resolution and local execution are different responsibilities. An AllDebrid route may still be preparing content while no local bytes are moving, while a direct HTTP &amp; HTTPS route may already be ready for aria2 without a debrid unlock.</p>
         </div>
 
         <div class="dp-help-pipeline">
           ${pipeline('1. Intake', 'DebridPulse accepts the HTTP/HTTPS link, magnet, or .torrent file and creates tracked work before provider or download-engine activity begins.')}
-          ${pipeline('2. Provider preparation', 'AllDebrid unlocks a direct source or processes torrent content until downloadable file links are available.')}
+          ${pipeline('2. Provider resolution', 'DebridPulse selects the current eligible provider. AllDebrid may unlock/process a supported source; General HTTP & HTTPS can produce a direct candidate for an ordinary web resource.')}
           ${pipeline('3. Transfer planning', 'DebridPulse turns the provider result into the files it should deliver, reconciles duplicates, and can keep verified alternate mirror links available as standby sources.')}
           ${pipeline('4. aria2 delivery', 'Built-in or external aria2 downloads the prepared HTTP/HTTPS file links to the configured storage.', 'active')}
           ${pipeline('5. Verification and finish', 'DebridPulse reconciles the physical result, preserves useful history, and marks the logical download complete only when its required local work is satisfied.', 'success')}
@@ -374,8 +375,10 @@
           <details class="dp-help-accordion" open>
             <summary>Sources &amp; Providers</summary>
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
-              <p>This is where DebridPulse connects to services that prepare your sources. In the current release, the visible debrid provider is <b>AllDebrid</b>.</p>
+              <p>This is where DebridPulse configures the current provider layer. The v1.0.12 development architecture has <b>AllDebrid</b> plus <b>General Sources → HTTP &amp; HTTPS</b>.</p>
               <ul>
+                <li><b>Enable:</b> each current provider has one backend-owned enable control. Enablement is distinct from whether AllDebrid is configured/healthy or whether a particular host is currently available.</li>
+                <li><b>HTTP &amp; HTTPS:</b> the generic direct source intentionally exposes only its Enable control; there are no speculative protocol tuning fields.</li>
                 <li><b>API Key:</b> required for DebridPulse to use your AllDebrid account. Replace or clear it only when you intend to change the stored credential.</li>
                 <li><b>Test AllDebrid:</b> verifies the current draft credential from the Settings footer.</li>
                 <li><b>Additional Settings:</b> controls local API-rate limiting, how often active provider state is checked, periodic full reconciliation, provider upload retries, and the delay between those retries.</li>
@@ -478,8 +481,8 @@
           <details class="dp-help-accordion" open>
             <summary>I added something, but no work starts</summary>
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
-              <p>First check <b>Pause All</b>. DebridPulse intentionally accepts and records new submissions while processing is paused, so an item can appear normally without contacting AllDebrid or aria2 yet.</p>
-              <p>If processing is active, open <b>Settings → Sources &amp; Providers</b> and use <b>Test AllDebrid</b>. A bad or expired API key prevents new provider work from progressing.</p>
+              <p>First check <b>Pause All</b>. DebridPulse intentionally accepts and records new submissions while processing is paused, so an item can appear normally without contacting a provider or aria2 yet.</p>
+              <p>If processing is active, inspect the provider shown for the transfer. For an AllDebrid route, open <b>Settings → Sources &amp; Providers</b> and use <b>Test AllDebrid</b>; a bad or expired API key prevents AllDebrid work from progressing. For a direct HTTP &amp; HTTPS route, verify that the generic source is enabled and inspect the transfer event/security result.</p>
               <p>If the provider test succeeds, check whether the item is simply queued behind the configured concurrency limit and inspect its Events for the current stage.</p>
             </div>
           </details>

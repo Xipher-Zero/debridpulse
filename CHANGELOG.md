@@ -1,13 +1,13 @@
 # Changelog
 
-## v1.0.12 development — First multi-provider HTTP(S) slice
+## v1.0.12 development — Two-provider canonical checkpoint
 
-- Added Sources & Providers enablement controls for AllDebrid and General HTTP(S) using canonical integration configuration.
-- Added compact provider provenance to Recent Activity and Downloads.
-- Added safe original-resource, final/current provider, ordered route history, and subordinate executor details to transfer Details.
-- Provenance presentation consumes durable Item 9 history and never reconstructs provider identity from submitted URLs or current routing state.
-- Consolidated and qualified the complete first multi-provider HTTP(S) slice across dynamic AllDebrid applicability, General HTTP(S), deterministic routing, HTTP authentication, same-transfer continuation, durable provenance, restart/recovery, provider enablement, and truthful presentation.
-- Added a permanent integrated Item 11 qualification gate while retaining canonical lower-level regression owners and the existing production failover boundary.
+- Converged the completed Items 0–11 architecture into the early Stage 17/18 **two-provider canonical development checkpoint**; this is not final v1.0.12 release convergence and Items 12–16 remain intentionally deferred.
+- Retained one canonical lifecycle/routing/retry ownership model: providers resolve and expose neutral applicability facts, executors execute, the classifier remains provider-neutral, and Universal Transfer remains the lifecycle/policy owner.
+- Retained Sources & Providers enablement for AllDebrid and General HTTP(S), compact provider provenance in Recent Activity/Downloads, and safe original-resource/current/final provider/ordered route history in Details.
+- Consolidated current-state architecture/help/support/version/license/OCI documentation so implemented two-provider behavior is described as qualified development behavior rather than a released/final v1.0.12 tree.
+- Replaced the stage-named focused qualification manifest with a permanent two-provider canonical checkpoint gate while preserving all Item 11 production-path coverage and adding architecture/documentation/license assertions.
+- The eventual full Stage 17/18 consolidation, dependency/license audit, security/version qualification, and release convergence remain required after deferred Items 12–16 and later provider/protocol work are implemented.
 
 ## [1.0.12] — Universal transfer architecture
 

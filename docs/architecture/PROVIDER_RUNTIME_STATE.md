@@ -74,6 +74,8 @@ A future integration should:
 
 The permanent proof fixtures use arbitrary telemetry/calibration and counter observations unrelated to debrid hosts or supported domains. They demonstrate opaque serialization, provider-owned validation, cross-provider schema incompatibility, restart recovery, identity/key isolation, last-known-good retention, compare-and-swap concurrency, disable/re-enable retention, canonical fresh-database initialization, transaction rollback, and backup/wipe maintenance behavior against the real SQLite implementation.
 
-## Deferred production consumer
+## Current production consumer
 
-AllDebrid dynamic host-support data is the planned first production consumer in a later roadmap stage. Roadmap Item 2 does **not** fetch, parse, refresh, persist, consume, classify, or route from AllDebrid host-support data. HTTP(S), classifier/applicability, authentication-flow/UI, provenance, and later routing work are also outside this stage.
+The neutral store remains provider-agnostic, but the current v1.0.12 development tree now has a production consumer: AllDebrid's dynamic supported-host state. `backend/providers/alldebrid/host_runtime.py` fetches and validates AllDebrid-native host data, serializes provider-owned bytes into this store, restores last-known-good state after restart, owns freshness/refresh policy, and translates usable provider state into neutral applicability facts. The store never parses AllDebrid host records or makes routing decisions.
+
+General HTTP & HTTPS does not need provider runtime-state persistence for its current generic `http`/`https` applicability. Future providers introduced after the two-provider checkpoint may reuse this boundary without adding provider-native payload knowledge to the core or store.

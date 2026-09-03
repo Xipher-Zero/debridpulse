@@ -113,7 +113,7 @@ Conversely, shared code remains when a supported canonical surface still consume
 
 ## Version ownership
 
-`VERSION` is the authoritative application version source and remains `1.0.11.1` for this corrective release.
+`VERSION` is the authoritative application version source and reports `1.0.12` for the current development tree. This is development-version consistency, not a v1.0.12 release or promotion.
 
 - backend health/version/OpenAPI/statistics surfaces derive from `read_version()`;
 - the sidebar hydrates its visible version from application data;

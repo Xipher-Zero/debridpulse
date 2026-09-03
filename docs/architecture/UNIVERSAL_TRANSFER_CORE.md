@@ -16,14 +16,23 @@ Post-processors operate on verified local artifacts and report separate outcomes
 | Retry decisions and transitions | `backend/transfers/policy.py` |
 | Paths, local possession, partial-file retirement | `backend/transfers/filesystem.py` |
 | Candidate equivalence | `backend/transfers/mirrors.py` |
-| Capability registration and routing | `backend/transfers/registry.py` |
+| URL parsing and provider-neutral applicability | `backend/transfers/applicability.py` |
+| Capability registration and provider/executor routing | `backend/transfers/registry.py` |
 | Models, errors and contracts | `backend/transfers/models.py`, `errors.py`, `contracts.py` |
+| Integration definitions/configuration | `backend/integrations/definition.py`, `configuration.py` |
+| Neutral provider runtime-state persistence | `backend/integrations/runtime_state.py` |
 | Application commands and maintenance admission | `backend/application/service.py` |
 | Production composition | `backend/application/composition.py`, `backend/integrations/catalog.py` |
 | Independent work cadences | `backend/core/scheduler.py` |
+| Neutral input-required broker/challenge lifecycle | `backend/transfers/input_required.py`, engine/repository challenge state |
+| Browser Authentication Required interaction | `frontend/static/ui-auth-required.js` |
+| Durable route/candidate/executor provenance | `backend/transfers/repository.py` |
+| Safe transfer/provider presentation | `backend/api/routes.py`, canonical frontend presentation helpers |
 | Browser and notification event delivery | `backend/application/observability.py` |
-| AllDebrid protocol and translation | `backend/providers/alldebrid/` |
-| aria2 protocol, ownership checks and runtime administration | `backend/executors/aria2/` |
+| AllDebrid native protocol, host-state interpretation and translation | `backend/providers/alldebrid/` |
+| General HTTP(S) generic resolution | `backend/providers/general_http/` |
+| aria2 protocol, execution, ownership checks and runtime administration | `backend/executors/aria2/` |
+| Database schema/migrations | `backend/db/database.py`, `backend/db/migrations/` |
 | Archive execution | `backend/postprocessors/archive/` |
 
 The core imports contracts, never concrete integrations. Providers do not import
@@ -118,10 +127,9 @@ A provider that can suspend for external input returns the neutral `InputRequire
 and implements `resolve_with_input`; submitted values are delivered only to that
 provider for the current challenge. The registry validates advertised protocol
 implementations at registration.
-Provider selection considers enabled state, registered health, supported request
-kind, capability, optional preference, priority, then stable ID ordering. Health
-affects routing when observations are registered with `mark_health`; selection
-itself does not make an implicit network call.
+Provider selection first filters by enabled state, registered health, supported request kind, and capability. URL-shaped requests then pass through the provider-neutral applicability classifier. The currently implemented initial rule is `SPECIALIZED > GENERIC`: when one or more specialized claims match, generic handlers are suppressed; when no specialized match survives, matching generic handlers remain eligible. Magnet/torrent request-type routes remain static. Only the surviving same-class provider set reaches the neutral optional preference, priority, then stable-ID ordering. Health affects routing when observations are registered with `mark_health`; selection itself does not make an implicit network call or refresh provider state.
+
+In the current two-provider tree, AllDebrid translates its own validated runtime host facts into request-aware `SPECIALIZED` HTTP(S) claims while General HTTP & HTTPS contributes `GENERIC` `http`/`https` applicability. These are integration facts, not concrete provider-name branches in the classifier or core. This rule is the implemented initial routing policy for the current architecture; it does not pre-decide every later failover/selection policy for deferred providers.
 
 Executors implement `prepare`, `start`, `observe`, `cancel` and `resumable_paths`.
 An executor may return the same neutral `InputRequirement` from `prepare` before

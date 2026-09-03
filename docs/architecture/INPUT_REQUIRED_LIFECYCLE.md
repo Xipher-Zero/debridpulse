@@ -236,12 +236,8 @@ interaction rather than leaving an invisible challenge:
 
 `POST /api/torrents/{transfer_id}/cancel`
 
-## Explicitly deferred
+## Current production use and deferred integrations
 
-Roadmap Item 4 does not add saved credentials, credential profiles/discovery,
-filesystem key discovery, SSH-agent integration, browser credential storage,
-persistent passphrases, a vault, production HTTP(S)/FTP/SCP/SFTP/SSH/rsync
-integration, classifier/applicability logic, AllDebrid dynamic host-support
-plumbing, or later routing/provenance work. Future integrations gain this browser
-interaction by emitting the same neutral challenge contract rather than adding a
-protocol-specific authentication modal.
+The neutral lifecycle is now consumed by the current General HTTP & HTTPS path for qualified conventional HTTP resource username/password authentication. The browser also implements the neutral `username_private_key` method with an optional passphrase when a challenge advertises it; that capability is deliberately protocol-neutral and does **not** imply that SSH, SFTP, or SCP is a current production transport.
+
+Still deferred are saved credentials, credential profiles/discovery, filesystem key discovery, SSH-agent integration, browser credential storage, persistent passphrases, a vault, and the later FTP/SCP/SFTP/SSH/rsync/provider work in deferred roadmap Items 12–16. Those integrations must consume this same challenge contract rather than add protocol-specific authentication UI or move secrets into durable storage.
