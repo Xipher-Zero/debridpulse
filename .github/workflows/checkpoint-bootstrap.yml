@@ -28,13 +28,29 @@ jobs:
           gzip -dc "$RUNNER_TEMP/checkpoint.patch.gz" > "$RUNNER_TEMP/checkpoint.patch"
           git apply --check "$RUNNER_TEMP/checkpoint.patch"
           git apply "$RUNNER_TEMP/checkpoint.patch"
+
+          # The GitHub Actions token may not create/update workflow files. Preserve
+          # the currently registered workflow set for this transport commit; the
+          # canonical workflow edits are applied immediately afterward through the
+          # connected repository API, which has workflow-write permission.
+          git checkout HEAD -- \
+            .github/workflows/browser-runtime.yml \
+            .github/workflows/fork-image.yml \
+            .github/workflows/tests.yml \
+            .github/workflows/checkpoint-bootstrap.yml
+
           rm -f .github/checkpoint-canonical.patch.gz.b64
           rm -f .github/.checkpoint-patch-{01,02,03,04,05,06,07,08,09}
-          rm -f .github/workflows/checkpoint-bootstrap.yml
+
           git diff --check
           test ! -e .github/checkpoint-canonical.patch.gz.b64
-          test ! -e .github/workflows/checkpoint-bootstrap.yml
           test -z "$(find .github -maxdepth 1 -name '.checkpoint-patch-*' -print -quit)"
+          git diff --quiet -- \
+            .github/workflows/browser-runtime.yml \
+            .github/workflows/fork-image.yml \
+            .github/workflows/tests.yml \
+            .github/workflows/checkpoint-bootstrap.yml
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
