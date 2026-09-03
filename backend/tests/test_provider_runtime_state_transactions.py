@@ -42,6 +42,7 @@ async def test_canonical_database_initialization_creates_runtime_state_schema(tm
 async def test_failed_replacement_transaction_rolls_back_to_last_known_good(tmp_path, monkeypatch):
     db_path = tmp_path / "replacement-rollback.sqlite3"
     monkeypatch.setattr(database, "DB_PATH", db_path)
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     original = await store.replace(
         "parcel-lab",
@@ -103,6 +104,7 @@ async def test_runtime_schema_initialization_does_not_forge_migration_markers(tm
         )
         await db.commit()
 
+    await database.init_db()
     await ProviderRuntimeStateStore().initialize()
 
     async with aiosqlite.connect(db_path) as db:

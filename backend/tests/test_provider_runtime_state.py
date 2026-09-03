@@ -6,6 +6,7 @@ from pathlib import Path
 
 import aiosqlite
 import pytest
+import pytest_asyncio
 
 import db.database as database
 from integrations.runtime_state import (
@@ -24,10 +25,11 @@ from fake_runtime_state_provider import (
 )
 
 
-@pytest.fixture
-def isolated_database(tmp_path, monkeypatch):
+@pytest_asyncio.fixture
+async def isolated_database(tmp_path, monkeypatch):
     path = tmp_path / "runtime-state.sqlite3"
     monkeypatch.setattr(database, "DB_PATH", path)
+    await database.init_db()
     return path
 
 
@@ -290,14 +292,13 @@ async def test_fresh_upgrade_and_idempotent_schema_preserve_existing_application
 
 
 @pytest.mark.asyncio
-async def test_schema_failure_rolls_back_without_false_partial_success(isolated_database):
-    class BrokenStore(ProviderRuntimeStateStore):
-        @staticmethod
-        def _schema_statements():
-            return ProviderRuntimeStateStore._schema_statements() + ("THIS IS NOT VALID SQL",)
+async def test_runtime_initializer_rejects_missing_schema_without_repair(isolated_database):
+    async with aiosqlite.connect(isolated_database) as db:
+        await db.execute("DROP TABLE integration_runtime_state")
+        await db.commit()
 
     with pytest.raises(RuntimeStateStorageError):
-        await BrokenStore().initialize()
+        await ProviderRuntimeStateStore().initialize()
 
     async with aiosqlite.connect(isolated_database) as db:
         present = await (await db.execute(

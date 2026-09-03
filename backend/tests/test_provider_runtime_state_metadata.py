@@ -20,6 +20,7 @@ from integrations.runtime_state import ProviderRuntimeStateStore
 )
 async def test_non_finite_neutral_timestamp_is_rejected_before_replacement(tmp_path, monkeypatch, field, value):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / f"non-finite-{field}.sqlite3")
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     original = await store.replace(
         "parcel-lab",

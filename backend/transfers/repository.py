@@ -10,7 +10,7 @@ import hashlib
 from dataclasses import replace
 from uuid import NAMESPACE_URL, uuid5
 
-from db.database import get_db
+from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.input_required import public_challenge
@@ -23,82 +23,6 @@ from transfers.models import (
 from transfers.policy import transition_allowed
 
 
-_SCHEMA = (
-    """CREATE TABLE IF NOT EXISTS application_events (
-        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        kind TEXT NOT NULL, detail TEXT, claimed INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
-    """CREATE TABLE IF NOT EXISTS postprocess_attempts (
-        transfer_id INTEGER NOT NULL REFERENCES torrents(id), processor_id TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'pending', paths TEXT NOT NULL, outcome TEXT,
-        PRIMARY KEY(transfer_id,processor_id))""",
-    "CREATE TABLE IF NOT EXISTS transfer_controls(key TEXT PRIMARY KEY,value TEXT NOT NULL)",
-    """CREATE TABLE IF NOT EXISTS transfer_requests (
-        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        parent_id TEXT REFERENCES transfer_requests(id), ordinal INTEGER NOT NULL DEFAULT 0,
-        payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', resource TEXT,
-        attempts INTEGER NOT NULL DEFAULT 0, retry_at REAL NOT NULL DEFAULT 0,
-        error TEXT, UNIQUE(transfer_id,parent_id,ordinal))""",
-    """CREATE TABLE IF NOT EXISTS provider_resources (
-        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        provider_id TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL,
-        cleanup_authority TEXT, cleanup_error TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
-    """CREATE TABLE IF NOT EXISTS resolution_attempts (
-        id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES transfer_requests(id),
-        provider_id TEXT NOT NULL, state TEXT NOT NULL, error TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
-    """CREATE TABLE IF NOT EXISTS execution_attempts (
-        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        artifact_id INTEGER NOT NULL REFERENCES download_files(id),
-        executor_id TEXT NOT NULL, handle TEXT NOT NULL, state TEXT NOT NULL,
-        authorized INTEGER NOT NULL DEFAULT 1, progress TEXT, error TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
-    """CREATE TABLE IF NOT EXISTS route_attempt_provenance (
-        resolution_attempt_id TEXT PRIMARY KEY REFERENCES resolution_attempts(id),
-        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        request_id TEXT NOT NULL REFERENCES transfer_requests(id),
-        ordinal INTEGER NOT NULL CHECK(ordinal > 0), operation TEXT NOT NULL,
-        previous_attempt_id TEXT REFERENCES resolution_attempts(id),
-        transition_kind TEXT, transition_reason TEXT, candidate_summary TEXT NOT NULL DEFAULT '[]',
-        outcome TEXT NOT NULL DEFAULT 'started', history_quality TEXT NOT NULL DEFAULT 'recorded',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(transfer_id,ordinal))""",
-    """CREATE TABLE IF NOT EXISTS execution_attempt_provenance (
-        execution_attempt_id TEXT PRIMARY KEY REFERENCES execution_attempts(id),
-        route_attempt_id TEXT REFERENCES resolution_attempts(id),
-        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        artifact_id INTEGER NOT NULL REFERENCES download_files(id),
-        ordinal INTEGER NOT NULL CHECK(ordinal > 0), provider_id TEXT, candidate_id TEXT, candidate_source TEXT,
-        outcome TEXT NOT NULL DEFAULT 'prepared', delivered INTEGER NOT NULL DEFAULT 0,
-        history_quality TEXT NOT NULL DEFAULT 'recorded',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(artifact_id,ordinal))""",
-    "CREATE INDEX IF NOT EXISTS idx_route_provenance_transfer ON route_attempt_provenance(transfer_id,request_id,ordinal)",
-    "CREATE INDEX IF NOT EXISTS idx_execution_provenance_transfer ON execution_attempt_provenance(transfer_id,artifact_id,ordinal)",
-    "CREATE INDEX IF NOT EXISTS idx_execution_provenance_route ON execution_attempt_provenance(route_attempt_id)",
-    """CREATE TABLE IF NOT EXISTS transfer_outcomes (
-        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
-        attempt_id TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
-    "CREATE INDEX IF NOT EXISTS idx_requests_ready ON transfer_requests(state,retry_at,transfer_id)",
-    "CREATE INDEX IF NOT EXISTS idx_attempts_artifact ON execution_attempts(artifact_id,state)",
-    "CREATE INDEX IF NOT EXISTS idx_resources_transfer ON provider_resources(transfer_id,provider_id)",
-)
-_COLUMNS = {
-    "torrents": {"normalized_error": "TEXT", "lifecycle_epoch": "INTEGER NOT NULL DEFAULT 0", "delete_remote": "INTEGER NOT NULL DEFAULT 0"},
-    "transfer_requests": {"metadata": "TEXT"},
-    "provider_resources": {"cleanup_attempts": "INTEGER NOT NULL DEFAULT 0", "cleanup_retry_at": "REAL NOT NULL DEFAULT 0", "cleanup_blocked": "INTEGER NOT NULL DEFAULT 0"},
-    "resolution_attempts": {"result": "TEXT"},
-    "execution_attempts": {
-        "candidate": "TEXT", "progress_at": "REAL",
-        "cleanup_state": "TEXT", "cleanup_attempts": "INTEGER NOT NULL DEFAULT 0",
-        "cleanup_retry_at": "REAL NOT NULL DEFAULT 0", "cleanup_error": "TEXT",
-    },
-    "download_files": {
-        "request_id": "TEXT", "candidates": "TEXT", "selected_candidate": "INTEGER NOT NULL DEFAULT 0",
-        "execution_attempt_id": "TEXT", "normalized_error": "TEXT", "retry_at": "REAL NOT NULL DEFAULT 0",
-    },
-}
 
 
 class TransferRepository:
@@ -166,17 +90,9 @@ class TransferRepository:
             return await db.fetchall("SELECT transfer_id,processor_id FROM postprocess_attempts WHERE state='processing'")
 
     async def initialize(self) -> None:
-        async with get_db() as db:
-            await db.execute("BEGIN IMMEDIATE")
-            for statement in _SCHEMA:
-                await db.execute(statement)
-            for table, definitions in _COLUMNS.items():
-                existing = {row["name"] for row in await db.fetchall(f"PRAGMA table_info({table})")}
-                for column, definition in definitions.items():
-                    if column not in existing:
-                        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-            await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
-            await db.commit()
+        # Runtime repositories consume the schema; database bootstrap/migration
+        # is the sole authority allowed to create or repair it.
+        await validate_transfer_repository_schema()
 
     @staticmethod
     def _safe_candidate_source(candidate):

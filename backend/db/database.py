@@ -290,6 +290,208 @@ _RUNTIME_STATE_COLUMNS = {
 }
 
 
+TRANSFER_REPOSITORY_SCHEMA = ('CREATE TABLE IF NOT EXISTS application_events (\n'
+ '        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        kind TEXT NOT NULL, detail TEXT, claimed INTEGER NOT NULL DEFAULT 0,\n'
+ '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+ 'CREATE TABLE IF NOT EXISTS postprocess_attempts (\n'
+ '        transfer_id INTEGER NOT NULL REFERENCES torrents(id), processor_id TEXT NOT NULL,\n'
+ "        state TEXT NOT NULL DEFAULT 'pending', paths TEXT NOT NULL, outcome TEXT,\n"
+ '        PRIMARY KEY(transfer_id,processor_id))',
+ 'CREATE TABLE IF NOT EXISTS transfer_controls(key TEXT PRIMARY KEY,value TEXT NOT NULL)',
+ 'CREATE TABLE IF NOT EXISTS transfer_requests (\n'
+ '        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        parent_id TEXT REFERENCES transfer_requests(id), ordinal INTEGER NOT NULL DEFAULT 0,\n'
+ "        payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', resource TEXT,\n"
+ '        attempts INTEGER NOT NULL DEFAULT 0, retry_at REAL NOT NULL DEFAULT 0,\n'
+ '        error TEXT, UNIQUE(transfer_id,parent_id,ordinal))',
+ 'CREATE TABLE IF NOT EXISTS provider_resources (\n'
+ '        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        provider_id TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL,\n'
+ '        cleanup_authority TEXT, cleanup_error TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+ 'CREATE TABLE IF NOT EXISTS resolution_attempts (\n'
+ '        id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES transfer_requests(id),\n'
+ '        provider_id TEXT NOT NULL, state TEXT NOT NULL, error TEXT,\n'
+ '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+ 'CREATE TABLE IF NOT EXISTS execution_attempts (\n'
+ '        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        artifact_id INTEGER NOT NULL REFERENCES download_files(id),\n'
+ '        executor_id TEXT NOT NULL, handle TEXT NOT NULL, state TEXT NOT NULL,\n'
+ '        authorized INTEGER NOT NULL DEFAULT 1, progress TEXT, error TEXT,\n'
+ '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+ 'CREATE TABLE IF NOT EXISTS route_attempt_provenance (\n'
+ '        resolution_attempt_id TEXT PRIMARY KEY REFERENCES resolution_attempts(id),\n'
+ '        transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        request_id TEXT NOT NULL REFERENCES transfer_requests(id),\n'
+ '        ordinal INTEGER NOT NULL CHECK(ordinal > 0), operation TEXT NOT NULL,\n'
+ '        previous_attempt_id TEXT REFERENCES resolution_attempts(id),\n'
+ "        transition_kind TEXT, transition_reason TEXT, candidate_summary TEXT NOT NULL DEFAULT '[]',\n"
+ "        outcome TEXT NOT NULL DEFAULT 'started', history_quality TEXT NOT NULL DEFAULT 'recorded',\n"
+ '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n'
+ '        UNIQUE(transfer_id,ordinal))',
+ 'CREATE TABLE IF NOT EXISTS execution_attempt_provenance (\n'
+ '        execution_attempt_id TEXT PRIMARY KEY REFERENCES execution_attempts(id),\n'
+ '        route_attempt_id TEXT REFERENCES resolution_attempts(id),\n'
+ '        transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        artifact_id INTEGER NOT NULL REFERENCES download_files(id),\n'
+ '        ordinal INTEGER NOT NULL CHECK(ordinal > 0), provider_id TEXT, candidate_id TEXT, candidate_source '
+ 'TEXT,\n'
+ "        outcome TEXT NOT NULL DEFAULT 'prepared', delivered INTEGER NOT NULL DEFAULT 0,\n"
+ "        history_quality TEXT NOT NULL DEFAULT 'recorded',\n"
+ '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n'
+ '        UNIQUE(artifact_id,ordinal))',
+ 'CREATE INDEX IF NOT EXISTS idx_route_provenance_transfer ON '
+ 'route_attempt_provenance(transfer_id,request_id,ordinal)',
+ 'CREATE INDEX IF NOT EXISTS idx_execution_provenance_transfer ON '
+ 'execution_attempt_provenance(transfer_id,artifact_id,ordinal)',
+ 'CREATE INDEX IF NOT EXISTS idx_execution_provenance_route ON '
+ 'execution_attempt_provenance(route_attempt_id)',
+ 'CREATE TABLE IF NOT EXISTS transfer_outcomes (\n'
+ '        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
+ '        attempt_id TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL,\n'
+ '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+ 'CREATE INDEX IF NOT EXISTS idx_requests_ready ON transfer_requests(state,retry_at,transfer_id)',
+ 'CREATE INDEX IF NOT EXISTS idx_attempts_artifact ON execution_attempts(artifact_id,state)',
+ 'CREATE INDEX IF NOT EXISTS idx_resources_transfer ON provider_resources(transfer_id,provider_id)')
+
+TRANSFER_REPOSITORY_COLUMNS = {'torrents': {'normalized_error': 'TEXT',
+              'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
+              'delete_remote': 'INTEGER NOT NULL DEFAULT 0'},
+ 'transfer_requests': {'metadata': 'TEXT'},
+ 'provider_resources': {'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0',
+                        'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
+                        'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0'},
+ 'resolution_attempts': {'result': 'TEXT'},
+ 'execution_attempts': {'candidate': 'TEXT',
+                        'progress_at': 'REAL',
+                        'cleanup_state': 'TEXT',
+                        'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0',
+                        'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
+                        'cleanup_error': 'TEXT'},
+ 'download_files': {'request_id': 'TEXT',
+                    'candidates': 'TEXT',
+                    'selected_candidate': 'INTEGER NOT NULL DEFAULT 0',
+                    'execution_attempt_id': 'TEXT',
+                    'normalized_error': 'TEXT',
+                    'retry_at': 'REAL NOT NULL DEFAULT 0'}}
+
+_TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
+ 'download_files': {'candidates',
+                    'execution_attempt_id',
+                    'normalized_error',
+                    'request_id',
+                    'retry_at',
+                    'selected_candidate'},
+ 'execution_attempt_provenance': {'artifact_id',
+                                  'candidate_id',
+                                  'candidate_source',
+                                  'created_at',
+                                  'delivered',
+                                  'execution_attempt_id',
+                                  'history_quality',
+                                  'ordinal',
+                                  'outcome',
+                                  'provider_id',
+                                  'route_attempt_id',
+                                  'transfer_id',
+                                  'updated_at'},
+ 'execution_attempts': {'artifact_id',
+                        'authorized',
+                        'candidate',
+                        'cleanup_attempts',
+                        'cleanup_error',
+                        'cleanup_retry_at',
+                        'cleanup_state',
+                        'created_at',
+                        'error',
+                        'executor_id',
+                        'handle',
+                        'id',
+                        'progress',
+                        'progress_at',
+                        'state',
+                        'transfer_id',
+                        'updated_at'},
+ 'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
+ 'provider_resources': {'cleanup_attempts',
+                        'cleanup_authority',
+                        'cleanup_blocked',
+                        'cleanup_error',
+                        'cleanup_retry_at',
+                        'id',
+                        'payload',
+                        'provider_id',
+                        'state',
+                        'transfer_id',
+                        'updated_at'},
+ 'resolution_attempts': {'created_at',
+                         'error',
+                         'id',
+                         'provider_id',
+                         'request_id',
+                         'result',
+                         'state',
+                         'updated_at'},
+ 'route_attempt_provenance': {'candidate_summary',
+                              'created_at',
+                              'history_quality',
+                              'operation',
+                              'ordinal',
+                              'outcome',
+                              'previous_attempt_id',
+                              'request_id',
+                              'resolution_attempt_id',
+                              'transfer_id',
+                              'transition_kind',
+                              'transition_reason',
+                              'updated_at'},
+ 'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote'},
+ 'transfer_controls': {'value', 'key'},
+ 'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
+ 'transfer_requests': {'attempts',
+                       'error',
+                       'id',
+                       'metadata',
+                       'ordinal',
+                       'parent_id',
+                       'payload',
+                       'resource',
+                       'retry_at',
+                       'state',
+                       'transfer_id'}}
+
+
+async def _validate_schema_readonly(required: dict[str, set[str]], *, owner: str) -> None:
+    path = Path(DB_PATH)
+    if not path.exists() or path.stat().st_size == 0:
+        raise RuntimeError(f"{owner} schema is unavailable; database bootstrap must run first")
+    uri = path.resolve().as_uri() + "?mode=ro"
+    try:
+        async with aiosqlite.connect(uri, uri=True) as db:
+            check = await (await db.execute("PRAGMA quick_check")).fetchone()
+            if not check or check[0] != "ok":
+                raise RuntimeError(f"{owner} schema failed SQLite integrity verification")
+            missing_by_table: dict[str, list[str]] = {}
+            for table, expected in required.items():
+                rows = await (await db.execute(f"PRAGMA table_info({table})")).fetchall()
+                present = {row[1] for row in rows}
+                missing = sorted(expected - present)
+                if not rows or missing:
+                    missing_by_table[table] = missing or ["<table>"]
+            if missing_by_table:
+                raise RuntimeError(f"{owner} schema is incomplete: {missing_by_table}")
+    except aiosqlite.Error as exc:
+        raise RuntimeError(f"{owner} schema could not be verified read-only") from exc
+
+
+async def validate_transfer_repository_schema() -> None:
+    await _validate_schema_readonly(_TRANSFER_REPOSITORY_REQUIRED_COLUMNS, owner="transfer repository")
+
+
+async def validate_runtime_state_schema() -> None:
+    await _validate_schema_readonly({"integration_runtime_state": _RUNTIME_STATE_COLUMNS}, owner="integration runtime state")
+
+
 async def init_db():
     await _init_db_sqlite()
 
@@ -393,10 +595,16 @@ async def _init_db_sqlite():
         """)
         await db.execute(RUNTIME_STATE_SCHEMA[0])
         await db.execute(INPUT_CHALLENGE_SCHEMA[0])
+        for statement in TRANSFER_REPOSITORY_SCHEMA:
+            await db.execute(statement)
         for col, defn in _SCHEMA_COLUMNS_TORRENTS:
             await _ensure_column(db, "torrents", col, defn)
         for col, defn in _SCHEMA_COLUMNS_FILES:
             await _ensure_column(db, "download_files", col, defn)
+        for table, definitions in TRANSFER_REPOSITORY_COLUMNS.items():
+            for column, definition in definitions.items():
+                await _ensure_column(db, table, column, definition)
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 
     async with aiosqlite.connect(DB_PATH) as idx_db:
@@ -432,6 +640,8 @@ async def _init_db_sqlite():
             "integration_runtime_state": _RUNTIME_STATE_COLUMNS,
             "transfer_input_challenges": _INPUT_CHALLENGE_COLUMNS,
         }
+        for table, expected in _TRANSFER_REPOSITORY_REQUIRED_COLUMNS.items():
+            required.setdefault(table, set()).update(expected)
         missing_by_table: dict[str, list[str]] = {}
         for table, expected in required.items():
             cur = await verify_db.execute(f"PRAGMA table_info({table})")

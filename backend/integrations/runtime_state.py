@@ -12,7 +12,7 @@ import math
 import time
 from dataclasses import dataclass
 
-from db.database import RUNTIME_STATE_SCHEMA, get_db
+from db.database import get_db, validate_runtime_state_schema
 
 
 _DEFAULT_STATE_KEY = "default"
@@ -66,10 +66,6 @@ class ProviderRuntimeStateStore:
     def __init__(self) -> None:
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
-
-    @staticmethod
-    def _schema_statements() -> tuple[str, ...]:
-        return RUNTIME_STATE_SCHEMA
 
     @staticmethod
     def _identity(value: str, *, field: str, default: str | None = None) -> str:
@@ -131,22 +127,14 @@ class ProviderRuntimeStateStore:
         )
 
     async def initialize(self) -> None:
-        """Create the neutral schema transactionally and idempotently."""
+        """Verify bootstrap-owned schema without creating or repairing it."""
         if self._initialized:
             return
         async with self._initialize_lock:
             if self._initialized:
                 return
             try:
-                async with get_db() as db:
-                    await db.execute("BEGIN IMMEDIATE")
-                    try:
-                        for statement in self._schema_statements():
-                            await db.execute(statement)
-                        await db.commit()
-                    except Exception:
-                        await db.rollback()
-                        raise
+                await validate_runtime_state_schema()
             except Exception as exc:
                 raise RuntimeStateStorageError("Could not initialize integration runtime-state persistence") from exc
             self._initialized = True

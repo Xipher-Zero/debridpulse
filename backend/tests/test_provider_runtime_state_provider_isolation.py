@@ -56,6 +56,7 @@ class CounterRuntimeProvider:
 @pytest.mark.asyncio
 async def test_two_unrelated_fake_providers_share_store_without_collision_or_cross_interpretation(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "provider-isolation.sqlite3")
+    await database.init_db()
     store = ProviderRuntimeStateStore()
     telemetry = TelemetryRuntimeProvider(store, identity="telemetry-lab")
     counter = CounterRuntimeProvider(store, identity="counter-lab")
