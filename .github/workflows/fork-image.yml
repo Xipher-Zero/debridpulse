@@ -59,7 +59,7 @@ jobs:
             type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
-            org.opencontainers.image.description=Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution
+            org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -241,7 +241,7 @@ jobs:
             type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
-            org.opencontainers.image.description=Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution
+            org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

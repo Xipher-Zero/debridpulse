@@ -24,25 +24,6 @@ permissions:
   contents: read
 
 jobs:
-  snapshot:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
-
-      - name: Upload checkpoint source snapshot
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: checkpoint-source-${{ github.sha }}
-          path: |
-            .
-            !.git/**
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
   test:
     runs-on: ubuntu-latest
     env:
@@ -79,19 +60,19 @@ jobs:
           cd backend
           ruff check api application auth core db executors integrations postprocessors providers services transfers main.py --select F821,F822,F823
 
-      - name: Run Roadmap Item 11 multi-provider matrix
+      - name: Run v1.0.12 two-provider canonical qualification
         run: |
           set -o pipefail
           cd backend
-          mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/item11_qualification.txt)
-          python -m pytest "${cases[@]}" -v --tb=short 2>&1 | tee "$RUNNER_TEMP/item11.log"
+          mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/two_provider_checkpoint_qualification.txt)
+          python -m pytest "${cases[@]}" -v --tb=short 2>&1 | tee "$RUNNER_TEMP/two-provider.log"
 
-      - name: Upload Item 11 qualification output
+      - name: Upload two-provider qualification output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: item11-qualification-${{ github.sha }}
-          path: ${{ runner.temp }}/item11.log
+          name: two-provider-qualification-${{ github.sha }}
+          path: ${{ runner.temp }}/two-provider.log
           if-no-files-found: error
           retention-days: 14
 
