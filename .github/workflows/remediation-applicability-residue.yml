@@ -1,0 +1,78 @@
+name: Applicability Residue Remediation
+
+on:
+  push:
+    branches: [1.0.12]
+    paths:
+      - '.github/workflows/remediation-applicability-residue.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  remediate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Remove implicit applicability fallback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/transfers/applicability.py')
+          source = path.read_text(encoding='utf-8')
+
+          old_generic = '''def _generic_match(view: UrlApplicabilityView, item: ProviderApplicabilityInput) -> bool:\n    facts = item.applicability\n    if facts is None:\n        # Compatibility for existing providers that have only the canonical\n        # request-type declaration. Explicit applicability replaces this legacy\n        # URL-generic interpretation and can therefore be specialized-only.\n        return view.scheme in {str(kind).casefold() for kind in item.request_types}\n    return view.scheme in {str(scheme).casefold() for scheme in facts.generic_schemes}\n'''
+          new_generic = '''def _generic_match(view: UrlApplicabilityView, item: ProviderApplicabilityInput) -> bool:\n    facts = item.applicability\n    if facts is None:\n        # Applicability is an explicit provider contract. Missing facts must not\n        # be reinterpreted from request_types, which would create a second URL\n        # classifier and let undeclared providers enter generic competition.\n        return False\n    return view.scheme in {str(scheme).casefold() for scheme in facts.generic_schemes}\n'''
+          if source.count(old_generic) != 1:
+              raise SystemExit('generic fallback anchor mismatch')
+          source = source.replace(old_generic, new_generic, 1)
+
+          old_static = '''        explicit_url_kind = payload_marks_url or any(\n            normalized_kind in {str(s).casefold() for s in facts.generic_schemes}\n            or normalized_kind\n            in {\n                str(s).casefold()\n                for claim in facts.specialized_hosts\n                for s in claim.schemes\n            }\n            for item in inputs\n            if (facts := item.applicability) is not None\n        )\n        if explicit_url_kind:\n            return ()\n        static = tuple(\n            ProviderApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)\n            for item in inputs\n            if normalized_kind in {str(kind).casefold() for kind in item.request_types}\n        )\n        return static\n'''
+          new_static = '''        declared = tuple(item for item in inputs if item.applicability is not None)\n        explicit_url_kind = payload_marks_url or any(\n            normalized_kind in {str(s).casefold() for s in facts.generic_schemes}\n            or normalized_kind\n            in {\n                str(s).casefold()\n                for claim in facts.specialized_hosts\n                for s in claim.schemes\n            }\n            for item in declared\n            if (facts := item.applicability) is not None\n        )\n        if explicit_url_kind:\n            return ()\n        static = tuple(\n            ProviderApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)\n            for item in declared\n            if normalized_kind in {str(kind).casefold() for kind in item.request_types}\n        )\n        return static\n'''
+          if source.count(old_static) != 1:
+              raise SystemExit('static fallback anchor mismatch')
+          path.write_text(source.replace(old_static, new_static, 1), encoding='utf-8')
+
+          test = Path('backend/tests/test_applicability_explicit_contract.py')
+          test.write_text('''from transfers.applicability import (\n    ApplicabilityClass,\n    ProviderApplicability,\n    ProviderApplicabilityInput,\n    classify_provider_applicability,\n)\nfrom transfers.models import TransferRequest\n\n\ndef test_missing_applicability_cannot_be_inferred_from_url_request_types() -> None:\n    undeclared = ProviderApplicabilityInput(\n        "undeclared-http", frozenset({"http", "https"}), True, None\n    )\n    request = TransferRequest("https", "https://example.test/file")\n    assert classify_provider_applicability(request, (undeclared,)) == ()\n\n\ndef test_missing_applicability_cannot_fall_back_to_opaque_static_routing() -> None:\n    undeclared = ProviderApplicabilityInput(\n        "undeclared-opaque", frozenset({"parcel"}), True, None\n    )\n    declared = ProviderApplicabilityInput(\n        "declared-opaque", frozenset({"parcel"}), True, ProviderApplicability()\n    )\n    request = TransferRequest("parcel", "opaque-payload")\n    assert classify_provider_applicability(request, (undeclared,)) == ()\n    matches = classify_provider_applicability(request, (declared, undeclared))\n    assert [(match.provider_id, match.classification) for match in matches] == [\n        ("declared-opaque", ApplicabilityClass.STATIC)\n    ]\n\n\ndef test_static_magnet_routing_remains_independent_of_url_applicability_facts() -> None:\n    static = ProviderApplicabilityInput(\n        "static", frozenset({"magnet"}), True, None\n    )\n    request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40)\n    matches = classify_provider_applicability(request, (static,))\n    assert [(match.provider_id, match.classification) for match in matches] == [\n        ("static", ApplicabilityClass.STATIC)\n    ]\n''', encoding='utf-8')
+          PY
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
+      - name: Applicability and two-provider routing regression gate
+        run: |
+          set -euo pipefail
+          PYTHONPATH=backend pytest -q \
+            backend/tests/test_applicability_explicit_contract.py \
+            backend/tests/test_provider_applicability.py \
+            backend/tests/test_initial_provider_routing.py \
+            backend/tests/test_item11_multi_provider_slice.py \
+            backend/tests/test_two_provider_canonical_architecture.py \
+            backend/tests/test_audit_remediation_group_a.py
+          ruff check backend/transfers/applicability.py backend/tests/test_applicability_explicit_contract.py
+          python -m py_compile backend/transfers/applicability.py backend/tests/test_applicability_explicit_contract.py
+          git diff --check
+      - name: Prove current production providers declare applicability
+        run: |
+          set -euo pipefail
+          grep -q 'def applicability' backend/providers/general_http/provider.py
+          grep -q 'ProviderApplicability' backend/providers/alldebrid/definition.py
+          ! grep -n 'Compatibility for existing providers' backend/transfers/applicability.py
+      - name: Commit coherent applicability residue remediation
+        run: |
+          set -euo pipefail
+          rm .github/workflows/remediation-applicability-residue.yml
+          git config user.name debridpulse-remediation
+          git config user.email actions@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'refactor: require explicit applicability contracts'
+          git push origin HEAD:1.0.12
