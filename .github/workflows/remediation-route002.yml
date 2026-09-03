@@ -37,9 +37,10 @@ jobs:
           python -m pytest -q \
             tests/test_second_pass_route002.py \
             tests/test_input_required_lifecycle.py \
-            tests/test_url_applicability_classifier.py \
-            tests/test_url_routing_matrix.py \
-            tests/test_persisted_route_isolation.py
+            tests/test_provider_applicability.py \
+            tests/test_initial_provider_routing.py \
+            tests/test_route_provider_provenance.py \
+            tests/test_route_provider_provenance_audit.py
       - name: Static checks
         run: |
           set -euo pipefail
