@@ -23,12 +23,13 @@ jobs:
           python-version: '3.12'
       - name: Apply E2 canonical ownership
         run: python .github/remediation-group-e2.py
-      - name: Migrate shell cache ownership contract
+      - name: Migrate remaining provider-status ownership contracts
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('backend/tests/test_ui_shell_contract.py')
-          source = path.read_text(encoding='utf-8')
+
+          shell = Path('backend/tests/test_ui_shell_contract.py')
+          source = shell.read_text(encoding='utf-8')
           old = '        "/ui-shell-provider-status-v2.css": "28",\n'
           if source.count(old) != 1:
               raise SystemExit(f'expected one stale provider-status-v2 cache entry, found {source.count(old)}')
@@ -37,7 +38,18 @@ jobs:
           replacement = anchor + '    assert "/ui-shell-provider-status-v2.css" not in generations\n'
           if source.count(anchor) != 1:
               raise SystemExit(f'expected one cache assertion anchor, found {source.count(anchor)}')
-          path.write_text(source.replace(anchor, replacement, 1), encoding='utf-8')
+          shell.write_text(source.replace(anchor, replacement, 1).rstrip() + '\n', encoding='utf-8')
+
+          feature = Path('backend/tests/test_ui_feature_icon_contract.py')
+          source = feature.read_text(encoding='utf-8')
+          old = '    css = read("ui-shell-provider-status-v2.css")\n'
+          new = '    css = read("ui-shell-provider-status.css")\n    assert not (STATIC / "ui-shell-provider-status-v2.css").exists()\n'
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one stale provider-status-v2 feature owner, found {source.count(old)}')
+          feature.write_text(source.replace(old, new, 1).rstrip() + '\n', encoding='utf-8')
+
+          desktop = Path('backend/tests/test_ui_desktop_downloads_batch_contract.py')
+          desktop.write_text(desktop.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
           PY
       - name: Install test dependencies
         run: |
@@ -54,6 +66,7 @@ jobs:
             backend/tests/test_ui_frontend_deep_audit_contract.py \
             backend/tests/test_ui_provider_status_contract.py \
             backend/tests/test_ui_desktop_downloads_batch_contract.py \
+            backend/tests/test_ui_feature_icon_contract.py \
             backend/tests/test_ui_activity_log_page_contract.py \
             backend/tests/test_ui_downloads_correction_batch_contract.py \
             backend/tests/test_ui_downloads_final_contract.py \
@@ -81,7 +94,8 @@ jobs:
           test ! -e frontend/static/ui-runtime.js
           test ! -e frontend/static/ui-downloads-runtime.js
           test ! -e frontend/static/ui-shell-provider-status-v2.css
-          ! grep -R -n 'ui-shell-provider-status-v2.css' frontend/static backend/tests
+          ! grep -R -n --include='*.css' --include='*.html' --include='*.js' 'ui-shell-provider-status-v2.css' frontend/static
+          ! grep -R -n --include='*.py' 'read("ui-shell-provider-status-v2.css")' backend/tests
           ! grep -n -E 'normalizeActivityNaming|normalizeDownloadsLegacyPresentation|normalizeProviderPremiumLabel|installProviderStatusPresentation|dpProviderObserved' frontend/static/ui-accessibility-runtime.js
           grep -q '<span class="nav-label">Activity Log</span>' frontend/static/index.html
           ! grep -q '<span class="nav-label">Event Log</span>' frontend/static/index.html
