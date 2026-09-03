@@ -25,7 +25,7 @@ from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
     OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
-    TransferCandidate, TransferState, new_identity,
+    TransferCandidate, TransferProgress, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
@@ -1047,23 +1047,69 @@ class TransferEngine:
         return challenge
 
     async def cancel(self, transfer_id: int):
-        transfer = await self.repository.get(transfer_id)
-        if transfer is None:
-            raise KeyError(transfer_id)
-        challenge = await self.challenges.current(transfer_id)
-        if challenge:
-            await self.inputs.clear(challenge.id)
-            await self.challenges.clear_transfer(transfer_id)
-        for artifact in await self.repository.artifacts(transfer_id):
-            if artifact.execution:
-                executor = self.registry.executors.get(artifact.execution.executor_id)
-                if executor:
-                    outcome = await executor.cancel(artifact.execution)
+        lock = self._transfer_locks.setdefault(transfer_id, asyncio.Lock())
+        async with lock:
+            transfer = await self.repository.get(transfer_id)
+            if transfer is None:
+                raise KeyError(transfer_id)
+            if transfer.state == TransferState.CANCELLED:
+                return ()
+
+            # The durable lifecycle decision wins before executor I/O. The epoch
+            # closes the delete/retry race and state() supplies the canonical
+            # compare-and-transition boundary used by the rest of the engine.
+            if not await self.repository.state(
+                transfer_id, TransferState.CANCELLED, expected_epoch=transfer.epoch,
+            ):
+                current = await self.repository.get(transfer_id)
+                if current and current.state == TransferState.CANCELLED:
+                    return ()
+                raise TransferError(self._error(
+                    Category.RESOURCE_STATE_CONFLICT, Stage.EXECUTION, domain=Domain.LIFECYCLE,
+                    retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                ))
+
+            challenge = await self.challenges.current(transfer_id)
+            if challenge:
+                await self.inputs.clear(challenge.id)
+                await self.challenges.clear_transfer(transfer_id)
+
+            cleanup_errors = []
+            for artifact in await self.repository.artifacts(transfer_id):
+                if artifact.execution:
+                    executor = self.registry.executors.get(artifact.execution.executor_id)
+                    if executor is None:
+                        error = self._error(
+                            Category.UNSUPPORTED_CAPABILITY, Stage.EXECUTION, domain=Domain.REQUEST,
+                            retryability=Retryability.NEVER,
+                        )
+                        outcome = TransferOutcome(OutcomeKind.FAILURE, error)
+                    else:
+                        try:
+                            outcome = await executor.cancel(artifact.execution)
+                            if not isinstance(outcome, TransferOutcome):
+                                raise TransferError(self._error(
+                                    Category.INVALID_ADAPTER_RESPONSE, Stage.EXECUTION, domain=Domain.EXECUTOR,
+                                    retryability=Retryability.NEVER,
+                                ))
+                        except Exception as exc:
+                            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                                exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.EXECUTION,
+                            )
+                            outcome = TransferOutcome(OutcomeKind.FAILURE, error)
                     await self.repository.outcome(transfer_id, outcome, attempt_id=artifact.execution.attempt_id)
-            if artifact.state != "completed":
-                await self.repository.artifact_state(artifact.id, "cancelled")
-        await self.repository.state(transfer_id, TransferState.CANCELLED)
-        return True
+                    if outcome.kind in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED}:
+                        attempt = next((item for item in await self.repository.executions(transfer_id)
+                                        if item.handle == artifact.execution), None)
+                        progress = attempt.progress if attempt else None
+                        await self.repository.execution(ExecutionObservation(
+                            artifact.execution, ExecutionState.CANCELLED, progress or TransferProgress(),
+                        ))
+                    elif outcome.error:
+                        cleanup_errors.append(outcome.error)
+                if artifact.state != "completed":
+                    await self.repository.artifact_state(artifact.id, "cancelled")
+            return tuple(cleanup_errors)
 
     async def delete(self, transfer_id: int, *, remote=True):
         challenge = await self.challenges.current(transfer_id)

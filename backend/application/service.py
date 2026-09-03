@@ -126,9 +126,13 @@ class ApplicationService:
     async def cancel(self, transfer_id):
         async with self.application_operation():
             await self.require(transfer_id)
-            await self.engine.cancel(transfer_id)
+            errors = await self.engine.cancel(transfer_id)
             await self._publish(transfer_id)
-            return {"ok": True}
+            return {
+                "ok": not errors,
+                "cancelled": True,
+                "cleanup_errors": [error.as_dict() for error in errors],
+            }
 
     async def pause(self, transfer_id):
         async with self.application_operation():

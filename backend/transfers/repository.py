@@ -507,7 +507,7 @@ class TransferRepository:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT r.* FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE r.id=? AND r.state='pending'
-                AND t.status NOT IN ('deleted','completed') AND COALESCE(p.paused,0)=0""", (request_id,))
+                AND t.status NOT IN ('deleted','completed','cancelled') AND COALESCE(p.paused,0)=0""", (request_id,))
             if not row:
                 return None
             await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1 WHERE id=?", (request_id,))
@@ -556,11 +556,11 @@ class TransferRepository:
                 ("failed" if result.error else "resolved", self._candidate_summary(result.candidates), attempt.id))
             resource = codec.dump(result.observation.resource) if result.observation else None
             request_state = "failed" if result.error else "waiting" if result.observation and not result.candidates else "materializing" if result.candidates else "resolved"
-            if row["status"] != "deleted":
+            if row["status"] not in {"deleted", "completed", "cancelled"}:
                 await db.execute("UPDATE transfer_requests SET state=?,resource=COALESCE(?,resource),error=? WHERE id=?",
                                  (request_state, resource, error, attempt.request_id))
             await db.commit()
-        return row["status"] != "deleted"
+        return row["status"] not in {"deleted", "completed", "cancelled"}
 
     async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending", consume_attempt=False) -> None:
         async with get_db() as db:
@@ -571,7 +571,7 @@ class TransferRepository:
                 await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (error_blob, item["id"]))
                 await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (item["id"],))
             await db.execute("""UPDATE transfer_requests SET state=?,error=?,retry_at=?,attempts=attempts+? WHERE id=?
-                AND transfer_id IN (SELECT id FROM torrents WHERE status!='deleted')""",
+                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','completed','cancelled'))""",
                 (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
             await db.commit()
 
@@ -579,7 +579,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
-            if not parent or parent["status"] == "deleted":
+            if not parent or parent["status"] in {"deleted", "completed", "cancelled"}:
                 return
             for ordinal, entry in enumerate(entries):
                 identity = uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
@@ -607,7 +607,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
-            if not parent or parent["status"] == "deleted":
+            if not parent or parent["status"] in {"deleted", "completed", "cancelled"}:
                 return None
             previous = await db.fetchone("SELECT id FROM download_files WHERE request_id=?", (record.id,))
             if previous:
@@ -678,7 +678,7 @@ class TransferRepository:
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE e.id=?""", (handle.attempt_id,))
         if not row or not row["authorized"] or row["executor_id"] != handle.executor_id or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
             return False
-        if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed"} or row["paused_intent"]):
+        if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed", "cancelled"} or row["paused_intent"]):
             return False
         if action in {"start", "resume"} and await self.globally_paused():
             return False
@@ -716,7 +716,7 @@ class TransferRepository:
                       ExecutionState.SUCCEEDED: "verifying", ExecutionState.FAILED: "error", ExecutionState.CANCELLED: "cancelled",
                       ExecutionState.ABSENT: "lost", ExecutionState.UNKNOWN: "unknown"}
             await db.execute("""UPDATE download_files SET status=?,normalized_error=?,updated_at=CURRENT_TIMESTAMP
-                WHERE execution_attempt_id=? AND torrent_id IN (SELECT id FROM torrents WHERE status!='deleted')""",
+                WHERE execution_attempt_id=? AND torrent_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','cancelled'))""",
                 (states[observation.state], error, handle.attempt_id))
             await db.commit()
 
@@ -727,8 +727,9 @@ class TransferRepository:
             cursor = await db.execute("""UPDATE download_files SET status=?,normalized_error=?,retry_at=?,
                 execution_attempt_id=CASE WHEN ? THEN NULL ELSE execution_attempt_id END,
                 selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),updated_at=CURRENT_TIMESTAMP
-                WHERE id=? AND torrent_id IN (SELECT id FROM torrents WHERE status!='deleted')""",
-                (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id))
+                WHERE id=? AND torrent_id IN (SELECT id FROM torrents
+                    WHERE status!='deleted' AND (status!='cancelled' OR ?='cancelled'))""",
+                (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id, state))
             if cursor.rowcount and state == "completed" and current and current.get("execution_attempt_id"):
                 execution_id = current["execution_attempt_id"]
                 await db.execute("""UPDATE execution_attempt_provenance SET delivered=1,outcome='completed',updated_at=CURRENT_TIMESTAMP
@@ -755,7 +756,7 @@ class TransferRepository:
         async with get_db() as db:
             rows = await db.fetchall("""SELECT e.* FROM execution_attempts e
                 JOIN download_files f ON f.execution_attempt_id=e.id JOIN torrents t ON t.id=e.transfer_id
-                WHERE t.status NOT IN ('deleted','completed') AND e.authorized=1""")
+                WHERE t.status NOT IN ('deleted','completed','cancelled') AND e.authorized=1""")
         return tuple(self._execution_attempt(row) for row in rows)
 
     async def resources(self, transfer_id: int):
