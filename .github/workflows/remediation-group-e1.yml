@@ -10,6 +10,7 @@ on:
       - '.github/remediation-group-e1-corrective2.py'
       - '.github/remediation-group-e1-corrective3.py'
       - '.github/remediation-group-e1-corrective4.py'
+      - '.github/remediation-group-e1-diagnostic.py'
       - '.github/workflows/remediation-group-e1.yml'
 
 permissions:
@@ -34,13 +35,15 @@ jobs:
           python .github/remediation-group-e1-corrective2.py
           python .github/remediation-group-e1-corrective3.py
           python .github/remediation-group-e1-corrective4.py
+          python .github/remediation-group-e1-diagnostic.py
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt ruff
       - name: E1 ownership and surrounding UI contracts
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          status=0
           PYTHONPATH=backend pytest -q \
             backend/tests/test_uiarch001_e1_ownership.py \
             backend/tests/test_ui_runtime_architecture_contract.py \
@@ -60,14 +63,23 @@ jobs:
             backend/tests/test_ui_lucide_canonicalization_contract.py \
             backend/tests/test_dashboard_sparkline_canonical_owner.py \
             backend/tests/test_ui_feature_icon_contract.py \
-            backend/tests/test_ui_detail_overlay_cleanup_contract.py
+            backend/tests/test_ui_detail_overlay_cleanup_contract.py \
+            2>&1 | tee .github/e1-expanded-gate-failure.txt || status=$?
+          if [ "$status" -ne 0 ]; then
+            git config user.name debridpulse-remediation
+            git config user.email actions@users.noreply.github.com
+            git add .github/e1-expanded-gate-failure.txt .github/e1-transformed-owner-evidence.txt
+            git commit -m 'chore: capture expanded E1 owner evidence'
+            git push origin HEAD:1.0.12
+            exit "$status"
+          fi
+          rm -f .github/e1-expanded-gate-failure.txt .github/e1-transformed-owner-evidence.txt
       - name: Inspect residual correction-runtime contracts
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           import re
-
           tests = Path('backend/tests')
           patterns = (
               re.compile(r'''\bread\(\s*["']ui-(?:downloads-)?runtime\.js["']\s*\)'''),
@@ -100,8 +112,8 @@ jobs:
       - name: Commit coherent E1 canonicalization
         run: |
           set -euo pipefail
-          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/remediation-group-e1-corrective2.py .github/remediation-group-e1-corrective3.py .github/remediation-group-e1-corrective4.py .github/workflows/remediation-group-e1.yml
-          rm -f .github/e1-focused-gate-failure.txt
+          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/remediation-group-e1-corrective2.py .github/remediation-group-e1-corrective3.py .github/remediation-group-e1-corrective4.py .github/remediation-group-e1-diagnostic.py .github/workflows/remediation-group-e1.yml
+          rm -f .github/e1-focused-gate-failure.txt .github/e1-expanded-gate-failure.txt .github/e1-transformed-owner-evidence.txt
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
           git add -A
