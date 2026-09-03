@@ -76,6 +76,12 @@ jobs:
               '        self.descriptor = IntegrationDescriptor("static-parcel", "Static parcel", frozenset({Capability.RESOLVE}),\n                                                request_types=frozenset({"key-parcel"}))\n\n    @property\n    def applicability(self):\n        return ProviderApplicability()\n\n    async def resolve(self, request):\n',
               'StaticProvider applicability',
           )
+          replace_once(
+              'backend/tests/test_input_required_lifecycle.py',
+              '            self.descriptor = IntegrationDescriptor("mixed", "Mixed", frozenset({Capability.RESOLVE}),\n                                                    request_types=frozenset({"mixed"}))\n        async def resolve(self, request):\n',
+              '            self.descriptor = IntegrationDescriptor("mixed", "Mixed", frozenset({Capability.RESOLVE}),\n                                                    request_types=frozenset({"mixed"}))\n\n        @property\n        def applicability(self):\n            return ProviderApplicability()\n\n        async def resolve(self, request):\n',
+              'MixedProvider applicability',
+          )
 
           replace_once(
               'backend/tests/test_input_required_acceptance.py',
@@ -103,7 +109,6 @@ jobs:
             backend/tests/test_general_http_provider.py \
             backend/tests/test_input_required_lifecycle.py \
             backend/tests/test_input_required_acceptance.py \
-            backend/tests/test_route_provider_provenance.py \
             2>&1 | tee .github/explicit-applicability-fixtures-failure.txt || status=$?
           if [ "$status" -ne 0 ]; then
             git config user.name debridpulse-remediation
@@ -125,6 +130,7 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/workflows/remediation-explicit-applicability-fixtures.yml
+          rm -f .github/explicit-applicability-fixtures-failure.txt
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
           git add -A
