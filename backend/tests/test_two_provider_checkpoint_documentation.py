@@ -65,6 +65,14 @@ def test_dependency_license_inventory_explicitly_requires_reaudit_after_deferred
     assert "Deferred Items 12–16 must trigger a fresh third-party/license audit" in licenses
 
 
+def test_notice_preserves_legal_attribution_without_obsolete_single_provider_product_framing():
+    notice = _text("NOTICE")
+    assert notice.startswith("DebridPulse — Universal Transfer Manager\n")
+    assert "GPL" in notice
+    assert "kroeberd/alldebrid-client release" in notice
+    assert "AllDebrid + aria2 Download Manager" not in notice
+
+
 def test_help_page_explains_both_current_provider_paths_without_claiming_every_http_url_uses_alldebrid():
     help_page = _text("frontend/static/ui-help-page.js")
     assert "General Sources → HTTP &amp; HTTPS" in help_page
