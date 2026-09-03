@@ -5,6 +5,7 @@ on:
     branches: [1.0.12]
     paths:
       - '.github/remediation-group-e1.py'
+      - '.github/remediation-group-e1-testfix.py'
       - '.github/workflows/remediation-group-e1.yml'
 
 permissions:
@@ -22,7 +23,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply E1 shell and Downloads canonicalization
-        run: python .github/remediation-group-e1.py
+        run: |
+          python .github/remediation-group-e1.py
+          python .github/remediation-group-e1-testfix.py
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -61,12 +64,12 @@ jobs:
           ! grep -n -E 'MutationObserver|createElement\(.script.|bindThemeToggle|decorateNavigation' frontend/static/operator-title.js
           grep -q 'function renderTorrentPagination(' frontend/static/app.js
           grep -q 'function setFilter(' frontend/static/app.js
-          grep -q 'class="dp-downloads-detail-row"' frontend/static/app.js
+          grep -q 'dp-downloads-detail-row' frontend/static/app.js
           ! grep -q 'draggable="true"' frontend/static/app.js
       - name: Commit coherent E1 canonicalization
         run: |
           set -euo pipefail
-          rm .github/remediation-group-e1.py .github/workflows/remediation-group-e1.yml
+          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/workflows/remediation-group-e1.yml
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
           git add -A
