@@ -5,6 +5,7 @@ on:
     branches: [1.0.12]
     paths:
       - .github/workflows/remediation-group-c.yml
+      - .github/remediation-group-c-testfix.py
 
 permissions:
   contents: write
@@ -22,7 +23,7 @@ jobs:
           python-version: '3.12'
       - name: Apply DB-001 remediation
         run: python .github/remediation-group-c.py
-      - name: Correct runtime-state restart test
+      - name: Correct runtime-state restart test and static residue
         run: python .github/remediation-group-c-testfix.py
       - name: Install test and static dependencies
         run: |
@@ -124,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=backend pytest -q backend/tests/test_database_* backend/tests/test_universal_migration.py
-      - name: Compile and undefined-name checks
+      - name: Compile and static checks
         shell: bash
         run: |
           set -euo pipefail
