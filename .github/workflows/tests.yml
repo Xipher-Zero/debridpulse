@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -32,15 +32,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
-
-      - name: Apply temporary STATE-003 patch on staging branch
-        if: github.ref == 'refs/heads/audit/state003-remediation-work' && github.event.head_commit.message == 'chore: run state003 inline staging'
-        run: |
-          set -euo pipefail
-          git merge-base --is-ancestor 8e73b7d5d82db6b5ff2ecfd4ea9fb580ce38b1f5 HEAD
-          python scripts/tmp_state003_patch.py
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -127,17 +118,6 @@ jobs:
           find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
           node --check frontend/browser/playwright.config.js
           find frontend/browser -maxdepth 1 -name '*.spec.js' -print0 | sort -z | xargs -0 -n1 node --check
-
-      - name: Commit verified STATE-003 patch on staging branch
-        if: github.ref == 'refs/heads/audit/state003-remediation-work' && github.event.head_commit.message == 'chore: run state003 inline staging'
-        run: |
-          set -euo pipefail
-          git config user.name "debridpulse-remediation"
-          git config user.email "actions@users.noreply.github.com"
-          git add backend/transfers/engine.py backend/transfers/repository.py backend/tests/test_second_pass_state002.py backend/tests/test_post_audit_architecture_documentation.py docs/architecture/UNIVERSAL_TRANSFER_CORE.md
-          git diff --cached --check
-          git commit -m "fix: preserve executor cleanup reconciliation liveness"
-          git push origin HEAD:audit/state003-remediation-work
 
   security:
     runs-on: ubuntu-latest
