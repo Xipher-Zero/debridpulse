@@ -167,10 +167,10 @@ def _generic_match(
 ) -> bool:
     facts = item.applicability
     if facts is None:
-        # Compatibility for existing providers that have only the canonical
-        # request-type declaration. Explicit applicability replaces this legacy
-        # URL-generic interpretation and can therefore be specialized-only.
-        return view.scheme in {str(kind).casefold() for kind in item.request_types}
+        # Applicability is an explicit provider contract. Missing facts must not
+        # be reinterpreted from request_types, which would create a second URL
+        # classifier and let undeclared providers enter generic competition.
+        return False
     try:
         schemes = {_normalize_scheme(scheme) for scheme in facts.generic_schemes}
     except (TypeError, ValueError):
@@ -199,32 +199,30 @@ def classify_provider_applicability(
 
     view = parse_url_applicability(request)
     if view is None:
-        # Non-URL forms retain their static request-type capability semantics.
-        # A URL-shaped payload with the same declared kind but a malformed URL
-        # is rejected below when a provider explicitly declares URL facts.
+        # Non-URL forms retain explicit static request-type capability semantics.
+        # Missing applicability facts are not a compatibility signal: providers
+        # must opt into this opaque/static path with ProviderApplicability().
         kind = str(request.kind or "").casefold()
         payload_marks_url = (
             isinstance(request.payload, str)
             and request.payload.lstrip().casefold().startswith(kind + ":")
         )
+        declared = tuple(item for item in inputs if item.applicability is not None)
         explicit_url_kind = payload_marks_url or any(
-            item.applicability is not None
-            and (
-                kind in {
-                    str(scheme).casefold() for scheme in item.applicability.generic_schemes
-                }
-                or any(
-                    kind in {str(scheme).casefold() for scheme in claim.schemes}
-                    for claim in item.applicability.specialized_hosts
-                )
+            kind in {
+                str(scheme).casefold() for scheme in item.applicability.generic_schemes
+            }
+            or any(
+                kind in {str(scheme).casefold() for scheme in claim.schemes}
+                for claim in item.applicability.specialized_hosts
             )
-            for item in inputs
+            for item in declared
         )
         if explicit_url_kind:
             return ()
         return tuple(
             ApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)
-            for item in inputs
+            for item in declared
         )
 
     specialized: list[ApplicabilityMatch] = []
