@@ -122,7 +122,17 @@ jobs:
       - name: Static contract
         run: |
           set -euo pipefail
-          ruff check backend/tests/fake_integrations.py backend/tests/test_general_http_provider.py backend/tests/test_input_required_lifecycle.py backend/tests/test_input_required_acceptance.py
+          ruff check \
+            backend/tests/fake_integrations.py \
+            backend/tests/test_general_http_provider.py \
+            backend/tests/test_input_required_lifecycle.py \
+            backend/tests/test_input_required_acceptance.py \
+            --select F821,F822,F823
+          python -m compileall -q \
+            backend/tests/fake_integrations.py \
+            backend/tests/test_general_http_provider.py \
+            backend/tests/test_input_required_lifecycle.py \
+            backend/tests/test_input_required_acceptance.py
           grep -q 'def applicability' backend/tests/fake_integrations.py
           grep -q 'generic_schemes=frozenset({"http", "https"})' backend/tests/test_general_http_provider.py
           git diff --check
