@@ -12,9 +12,9 @@
 
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(1) { width: 36px; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(3) { width: 8%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(3) { width: 11%; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(4) { width: 13%; }
-  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(5) { width: 25%; }
+  body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(5) { width: 22%; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(6) { width: 6%; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(7) { width: 8%; }
   body.dp-v11-structural #view-torrents .t-table :is(th, td):nth-child(8) { width: 190px; }
