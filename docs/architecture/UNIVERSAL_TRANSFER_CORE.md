@@ -260,3 +260,17 @@ The behavioral replacement census and qualification procedure are documented in
 ## Roadmap Item 9: durable route/provider provenance
 
 Provider/resolution attempts and executor attempts now have durable provider-neutral provenance links. Historical provider identity is captured at route time, candidate identity is recorded without endpoint secrets, verified artifact delivery identifies the actual delivering execution/provider, and current routing/applicability state is never used to rewrite history. See `ROUTE_PROVIDER_PROVENANCE.md`.
+
+## Post-audit ownership invariants (v1.0.12)
+
+### Provider selection and retry
+
+The universal core owns provider identity for a route attempt. Initial routing may select among eligible providers, but once selected, ordinary resolution retry and re-resolution stay bound to that provider. Adapter output may omit provider identity and be stamped by the core; contradictory provider identity is rejected before persistence. Ordinary retry never silently becomes cross-provider failover. Broad automatic production failover remains deferred to an explicit future route-transition policy.
+
+### Cancellation serialization
+
+Logical cancellation authority is committed on the parent transfer before remote executor cancellation is attempted. Once the parent is cancelled, later executor observations, reconciliation, completion, or materialization activity cannot revive it. Remote cancellation or cleanup errors are recorded as control-plane/cleanup outcomes and do not revoke the already-authoritative logical cancellation.
+
+### Database startup and migration
+
+Current-schema startup and historical migration are distinct owners. Normal repository initialization ensures the current schema required by runtime code; it does not reconstruct historical migration state. Supported predecessor upgrades are prepared and applied by the explicit v1.0.12 migration owner, including historical provenance backfill, with backup-before-current-mutation semantics. Migration helpers may live beside runtime repositories, but production migration invocation remains in `db/migrations/v112.py`.

@@ -79,3 +79,9 @@ Provider enablement is exposed through the Sources & Providers settings UI and r
 Applicability is not trust. A specialized match never bypasses DNS/egress protection, redirects policy, TLS/SNI verification, credential secrecy, signed-source sanitization, filesystem ownership or execution authorization.
 
 See [MULTI_PROVIDER_HTTP_SLICE.md](MULTI_PROVIDER_HTTP_SLICE.md) for the complete converged ownership map and Item 11 end-to-end boundary.
+
+## Explicit applicability contract (post-audit v1.0.12)
+
+Every production provider that participates in neutral routing declares applicability explicitly. Missing applicability is not a compatibility signal and does not make a provider eligible for URL routing. Providers with intentionally empty neutral applicability use an explicit `ProviderApplicability()` value; protocol-generic providers declare generic schemes; specialized providers declare provider-owned claims translated into neutral facts.
+
+The classifier remains provider-name-neutral. Static magnet/torrent capability routing remains separate. For a new URL route, SPECIALIZED matches suppress GENERIC matches. After a provider is selected, ordinary retry remains bound to that provider and does not rerun global applicability selection; cross-provider failover is a separate deferred policy concern.

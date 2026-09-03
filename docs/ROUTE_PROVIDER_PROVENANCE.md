@@ -42,3 +42,9 @@ Roadmap Item 10 projects this durable history into the normal UI without reconst
 Provider labels come from integration definitions. If a historical provider is no longer registered, the stable provider ID remains in the API while the normal UI falls back to a neutral unknown label. Current enablement, current applicability, current AllDebrid host data, executor identity, and the submitted URL never rewrite historical provenance.
 
 The Settings Sources & Providers controls update the canonical integration `enabled` state. AllDebrid and General HTTP(S) do not have parallel frontend enablement flags.
+
+## Post-audit retry isolation (v1.0.12)
+
+Initial routing and ordinary retry are separate decisions. A new logical route uses the neutral provider-selection policy: enabled SPECIALIZED applicability wins over GENERIC applicability, then the normal same-class selection policy applies. Once that route has selected a provider, ordinary resolution retry and re-resolution remain bound to that selected provider. Provider enablement, health, priority, or dynamic host-applicability changes do not silently reopen the global provider set for an existing route.
+
+Automatic cross-provider production failover is deferred. A future explicit failover mechanism may create a new provider route attempt and append truthful provenance such as Provider A failed -> Provider B completed, but ordinary retry is not that mechanism. Provider identity recorded on route, candidate, artifact, and execution provenance is durable historical truth and is never reconstructed later from the submitted URL or current applicability state.

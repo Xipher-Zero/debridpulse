@@ -1,4 +1,4 @@
-"""Final-state frontend architecture contracts for the v1.0.11 UI branch.
+"""Final-state frontend architecture contracts for the v1.0.12 canonical UI.
 
 These tests intentionally describe accepted behavior and ownership boundaries rather
 than the migration batches that happened to produce the accepted baseline.

@@ -1,4 +1,5 @@
-/* DebridPulse v1.0.11 visual system overlay.
+/* DebridPulse v1.0.12 canonical visual import graph.
+ * The style-v11.css filename is retained as the established asset URL.
  *
  * Cascade contract:
  *   tokens -> foundation/components -> universal language -> shared contracts
@@ -26,7 +27,7 @@
 @import url('/ui-shell-provider-status.css?v=24');
 @import url('/ui-topbar-first-paint.css?v=20');
 
-/* Canonical Dashboard presentation owns its accepted v1.0.11 calibration directly.
+/* Canonical Dashboard presentation owns its accepted calibration directly.
    Shared utility controls remain a distinct cross-page contract. */
 @import url('/ui-dashboard.css?v=20');
 @import url('/ui-utility-controls.css?v=23');

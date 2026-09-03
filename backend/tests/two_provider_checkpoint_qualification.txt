@@ -1,9 +1,9 @@
 # v1.0.12 two-provider canonical checkpoint qualification manifest.
 #
-# This is the permanent focused gate for the early Stage 17/18 shim checkpoint.
-# It preserves every qualified Item 11 production-path owner and adds canonical
-# architecture/current-state documentation/license owners. It is not final
-# v1.0.12 release qualification; deferred Items 12–16 require later convergence.
+# This remains the broad canonical two-provider regression gate.
+# It preserves the qualified Item 11 production path, architecture, documentation,
+# and license owners alongside the separate post-audit six-finding gate. It is not
+# final release promotion; deferred provider/protocol work remains out of scope.
 tests/test_item11_multi_provider_slice.py
 tests/test_initial_provider_routing.py
 tests/test_provider_applicability.py

@@ -1,0 +1,17 @@
+# Permanent focused post-audit v1.0.12 six-finding qualification gate.
+# ROUTE-001 + CORE-001
+tests/test_audit_remediation_group_a.py
+# STATE-001
+tests/test_audit_remediation_state.py
+# DB-001
+tests/test_database_migration_ownership.py
+# UIARCH-002 provider-specific health presentation
+tests/test_alldebrid_status_contract.py
+tests/test_ui_provider_status_contract.py
+# UIARCH-001 canonical frontend ownership
+tests/test_uiarch001_e1_ownership.py
+tests/test_uiarch001_e2_ownership.py
+tests/test_ui_runtime_architecture_contract.py
+# Post-audit documentation and secondary applicability boundary
+tests/test_post_audit_architecture_documentation.py
+tests/test_applicability_explicit_contract.py
