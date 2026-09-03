@@ -121,13 +121,13 @@ def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
     assert "card-document-stack.svg" not in runtime
 
 
-def test_downloads_desktop_columns_make_room_for_status_and_rectangular_actions() -> None:
+def test_downloads_desktop_columns_preserve_provider_identity_status_progress_and_actions() -> None:
     css = read("ui-downloads-desktop.css")
     expected = (
         "nth-child(2) { width: 25%; }",
-        "nth-child(3) { width: 8%; }",
+        "nth-child(3) { width: 13%; }",
         "nth-child(4) { width: 13%; }",
-        "nth-child(5) { width: 25%; }",
+        "nth-child(5) { width: 20%; }",
         "nth-child(6) { width: 6%; }",
         "nth-child(7) { width: 8%; }",
         "nth-child(8) { width: 190px; }",
