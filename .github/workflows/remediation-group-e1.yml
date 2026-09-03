@@ -10,6 +10,7 @@ on:
       - '.github/remediation-group-e1-corrective2.py'
       - '.github/remediation-group-e1-corrective3.py'
       - '.github/remediation-group-e1-corrective4.py'
+      - '.github/remediation-group-e1-corrective5.py'
       - '.github/remediation-group-e1-diagnostic.py'
       - '.github/workflows/remediation-group-e1.yml'
 
@@ -35,6 +36,7 @@ jobs:
           python .github/remediation-group-e1-corrective2.py
           python .github/remediation-group-e1-corrective3.py
           python .github/remediation-group-e1-corrective4.py
+          python .github/remediation-group-e1-corrective5.py
           python .github/remediation-group-e1-diagnostic.py
       - name: Install test dependencies
         run: |
@@ -112,7 +114,7 @@ jobs:
       - name: Commit coherent E1 canonicalization
         run: |
           set -euo pipefail
-          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/remediation-group-e1-corrective2.py .github/remediation-group-e1-corrective3.py .github/remediation-group-e1-corrective4.py .github/remediation-group-e1-diagnostic.py .github/workflows/remediation-group-e1.yml
+          rm .github/remediation-group-e1.py .github/remediation-group-e1-testfix.py .github/remediation-group-e1-corrective.py .github/remediation-group-e1-corrective2.py .github/remediation-group-e1-corrective3.py .github/remediation-group-e1-corrective4.py .github/remediation-group-e1-corrective5.py .github/remediation-group-e1-diagnostic.py .github/workflows/remediation-group-e1.yml
           rm -f .github/e1-focused-gate-failure.txt .github/e1-expanded-gate-failure.txt .github/e1-transformed-owner-evidence.txt
           git config user.name debridpulse-remediation
           git config user.email actions@users.noreply.github.com
