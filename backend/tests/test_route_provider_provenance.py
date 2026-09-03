@@ -206,14 +206,23 @@ async def test_item8_style_rows_backfill_known_facts_idempotently_without_url_in
 
     migrated = TransferRepository()
     await migrated.initialize()
+    # DB-001: ordinary repository startup owns current-schema readiness only.
+    # Historical provenance reconstruction is invoked by the v1.0.12 migration owner.
+    async with database.get_db() as db:
+        assert (await db.fetchone("SELECT COUNT(*) AS n FROM route_attempt_provenance"))["n"] == 0
+        assert (await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempt_provenance"))["n"] == 0
+        await migrated._backfill_provenance(db)
+        await db.commit()
+
     first = await migrated.presentation(transfer.id, details=True)
     assert first["delivering_provider_id"] == "durably_known_provider"
     assert first["route_attempts"][0]["history_quality"] == "legacy_known"
     assert first["execution_attempts"][0]["history_quality"] == "legacy_known"
     assert first["execution_attempts"][0]["route_attempt_id"] == "legacy-route"
 
-    await migrated.initialize()
     async with database.get_db() as db:
+        await migrated._backfill_provenance(db)
+        await db.commit()
         route_count = (await db.fetchone("SELECT COUNT(*) AS n FROM route_attempt_provenance"))["n"]
         execution_count = (await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempt_provenance"))["n"]
     assert route_count == 1
