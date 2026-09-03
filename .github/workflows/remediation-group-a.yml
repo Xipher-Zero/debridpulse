@@ -23,8 +23,10 @@ jobs:
         run: |
           python .github/remediation-group-a.py
           python .github/remediation-group-a-contract.py
-      - name: Install test dependencies
-        run: pip install -r backend/requirements-dev.txt
+      - name: Install test and static dependencies
+        run: |
+          pip install -r backend/requirements-dev.txt
+          pip install ruff
       - name: Focused adversarial and surrounding regression tests
         working-directory: backend
         run: python -m pytest tests/test_audit_remediation_group_a.py tests/test_initial_provider_routing.py tests/test_route_provider_provenance.py tests/test_route_provider_provenance_audit.py tests/test_universal_lifecycle.py -q --tb=short
