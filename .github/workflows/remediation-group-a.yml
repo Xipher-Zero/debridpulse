@@ -5,9 +5,12 @@ on:
     branches:
       - '1.0.12'
 
+permissions:
+  contents: write
+
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe runner
-        run: echo remediation-runner-ok
+      - name: Probe write-capable runner
+        run: echo remediation-write-runner-ok
