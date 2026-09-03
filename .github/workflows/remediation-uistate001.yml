@@ -66,6 +66,7 @@ jobs:
       - name: Commit coherent UISTATE-001 correction
         run: |
           set -euo pipefail
+          rm -rf frontend/browser/node_modules frontend/browser/test-results frontend/browser/playwright-report
           rm .github/remediation_uistate001.py
           rm .github/workflows/remediation-uistate001.yml
           git config user.name debridpulse-remediation
