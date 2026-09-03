@@ -12,6 +12,8 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  IMAGE: debridpulse-uistate001:${{ github.sha }}
+  DP_BASE_URL: http://127.0.0.1:8080
 
 jobs:
   remediate:
@@ -23,16 +25,38 @@ jobs:
           fetch-depth: 0
       - name: Apply provider-status temporal authority remediation
         run: python .github/remediation_uistate001.py
-      - name: Install browser dependencies
-        run: |
-          cd frontend
-          npm ci
-          npx playwright install --with-deps chromium
-      - name: Run deterministic provider-status generation browser tests
+      - name: Build exact patched candidate
         run: |
           set -euo pipefail
-          cd frontend
-          npx playwright test browser/provider-status-generation.spec.js --project=chromium
+          docker build \
+            --build-arg APP_VERSION="$(cat VERSION)" \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            -t "$IMAGE" .
+          docker run -d --name dp-uistate001 -p 127.0.0.1:8080:8080 "$IMAGE"
+          ready=0
+          for _ in $(seq 1 90); do
+            if curl -fsS "$DP_BASE_URL/api/health" >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs dp-uistate001 || true
+            exit 1
+          fi
+      - name: Install locked browser dependencies
+        working-directory: frontend/browser
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npx playwright install --with-deps chromium
+      - name: Run deterministic provider-status generation browser tests
+        working-directory: frontend/browser
+        run: |
+          set -euo pipefail
+          npx playwright test provider-status-generation.spec.js --config=playwright.config.js
       - name: JavaScript syntax and diff checks
         run: |
           set -euo pipefail
@@ -50,3 +74,9 @@ jobs:
           git diff --cached --check
           git commit -m 'fix: make provider status generation authoritative'
           git push origin HEAD:1.0.12
+      - name: Show candidate logs on failure
+        if: failure()
+        run: docker logs dp-uistate001 || true
+      - name: Stop candidate
+        if: always()
+        run: docker rm -f dp-uistate001 >/dev/null 2>&1 || true
