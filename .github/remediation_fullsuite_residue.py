@@ -65,7 +65,7 @@ replace_once(
 replace_once(
     "docs/UI_FRONTEND_ARCHITECTURE.md",
     "## Compatibility retained intentionally\n",
-    "## Permanent browser validation\n\nThe `Browser Runtime` workflow is permanent CI and provides the real-browser smoke contract across the six canonical navigation surfaces. It validates the canonical render owners directly, including responsive/theme behavior and visual checkpoints; it does not depend on retired presentation-loader/finalization dependencies or live calibration. Removed correction runtimes must not be reintroduced as a corrective mechanism to satisfy browser validation.\n\n## Compatibility retained intentionally\n",
+    "## Permanent browser validation\n\nThe `Browser Runtime` workflow is permanent CI and provides the real-browser smoke contract across the six canonical navigation surfaces. It validates the canonical render owners directly, including responsive/theme behavior and visual checkpoints; it does not depend on retired presentation-loader/finalization dependencies or any post-render corrective pass. Removed correction runtimes must not be reintroduced as a corrective mechanism to satisfy browser validation.\n\n## Compatibility retained intentionally\n",
 )
 replace_once(
     "backend/tests/test_ui_release_cleanup_contract.py",
