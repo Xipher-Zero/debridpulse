@@ -162,7 +162,7 @@ class TransferRepository:
             await db.execute("""INSERT OR IGNORE INTO route_attempt_provenance(
                 resolution_attempt_id,transfer_id,request_id,ordinal,operation,candidate_summary,outcome,history_quality)
                 VALUES(?,?,?,?,?,?,?,'legacy_known')""",
-                (row["id"], row["transfer_id"], row["request_id"], ordinal, "legacy", self._candidate_summary(candidates), outcome))
+                (row["id"], row["transfer_id"], row["request_id"], ordinal, "legacy", cls._candidate_summary(candidates), outcome))
 
         execution_rows = await db.fetchall("""SELECT e.*,f.status AS artifact_status,f.execution_attempt_id AS current_execution_id,
                 f.candidates AS artifact_candidates,f.selected_candidate
