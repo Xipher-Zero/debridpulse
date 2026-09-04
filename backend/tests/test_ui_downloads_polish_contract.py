@@ -131,7 +131,9 @@ def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
     assert "green-download-button.svg" not in index
     assert "api('POST'" in app
     assert "'DELETE'," in app
-    assert "`/torrents/${id}?from_alldebrid=true`" in app
+    assert "const confirmedIds = await confirmDownloadRemoval([id]);" in app
+    assert "const targetId = confirmedIds[0];" in app
+    assert "`/torrents/${targetId}?from_alldebrid=true`" in app
 
 def test_downloads_correction_runtime_is_absent_from_canonical_document() -> None:
     operator = OPERATOR.read_text(encoding="utf-8")
