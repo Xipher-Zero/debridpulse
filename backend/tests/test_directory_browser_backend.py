@@ -37,6 +37,13 @@ def _detail(exc: HTTPException) -> dict:
     return exc.detail
 
 
+def _api_app(capacity: DiskCapacity) -> FastAPI:
+    app = FastAPI()
+    app.state.application = SimpleNamespace(capacity=capacity)
+    app.include_router(directory_routes.router, prefix="/api")
+    return app
+
+
 def test_directory_browser_returns_directories_only_hidden_and_stable_order(tmp_path):
     capacity, _app_dir, download_dir = _capacity(tmp_path)
     for name in ("zeta", "Alpha", "beta", ".hidden"):
@@ -58,6 +65,55 @@ def test_directory_browser_returns_directories_only_hidden_and_stable_order(tmp_
     assert "ordinary.txt" not in text
     assert "payload.bin" not in text
     assert "secret-file-name" not in text
+
+
+def test_directory_browser_http_contract_and_default_location(tmp_path, monkeypatch):
+    capacity, _app_dir, download_dir = _capacity(tmp_path)
+    child = download_dir / "child"
+    child.mkdir()
+    (download_dir / "not-exposed.txt").write_text("x")
+    monkeypatch.setattr(
+        directory_routes,
+        "get_settings",
+        lambda: SimpleNamespace(download_folder=str(download_dir)),
+    )
+
+    response = TestClient(_api_app(capacity)).get("/api/settings/directories")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    payload = response.json()
+    assert set(payload) == {"current", "parent", "children"}
+    assert payload["current"]["path"] == str(download_dir.resolve())
+    assert set(payload["current"]) == {
+        "name", "path", "accessible", "writable", "selectable", "reason", "capacity"
+    }
+    assert set(payload["current"]["capacity"]) == {"total_bytes", "free_bytes"}
+    assert payload["children"] == [
+        {
+            "name": "child",
+            "path": str(child.resolve()),
+            "accessible": True,
+            "writable": None,
+            "selectable": None,
+            "reason": "not_validated",
+        }
+    ]
+    assert "not-exposed.txt" not in response.text
+
+
+def test_directory_browser_http_relative_path_error_is_structured(tmp_path):
+    capacity, _app_dir, _download_dir = _capacity(tmp_path)
+    response = TestClient(_api_app(capacity)).get(
+        "/api/settings/directories",
+        params={"path": "relative/child"},
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": {
+            "code": "relative_path",
+            "message": "Relative directory paths are not supported",
+        }
+    }
 
 
 def test_directory_browser_normalizes_absolute_paths_and_parent(tmp_path):
