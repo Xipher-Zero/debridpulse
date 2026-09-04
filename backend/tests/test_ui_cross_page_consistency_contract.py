@@ -41,18 +41,26 @@ def test_downloads_pager_uses_canonical_material_bridge() -> None:
     assert "var(--dp-focus-ring)" in shared
 
 
-def test_provider_status_is_three_centered_shell_zones() -> None:
-    provider = read_static("ui-shell-provider-status.css")
-    app = read_static("app.js")
+def test_provider_status_has_one_neutral_centered_presentation_owner() -> None:
+    shell = read_static("ui-shell-provider-status.css")
+    provider = read_static("ui-provider-state.css")
+    account = read_static("ui-alldebrid-account-status.js")
     runtime = read_static("ui-accessibility-runtime.js")
-    assert "#sidebar .sidebar-footer::before" in provider
-    assert "justify-content: center !important" in provider
-    assert ".conn-row:has(#dot-api)" in provider
-    assert '#premium-row[style*="display:none"]' in provider
-    assert "#lbl-premium::before" in provider
-    assert "content: none !important" in provider
-    assert "dp-provider-premium-until" in app
-    assert "dp-provider-premium-days" in app
+
+    assert "#sidebar .sidebar-footer::before" not in shell
+    assert ".conn-row:has(#dot-api)" not in shell
+    assert "AllDebrid: Connected" not in shell
+    assert ".dp-provider-status-list::before" in provider
+    assert "content: 'Provider Status'" in provider
+    assert ".dp-provider-status-row" in provider
+    assert "justify-content: center;" in provider
+    assert "text-align: center;" in provider
+
+    assert '#premium-row[style*="display:none"]' in shell
+    assert "#lbl-premium::before" in shell
+    assert "content: none !important" in shell
+    assert "className = 'dp-provider-premium-until'" in account
+    assert "className = 'dp-provider-premium-days'" in account
     assert "normalizeProviderPremiumLabel" not in runtime
     assert "AllDebrid Premium until " not in runtime
 
@@ -77,6 +85,7 @@ def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
     visual = overlay.index("/ui-visual-accents.css?v=21")
     signal = overlay.index("/ui-shell-signal-field.css?v=20")
     assert shared < shell < provider < dashboard < downloads < transfer < visual < signal
+
 
 def test_global_toast_uses_one_footer_safe_anchor_across_pages() -> None:
     shared = read_static("ui-shared-contract.css")
