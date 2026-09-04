@@ -53,7 +53,7 @@ def test_statistics_detail_endpoint_has_one_frontend_io_owner() -> None:
 
 def test_settings_page_is_authoritative_clean_room_owner() -> None:
     settings = read("ui-settings-page.js")
-    assert "window.DPSettingsPage = Object.freeze({load});" in settings
+    assert "window.DPSettingsPage = Object.freeze({load, confirm: confirmAction});" in settings
     assert "window.loadSettings = load;" in settings
     assert "view.innerHTML =" in settings
     assert "request('GET', '/settings'" in settings
