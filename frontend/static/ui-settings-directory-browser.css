@@ -1,0 +1,270 @@
+/* DebridPulse v1.0.12 Settings Download Folder browser.
+ *
+ * This stylesheet extends the established Settings confirmation-dialog shell.
+ * It owns only Download Folder browse geometry and state presentation.
+ */
+
+body.dp-v11-structural #view-settings .dp-settings-download-folder-field {
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-folder-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-folder-control > .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-download-folder-browse {
+  flex: 0 0 auto;
+  min-height: 38px;
+  margin: 0;
+}
+
+.dp-settings-directory-dialog {
+  width: min(760px, 100%);
+  max-height: min(82vh, 760px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dp-settings-directory-dialog > .dp-settings-confirm-header,
+.dp-settings-directory-dialog > .dp-settings-confirm-footer {
+  flex: 0 0 auto;
+}
+
+.dp-settings-directory-dialog > .dp-settings-directory-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dp-settings-directory-browser {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.dp-settings-directory-notice,
+.dp-settings-directory-error {
+  padding: 9px 11px;
+  border: 1px solid var(--dp-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.dp-settings-directory-notice {
+  border-color: color-mix(in srgb, var(--dp-state-caution) 45%, var(--dp-border-subtle));
+  background: var(--dp-state-caution-bg);
+  color: var(--dp-text-secondary);
+}
+
+.dp-settings-directory-error {
+  border-color: color-mix(in srgb, var(--dp-state-error) 45%, var(--dp-border-subtle));
+  background: var(--dp-state-error-bg);
+  color: var(--dp-state-error);
+}
+
+.dp-settings-directory-notice[hidden],
+.dp-settings-directory-error[hidden] {
+  display: none !important;
+}
+
+.dp-settings-directory-current {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--dp-surface-2);
+}
+
+.dp-settings-directory-current-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--dp-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.dp-settings-directory-current-path {
+  display: block;
+  min-width: 0;
+  max-height: 72px;
+  overflow: auto;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dp-settings-directory-current-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 7px;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.dp-settings-directory-current-state[data-selectable="true"] {
+  color: var(--dp-state-success);
+}
+
+.dp-settings-directory-current-state[data-selectable="false"] {
+  color: var(--dp-state-caution);
+}
+
+.dp-settings-directory-toolbar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dp-settings-directory-toolbar .btn {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.dp-settings-directory-loading {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+}
+
+.dp-settings-directory-list {
+  min-width: 0;
+  min-height: 132px;
+  max-height: min(42vh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--radius-sm);
+  background: var(--dp-surface-1);
+  scrollbar-gutter: stable;
+}
+
+.dp-settings-directory-empty {
+  padding: 18px 14px;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.dp-settings-directory-row {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--dp-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dp-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dp-settings-directory-row:last-child {
+  border-bottom: 0;
+}
+
+.dp-settings-directory-row:not(:disabled):hover {
+  background: var(--dp-table-row-hover);
+}
+
+.dp-settings-directory-row:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: -2px;
+}
+
+.dp-settings-directory-row:disabled {
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+.dp-settings-directory-name {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dp-settings-directory-row-hint {
+  color: var(--dp-text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.dp-settings-directory-row:disabled .dp-settings-directory-row-hint {
+  color: var(--dp-state-caution);
+}
+
+.dp-settings-directory-dialog[aria-busy="true"] .dp-settings-directory-list {
+  opacity: .65;
+}
+
+@media (max-width: 620px) {
+  .dp-settings-directory-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+  }
+
+  .dp-settings-directory-current-path {
+    max-height: 92px;
+  }
+
+  .dp-settings-directory-list {
+    min-height: 120px;
+    max-height: 38vh;
+  }
+
+  .dp-settings-directory-current-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dp-settings-directory-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .dp-settings-directory-row-hint {
+    white-space: normal;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-download-folder-control {
+    align-items: stretch;
+  }
+}

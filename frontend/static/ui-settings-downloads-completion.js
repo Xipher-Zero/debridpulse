@@ -1,9 +1,10 @@
-/* DebridPulse v1.0.11 Settings completion runtime.
+/* DebridPulse v1.0.12 Settings completion runtime.
  *
  * The clean Settings renderer remains authoritative for values and persistence.
- * This idempotent layer finishes Downloads/Sources presentation details and the
- * Extraction editing experience after that renderer paints the persistent root.
- * It does not own the Apply Settings commit boundary.
+ * This idempotent layer finishes Downloads/Sources presentation details, owns
+ * the Built-in Download Folder browse interaction, and finishes the Extraction
+ * editing experience after that renderer paints the persistent root. It does
+ * not own the Apply Settings commit boundary.
  */
 (function () {
   'use strict';
@@ -40,6 +41,31 @@
     ],
   ]);
 
+  const DIRECTORY_REASON_LABELS = Object.freeze({
+    none: 'Ready to use',
+    low_space: 'Low free space',
+    capacity_exhausted: 'No free space',
+    quota_exhausted: 'Storage quota exhausted',
+    read_only: 'Read-only',
+    missing: 'Unavailable',
+    invalid_path: 'Invalid path',
+    inaccessible: 'Inaccessible',
+    stat_failed: 'Capacity unavailable',
+    io_error: 'Storage I/O unavailable',
+    sqlite_io_error: 'Storage I/O unavailable',
+    sqlite_open_failed: 'Storage unavailable',
+  });
+
+  const DIRECTORY_ERROR_LABELS = Object.freeze({
+    invalid_path: 'The requested directory path is invalid.',
+    relative_path: 'Only absolute server paths can be browsed.',
+    not_directory: 'The requested path is not a directory.',
+    symlink_loop: 'The requested path cannot be resolved safely.',
+    path_inaccessible: 'The requested directory is not accessible.',
+    path_unavailable: 'The requested directory is currently unavailable.',
+    browser_unavailable: 'The server filesystem browser is currently unavailable.',
+  });
+
   const extractionPasswords = {
     loaded: false,
     failed: false,
@@ -50,6 +76,15 @@
   };
 
   const root = () => document.getElementById('view-settings');
+
+  function ensureDirectoryBrowserStyles() {
+    if (document.querySelector('link[data-dp-settings-directory-browser-style="1"]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/ui-settings-directory-browser.css?v=1';
+    link.dataset.dpSettingsDirectoryBrowserStyle = '1';
+    document.head.appendChild(link);
+  }
 
   function directChild(element, selector) {
     if (!element) return null;
@@ -114,6 +149,335 @@
     });
   }
 
+  function focusableModalElements(dialog) {
+    return Array.from(dialog?.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    ) || []).filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+  }
+
+  function openSettingsModal({title, role = 'dialog', confirmLabel = 'Confirm', confirmClass = 'btn-primary', onClose = null}) {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = document.createElement('div');
+    const dialogId = `dp-settings-modal-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const titleId = `${dialogId}-title`;
+    overlay.className = 'dp-settings-confirm-overlay';
+    overlay.innerHTML = `
+      <section class="dp-settings-confirm-dialog" role="${role}" aria-modal="true" aria-labelledby="${titleId}">
+        <header class="dp-settings-confirm-header">
+          <div class="dp-settings-confirm-title" id="${titleId}"></div>
+        </header>
+        <div class="dp-settings-confirm-body"></div>
+        <footer class="dp-settings-confirm-footer">
+          <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
+          <button class="btn ${confirmClass}" type="button" data-confirm-accept></button>
+        </footer>
+      </section>`;
+
+    const dialog = overlay.querySelector('.dp-settings-confirm-dialog');
+    const titleEl = overlay.querySelector('.dp-settings-confirm-title');
+    const body = overlay.querySelector('.dp-settings-confirm-body');
+    const cancel = overlay.querySelector('[data-confirm-cancel]');
+    const accept = overlay.querySelector('[data-confirm-accept]');
+    titleEl.textContent = String(title || 'Settings');
+    accept.textContent = String(confirmLabel || 'Confirm');
+
+    let settled = false;
+    let resolveClosed;
+    const closed = new Promise(resolve => { resolveClosed = resolve; });
+    const close = reason => {
+      if (settled) return;
+      settled = true;
+      overlay.remove();
+      if (!document.querySelector('.dp-settings-confirm-overlay')) {
+        document.body.classList.remove('dp-settings-confirm-open');
+      }
+      if (typeof onClose === 'function') {
+        try { onClose(reason); } catch (_) {}
+      }
+      if (previousFocus?.isConnected) {
+        try { previousFocus.focus(); } catch (_) {}
+      }
+      resolveClosed(reason);
+    };
+
+    cancel.addEventListener('click', () => close('cancel'));
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close('cancel');
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = focusableModalElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+
+    document.body.appendChild(overlay);
+    document.body.classList.add('dp-settings-confirm-open');
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => cancel.focus());
+    } else {
+      cancel.focus();
+    }
+
+    return {overlay, dialog, body, cancel, accept, close, closed};
+  }
+
+  function directoryReasonLabel(reason) {
+    const key = String(reason || '').trim();
+    if (Object.prototype.hasOwnProperty.call(DIRECTORY_REASON_LABELS, key)) {
+      return DIRECTORY_REASON_LABELS[key];
+    }
+    return key ? key.replaceAll('_', ' ') : 'Unavailable';
+  }
+
+  function directoryErrorMessage(error) {
+    const detail = error?.detail && typeof error.detail === 'object' ? error.detail : null;
+    const code = String(error?.code || detail?.code || '').trim();
+    if (Object.prototype.hasOwnProperty.call(DIRECTORY_ERROR_LABELS, code)) {
+      return DIRECTORY_ERROR_LABELS[code];
+    }
+    if (typeof detail?.message === 'string' && detail.message.trim()) return detail.message.trim();
+    const message = String(error?.message || '').trim();
+    if (message && message !== '[object Object]' && message.length <= 240) return message;
+    return 'This directory cannot be browsed right now.';
+  }
+
+  function directorySize(value) {
+    if (value == null) return null;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) return null;
+    if (number === 0) return '0 B';
+    if (typeof fmtSize === 'function') return fmtSize(number);
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let unit = 0;
+    let scaled = number;
+    while (scaled >= 1024 && unit < units.length - 1) {
+      scaled /= 1024;
+      unit += 1;
+    }
+    return `${scaled.toFixed(1)} ${units[unit]}`;
+  }
+
+  function ensureDownloadFolderBrowse(panel) {
+    const fieldInput = panel?.querySelector('[data-setting="download_folder"]');
+    const field = fieldInput?.closest('.dp-settings-field');
+    if (!fieldInput || !field) return;
+    field.classList.add('dp-settings-download-folder-field');
+
+    let control = directChild(field, '.dp-settings-download-folder-control');
+    if (!control) {
+      control = document.createElement('div');
+      control.className = 'dp-settings-download-folder-control';
+      field.insertBefore(control, fieldInput);
+      control.appendChild(fieldInput);
+    }
+
+    if (control.querySelector('[data-action="browse-download-folder"]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-ghost btn-sm dp-settings-download-folder-browse';
+    button.dataset.action = 'browse-download-folder';
+    button.textContent = 'Browse';
+    button.setAttribute('aria-label', 'Browse server directories for Built-in Download Folder');
+    button.addEventListener('click', () => browseDownloadFolder(button));
+    control.appendChild(button);
+  }
+
+  function browseDownloadFolder(origin) {
+    const field = root()?.querySelector('[data-setting="download_folder"]');
+    if (!field || typeof api !== 'function') return;
+
+    const originalValue = String(field.value ?? '');
+    let currentResponse = null;
+    let confirmedPath = null;
+    let generation = 0;
+    let controller = null;
+
+    const modal = openSettingsModal({
+      title: 'Choose Download Folder',
+      role: 'dialog',
+      confirmLabel: 'Use This Folder',
+      confirmClass: 'btn-primary',
+      onClose: () => {
+        generation += 1;
+        if (controller) controller.abort();
+        controller = null;
+      },
+    });
+    modal.dialog.classList.add('dp-settings-directory-dialog');
+    modal.body.classList.add('dp-settings-directory-body');
+    modal.cancel.dataset.directoryCancel = '1';
+    modal.accept.dataset.directoryConfirm = '1';
+    modal.accept.disabled = true;
+
+    modal.body.innerHTML = `
+      <div class="dp-settings-directory-browser">
+        <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
+        <div class="dp-settings-directory-current">
+          <span class="dp-settings-directory-current-label">Current server path</span>
+          <code class="dp-settings-directory-current-path" data-directory-current-path>—</code>
+          <div class="dp-settings-directory-current-meta">
+            <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">Not validated</span>
+            <span data-directory-capacity>Capacity unavailable</span>
+          </div>
+        </div>
+        <div class="dp-settings-directory-toolbar">
+          <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled>Up</button>
+          <span class="dp-settings-directory-loading" data-directory-loading role="status" aria-live="polite"></span>
+        </div>
+        <div class="dp-settings-directory-error" data-directory-error role="alert" hidden></div>
+        <div class="dp-settings-directory-list" data-directory-list aria-label="Directories"></div>
+      </div>`;
+
+    const notice = modal.body.querySelector('[data-directory-notice]');
+    const currentPath = modal.body.querySelector('[data-directory-current-path]');
+    const currentState = modal.body.querySelector('[data-directory-current-state]');
+    const capacity = modal.body.querySelector('[data-directory-capacity]');
+    const up = modal.body.querySelector('[data-directory-up]');
+    const loading = modal.body.querySelector('[data-directory-loading]');
+    const errorBox = modal.body.querySelector('[data-directory-error]');
+    const list = modal.body.querySelector('[data-directory-list]');
+
+    const setLoading = busy => {
+      modal.dialog.setAttribute('aria-busy', busy ? 'true' : 'false');
+      loading.textContent = busy ? 'Loading…' : '';
+      modal.accept.disabled = busy || currentResponse?.current?.selectable !== true;
+      up.disabled = busy || currentResponse?.parent == null;
+      list.querySelectorAll('[data-directory-row]').forEach(row => {
+        row.disabled = busy || row.dataset.accessible !== 'true';
+      });
+    };
+
+    const render = payload => {
+      const current = payload?.current || null;
+      currentResponse = payload && current ? payload : null;
+      errorBox.hidden = true;
+      errorBox.textContent = '';
+      list.replaceChildren();
+
+      if (!current) {
+        currentPath.textContent = '—';
+        currentState.textContent = 'Not validated';
+        currentState.dataset.selectable = 'false';
+        capacity.textContent = 'Capacity unavailable';
+        modal.accept.disabled = true;
+        up.disabled = true;
+        return;
+      }
+
+      currentPath.textContent = String(current.path ?? '');
+      currentPath.title = String(current.path ?? '');
+      const selectable = current.selectable === true;
+      currentState.dataset.selectable = selectable ? 'true' : 'false';
+      currentState.textContent = selectable
+        ? 'Selectable as Download Storage'
+        : `Not selectable — ${directoryReasonLabel(current.reason)}`;
+
+      const total = directorySize(current.capacity?.total_bytes);
+      const free = directorySize(current.capacity?.free_bytes);
+      capacity.textContent = total !== null && free !== null
+        ? `${free} free of ${total}`
+        : 'Capacity unavailable';
+
+      up.disabled = payload.parent == null;
+      const children = Array.isArray(payload.children) ? payload.children : [];
+      if (!children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'dp-settings-directory-empty';
+        empty.textContent = 'No child directories.';
+        list.appendChild(empty);
+      } else {
+        children.forEach(child => {
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'dp-settings-directory-row';
+          row.dataset.directoryRow = '1';
+          row.dataset.path = String(child?.path ?? '');
+          row.dataset.accessible = child?.accessible === true ? 'true' : 'false';
+          row.disabled = child?.accessible !== true;
+          row.title = String(child?.path ?? '');
+
+          const name = document.createElement('span');
+          name.className = 'dp-settings-directory-name';
+          name.dataset.directoryName = '1';
+          name.textContent = String(child?.name ?? child?.path ?? 'Directory');
+
+          const hint = document.createElement('span');
+          hint.className = 'dp-settings-directory-row-hint';
+          hint.textContent = child?.accessible === true
+            ? 'Open to validate'
+            : directoryReasonLabel(child?.reason);
+
+          row.append(name, hint);
+          row.addEventListener('click', () => {
+            if (row.dataset.accessible !== 'true') return;
+            void loadDirectory(row.dataset.path);
+          });
+          list.appendChild(row);
+        });
+      }
+
+      modal.accept.disabled = !selectable;
+    };
+
+    const loadDirectory = async (path, {fallbackOnFailure = false} = {}) => {
+      const requestGeneration = ++generation;
+      if (controller) controller.abort();
+      controller = new AbortController();
+      errorBox.hidden = true;
+      errorBox.textContent = '';
+      setLoading(true);
+
+      const query = path == null ? '' : `?${new URLSearchParams({path: String(path)}).toString()}`;
+      try {
+        const payload = await api('GET', `/settings/directories${query}`, undefined, 10000, {signal: controller.signal});
+        if (requestGeneration !== generation) return;
+        render(payload);
+        setLoading(false);
+      } catch (error) {
+        if (requestGeneration !== generation || error?.name === 'AbortError') return;
+        if (fallbackOnFailure) {
+          notice.hidden = false;
+          notice.textContent = 'The current Download Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.';
+          void loadDirectory(null);
+          return;
+        }
+        errorBox.textContent = directoryErrorMessage(error);
+        errorBox.hidden = false;
+        setLoading(false);
+      }
+    };
+
+    up.addEventListener('click', () => {
+      if (currentResponse?.parent == null) return;
+      void loadDirectory(currentResponse.parent);
+    });
+
+    modal.accept.addEventListener('click', () => {
+      if (currentResponse?.current?.selectable !== true) return;
+      confirmedPath = String(currentResponse.current.path ?? '');
+      const liveField = document.getElementById(field.id);
+      if (!liveField) return;
+      liveField.value = confirmedPath;
+      liveField.dispatchEvent(new Event('input', {bubbles: true}));
+      liveField.dispatchEvent(new Event('change', {bubbles: true}));
+      modal.close('confirm');
+    });
+
+    if (originalValue.length) void loadDirectory(originalValue, {fallbackOnFailure: true});
+    else void loadDirectory(null);
+  }
+
   function applyDownloads(view) {
     const panel = view.querySelector('[data-panel="downloads"]');
     if (!panel) return;
@@ -127,6 +491,8 @@
     for (const [key, label, hint] of RECOVERY_COPY) {
       setFieldCopy(panel, key, label, hint);
     }
+
+    ensureDownloadFolderBrowse(panel);
   }
 
   function normalizePasswordLines(raw) {
@@ -557,10 +923,6 @@
   }
   let scheduled = false;
 
-
-
-
-
   function scheduleApply() {
     if (scheduled) return;
     scheduled = true;
@@ -570,5 +932,6 @@
     });
   }
 
+  ensureDirectoryBrowserStyles();
   document.addEventListener('debridpulse:settings-rendered', scheduleApply);
 })();
