@@ -98,7 +98,9 @@ class ApplicationService:
             # stat/statvfs may block on a degraded remote mount. Keep it off the
             # event loop while retaining one synchronous canonical state owner.
             result = await asyncio.to_thread(self.capacity.check)
-        self.engine.dispatch_permitted = not result["active"]
+        # Dispatch requires both safe durable application state and usable
+        # download storage. This runtime gate is independent of global Pause.
+        self.engine.dispatch_permitted = self.application_storage_permitted() and not result["active"]
         return result
 
     async def storage_health(self):

@@ -358,7 +358,12 @@ class DiskCapacity:
         return updated
 
     def probe(self, domain: StorageDomain) -> StorageSnapshot:
-        return self._apply(self._probe(StorageDomain(domain)))
+        domain = StorageDomain(domain)
+        # Serialize the complete probe/update transaction with runtime fault
+        # feedback so an older filesystem observation cannot overwrite a newer
+        # ENOSPC/EROFS/EIO transition.
+        with self._lock:
+            return self._apply(self._probe(domain))
 
     def check(self) -> dict:
         self.probe(StorageDomain.APPLICATION_STATE)
@@ -408,14 +413,15 @@ class DiskCapacity:
 
     def _record_classification(self, domain: StorageDomain, classification: FaultClassification) -> StorageHealthError:
         domain = StorageDomain(domain)
-        current = self.snapshot(domain)
-        candidate = replace(
-            current,
-            state=classification.state,
-            reason=classification.reason,
-            probed_at=self._clock(),
-        )
-        return StorageHealthError(self._apply(candidate))
+        with self._lock:
+            current = self._states[domain]
+            candidate = replace(
+                current,
+                state=classification.state,
+                reason=classification.reason,
+                probed_at=self._clock(),
+            )
+            return StorageHealthError(self._apply(candidate))
 
     def report_fault(self, domain: StorageDomain, exc: BaseException) -> StorageHealthError | None:
         classification = classify_storage_fault(exc)
