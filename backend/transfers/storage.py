@@ -187,13 +187,18 @@ def classify_storage_fault(exc: BaseException) -> FaultClassification | None:
 
 
 def classify_sqlite_storage_fault(exc: BaseException) -> FaultClassification | None:
-    """Narrow SQLite storage classification; unrelated OperationalError is preserved."""
+    """Narrow SQLite storage classification; unrelated failures stay unrelated."""
+    chain = tuple(_exception_chain(exc))
+    sqlite_errors = tuple(candidate for candidate in chain if isinstance(candidate, sqlite3.Error))
+    if not sqlite_errors:
+        # Application admission covers provider/executor/filesystem work too. A
+        # raw OSError outside a SQLite exception chain must never poison the
+        # Application-State domain merely because its errno is storage-related.
+        return None
     filesystem = classify_storage_fault(exc)
     if filesystem is not None:
         return filesystem
-    for candidate in _exception_chain(exc):
-        if not isinstance(candidate, sqlite3.Error):
-            continue
+    for candidate in sqlite_errors:
         message = str(candidate).strip().lower()
         if "database or disk is full" in message:
             return FaultClassification(StorageState.FULL, StorageReason.CAPACITY_EXHAUSTED)

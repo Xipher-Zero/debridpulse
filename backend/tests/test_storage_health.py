@@ -168,6 +168,20 @@ def test_sqlite_storage_faults_are_narrowly_normalized(tmp_path, monkeypatch):
     assert capacity.report_application_exception(unrelated) is None
 
 
+def test_raw_non_sqlite_storage_errno_cannot_poison_application_state(tmp_path, monkeypatch):
+    capacity, app, download = _capacity(tmp_path)
+    _patch_usage(monkeypatch, app, download)
+    capacity.check()
+    before = capacity.snapshot(StorageDomain.APPLICATION_STATE)
+
+    raw = OSError(errno.ENOSPC, "download target full")
+    assert classify_sqlite_storage_fault(raw) is None
+    assert capacity.report_application_exception(raw) is None
+    after = capacity.snapshot(StorageDomain.APPLICATION_STATE)
+    assert after.state == StorageState.HEALTHY
+    assert after.generation == before.generation
+
+
 def _dummy_application(capacity):
     repository = SimpleNamespace(active=AsyncMock(return_value=()))
     engine = SimpleNamespace(
@@ -195,6 +209,18 @@ async def test_application_storage_blocks_mutation_before_side_effect(tmp_path, 
             touched = True
     assert touched is False
     assert caught.value.status_code == 507
+
+
+@pytest.mark.asyncio
+async def test_application_storage_fault_closes_executor_dispatch(tmp_path, monkeypatch):
+    capacity, app, download = _capacity(tmp_path)
+    _patch_usage(monkeypatch, app, download, app_free=0, download_free=50)
+    application, engine, _pause_changed = _dummy_application(capacity)
+
+    health = await application.check_resources()
+    assert health["application_state"]["state"] == "full"
+    assert health["download"]["state"] == "healthy"
+    assert engine.dispatch_permitted is False
 
 
 @pytest.mark.asyncio
