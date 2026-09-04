@@ -212,7 +212,7 @@
 
   function browseDownloadFolder(origin) {
     const field = root()?.querySelector('[data-setting="download_folder"]');
-    const modalApi = window.DPSettingsPage;
+    const modalApi = window.DPSettingsModal;
     if (!field || typeof api !== 'function' || !modalApi || typeof modalApi.confirm !== 'function') return;
 
     const originalValue = String(field.value ?? '');
