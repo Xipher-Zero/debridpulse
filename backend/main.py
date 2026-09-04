@@ -1,5 +1,6 @@
 import logging
 import os
+import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +15,7 @@ from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
 from api.settings_validation_routes import router as settings_validation_router
+from api.storage_health_routes import router as storage_health_router
 from auth.middleware import enforce_authentication, enforce_general_web_security
 from auth.policy import (
     interactive_auth_enabled,
@@ -31,6 +33,7 @@ from db.database import DatabaseMaintenanceActive
 from application.dependencies import get_application
 from services.maintenance_gate import ApplicationMaintenanceActive
 from transfers.errors import TransferError
+from transfers.storage import normalize_sqlite_storage_exception
 
 _log_cfg = _get_log_settings()
 configure_logging(
@@ -223,7 +226,21 @@ app = FastAPI(
 
 @app.exception_handler(TransferError)
 async def transfer_error_handler(_request: Request, exc: TransferError):
-    return JSONResponse(status_code=409, content={"detail": exc.error.message, "error": exc.error.as_dict()})
+    status_code = int(getattr(exc, "status_code", 409))
+    return JSONResponse(status_code=status_code, content={"detail": exc.error.message, "error": exc.error.as_dict()})
+
+
+@app.exception_handler(sqlite3.OperationalError)
+async def sqlite_operational_error_handler(_request: Request, exc: sqlite3.OperationalError):
+    """Normalize only recognized SQLite storage faults; never expose raw disk diagnostics."""
+    fault = normalize_sqlite_storage_exception(exc)
+    if fault is not None:
+        return JSONResponse(
+            status_code=fault.status_code,
+            content={"detail": fault.error.message, "error": fault.error.as_dict()},
+        )
+    logger.error("Unhandled SQLite operational error")
+    return JSONResponse(status_code=500, content={"detail": "Database operation failed"})
 
 
 _MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -241,7 +258,7 @@ _AUTH_MUTATION_PATHS = {
 
 @app.middleware("http")
 async def application_mutation_admission_middleware(request: Request, call_next):
-    """Serialize application state changes against destructive maintenance."""
+    """Serialize mutations and reject DB-backed work when application storage is unsafe."""
     if (
         request.method.upper() in _MUTATING_HTTP_METHODS
         and request.url.path != _DATABASE_WIPE_PATH
@@ -251,6 +268,14 @@ async def application_mutation_admission_middleware(request: Request, call_next)
         try:
             async with get_application(request).application_operation():
                 return await call_next(request)
+        except TransferError as exc:
+            status_code = getattr(exc, "status_code", None)
+            if status_code in {503, 507}:
+                return JSONResponse(
+                    status_code=status_code,
+                    content={"detail": exc.error.message, "error": exc.error.as_dict()},
+                )
+            raise
         except ApplicationMaintenanceActive:
             return Response(
                 content="Application maintenance in progress",
@@ -385,6 +410,7 @@ async def request_id_middleware(request: Request, call_next):
 app.include_router(auth_config_router)
 app.include_router(auth_router)
 app.include_router(settings_validation_router, prefix="/api")
+app.include_router(storage_health_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────

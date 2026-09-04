@@ -47,14 +47,23 @@ def _stats_report_window_hours(cfg) -> int:
     return max(1, _coerce_int_setting(getattr(cfg, "stats_report_window_hours", 24), 24))
 
 
+def _application_storage_ready() -> bool:
+    """Read only in-memory health; never open SQLite to decide whether to open SQLite."""
+    if application is None:
+        return True
+    check = getattr(application, "application_storage_permitted", None)
+    return True if check is None else bool(check())
+
+
 async def sync_status_loop():
     while True:
         application.resolution_wakeup.clear()
-        try:
-            async with async_timer("scheduler.provider_poll"):
-                await application.resolve_pending()
-        except Exception as exc:
-            logger.error("Resolution cycle failed: %s", sanitize_exception(exc))
+        if _application_storage_ready():
+            try:
+                async with async_timer("scheduler.provider_poll"):
+                    await application.resolve_pending()
+            except Exception as exc:
+                logger.error("Resolution cycle failed: %s", sanitize_exception(exc))
         await _wait_for_work(application.resolution_wakeup, max(1, application.engine.policy.resource_poll_interval))
 
 
@@ -76,6 +85,9 @@ async def full_sync_loop():
         if interval <= 0:
             await asyncio.sleep(60)
             continue
+        if not _application_storage_ready():
+            await asyncio.sleep(max(10, interval * 60))
+            continue
         try:
             async with async_timer("scheduler.provider_inventory"):
                 result = await application.reconcile_inventory()
@@ -94,20 +106,22 @@ async def full_sync_loop():
 async def sync_download_clients_loop():
     while True:
         application.execution_wakeup.clear()
-        try:
-            async with async_timer("scheduler.download_client_sync"):
-                await application.reconcile_executions()
-        except Exception as e:
-            logger.error("Download client sync error: %s", sanitize_exception(e))
+        if _application_storage_ready():
+            try:
+                async with async_timer("scheduler.download_client_sync"):
+                    await application.reconcile_executions()
+            except Exception as e:
+                logger.error("Download client sync error: %s", sanitize_exception(e))
         await _wait_for_work(application.execution_wakeup, max(2, application.execution_poll_interval))
 
 
 async def postprocessing_loop():
     while True:
-        try:
-            await application.process_postprocessors()
-        except Exception as exc:
-            logger.error("Post-processing cycle failed: %s", sanitize_exception(exc))
+        if _application_storage_ready():
+            try:
+                await application.process_postprocessors()
+            except Exception as exc:
+                logger.error("Post-processing cycle failed: %s", sanitize_exception(exc))
         await asyncio.sleep(2)
 
 
@@ -115,11 +129,12 @@ async def backup_loop():
     """Runs periodic backups based on backup_interval_hours setting."""
     await asyncio.sleep(60)  # Initial delay
     while True:
-        try:
-            from services.backup import run_backup
-            await run_backup()
-        except Exception as e:
-            logger.error("Backup error: %s", sanitize_exception(e))
+        if _application_storage_ready():
+            try:
+                from services.backup import run_backup
+                await run_backup()
+            except Exception as e:
+                logger.error("Backup error: %s", sanitize_exception(e))
         cfg = get_settings()
         interval_h = max(1, getattr(cfg, "backup_interval_hours", 24))
         await asyncio.sleep(interval_h * 3600)
@@ -128,26 +143,22 @@ async def backup_loop():
 async def integration_maintenance_loop():
     await asyncio.sleep(90)
     while True:
-        try:
-            await application.maintain_integrations()
-        except Exception as exc:
-            logger.error("Integration maintenance failed: %s", sanitize_exception(exc))
+        if _application_storage_ready():
+            try:
+                await application.maintain_integrations()
+            except Exception as exc:
+                logger.error("Integration maintenance failed: %s", sanitize_exception(exc))
         await asyncio.sleep(60)
 
 
 async def application_events_loop():
     while True:
-        try:
-            await application.deliver_events()
-        except Exception as exc:
-            logger.warning("Event delivery failed: %s", sanitize_exception(exc))
+        if _application_storage_ready():
+            try:
+                await application.deliver_events()
+            except Exception as exc:
+                logger.warning("Event delivery failed: %s", sanitize_exception(exc))
         await asyncio.sleep(2)
-
-
-
-
-
-
 
 
 async def update_check_loop() -> None:
@@ -209,45 +220,38 @@ async def events_ttl_loop() -> None:
     """
     await asyncio.sleep(3600)  # 1-hour initial delay so startup isn't noisy
     while True:
-        try:
-            cfg = get_settings()
-            keep_days = int(getattr(cfg, "events_keep_days", 30) or 30)
-            if keep_days > 0:
-                from services.db_maintenance import cleanup_old_events
-                result = await cleanup_old_events(keep_days=keep_days)
-                if result.get("deleted", 0) > 0:
-                    logger.info(
-                        "events_ttl_loop: pruned %d event(s) older than %d days",
-                        result["deleted"], keep_days,
-                    )
-        except asyncio.CancelledError:
-            return
-        except Exception as exc:
-            logger.warning("events_ttl_loop error: %s", sanitize_exception(exc))
+        if _application_storage_ready():
+            try:
+                cfg = get_settings()
+                keep_days = int(getattr(cfg, "events_keep_days", 30) or 30)
+                if keep_days > 0:
+                    from services.db_maintenance import cleanup_old_events
+                    result = await cleanup_old_events(keep_days=keep_days)
+                    if result.get("deleted", 0) > 0:
+                        logger.info(
+                            "events_ttl_loop: pruned %d event(s) older than %d days",
+                            result["deleted"], keep_days,
+                        )
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning("events_ttl_loop error: %s", sanitize_exception(exc))
         await asyncio.sleep(86400)  # run once every 24 hours
 
 
-
 async def disk_guard_loop():
-    """
-    Periodic disk-space guard: checks free space every disk_guard_interval_seconds.
-
-    Runs independently of sync_status_loop so disk checks never pile up on the
-    main poll cycle (which may be as fast as 1 s) — the default interval is 60 s.
-
-    Compatible with all filesystems: ext4, XFS, ZFS, Btrfs, FUSE/shfs (Unraid),
-    NFS, and Windows (via shutil fallback).
-    """
+    """Periodically refresh both storage domains, including hard faults at threshold zero."""
     await asyncio.sleep(10)  # brief startup delay
     while True:
         cfg = get_settings()
-        min_gb = float(getattr(cfg, "min_free_disk_gb", 0) or 0)
         interval = max(10, int(getattr(cfg, "disk_guard_interval_seconds", 60) or 60))
-        if min_gb > 0:
-            try:
-                await application.check_resources()
-            except Exception as e:
-                logger.debug("disk_guard check error: %s", sanitize_exception(e))
+        try:
+            await application.check_resources()
+        except Exception as e:
+            # The canonical owner normally converts probe failures into state.
+            # This remains a last-resort debug breadcrumb rather than a poll-spam
+            # error path.
+            logger.debug("disk_guard check error: %s", sanitize_exception(e))
         await asyncio.sleep(interval)
 
 
@@ -307,6 +311,8 @@ async def stats_snapshot_loop():
             await asyncio.sleep(300)
             continue
         await asyncio.sleep(interval_min * 60)
+        if not _application_storage_ready():
+            continue
         try:
             from services.stats import take_stats_snapshot
             await take_stats_snapshot()
@@ -325,6 +331,8 @@ async def stats_report_loop():
             await asyncio.sleep(300)
             continue
         await asyncio.sleep(max(300, interval_h * 3600))
+        if not _application_storage_ready():
+            continue
         try:
             from services.stats import send_stats_report
             await send_stats_report(hours=window_h, triggered_by="schedule")

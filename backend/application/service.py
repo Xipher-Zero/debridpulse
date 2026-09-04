@@ -6,6 +6,7 @@ native job identifiers, response formats, or integration error codes.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlsplit
 
 from services.event_bus import publish
@@ -35,8 +36,40 @@ class ApplicationService:
         self.execution_poll_interval = 2
         self.definitions = ()
 
+    def application_storage_permitted(self) -> bool:
+        capacity = self.capacity
+        return capacity is None or bool(getattr(capacity, "application_storage_permitted", True))
+
+    def download_storage_permitted(self) -> bool:
+        capacity = self.capacity
+        return capacity is None or bool(getattr(capacity, "download_work_permitted", True))
+
+    def _require_application_storage(self) -> None:
+        if self.capacity is not None and hasattr(self.capacity, "require_application_storage"):
+            self.capacity.require_application_storage()
+
+    def _record_application_storage_fault(self, exc: BaseException):
+        if self.capacity is None or not hasattr(self.capacity, "report_application_exception"):
+            return None
+        return self.capacity.report_application_exception(exc)
+
+    @asynccontextmanager
+    async def _storage_checked_admission(self, *, maintenance: bool):
+        """Contain DB-backed work without consulting the failed database itself."""
+        self._require_application_storage()
+        admission = self._admission.maintenance() if maintenance else self._admission.operation()
+        async with admission:
+            self._require_application_storage()
+            try:
+                yield
+            except Exception as exc:
+                fault = self._record_application_storage_fault(exc)
+                if fault is not None:
+                    raise fault from exc
+                raise
+
     def configuration_admission(self):
-        return self._admission.maintenance()
+        return self._storage_checked_admission(maintenance=True)
 
     async def validate_configuration(self, previous, current):
         from integrations.configuration import normalize_settings
@@ -59,15 +92,24 @@ class ApplicationService:
             self.pause_changed(await self.repository.globally_paused())
 
     async def check_resources(self):
-        result = self.capacity.check() if self.capacity else {"enabled": False, "active": False}
+        if self.capacity is None:
+            result = {"enabled": False, "active": False}
+        else:
+            # stat/statvfs may block on a degraded remote mount. Keep it off the
+            # event loop while retaining one synchronous canonical state owner.
+            result = await asyncio.to_thread(self.capacity.check)
         self.engine.dispatch_permitted = not result["active"]
         return result
 
+    async def storage_health(self):
+        """Return a fresh, SQLite-independent storage-health snapshot."""
+        return await self.check_resources()
+
     def application_operation(self):
-        return self._admission.operation()
+        return self._storage_checked_admission(maintenance=False)
 
     def database_wipe_admission(self):
-        return self._admission.maintenance()
+        return self._storage_checked_admission(maintenance=True)
 
     def integration_admin(self, identity):
         try:
@@ -213,6 +255,11 @@ class ApplicationService:
 
     async def resolve_pending(self):
         async with self.application_operation():
+            # Materialization occurs inside the universal resolution cycle. A
+            # download-storage guard therefore defers this cycle without failing
+            # the logical transfer; recovery resumes the same durable request.
+            if not self.download_storage_permitted():
+                return
             await self.engine.resolve_pending()
             self.execution_wakeup.set()
 
@@ -226,6 +273,8 @@ class ApplicationService:
 
     async def process_postprocessors(self):
         async with self.application_operation():
+            if not self.download_storage_permitted():
+                return
             await self.engine.process_postprocessors()
 
     async def reconcile_inventory(self):

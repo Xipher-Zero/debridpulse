@@ -11,7 +11,7 @@ from transfers.engine import TransferEngine
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
-from transfers.storage import DiskCapacity
+from transfers.storage import DiskCapacity, register_storage_health
 
 
 def configure(application):
@@ -33,7 +33,30 @@ def configure(application):
         cleanup_after_completion=True,
         stalled_after_seconds=policy.stalled_timeout_hours * 3600,
         resource_poll_interval=policy.provider_poll_interval_seconds))
-    application.capacity = DiskCapacity(settings.download_folder, settings.min_free_disk_gb, settings.disk_guard_resume_hysteresis_gb)
+    # DiskCapacity is the canonical storage owner. Reconfigure the existing
+    # instance so transition identity is not replaced on every Settings apply.
+    from db import database
+    capacity = getattr(application, "capacity", None)
+    if isinstance(capacity, DiskCapacity):
+        capacity.configure(
+            settings.download_folder,
+            settings.min_free_disk_gb,
+            settings.disk_guard_resume_hysteresis_gb,
+            application_path=database.DB_PATH,
+        )
+    else:
+        capacity = DiskCapacity(
+            settings.download_folder,
+            settings.min_free_disk_gb,
+            settings.disk_guard_resume_hysteresis_gb,
+            application_path=database.DB_PATH,
+        )
+        application.capacity = capacity
+    register_storage_health(capacity)
+    # Establish real initial state immediately; the periodic guard owns later
+    # recovery probes. This probe does not write to either filesystem.
+    initial_health = capacity.check()
+    application.engine.dispatch_permitted = not initial_health["active"]
     application.execution_poll_interval = policy.execution_poll_interval_seconds
     from postprocessors.archive.processor import ArchivePostProcessor
     application.engine.postprocessors = (ArchivePostProcessor(),) if settings.extract_enabled else ()
