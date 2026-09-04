@@ -7,6 +7,8 @@ STATUS = (ROOT / "frontend" / "static" / "ui-provider-status.js").read_text()
 ACCOUNT = (ROOT / "frontend" / "static" / "ui-alldebrid-account-status.js").read_text()
 CARDS = (ROOT / "frontend" / "static" / "ui-provider-cards.js").read_text()
 BOOTSTRAP = (ROOT / "frontend" / "static" / "ui-settings-card-icons.js").read_text()
+APP = (ROOT / "frontend" / "static" / "app.js").read_text()
+INDEX = (ROOT / "frontend" / "static" / "index.html").read_text()
 ALLDEBRID_DEF = (ROOT / "backend" / "providers" / "alldebrid" / "definition.py").read_text()
 GENERAL_DEF = (ROOT / "backend" / "providers" / "general_http" / "definition.py").read_text()
 
@@ -57,9 +59,31 @@ def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_d
     assert "dirty(context)" in CARDS
 
 
-def test_existing_settings_decorator_only_bootstraps_separate_provider_owners():
-    assert "/ui-provider-status.js?v=1" in BOOTSTRAP
-    assert "/ui-provider-cards.js?v=1" in BOOTSTRAP
-    assert "/ui-provider-state.css?v=1" in BOOTSTRAP
-    assert "DPProviderStatus" not in BOOTSTRAP
-    assert "DPProviderCardState" not in BOOTSTRAP
+def test_application_shell_explicitly_loads_the_single_provider_owners():
+    assert 'id="provider-status-list"' in INDEX
+    assert INDEX.count('id="provider-status-list"') == 1
+    assert '/ui-provider-status.js?v=2' in INDEX
+    assert '/ui-alldebrid-account-status.js?v=2' in INDEX
+    assert '/ui-provider-cards.js?v=2' in INDEX
+    assert '/ui-provider-state.css?v=2' in INDEX
+    assert '/ui-provider-status.js' not in BOOTSTRAP
+    assert '/ui-provider-cards.js' not in BOOTSTRAP
+
+
+def test_legacy_alldebrid_provider_status_owner_is_removed():
+    for symbol in (
+        'allDebridStatusGeneration',
+        'invalidateAllDebridStatus',
+        'renderAllDebridStatus',
+        'loadAllDebridStatus',
+        '_updatePremiumLabel',
+    ):
+        assert symbol not in APP
+    assert "setDot('api'" not in APP
+    assert 'AllDebrid: checking' not in INDEX
+    assert 'id="dot-api"' not in INDEX
+    assert 'href="https://alldebrid.com"' not in INDEX
+    assert 'loadAllDebridStatus' not in STATUS
+    assert 'invalidateAllDebridStatus' not in STATUS
+    assert 'invalidateProviderStatus();' in APP
+    assert 'await refreshProviderStatus();' in APP

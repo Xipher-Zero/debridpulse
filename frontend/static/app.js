@@ -10,11 +10,13 @@ let _torrentSearchTimer = null;
 let settingsData = {};
 let aria2DownloadsTimer = null;
 let pausedTransferCount = 0;
-let allDebridStatusGeneration = 0;
+function invalidateProviderStatus() {
+  return window.DPProviderStatus?.invalidate?.();
+}
 
-function invalidateAllDebridStatus() {
-  allDebridStatusGeneration += 1;
-  return allDebridStatusGeneration;
+async function refreshProviderStatus() {
+  if (!window.DPProviderStatus?.refresh) return null;
+  return window.DPProviderStatus.refresh();
 }
 
 function renderTopbarActions() {
@@ -69,7 +71,7 @@ function nav(el) {
   if (!el) return;
   // Navigation establishes a new presentation generation. An HTTP response
   // initiated by an older surface may finish later, but may not become truth.
-  invalidateAllDebridStatus();
+  invalidateProviderStatus();
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   const v = el.dataset.view;
@@ -547,44 +549,9 @@ function updateAria2ngLink() {
   }
 }
 
-function renderAllDebridStatus(status) {
-  const state = String(status?.state || 'unknown');
-  const username = String(status?.username || '').trim();
-  const presentation = {
-    disabled:      ['warn',  'AllDebrid: disabled'],
-    unconfigured:  ['warn',  'AllDebrid: not configured'],
-    auth_required: ['error', 'AllDebrid: authentication required'],
-    healthy:       ['ok',    `AllDebrid: ${username || 'online'}`],
-    unhealthy:     ['error', 'AllDebrid: unavailable'],
-    unknown:       ['check', 'AllDebrid: status unknown'],
-  }[state] || ['check', 'AllDebrid: status unknown'];
-  setDot('api', presentation[0], presentation[1]);
-  if (state === 'healthy') _updatePremiumLabel(status);
-  else _updatePremiumLabel(null);
-}
-
-async function loadAllDebridStatus() {
-  // UISTATE-001: request completion order is not temporal authority. Each
-  // refresh owns a generation and only the newest still-valid observation may
-  // update the provider presentation.
-  const generation = invalidateAllDebridStatus();
-  try {
-    const status = await api('GET', '/integration-status/alldebrid');
-    if (generation !== allDebridStatusGeneration) return null;
-    renderAllDebridStatus(status);
-    return status;
-  } catch (_) {
-    if (generation !== allDebridStatusGeneration) return null;
-    // Failure of the generic application/API path cannot establish provider
-    // failure. Preserve that distinction by rendering a neutral unknown state.
-    renderAllDebridStatus({state:'unknown'});
-    return null;
-  }
-}
-
 async function checkConnections() {
   const cfg = settingsData || {};
-  await loadAllDebridStatus();
+  await refreshProviderStatus();
 
   // aria2 check — retry once if first attempt fails
   if (cfg.aria2_url || cfg.aria2_mode === 'builtin') {
@@ -2034,7 +2001,7 @@ async function saveSettings(button) {
   // A pre-save status observation describes the old provider configuration.
   // Invalidate it before the settings mutation begins; the post-save refresh
   // will establish the next authoritative generation.
-  invalidateAllDebridStatus();
+  invalidateProviderStatus();
 
   try {
     const activeTab =
@@ -2139,49 +2106,16 @@ async function testAD(button) {
       `AllDebrid: connected as ${r.username} ${r.isPremium?'(Premium)':'(Free)'}✓`,
       'success'
     );
-
-    setDot(
-      'api',
-      'ok',
-      `AllDebrid: ${r.username}`
-    );
-
-    _updatePremiumLabel(r);
   } catch(e) {
     toast(
       'AllDebrid: ' + e.message,
       'error'
     );
-
-    setDot(
-      'api',
-      'error',
-      'AllDebrid: error'
-    );
   } finally {
+    refreshProviderStatus().catch(()=>{});
     setButtonPending(button, false);
   }
 }
-
-function _updatePremiumLabel(r) {
-  const row = document.getElementById('premium-row');
-  const lbl = document.getElementById('lbl-premium');
-  if (!row || !lbl) return;
-  if (!r || !r.isPremium) { row.style.display = 'none'; return; }
-  // AllDebrid user object has premiumUntil as unix timestamp
-  const until = r.premiumUntil || r.premium_until || 0;
-  if (!until) { row.style.display = 'none'; return; }
-  const d = new Date(until * 1000);
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const yyyy = d.getFullYear();
-  const days = Math.ceil((d - Date.now()) / 86400000);
-  const daysLabel = days > 0 ? `(${days} days remaining)` : '(expired)';
-  lbl.innerHTML = `<span class="dp-provider-premium-until">AllDebrid Premium until ${dd}.${mm}.${yyyy}</span><span class="dp-provider-premium-days">${daysLabel}</span>`;
-  row.style.display = '';
-}
-
-
 
 async function testAria2(button) {
   const activeTab =
@@ -2858,7 +2792,6 @@ async function triggerStatsSnapshot(button) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 (async()=>{
-  setDot('api',   'check', 'AllDebrid: checking…');
   setDot('aria2', 'check', 'aria2: checking…');
   setDot('db',    'check', 'DB: checking…');
 
@@ -2903,7 +2836,7 @@ async function triggerStatsSnapshot(button) {
   checkConnections().catch(() => {});
 
   // Generic statistics availability says nothing about provider health.
-  // checkConnections() owns the provider-specific status surface.
+  // The neutral provider-status runtime owns provider presentation.
 
   // ── Server-Sent Events — live updates without 15 s polling ──────────────
   // Falls back to polling if SSE is unavailable (proxy, browser quirk, etc.)

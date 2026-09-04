@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=15">
 <link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=26" data-dp-v11-styles="1">
+<link id="dp-provider-state-css" rel="stylesheet" href="/ui-provider-state.css?v=2">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 </head>
@@ -49,9 +50,10 @@
     <div class="conn-row" id="premium-row" style="display:none">
       <span id="lbl-premium" style="font-size:10px;color:var(--accent);line-height:1.4"></span>
     </div>
-    <div class="conn-row">
-      <div class="dot" id="dot-api"></div>
-      <span id="lbl-api">AllDebrid: checking…</span>
+    <div id="provider-status-list" class="dp-provider-status-list" aria-label="Provider Status">
+      <div class="conn-row dp-provider-status-row" data-provider-state="checking">
+        <div class="dot check"></div><span>Provider Status: checking…</span>
+      </div>
     </div>
     <div class="conn-row">
       <div class="dot" id="dot-aria2"></div>
@@ -60,13 +62,6 @@
     <div class="conn-row">
       <div class="dot" id="dot-db"></div>
       <span id="lbl-db">DB: —</span>
-    </div>
-    <div class="conn-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
-      <a href="https://alldebrid.com" target="_blank" rel="noopener"
-         style="font-size:10px;color:var(--text3);text-decoration:none;display:flex;align-items:center;gap:4px;transition:color .15s"
-         onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">
-        ↗ alldebrid.com
-      </a>
     </div>
     <div class="conn-row" id="aria2ng-row" style="display:none;margin-top:4px">
       <a id="aria2ng-link" href="#" target="_blank" rel="noopener"
@@ -440,7 +435,10 @@
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
 <script src="/operator-title.js?v=25" defer></script>
-<script src="/app.js?v=19" defer></script>
+<script src="/app.js?v=20" defer></script>
+<script id="dp-provider-status-script" src="/ui-provider-status.js?v=2" defer></script>
+<script id="dp-alldebrid-account-status-script" src="/ui-alldebrid-account-status.js?v=2" defer></script>
+<script id="dp-provider-cards-script" src="/ui-provider-cards.js?v=2" defer></script>
 <script src="/ui-accessibility-runtime.js?v=21" defer></script>
 <script src="/ui-statistics.js?v=3" defer></script>
 <script src="/ui-help-page.js?v=3" defer></script>

@@ -45,20 +45,13 @@
     let node = document.getElementById('provider-status-list');
     if (node) return node;
 
-    const legacyDot = document.getElementById('dot-api');
-    const legacyRow = legacyDot && legacyDot.closest('.conn-row');
     node = document.createElement('div');
     node.id = 'provider-status-list';
     node.className = 'dp-provider-status-list';
     node.setAttribute('aria-label', 'Provider Status');
-
-    if (legacyRow && legacyRow.parentNode) {
-      legacyRow.replaceWith(node);
-    } else {
-      const footer = document.querySelector('.sidebar-footer');
-      const aria2Row = document.getElementById('dot-aria2')?.closest('.conn-row');
-      if (footer) footer.insertBefore(node, aria2Row || footer.firstChild);
-    }
+    const footer = document.querySelector('.sidebar-footer');
+    const aria2Row = document.getElementById('dot-aria2')?.closest('.conn-row');
+    if (footer) footer.insertBefore(node, aria2Row || footer.firstChild);
     return node;
   }
 
@@ -136,11 +129,6 @@
   }
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates});
-
-  // Transitional aliases preserve the existing connection-check cadence and
-  // navigation/save invalidation call sites. They contain no provider identity.
-  window.loadAllDebridStatus = refresh;
-  window.invalidateAllDebridStatus = invalidate;
 
   render([], 'loading');
   document.addEventListener('DOMContentLoaded', () => {

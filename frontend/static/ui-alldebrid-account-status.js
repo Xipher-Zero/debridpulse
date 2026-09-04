@@ -4,12 +4,6 @@
 (function () {
   'use strict';
 
-  function removeLegacyProviderLink() {
-    document.querySelectorAll('.sidebar-footer a[href*="alldebrid.com"]').forEach(link => {
-      link.closest('.conn-row')?.remove();
-    });
-  }
-
   function hide() {
     const row = document.getElementById('premium-row');
     if (row) row.style.display = 'none';
@@ -44,7 +38,6 @@
     row.style.display = '';
   }
 
-  removeLegacyProviderLink();
   document.addEventListener('debridpulse:provider-status', event => {
     const entry = (event.detail?.entries || []).find(candidate => candidate.id === 'alldebrid');
     if (!entry || entry.state !== 'healthy') {

@@ -1,37 +1,10 @@
-/* DebridPulse v1.0.11 Settings inner-card icon presentation.
+/* DebridPulse Settings inner-card icon presentation.
  *
- * Applies the reviewed custom SVG artwork to Settings inner-card headers only.
- * The clean Settings renderer and existing presentation runtimes remain the
- * owners of card structure and behavior. This layer replaces/places visual
- * identity artwork and bootstraps the separate provider-state companions.
+ * Applies reviewed custom SVG artwork to Settings inner-card headers only.
+ * Provider state/status runtimes are loaded explicitly by the application shell.
  */
 (function () {
   'use strict';
-
-  function loadProviderStateCompanions() {
-    if (!document.getElementById('dp-provider-state-css')) {
-      const stylesheet = document.createElement('link');
-      stylesheet.id = 'dp-provider-state-css';
-      stylesheet.rel = 'stylesheet';
-      stylesheet.href = '/ui-provider-state.css?v=1';
-      document.head.appendChild(stylesheet);
-    }
-
-    [
-      ['dp-provider-status-script', '/ui-provider-status.js?v=1'],
-      ['dp-alldebrid-account-status-script', '/ui-alldebrid-account-status.js?v=1'],
-      ['dp-provider-cards-script', '/ui-provider-cards.js?v=1'],
-    ].forEach(([id, src]) => {
-      if (document.getElementById(id)) return;
-      const script = document.createElement('script');
-      script.id = id;
-      script.src = src;
-      script.async = false;
-      document.head.appendChild(script);
-    });
-  }
-
-  loadProviderStateCompanions();
 
   const ICONS = Object.freeze({
     'Download Engine': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
