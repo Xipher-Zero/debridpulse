@@ -131,6 +131,16 @@ class ApplicationService:
                     raise ValueError(f"Finish or remove existing {definition.name} resources before changing its connection")
         if previous.download_folder != current.download_folder and await self.repository.has_integration_references():
             raise ValueError("Finish or remove existing resources before changing the download folder")
+        # The existing active-resource guard above remains first.  Only after it
+        # passes do we prove the candidate through the canonical storage owner.
+        # Detached candidates cannot mutate active health; re-validating the
+        # active path may truthfully refresh its canonical state.
+        if self.capacity is not None and hasattr(self.capacity, "require_download_path"):
+            await asyncio.to_thread(
+                self.capacity.require_download_path,
+                current.download_folder,
+                apply_if_active=True,
+            )
 
     async def deliver_events(self):
         if self.observability:
@@ -144,8 +154,8 @@ class ApplicationService:
         if self.capacity is None:
             result = {"enabled": False, "active": False}
         else:
-            # stat/statvfs may block on a degraded remote mount. Keep it off the
-            # event loop while retaining one synchronous canonical state owner.
+            # Filesystem probes may block on a degraded remote mount. Keep them
+            # off the event loop while retaining one synchronous canonical owner.
             result = await asyncio.to_thread(self.capacity.check)
         # Dispatch requires both safe durable application state and usable
         # download storage. This runtime gate is independent of global Pause.

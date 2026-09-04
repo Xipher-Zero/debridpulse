@@ -12,6 +12,8 @@ import logging
 import os
 import shutil
 import sqlite3
+import stat
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, replace
@@ -32,6 +34,16 @@ from transfers.errors import (
 
 logger = logging.getLogger("debridpulse.storage")
 _GIB = 1024 ** 3
+_PROBE_PAYLOAD = b"debridpulse-storage-probe\n"
+_FSYNC_UNSUPPORTED_ERRNOS = frozenset(
+    code
+    for code in (
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+        getattr(errno, "ENOSYS", None),
+    )
+    if code is not None
+)
 
 
 class StorageDomain(StrEnum):
@@ -75,6 +87,8 @@ class StorageSnapshot:
     exists: bool | None = None
     is_directory: bool | None = None
     accessible: bool | None = None
+    writable: bool | None = None
+    fsync_supported: bool | None = None
     total_bytes: int | None = None
     free_bytes: int | None = None
     low_space_threshold_bytes: int | None = None
@@ -92,6 +106,8 @@ class StorageSnapshot:
             "exists": self.exists,
             "is_directory": self.is_directory,
             "accessible": self.accessible,
+            "writable": self.writable,
+            "fsync_supported": self.fsync_supported,
             "total_bytes": self.total_bytes,
             "free_bytes": self.free_bytes,
             "free_gb": round(self.free_bytes / _GIB, 3) if self.free_bytes is not None else None,
@@ -260,6 +276,13 @@ class DiskCapacity:
                 self.application_path = str(application_path)
             self._reset_snapshots()
 
+    @staticmethod
+    def _resolve_path(probe: Path) -> str:
+        try:
+            return str(probe.resolve(strict=False))
+        except OSError:
+            return str(probe.absolute())
+
     def _paths(self, domain: StorageDomain) -> tuple[str, str]:
         if domain == StorageDomain.APPLICATION_STATE:
             configured = Path(self.application_path).expanduser()
@@ -267,11 +290,12 @@ class DiskCapacity:
         else:
             configured = Path(self.root).expanduser()
             probe = configured
-        try:
-            resolved = probe.resolve(strict=False)
-        except OSError:
-            resolved = probe.absolute()
-        return str(configured), str(resolved)
+        return str(configured), self._resolve_path(probe)
+
+    @classmethod
+    def _download_paths(cls, root) -> tuple[str, str]:
+        configured = Path(root).expanduser()
+        return str(configured), cls._resolve_path(configured)
 
     @staticmethod
     def _filesystem_identity(path: Path) -> str:
@@ -288,60 +312,241 @@ class DiskCapacity:
             return StorageState.LOW_SPACE, StorageReason.LOW_SPACE
         return StorageState.HEALTHY, StorageReason.NONE
 
-    def _probe(self, domain: StorageDomain) -> StorageSnapshot:
+    def _probe_application(self) -> StorageSnapshot:
+        domain = StorageDomain.APPLICATION_STATE
         now = self._clock()
         configured, resolved = self._paths(domain)
         current = self._states[domain]
-        base = replace(
-            current,
-            configured_path=configured,
-            resolved_path=resolved,
-            low_space_threshold_bytes=int(self.minimum_gb * _GIB) if domain == StorageDomain.DOWNLOAD else None,
-            recovery_threshold_bytes=(int((self.minimum_gb + self.hysteresis_gb) * _GIB)
-                                      if domain == StorageDomain.DOWNLOAD and self.minimum_gb > 0 else None),
-            probed_at=now,
-        )
+        base = replace(current, configured_path=configured, resolved_path=resolved, probed_at=now)
         path = Path(resolved)
         try:
             if not path.exists():
                 return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.MISSING,
-                               exists=False, is_directory=None, accessible=False, filesystem_id=None,
-                               total_bytes=None, free_bytes=None)
+                               exists=False, is_directory=None, accessible=False, writable=None,
+                               fsync_supported=None, filesystem_id=None, total_bytes=None, free_bytes=None)
             is_directory = path.is_dir()
             if not is_directory:
                 return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.INVALID_PATH,
-                               exists=True, is_directory=False, accessible=False, filesystem_id=None,
-                               total_bytes=None, free_bytes=None)
+                               exists=True, is_directory=False, accessible=False, writable=None,
+                               fsync_supported=None, filesystem_id=None, total_bytes=None, free_bytes=None)
             filesystem_id = self._filesystem_identity(path)
             accessible = os.access(path, os.R_OK | os.W_OK | os.X_OK)
             if not accessible:
                 return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.INACCESSIBLE,
-                               exists=True, is_directory=True, accessible=False, filesystem_id=filesystem_id,
-                               total_bytes=None, free_bytes=None)
+                               exists=True, is_directory=True, accessible=False, writable=None,
+                               fsync_supported=None, filesystem_id=filesystem_id, total_bytes=None, free_bytes=None)
             if hasattr(os, "statvfs"):
                 flags = getattr(os.statvfs(path), "f_flag", 0)
                 read_only_flag = getattr(os, "ST_RDONLY", 0)
                 if read_only_flag and flags & read_only_flag:
                     usage = shutil.disk_usage(path)
                     return replace(base, state=StorageState.READ_ONLY, reason=StorageReason.READ_ONLY,
-                                   exists=True, is_directory=True, accessible=True, filesystem_id=filesystem_id,
+                                   exists=True, is_directory=True, accessible=True, writable=None,
+                                   fsync_supported=None, filesystem_id=filesystem_id,
                                    total_bytes=int(usage.total), free_bytes=int(usage.free))
             usage = shutil.disk_usage(path)
             free_bytes = int(usage.free)
-            if free_bytes <= 0:
-                state, reason = StorageState.FULL, StorageReason.CAPACITY_EXHAUSTED
-            else:
-                state, reason = self._threshold_state(free_bytes, current)
+            state = StorageState.FULL if free_bytes <= 0 else StorageState.HEALTHY
+            reason = StorageReason.CAPACITY_EXHAUSTED if free_bytes <= 0 else StorageReason.NONE
             return replace(base, state=state, reason=reason, exists=True, is_directory=True, accessible=True,
-                           filesystem_id=filesystem_id, total_bytes=int(usage.total), free_bytes=free_bytes)
+                           writable=None, fsync_supported=None, filesystem_id=filesystem_id,
+                           total_bytes=int(usage.total), free_bytes=free_bytes)
         except OSError:
             # Once the current probe cannot establish filesystem facts, do not
             # retain topology/capacity evidence from an older healthy snapshot.
-            # In particular shared_filesystem must become unknown rather than
-            # claiming a stale device identity while a domain is unavailable.
             return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.STAT_FAILED,
-                           exists=None, is_directory=None, accessible=False, filesystem_id=None,
-                           total_bytes=None, free_bytes=None)
+                           exists=None, is_directory=None, accessible=False, writable=None,
+                           fsync_supported=None, filesystem_id=None, total_bytes=None, free_bytes=None)
+
+    @staticmethod
+    def _fault_snapshot(
+        base: StorageSnapshot,
+        exc: BaseException,
+        *,
+        fallback_reason: StorageReason,
+        exists: bool | None,
+        is_directory: bool | None,
+        accessible: bool | None,
+        filesystem_id: str | None,
+        total_bytes: int | None = None,
+        free_bytes: int | None = None,
+        fsync_supported: bool | None = None,
+    ) -> StorageSnapshot:
+        classification = classify_storage_fault(exc)
+        if classification is None:
+            classification = FaultClassification(StorageState.UNAVAILABLE, fallback_reason)
+        return replace(
+            base,
+            state=classification.state,
+            reason=classification.reason,
+            exists=exists,
+            is_directory=is_directory,
+            accessible=accessible,
+            writable=False,
+            fsync_supported=fsync_supported,
+            filesystem_id=filesystem_id,
+            total_bytes=total_bytes,
+            free_bytes=free_bytes,
+        )
+
+    def _probe_download_path(self, root, current: StorageSnapshot | None = None) -> StorageSnapshot:
+        """Probe a download path through real bounded process filesystem behavior."""
+        configured, resolved = self._download_paths(root)
+        now = self._clock()
+        if current is None:
+            current = StorageSnapshot(StorageDomain.DOWNLOAD, configured, resolved)
+        base = replace(
+            current,
+            configured_path=configured,
+            resolved_path=resolved,
+            low_space_threshold_bytes=int(self.minimum_gb * _GIB),
+            recovery_threshold_bytes=(int((self.minimum_gb + self.hysteresis_gb) * _GIB)
+                                      if self.minimum_gb > 0 else None),
+            probed_at=now,
+            exists=None,
+            is_directory=None,
+            accessible=None,
+            writable=None,
+            fsync_supported=None,
+            filesystem_id=None,
+            total_bytes=None,
+            free_bytes=None,
+        )
+        path = Path(resolved)
+        try:
+            metadata = os.stat(path)
+        except FileNotFoundError:
+            return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.MISSING,
+                           exists=False, is_directory=None, accessible=False, writable=False)
+        except NotADirectoryError:
+            return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.INVALID_PATH,
+                           exists=True, is_directory=False, accessible=False, writable=False)
+        except OSError as exc:
+            return self._fault_snapshot(base, exc, fallback_reason=StorageReason.STAT_FAILED,
+                                        exists=None, is_directory=None, accessible=False, filesystem_id=None)
+
+        filesystem_id = str(metadata.st_dev)
+        if not stat.S_ISDIR(metadata.st_mode):
+            return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.INVALID_PATH,
+                           exists=True, is_directory=False, accessible=False, writable=False,
+                           filesystem_id=filesystem_id)
+
+        try:
+            with os.scandir(path) as entries:
+                next(entries, None)
+        except OSError as exc:
+            return self._fault_snapshot(base, exc, fallback_reason=StorageReason.INACCESSIBLE,
+                                        exists=True, is_directory=True, accessible=False,
+                                        filesystem_id=filesystem_id)
+
+        fd: int | None = None
+        handle = None
+        probe_name: str | None = None
+        primary_error: BaseException | None = None
+        primary_reason = StorageReason.IO_ERROR
+        usage = None
+        fsync_supported: bool | None = None
+
+        try:
+            primary_reason = StorageReason.IO_ERROR
+            fd, probe_name = tempfile.mkstemp(prefix=".debridpulse-probe-", dir=str(path))
+            try:
+                handle = os.fdopen(fd, "wb", closefd=True)
+                fd = None
+            except OSError:
+                raise
+
+            primary_reason = StorageReason.STAT_FAILED
+            usage = shutil.disk_usage(path)
+
+            primary_reason = StorageReason.IO_ERROR
+            written = handle.write(_PROBE_PAYLOAD)
+            if written != len(_PROBE_PAYLOAD):
+                raise OSError(errno.EIO, "short storage probe write")
+            handle.flush()
+            try:
+                os.fsync(handle.fileno())
+                fsync_supported = True
+            except OSError as exc:
+                if getattr(exc, "errno", None) in _FSYNC_UNSUPPORTED_ERRNOS:
+                    fsync_supported = False
+                else:
+                    raise
+        except OSError as exc:
+            primary_error = exc
+        finally:
+            if handle is not None:
+                try:
+                    handle.close()
+                except OSError as exc:
+                    if primary_error is None:
+                        primary_error = exc
+                        primary_reason = StorageReason.IO_ERROR
+                    else:
+                        logger.debug("Storage probe close also failed after primary fault", exc_info=exc)
+            elif fd is not None:
+                try:
+                    os.close(fd)
+                except OSError as exc:
+                    if primary_error is None:
+                        primary_error = exc
+                        primary_reason = StorageReason.IO_ERROR
+                    else:
+                        logger.debug("Storage probe raw-fd close also failed after primary fault", exc_info=exc)
+            if probe_name is not None:
+                try:
+                    os.unlink(probe_name)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    if primary_error is None:
+                        primary_error = exc
+                        primary_reason = StorageReason.IO_ERROR
+                    else:
+                        logger.debug("Storage probe cleanup also failed after primary fault", exc_info=exc)
+
+        total_bytes = int(usage.total) if usage is not None else None
+        free_bytes = int(usage.free) if usage is not None else None
+        if primary_error is not None:
+            return self._fault_snapshot(
+                base,
+                primary_error,
+                fallback_reason=primary_reason,
+                exists=True,
+                is_directory=True,
+                accessible=True,
+                filesystem_id=filesystem_id,
+                total_bytes=total_bytes,
+                free_bytes=free_bytes,
+                fsync_supported=fsync_supported,
+            )
+
+        if free_bytes is None:
+            return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.STAT_FAILED,
+                           exists=True, is_directory=True, accessible=True, writable=False,
+                           fsync_supported=fsync_supported, filesystem_id=filesystem_id)
+        if free_bytes <= 0:
+            state, reason = StorageState.FULL, StorageReason.CAPACITY_EXHAUSTED
+        else:
+            state, reason = self._threshold_state(free_bytes, current)
+        return replace(
+            base,
+            state=state,
+            reason=reason,
+            exists=True,
+            is_directory=True,
+            accessible=True,
+            writable=True,
+            fsync_supported=fsync_supported,
+            filesystem_id=filesystem_id,
+            total_bytes=total_bytes,
+            free_bytes=free_bytes,
+        )
+
+    def _probe(self, domain: StorageDomain) -> StorageSnapshot:
+        if domain == StorageDomain.APPLICATION_STATE:
+            return self._probe_application()
+        return self._probe_download_path(self.root, self._states[StorageDomain.DOWNLOAD])
 
     def _apply(self, candidate: StorageSnapshot) -> StorageSnapshot:
         with self._lock:
@@ -374,6 +579,24 @@ class DiskCapacity:
         # ENOSPC/EROFS/EIO transition.
         with self._lock:
             return self._apply(self._probe(domain))
+
+    def validate_download_path(self, root, *, apply_if_active=False) -> StorageSnapshot:
+        """Authoritatively validate a candidate without poisoning unrelated active state."""
+        with self._lock:
+            _configured, candidate_resolved = self._download_paths(root)
+            _active_configured, active_resolved = self._paths(StorageDomain.DOWNLOAD)
+            is_active = candidate_resolved == active_resolved
+            current = self._states[StorageDomain.DOWNLOAD] if is_active else None
+            candidate = self._probe_download_path(root, current)
+            if apply_if_active and is_active:
+                return self._apply(candidate)
+            return candidate
+
+    def require_download_path(self, root, *, apply_if_active=False) -> StorageSnapshot:
+        snapshot = self.validate_download_path(root, apply_if_active=apply_if_active)
+        if snapshot.state in _HARD_STATES:
+            raise StorageHealthError(snapshot)
+        return snapshot
 
     def check(self) -> dict:
         self.probe(StorageDomain.APPLICATION_STATE)
