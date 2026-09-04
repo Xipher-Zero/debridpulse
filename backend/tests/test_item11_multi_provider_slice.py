@@ -22,6 +22,7 @@ from providers.alldebrid.host_runtime import (
 )
 from providers.alldebrid.provider import AllDebridProvider
 from providers.general_http.provider import GeneralHttpProvider
+from transfers.applicability import ApplicabilityUnresolved
 from transfers.engine import TransferEngine
 from transfers.models import TransferRequest, TransferState
 from transfers.policy import TransferPolicy
@@ -239,27 +240,36 @@ async def test_direct_route_history_survives_later_alldebrid_claim_change(tmp_pa
     assert after_public["delivering_provider_name"] == "HTTP & HTTPS"
 
 
-async def test_initial_host_refresh_failure_keeps_generic_http_operational(tmp_path, monkeypatch):
+async def test_initial_host_refresh_failure_keeps_route_unresolved_without_lkg(tmp_path, monkeypatch):
     client = Item11Client(native_hosts("example.test"))
     client.error = RuntimeError("deterministic initial host refresh failure")
     core = await build_core(tmp_path, monkeypatch, "initial-refresh-failure.sqlite3", client=client)
 
-    request = TransferRequest("https", "https://example.test/fallback.bin", name="fallback.bin")
+    request = TransferRequest("https", "https://example.test/pending.bin", name="pending.bin")
     assert client.host_calls == 0
-    assert core.registry.provider_for(request) is core.general
+    with pytest.raises(ApplicabilityUnresolved):
+        core.registry.provider_for(request)
     assert client.host_calls == 0
 
-    # Maintenance owns the failed network attempt. It must not manufacture a
-    # valid LKG snapshot or poison generic HTTP routing.
+    # Maintenance owns the failed network attempt. Without a usable LKG it must
+    # retain UNRESOLVED rather than fabricating a generic route or unsupported result.
     await core.maintenance.maintain()
     assert client.host_calls == 1
     assert await core.store.load("alldebrid", HOST_STATE_KEY) is None
-    assert core.registry.provider_for(request) is core.general
+    with pytest.raises(ApplicabilityUnresolved):
+        core.registry.provider_for(request)
 
-    completed = await complete(core, request)
-    assert client.host_calls == 1
+    transfer = await core.engine.submit((request,), name=request.name, deduplicate=False)
+    identity = (await core.repository.requests(transfer.id))[0].id
+    await core.engine.resolve_pending()
+
+    pending = (await core.repository.requests(transfer.id))[0]
+    raw = await core.repository.presentation(transfer.id, details=True)
+    assert pending.id == identity
+    assert pending.state == "pending"
+    assert pending.attempts == 0
+    assert pending.error is None
+    assert raw["route_attempts"] == []
+    assert raw["execution_attempts"] == []
+    assert await core.repository.artifacts(transfer.id) == ()
     assert client.unlock_calls == 0
-    raw = await core.repository.presentation(completed.id, details=True)
-    assert raw["delivering_provider_id"] == "general_http"
-    public = _public_transfer_presentation(raw, definitions)
-    assert public["delivering_provider_name"] == "HTTP & HTTPS"

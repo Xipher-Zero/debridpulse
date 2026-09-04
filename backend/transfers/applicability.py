@@ -42,10 +42,11 @@ class HostClaim:
 class ProviderApplicability:
     """Canonical provider-owned applicability facts available without I/O.
 
-    ``specialized`` declares participation in specialized URL applicability
-    competition even when the current request has no specialized host match.
-    Readiness is a separate dimension: only READY facts make absence of a
-    specialized match authoritative.
+    A URL provider may participate as specialized or generic without exposing
+    concrete integration knowledge to the classifier. ``specialized`` declares
+    participation in specialized URL applicability competition even when the
+    current request has no specialized host match. Readiness is a separate
+    dimension: only READY facts make absence of a specialized match authoritative.
     """
 
     generic_schemes: frozenset[str] = frozenset()
