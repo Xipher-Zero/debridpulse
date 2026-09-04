@@ -169,7 +169,7 @@ body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status] .prog-pct {
   min-height: 20px;
   padding: 2px 8px;
   border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright, var(--accent)) 34%, var(--dp-divider, var(--border)));
-  border-radius: 999px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--dp-accent-purple-bright, var(--accent)) 9%, transparent);
   color: var(--dp-accent-purple-bright, var(--accent));
   font-size: 10px;
