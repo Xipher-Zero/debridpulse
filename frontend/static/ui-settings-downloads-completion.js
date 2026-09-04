@@ -242,6 +242,7 @@
     cancel.dataset.directoryCancel = '1';
     accept.dataset.directoryConfirm = '1';
     accept.disabled = true;
+    cancel.focus();
 
     body.innerHTML = `
       <div class="dp-settings-directory-browser">
