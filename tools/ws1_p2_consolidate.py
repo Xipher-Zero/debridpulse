@@ -174,7 +174,7 @@ status = sub_once(
 )
 status = sub_once(
     status,
-    r'''\n  // Compatibility hooks keep the existing connection-check cadence and\n  // navigation/save invalidation points while replacing their provider owner\.\n  window\.loadAllDebridStatus = refresh;\n  window\.invalidateAllDebridStatus = invalidate;\n''',
+    r'''\n  // Transitional aliases preserve the existing connection-check cadence and\n  // navigation/save invalidation call sites\. They contain no provider identity\.\n  window\.loadAllDebridStatus = refresh;\n  window\.invalidateAllDebridStatus = invalidate;\n''',
     "",
     "remove AllDebrid compatibility hooks from neutral owner",
 )
@@ -184,11 +184,17 @@ status_path.write_text(status)
 
 account_path = Path("frontend/static/ui-alldebrid-account-status.js")
 account = account_path.read_text()
-account = sub_once(
+account = replace_once(
     account,
-    r'''\n  document\.addEventListener\('DOMContentLoaded', \(\) => \{\n    document\.querySelectorAll\('\.sidebar-footer a\[href\*="alldebrid\.com"\]'\)\.forEach\(link => \{\n      link\.closest\('\.conn-row'\)\?\.remove\(\);\n    \}\);\n  \}, \{once: true\}\);''',
+    '''  function removeLegacyProviderLink() {\n    document.querySelectorAll('.sidebar-footer a[href*="alldebrid.com"]').forEach(link => {\n      link.closest('.conn-row')?.remove();\n    });\n  }\n\n''',
     "",
-    "remove obsolete shell-cleanup responsibility from account adapter",
+    "remove obsolete shell cleanup function from account adapter",
+)
+account = replace_once(
+    account,
+    "  removeLegacyProviderLink();\n",
+    "",
+    "remove obsolete shell cleanup call from account adapter",
 )
 account_path.write_text(account)
 
