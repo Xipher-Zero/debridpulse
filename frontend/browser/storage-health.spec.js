@@ -82,6 +82,7 @@ test('storage transition UX deduplicates stable faults, reports capacity, and cl
   await page.goto('/');
 
   await expect.poll(() => page.evaluate(() => Boolean(window.DPStorageHealth))).toBeTruthy();
+  await expect.poll(() => page.evaluate(() => window.DPStorageHealth.snapshot()?.download?.state)).toBe('healthy');
   await expect(page.locator('#dp-storage-health')).toBeHidden();
 
   current = health({
