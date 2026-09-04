@@ -360,6 +360,12 @@ body.light.dp-v11-structural .theme-toggle {
   body.dp-v11-structural .nav-group { padding-left: 18px; }
 }
 
+/* Preserve the full desktop control row immediately above the compact-shell
+   breakpoint by allowing the heading flex item to yield its unused minimum. */
+@media (min-width: 901px) and (max-width: 1050px) {
+  .dp-page-heading { min-width: 0; }
+}
+
 @media (max-width: 900px) {
   body.dp-v11-structural #topbar {
     padding-left: 58px;

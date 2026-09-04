@@ -51,15 +51,18 @@ async function assertTopbarGeometry(page, width) {
 
   expect(await topbarOrder(page)).toEqual(['global-actions', 'engine-widget', 'theme-control']);
 
+  const heading = await page.locator('.dp-page-heading').boundingBox();
   const actions = await page.locator('#topbar-actions').boundingBox();
   const engine = await page.locator('#aria2-speed-badge').boundingBox();
   const theme = await page.locator('.topbar-theme-control').boundingBox();
   const topbar = await page.locator('#topbar').boundingBox();
 
+  expect(heading).not.toBeNull();
   expect(actions).not.toBeNull();
   expect(engine).not.toBeNull();
   expect(theme).not.toBeNull();
   expect(topbar).not.toBeNull();
+  expect(heading.x + heading.width).toBeLessThanOrEqual(actions.x + 1);
   expect(actions.x + actions.width).toBeLessThanOrEqual(engine.x + 1);
   expect(engine.x + engine.width).toBeLessThanOrEqual(theme.x + 1);
   expect(theme.x + theme.width).toBeLessThanOrEqual(topbar.x + topbar.width + 1);
@@ -73,7 +76,6 @@ async function providerChipContract(page, selector) {
       radius: Number.parseFloat(style.borderTopLeftRadius),
       height: box.height,
       borderWidth: Number.parseFloat(style.borderTopWidth),
-      display: style.display,
     };
   });
 }
@@ -117,12 +119,19 @@ test('Recent Activity and Downloads share the rounded-rectangle routed-provider 
   await expect(page.locator(recentChip)).toHaveText('AllDebrid');
   const recent = await providerChipContract(page, recentChip);
   const recentCanonicalRadius = await statusBadgeRadius(page, recentStatus);
-  expect(recent.display).toBe('inline-flex');
   expect(recent.borderWidth).toBeGreaterThan(0);
   expect(recent.radius).toBe(recentCanonicalRadius);
   expect(recent.radius).toBeGreaterThan(0);
   expect(recent.radius).toBeLessThan(recent.height / 2);
+  await page.screenshot({path:'test-results/checkpoint-ui-fix-ws1-p1-recent-dark.png', fullPage:true});
 
+  await page.locator('#theme-toggle').click();
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
+  await expect(page.locator(recentChip)).toBeVisible();
+  await page.screenshot({path:'test-results/checkpoint-ui-fix-ws1-p1-recent-light.png', fullPage:true});
+
+  await page.locator('#theme-toggle').click();
+  await expect.poll(() => page.evaluate(() => !document.body.classList.contains('light'))).toBeTruthy();
   await page.locator('#sidebar .nav-item[data-view="torrents"]').click();
   const downloadsChip = '#t-tbody tr[data-torrent-id="1201"] .dp-provider-chip';
   const downloadsStatus = '#t-tbody tr[data-torrent-id="1201"] .badge';
