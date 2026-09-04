@@ -239,7 +239,8 @@ class TransferEngine:
             operator_action_required=False, integration_id=executor_id, diagnostic=diagnostic,
         )
 
-    async def _converge_execution(self, artifact: Artifact, executor, observed: ExecutionObservation | None = None):
+    async def _converge_execution(self, artifact: Artifact, executor, observed: ExecutionObservation | None = None,
+                                  *, persist_passive=True):
         """Single native control owner for one durable execution attempt.
 
         Callers may arrive with stale observations. Any observation that would
@@ -247,7 +248,8 @@ class TransferEngine:
         lock, so explicit controls and scheduler reconciliation cannot both emit
         the same pause/unpause. Durable pause intent is reread after every native
         action, allowing a newer opposite intent to win before ownership is
-        released.
+        released. Scheduler callers can leave passive observation persistence to
+        activity accounting so byte progress is measured before it is stored.
         """
         if artifact.execution is None:
             return observed
@@ -281,7 +283,8 @@ class TransferEngine:
 
                     if observed.state in {ExecutionState.UNKNOWN, ExecutionState.FAILED, ExecutionState.ABSENT,
                                           ExecutionState.CANCELLED, ExecutionState.SUCCEEDED}:
-                        await self.repository.execution(observed)
+                        if persist_passive:
+                            await self.repository.execution(observed)
                         return observed
 
                     if desired_paused:
@@ -291,7 +294,8 @@ class TransferEngine:
                                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
                             await self.repository.execution(observed)
                             continue
-                        await self.repository.execution(observed)
+                        if persist_passive:
+                            await self.repository.execution(observed)
                         return observed
 
                     if observed.state == ExecutionState.PAUSED:
@@ -306,7 +310,8 @@ class TransferEngine:
                             live = await self.repository.live_executions()
                             occupied = sum(item.state in {"prepared", "queued", "transferring", "unknown"} for item in live)
                             if occupied >= max(1, self.policy.max_active_executions):
-                                await self.repository.execution(observed)
+                                if persist_passive:
+                                    await self.repository.execution(observed)
                                 return observed
                             # Reserve the slot durably before a possibly lost
                             # unpause acknowledgement. This is capacity truth,
@@ -320,7 +325,8 @@ class TransferEngine:
                         await self.repository.execution(observed)
                         continue
 
-                    await self.repository.execution(observed)
+                    if persist_passive:
+                        await self.repository.execution(observed)
                     return observed
 
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, observed.paths,
@@ -354,7 +360,7 @@ class TransferEngine:
                     if not isinstance(observed, ExecutionObservation) or observed.handle != artifact.execution:
                         raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
                     if isinstance(executor, PauseResume):
-                        observed = await self._converge_execution(artifact, executor, observed)
+                        observed = await self._converge_execution(artifact, executor, observed, persist_passive=False)
                     await self._execution_result(artifact, executor, observed)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "queued" and artifact.retry_at <= self.clock():
                     await self._dispatch(artifact)
