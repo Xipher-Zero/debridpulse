@@ -87,9 +87,7 @@ async function installStatefulSettings(page, initial) {
       current = fixture({...current, ...body}, {
         adEnabled: enabled,
         adConfigured: configured,
-        httpEnabled: submitted.enabled == null
-          ? (body.integrations?.general_http?.enabled ?? current.integrations.general_http.enabled)
-          : (body.integrations?.general_http?.enabled ?? current.integrations.general_http.enabled),
+        httpEnabled: body.integrations?.general_http?.enabled ?? current.integrations.general_http.enabled,
       });
       return route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(current)});
     }
@@ -111,6 +109,15 @@ async function openSources(page) {
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toBeVisible();
   await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-disclosure')).toHaveCount(1);
+}
+
+async function setProviderEnabled(card, enabled) {
+  const input = card.locator('input[data-integration-enabled="alldebrid"]');
+  if ((await input.isChecked()) !== enabled) {
+    await card.locator('.dp-settings-integration-header-enable').click();
+  }
+  if (enabled) await expect(input).toBeChecked();
+  else await expect(input).not.toBeChecked();
 }
 
 async function statusNames(page) {
@@ -152,9 +159,9 @@ test('WS1-P2 Provider Status is neutral across enabled-provider combinations', a
   expect(await statusNames(page)).toEqual(['No download providers enabled']);
   await expect(page.locator('#provider-status-list .dp-provider-status-row')).toHaveAttribute('data-provider-state', 'inactive');
 
-  const text = (await page.locator('#provider-status-list').innerText()).toLowerCase();
-  expect(text).not.toContain('available');
-  expect(text).not.toContain('disabled');
+  const statusText = (await page.locator('#provider-status-list').innerText()).toLowerCase();
+  expect(statusText).not.toContain('available');
+  expect(statusText).not.toContain('disabled');
 });
 
 test('WS1-P2 premium card implements the exact persisted four-state matrix', async ({ page }) => {
@@ -202,12 +209,11 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
   await page.reload();
   await openSources(page);
 
-  const card = page.locator('.dp-settings-provider-card--alldebrid');
-  const body = card.locator(':scope > .card-body');
-  const disclosure = card.locator('.dp-settings-provider-disclosure');
-  const enable = card.locator('input[data-integration-enabled="alldebrid"]');
-  const key = card.locator('#dp-settings-field-alldebrid-api-key');
-  const status = card.locator('.dp-settings-provider-config-status');
+  let card = page.locator('.dp-settings-provider-card--alldebrid');
+  let body = card.locator(':scope > .card-body');
+  let disclosure = card.locator('.dp-settings-provider-disclosure');
+  let key = card.locator('#dp-settings-field-alldebrid-api-key');
+  let status = card.locator('.dp-settings-provider-config-status');
 
   await disclosure.click();
   await expect(body).toBeVisible();
@@ -215,11 +221,11 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
   await expect(status).toHaveText('');
   await expect(card).toHaveAttribute('data-provider-configured', 'false');
 
-  await enable.check();
+  await setProviderEnabled(card, true);
   await expect(body).toBeVisible();
   await expect(status).toHaveText('Configuration required');
 
-  await enable.uncheck();
+  await setProviderEnabled(card, false);
   await expect(body).toBeVisible();
   await expect(status).toHaveText('');
 
@@ -231,26 +237,29 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
 
   await disclosure.press('Enter');
   await expect(body).toBeVisible();
-  await enable.check();
+  await setProviderEnabled(card, true);
   await page.locator('#view-settings [data-action="save"]').click();
+
+  card = page.locator('.dp-settings-provider-card--alldebrid');
+  body = card.locator(':scope > .card-body');
+  status = card.locator('.dp-settings-provider-config-status');
   await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
-  await expect(card.locator('.dp-settings-provider-config-status')).toBeHidden();
+  await expect(status).toBeHidden();
 
-  const freshCard = page.locator('.dp-settings-provider-card--alldebrid');
-  const freshEnable = freshCard.locator('input[data-integration-enabled="alldebrid"]');
-  const freshBody = freshCard.locator(':scope > .card-body');
-  await freshEnable.uncheck();
-  await expect(freshBody).toBeHidden();
-  await expect(freshCard.locator('.dp-settings-provider-config-status')).toHaveText('Provider configured');
+  await setProviderEnabled(card, false);
+  await expect(body).toBeHidden();
+  await expect(status).toHaveText('Provider configured');
 
   await page.locator('#view-settings [data-action="save"]').click();
-  await expect(page.locator('.dp-settings-provider-card--alldebrid :scope > .card-body')).toBeHidden();
-  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-config-status')).toHaveText('Provider configured');
+  card = page.locator('.dp-settings-provider-card--alldebrid');
+  body = card.locator(':scope > .card-body');
+  status = card.locator('.dp-settings-provider-config-status');
+  await expect(body).toBeHidden();
+  await expect(status).toHaveText('Provider configured');
 
-  const persistedEnable = page.locator('.dp-settings-provider-card--alldebrid input[data-integration-enabled="alldebrid"]');
-  await persistedEnable.check();
-  await expect(page.locator('.dp-settings-provider-card--alldebrid :scope > .card-body')).toBeVisible();
-  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-key-present')).toHaveText('Key present');
+  await setProviderEnabled(card, true);
+  await expect(body).toBeVisible();
+  await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
 });
 
 test('WS1-P2 provider header stays centered/non-overlapping and semantic in dark/light/narrow layouts', async ({ page }) => {

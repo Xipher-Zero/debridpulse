@@ -59,10 +59,6 @@
       const aria2Row = document.getElementById('dot-aria2')?.closest('.conn-row');
       if (footer) footer.insertBefore(node, aria2Row || footer.firstChild);
     }
-
-    document.querySelectorAll('.sidebar-footer a[href*="alldebrid.com"]').forEach(link => {
-      link.closest('.conn-row')?.remove();
-    });
     return node;
   }
 
@@ -122,7 +118,7 @@
     const ownedGeneration = invalidate();
     let settings;
     try { settings = settingsData; } catch (_) { settings = null; }
-    let providers = candidates(settings);
+    const providers = candidates(settings);
     if (providers === null) {
       render([], 'unknown');
       return null;
@@ -141,8 +137,8 @@
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates});
 
-  // Compatibility hooks keep the existing connection-check cadence and
-  // navigation/save invalidation points while replacing their provider owner.
+  // Transitional aliases preserve the existing connection-check cadence and
+  // navigation/save invalidation call sites. They contain no provider identity.
   window.loadAllDebridStatus = refresh;
   window.invalidateAllDebridStatus = invalidate;
 

@@ -68,7 +68,7 @@ test('UISTATE-001-D navigation invalidates observation started by prior surface'
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await c.resolve(0, {state:'healthy', username:'stale-nav'}); await r1;
-  await expect(alldebrid(page)).not.toHaveAttribute('data-provider-state', 'healthy');
+  await expect(alldebrid(page)).toHaveCount(0);
 });
 
 test('UISTATE-001-E settings-generation invalidation defeats pre-save observation', async ({ page }) => {

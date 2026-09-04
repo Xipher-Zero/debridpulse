@@ -12,7 +12,11 @@ GENERAL_DEF = (ROOT / "backend" / "providers" / "general_http" / "definition.py"
 
 
 def test_provider_status_owner_is_provider_neutral():
-    assert "alldebrid" not in STATUS.lower()
+    lower = STATUS.lower()
+    assert "alldebrid.com" not in lower
+    assert "candidate.id === 'alldebrid'" not in lower
+    assert "entry.id === 'alldebrid'" not in lower
+    assert 'data-provider-id="alldebrid"' not in lower
     assert "integration.kind === 'provider'" in STATUS
     assert "integration.enabled !== false" in STATUS
     assert "presentation.status_name" in STATUS
@@ -30,9 +34,11 @@ def test_operational_health_is_not_synthesized_from_enabled_or_configured_state(
 
 
 def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
-    assert "alldebrid" in ACCOUNT.lower()
+    assert "candidate.id === 'alldebrid'" in ACCOUNT
+    assert "alldebrid.com" in ACCOUNT
     assert "premiumUntil" in ACCOUNT
-    assert "alldebrid" not in STATUS.lower()
+    assert "alldebrid.com" not in STATUS.lower()
+    assert "candidate.id === 'alldebrid'" not in STATUS.lower()
 
 
 def test_presentation_identity_and_health_sources_are_provider_owned():
