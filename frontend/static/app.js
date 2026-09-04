@@ -103,7 +103,7 @@ function nav(el) {
   if (subtitle) subtitle.textContent = subtitles[v] || '';
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title:titles[v]||v}}));
   if (v === 'dashboard') { loadStats(); loadRecent(); }
-  if (v === 'torrents')  loadTorrents();
+  if (v === 'torrents')  { clearSelection(); loadTorrents(); }
   if (v === 'events')    loadEvents();
   if (v === 'stats')     loadDetailedStats();
   if (v === 'settings')  loadSettings();
@@ -1021,8 +1021,19 @@ async function loadStats() {
 }
 
 
-function goToTorrentPage(p) { torrentPage = Math.max(1,p); loadTorrents(); }
-function onPageSizeChange(v) { torrentPageSize=Math.min(Math.max(parseInt(v)||25,15),100); torrentPage=1; loadTorrents(); }
+function goToTorrentPage(p) {
+  const nextPage = Math.max(1, p);
+  if (nextPage !== torrentPage) clearSelection();
+  torrentPage = nextPage;
+  loadTorrents();
+}
+function onPageSizeChange(v) {
+  const nextSize = Math.min(Math.max(parseInt(v)||25,15),100);
+  if (nextSize !== torrentPageSize || torrentPage !== 1) clearSelection();
+  torrentPageSize = nextSize;
+  torrentPage = 1;
+  loadTorrents();
+}
 
 async function checkForUpdate() {
   try {
@@ -1401,7 +1412,9 @@ function downloadEmptyMessage() {
 }
 
 function onTorrentSearchInput() {
-  currentTorrentSearch = (document.getElementById('torrent-search')?.value || '').trim();
+  const nextSearch = (document.getElementById('torrent-search')?.value || '').trim();
+  if (nextSearch !== currentTorrentSearch) clearSelection();
+  currentTorrentSearch = nextSearch;
   torrentPage = 1;
   if (_torrentSearchTimer) clearTimeout(_torrentSearchTimer);
   _torrentSearchTimer = setTimeout(() => {
@@ -1423,14 +1436,15 @@ async function loadTorrents() {
     torrentTotal = total ?? items.length;
     const tb = document.getElementById('t-tbody');
     renderTorrentPagination(torrentTotal, _limit, _offset);
-    clearSelection();
+    reconcileDownloadSelection(items);
     if (!items.length) {
       tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
+      syncDownloadSelectionUi();
       return;
     }
     const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
     tb.innerHTML = items.map(t => `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" tabindex="0" onclick="if(!event.target.closest('button,input,a,select,textarea,label,[role=button]'))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
-      <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" onchange="onCheckboxChange()"/></td>
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
       <td>
         <div class="t-name">${esc(t.name)||'(unnamed)'}</div>
         <div class="t-hash">${(t.hash||'').substring(0,16)}${t.hash?'…':''}</div>
@@ -1454,6 +1468,7 @@ async function loadTorrents() {
         </div>
       </td>
     </tr>`).join('');
+    syncDownloadSelectionUi();
   } catch(e) { toast(sanitizeErrorMsg(e.message),'error'); }
   document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));
 }
@@ -1562,20 +1577,20 @@ async function recoverAll(button) {
 async function deleteT(id, eventObj, button) {
   eventObj?.stopPropagation();
 
-  if (!confirm('Delete from AllDebrid and remove from list?')) {
-    return;
-  }
+  const confirmedIds = await confirmDownloadRemoval([id]);
+  if (!confirmedIds) return;
+  const targetId = confirmedIds[0];
 
   setButtonPending(button, true, 'Deleting…');
 
   try {
     await api(
       'DELETE',
-      `/torrents/${id}?from_alldebrid=true`
+      `/torrents/${targetId}?from_alldebrid=true`
     );
 
     toast('Deleted','success');
-    loadTorrents();
+    await loadTorrents();
     loadStats();
   } catch(e) {
     toast(sanitizeErrorMsg(e.message),'error');
@@ -1823,48 +1838,111 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Bulk selection ────────────────────────────────────────────────────────────
 let _selectedIds = new Set();
 
-function onCheckboxChange() {
-  _selectedIds = new Set(
-    [...document.querySelectorAll('.t-chk:checked')].map(el => parseInt(el.dataset.id))
+function stableDownloadId(value) {
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+
+function reconcileDownloadSelection(items) {
+  const presentIds = new Set(
+    (Array.isArray(items) ? items : [])
+      .map(item => stableDownloadId(item?.id))
+      .filter(id => id !== null)
   );
-  const bar = document.getElementById('bulk-bar');
-  const cnt = document.getElementById('bulk-count');
-  if (_selectedIds.size > 0) {
-    bar.classList.add('visible');
-    cnt.textContent = _selectedIds.size + ' Selected';
-  } else {
-    bar.classList.remove('visible');
+  for (const id of [..._selectedIds]) {
+    if (!presentIds.has(id)) _selectedIds.delete(id);
   }
+}
+
+function syncDownloadSelectionUi() {
+  const checkboxes = [...document.querySelectorAll('.t-chk')];
+  let selectedVisible = 0;
+  checkboxes.forEach(checkbox => {
+    const id = stableDownloadId(checkbox.dataset.id);
+    checkbox.checked = id !== null && _selectedIds.has(id);
+    if (checkbox.checked) selectedVisible += 1;
+  });
+
   const all = document.getElementById('chk-all');
-  const total = document.querySelectorAll('.t-chk').length;
-  if (all) all.indeterminate = _selectedIds.size > 0 && _selectedIds.size < total;
+  if (all) {
+    all.checked = checkboxes.length > 0 && selectedVisible === checkboxes.length;
+    all.indeterminate = selectedVisible > 0 && selectedVisible < checkboxes.length;
+  }
+
+  const bar = document.getElementById('bulk-bar');
+  const count = document.getElementById('bulk-count');
+  if (_selectedIds.size > 0) {
+    bar?.classList.add('visible');
+    if (count) count.textContent = _selectedIds.size + ' Selected';
+  } else {
+    bar?.classList.remove('visible');
+    if (count) count.textContent = '';
+  }
+}
+
+function onCheckboxChange(checkbox) {
+  const id = stableDownloadId(checkbox?.dataset?.id);
+  if (id === null) {
+    syncDownloadSelectionUi();
+    return;
+  }
+  if (checkbox.checked) _selectedIds.add(id);
+  else _selectedIds.delete(id);
+  syncDownloadSelectionUi();
 }
 
 function toggleAllCheckboxes(el) {
-  document.querySelectorAll('.t-chk').forEach(c => {
-    c.checked = el.checked;
+  document.querySelectorAll('.t-chk').forEach(checkbox => {
+    const id = stableDownloadId(checkbox.dataset.id);
+    if (id === null) return;
+    if (el.checked) _selectedIds.add(id);
+    else _selectedIds.delete(id);
   });
-  onCheckboxChange();
+  syncDownloadSelectionUi();
 }
 
 function clearSelection() {
   _selectedIds.clear();
-  document.querySelectorAll('.t-chk').forEach(c => c.checked = false);
-  const all = document.getElementById('chk-all');
-  if (all) { all.checked = false; all.indeterminate = false; }
-  document.getElementById('bulk-bar').classList.remove('visible');
+  syncDownloadSelectionUi();
+}
+
+async function confirmDownloadRemoval(ids) {
+  const stableIds = [...new Set(
+    (Array.isArray(ids) ? ids : [])
+      .map(stableDownloadId)
+      .filter(id => id !== null)
+  )];
+  if (!stableIds.length) return null;
+
+  const modal = window.DPSettingsModal;
+  if (!modal || typeof modal.confirm !== 'function') {
+    toast('Removal confirmation is unavailable. No downloads were removed.', 'error');
+    return null;
+  }
+
+  const count = stableIds.length;
+  const confirmed = await modal.confirm({
+    title: count === 1 ? 'Remove download?' : `Remove ${count} downloads?`,
+    message: count === 1
+      ? 'Remove this download from Downloads?'
+      : `Remove these ${count} downloads from Downloads?`,
+    confirmLabel: 'Remove',
+    cancelLabel: 'Cancel',
+    tone: 'danger',
+  });
+
+  return confirmed ? stableIds : null;
 }
 
 async function bulkAction(action, button) {
   if (!_selectedIds.size) return;
 
-  const ids = [..._selectedIds];
+  let ids = [..._selectedIds];
 
-  if (
-    action === 'delete' &&
-    !confirm(`Delete ${ids.length} torrents?`)
-  ) {
-    return;
+  if (action === 'delete') {
+    const confirmedIds = await confirmDownloadRemoval(ids);
+    if (!confirmedIds) return;
+    ids = confirmedIds;
   }
 
   const pendingLabels = {
@@ -1893,8 +1971,12 @@ async function bulkAction(action, button) {
       r.failed ? 'warn' : 'success'
     );
 
-    clearSelection();
-    loadTorrents();
+    if (action === 'delete') {
+      await loadTorrents();
+    } else {
+      clearSelection();
+      loadTorrents();
+    }
     loadStats();
   } catch(e) {
     toast(e.message, 'error');
