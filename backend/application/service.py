@@ -6,6 +6,7 @@ native job identifiers, response formats, or integration error codes.
 from __future__ import annotations
 
 import asyncio
+import errno
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlsplit
 
@@ -18,6 +19,7 @@ from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
     extract_hash_from_torrent, normalize_direct_links,
 )
+from transfers.storage import StorageDomain
 
 
 class ApplicationService:
@@ -52,6 +54,53 @@ class ApplicationService:
         if self.capacity is None or not hasattr(self.capacity, "report_application_exception"):
             return None
         return self.capacity.report_application_exception(exc)
+
+    def _record_download_storage_fault(self, error: NormalizedError | None):
+        """Feed neutral local-resource failures into the canonical storage owner."""
+        if (
+            self.capacity is None
+            or not hasattr(self.capacity, "report_fault")
+            or error is None
+            or error.domain != Domain.LOCAL_RESOURCE
+        ):
+            return None
+        category = error.category
+        if category in {Category.DISK_FULL, Category.LOCAL_RESOURCE_EXHAUSTED, Category.DOWNLOAD_STORAGE_FULL}:
+            code = errno.ENOSPC
+        elif category == Category.QUOTA_EXCEEDED:
+            code = getattr(errno, "EDQUOT", errno.ENOSPC)
+        elif category == Category.DOWNLOAD_STORAGE_READ_ONLY:
+            code = errno.EROFS
+        elif category in {Category.LOCAL_IO_FAILURE, Category.DOWNLOAD_STORAGE_UNAVAILABLE}:
+            code = errno.EIO
+        elif category == Category.PERMISSION_DENIED:
+            code = errno.EACCES
+        elif category == Category.PATH_UNAVAILABLE:
+            code = errno.ENOENT
+        else:
+            return None
+        return self.capacity.report_fault(StorageDomain.DOWNLOAD, OSError(code, category.value))
+
+    async def _contain_download_storage_faults(self, transfers) -> None:
+        """Close dispatch and retain the same logical transfer after executor storage failure."""
+        for transfer in transfers:
+            for artifact in await self.repository.artifacts(transfer.id):
+                if artifact.state != "queued" or artifact.error is None:
+                    continue
+                fault = self._record_download_storage_fault(artifact.error)
+                if fault is None:
+                    continue
+                self.engine.dispatch_permitted = False
+                # The universal retry policy already kept this artifact
+                # nonterminal. Replace its generic LOCAL_RESOURCE diagnostic with
+                # the stable download-storage semantic while preserving retry_at.
+                if artifact.error.category != fault.error.category:
+                    await self.repository.artifact_state(
+                        artifact.id,
+                        "queued",
+                        error=fault.error,
+                        retry_at=artifact.retry_at,
+                    )
 
     @asynccontextmanager
     async def _storage_checked_admission(self, *, maintenance: bool):
@@ -267,9 +316,14 @@ class ApplicationService:
 
     async def reconcile_executions(self):
         async with self.application_operation():
-            await self.check_resources()
+            # Execution reconciliation consumes the in-memory storage state; the
+            # dedicated disk guard owns periodic recovery probes. This prevents a
+            # fast executor loop from erasing a just-observed ENOSPC/EDQUOT/EROFS
+            # transition before the bounded recovery cadence.
+            self.engine.dispatch_permitted = self.application_storage_permitted() and self.download_storage_permitted()
             before = await self.repository.active()
             await self.engine.reconcile_executions()
+            await self._contain_download_storage_faults(before)
             for transfer in before:
                 await self._publish(transfer.id)
 

@@ -3,11 +3,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from transfers.errors import Domain, NormalizedError, Recovery, Retryability
+from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability
 from transfers.models import TransferState
 
 
 _TERMINAL = {TransferState.COMPLETED, TransferState.DELETED, TransferState.CANCELLED}
+_STORAGE_RESOURCE_FAILURES = frozenset({
+    Category.DISK_FULL,
+    Category.LOCAL_RESOURCE_EXHAUSTED,
+    Category.QUOTA_EXCEEDED,
+    Category.PERMISSION_DENIED,
+    Category.LOCAL_IO_FAILURE,
+    Category.PATH_UNAVAILABLE,
+    Category.DOWNLOAD_STORAGE_FULL,
+    Category.DOWNLOAD_STORAGE_READ_ONLY,
+    Category.DOWNLOAD_STORAGE_UNAVAILABLE,
+})
 
 
 def transition_allowed(current: TransferState, target: TransferState, *, operator=False, verified=False) -> bool:
@@ -58,6 +69,14 @@ class TransferPolicy:
         return policy.retry(error, attempts, now, can_refresh=True)
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
+        # Download-storage failures are environmental admission conditions, not
+        # logical transfer failures.  They must remain retryable regardless of
+        # the normal execution-attempt budget so recovery of the same storage
+        # domain can continue the same logical transfer.  ApplicationService
+        # feeds these neutral LOCAL_RESOURCE semantics into the canonical
+        # DiskCapacity owner, which closes dispatch until a recovery probe.
+        if error.domain == Domain.LOCAL_RESOURCE and error.category in _STORAGE_RESOURCE_FAILURES:
+            return RetryDecision(Recovery.RETRY, now)
         if error.domain == Domain.SECURITY or error.retryability in {Retryability.NEVER, Retryability.UNKNOWN}:
             return RetryDecision()
         if error.recovery in {Recovery.REQUIRE_OPERATOR, Recovery.FAIL, Recovery.NONE}:
