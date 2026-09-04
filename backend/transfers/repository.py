@@ -755,6 +755,9 @@ class TransferRepository:
             row = await db.fetchone("SELECT * FROM execution_attempts WHERE id=?", (handle.attempt_id,))
             if not row or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RECONCILIATION))
+            previous = TransferProgress(**codec.load(row["progress"], {}))
+            if observation.progress.completed_bytes > previous.completed_bytes:
+                await db.execute("UPDATE download_files SET recovery_failures=0,recovery_refreshes=0 WHERE id=?", (row["artifact_id"],))
             error = codec.dump(observation.error) if observation.error else None
             revoked = observation.error is not None and observation.error.category == Category.OWNERSHIP_CONFLICT
             await db.execute("""UPDATE execution_attempts SET state=?,progress=?,error=?,authorized=CASE WHEN ? THEN 0 ELSE authorized END,
