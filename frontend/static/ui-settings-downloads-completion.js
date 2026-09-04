@@ -149,89 +149,6 @@
     });
   }
 
-  function focusableModalElements(dialog) {
-    return Array.from(dialog?.querySelectorAll(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
-    ) || []).filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
-  }
-
-  function openSettingsModal({title, role = 'dialog', confirmLabel = 'Confirm', confirmClass = 'btn-primary', onClose = null}) {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const overlay = document.createElement('div');
-    const dialogId = `dp-settings-modal-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const titleId = `${dialogId}-title`;
-    overlay.className = 'dp-settings-confirm-overlay';
-    overlay.innerHTML = `
-      <section class="dp-settings-confirm-dialog" role="${role}" aria-modal="true" aria-labelledby="${titleId}">
-        <header class="dp-settings-confirm-header">
-          <div class="dp-settings-confirm-title" id="${titleId}"></div>
-        </header>
-        <div class="dp-settings-confirm-body"></div>
-        <footer class="dp-settings-confirm-footer">
-          <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
-          <button class="btn ${confirmClass}" type="button" data-confirm-accept></button>
-        </footer>
-      </section>`;
-
-    const dialog = overlay.querySelector('.dp-settings-confirm-dialog');
-    const titleEl = overlay.querySelector('.dp-settings-confirm-title');
-    const body = overlay.querySelector('.dp-settings-confirm-body');
-    const cancel = overlay.querySelector('[data-confirm-cancel]');
-    const accept = overlay.querySelector('[data-confirm-accept]');
-    titleEl.textContent = String(title || 'Settings');
-    accept.textContent = String(confirmLabel || 'Confirm');
-
-    let settled = false;
-    let resolveClosed;
-    const closed = new Promise(resolve => { resolveClosed = resolve; });
-    const close = reason => {
-      if (settled) return;
-      settled = true;
-      overlay.remove();
-      if (!document.querySelector('.dp-settings-confirm-overlay')) {
-        document.body.classList.remove('dp-settings-confirm-open');
-      }
-      if (typeof onClose === 'function') {
-        try { onClose(reason); } catch (_) {}
-      }
-      if (previousFocus?.isConnected) {
-        try { previousFocus.focus(); } catch (_) {}
-      }
-      resolveClosed(reason);
-    };
-
-    cancel.addEventListener('click', () => close('cancel'));
-    overlay.addEventListener('keydown', event => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        close('cancel');
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const focusable = focusableModalElements(dialog);
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    });
-
-    document.body.appendChild(overlay);
-    document.body.classList.add('dp-settings-confirm-open');
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(() => cancel.focus());
-    } else {
-      cancel.focus();
-    }
-
-    return {overlay, dialog, body, cancel, accept, close, closed};
-  }
-
   function directoryReasonLabel(reason) {
     const key = String(reason || '').trim();
     if (Object.prototype.hasOwnProperty.call(DIRECTORY_REASON_LABELS, key)) {
@@ -295,32 +212,38 @@
 
   function browseDownloadFolder(origin) {
     const field = root()?.querySelector('[data-setting="download_folder"]');
-    if (!field || typeof api !== 'function') return;
+    const modalApi = window.DPSettingsPage;
+    if (!field || typeof api !== 'function' || !modalApi || typeof modalApi.confirm !== 'function') return;
 
     const originalValue = String(field.value ?? '');
     let currentResponse = null;
-    let confirmedPath = null;
     let generation = 0;
     let controller = null;
 
-    const modal = openSettingsModal({
+    const confirmation = modalApi.confirm({
       title: 'Choose Download Folder',
-      role: 'dialog',
+      message: '',
       confirmLabel: 'Use This Folder',
-      confirmClass: 'btn-primary',
-      onClose: () => {
-        generation += 1;
-        if (controller) controller.abort();
-        controller = null;
-      },
+      tone: 'warning',
     });
-    modal.dialog.classList.add('dp-settings-directory-dialog');
-    modal.body.classList.add('dp-settings-directory-body');
-    modal.cancel.dataset.directoryCancel = '1';
-    modal.accept.dataset.directoryConfirm = '1';
-    modal.accept.disabled = true;
+    const overlays = Array.from(document.querySelectorAll('.dp-settings-confirm-overlay'));
+    const overlay = overlays[overlays.length - 1];
+    const dialog = overlay?.querySelector('.dp-settings-confirm-dialog');
+    const body = overlay?.querySelector('.dp-settings-confirm-body');
+    const cancel = overlay?.querySelector('[data-confirm-cancel]');
+    const accept = overlay?.querySelector('[data-confirm-accept]');
+    if (!overlay || !dialog || !body || !cancel || !accept) return;
 
-    modal.body.innerHTML = `
+    dialog.classList.add('dp-settings-directory-dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.removeAttribute('aria-describedby');
+    dialog.removeAttribute('data-tone');
+    body.classList.add('dp-settings-directory-body');
+    cancel.dataset.directoryCancel = '1';
+    accept.dataset.directoryConfirm = '1';
+    accept.disabled = true;
+
+    body.innerHTML = `
       <div class="dp-settings-directory-browser">
         <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
         <div class="dp-settings-directory-current">
@@ -339,19 +262,19 @@
         <div class="dp-settings-directory-list" data-directory-list aria-label="Directories"></div>
       </div>`;
 
-    const notice = modal.body.querySelector('[data-directory-notice]');
-    const currentPath = modal.body.querySelector('[data-directory-current-path]');
-    const currentState = modal.body.querySelector('[data-directory-current-state]');
-    const capacity = modal.body.querySelector('[data-directory-capacity]');
-    const up = modal.body.querySelector('[data-directory-up]');
-    const loading = modal.body.querySelector('[data-directory-loading]');
-    const errorBox = modal.body.querySelector('[data-directory-error]');
-    const list = modal.body.querySelector('[data-directory-list]');
+    const notice = body.querySelector('[data-directory-notice]');
+    const currentPath = body.querySelector('[data-directory-current-path]');
+    const currentState = body.querySelector('[data-directory-current-state]');
+    const capacity = body.querySelector('[data-directory-capacity]');
+    const up = body.querySelector('[data-directory-up]');
+    const loading = body.querySelector('[data-directory-loading]');
+    const errorBox = body.querySelector('[data-directory-error]');
+    const list = body.querySelector('[data-directory-list]');
 
     const setLoading = busy => {
-      modal.dialog.setAttribute('aria-busy', busy ? 'true' : 'false');
+      dialog.setAttribute('aria-busy', busy ? 'true' : 'false');
       loading.textContent = busy ? 'Loading…' : '';
-      modal.accept.disabled = busy || currentResponse?.current?.selectable !== true;
+      accept.disabled = busy || currentResponse?.current?.selectable !== true;
       up.disabled = busy || currentResponse?.parent == null;
       list.querySelectorAll('[data-directory-row]').forEach(row => {
         row.disabled = busy || row.dataset.accessible !== 'true';
@@ -370,7 +293,7 @@
         currentState.textContent = 'Not validated';
         currentState.dataset.selectable = 'false';
         capacity.textContent = 'Capacity unavailable';
-        modal.accept.disabled = true;
+        accept.disabled = true;
         up.disabled = true;
         return;
       }
@@ -427,7 +350,7 @@
         });
       }
 
-      modal.accept.disabled = !selectable;
+      accept.disabled = !selectable;
     };
 
     const loadDirectory = async (path, {fallbackOnFailure = false} = {}) => {
@@ -441,11 +364,11 @@
       const query = path == null ? '' : `?${new URLSearchParams({path: String(path)}).toString()}`;
       try {
         const payload = await api('GET', `/settings/directories${query}`, undefined, 10000, {signal: controller.signal});
-        if (requestGeneration !== generation) return;
+        if (requestGeneration !== generation || !overlay.isConnected) return;
         render(payload);
         setLoading(false);
       } catch (error) {
-        if (requestGeneration !== generation || error?.name === 'AbortError') return;
+        if (requestGeneration !== generation || error?.name === 'AbortError' || !overlay.isConnected) return;
         if (fallbackOnFailure) {
           notice.hidden = false;
           notice.textContent = 'The current Download Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.';
@@ -463,15 +386,17 @@
       void loadDirectory(currentResponse.parent);
     });
 
-    modal.accept.addEventListener('click', () => {
-      if (currentResponse?.current?.selectable !== true) return;
-      confirmedPath = String(currentResponse.current.path ?? '');
+    void confirmation.then(accepted => {
+      generation += 1;
+      if (controller) controller.abort();
+      controller = null;
+      if (!accepted || currentResponse?.current?.selectable !== true) return;
       const liveField = document.getElementById(field.id);
       if (!liveField) return;
-      liveField.value = confirmedPath;
+      const canonicalPath = String(currentResponse.current.path ?? '');
+      liveField.value = canonicalPath;
       liveField.dispatchEvent(new Event('input', {bubbles: true}));
       liveField.dispatchEvent(new Event('change', {bubbles: true}));
-      modal.close('confirm');
     });
 
     if (originalValue.length) void loadDirectory(originalValue, {fallbackOnFailure: true});

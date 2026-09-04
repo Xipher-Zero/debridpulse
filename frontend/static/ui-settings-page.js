@@ -2022,5 +2022,5 @@
   window.loadSettings = load;
   try { loadSettings = load; } catch (_) {}
 
-  window.DPSettingsPage = Object.freeze({load});
+  window.DPSettingsPage = Object.freeze({load, confirm: confirmAction});
 })();
