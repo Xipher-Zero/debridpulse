@@ -1,24 +1,14 @@
 """Universal lifecycle and retry decisions; no integration-native semantics."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability
+from transfers.errors import Domain, NormalizedError, Recovery, Retryability
 from transfers.models import TransferState
 
 
 _TERMINAL = {TransferState.COMPLETED, TransferState.DELETED, TransferState.CANCELLED}
-_STORAGE_RESOURCE_FAILURES = frozenset({
-    Category.DISK_FULL,
-    Category.LOCAL_RESOURCE_EXHAUSTED,
-    Category.QUOTA_EXCEEDED,
-    Category.PERMISSION_DENIED,
-    Category.LOCAL_IO_FAILURE,
-    Category.PATH_UNAVAILABLE,
-    Category.DOWNLOAD_STORAGE_FULL,
-    Category.DOWNLOAD_STORAGE_READ_ONLY,
-    Category.DOWNLOAD_STORAGE_UNAVAILABLE,
-})
 
 
 def transition_allowed(current: TransferState, target: TransferState, *, operator=False, verified=False) -> bool:
@@ -60,6 +50,7 @@ class TransferPolicy:
     resolution_max_attempts: int | None = None
     resolution_retry_delay: float | None = None
     stalled_after_seconds: float = 0
+    local_resource_failure_handler: Callable[[NormalizedError], bool] | None = None
 
     def retry_resolution(self, error, attempts, now):
         from dataclasses import replace
@@ -69,13 +60,17 @@ class TransferPolicy:
         return policy.retry(error, attempts, now, can_refresh=True)
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
-        # Download-storage failures are environmental admission conditions, not
-        # logical transfer failures.  They must remain retryable regardless of
-        # the normal execution-attempt budget so recovery of the same storage
-        # domain can continue the same logical transfer.  ApplicationService
-        # feeds these neutral LOCAL_RESOURCE semantics into the canonical
-        # DiskCapacity owner, which closes dispatch until a recovery probe.
-        if error.domain == Domain.LOCAL_RESOURCE and error.category in _STORAGE_RESOURCE_FAILURES:
+        # Universal-core semantics remain unchanged unless the application
+        # explicitly installs an environmental local-resource admission hook.
+        # The hook is provider-neutral and may prove that a LOCAL_RESOURCE
+        # failure is an application-level storage condition. Only a recognized
+        # condition is deferred nonterminally; unknown local failures retain the
+        # established retry/terminal policy below.
+        if (
+            error.domain == Domain.LOCAL_RESOURCE
+            and self.local_resource_failure_handler is not None
+            and self.local_resource_failure_handler(error)
+        ):
             return RetryDecision(Recovery.RETRY, now)
         if error.domain == Domain.SECURITY or error.retryability in {Retryability.NEVER, Retryability.UNKNOWN}:
             return RetryDecision()

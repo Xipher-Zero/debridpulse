@@ -21,16 +21,29 @@ def _local_error(category):
     )
 
 
-def test_download_storage_environmental_failure_does_not_terminalize_on_retry_budget():
+def test_universal_policy_does_not_reinterpret_local_storage_failure_without_application_handler():
     policy = TransferPolicy(max_attempts=1)
+    decision = policy.retry(_local_error(Category.DISK_FULL), attempts=999, now=42.0)
+    assert not decision.automatic
+
+
+def test_application_storage_handler_can_defer_recognized_environmental_failure():
+    seen = []
+
+    def contain(error):
+        seen.append(error.category)
+        return error.category == Category.DISK_FULL
+
+    policy = TransferPolicy(max_attempts=1, local_resource_failure_handler=contain)
     decision = policy.retry(_local_error(Category.DISK_FULL), attempts=999, now=42.0)
     assert decision.automatic
     assert decision.action == Recovery.RETRY
     assert decision.retry_at == 42.0
+    assert seen == [Category.DISK_FULL]
 
 
-def test_non_storage_local_failure_keeps_normal_retry_policy():
-    policy = TransferPolicy(max_attempts=1)
+def test_application_storage_handler_cannot_make_unrecognized_local_failure_retryable():
+    policy = TransferPolicy(max_attempts=1, local_resource_failure_handler=lambda error: False)
     decision = policy.retry(_local_error(Category.LOCAL_PATH_CONFLICT), attempts=999, now=42.0)
     assert not decision.automatic
 

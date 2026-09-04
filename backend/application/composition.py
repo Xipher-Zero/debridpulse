@@ -23,6 +23,15 @@ def configure(application):
     application.engine.registry = registry
     application.engine.root = settings.download_folder
     policy = settings.transfer_policy
+
+    def contain_local_resource_failure(error):
+        """Bridge neutral local-resource failures into canonical storage health."""
+        fault = application._record_download_storage_fault(error)
+        if fault is None:
+            return False
+        application.engine.dispatch_permitted = False
+        return True
+
     application.engine.configure_policy(replace(application.engine.policy,
         max_attempts=policy.execution_retry_count + 1,
         retry_delay=policy.execution_retry_delay_seconds,
@@ -32,7 +41,8 @@ def configure(application):
         resolution_concurrency=policy.resolution_concurrency,
         cleanup_after_completion=True,
         stalled_after_seconds=policy.stalled_timeout_hours * 3600,
-        resource_poll_interval=policy.provider_poll_interval_seconds))
+        resource_poll_interval=policy.provider_poll_interval_seconds,
+        local_resource_failure_handler=contain_local_resource_failure))
     # DiskCapacity is the canonical storage owner. Reconfigure the existing
     # instance so transition identity is not replaced on every Settings apply.
     from db import database
