@@ -56,7 +56,7 @@ def configure(application):
     # Establish real initial state immediately; the periodic guard owns later
     # recovery probes. This probe does not write to either filesystem.
     initial_health = capacity.check()
-    application.engine.dispatch_permitted = not initial_health["active"]
+    application.engine.dispatch_permitted = capacity.application_storage_permitted and not initial_health["active"]
     application.execution_poll_interval = policy.execution_poll_interval_seconds
     from postprocessors.archive.processor import ArchivePostProcessor
     application.engine.postprocessors = (ArchivePostProcessor(),) if settings.extract_enabled else ()
