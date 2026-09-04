@@ -224,7 +224,7 @@ async def test_application_storage_fault_closes_executor_dispatch(tmp_path, monk
 
 
 @pytest.mark.asyncio
-async def test_download_fault_defers_materialization_dispatch_and_postprocessing_without_pause(tmp_path, monkeypatch):
+async def test_download_fault_allows_route_resolution_but_defers_dispatch_and_postprocessing_without_pause(tmp_path, monkeypatch):
     capacity, app, download = _capacity(tmp_path)
     _patch_usage(monkeypatch, app, download)
     capacity.check()
@@ -233,7 +233,7 @@ async def test_download_fault_defers_materialization_dispatch_and_postprocessing
     capacity.report_fault(StorageDomain.DOWNLOAD, OSError(errno.EROFS, "read only"))
     await application.resolve_pending()
     await application.process_postprocessors()
-    assert engine.resolve_pending.await_count == 0
+    assert engine.resolve_pending.await_count == 1
     assert engine.process_postprocessors.await_count == 0
 
     _patch_usage(monkeypatch, app, download, download_free=0)

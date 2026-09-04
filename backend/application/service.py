@@ -326,11 +326,10 @@ class ApplicationService:
 
     async def resolve_pending(self):
         async with self.application_operation():
-            # Materialization occurs inside the universal resolution cycle. A
-            # download-storage guard therefore defers this cycle without failing
-            # the logical transfer; recovery resumes the same durable request.
-            if not self.download_storage_permitted():
-                return
+            # Route resolution/readiness is independent of Download Storage.
+            # The universal execution gate owns storage-consuming dispatch, so
+            # readiness may bind truthful provider provenance while dispatch is
+            # contained and the same durable request can execute after recovery.
             await self.engine.resolve_pending()
             self.execution_wakeup.set()
 
