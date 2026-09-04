@@ -21,6 +21,11 @@ class ApplicabilityClass(StrEnum):
     SPECIALIZED = "specialized"
 
 
+class ApplicabilityReadiness(StrEnum):
+    READY = "ready"
+    UNRESOLVED = "unresolved"
+
+
 class HostClaimScope(StrEnum):
     EXACT = "exact"
     DOMAIN = "domain"
@@ -35,10 +40,22 @@ class HostClaim:
 
 @dataclass(frozen=True)
 class ProviderApplicability:
-    """Canonical provider-owned applicability facts available without I/O."""
+    """Canonical provider-owned applicability facts available without I/O.
+
+    ``specialized`` declares participation in specialized URL applicability
+    competition even when the current request has no specialized host match.
+    Readiness is a separate dimension: only READY facts make absence of a
+    specialized match authoritative.
+    """
 
     generic_schemes: frozenset[str] = frozenset()
     specialized_hosts: tuple[HostClaim, ...] = ()
+    specialized: bool = False
+    readiness: ApplicabilityReadiness = ApplicabilityReadiness.READY
+
+    @property
+    def is_specialized(self) -> bool:
+        return self.specialized or bool(self.specialized_hosts)
 
 
 @dataclass(frozen=True)
@@ -63,6 +80,22 @@ class UrlApplicabilityView:
 class ApplicabilityMatch:
     provider_id: str
     classification: ApplicabilityClass
+
+
+@dataclass(frozen=True)
+class ApplicabilityAssessment:
+    """One authoritative classification result plus unresolved specialized owners."""
+
+    matches: tuple[ApplicabilityMatch, ...] = ()
+    unresolved_specialized: tuple[str, ...] = ()
+
+
+class ApplicabilityUnresolved(Exception):
+    """Initial provider competition cannot yet make an authoritative decision."""
+
+    def __init__(self, provider_ids: Iterable[str]):
+        self.provider_ids = tuple(dict.fromkeys(str(item) for item in provider_ids if item))
+        super().__init__("Specialized provider applicability is unresolved")
 
 
 def _normalize_scheme(value: str) -> str:
@@ -178,24 +211,24 @@ def _generic_match(
     return view.scheme in schemes
 
 
-def classify_provider_applicability(
+def assess_provider_applicability(
     request: TransferRequest,
     providers: Iterable[ProviderApplicabilityInput],
-) -> tuple[ApplicabilityMatch, ...]:
-    """Classify enabled providers without provider identity or runtime-state knowledge."""
+) -> ApplicabilityAssessment:
+    """Classify enabled providers and preserve unresolved specialized readiness."""
 
     inputs = tuple(
         item for item in providers
         if item.enabled and request.kind in item.request_types
     )
     if not inputs:
-        return ()
+        return ApplicabilityAssessment()
 
     if request.kind in {"magnet", "torrent"}:
-        return tuple(
+        return ApplicabilityAssessment(tuple(
             ApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)
             for item in inputs
-        )
+        ))
 
     view = parse_url_applicability(request)
     if view is None:
@@ -219,21 +252,43 @@ def classify_provider_applicability(
             for item in declared
         )
         if explicit_url_kind:
-            return ()
-        return tuple(
+            return ApplicabilityAssessment()
+        return ApplicabilityAssessment(tuple(
             ApplicabilityMatch(item.provider_id, ApplicabilityClass.STATIC)
             for item in declared
-        )
+        ))
 
     specialized: list[ApplicabilityMatch] = []
     generic: list[ApplicabilityMatch] = []
+    unresolved_specialized: list[str] = []
     for item in inputs:
         facts = item.applicability
-        if facts is not None and any(
-            _specialized_match(view, claim) for claim in facts.specialized_hosts
-        ):
-            specialized.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED))
+        if facts is None:
+            continue
+        if facts.is_specialized and facts.readiness == ApplicabilityReadiness.UNRESOLVED:
+            unresolved_specialized.append(item.provider_id)
+            continue
+        if any(_specialized_match(view, claim) for claim in facts.specialized_hosts):
+            specialized.append(
+                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED)
+            )
         elif _generic_match(view, item):
             generic.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.GENERIC))
 
-    return tuple(specialized or generic)
+    # An authoritative specialized match can proceed through the established
+    # same-class policy. Otherwise any unresolved specialized competitor makes
+    # generic fallback (or terminal unsupported) premature.
+    if specialized:
+        return ApplicabilityAssessment(tuple(specialized), tuple(unresolved_specialized))
+    if unresolved_specialized:
+        return ApplicabilityAssessment((), tuple(unresolved_specialized))
+    return ApplicabilityAssessment(tuple(generic))
+
+
+def classify_provider_applicability(
+    request: TransferRequest,
+    providers: Iterable[ProviderApplicabilityInput],
+) -> tuple[ApplicabilityMatch, ...]:
+    """Compatibility view of the canonical readiness-aware assessment."""
+
+    return assess_provider_applicability(request, providers).matches

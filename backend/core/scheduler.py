@@ -141,14 +141,15 @@ async def backup_loop():
 
 
 async def integration_maintenance_loop():
-    await asyncio.sleep(90)
+    """Run maintenance immediately, then on neutral change signals or cadence."""
     while True:
+        application.integration_wakeup.clear()
         if _application_storage_ready():
             try:
                 await application.maintain_integrations()
             except Exception as exc:
                 logger.error("Integration maintenance failed: %s", sanitize_exception(exc))
-        await asyncio.sleep(60)
+        await _wait_for_work(application.integration_wakeup, 60)
 
 
 async def application_events_loop():

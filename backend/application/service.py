@@ -34,9 +34,15 @@ class ApplicationService:
         self.capacity = capacity
         self.observability = None
         self.resolution_wakeup = asyncio.Event()
+        self.integration_wakeup = asyncio.Event()
         self.execution_wakeup = asyncio.Event()
         self.execution_poll_interval = 2
         self.definitions = ()
+
+    def notify_applicability_changed(self, _integration_id: str) -> None:
+        """Wake canonical maintenance and route resolution after neutral fact changes."""
+        self.resolution_wakeup.set()
+        self.integration_wakeup.set()
 
     def application_storage_permitted(self) -> bool:
         capacity = self.capacity

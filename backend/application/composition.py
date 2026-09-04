@@ -90,6 +90,7 @@ def configure(application):
     host_maintenance.bind(
         registry.providers.get("alldebrid"),
         initial=initial_host_binding,
+        notify=application.notify_applicability_changed,
     )
 
     application.lifecycle = (runtime_state, host_maintenance, administration)

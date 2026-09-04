@@ -21,7 +21,8 @@ import re2
 from core.logging_utils import sanitize_exception
 from integrations.runtime_state import RuntimeStateConflict, RuntimeStateRecord
 from transfers.applicability import (
-    HostClaim, HostClaimScope, ProviderApplicability, parse_url_applicability,
+    ApplicabilityReadiness, HostClaim, HostClaimScope, ProviderApplicability,
+    parse_url_applicability,
 )
 
 logger = logging.getLogger("alldebrid.hosts")
@@ -87,7 +88,7 @@ class AllDebridHostSnapshot:
 
 
 class AllDebridRequestApplicability:
-    """Evaluate native URL regexps locally and emit only neutral Item 6 facts.
+    """Evaluate native URL regexps locally and emit only neutral applicability facts.
 
     AllDebrid documents ``regexps`` as the supported-link validators. Host-only
     claims cannot express path/query restrictions, so native expressions stay
@@ -99,9 +100,20 @@ class AllDebridRequestApplicability:
     """
 
     def __init__(self, snapshot: AllDebridHostSnapshot | None) -> None:
+        self._ready = snapshot is not None
         self._compiled = tuple(
             (host, tuple(_compile_provider_pattern(pattern) for pattern in host.regexps))
             for host in (() if snapshot is None else snapshot.hosts)
+        )
+
+    def _facts(self, claims=()) -> ProviderApplicability:
+        return ProviderApplicability(
+            specialized_hosts=tuple(claims),
+            specialized=True,
+            readiness=(
+                ApplicabilityReadiness.READY
+                if self._ready else ApplicabilityReadiness.UNRESOLVED
+            ),
         )
 
     @staticmethod
@@ -109,24 +121,24 @@ class AllDebridRequestApplicability:
         return hostname == domain or hostname.endswith("." + domain)
 
     def __call__(self, request) -> ProviderApplicability:
+        if not self._ready:
+            return self._facts()
         view = parse_url_applicability(request)
         if view is None or view.scheme not in {"http", "https"}:
-            return ProviderApplicability()
+            return self._facts()
         raw = request.payload if isinstance(request.payload, str) else ""
         if not raw or len(raw) > _MAX_MATCH_URL_LENGTH:
-            return ProviderApplicability()
+            return self._facts()
 
         for host, patterns in self._compiled:
             if not any(self._within_domain(view.hostname, domain) for domain in host.domains):
                 continue
             if not any(pattern.search(raw) for pattern in patterns):
                 continue
-            return ProviderApplicability(
-                specialized_hosts=(
-                    HostClaim(view.hostname, HostClaimScope.EXACT, frozenset({view.scheme})),
-                )
-            )
-        return ProviderApplicability()
+            return self._facts((
+                HostClaim(view.hostname, HostClaimScope.EXACT, frozenset({view.scheme})),
+            ))
+        return self._facts()
 
 
 def _text(value: Any, *, field: str) -> str:
@@ -400,36 +412,80 @@ class AllDebridHostMaintenance:
         self._provider = None
         self._loaded_provider = None
         self._record: RuntimeStateRecord | None = None
+        self._record_usable = False
         self._snapshot: AllDebridHostSnapshot | None = None
         self._refresh_on_enable = False
         self._next_retry_at = 0.0
         self._refresh_lock = asyncio.Lock()
+        self._notify: Callable[[str], None] | None = None
 
-    def bind(self, provider, *, initial: bool = False) -> None:
+    def bind(
+        self,
+        provider,
+        *,
+        initial: bool = False,
+        notify: Callable[[str], None] | None = None,
+    ) -> None:
         """Bind the current registry instance without owning registry policy."""
         previous_enabled = bool(
             self._provider is not None and self._provider.descriptor.enabled
         )
+        if notify is not None:
+            self._notify = notify
+        retained_snapshot = self._snapshot
         self._provider = provider
-        self._loaded_provider = None
-        self._record = None
-        self._snapshot = None
+        self._loaded_provider = provider if retained_snapshot is not None else None
         if provider is not None:
-            self._apply_snapshot(provider, None)
+            self._publish_snapshot(provider, retained_snapshot)
         current_enabled = bool(provider is not None and provider.descriptor.enabled)
         if not initial and current_enabled and not previous_enabled:
             self._refresh_on_enable = True
+            self._next_retry_at = 0.0
         elif not current_enabled:
             self._refresh_on_enable = False
-        self._next_retry_at = 0.0
+            self._next_retry_at = 0.0
+        if not initial and current_enabled != previous_enabled:
+            self._notify_change()
 
     @staticmethod
-    def _apply_snapshot(provider, snapshot: AllDebridHostSnapshot | None) -> None:
-        claims = snapshot.claims if snapshot is not None else ()
-        provider.applicability = ProviderApplicability(
-            specialized_hosts=tuple(claims)
+    def _facts(snapshot: AllDebridHostSnapshot | None) -> ProviderApplicability:
+        return ProviderApplicability(
+            specialized_hosts=() if snapshot is None else tuple(snapshot.claims),
+            specialized=True,
+            readiness=(
+                ApplicabilityReadiness.READY
+                if snapshot is not None else ApplicabilityReadiness.UNRESOLVED
+            ),
         )
+
+    def _publish_snapshot(
+        self,
+        provider,
+        snapshot: AllDebridHostSnapshot | None,
+        *,
+        force_notify: bool = False,
+    ) -> None:
+        previous = getattr(provider, "applicability", None)
+        facts = self._facts(snapshot)
+        provider.applicability = facts
         provider.applicability_for = AllDebridRequestApplicability(snapshot)
+        previous_readiness = (
+            previous.readiness
+            if isinstance(previous, ProviderApplicability) and previous.is_specialized
+            else None
+        )
+        if previous_readiness is not None and previous_readiness != facts.readiness:
+            logger.info(
+                "AllDebrid applicability readiness changed: %s -> %s",
+                previous_readiness.value,
+                facts.readiness.value,
+            )
+        if force_notify or previous != facts:
+            self._notify_change()
+
+    def _notify_change(self) -> None:
+        if self._notify is not None:
+            self._notify(INTEGRATION_ID)
 
     @staticmethod
     async def _fetch_native_hosts(provider):
@@ -459,7 +515,12 @@ class AllDebridHostMaintenance:
             await self._refresh()
 
     def _refresh_due(self, now: float) -> bool:
-        if self._refresh_on_enable or self._snapshot is None or self._record is None:
+        if (
+            self._refresh_on_enable
+            or self._snapshot is None
+            or self._record is None
+            or not self._record_usable
+        ):
             return True
         if self._record.stale_after is None:
             return True
@@ -472,10 +533,8 @@ class AllDebridHostMaintenance:
         if not force and self._loaded_provider is provider:
             return
 
+        previous_snapshot = self._snapshot
         self._loaded_provider = provider
-        self._apply_snapshot(provider, None)
-        self._record = None
-        self._snapshot = None
         try:
             record = await self._store.load(INTEGRATION_ID, HOST_STATE_KEY)
         except Exception as exc:
@@ -483,14 +542,21 @@ class AllDebridHostMaintenance:
                 "AllDebrid host runtime state could not be loaded: %s",
                 sanitize_exception(exc),
             )
+            self._publish_snapshot(provider, previous_snapshot)
             return
+
         self._record = record
+        self._record_usable = False
         if record is None:
+            self._snapshot = previous_snapshot
+            self._publish_snapshot(provider, previous_snapshot)
             return
         if record.schema_version != HOST_SCHEMA_VERSION:
             logger.warning(
                 "AllDebrid host runtime snapshot is incompatible; maintenance refresh required"
             )
+            self._snapshot = previous_snapshot
+            self._publish_snapshot(provider, previous_snapshot)
             return
         try:
             snapshot = decode_host_snapshot(record.payload)
@@ -499,9 +565,13 @@ class AllDebridHostMaintenance:
                 "AllDebrid host runtime snapshot is invalid: %s",
                 sanitize_exception(exc),
             )
+            self._snapshot = previous_snapshot
+            self._publish_snapshot(provider, previous_snapshot)
             return
+        changed = snapshot != previous_snapshot
+        self._record_usable = True
         self._snapshot = snapshot
-        self._apply_snapshot(provider, snapshot)
+        self._publish_snapshot(provider, snapshot, force_notify=changed)
 
     async def _refresh(self) -> None:
         async with self._refresh_lock:
@@ -546,12 +616,14 @@ class AllDebridHostMaintenance:
                 )
                 return
 
+            changed = snapshot != self._snapshot or not self._record_usable
             self._record = record
+            self._record_usable = True
             self._snapshot = snapshot
             self._loaded_provider = provider
             self._refresh_on_enable = False
             self._next_retry_at = 0.0
-            self._apply_snapshot(provider, snapshot)
+            self._publish_snapshot(provider, snapshot, force_notify=changed)
             logger.info(
                 "AllDebrid supported-host snapshot refreshed (%d services, %d host claims)",
                 len(snapshot.hosts),

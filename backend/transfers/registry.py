@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from transfers.applicability import (
-    ProviderApplicabilityInput, classify_provider_applicability,
+    ApplicabilityUnresolved,
+    ProviderApplicabilityInput,
+    assess_provider_applicability,
 )
 from transfers.contracts import (
     ApplicabilitySource, CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
@@ -77,10 +79,15 @@ class IntegrationRegistry:
             return provider.applicability
         return None
 
-    def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE) -> tuple[Provider, ...]:
+    def _provider_selection(
+        self,
+        request: TransferRequest,
+        *,
+        capability: Capability = Capability.RESOLVE,
+    ):
         # Existing health semantics are a routing precondition: disabled,
         # unhealthy, incapable, or request-type-incompatible providers never
-        # participate in applicability class construction.
+        # participate in applicability class or readiness construction.
         candidates = [
             provider for provider in self.providers.values()
             if provider.descriptor.enabled
@@ -98,25 +105,29 @@ class IntegrationRegistry:
             )
             for provider in candidates
         )
-        applicable_ids = {
-            match.provider_id for match in classify_provider_applicability(request, inputs)
-        }
+        assessment = assess_provider_applicability(request, inputs)
+        applicable_ids = {match.provider_id for match in assessment.matches}
 
-        # Item 6 returns only one applicable class: SPECIALIZED when any such
-        # match exists, otherwise GENERIC (or STATIC for non-URL request types).
-        # Filter first so generic providers never enter ordinary selection when
-        # a specialized set exists. Only the resulting same-class set reaches
-        # the established neutral preference/priority/stable-identity policy.
+        # The classifier returns only one selectable class: SPECIALIZED when an
+        # authoritative specialized match exists, otherwise GENERIC/STATIC.
+        # When specialized applicability is unresolved it returns no generic
+        # matches, making accidental fallback impossible at this boundary.
         applicable = [
             provider for provider in candidates
             if provider.descriptor.id in applicable_ids
         ]
         applicable.sort(key=lambda provider: self._provider_selection_key(provider, request))
-        return tuple(applicable)
+        return tuple(applicable), assessment
+
+    def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE) -> tuple[Provider, ...]:
+        providers, _assessment = self._provider_selection(request, capability=capability)
+        return providers
 
     def provider_for(self, request: TransferRequest) -> Provider:
-        providers = self.eligible_providers(request)
+        providers, assessment = self._provider_selection(request)
         if not providers:
+            if assessment.unresolved_specialized:
+                raise ApplicabilityUnresolved(assessment.unresolved_specialized)
             raise TransferError(NormalizedError(
                 Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Stage.RESOLUTION,
                 retryability=Retryability.NEVER,

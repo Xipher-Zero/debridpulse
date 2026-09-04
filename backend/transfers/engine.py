@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 from weakref import WeakValueDictionary
 
+from transfers.applicability import ApplicabilityUnresolved
 from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
     Inventory, Manifest, PauseResume, ProviderInputContinuation, ResourceLookup)
 from transfers import codec
@@ -301,6 +302,11 @@ class TransferEngine:
                     return
                 result = await provider.resolve(record.request)
             await self._apply_resolution(record, attempt, provider, result)
+        except ApplicabilityUnresolved:
+            # Applicability is not authoritative yet. Leave the durable request
+            # pending with its identity and retry budget untouched; no route has
+            # been selected, so there is deliberately no attempt or provenance.
+            return
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
