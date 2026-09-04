@@ -203,7 +203,7 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
   });
 
   await page.reload();
-  await expect(page.locator('#dash-tbody .dp-downloads-detail-row').first()).toBeVisible();
+  await expect(page.locator('#dash-tbody tr[data-torrent-id="1"]')).toBeVisible();
 
   expect(await topbarOrder(page)).toEqual(['global-actions', 'engine-widget', 'theme-control']);
   const theme = await page.locator('.topbar-theme-control').boundingBox();
