@@ -24,11 +24,23 @@ class NativeDaemon:
         self.lookups = 0
         self.lost_ack = False
         self.ignore_pause = False
+        self.fail_control_before_apply = set()
+        self.fail_control_after_apply = set()
+        self.delayed_controls = {}
+        self.pending_controls = {}
 
     async def tell_status(self, gid):
         self.lookups += 1
         if gid not in self.jobs:
             raise Aria2RPCError(f"aria2 [1]: GID {gid} is not found", code=1)
+        pending = self.pending_controls.get(gid)
+        if pending:
+            method, remaining = pending
+            if remaining <= 0:
+                self.jobs[gid].status = "active" if method == "aria2.unpause" else "paused"
+                self.pending_controls.pop(gid, None)
+            else:
+                self.pending_controls[gid] = (method, remaining - 1)
         return self.jobs[gid]
 
     async def _call(self, method, params):
@@ -44,14 +56,24 @@ class NativeDaemon:
                 raise Aria2ConnectionError("connection lost after acceptance")
             return gid
         gid = params[0]
-        if method == "aria2.forcePause" and not self.ignore_pause:
-            self.jobs[gid].status = "paused"
+        if method in self.fail_control_before_apply:
+            raise Aria2ConnectionError("control connection failed before acknowledgement")
+        if method == "aria2.pause" and not self.ignore_pause:
+            if method in self.delayed_controls:
+                self.pending_controls[gid] = (method, self.delayed_controls[method])
+            else:
+                self.jobs[gid].status = "paused"
         elif method == "aria2.unpause":
-            self.jobs[gid].status = "active"
+            if method in self.delayed_controls:
+                self.pending_controls[gid] = (method, self.delayed_controls[method])
+            else:
+                self.jobs[gid].status = "active"
         elif method == "aria2.forceRemove":
             self.jobs[gid].status = "removed"
         elif method == "aria2.removeDownloadResult":
             del self.jobs[gid]
+        if method in self.fail_control_after_apply:
+            raise Aria2ConnectionError("control acknowledgement lost after acceptance")
         return gid
 
 
@@ -67,7 +89,9 @@ def execution(tmp_path, monkeypatch):
         return grants.get(handle.attempt_id) == handle
 
     egress = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external: {"all-proxy": "http://guard:8888"})
-    executor = Aria2Executor(daemon, Aria2Configuration(str(tmp_path), confirmation_delay=0), authorize, egress=egress)
+    executor = Aria2Executor(daemon, Aria2Configuration(
+        str(tmp_path), confirmation_delay=0, control_confirmation_timeout=0.02,
+    ), authorize, egress=egress)
     candidate = TransferCandidate("payload", (Endpoint("https", "https://download.example/file?s=secret", {"X-Capability": "opaque-header-value"}),), expected_bytes=100)
     request = ExecutionRequest(candidate, str(tmp_path / "file"), "durable-attempt")
     handle = executor.prepare(request)
@@ -95,6 +119,7 @@ async def test_start_preserves_connection_guard_and_metadata_safety(execution):
     assert options["max-http-redirection"] == "0"
     assert options["check-certificate"] == "true"
     assert options["auto-file-renaming"] == "false"
+    assert options["max-tries"] == "1"
     assert (await execution.executor.observe(execution.handle)).state == ExecutionState.TRANSFERRING
 
 
@@ -166,7 +191,67 @@ async def test_pause_resume_and_cancel_confirm_native_state(execution):
     result = await execution.executor.cancel(execution.handle)
     assert result.kind == OutcomeKind.CANCELLED
     assert execution.daemon.jobs[execution.handle.context["gid"]].status == "removed"
-    assert all(method not in {"aria2.removeDownloadResult", "aria2.purgeDownloadResult", "aria2.changeGlobalOption"} for method, _ in execution.daemon.calls)
+    methods = [method for method, _ in execution.daemon.calls]
+    assert "aria2.pause" in methods
+    assert "aria2.forcePause" not in methods
+    assert all(method not in {"aria2.removeDownloadResult", "aria2.purgeDownloadResult", "aria2.changeGlobalOption"} for method in methods)
+
+
+@pytest.mark.asyncio
+async def test_pause_resume_are_native_idempotent(execution):
+    await execution.executor.start(execution.request, execution.handle)
+    await execution.executor.pause(execution.handle)
+    await execution.executor.pause(execution.handle)
+    await execution.executor.resume(execution.handle)
+    await execution.executor.resume(execution.handle)
+    methods = [method for method, _ in execution.daemon.calls]
+    assert methods.count("aria2.pause") == 1
+    assert methods.count("aria2.unpause") == 1
+
+
+@pytest.mark.asyncio
+async def test_control_lost_ack_is_reconciled_from_observed_truth(execution):
+    await execution.executor.start(execution.request, execution.handle)
+    await execution.executor.pause(execution.handle)
+    execution.daemon.fail_control_after_apply.add("aria2.unpause")
+    result = await execution.executor.resume(execution.handle)
+    assert result.state == ExecutionState.TRANSFERRING
+    assert result.error is None
+    assert [method for method, _ in execution.daemon.calls].count("aria2.unpause") == 1
+
+
+@pytest.mark.asyncio
+async def test_control_transport_failure_without_transition_is_reconciliation_unknown(execution):
+    await execution.executor.start(execution.request, execution.handle)
+    await execution.executor.pause(execution.handle)
+    execution.daemon.fail_control_before_apply.add("aria2.unpause")
+    result = await execution.executor.resume(execution.handle)
+    assert result.state == ExecutionState.UNKNOWN
+    assert result.error.category == Category.RECONCILIATION_FAILED
+    assert result.error.recovery == Recovery.RECONCILE
+    assert result.error.category != Category.UNMAPPED_EXECUTOR_ERROR
+
+
+@pytest.mark.asyncio
+async def test_delayed_control_transition_converges_without_repeat_mutation(execution):
+    await execution.executor.start(execution.request, execution.handle)
+    await execution.executor.pause(execution.handle)
+    execution.daemon.delayed_controls["aria2.unpause"] = 2
+    result = await execution.executor.resume(execution.handle)
+    assert result.state == ExecutionState.TRANSFERRING
+    assert [method for method, _ in execution.daemon.calls].count("aria2.unpause") == 1
+
+
+@pytest.mark.asyncio
+async def test_fifty_pause_resume_cycles_do_not_accumulate_control_mutations(execution):
+    await execution.executor.start(execution.request, execution.handle)
+    for _ in range(50):
+        assert (await execution.executor.pause(execution.handle)).state == ExecutionState.PAUSED
+        assert (await execution.executor.resume(execution.handle)).state == ExecutionState.TRANSFERRING
+    methods = [method for method, _ in execution.daemon.calls]
+    assert methods.count("aria2.pause") == 50
+    assert methods.count("aria2.unpause") == 50
+    assert "aria2.forcePause" not in methods
 
 
 @pytest.mark.asyncio

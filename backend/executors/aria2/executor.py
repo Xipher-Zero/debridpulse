@@ -37,6 +37,7 @@ class Aria2Configuration:
     connections_per_server: int = 1
     continue_downloads: bool = True
     confirmation_delay: float = 0.05
+    control_confirmation_timeout: float = 3.0
     waiting_window: int = 100
     stopped_window: int = 100
     secrets: tuple[str, ...] = field(default=(), repr=False)
@@ -333,29 +334,61 @@ class Aria2Executor:
             return ExecutionSnapshot((), exception_failure(exc, stage=Stage.RECONCILIATION, secrets=secrets))
 
     async def _control(self, handle: ExecutionHandle, *, resume: bool) -> ExecutionObservation:
+        action = "resume" if resume else "pause"
+        expected = ({ExecutionState.TRANSFERRING, ExecutionState.QUEUED, ExecutionState.SUCCEEDED}
+                    if resume else {ExecutionState.PAUSED, ExecutionState.SUCCEEDED})
         try:
-            action = "resume" if resume else "pause"
             gid = await self._check(handle, action)
             before = await self.observe(handle)
+            if before.state in expected:
+                return before
             if before.error or not before.resumable:
                 return before
             await self._check(handle, action)
-            await self.client._call("aria2.unpause" if resume else "aria2.forcePause", [gid])
-            expected = {ExecutionState.TRANSFERRING, ExecutionState.QUEUED, ExecutionState.SUCCEEDED} if resume else {ExecutionState.PAUSED, ExecutionState.SUCCEEDED}
-            for check in range(3):
-                after = await self.observe(handle)
-                if after.state in expected or after.error:
-                    return after
-                if check < 2:
-                    await asyncio.sleep(self.configuration.confirmation_delay)
+            mutation_error = None
+            try:
+                # Ordinary interactive Pause is cooperative. forcePause remains
+                # reserved for explicit destructive/cleanup semantics.
+                await self.client._call("aria2.unpause" if resume else "aria2.pause", [gid])
+            except Exception as exc:
+                # RPC acknowledgement is not execution truth. The mutation may
+                # have reached aria2, so observe through a bounded convergence
+                # window before deciding that control is unresolved.
+                mutation_error = exception_failure(exc, stage=Stage.RECONCILIATION, secrets=self._secrets(handle))
+
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + max(0.01, float(self.configuration.control_confirmation_timeout))
+            last = before
+            while True:
+                last = await self.observe(handle)
+                if last.state in expected:
+                    return last
+                if last.state in {ExecutionState.FAILED, ExecutionState.CANCELLED, ExecutionState.ABSENT}:
+                    return last
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                delay = max(0.01, float(self.configuration.confirmation_delay))
+                await asyncio.sleep(min(delay, remaining))
+
+            diagnostic = mutation_error.diagnostic if mutation_error else (last.error.diagnostic if last.error else "")
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=NormalizedError(
                 Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-                retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE, integration_id=self.descriptor.id))
+                retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE,
+                operator_action_required=False, integration_id=self.descriptor.id,
+                diagnostic=diagnostic))
         except _AdmissionDeferred:
             return await self.observe(handle)
         except Exception as exc:
-            return ExecutionObservation(handle, ExecutionState.UNKNOWN,
-                                        error=exception_failure(exc, secrets=self._secrets(handle)))
+            error = exception_failure(exc, stage=Stage.RECONCILIATION, secrets=self._secrets(handle))
+            if error.category == Category.UNMAPPED_EXECUTOR_ERROR:
+                error = NormalizedError(
+                    Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
+                    retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE,
+                    operator_action_required=False, integration_id=self.descriptor.id,
+                    diagnostic=error.diagnostic,
+                )
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     async def pause(self, handle: ExecutionHandle) -> ExecutionObservation:
         return await self._control(handle, resume=False)
