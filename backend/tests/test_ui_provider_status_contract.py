@@ -37,8 +37,9 @@ def test_operational_health_is_not_synthesized_from_enabled_or_configured_state(
 
 def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
     assert "candidate.id === 'alldebrid'" in ACCOUNT
-    assert "alldebrid.com" in ACCOUNT
     assert "premiumUntil" in ACCOUNT
+    assert "AllDebrid Premium until" in ACCOUNT
+    assert "alldebrid.com" not in ACCOUNT.lower()
     assert "alldebrid.com" not in STATUS.lower()
     assert "candidate.id === 'alldebrid'" not in STATUS.lower()
 
