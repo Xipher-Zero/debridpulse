@@ -15,6 +15,7 @@ V11_STYLE = STATIC / "style-v11.css"
 SHELL_STYLE = STATIC / "ui-shell.css"
 SHELL_STRUCTURAL = STATIC / "ui-shell-structural.css"
 SHELL_PROVIDER = STATIC / "ui-shell-provider-status.css"
+PROVIDER_STATE = STATIC / "ui-provider-state.css"
 SHELL_RUNTIME = STATIC / "operator-title.js"
 PULSE = STATIC / "icons" / "dp" / "shell-pulse.svg"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
@@ -115,12 +116,11 @@ def test_v11_cache_generations_remain_targeted() -> None:
     assert "/ui-shell-provider-status-v2.css" not in generations
 
 
-
-
-def test_shell_owns_topbar_navigation_canvas_and_provider_geometry() -> None:
+def test_shell_owns_topbar_navigation_canvas_and_provider_support_geometry() -> None:
     shell = read(SHELL_STYLE)
     structural = read(SHELL_STRUCTURAL)
     provider = read(SHELL_PROVIDER)
+    provider_state = read(PROVIDER_STATE)
     for fragment in (
         ".sidebar-theme-control",
         "#page-title::after",
@@ -138,13 +138,25 @@ def test_shell_owns_topbar_navigation_canvas_and_provider_geometry() -> None:
     ):
         assert fragment in structural
     for fragment in (
-        "content: 'Provider Status';",
         "/icons/dp/crown.svg?v=11",
-        "content: 'AllDebrid: Connected';",
         ".conn-row:has(#dot-aria2)",
         ".conn-row:has(#dot-db)",
     ):
         assert fragment in provider
+    for legacy in (
+        "content: 'Provider Status';",
+        "content: 'AllDebrid: Connected';",
+        ".conn-row:has(#dot-api)",
+    ):
+        assert legacy not in provider
+    for fragment in (
+        ".dp-provider-status-list::before",
+        "content: 'Provider Status';",
+        ".dp-provider-status-row",
+        "justify-content: center;",
+        "text-align: center;",
+    ):
+        assert fragment in provider_state
 
 
 def test_shell_uses_local_lucide_subset_and_bundled_license() -> None:
