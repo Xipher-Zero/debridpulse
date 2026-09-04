@@ -526,11 +526,10 @@ async def test_settings_full_candidate_returns_507_semantics_without_active_muta
     candidate.mkdir()
     original = storage.tempfile.mkstemp
 
-    def fail(path_prefix=None, *args, **kwargs):
-        target = kwargs.get("dir")
-        if target == str(candidate.resolve()):
+    def fail(*args, **kwargs):
+        if kwargs.get("dir") == str(candidate.resolve()):
             raise OSError(errno.ENOSPC, "full")
-        return original(path_prefix, *args, **kwargs)
+        return original(*args, **kwargs)
 
     monkeypatch.setattr(storage.tempfile, "mkstemp", fail)
     service, _repository, _engine = _service(capacity, references=False)
@@ -585,23 +584,18 @@ async def test_settings_active_resource_guard_precedes_candidate_probe(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_settings_same_active_path_fault_updates_canonical_health(tmp_path, monkeypatch):
+async def test_unrelated_settings_save_remains_available_with_degraded_download_storage(tmp_path):
     capacity, _app_dir, download_dir = _capacity(tmp_path)
     capacity.check()
-    monkeypatch.setattr(
-        storage.tempfile,
-        "mkstemp",
-        lambda *_a, **_k: (_ for _ in ()).throw(OSError(errno.EIO, "io")),
-    )
+    capacity.report_fault(StorageDomain.DOWNLOAD, OSError(errno.EIO, "io"))
     service, repository, _engine = _service(capacity, references=True)
+    capacity.require_download_path = Mock(wraps=capacity.require_download_path)
     current = AppSettings(download_folder=str(download_dir))
 
-    with pytest.raises(StorageHealthError):
-        await service.validate_configuration(current, current)
+    await service.validate_configuration(current, current)
 
-    # Unchanged path does not invoke the unsafe-change guard, but authoritative
-    # revalidation still records a real fault in the currently active domain.
     repository.has_integration_references.assert_not_awaited()
+    capacity.require_download_path.assert_not_called()
     assert capacity.snapshot(StorageDomain.DOWNLOAD).state == StorageState.UNAVAILABLE
 
 

@@ -129,13 +129,17 @@ class ApplicationService:
             if any(old.get(key) != new.get(key) for key in definition.ownership_fields):
                 if await self.repository.has_integration_references(definition.id):
                     raise ValueError(f"Finish or remove existing {definition.name} resources before changing its connection")
-        if previous.download_folder != current.download_folder and await self.repository.has_integration_references():
+        download_folder_changed = previous.download_folder != current.download_folder
+        if download_folder_changed and await self.repository.has_integration_references():
             raise ValueError("Finish or remove existing resources before changing the download folder")
-        # The existing active-resource guard above remains first.  Only after it
-        # passes do we prove the candidate through the canonical storage owner.
-        # Detached candidates cannot mutate active health; re-validating the
-        # active path may truthfully refresh its canonical state.
-        if self.capacity is not None and hasattr(self.capacity, "require_download_path"):
+        # Only a Download Folder change is a candidate-save operation.  Runtime
+        # recovery owns active-path re-probing, so a degraded current Download
+        # Folder cannot block unrelated Settings changes.
+        if (
+            download_folder_changed
+            and self.capacity is not None
+            and hasattr(self.capacity, "require_download_path")
+        ):
             await asyncio.to_thread(
                 self.capacity.require_download_path,
                 current.download_folder,
