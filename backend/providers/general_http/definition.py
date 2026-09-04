@@ -1,7 +1,7 @@
 """General HTTP(S) registration and backend-owned configuration."""
 from pydantic import BaseModel
 
-from integrations.definition import IntegrationDefinition
+from integrations.definition import IntegrationDefinition, IntegrationPresentation
 
 
 class GeneralHttpOptions(BaseModel):
@@ -15,4 +15,9 @@ def build(options, environment):
 
 definition = IntegrationDefinition(
     "general_http", "provider", "HTTP & HTTPS", GeneralHttpOptions, build,
+    presentation=IntegrationPresentation(
+        status_name="General Downloads",
+        static_status="healthy",
+        display_order=100,
+    ),
 )

@@ -2,7 +2,7 @@
 from pydantic import BaseModel, Field
 
 from core.branding import APP_SHORT_NAME
-from integrations.definition import IntegrationDefinition
+from integrations.definition import IntegrationDefinition, IntegrationPresentation
 from transfers.applicability import ProviderApplicability
 
 
@@ -26,4 +26,11 @@ definition = IntegrationDefinition(
     secret_fields=frozenset({"api_key"}),
     legacy_fields=(("alldebrid_api_key", "api_key"), ("alldebrid_agent", "agent"),
                    ("alldebrid_rate_limit_per_minute", "rate_limit_per_minute")),
+    required_options=frozenset({"api_key"}),
+    presentation=IntegrationPresentation(
+        status_name="AllDebrid",
+        premium=True,
+        status_endpoint="/integration-status/alldebrid",
+        display_order=10,
+    ),
 )

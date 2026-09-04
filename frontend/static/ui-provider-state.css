@@ -1,0 +1,176 @@
+/* Provider Status and premium-provider disclosure presentation. */
+
+.dp-provider-status-list {
+  display: block;
+  min-width: 0;
+}
+
+.dp-provider-status-list::before {
+  content: 'Provider Status';
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text3);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.dp-provider-status-row {
+  min-width: 0;
+}
+
+.dp-provider-status-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dp-provider-premium-until,
+.dp-provider-premium-days {
+  display: block;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, auto) minmax(220px, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header > .card-title {
+  min-width: 0;
+  justify-self: start;
+  overflow: hidden;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] .dp-settings-card-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
+  min-width: 0;
+  max-width: 280px;
+  justify-self: center;
+  color: var(--dp-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-align: center;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-config-status[data-tone="warning"] {
+  color: var(--dp-state-caution);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-config-status[hidden] {
+  visibility: hidden;
+  display: block !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: stretch;
+  gap: 8px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-disclosure {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dp-text-muted);
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-disclosure:hover {
+  border-color: var(--dp-border-default);
+  background: var(--dp-surface-2);
+  color: var(--dp-text-primary);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-disclosure:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: 2px;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-disclosure > span {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform .15s ease;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-disclosure[aria-expanded="true"] > span {
+  transform: rotate(90deg);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] .dp-settings-integration-header-enable {
+  min-width: 0;
+  margin: 0;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-card > .card-body[hidden] {
+  display: none !important;
+}
+
+body.dp-v11-structural #view-settings .dp-settings-provider-card--collapsed > .card-header {
+  border-bottom-color: transparent;
+}
+
+@media (max-width: 1180px) {
+  body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header {
+    grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: min(100%, 320px);
+    padding-top: 2px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 700px) {
+  body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.dp-v11-structural #view-settings .dp-settings-provider-disclosure,
+  body.dp-v11-structural #view-settings .dp-settings-provider-disclosure > span {
+    transition: none;
+  }
+}
