@@ -1,8 +1,11 @@
 """Transient validation, editable Settings helpers, and bundled document reads.
 
 Validation routes deliberately test candidate connection values without
-persisting or applying them. The extraction-password route is a narrow Settings
-read surface for the operator-maintained archive-password list; operational
+persisting or applying them. The directory-browser route is a read-only Settings
+helper: it exposes only container-visible directories and reuses the canonical
+Download Storage validator for current-directory selectability without applying
+candidate health. The extraction-password route is a narrow Settings read
+surface for the operator-maintained archive-password list; operational
 credentials remain write-only through the normal public Settings payload.
 Bundled legal/reference documents are exposed from a fixed allowlist so the UI
 can display the exact files shipped with the installed DebridPulse build
@@ -10,12 +13,14 @@ without depending on GitHub or other external network access.
 """
 from __future__ import annotations
 
+import errno
+import os
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 import aiohttp
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from pydantic import BaseModel, Field
 
 from core.branding import APP_SHORT_NAME
@@ -28,6 +33,7 @@ from executors.aria2.client import Aria2Service
 from services.notifications import NotificationService
 from application.dependencies import get_application
 from application.service import ApplicationService
+from transfers.storage import StorageReason, StorageState
 
 
 router = APIRouter()
@@ -89,6 +95,30 @@ class StatisticsReportDraftRequest(BaseModel):
     clear_discord_webhook: bool = False
 
 
+class DirectoryCapacity(BaseModel):
+    total_bytes: int | None = None
+    free_bytes: int | None = None
+
+
+class DirectoryBrowserEntry(BaseModel):
+    name: str
+    path: str
+    accessible: bool
+    writable: bool | None
+    selectable: bool | None
+    reason: str
+
+
+class DirectoryBrowserCurrent(DirectoryBrowserEntry):
+    capacity: DirectoryCapacity
+
+
+class DirectoryBrowseResponse(BaseModel):
+    current: DirectoryBrowserCurrent
+    parent: str | None
+    children: list[DirectoryBrowserEntry]
+
+
 def _safe_failure(exc: Exception) -> str:
     return sanitize_exception(exc, max_length=200)
 
@@ -121,6 +151,188 @@ def _legal_document_payload(document_id: str) -> dict[str, str]:
         "latest_url": meta["latest_url"],
         "bundled_version": read_version(),
     }
+
+
+def _directory_error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code, detail={"code": code, "message": message})
+
+
+def _resolve_requested_directory(value: str) -> Path:
+    """Resolve one explicit absolute path through the canonical symlink policy.
+
+    Browser navigation always follows directory symlinks and returns the resolved
+    target path. Relative paths are rejected so process CWD can never influence
+    navigation.
+    """
+    raw = str(value or "").strip()
+    if not raw or "\x00" in raw:
+        raise _directory_error(400, "invalid_path", "A valid absolute directory path is required")
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise _directory_error(400, "relative_path", "Relative directory paths are not supported")
+    try:
+        return candidate.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise _directory_error(404, "path_unavailable", "Directory path does not exist") from exc
+    except NotADirectoryError as exc:
+        raise _directory_error(400, "not_directory", "Requested path is not a directory") from exc
+    except PermissionError as exc:
+        raise _directory_error(403, "path_inaccessible", "Directory path is not accessible") from exc
+    except RuntimeError as exc:
+        raise _directory_error(400, "symlink_loop", "Directory path cannot be resolved safely") from exc
+    except OSError as exc:
+        if getattr(exc, "errno", None) == getattr(errno, "ELOOP", None):
+            raise _directory_error(400, "symlink_loop", "Directory path cannot be resolved safely") from exc
+        raise _directory_error(503, "path_unavailable", "Directory path is temporarily unavailable") from exc
+
+
+def _try_browsable_directory(path: Path) -> bool:
+    try:
+        with os.scandir(path) as entries:
+            next(entries, None)
+        return True
+    except OSError:
+        return False
+
+
+def _default_directory_path(configured_path: str) -> Path:
+    """Use the configured Download Folder or its nearest browsable ancestor."""
+    raw = str(configured_path or "").strip()
+    candidate = Path(raw).expanduser() if raw else Path("/")
+    if not candidate.is_absolute():
+        candidate = Path("/")
+
+    for lexical in (candidate, *candidate.parents):
+        try:
+            resolved = lexical.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if _try_browsable_directory(resolved):
+            return resolved
+
+    try:
+        root = Path("/").resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise _directory_error(503, "browser_unavailable", "Server filesystem browser is unavailable") from exc
+    if not _try_browsable_directory(root):
+        raise _directory_error(503, "browser_unavailable", "Server filesystem browser is unavailable")
+    return root
+
+
+def _directory_display_name(path: Path) -> str:
+    return path.name or str(path)
+
+
+def _child_directory_entry(entry) -> DirectoryBrowserEntry | None:
+    """Return one child-directory row without performing a write/selectability probe.
+
+    Symlink-to-directory entries are followed and expose the resolved target path.
+    Symlinks to files, broken links, loops, and entries that disappear during the
+    listing race are omitted. A confirmed directory that exists but cannot be
+    entered remains visible as inaccessible.
+    """
+    try:
+        if not entry.is_dir(follow_symlinks=True):
+            return None
+        resolved = Path(entry.path).resolve(strict=True)
+    except (FileNotFoundError, NotADirectoryError, RuntimeError):
+        return None
+    except OSError:
+        return None
+
+    try:
+        with os.scandir(resolved) as children:
+            next(children, None)
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except PermissionError:
+        return DirectoryBrowserEntry(
+            name=entry.name,
+            path=str(resolved),
+            accessible=False,
+            writable=False,
+            selectable=False,
+            reason=StorageReason.INACCESSIBLE.value,
+        )
+    except OSError:
+        return DirectoryBrowserEntry(
+            name=entry.name,
+            path=str(resolved),
+            accessible=False,
+            writable=False,
+            selectable=False,
+            reason=StorageReason.INACCESSIBLE.value,
+        )
+
+    return DirectoryBrowserEntry(
+        name=entry.name,
+        path=str(resolved),
+        accessible=True,
+        writable=None,
+        selectable=None,
+        reason="not_validated",
+    )
+
+
+def _browse_directory(path: Path, capacity) -> DirectoryBrowseResponse:
+    """Build one non-recursive directory listing using WS1 as selectability owner."""
+    if capacity is None or not hasattr(capacity, "validate_download_path"):
+        raise _directory_error(503, "browser_unavailable", "Download Storage validation is unavailable")
+
+    snapshot = capacity.validate_download_path(path, apply_if_active=False)
+    if snapshot.exists is False:
+        raise _directory_error(404, "path_unavailable", "Directory path does not exist")
+    if snapshot.is_directory is False:
+        raise _directory_error(400, "not_directory", "Requested path is not a directory")
+    if snapshot.accessible is False:
+        if snapshot.reason == StorageReason.INACCESSIBLE:
+            raise _directory_error(403, "path_inaccessible", "Directory path is not accessible")
+        raise _directory_error(503, "path_unavailable", "Directory path is temporarily unavailable")
+
+    current_path = Path(snapshot.resolved_path)
+    try:
+        with os.scandir(current_path) as entries:
+            rows = []
+            for entry in entries:
+                child = _child_directory_entry(entry)
+                if child is not None:
+                    rows.append(child)
+    except FileNotFoundError as exc:
+        raise _directory_error(404, "path_unavailable", "Directory path no longer exists") from exc
+    except NotADirectoryError as exc:
+        raise _directory_error(400, "not_directory", "Requested path is not a directory") from exc
+    except PermissionError as exc:
+        raise _directory_error(403, "path_inaccessible", "Directory path is not accessible") from exc
+    except OSError as exc:
+        raise _directory_error(503, "path_unavailable", "Directory path is temporarily unavailable") from exc
+
+    rows.sort(key=lambda item: (item.name.casefold(), item.name))
+    current_state = StorageState(snapshot.state)
+    selectable = bool(
+        snapshot.is_directory is True
+        and snapshot.accessible is True
+        and snapshot.writable is True
+        and current_state not in {
+            StorageState.FULL,
+            StorageState.READ_ONLY,
+            StorageState.UNAVAILABLE,
+        }
+    )
+    parent_path = current_path.parent
+    parent = None if parent_path == current_path else str(parent_path)
+    current = DirectoryBrowserCurrent(
+        name=_directory_display_name(current_path),
+        path=str(current_path),
+        accessible=True,
+        writable=snapshot.writable,
+        selectable=selectable,
+        reason=snapshot.reason.value,
+        capacity=DirectoryCapacity(
+            total_bytes=snapshot.total_bytes,
+            free_bytes=snapshot.free_bytes,
+        ),
+    )
+    return DirectoryBrowseResponse(current=current, parent=parent, children=rows)
 
 
 def _resolve_secret_candidate(candidate: str, stored: str, *, clear: bool) -> str:
@@ -192,6 +404,23 @@ async def get_extraction_passwords():
     only this purpose-built Settings surface returns the actual newline list.
     """
     return {"passwords": str(get_settings().extraction_password or "")}
+
+
+@router.get("/settings/directories", response_model=DirectoryBrowseResponse)
+def browse_directories(
+    response: Response,
+    path: str | None = Query(default=None, min_length=1, max_length=4096),
+    application: ApplicationService = Depends(get_application),
+):
+    """Browse one container-visible directory without exposing files or mutations."""
+    requested = (
+        _resolve_requested_directory(path)
+        if path is not None
+        else _default_directory_path(get_settings().download_folder)
+    )
+    result = _browse_directory(requested, application.capacity)
+    response.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.get("/integration-status/alldebrid")
@@ -276,8 +505,6 @@ async def validate_discord(payload: DiscordValidationRequest):
             )
             sent = True
         else:
-            # Preserve the existing generic-webhook validation behavior. Draft
-            # Discord identity is only meaningful for a Discord destination.
             sent = await NotificationService(webhook_url).test()
         if not sent:
             raise RuntimeError("Discord test did not send a notification")
