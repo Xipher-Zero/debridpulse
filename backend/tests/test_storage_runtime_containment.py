@@ -1,4 +1,5 @@
 """Runtime feedback contracts for WS1 S1 download-storage containment."""
+import errno
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -87,3 +88,31 @@ async def test_executor_local_io_feedback_is_unavailable_not_full(tmp_path):
     assert snapshot.state != StorageState.FULL
     error = repository.artifact_state.await_args.kwargs["error"]
     assert error.category == Category.DOWNLOAD_STORAGE_UNAVAILABLE
+
+
+def test_failed_probe_clears_stale_filesystem_topology(tmp_path, monkeypatch):
+    import transfers.storage as storage
+
+    app_dir = tmp_path / "app"
+    download_dir = tmp_path / "download"
+    app_dir.mkdir()
+    download_dir.mkdir()
+    capacity = DiskCapacity(download_dir, application_path=app_dir / "debridpulse.db")
+    capacity.check()
+    assert capacity.shared_filesystem is True
+    assert capacity.snapshot(StorageDomain.APPLICATION_STATE).filesystem_id is not None
+
+    original = storage.shutil.disk_usage
+
+    def fail_application(path):
+        if str(path) == str(app_dir):
+            raise OSError(errno.EIO, "stat failed")
+        return original(path)
+
+    monkeypatch.setattr(storage.shutil, "disk_usage", fail_application)
+    snapshot = capacity.probe(StorageDomain.APPLICATION_STATE)
+    assert snapshot.state == StorageState.UNAVAILABLE
+    assert snapshot.filesystem_id is None
+    assert snapshot.total_bytes is None
+    assert snapshot.free_bytes is None
+    assert capacity.shared_filesystem is None

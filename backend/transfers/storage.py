@@ -335,8 +335,13 @@ class DiskCapacity:
             return replace(base, state=state, reason=reason, exists=True, is_directory=True, accessible=True,
                            filesystem_id=filesystem_id, total_bytes=int(usage.total), free_bytes=free_bytes)
         except OSError:
+            # Once the current probe cannot establish filesystem facts, do not
+            # retain topology/capacity evidence from an older healthy snapshot.
+            # In particular shared_filesystem must become unknown rather than
+            # claiming a stale device identity while a domain is unavailable.
             return replace(base, state=StorageState.UNAVAILABLE, reason=StorageReason.STAT_FAILED,
-                           accessible=False, total_bytes=None, free_bytes=None)
+                           exists=None, is_directory=None, accessible=False, filesystem_id=None,
+                           total_bytes=None, free_bytes=None)
 
     def _apply(self, candidate: StorageSnapshot) -> StorageSnapshot:
         with self._lock:
