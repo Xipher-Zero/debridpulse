@@ -162,7 +162,7 @@ class TransferRepository:
             await db.execute("""INSERT OR IGNORE INTO route_attempt_provenance(
                 resolution_attempt_id,transfer_id,request_id,ordinal,operation,candidate_summary,outcome,history_quality)
                 VALUES(?,?,?,?,?,?,?,'legacy_known')""",
-                (row["id"], row["transfer_id"], row["request_id"], ordinal, "legacy", cls._candidate_summary(candidates), outcome))
+                (row["id"], row["transfer_id"], row["request_id"], ordinal, "legacy", self._candidate_summary(candidates), outcome))
 
         execution_rows = await db.fetchall("""SELECT e.*,f.status AS artifact_status,f.execution_attempt_id AS current_execution_id,
                 f.candidates AS artifact_candidates,f.selected_candidate
@@ -708,11 +708,20 @@ class TransferRepository:
 
     async def authorize_execution(self, handle: ExecutionHandle, action: str) -> bool:
         async with get_db() as db:
-            row = await db.fetchone("""SELECT e.*,t.status AS transfer_status,COALESCE(p.paused,0) AS paused_intent
+            row = await db.fetchone("""SELECT e.*,t.status AS transfer_status,COALESCE(p.paused,0) AS paused_intent,
+                f.execution_attempt_id AS current_execution_id
                 FROM execution_attempts e JOIN torrents t ON t.id=e.transfer_id
+                JOIN download_files f ON f.id=e.artifact_id
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE e.id=?""", (handle.attempt_id,))
         if not row or not row["authorized"] or row["executor_id"] != handle.executor_id or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
             return False
+        is_current = row.get("current_execution_id") == handle.attempt_id
+        if action in {"start", "resume", "pause"} and not is_current:
+            return False
+        if action == "cancel" and not is_current:
+            cleanup_owned = row["transfer_status"] in {"deleted", "cancelled"} and row.get("cleanup_state") in {"pending", "blocked"}
+            if not cleanup_owned:
+                return False
         if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed", "cancelled"} or row["paused_intent"]):
             return False
         if action in {"start", "resume"} and await self.globally_paused():
@@ -722,16 +731,21 @@ class TransferRepository:
     async def execution_idle_seconds(self, observation, now):
         """Durable activity clock; repeated snapshots never manufacture progress."""
         async with get_db() as db:
-            row = await db.fetchone("SELECT state,progress,progress_at FROM execution_attempts WHERE id=?", (observation.handle.attempt_id,))
+            row = await db.fetchone("SELECT state,progress,progress_at,artifact_id FROM execution_attempts WHERE id=?", (observation.handle.attempt_id,))
             if not row:
                 return 0
             previous = TransferProgress(**codec.load(row["progress"], {}))
             active = observation.state == ExecutionState.TRANSFERRING and observation.error is None
+            progressed = observation.progress.completed_bytes > previous.completed_bytes
             changed = previous.completed_bytes != observation.progress.completed_bytes or row["state"] != observation.state
+            if progressed:
+                await db.execute("UPDATE download_files SET recovery_failures=0,recovery_refreshes=0 WHERE id=?", (row["artifact_id"],))
             if row["progress_at"] is None or not active or changed:
                 await db.execute("UPDATE execution_attempts SET progress_at=? WHERE id=?", (now, observation.handle.attempt_id))
                 await db.commit()
                 return 0
+            if progressed:
+                await db.commit()
             return max(0, now - row["progress_at"])
 
     async def execution(self, observation: ExecutionObservation) -> None:
@@ -765,6 +779,9 @@ class TransferRepository:
                 WHERE id=? AND torrent_id IN (SELECT id FROM torrents
                     WHERE status!='deleted' AND (status!='cancelled' OR ?='cancelled'))""",
                 (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id, state))
+            if cursor.rowcount and release and current and current.get("execution_attempt_id"):
+                await db.execute("""UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND state IN ('failed','absent','cancelled','succeeded')""", (current["execution_attempt_id"],))
             if cursor.rowcount and state == "completed" and current and current.get("execution_attempt_id"):
                 execution_id = current["execution_attempt_id"]
                 await db.execute("""UPDATE execution_attempt_provenance SET delivered=1,outcome='completed',updated_at=CURRENT_TIMESTAMP
@@ -847,9 +864,42 @@ class TransferRepository:
                 (SELECT request_id FROM download_files WHERE status IN ('error','unresolved','lost','cancelled'))""", (record.id,))
             await db.commit()
 
+    async def recovery_budget(self, artifact_id: int) -> tuple[int, int]:
+        async with get_db() as db:
+            row = await db.fetchone("SELECT recovery_failures,recovery_refreshes FROM download_files WHERE id=?", (artifact_id,))
+        if not row:
+            raise KeyError(artifact_id)
+        return int(row["recovery_failures"] or 0), int(row["recovery_refreshes"] or 0)
+
+    async def record_source_failure(self, artifact_id: int) -> tuple[int, int]:
+        """Consume one failure in the current no-progress source-recovery episode."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute("UPDATE download_files SET recovery_failures=recovery_failures+1 WHERE id=?", (artifact_id,))
+            if cursor.rowcount != 1:
+                await db.rollback()
+                raise KeyError(artifact_id)
+            row = await db.fetchone("SELECT recovery_failures,recovery_refreshes FROM download_files WHERE id=?", (artifact_id,))
+            await db.commit()
+        return int(row["recovery_failures"] or 0), int(row["recovery_refreshes"] or 0)
+
+    async def consume_recovery_refresh(self, artifact_id: int) -> bool:
+        """Allow at most one automatic candidate refresh per no-progress episode."""
+        async with get_db() as db:
+            cursor = await db.execute("""UPDATE download_files SET recovery_refreshes=recovery_refreshes+1
+                WHERE id=? AND recovery_refreshes<1""", (artifact_id,))
+            await db.commit()
+        return cursor.rowcount == 1
+
+    async def reset_source_recovery(self, artifact_id: int) -> None:
+        async with get_db() as db:
+            await db.execute("UPDATE download_files SET recovery_failures=0,recovery_refreshes=0 WHERE id=?", (artifact_id,))
+            await db.commit()
+
     async def reset_retry_budget(self, artifact_id):
         async with get_db() as db:
-            await db.execute("UPDATE download_files SET retry_count=0 WHERE id=?", (artifact_id,))
+            await db.execute("""UPDATE download_files SET retry_count=0,recovery_failures=0,recovery_refreshes=0
+                WHERE id=?""", (artifact_id,))
             await db.commit()
 
     async def reset_postprocessing(self, transfer_id):
