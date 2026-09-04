@@ -1,0 +1,254 @@
+name: WS1 P2 provider ownership consolidation
+
+on:
+  push:
+    branches:
+      - ws1-p2-consolidation-work2
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ws1-p2-consolidation-work2
+          fetch-depth: 0
+
+      - name: Consolidate provider status ownership
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one literal match, found {count}")
+              return text.replace(old, new, 1)
+
+          def sub_once(text, pattern, replacement, label, flags=0):
+              result, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one regex match, found {count}")
+              return result
+
+          app_path = Path('frontend/static/app.js')
+          app = app_path.read_text()
+
+          app = replace_once(
+              app,
+              """let allDebridStatusGeneration = 0;
+
+function invalidateAllDebridStatus() {
+  allDebridStatusGeneration += 1;
+  return allDebridStatusGeneration;
+}
+""",
+              """function invalidateProviderStatus() {
+  return window.DPProviderStatus?.invalidate?.();
+}
+
+async function refreshProviderStatus() {
+  if (!window.DPProviderStatus?.refresh) return null;
+  return window.DPProviderStatus.refresh();
+}
+""",
+              'replace legacy provider generation owner',
+          )
+          app = app.replace('invalidateAllDebridStatus();', 'invalidateProviderStatus();')
+          app = sub_once(
+              app,
+              r"\nfunction renderAllDebridStatus\(status\) \{.*?\nasync function checkConnections\(\) \{",
+              "\nasync function checkConnections() {",
+              'remove legacy AllDebrid renderer/loader',
+              re.S,
+          )
+          app = replace_once(
+              app,
+              '  await loadAllDebridStatus();',
+              '  await refreshProviderStatus();',
+              'delegate connection check to neutral provider owner',
+          )
+
+          replacement_test_ad = r'''
+async function testAD(button) {
+  setButtonPending(
+    button,
+    true,
+    'Testing…'
+  );
+
+  try {
+    const r =
+      await api(
+        'POST',
+        '/settings/test-alldebrid'
+      );
+
+    toast(
+      `AllDebrid: connected as ${r.username} ${r.isPremium?'(Premium)':'(Free)'}✓`,
+      'success'
+    );
+  } catch(e) {
+    toast(
+      'AllDebrid: ' + e.message,
+      'error'
+    );
+  } finally {
+    refreshProviderStatus().catch(()=>{});
+    setButtonPending(button, false);
+  }
+}
+
+async function testAria2(button) {'''
+          app = sub_once(
+              app,
+              r"\nasync function testAD\(button\) \{.*?\nasync function testAria2\(button\) \{",
+              replacement_test_ad,
+              'remove duplicate AllDebrid test/status presentation owner',
+              re.S,
+          )
+          app = replace_once(
+              app,
+              "  setDot('api',   'check', 'AllDebrid: checking…');\n",
+              '',
+              'remove legacy first-paint AllDebrid status mutation',
+          )
+          app = app.replace(
+              '  // Generic statistics availability says nothing about provider health.\n  // checkConnections() owns the provider-specific status surface.\n',
+              '  // Generic statistics availability says nothing about provider health.\n  // The neutral provider-status runtime owns provider presentation.\n',
+          )
+
+          banned_app = (
+              'allDebridStatusGeneration',
+              'invalidateAllDebridStatus',
+              'renderAllDebridStatus',
+              'loadAllDebridStatus',
+              '_updatePremiumLabel',
+              "setDot('api'",
+          )
+          for symbol in banned_app:
+              if symbol in app:
+                  raise SystemExit(f'legacy app status owner remains: {symbol}')
+          if app.count('invalidateProviderStatus();') < 2:
+              raise SystemExit('generic provider invalidation was not retained at navigation/save boundaries')
+          if app.count('refreshProviderStatus()') < 3:
+              raise SystemExit('neutral provider refresh delegation is incomplete')
+          app_path.write_text(app)
+
+          index_path = Path('frontend/static/index.html')
+          index = index_path.read_text()
+          index = replace_once(
+              index,
+              '<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=26" data-dp-v11-styles="1">',
+              '<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=26" data-dp-v11-styles="1">\n<link id="dp-provider-state-css" rel="stylesheet" href="/ui-provider-state.css?v=2">',
+              'install provider state stylesheet in shell',
+          )
+          index = sub_once(
+              index,
+              r'''    <div class="conn-row">\n      <div class="dot" id="dot-api"></div>\n      <span id="lbl-api">AllDebrid: checking…</span>\n    </div>''',
+              '''    <div id="provider-status-list" class="dp-provider-status-list" aria-label="Provider Status">\n      <div class="conn-row dp-provider-status-row" data-provider-state="checking">\n        <div class="dot check"></div><span>Provider Status: checking…</span>\n      </div>\n    </div>''',
+              'replace provider-specific shell row with neutral status host',
+          )
+          index = sub_once(
+              index,
+              r'''\n    <div class="conn-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var\(--border\)">\n      <a href="https://alldebrid\.com".*?\n    </div>''',
+              '',
+              'remove provider-specific sidebar footer link',
+              re.S,
+          )
+          index = replace_once(
+              index,
+              '<script src="/app.js?v=19" defer></script>',
+              '<script src="/app.js?v=20" defer></script>\n<script id="dp-provider-status-script" src="/ui-provider-status.js?v=2" defer></script>\n<script id="dp-alldebrid-account-status-script" src="/ui-alldebrid-account-status.js?v=2" defer></script>\n<script id="dp-provider-cards-script" src="/ui-provider-cards.js?v=2" defer></script>',
+              'load provider presentation owners explicitly',
+          )
+          for legacy in ('id="dot-api"', 'id="lbl-api"', 'AllDebrid: checking…', 'href="https://alldebrid.com"'):
+              if legacy in index:
+                  raise SystemExit(f'legacy provider-specific shell content remains: {legacy}')
+          if index.count('id="provider-status-list"') != 1:
+              raise SystemExit('shell must contain exactly one Provider Status host')
+          index_path.write_text(index)
+
+          icons_path = Path('frontend/static/ui-settings-card-icons.js')
+          icons = icons_path.read_text()
+          icons = sub_once(
+              icons,
+              r'''/\* DebridPulse v1\.0\.11 Settings inner-card icon presentation\..*?\n\s*loadProviderStateCompanions\(\);\n''',
+              '''/* DebridPulse Settings inner-card icon presentation.\n *\n * Applies reviewed custom SVG artwork to Settings inner-card headers only.\n * Provider state/status runtimes are loaded explicitly by the application shell.\n */\n(function () {\n  'use strict';\n''',
+              'remove settings-icon provider bootstrap ownership',
+              re.S,
+          )
+          if 'loadProviderStateCompanions' in icons or '/ui-provider-status.js' in icons or '/ui-provider-cards.js' in icons:
+              raise SystemExit('settings icon decorator still bootstraps provider state')
+          icons_path.write_text(icons)
+
+          status_path = Path('frontend/static/ui-provider-status.js')
+          status = status_path.read_text()
+          status = sub_once(
+              status,
+              r'''  function host\(\) \{.*?\n  \}\n\n  function dotState''',
+              '''  function host() {\n    let node = document.getElementById('provider-status-list');\n    if (node) return node;\n\n    node = document.createElement('div');\n    node.id = 'provider-status-list';\n    node.className = 'dp-provider-status-list';\n    node.setAttribute('aria-label', 'Provider Status');\n    const footer = document.querySelector('.sidebar-footer');\n    const aria2Row = document.getElementById('dot-aria2')?.closest('.conn-row');\n    if (footer) footer.insertBefore(node, aria2Row || footer.firstChild);\n    return node;\n  }\n\n  function dotState''',
+              'remove legacy provider-specific host migration',
+              re.S,
+          )
+          status = sub_once(
+              status,
+              r'''\n  // Compatibility hooks keep the existing connection-check cadence and\n  // navigation/save invalidation points while replacing their provider owner\.\n  window\.loadAllDebridStatus = refresh;\n  window\.invalidateAllDebridStatus = invalidate;\n''',
+              '',
+              'remove AllDebrid compatibility hooks from neutral owner',
+          )
+          if 'alldebrid' in status.lower():
+              raise SystemExit('neutral provider status owner still contains AllDebrid-specific knowledge')
+          status_path.write_text(status)
+
+          account_path = Path('frontend/static/ui-alldebrid-account-status.js')
+          account = account_path.read_text()
+          account = sub_once(
+              account,
+              r'''\n  document\.addEventListener\('DOMContentLoaded', \(\) => \{\n    document\.querySelectorAll\('\.sidebar-footer a\[href\*="alldebrid\.com"\]'\)\.forEach\(link => \{\n      link\.closest\('\.conn-row'\)\?\.remove\(\);\n    \}\);\n  \}, \{once: true\}\);''',
+              '',
+              'remove obsolete shell-cleanup responsibility from account adapter',
+          )
+          account_path.write_text(account)
+
+          test_path = Path('backend/tests/test_ui_provider_status_contract.py')
+          test = test_path.read_text()
+          test = replace_once(
+              test,
+              'BOOTSTRAP = (ROOT / "frontend" / "static" / "ui-settings-card-icons.js").read_text()\n',
+              'BOOTSTRAP = (ROOT / "frontend" / "static" / "ui-settings-card-icons.js").read_text()\nAPP = (ROOT / "frontend" / "static" / "app.js").read_text()\nINDEX = (ROOT / "frontend" / "static" / "index.html").read_text()\n',
+              'extend static ownership fixtures',
+          )
+          test = sub_once(
+              test,
+              r'''\ndef test_existing_settings_decorator_only_bootstraps_separate_provider_owners\(\):.*\Z''',
+              '''\ndef test_application_shell_explicitly_loads_the_single_provider_owners():\n    assert 'id="provider-status-list"' in INDEX\n    assert INDEX.count('id="provider-status-list"') == 1\n    assert '/ui-provider-status.js?v=2' in INDEX\n    assert '/ui-alldebrid-account-status.js?v=2' in INDEX\n    assert '/ui-provider-cards.js?v=2' in INDEX\n    assert '/ui-provider-state.css?v=2' in INDEX\n    assert '/ui-provider-status.js' not in BOOTSTRAP\n    assert '/ui-provider-cards.js' not in BOOTSTRAP\n\n\ndef test_legacy_alldebrid_provider_status_owner_is_removed():\n    for symbol in (\n        'allDebridStatusGeneration',\n        'invalidateAllDebridStatus',\n        'renderAllDebridStatus',\n        'loadAllDebridStatus',\n        '_updatePremiumLabel',\n    ):\n        assert symbol not in APP\n    assert \"setDot('api'\" not in APP\n    assert 'AllDebrid: checking' not in INDEX\n    assert 'id="dot-api"' not in INDEX\n    assert 'href="https://alldebrid.com"' not in INDEX\n    assert 'loadAllDebridStatus' not in STATUS\n    assert 'invalidateAllDebridStatus' not in STATUS\n    assert 'invalidateProviderStatus();' in APP\n    assert 'await refreshProviderStatus();' in APP\n''',
+              'replace bootstrap contract with consolidated ownership guards',
+              re.S,
+          )
+          test_path.write_text(test)
+
+          helper = Path('.github/workflows/ws1-p2-consolidate.yml')
+          if not helper.exists():
+              raise SystemExit('consolidation helper unexpectedly missing')
+          helper.unlink()
+          PY
+
+          git diff --check
+          node --check frontend/static/app.js
+          node --check frontend/static/ui-provider-status.js
+          node --check frontend/static/ui-alldebrid-account-status.js
+          node --check frontend/static/ui-provider-cards.js
+          node --check frontend/static/ui-settings-card-icons.js
+          python -m py_compile backend/tests/test_ui_provider_status_contract.py
+
+          git config user.name "Xipher-Zero"
+          git config user.email "68665477+Xipher-Zero@users.noreply.github.com"
+          git add frontend/static/app.js frontend/static/index.html frontend/static/ui-provider-status.js frontend/static/ui-alldebrid-account-status.js frontend/static/ui-provider-cards.js frontend/static/ui-settings-card-icons.js backend/tests/test_ui_provider_status_contract.py .github/workflows/ws1-p2-consolidate.yml
+          git commit -m "ui: consolidate provider status ownership"
+          git push origin HEAD:ws1-p2-consolidation-work2
