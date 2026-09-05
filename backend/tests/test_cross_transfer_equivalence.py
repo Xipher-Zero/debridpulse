@@ -193,11 +193,13 @@ async def test_resolution_speed_inversion_keeps_later_established_writer(pair):
 
     resolving = asyncio.create_task(pair.engine.resolve_pending())
     await pair.a.entered.wait()
-    for _ in range(50):
-        if await pair.repository.artifacts(second.id):
-            break
-        await asyncio.sleep(0)
-    second_primary = (await pair.repository.artifacts(second.id))[0]
+    async with asyncio.timeout(2):
+        while True:
+            second_artifacts = await pair.repository.artifacts(second.id)
+            if second_artifacts:
+                break
+            await asyncio.sleep(0.01)
+    second_primary = second_artifacts[0]
     assert second_primary.candidates[0].provider_id == "provider-b"
 
     pair.a.release.set()
