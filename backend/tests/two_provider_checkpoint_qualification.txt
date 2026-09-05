@@ -29,5 +29,6 @@ tests/test_v1111_aria2_security_boundary.py
 tests/test_canonical_runtime_architecture.py
 tests/test_input_required_architecture.py
 tests/test_two_provider_canonical_architecture.py
+tests/test_cross_transfer_equivalence.py
 tests/test_two_provider_checkpoint_documentation.py
 tests/test_license_policy.py

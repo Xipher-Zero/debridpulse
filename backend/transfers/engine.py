@@ -13,6 +13,7 @@ import time
 from weakref import WeakValueDictionary
 
 from transfers.applicability import ApplicabilityUnresolved
+from transfers.canonical import CanonicalOwnership
 from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
     Inventory, Manifest, PauseResume, ProviderInputContinuation, ResourceLookup)
 from transfers import codec
@@ -39,6 +40,7 @@ class TransferEngine:
                  download_root: str, policy: TransferPolicy | None = None, postprocessors=(), clock=time.time):
         self.repository = repository
         self.registry = registry
+        self.canonical = CanonicalOwnership(repository)
         self.challenges = InputChallengeStore(clock=clock)
         self.inputs = EphemeralInputBroker(clock=clock)
         self.root = str(Path(download_root).resolve())
@@ -557,29 +559,118 @@ class TransferEngine:
             await self.repository.materialize(record, candidates, existing.target)
             return
         transfer = await self.repository.get(record.transfer_id)
+        if transfer is None:
+            return
         relative = candidates[0].relative_path or candidates[0].name
         if record.parent_id:
             relative = str(Path(safe_name(transfer.name)) / relative)
-        async with self._paths_lock:
-            if not record.parent_id:
-                root_ids = {item.id for item in await self.repository.requests(record.transfer_id) if item.parent_id is None}
-                for primary in await self.repository.artifacts(record.transfer_id):
-                    if primary.request_id not in root_ids or not primary.candidates:
-                        continue
-                    size = await shared_size(primary.candidates[0], candidates[0], self.registry)
-                    if size is not None and await self.repository.add_alternate(primary, record, candidates, size):
-                        return
-            target = destination(self.root, relative)
-            occupied = await self.repository.occupied_paths()
-            if record.parent_id and str(target).casefold() in occupied:
-                raise TransferError(self._error(Category.LOCAL_PATH_CONFLICT, Stage.CANDIDATE_PREPARATION,
-                    domain=Domain.LOCAL_RESOURCE, retryability=Retryability.AFTER_RESOURCE_CHANGE))
-            if not record.parent_id:
-                original, index = target, 2
-                while target.exists() or target.is_symlink() or str(target).casefold() in occupied:
-                    target = original.with_name(f"{original.stem} ({index}){original.suffix}")
-                    index += 1
-            await self.repository.materialize(record, candidates, str(target))
+
+        async def equivalent_size(other_candidates):
+            for left in other_candidates:
+                for right in candidates:
+                    size = await shared_size(left, right, self.registry)
+                    if size is not None:
+                        return size
+            return None
+
+        def canonical_key(item):
+            return item.id, tuple(str(candidate.id) for candidate in item.candidates)
+
+        def contender_key(item):
+            contender, contender_candidates, _order = item
+            return contender.id, tuple(str(candidate.id) for candidate in contender_candidates)
+
+        # Remote equivalence work is deliberately outside _paths_lock and every
+        # database ownership transaction.  The loop only retries when a new or
+        # changed owner/earlier contender appears before final path ownership.
+        while await self._live(record.transfer_id):
+            existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
+            if existing:
+                return
+
+            canonicals = tuple(
+                item for item in await self.canonical.canonical_artifacts()
+                if item.request_id != record.id and item.candidates
+            )
+            canonical_keys = {canonical_key(item) for item in canonicals}
+            for primary in canonicals:
+                size = await equivalent_size(primary.candidates)
+                if size is None:
+                    continue
+                if await self.canonical.attach(primary, record, candidates, size):
+                    return
+                if not await self._live(record.transfer_id):
+                    return
+                existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
+                if existing:
+                    return
+                # A stale owner is a normal race.  If the same owner remains but
+                # provenance cannot be retained, independent materialization is
+                # the conservative fallback rather than a lossy merge.
+
+            contenders = await self.canonical.lower_materializing(record)
+            contender_keys = {contender_key(item) for item in contenders}
+            restart = False
+            for contender, contender_candidates, _order in contenders:
+                size = await equivalent_size(contender_candidates)
+                if size is None:
+                    continue
+                # The lower durable admission wins only while neither contender
+                # owns a canonical artifact.  Give that concurrent task bounded
+                # scheduling opportunities to publish its owner, without holding
+                # any ownership/path lock or waiting on remote work.
+                for _ in range(8):
+                    await asyncio.sleep(0)
+                    winner = next((item for item in await self.canonical.canonical_artifacts()
+                                   if item.request_id == contender.id and item.candidates), None)
+                    if winner is not None:
+                        winner_size = await equivalent_size(winner.candidates)
+                        if winner_size is not None and await self.canonical.attach(winner, record, candidates, winner_size):
+                            return
+                        if not await self._live(record.transfer_id):
+                            return
+                        restart = True
+                        break
+                    lower = await self.canonical.lower_materializing(record)
+                    if not any(item[0].id == contender.id for item in lower):
+                        restart = True
+                        break
+                if restart:
+                    break
+                # The lower contender is still eligible and has not established
+                # ownership yet.  Leave this request durably materializing; a
+                # later scheduler pass will attach after the winner publishes or
+                # proceed independently if that contender becomes ineligible.
+                return
+            if restart:
+                continue
+
+            retry_snapshot = False
+            async with self._paths_lock:
+                fresh_canonicals = tuple(
+                    item for item in await self.canonical.canonical_artifacts()
+                    if item.request_id != record.id and item.candidates
+                )
+                fresh_contenders = await self.canonical.lower_materializing(record)
+                fresh_canonical_keys = {canonical_key(item) for item in fresh_canonicals}
+                fresh_contender_keys = {contender_key(item) for item in fresh_contenders}
+                if (fresh_canonical_keys - canonical_keys) or (fresh_contender_keys - contender_keys):
+                    retry_snapshot = True
+                else:
+                    target = destination(self.root, relative)
+                    occupied = await self.repository.occupied_paths()
+                    if record.parent_id and str(target).casefold() in occupied:
+                        raise TransferError(self._error(Category.LOCAL_PATH_CONFLICT, Stage.CANDIDATE_PREPARATION,
+                            domain=Domain.LOCAL_RESOURCE, retryability=Retryability.AFTER_RESOURCE_CHANGE))
+                    if not record.parent_id:
+                        original, index = target, 2
+                        while target.exists() or target.is_symlink() or str(target).casefold() in occupied:
+                            target = original.with_name(f"{original.stem} ({index}){original.suffix}")
+                            index += 1
+                    await self.repository.materialize(record, candidates, str(target))
+                    return
+            if retry_snapshot:
+                continue
 
     async def _schedule_refresh(self, artifact: Artifact, error: NormalizedError):
         candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
@@ -850,13 +941,18 @@ class TransferEngine:
         candidate = artifact.candidates[artifact.selected]
         provider = self.registry.providers.get(candidate.provider_id)
         attempt = None
+        record = None
         try:
             if not isinstance(provider, CandidateRefresh):
                 raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.CANDIDATE_PREPARATION,
                     domain=Domain.REQUEST, retryability=Retryability.NEVER))
             if not await self._live(artifact.transfer_id, admission=True):
                 return
-            record = next(item for item in await self.repository.requests(artifact.transfer_id) if item.id == artifact.request_id)
+            origin = await self.canonical.origin_for(artifact, candidate)
+            if origin is None:
+                raise TransferError(self._error(Category.OWNERSHIP_CONFLICT, Stage.CANDIDATE_PREPARATION,
+                    domain=Domain.LIFECYCLE, retryability=Retryability.NEVER))
+            record = origin.request
             attempt = await self.repository.begin_refresh(record, provider.descriptor.id)
             result = self._authoritative_provider_result(provider.descriptor.id, await provider.refresh(candidate))
             live = await self.repository.resolution(attempt, result)
@@ -868,8 +964,12 @@ class TransferEngine:
                 raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION))
             if any(item.expires_at is not None and item.expires_at <= self.clock() for item in result.candidates):
                 raise TransferError(self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION))
-            retained = artifact.candidates[:artifact.selected] + result.candidates + artifact.candidates[artifact.selected + 1:]
-            await self.repository.materialize(record, retained, artifact.target)
+            if not await self.canonical.refresh_candidate(artifact, origin, candidate, result.candidates):
+                current = await self._current_artifact(artifact.transfer_id, artifact.id)
+                if current is None or current.state == "completed":
+                    return
+                raise TransferError(self._error(Category.OWNERSHIP_CONFLICT, Stage.CANDIDATE_PREPARATION,
+                    domain=Domain.LIFECYCLE, retryability=Retryability.NEVER))
             await self.repository.artifact_state(artifact.id, "queued", selected=artifact.selected,
                 expected_bytes=result.candidates[0].expected_bytes)
         except Exception as exc:
@@ -878,8 +978,7 @@ class TransferEngine:
             if attempt:
                 await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
             await self.repository.artifact_state(artifact.id, "error", error=error)
-            record = next(item for item in await self.repository.requests(artifact.transfer_id) if item.id == artifact.request_id)
-            if record.parent_id and error.category in {Category.RESOURCE_NOT_FOUND, Category.RESOURCE_EXPIRED, Category.SOURCE_EXPIRED, Category.SOURCE_NOT_FOUND}:
+            if record and record.parent_id and error.category in {Category.RESOURCE_NOT_FOUND, Category.RESOURCE_EXPIRED, Category.SOURCE_EXPIRED, Category.SOURCE_NOT_FOUND}:
                 await self._renew_source_parent(record)
 
     async def _renew_source_parent(self, record, *, operator=False):
@@ -1166,7 +1265,11 @@ class TransferEngine:
                         return False
                 await self.repository.reset_retry_budget(artifact.id)
                 await self.repository.artifact_state(artifact.id, "unresolved", release=True)
-                record = next(item for item in await self.repository.requests(transfer_id) if item.id == artifact.request_id)
+                origin = await self.canonical.origin_for(artifact, candidate)
+                if origin is not None:
+                    record = origin.request
+                else:
+                    record = next(item for item in await self.repository.requests(transfer_id) if item.id == artifact.request_id)
                 if not record.parent_id or not await self._renew_source_parent(record, operator=True):
                     await self.repository.artifact_state(artifact.id, "queued", release=True)
             await self.repository.retry_requests(transfer_id, reset_budget=True)

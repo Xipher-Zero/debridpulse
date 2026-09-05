@@ -4,7 +4,7 @@ from pathlib import Path
 
 from transfers.applicability import ProviderApplicability
 from transfers.models import (
-    Capability, CleanupDirective, Endpoint, ExecutionHandle, ExecutionObservation,
+    ArtifactFingerprint, Capability, CleanupDirective, Endpoint, ExecutionHandle, ExecutionObservation,
     ExecutionState, IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
     ProviderResource, ResolutionResult, ResourceSnapshot, ResourceState, SourceEntry,
     TransferCandidate, TransferOutcome, TransferProgress, TransferRequest,
@@ -90,6 +90,13 @@ class MemoryExecutor:
 
     def resumable_paths(self, target):
         return (target + ".memory-progress",)
+
+    async def fingerprint(self, candidate):
+        """Deterministic fake of provider-neutral sampled payload identity."""
+        if not candidate.endpoints or candidate.expected_bytes <= 0:
+            return None
+        endpoint = candidate.endpoints[0]
+        return ArtifactFingerprint(candidate.expected_bytes, f"{endpoint.scheme}:{endpoint.address}")
 
     async def start(self, request, handle):
         assert await self.authorize(handle, "start"), "Core must persist authority before executor contact"
