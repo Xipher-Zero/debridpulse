@@ -79,6 +79,13 @@ class TransferPolicy:
         if error.recovery in {Recovery.REQUIRE_OPERATOR, Recovery.FAIL, Recovery.NONE}:
             return RetryDecision()
         if attempts >= max(1, self.max_attempts):
+            if (has_alternate and error.recovery in {
+                    Recovery.RETRY,
+                    Recovery.BACKOFF,
+                    Recovery.RERESOLVE,
+                    Recovery.TRY_ALTERNATE_CANDIDATE,
+            }):
+                return RetryDecision(Recovery.TRY_ALTERNATE_CANDIDATE, now)
             return RetryDecision()
         if error.retryability in {Retryability.AFTER_REAUTH, Retryability.AFTER_RESOURCE_CHANGE}:
             return RetryDecision(error.recovery)
