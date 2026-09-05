@@ -275,15 +275,18 @@ class TransferRepository(_QualifiedTransferRepository):
 
         selected_ids: dict[int, str | None] = {}
         current_attempt_ids: dict[int, str | None] = {}
+        has_durable_candidate: dict[int, bool] = {}
         for row in files:
             artifact_id = int(row["id"])
             selected_id = None
             try:
                 candidates = [codec.candidate(value) for value in codec.load(row.get("candidates"), [])]
+                has_durable_candidate[artifact_id] = bool(candidates)
                 selected = int(row.get("selected_candidate") or 0)
                 if 0 <= selected < len(candidates):
                     selected_id = str(candidates[selected].id)
             except (TypeError, ValueError, KeyError, IndexError):
+                has_durable_candidate[artifact_id] = False
                 selected_id = None
             selected_ids[artifact_id] = selected_id
             current_attempt_ids[artifact_id] = row.get("execution_attempt_id")
@@ -337,9 +340,12 @@ class TransferRepository(_QualifiedTransferRepository):
         result: dict[int, dict] = {}
         for artifact_id in artifact_ids:
             candidates = by_artifact.get(artifact_id, [])
+            candidate_count = len(candidates)
+            if candidate_count == 0 and has_durable_candidate.get(artifact_id, False):
+                candidate_count = 1
             result[artifact_id] = {
-                "candidate_count": len(candidates),
-                "acquisition_candidates": candidates if len(candidates) > 1 else [],
+                "candidate_count": candidate_count,
+                "acquisition_candidates": candidates if candidate_count > 1 else [],
             }
         return result
 
