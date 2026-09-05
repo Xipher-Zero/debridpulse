@@ -176,10 +176,13 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
     try:
         first, second = registry.executor_for(left), registry.executor_for(right)
         if not isinstance(first, CandidateSampling) or not isinstance(second, CandidateSampling):
-            return _diagnose(left, right, _unavailable("sampler_unavailable"))
+            return _diagnose(left, right, _unavailable("sampler_unsupported"))
         a, b = await asyncio.gather(first.fingerprint(left), second.fingerprint(right))
+        # A sampler returning None has no proof capability for this candidate.
+        # Temporary acquisition failures must cross the contract explicitly as
+        # UNAVAILABLE with a retryable reason such as timeout/dns_failure.
         if a is None or b is None:
-            return _diagnose(left, right, _unavailable("sampler_unavailable"))
+            return _diagnose(left, right, _unavailable("sampler_unsupported"))
 
         a_kind = _fingerprint_kind(a)
         b_kind = _fingerprint_kind(b)
@@ -208,7 +211,8 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
     except socket.gaierror:
         return _diagnose(left, right, _unavailable("dns_failure"))
     except Exception:
-        # Inability to prove equivalence is a normal independent-download path.
+        # An exception from a sampling-capable executor may be transient. The
+        # bounded cohort policy decides whether another proof opportunity exists.
         return _diagnose(left, right, _unavailable("sampler_unavailable"))
 
 
