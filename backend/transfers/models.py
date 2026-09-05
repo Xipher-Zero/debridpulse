@@ -126,6 +126,7 @@ class TransferState(StrEnum):
     VERIFYING = "verifying"
     POST_PROCESSING = "extracting"
     COMPLETED = "completed"
+    CONSOLIDATED = "consolidated"
     FAILED = "error"
     CANCELLED = "cancelled"
     DELETED = "deleted"

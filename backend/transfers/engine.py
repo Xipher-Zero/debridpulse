@@ -60,6 +60,7 @@ class TransferEngine:
 
     async def initialize(self):
         await self.repository.initialize()
+        await self.canonical.initialize()
         await self.challenges.initialize()
 
     def configure_policy(self, policy):
@@ -69,7 +70,7 @@ class TransferEngine:
 
     async def _live(self, transfer_id: int, *, admission=False) -> bool:
         transfer = await self.repository.get(transfer_id)
-        if not transfer or transfer.state in {TransferState.DELETED, TransferState.COMPLETED, TransferState.CANCELLED}:
+        if not transfer or transfer.state in {TransferState.DELETED, TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.CANCELLED}:
             return False
         return not admission or (not transfer.paused and not await self.repository.globally_paused())
 
@@ -279,7 +280,7 @@ class TransferEngine:
                     if current is None or current.execution is None or current.execution.attempt_id != handle.attempt_id:
                         return observed
                     transfer = await self.repository.get(artifact.transfer_id)
-                    if transfer is None or transfer.state in {TransferState.DELETED, TransferState.COMPLETED, TransferState.CANCELLED}:
+                    if transfer is None or transfer.state in {TransferState.DELETED, TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.CANCELLED}:
                         return observed
                     desired_paused = transfer.paused or await self.repository.globally_paused()
 
@@ -315,9 +316,6 @@ class TransferEngine:
                                 if persist_passive:
                                     await self.repository.execution(observed)
                                 return observed
-                            # Reserve the slot durably before a possibly lost
-                            # unpause acknowledgement. This is capacity truth,
-                            # not a claim that aria2 has already resumed.
                             await self.repository.execution(ExecutionObservation(
                                 handle, ExecutionState.QUEUED, observed.progress, observed.paths,
                             ))
@@ -580,9 +578,6 @@ class TransferEngine:
             contender, contender_candidates, _order = item
             return contender.id, tuple(str(candidate.id) for candidate in contender_candidates)
 
-        # Remote equivalence work is deliberately outside _paths_lock and every
-        # database ownership transaction.  The loop only retries when a new or
-        # changed owner/earlier contender appears before final path ownership.
         while await self._live(record.transfer_id):
             existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
             if existing:
@@ -604,9 +599,6 @@ class TransferEngine:
                 existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
                 if existing:
                     return
-                # A stale owner is a normal race.  If the same owner remains but
-                # provenance cannot be retained, independent materialization is
-                # the conservative fallback rather than a lossy merge.
 
             contenders = await self.canonical.lower_materializing(record)
             contender_keys = {contender_key(item) for item in contenders}
@@ -615,10 +607,6 @@ class TransferEngine:
                 size = await equivalent_size(contender_candidates)
                 if size is None:
                     continue
-                # The lower durable admission wins only while neither contender
-                # owns a canonical artifact.  Give that concurrent task bounded
-                # scheduling opportunities to publish its owner, without holding
-                # any ownership/path lock or waiting on remote work.
                 for _ in range(8):
                     await asyncio.sleep(0)
                     winner = next((item for item in await self.canonical.canonical_artifacts()
@@ -637,10 +625,6 @@ class TransferEngine:
                         break
                 if restart:
                     break
-                # The lower contender is still eligible and has not established
-                # ownership yet.  Leave this request durably materializing; a
-                # later scheduler pass will attach after the winner publishes or
-                # proceed independently if that contender becomes ineligible.
                 return
             if restart:
                 continue
@@ -833,9 +817,6 @@ class TransferEngine:
                 await self._converge_execution(artifact, executor, observed)
             return
         if observed.state == ExecutionState.UNKNOWN:
-            # Observation uncertainty is not a source failure and never grants
-            # replacement authority. Keep the same attempt bound until truth is
-            # re-established or an operator explicitly intervenes.
             return
         if (observed.state == ExecutionState.TRANSFERRING and observed.error is None
                 and self.policy.stalled_after_seconds > 0 and idle_seconds >= self.policy.stalled_after_seconds):
@@ -923,9 +904,6 @@ class TransferEngine:
             return
         if decision.action == Recovery.RECONCILE:
             return
-        # Recovery is reached only after terminal execution truth (or after the
-        # stalled path explicitly cancelled and confirmed termination). Do not
-        # destructively cancel a FAILED/ABSENT writer that is already terminal.
         if decision.action == Recovery.TRY_ALTERNATE_CANDIDATE:
             sidecars = self.registry.executors[artifact.execution.executor_id].resumable_paths(artifact.target) if artifact.execution else ()
             retire_partial(self.root, artifact.target, sidecars)
@@ -956,7 +934,7 @@ class TransferEngine:
             attempt = await self.repository.begin_refresh(record, provider.descriptor.id)
             result = self._authoritative_provider_result(provider.descriptor.id, await provider.refresh(candidate))
             live = await self.repository.resolution(attempt, result)
-            if not live:
+            if not live and record.transfer_id == artifact.transfer_id:
                 return
             if result.error:
                 raise TransferError(result.error)
@@ -1037,9 +1015,6 @@ class TransferEngine:
         elif any(item.state in {"downloading", "verifying"} for item in artifacts):
             await self.repository.state(transfer_id, TransferState.TRANSFERRING, progress=progress)
         elif any(item.state == "unknown" for item in artifacts):
-            # UNKNOWN is explicit uncertainty, never evidence that bytes are
-            # moving. Preserve the child error/state while the parent remains
-            # non-active rather than presenting a false Downloading state.
             await self.repository.state(transfer_id, TransferState.QUEUED, progress=progress)
         elif any(item.state in {"queued", "paused", "refresh_pending"} for item in artifacts):
             await self.repository.state(transfer_id, TransferState.QUEUED, progress=progress)
@@ -1141,7 +1116,7 @@ class TransferEngine:
 
     async def select_artifact(self, transfer_id: int, artifact_id: int, *, selected: bool):
         transfer = await self.repository.get(transfer_id)
-        if not transfer or transfer.state == TransferState.DELETED:
+        if not transfer or transfer.state in {TransferState.DELETED, TransferState.CONSOLIDATED}:
             raise KeyError(transfer_id)
         await self.repository.select_artifact(transfer_id, artifact_id, selected)
         if selected and transfer.state == TransferState.COMPLETED:
@@ -1170,6 +1145,9 @@ class TransferEngine:
         return await self._control(transfer_id)
 
     async def _control(self, transfer_id: int):
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None or transfer.state == TransferState.CONSOLIDATED:
+            return ()
         results = []
         for artifact in await self.repository.artifacts(transfer_id):
             if not artifact.execution or artifact.state == "completed":
@@ -1192,7 +1170,6 @@ class TransferEngine:
         return tuple(results)
 
     async def _resume_execution(self, artifact, executor):
-        """Compatibility shim; all callers converge through the single owner."""
         return await self._converge_execution(artifact, executor)
 
     async def pause_all(self):
@@ -1216,6 +1193,8 @@ class TransferEngine:
             transfer = await self.repository.get(transfer_id)
             if transfer is None:
                 raise KeyError(transfer_id)
+            if transfer.state == TransferState.CONSOLIDATED:
+                return False
             if await self.challenges.current(transfer_id):
                 return False
             if transfer.state == TransferState.DELETED and not reacquire:
@@ -1292,6 +1271,8 @@ class TransferEngine:
             transfer = await self.repository.get(transfer_id)
             if transfer is None:
                 raise KeyError(transfer_id)
+            if transfer.state == TransferState.CONSOLIDATED:
+                return ()
 
             if not await self.repository.cancel_with_execution_cleanup(
                 transfer_id, expected_epoch=transfer.epoch, now=self.clock(),

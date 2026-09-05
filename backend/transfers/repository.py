@@ -23,8 +23,6 @@ from transfers.models import (
 from transfers.policy import transition_allowed
 
 
-
-
 class TransferRepository:
     async def has_integration_references(self, identity=None):
         """Connection changes cannot abandon live jobs or unresolved resources."""
@@ -54,7 +52,7 @@ class TransferRepository:
                     (transfer_id, processor.descriptor.id, codec.dump(paths)))
                 created = created or bool(cursor.rowcount)
             if created:
-                await db.execute("UPDATE torrents SET extraction_status='pending' WHERE id=? AND status NOT IN ('completed','deleted') AND COALESCE(extraction_status,'')!='extracting'", (transfer_id,))
+                await db.execute("UPDATE torrents SET extraction_status='pending' WHERE id=? AND status NOT IN ('completed','consolidated','deleted') AND COALESCE(extraction_status,'')!='extracting'", (transfer_id,))
             await db.commit()
 
     async def postprocessing_jobs(self):
@@ -81,7 +79,7 @@ class TransferRepository:
                 errors = [outcome.get("error") for outcome in outcomes]
                 error = next((NormalizedError.from_dict(item) for item in errors if item), None)
                 status = "error" if error else "skipped" if all(item["kind"] == "skipped" for item in outcomes) else "completed"
-                await db.execute("UPDATE torrents SET extraction_status=?,extraction_error=? WHERE id=? AND status!='deleted'", (status, error.message if error else None, transfer_id))
+                await db.execute("UPDATE torrents SET extraction_status=?,extraction_error=? WHERE id=? AND status NOT IN ('deleted','consolidated')", (status, error.message if error else None, transfer_id))
             await db.commit()
             return finished
 
@@ -127,9 +125,19 @@ class TransferRepository:
         return "active"
 
     @classmethod
-    async def _candidate_route(cls, db, transfer_id, candidate):
+    async def _candidate_route(cls, db, transfer_id, candidate, *, artifact_id=None):
         if candidate is None or not candidate.id or not candidate.provider_id:
             return None
+        if artifact_id is not None:
+            bound = await db.fetchone(
+                """SELECT o.resolution_attempt_id FROM canonical_candidate_bindings b
+                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                    WHERE b.canonical_artifact_id=? AND b.candidate_id=? AND b.provider_id=?
+                    ORDER BY CASE WHEN o.discovered_candidate_id=b.candidate_id THEN 0 ELSE 1 END,o.id LIMIT 1""",
+                (artifact_id, str(candidate.id), str(candidate.provider_id)),
+            )
+            if bound:
+                return bound["resolution_attempt_id"]
         rows = await db.fetchall("""SELECT p.resolution_attempt_id,p.ordinal,p.candidate_summary,a.provider_id
             FROM route_attempt_provenance p JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
             WHERE p.transfer_id=? AND a.provider_id=? ORDER BY p.ordinal DESC,a.updated_at DESC,a.id DESC""",
@@ -185,7 +193,9 @@ class TransferRepository:
                 except (TypeError, ValueError, KeyError, IndexError):
                     candidate = None
             provider_id = str(candidate.provider_id) if candidate and candidate.provider_id else None
-            route_attempt_id = await cls._candidate_route(db, row["transfer_id"], candidate) if candidate else None
+            route_attempt_id = await cls._candidate_route(
+                db, row["transfer_id"], candidate, artifact_id=row["artifact_id"]
+            ) if candidate else None
             ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (row["artifact_id"],))
             ordinal = int(ordinal_row["n"] or 0) + 1
             delivered = bool(provider_id and row["state"] == "succeeded" and row.get("artifact_status") == "completed" and row.get("current_execution_id") == row["id"])
@@ -270,6 +280,19 @@ class TransferRepository:
                 p.route_attempt_id,p.provider_id,p.candidate_id,p.candidate_source,p.ordinal,p.outcome,p.delivered,p.history_quality
                 FROM execution_attempt_provenance p JOIN execution_attempts e ON e.id=p.execution_attempt_id
                 WHERE p.transfer_id=? ORDER BY p.created_at,p.artifact_id,p.ordinal,p.execution_attempt_id""", (transfer_id,))
+            consolidations = await db.fetchall("""SELECT a.contributing_artifact_id,a.source_request_id,a.canonical_artifact_id,
+                c.torrent_id AS canonical_transfer_id FROM artifact_consolidations a
+                JOIN download_files c ON c.id=a.canonical_artifact_id
+                WHERE a.source_transfer_id=? ORDER BY a.contributing_artifact_id""", (transfer_id,))
+            candidate_bindings = await db.fetchall("""SELECT b.* FROM canonical_candidate_bindings b
+                JOIN download_files f ON f.id=b.canonical_artifact_id
+                WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+                ORDER BY b.canonical_artifact_id,b.candidate_order,b.id""", (transfer_id,))
+            candidate_origins = await db.fetchall("""SELECT o.*,b.canonical_artifact_id FROM canonical_candidate_origins o
+                JOIN canonical_candidate_bindings b ON b.id=o.binding_id
+                JOIN download_files f ON f.id=b.canonical_artifact_id
+                WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+                ORDER BY b.canonical_artifact_id,b.candidate_order,o.id""", (transfer_id,)) if details else []
             events = await db.fetchall("SELECT id,torrent_id,level,message,created_at FROM events WHERE torrent_id=? ORDER BY id DESC LIMIT 50", (transfer_id,)) if details else []
             input_challenge = await db.fetchone("SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
         def normalized(item, field="normalized_error"):
@@ -293,6 +316,14 @@ class TransferRepository:
         result["providers"] = delivering_providers if result["status"] == "completed" else historical_providers
         result["executors"] = sorted({item["download_client"] for item in files if item["download_client"]})
         result["input_required"] = public_challenge(input_challenge)
+        targets = sorted({int(item["canonical_transfer_id"]) for item in consolidations})
+        complete_consolidation = result["status"] == "consolidated"
+        result["consolidation"] = {
+            "state": "complete" if complete_consolidation else "partial" if consolidations else "none",
+            "consolidated_into": targets[0] if complete_consolidation and len(targets) == 1 else None,
+            "canonical_transfer_ids": targets,
+            "artifact_mappings": [dict(item) for item in consolidations],
+        }
         if details:
             result["request"] = codec.load(requests[0]["payload"], {}) if requests else None
             result["files"] = []
@@ -320,12 +351,35 @@ class TransferRepository:
                 item["candidate_source"] = codec.load(item.get("candidate_source"), None)
                 item["delivered"] = bool(item.get("delivered"))
                 result["execution_attempts"].append(item)
+            origins_by_binding = {}
+            for origin in candidate_origins:
+                origins_by_binding.setdefault(int(origin["binding_id"]), []).append({
+                    "contributing_artifact_id": int(origin["contributing_artifact_id"]),
+                    "contributing_transfer_id": int(origin["contributing_transfer_id"]),
+                    "request_id": origin["request_id"],
+                    "resolution_attempt_id": origin["resolution_attempt_id"],
+                    "discovered_candidate_id": origin["discovered_candidate_id"],
+                })
+            result["candidate_bindings"] = []
+            for binding in candidate_bindings:
+                source_identity = None
+                if binding.get("source_scope") and binding.get("source_key"):
+                    source_identity = {"scope": binding["source_scope"], "key": binding["source_key"]}
+                result["candidate_bindings"].append({
+                    "canonical_artifact_id": int(binding["canonical_artifact_id"]),
+                    "candidate_id": binding["candidate_id"],
+                    "provider_id": binding["provider_id"],
+                    "source_identity": source_identity,
+                    "role": binding["role"],
+                    "candidate_order": int(binding["candidate_order"]),
+                    "origins": origins_by_binding.get(int(binding["id"]), []),
+                })
             result["events"] = [dict(item) for item in events]
         return result
 
     async def aggregate_metadata(self, transfer_id, *, total_bytes, local_path):
         async with get_db() as db:
-            await db.execute("UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status!='deleted'", (total_bytes, local_path, transfer_id))
+            await db.execute("UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status NOT IN ('deleted','consolidated')", (total_bytes, local_path, transfer_id))
             await db.commit()
 
     async def update_metadata(self, transfer_id, *, label=None, priority=None):
@@ -340,7 +394,7 @@ class TransferRepository:
         async with get_db() as db:
             rows = await db.fetchall("""SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
-                WHERE t.status NOT IN ('completed','deleted','cancelled')
+                WHERE t.status NOT IN ('completed','consolidated','deleted','cancelled')
                 AND EXISTS(SELECT 1 FROM transfer_requests r WHERE r.transfer_id=t.id)
                 ORDER BY t.priority DESC,t.id""")
         return tuple(self._transfer(row) for row in rows)
@@ -542,7 +596,7 @@ class TransferRepository:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT r.* FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE r.id=? AND r.state='pending'
-                AND t.status NOT IN ('deleted','completed','cancelled') AND COALESCE(p.paused,0)=0""", (request_id,))
+                AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(p.paused,0)=0""", (request_id,))
             if not row:
                 return None
             await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1 WHERE id=?", (request_id,))
@@ -591,11 +645,11 @@ class TransferRepository:
                 ("failed" if result.error else "resolved", self._candidate_summary(result.candidates), attempt.id))
             resource = codec.dump(result.observation.resource) if result.observation else None
             request_state = "failed" if result.error else "waiting" if result.observation and not result.candidates else "materializing" if result.candidates else "resolved"
-            if row["status"] not in {"deleted", "completed", "cancelled"}:
+            if row["status"] not in {"deleted", "completed", "consolidated", "cancelled"}:
                 await db.execute("UPDATE transfer_requests SET state=?,resource=COALESCE(?,resource),error=? WHERE id=?",
                                  (request_state, resource, error, attempt.request_id))
             await db.commit()
-        return row["status"] not in {"deleted", "completed", "cancelled"}
+        return row["status"] not in {"deleted", "completed", "consolidated", "cancelled"}
 
     async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending", consume_attempt=False) -> None:
         async with get_db() as db:
@@ -606,7 +660,7 @@ class TransferRepository:
                 await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (error_blob, item["id"]))
                 await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (item["id"],))
             await db.execute("""UPDATE transfer_requests SET state=?,error=?,retry_at=?,attempts=attempts+? WHERE id=?
-                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','completed','cancelled'))""",
+                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','completed','consolidated','cancelled'))""",
                 (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
             await db.commit()
 
@@ -614,7 +668,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
-            if not parent or parent["status"] in {"deleted", "completed", "cancelled"}:
+            if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 return
             for ordinal, entry in enumerate(entries):
                 identity = uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
@@ -642,7 +696,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
-            if not parent or parent["status"] in {"deleted", "completed", "cancelled"}:
+            if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 return None
             previous = await db.fetchone("SELECT id FROM download_files WHERE request_id=?", (record.id,))
             if previous:
@@ -672,7 +726,8 @@ class TransferRepository:
     async def occupied_paths(self) -> set[str]:
         async with get_db() as db:
             rows = await db.fetchall("""SELECT f.local_path FROM download_files f JOIN torrents t ON t.id=f.torrent_id
-                WHERE f.local_path IS NOT NULL AND (t.status NOT IN ('deleted','completed','error')
+                WHERE f.local_path IS NOT NULL AND COALESCE(f.mirror_state,'')!='standby'
+                AND (t.status NOT IN ('deleted','completed','consolidated','error')
                     OR EXISTS (SELECT 1 FROM execution_attempts e WHERE e.id=f.execution_attempt_id AND e.authorized=1
                         AND e.state IN ('prepared','queued','transferring','paused','unknown')))""")
         return {str(row["local_path"]).casefold() for row in rows}
@@ -683,12 +738,14 @@ class TransferRepository:
             row = await db.fetchone("""SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
                 WHERE f.id=? AND f.status=? AND f.execution_attempt_id IS NULL
-                AND t.status NOT IN ('deleted','completed','cancelled') AND COALESCE(p.paused,0)=0""",
+                AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(p.paused,0)=0""",
                 (artifact.id, "input_required" if from_input_required else "queued"))
             if not row:
                 return False
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-            route_attempt_id = await self._candidate_route(db, artifact.transfer_id, candidate)
+            route_attempt_id = await self._candidate_route(
+                db, artifact.transfer_id, candidate, artifact_id=artifact.id
+            )
             ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (artifact.id,))
             ordinal = int(ordinal_row["n"] or 0) + 1
             await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate)
@@ -722,7 +779,7 @@ class TransferRepository:
             cleanup_owned = row["transfer_status"] in {"deleted", "cancelled"} and row.get("cleanup_state") in {"pending", "blocked"}
             if not cleanup_owned:
                 return False
-        if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed", "cancelled"} or row["paused_intent"]):
+        if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed", "consolidated", "cancelled"} or row["paused_intent"]):
             return False
         if action in {"start", "resume"} and await self.globally_paused():
             return False
@@ -768,7 +825,7 @@ class TransferRepository:
                       ExecutionState.SUCCEEDED: "verifying", ExecutionState.FAILED: "error", ExecutionState.CANCELLED: "cancelled",
                       ExecutionState.ABSENT: "lost", ExecutionState.UNKNOWN: "unknown"}
             await db.execute("""UPDATE download_files SET status=?,normalized_error=?,updated_at=CURRENT_TIMESTAMP
-                WHERE execution_attempt_id=? AND torrent_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','cancelled'))""",
+                WHERE execution_attempt_id=? AND torrent_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','consolidated','cancelled'))""",
                 (states[observation.state], error, handle.attempt_id))
             await db.commit()
 
@@ -780,7 +837,7 @@ class TransferRepository:
                 execution_attempt_id=CASE WHEN ? THEN NULL ELSE execution_attempt_id END,
                 selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND torrent_id IN (SELECT id FROM torrents
-                    WHERE status!='deleted' AND (status!='cancelled' OR ?='cancelled'))""",
+                    WHERE status NOT IN ('deleted','consolidated') AND (status!='cancelled' OR ?='cancelled'))""",
                 (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id, state))
             if cursor.rowcount and release and current and current.get("execution_attempt_id"):
                 await db.execute("""UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP
@@ -811,7 +868,7 @@ class TransferRepository:
         async with get_db() as db:
             rows = await db.fetchall("""SELECT e.* FROM execution_attempts e
                 JOIN download_files f ON f.execution_attempt_id=e.id JOIN torrents t ON t.id=e.transfer_id
-                WHERE t.status NOT IN ('deleted','completed','cancelled') AND e.authorized=1""")
+                WHERE t.status NOT IN ('deleted','completed','consolidated','cancelled') AND e.authorized=1""")
         return tuple(self._execution_attempt(row) for row in rows)
 
     async def resources(self, transfer_id: int):
@@ -855,16 +912,19 @@ class TransferRepository:
 
     async def retry_requests(self, transfer_id: int, *, request_id=None, reset_budget=False):
         async with get_db() as db:
-            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE transfer_id=? AND " +
+            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE transfer_id=? AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('completed','consolidated','deleted','cancelled')) AND " +
                              ("id=?" if request_id else "state='failed'"), (reset_budget, transfer_id, request_id) if request_id else (reset_budget, transfer_id))
             await db.commit()
 
     async def renew_parent(self, record, retry_at, *, reset_budget=False):
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=?,error=NULL,attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE id=?", (retry_at, reset_budget, record.id))
+            await db.execute("""UPDATE transfer_requests SET state='pending',retry_at=?,error=NULL,attempts=CASE WHEN ? THEN 0 ELSE attempts END
+                WHERE id=? AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('completed','consolidated','deleted','cancelled'))""",
+                (retry_at, reset_budget, record.id))
             await db.execute("""UPDATE transfer_requests SET state='waiting_parent',error=NULL WHERE parent_id=? AND id IN
-                (SELECT request_id FROM download_files WHERE status IN ('error','unresolved','lost','cancelled'))""", (record.id,))
+                (SELECT request_id FROM download_files WHERE status IN ('error','unresolved','lost','cancelled'))
+                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('completed','consolidated','deleted','cancelled'))""", (record.id,))
             await db.commit()
 
     async def recovery_budget(self, artifact_id: int) -> tuple[int, int]:
@@ -958,7 +1018,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("""UPDATE transfer_requests SET state='waiting',resource=?,error=NULL
                 WHERE transfer_id=? AND parent_id IS NULL AND state IN ('pending','resolving','failed')
-                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('completed','deleted'))""",
+                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('completed','consolidated','deleted'))""",
                 (codec.dump(resource), transfer_id))
             await db.commit()
 
@@ -966,6 +1026,10 @@ class TransferRepository:
         identity = new_identity()
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            # Refresh is deliberately allowed for a request owned by a fully
+            # consolidated source transfer: that request still owns the foreign
+            # candidate's acquisition provenance even though its submission has
+            # no independent scheduling authority.
             await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state) VALUES(?,?,?,'started')",
                              (identity, record.id, provider_id))
             await self._begin_route_provenance(db, identity, record.transfer_id, record.id, provider_id, operation="refresh")
@@ -990,7 +1054,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             current = await db.fetchone("""SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
-                WHERE f.id=? AND t.status!='deleted'""", (primary.id,))
+                WHERE f.id=? AND t.status NOT IN ('deleted','consolidated')""", (primary.id,))
             if not current:
                 return False
             retained = [replace(codec.candidate(item), expected_bytes=size) for item in codec.load(current["candidates"], [])]
@@ -1011,6 +1075,9 @@ class TransferRepository:
             row = await db.fetchone("SELECT * FROM download_files WHERE id=? AND torrent_id=?", (artifact_id, transfer_id))
             if not row or not row["request_id"]:
                 raise KeyError(artifact_id)
+            transfer = await db.fetchone("SELECT status FROM torrents WHERE id=?", (transfer_id,))
+            if not transfer or transfer["status"] == "consolidated":
+                raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE))
             if bool(row["blocked"]) == (not selected):
                 return
             if row["execution_attempt_id"] or row["status"] not in {"queued", "unresolved", "paused", "blocked", "pending"}:

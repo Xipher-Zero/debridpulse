@@ -277,192 +277,155 @@ _INPUT_CHALLENGE_COLUMNS = {
 }
 
 _RUNTIME_STATE_COLUMNS = {
-    "integration_id",
-    "state_key",
-    "schema_version",
-    "payload",
-    "observed_at",
-    "stale_after",
-    "successful_at",
-    "created_at",
-    "updated_at",
-    "generation",
+    "integration_id", "state_key", "schema_version", "payload", "observed_at", "stale_after",
+    "successful_at", "created_at", "updated_at", "generation",
 }
 
 
-TRANSFER_REPOSITORY_SCHEMA = ('CREATE TABLE IF NOT EXISTS application_events (\n'
- '        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        kind TEXT NOT NULL, detail TEXT, claimed INTEGER NOT NULL DEFAULT 0,\n'
- '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
- 'CREATE TABLE IF NOT EXISTS postprocess_attempts (\n'
- '        transfer_id INTEGER NOT NULL REFERENCES torrents(id), processor_id TEXT NOT NULL,\n'
- "        state TEXT NOT NULL DEFAULT 'pending', paths TEXT NOT NULL, outcome TEXT,\n"
- '        PRIMARY KEY(transfer_id,processor_id))',
- 'CREATE TABLE IF NOT EXISTS transfer_controls(key TEXT PRIMARY KEY,value TEXT NOT NULL)',
- 'CREATE TABLE IF NOT EXISTS transfer_requests (\n'
- '        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        parent_id TEXT REFERENCES transfer_requests(id), ordinal INTEGER NOT NULL DEFAULT 0,\n'
- "        payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', resource TEXT,\n"
- '        attempts INTEGER NOT NULL DEFAULT 0, retry_at REAL NOT NULL DEFAULT 0,\n'
- '        error TEXT, UNIQUE(transfer_id,parent_id,ordinal))',
- 'CREATE TABLE IF NOT EXISTS provider_resources (\n'
- '        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        provider_id TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL,\n'
- '        cleanup_authority TEXT, cleanup_error TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
- 'CREATE TABLE IF NOT EXISTS resolution_attempts (\n'
- '        id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES transfer_requests(id),\n'
- '        provider_id TEXT NOT NULL, state TEXT NOT NULL, error TEXT,\n'
- '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
- 'CREATE TABLE IF NOT EXISTS execution_attempts (\n'
- '        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        artifact_id INTEGER NOT NULL REFERENCES download_files(id),\n'
- '        executor_id TEXT NOT NULL, handle TEXT NOT NULL, state TEXT NOT NULL,\n'
- '        authorized INTEGER NOT NULL DEFAULT 1, progress TEXT, error TEXT,\n'
- '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
- 'CREATE TABLE IF NOT EXISTS route_attempt_provenance (\n'
- '        resolution_attempt_id TEXT PRIMARY KEY REFERENCES resolution_attempts(id),\n'
- '        transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        request_id TEXT NOT NULL REFERENCES transfer_requests(id),\n'
- '        ordinal INTEGER NOT NULL CHECK(ordinal > 0), operation TEXT NOT NULL,\n'
- '        previous_attempt_id TEXT REFERENCES resolution_attempts(id),\n'
- "        transition_kind TEXT, transition_reason TEXT, candidate_summary TEXT NOT NULL DEFAULT '[]',\n"
- "        outcome TEXT NOT NULL DEFAULT 'started', history_quality TEXT NOT NULL DEFAULT 'recorded',\n"
- '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n'
- '        UNIQUE(transfer_id,ordinal))',
- 'CREATE TABLE IF NOT EXISTS execution_attempt_provenance (\n'
- '        execution_attempt_id TEXT PRIMARY KEY REFERENCES execution_attempts(id),\n'
- '        route_attempt_id TEXT REFERENCES resolution_attempts(id),\n'
- '        transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        artifact_id INTEGER NOT NULL REFERENCES download_files(id),\n'
- '        ordinal INTEGER NOT NULL CHECK(ordinal > 0), provider_id TEXT, candidate_id TEXT, candidate_source '
- 'TEXT,\n'
- "        outcome TEXT NOT NULL DEFAULT 'prepared', delivered INTEGER NOT NULL DEFAULT 0,\n"
- "        history_quality TEXT NOT NULL DEFAULT 'recorded',\n"
- '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n'
- '        UNIQUE(artifact_id,ordinal))',
- 'CREATE INDEX IF NOT EXISTS idx_route_provenance_transfer ON '
- 'route_attempt_provenance(transfer_id,request_id,ordinal)',
- 'CREATE INDEX IF NOT EXISTS idx_execution_provenance_transfer ON '
- 'execution_attempt_provenance(transfer_id,artifact_id,ordinal)',
- 'CREATE INDEX IF NOT EXISTS idx_execution_provenance_route ON '
- 'execution_attempt_provenance(route_attempt_id)',
- 'CREATE TABLE IF NOT EXISTS transfer_outcomes (\n'
- '        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),\n'
- '        attempt_id TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL,\n'
- '        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
- 'CREATE INDEX IF NOT EXISTS idx_requests_ready ON transfer_requests(state,retry_at,transfer_id)',
- 'CREATE INDEX IF NOT EXISTS idx_attempts_artifact ON execution_attempts(artifact_id,state)',
- 'CREATE INDEX IF NOT EXISTS idx_resources_transfer ON provider_resources(transfer_id,provider_id)')
+TRANSFER_REPOSITORY_SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS application_events (
+        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        kind TEXT NOT NULL, detail TEXT, claimed INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS postprocess_attempts (
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id), processor_id TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending', paths TEXT NOT NULL, outcome TEXT,
+        PRIMARY KEY(transfer_id,processor_id))""",
+    "CREATE TABLE IF NOT EXISTS transfer_controls(key TEXT PRIMARY KEY,value TEXT NOT NULL)",
+    """CREATE TABLE IF NOT EXISTS transfer_requests (
+        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        parent_id TEXT REFERENCES transfer_requests(id), ordinal INTEGER NOT NULL DEFAULT 0,
+        payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', resource TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0, retry_at REAL NOT NULL DEFAULT 0,
+        error TEXT, UNIQUE(transfer_id,parent_id,ordinal))""",
+    """CREATE TABLE IF NOT EXISTS provider_resources (
+        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        provider_id TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL,
+        cleanup_authority TEXT, cleanup_error TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS resolution_attempts (
+        id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES transfer_requests(id),
+        provider_id TEXT NOT NULL, state TEXT NOT NULL, error TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS execution_attempts (
+        id TEXT PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        executor_id TEXT NOT NULL, handle TEXT NOT NULL, state TEXT NOT NULL,
+        authorized INTEGER NOT NULL DEFAULT 1, progress TEXT, error TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    """CREATE TABLE IF NOT EXISTS route_attempt_provenance (
+        resolution_attempt_id TEXT PRIMARY KEY REFERENCES resolution_attempts(id),
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        request_id TEXT NOT NULL REFERENCES transfer_requests(id),
+        ordinal INTEGER NOT NULL CHECK(ordinal > 0), operation TEXT NOT NULL,
+        previous_attempt_id TEXT REFERENCES resolution_attempts(id),
+        transition_kind TEXT, transition_reason TEXT, candidate_summary TEXT NOT NULL DEFAULT '[]',
+        outcome TEXT NOT NULL DEFAULT 'started', history_quality TEXT NOT NULL DEFAULT 'recorded',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(transfer_id,ordinal))""",
+    """CREATE TABLE IF NOT EXISTS execution_attempt_provenance (
+        execution_attempt_id TEXT PRIMARY KEY REFERENCES execution_attempts(id),
+        route_attempt_id TEXT REFERENCES resolution_attempts(id),
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        ordinal INTEGER NOT NULL CHECK(ordinal > 0), provider_id TEXT, candidate_id TEXT, candidate_source TEXT,
+        outcome TEXT NOT NULL DEFAULT 'prepared', delivered INTEGER NOT NULL DEFAULT 0,
+        history_quality TEXT NOT NULL DEFAULT 'recorded',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(artifact_id,ordinal))""",
+    """CREATE TABLE IF NOT EXISTS canonical_candidate_bindings (
+        id INTEGER PRIMARY KEY,
+        canonical_artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        candidate_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        source_scope TEXT,
+        source_key TEXT,
+        role TEXT NOT NULL CHECK(role IN ('canonical','alternate')),
+        candidate_order INTEGER NOT NULL CHECK(candidate_order > 0),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(canonical_artifact_id,candidate_id),
+        UNIQUE(canonical_artifact_id,candidate_order))""",
+    """CREATE TABLE IF NOT EXISTS canonical_candidate_origins (
+        id INTEGER PRIMARY KEY,
+        binding_id INTEGER NOT NULL REFERENCES canonical_candidate_bindings(id),
+        contributing_artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        contributing_transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        request_id TEXT NOT NULL REFERENCES transfer_requests(id),
+        resolution_attempt_id TEXT NOT NULL REFERENCES resolution_attempts(id),
+        discovered_candidate_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(binding_id,request_id,resolution_attempt_id,discovered_candidate_id))""",
+    """CREATE TABLE IF NOT EXISTS artifact_consolidations (
+        contributing_artifact_id INTEGER PRIMARY KEY REFERENCES download_files(id),
+        source_transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        source_request_id TEXT NOT NULL UNIQUE REFERENCES transfer_requests(id),
+        canonical_artifact_id INTEGER NOT NULL REFERENCES download_files(id),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    "CREATE INDEX IF NOT EXISTS idx_route_provenance_transfer ON route_attempt_provenance(transfer_id,request_id,ordinal)",
+    "CREATE INDEX IF NOT EXISTS idx_execution_provenance_transfer ON execution_attempt_provenance(transfer_id,artifact_id,ordinal)",
+    "CREATE INDEX IF NOT EXISTS idx_execution_provenance_route ON execution_attempt_provenance(route_attempt_id)",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_bindings_artifact ON canonical_candidate_bindings(canonical_artifact_id,candidate_order)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_candidate_bindings_source ON canonical_candidate_bindings(canonical_artifact_id,provider_id,source_scope,source_key) WHERE source_scope IS NOT NULL AND source_key IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_origins_request ON canonical_candidate_origins(request_id,resolution_attempt_id)",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_origins_transfer ON canonical_candidate_origins(contributing_transfer_id,binding_id)",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_consolidations_source ON artifact_consolidations(source_transfer_id,source_request_id)",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_consolidations_canonical ON artifact_consolidations(canonical_artifact_id)",
+    """CREATE TRIGGER IF NOT EXISTS trg_execution_provenance_candidate_route
+        AFTER INSERT ON execution_attempt_provenance
+        WHEN NEW.route_attempt_id IS NULL AND NEW.candidate_id IS NOT NULL
+        BEGIN
+            UPDATE execution_attempt_provenance
+            SET route_attempt_id=(
+                    SELECT o.resolution_attempt_id
+                    FROM canonical_candidate_bindings b
+                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                    WHERE b.canonical_artifact_id=NEW.artifact_id AND b.candidate_id=NEW.candidate_id
+                    ORDER BY CASE WHEN o.discovered_candidate_id=b.candidate_id THEN 0 ELSE 1 END,o.id
+                    LIMIT 1
+                ),
+                history_quality=CASE WHEN EXISTS(
+                    SELECT 1 FROM canonical_candidate_bindings b
+                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                    WHERE b.canonical_artifact_id=NEW.artifact_id AND b.candidate_id=NEW.candidate_id
+                ) THEN 'recorded' ELSE history_quality END
+            WHERE execution_attempt_id=NEW.execution_attempt_id;
+        END""",
+    """CREATE TABLE IF NOT EXISTS transfer_outcomes (
+        id INTEGER PRIMARY KEY, transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        attempt_id TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    "CREATE INDEX IF NOT EXISTS idx_requests_ready ON transfer_requests(state,retry_at,transfer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_attempts_artifact ON execution_attempts(artifact_id,state)",
+    "CREATE INDEX IF NOT EXISTS idx_resources_transfer ON provider_resources(transfer_id,provider_id)",
+)
 
-TRANSFER_REPOSITORY_COLUMNS = {'torrents': {'normalized_error': 'TEXT',
-              'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
-              'delete_remote': 'INTEGER NOT NULL DEFAULT 0'},
- 'transfer_requests': {'metadata': 'TEXT'},
- 'provider_resources': {'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0',
-                        'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
-                        'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0'},
- 'resolution_attempts': {'result': 'TEXT'},
- 'execution_attempts': {'candidate': 'TEXT',
-                        'progress_at': 'REAL',
-                        'cleanup_state': 'TEXT',
-                        'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0',
-                        'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
-                        'cleanup_error': 'TEXT'},
- 'download_files': {'request_id': 'TEXT',
-                    'candidates': 'TEXT',
-                    'selected_candidate': 'INTEGER NOT NULL DEFAULT 0',
-                    'execution_attempt_id': 'TEXT',
-                    'normalized_error': 'TEXT',
-                    'retry_at': 'REAL NOT NULL DEFAULT 0',
-                    'recovery_failures': 'INTEGER NOT NULL DEFAULT 0',
-                    'recovery_refreshes': 'INTEGER NOT NULL DEFAULT 0'}}
+TRANSFER_REPOSITORY_COLUMNS = {
+    'torrents': {'normalized_error': 'TEXT', 'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0', 'delete_remote': 'INTEGER NOT NULL DEFAULT 0'},
+    'transfer_requests': {'metadata': 'TEXT'},
+    'provider_resources': {'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0'},
+    'resolution_attempts': {'result': 'TEXT'},
+    'execution_attempts': {'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT'},
+    'download_files': {'request_id': 'TEXT', 'candidates': 'TEXT', 'selected_candidate': 'INTEGER NOT NULL DEFAULT 0', 'execution_attempt_id': 'TEXT', 'normalized_error': 'TEXT', 'retry_at': 'REAL NOT NULL DEFAULT 0', 'recovery_failures': 'INTEGER NOT NULL DEFAULT 0', 'recovery_refreshes': 'INTEGER NOT NULL DEFAULT 0'},
+}
 
-_TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
- 'download_files': {'candidates',
-                    'execution_attempt_id',
-                    'normalized_error',
-                    'request_id',
-                    'retry_at',
-                    'selected_candidate',
-                    'recovery_failures',
-                    'recovery_refreshes'},
- 'execution_attempt_provenance': {'artifact_id',
-                                  'candidate_id',
-                                  'candidate_source',
-                                  'created_at',
-                                  'delivered',
-                                  'execution_attempt_id',
-                                  'history_quality',
-                                  'ordinal',
-                                  'outcome',
-                                  'provider_id',
-                                  'route_attempt_id',
-                                  'transfer_id',
-                                  'updated_at'},
- 'execution_attempts': {'artifact_id',
-                        'authorized',
-                        'candidate',
-                        'cleanup_attempts',
-                        'cleanup_error',
-                        'cleanup_retry_at',
-                        'cleanup_state',
-                        'created_at',
-                        'error',
-                        'executor_id',
-                        'handle',
-                        'id',
-                        'progress',
-                        'progress_at',
-                        'state',
-                        'transfer_id',
-                        'updated_at'},
- 'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
- 'provider_resources': {'cleanup_attempts',
-                        'cleanup_authority',
-                        'cleanup_blocked',
-                        'cleanup_error',
-                        'cleanup_retry_at',
-                        'id',
-                        'payload',
-                        'provider_id',
-                        'state',
-                        'transfer_id',
-                        'updated_at'},
- 'resolution_attempts': {'created_at',
-                         'error',
-                         'id',
-                         'provider_id',
-                         'request_id',
-                         'result',
-                         'state',
-                         'updated_at'},
- 'route_attempt_provenance': {'candidate_summary',
-                              'created_at',
-                              'history_quality',
-                              'operation',
-                              'ordinal',
-                              'outcome',
-                              'previous_attempt_id',
-                              'request_id',
-                              'resolution_attempt_id',
-                              'transfer_id',
-                              'transition_kind',
-                              'transition_reason',
-                              'updated_at'},
- 'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote'},
- 'transfer_controls': {'value', 'key'},
- 'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
- 'transfer_requests': {'attempts',
-                       'error',
-                       'id',
-                       'metadata',
-                       'ordinal',
-                       'parent_id',
-                       'payload',
-                       'resource',
-                       'retry_at',
-                       'state',
-                       'transfer_id'}}
+_TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
+    'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
+    'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes'},
+    'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
+    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'transfer_id', 'updated_at'},
+    'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
+    'provider_resources': {'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'state', 'transfer_id', 'updated_at'},
+    'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
+    'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
+    'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
+    'canonical_candidate_origins': {'id', 'binding_id', 'contributing_artifact_id', 'contributing_transfer_id', 'request_id', 'resolution_attempt_id', 'discovered_candidate_id', 'created_at'},
+    'artifact_consolidations': {'contributing_artifact_id', 'source_transfer_id', 'source_request_id', 'canonical_artifact_id', 'created_at', 'updated_at'},
+    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote'},
+    'transfer_controls': {'value', 'key'},
+    'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
+    'transfer_requests': {'attempts', 'error', 'id', 'metadata', 'ordinal', 'parent_id', 'payload', 'resource', 'retry_at', 'state', 'transfer_id'},
+}
 
 
 async def _validate_schema_readonly(required: dict[str, set[str]], *, owner: str) -> None:
@@ -641,8 +604,7 @@ async def _init_db_sqlite():
     async with aiosqlite.connect(DB_PATH) as verify_db:
         required = {
             "torrents": {"id", "hash", "status"} | {name for name, _ in _SCHEMA_COLUMNS_TORRENTS},
-            "download_files": {"id", "torrent_id", "status", "blocked"}
-            | {name for name, _ in _SCHEMA_COLUMNS_FILES},
+            "download_files": {"id", "torrent_id", "status", "blocked"} | {name for name, _ in _SCHEMA_COLUMNS_FILES},
             "integration_runtime_state": _RUNTIME_STATE_COLUMNS,
             "transfer_input_challenges": _INPUT_CHALLENGE_COLUMNS,
         }
