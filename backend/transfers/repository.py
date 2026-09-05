@@ -61,13 +61,31 @@ class TransferRepository(_QualifiedTransferRepository):
         """Persist neutral execution evidence and promote a credible live total.
 
         This is deliberately below every provider and executor adapter. Any
-        future executor that normalizes a positive total into TransferProgress
-        receives the same behavior without provider- or transport-specific code.
+        future executor that normalizes a credible positive total into
+        TransferProgress receives the same behavior without provider- or
+        transport-specific code. Revoked terminal history is immutable: a late
+        stale observation cannot reactivate a retired writer or alter its record.
         """
+        async with get_db() as db:
+            previous = await db.fetchone(
+                "SELECT state,authorized,handle FROM execution_attempts WHERE id=?",
+                (observation.handle.attempt_id,),
+            )
+        if (previous and not bool(previous.get("authorized"))
+                and previous.get("state") in _TERMINAL_EXECUTION_STATES
+                and codec.load(previous.get("handle")) == codec.load(codec.dump(observation.handle))):
+            return
+
         await super().execution(observation)
         total = observation.progress.total_bytes
-        if (observation.state not in _RUNTIME_TOTAL_STATES
-                or not isinstance(total, int) or isinstance(total, bool) or total <= 0):
+        completed = observation.progress.completed_bytes
+        credible = (
+            observation.state in _RUNTIME_TOTAL_STATES
+            and isinstance(total, int) and not isinstance(total, bool) and total > 0
+            and isinstance(completed, int) and not isinstance(completed, bool)
+            and 0 <= completed <= total
+        )
+        if not credible:
             return
         async with get_db() as db:
             row = await db.fetchone(
