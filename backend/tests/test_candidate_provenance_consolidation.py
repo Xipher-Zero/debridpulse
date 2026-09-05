@@ -11,6 +11,7 @@ from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
 from transfers.models import (
     ExecutionState,
+    IntegrityMetadata,
     ResolutionResult,
     ResourceState,
     SourceIdentity,
@@ -22,13 +23,17 @@ from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
 
 
+_SHARED_PAYLOAD_SHA256 = "a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211"
+
+
 class ProvenanceParcelProvider(ParcelProvider):
-    """Resolver with explicit secret-free source identity independent of provider identity."""
+    """Resolver with explicit secret-free source identity plus integrity evidence."""
 
     def candidate(self, name="payload.bin", *, payload="parcel"):
         return replace(
             super().candidate(name, payload=payload),
-            source_identity=SourceIdentity("parcel-payload", str(payload)),
+            integrity=(IntegrityMetadata("sha256", _SHARED_PAYLOAD_SHA256),),
+            source_identity=SourceIdentity("parcel-payload", f"{self.descriptor.id}:{payload}"),
         )
 
     async def resolve(self, request):
@@ -233,7 +238,10 @@ async def test_binding_preserves_request_resolution_provider_source_and_order(p2
     assert [item["candidate_order"] for item in bindings] == [1, 2]
     assert [item["role"] for item in bindings] == ["canonical", "alternate"]
     assert [item["provider_id"] for item in bindings] == ["provider-a", "provider-b"]
-    assert {item["source_identity"]["key"] for item in bindings} == {"shared:same.bin"}
+    assert {item["source_identity"]["key"] for item in bindings} == {
+        "provider-a:shared:same.bin",
+        "provider-b:shared:same.bin",
+    }
     origins = [origin for binding in bindings for origin in binding["origins"]]
     assert {item["request_id"] for item in origins} == {canonical_request.id, source_request.id}
     assert all(item["resolution_attempt_id"] for item in origins)
