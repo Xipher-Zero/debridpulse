@@ -52,24 +52,4 @@
     runtime.dataset.dpStorageHealthRuntime = '1';
     document.head.appendChild(runtime);
   }
-
-  /* Details candidate presentation depends on the canonical app.js Details owner.
-     ui-error-semantics executes before app.js as a deferred script, so delay this
-     read-only enhancement until DOMContentLoaded, after all deferred scripts have
-     initialized. This preserves SSE/bootstrap ordering while avoiding index churn. */
-  if (typeof document !== 'undefined') {
-    const loadDetailsCandidates = function () {
-      if (document.querySelector('script[data-dp-detail-candidates-runtime]')) return;
-      const runtime = document.createElement('script');
-      runtime.src = '/ui-detail-candidates.js?v=2';
-      runtime.async = false;
-      runtime.dataset.dpDetailCandidatesRuntime = '1';
-      document.head.appendChild(runtime);
-    };
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', loadDetailsCandidates, {once: true});
-    } else {
-      loadDetailsCandidates();
-    }
-  }
 })();
