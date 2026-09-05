@@ -40,6 +40,32 @@ _engine_base.stable_payload = _stable_payload_proxy
 class TransferEngine(_QualifiedTransferEngine):
     """Qualified lifecycle plus WS2 P1 alternate-recovery behavior."""
 
+    async def _serial_global_control(self, transfers):
+        """Converge global controls in one deterministic capacity order.
+
+        Per-transfer controls may touch different executors, but resume admission
+        consumes one application-wide execution budget. Running those controls
+        concurrently lets native pause/resume calls interleave around the shared
+        capacity reservation. Serial convergence preserves the same control
+        semantics while ensuring each successor observes the durable disposition
+        of its predecessor before deciding whether a slot is available.
+        """
+        results = {}
+        for transfer in transfers:
+            results[transfer.id] = await self._control(transfer.id)
+        return results
+
+    async def pause_all(self):
+        await self.repository.global_pause(True)
+        return await self._serial_global_control(await self.repository.active())
+
+    async def resume_all(self):
+        await self.repository.global_pause(False)
+        transfers = await self.repository.active()
+        for transfer in transfers:
+            await self.repository.pause_intent(transfer.id, False)
+        return await self._serial_global_control(transfers)
+
     def _candidate_provider_enabled(self, candidate) -> bool:
         if candidate is None or not candidate.provider_id:
             return True
