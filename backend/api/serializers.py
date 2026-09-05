@@ -15,7 +15,7 @@ import json
 from transfers.errors import NormalizedError
 
 
-_OPAQUE_FIELDS = frozenset({"payload", "context", "handle", "candidate", "candidates", "candidate_source", "endpoints", "request", "resource", "redactions", "headers", "normalized_error"})
+_OPAQUE_FIELDS = frozenset({"payload", "context", "handle", "candidate", "candidates", "candidate_source", "candidate_bindings", "endpoints", "request", "resource", "redactions", "headers", "normalized_error"})
 _TORRENT_PRIVATE_FIELDS = frozenset({"magnet", "download_url"}) | _OPAQUE_FIELDS
 _FILE_PRIVATE_FIELDS = frozenset({"source_url", "download_url"}) | _OPAQUE_FIELDS
 _CAPABILITY_FIELDS = _TORRENT_PRIVATE_FIELDS | _FILE_PRIVATE_FIELDS

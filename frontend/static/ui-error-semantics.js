@@ -52,4 +52,15 @@
     runtime.dataset.dpStorageHealthRuntime = '1';
     document.head.appendChild(runtime);
   }
+
+  /* Details candidate disclosure is likewise a browser-only projection owner.
+     It consumes only the allowlisted Details read model and never mutates transfer state. */
+  if (typeof document !== 'undefined'
+      && !document.querySelector('script[data-dp-detail-candidates-runtime]')) {
+    const runtime = document.createElement('script');
+    runtime.src = '/ui-detail-candidates.js?v=1';
+    runtime.async = false;
+    runtime.dataset.dpDetailCandidatesRuntime = '1';
+    document.head.appendChild(runtime);
+  }
 })();

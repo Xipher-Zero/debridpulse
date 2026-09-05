@@ -20,6 +20,18 @@ _RUNTIME_TOTAL_STATES = frozenset({
     ExecutionState.TRANSFERRING,
     ExecutionState.PAUSED,
 })
+_FAILED_CANDIDATE_OUTCOMES = frozenset({"failed", "error", "rejected", "cancelled", "absent"})
+
+
+def _safe_source_label(scope, key) -> str:
+    """Project durable source identity without exposing opaque candidate keys."""
+    normalized_scope = str(scope or "").strip().lower()
+    normalized_key = str(key or "").strip()
+    if normalized_scope == "host" and normalized_key:
+        return normalized_key.lower()
+    if normalized_scope in {"scheme", "protocol"} and normalized_key:
+        return normalized_key.upper()
+    return "Source"
 
 
 class TransferRepository(_QualifiedTransferRepository):
@@ -229,3 +241,121 @@ class TransferRepository(_QualifiedTransferRepository):
             )
             await db.commit()
         return cursor.rowcount == 1
+
+    async def _candidate_presentation(self, transfer_id: int) -> dict[int, dict]:
+        """Return the minimal safe Details projection of durable candidate ownership."""
+        async with get_db() as db:
+            files = await db.fetchall(
+                """SELECT id,candidates,selected_candidate,execution_attempt_id
+                    FROM download_files WHERE torrent_id=? AND request_id IS NOT NULL
+                    AND COALESCE(blocked,0)=0 AND COALESCE(mirror_state,'')!='standby'
+                    ORDER BY id""",
+                (transfer_id,),
+            )
+            artifact_ids = [int(row["id"]) for row in files]
+            if not artifact_ids:
+                return {}
+            placeholders = ",".join("?" for _ in artifact_ids)
+            bindings = await db.fetchall(
+                f"""SELECT canonical_artifact_id,candidate_id,provider_id,source_scope,source_key,role,candidate_order
+                    FROM canonical_candidate_bindings
+                    WHERE canonical_artifact_id IN ({placeholders})
+                    ORDER BY canonical_artifact_id,candidate_order,id""",
+                tuple(artifact_ids),
+            )
+            attempts = await db.fetchall(
+                f"""SELECT p.artifact_id,p.candidate_id,p.outcome,p.delivered,p.ordinal,
+                    p.execution_attempt_id,e.state,e.authorized
+                    FROM execution_attempt_provenance p
+                    LEFT JOIN execution_attempts e ON e.id=p.execution_attempt_id
+                    WHERE p.artifact_id IN ({placeholders})
+                    ORDER BY p.artifact_id,p.ordinal,p.execution_attempt_id""",
+                tuple(artifact_ids),
+            )
+
+        selected_ids: dict[int, str | None] = {}
+        current_attempt_ids: dict[int, str | None] = {}
+        for row in files:
+            artifact_id = int(row["id"])
+            selected_id = None
+            try:
+                candidates = [codec.candidate(value) for value in codec.load(row.get("candidates"), [])]
+                selected = int(row.get("selected_candidate") or 0)
+                if 0 <= selected < len(candidates):
+                    selected_id = str(candidates[selected].id)
+            except (TypeError, ValueError, KeyError, IndexError):
+                selected_id = None
+            selected_ids[artifact_id] = selected_id
+            current_attempt_ids[artifact_id] = row.get("execution_attempt_id")
+
+        attempt_history: dict[tuple[int, str], list[dict]] = {}
+        for row in attempts:
+            candidate_id = str(row.get("candidate_id") or "").strip()
+            if not candidate_id:
+                continue
+            key = (int(row["artifact_id"]), candidate_id)
+            attempt_history.setdefault(key, []).append(dict(row))
+
+        by_artifact: dict[int, list[dict]] = {}
+        seen: dict[int, set[str]] = {}
+        for row in bindings:
+            artifact_id = int(row["canonical_artifact_id"])
+            candidate_id = str(row["candidate_id"])
+            if candidate_id in seen.setdefault(artifact_id, set()):
+                continue
+            seen[artifact_id].add(candidate_id)
+            history = attempt_history.get((artifact_id, candidate_id), [])
+            delivered = any(bool(item.get("delivered")) for item in history)
+            latest = history[-1] if history else None
+            failed = bool(latest and (
+                str(latest.get("outcome") or "").strip().lower() in _FAILED_CANDIDATE_OUTCOMES
+                or str(latest.get("state") or "").strip().lower() in _FAILED_CANDIDATE_OUTCOMES
+            )) and not delivered
+            selected = selected_ids.get(artifact_id) == candidate_id
+            current = bool(latest and current_attempt_ids.get(artifact_id) == latest.get("execution_attempt_id"))
+            active = bool(current and latest and bool(latest.get("authorized"))
+                          and str(latest.get("state") or "").strip().lower() in _MUTATING_EXECUTION_STATES)
+            dispositions = []
+            if delivered:
+                dispositions.append("Delivering")
+            elif failed:
+                dispositions.append("Failed")
+            elif active:
+                dispositions.append("Active")
+            elif selected:
+                dispositions.append("Selected")
+            by_artifact.setdefault(artifact_id, []).append({
+                "candidate_id": candidate_id,
+                "source_label": _safe_source_label(row.get("source_scope"), row.get("source_key")),
+                "provider_id": str(row.get("provider_id") or "").strip() or None,
+                "relationship": "Original" if row.get("role") == "canonical" else "Consolidated",
+                "dispositions": dispositions,
+                "is_selected": selected,
+                "is_delivering": delivered,
+            })
+
+        result: dict[int, dict] = {}
+        for artifact_id in artifact_ids:
+            candidates = by_artifact.get(artifact_id, [])
+            result[artifact_id] = {
+                "candidate_count": len(candidates),
+                "acquisition_candidates": candidates if len(candidates) > 1 else [],
+            }
+        return result
+
+    async def presentation(self, transfer_id: int, details: bool = False):
+        """Add safe candidate multiplicity only to the Details read model."""
+        result = await super().presentation(transfer_id, details=details)
+        if not result or not details:
+            return result
+        candidate_projection = await self._candidate_presentation(transfer_id)
+        for file_row in result.get("files", []):
+            artifact_id = int(file_row.get("id") or 0)
+            projection = candidate_projection.get(artifact_id, {
+                "candidate_count": 0,
+                "acquisition_candidates": [],
+            })
+            file_row["candidate_count"] = projection["candidate_count"]
+            if projection["candidate_count"] > 1:
+                file_row["acquisition_candidates"] = projection["acquisition_candidates"]
+        return result
