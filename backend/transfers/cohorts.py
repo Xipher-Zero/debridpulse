@@ -176,12 +176,20 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
     async with get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
         row = await db.fetchone(
-            "SELECT state,equivalence_retry_count FROM transfer_requests WHERE id=?", (record.id,),
+            """SELECT state,equivalence_retry_count,retry_at,equivalence_disposition
+                FROM transfer_requests WHERE id=?""",
+            (record.id,),
         )
         if not row or row["state"] != "materializing":
             await db.commit()
             return True
         retries = int(row.get("equivalence_retry_count") or 0)
+        scheduled_at = float(row.get("retry_at") or 0)
+        if row.get("equivalence_disposition") == "pending" and scheduled_at > now:
+            await db.commit()
+            _decision(record, incoming, "proof_retry_already_pending", evidence.reason,
+                      evidence=evidence, mapping_cardinality=mapping_cardinality, retry_count=retries)
+            return True
         if retries >= _PROOF_RETRY_BUDGET:
             await db.execute(
                 """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition='exhausted',retry_at=0
