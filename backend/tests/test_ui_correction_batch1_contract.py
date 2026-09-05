@@ -16,9 +16,11 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     provider_status = (STATIC / "ui-provider-status.js").read_text()
     styles = (STATIC / "style-v11.css").read_text()
     runtime = (STATIC / "ui-correction-batch1.js").read_text()
+    capacity = (STATIC / "ui-correction-batch1-capacity.js").read_text()
     batch_css = (STATIC / "ui-correction-batch1.css").read_text()
 
     assert "ui-correction-batch1.js" in provider_status
+    assert "ui-correction-batch1-capacity.js" in provider_status
     assert "ui-correction-batch1.css" in styles
     assert "DebridPulse stared at that for a moment" in runtime
     assert "Checking transfers for recoverable work" in runtime
@@ -34,6 +36,14 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "width: 136px" in batch_css
     assert "canonicalLoadTorrents" in runtime
     assert "correctedLoadTorrents" not in runtime
+
+    # app.js remains the renderer/selection/filter owner. The bridge only makes
+    # its transport and pager honor a measured desktop page size below the old
+    # hard-coded minimum of 15 rows.
+    assert "size >= 15" in capacity
+    assert "query.set('limit', String(size))" in capacity
+    assert "query.set('offset', String((effectivePage() - 1) * size))" in capacity
+    assert "originalPagination.call(this, total, size, (page - 1) * size)" in capacity
 
 
 def test_host_artwork_archive_and_domain_matching_contract():
