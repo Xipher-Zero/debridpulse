@@ -8,6 +8,7 @@ import pytest_asyncio
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from providers.general_http.provider import GeneralHttpProvider
+from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.models import (
@@ -117,6 +118,10 @@ class MultiUnknownProvider:
         frozenset({Capability.RESOLVE}),
         request_types=frozenset({"multi"}),
     )
+
+    @property
+    def applicability(self):
+        return ProviderApplicability()
 
     async def resolve(self, request):
         return ResolutionResult(
