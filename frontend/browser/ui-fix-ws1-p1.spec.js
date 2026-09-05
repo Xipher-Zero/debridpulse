@@ -84,6 +84,42 @@ async function statusBadgeRadius(page, selector) {
   return page.locator(selector).evaluate(element => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius));
 }
 
+async function stableProviderChipContract(page, selector) {
+  let contract = null;
+  await expect.poll(async () => {
+    try {
+      const value = await providerChipContract(page, selector);
+      if (
+        Number.isFinite(value.radius)
+        && Number.isFinite(value.height)
+        && value.height > 0
+        && Number.isFinite(value.borderWidth)
+        && value.borderWidth > 0
+      ) {
+        contract = value;
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }).toBe(true);
+  return contract;
+}
+
+async function stableStatusBadgeRadius(page, selector) {
+  let radius = null;
+  await expect.poll(async () => {
+    try {
+      const value = await statusBadgeRadius(page, selector);
+      if (Number.isFinite(value) && value > 0) {
+        radius = value;
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }).toBe(true);
+  return radius;
+}
+
 test('dashboard topbar keeps global controls before engine widget before rightmost theme control', async ({ page }) => {
   await isolateExternalFonts(page);
   await keepTopbarEngineVisible(page);
@@ -117,8 +153,8 @@ test('Recent Activity and Downloads share the rounded-rectangle routed-provider 
   const recentChip = '#dash-tbody tr[data-torrent-id="1201"] .dp-provider-chip';
   const recentStatus = '#dash-tbody tr[data-torrent-id="1201"] .badge';
   await expect(page.locator(recentChip)).toHaveText('AllDebrid');
-  const recent = await providerChipContract(page, recentChip);
-  const recentCanonicalRadius = await statusBadgeRadius(page, recentStatus);
+  const recent = await stableProviderChipContract(page, recentChip);
+  const recentCanonicalRadius = await stableStatusBadgeRadius(page, recentStatus);
   expect(recent.borderWidth).toBeGreaterThan(0);
   expect(recent.radius).toBe(recentCanonicalRadius);
   expect(recent.radius).toBeGreaterThan(0);
@@ -136,8 +172,8 @@ test('Recent Activity and Downloads share the rounded-rectangle routed-provider 
   const downloadsChip = '#t-tbody tr[data-torrent-id="1201"] .dp-provider-chip';
   const downloadsStatus = '#t-tbody tr[data-torrent-id="1201"] .badge';
   await expect(page.locator(downloadsChip)).toHaveText('AllDebrid');
-  const downloads = await providerChipContract(page, downloadsChip);
-  const downloadsCanonicalRadius = await statusBadgeRadius(page, downloadsStatus);
+  const downloads = await stableProviderChipContract(page, downloadsChip);
+  const downloadsCanonicalRadius = await stableStatusBadgeRadius(page, downloadsStatus);
   expect(downloads.borderWidth).toBeGreaterThan(0);
   expect(downloads.radius).toBe(downloadsCanonicalRadius);
   expect(downloads.radius).toBe(recent.radius);
