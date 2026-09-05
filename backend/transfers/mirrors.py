@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
+import socket
 
 from transfers.contracts import CandidateSampling
 from transfers.models import FingerprintKind
@@ -11,6 +12,12 @@ from transfers.models import FingerprintKind
 
 logger = logging.getLogger(__name__)
 _STRONG_INTEGRITY_ALGORITHMS = {"sha256", "sha512", "blake2", "blake2b", "blake2s"}
+_TRANSIENT_REASONS = frozenset({"timeout", "dns_failure", "sampler_unavailable"})
+_CONTRADICTORY_REASONS = frozenset({"size_disagreement", "sample_mismatch", "integrity_mismatch"})
+_NONPAIRING_REASONS = frozenset({
+    "same_candidate", "non_independent_source", "logical_pairing_mismatch", "size_unknown",
+    "size_disagreement", "sample_mismatch", "integrity_mismatch",
+})
 
 
 class EvidenceKind(str):
@@ -18,6 +25,13 @@ class EvidenceKind(str):
     FULL_CONTENT_SAMPLE = "full_content_sample"
     PREFIX_CONTENT_SAMPLE = "prefix_content_sample"
     UNAVAILABLE = "unavailable"
+
+
+class EvidenceFailureClass(str):
+    NONE = "none"
+    TRANSIENT = "transient"
+    CONTRADICTORY = "contradictory"
+    STRUCTURAL = "structural"
 
 
 @dataclass(frozen=True)
@@ -37,6 +51,32 @@ class EquivalenceEvidence:
             EvidenceKind.FULL_CONTENT_SAMPLE,
             EvidenceKind.PREFIX_CONTENT_SAMPLE,
         }
+
+    @property
+    def failure_class(self) -> str:
+        if self.kind != EvidenceKind.UNAVAILABLE:
+            return EvidenceFailureClass.NONE
+        if self.reason in _TRANSIENT_REASONS:
+            return EvidenceFailureClass.TRANSIENT
+        if self.reason in _CONTRADICTORY_REASONS:
+            return EvidenceFailureClass.CONTRADICTORY
+        return EvidenceFailureClass.STRUCTURAL
+
+    @property
+    def retryable(self) -> bool:
+        return self.reason in _TRANSIENT_REASONS and self.kind in {
+            EvidenceKind.UNAVAILABLE,
+            EvidenceKind.PREFIX_CONTENT_SAMPLE,
+        }
+
+    @property
+    def unresolved_pairing(self) -> bool:
+        """True when this failure cannot rule out an otherwise plausible pair."""
+        return (
+            self.kind == EvidenceKind.UNAVAILABLE
+            and self.reason not in _NONPAIRING_REASONS
+            and self.failure_class != EvidenceFailureClass.CONTRADICTORY
+        )
 
 
 def _normalized_algorithm(value: str) -> str:
@@ -71,17 +111,24 @@ def _source_key(candidate):
     return "candidate", str(candidate.id)
 
 
+def pairing_failure(left, right) -> str:
+    """Return the exact cheap pairing rejection reason; empty means pairable."""
+    if str(left.id) == str(right.id):
+        return "same_candidate"
+    if _source_key(left) == _source_key(right):
+        return "non_independent_source"
+    if not logical_key(left) or logical_key(left) != logical_key(right):
+        return "logical_pairing_mismatch"
+    if left.expected_bytes <= 0 or right.expected_bytes <= 0:
+        return "size_unknown"
+    if left.expected_bytes != right.expected_bytes:
+        return "size_disagreement"
+    return ""
+
+
 def comparable(left, right):
     """Cheap exact pairing prefilter only; this never proves equivalence by itself."""
-    if str(left.id) == str(right.id):
-        return False
-    if _source_key(left) == _source_key(right):
-        return False
-    if not logical_key(left) or logical_key(left) != logical_key(right):
-        return False
-    if left.expected_bytes <= 0 or right.expected_bytes <= 0:
-        return False
-    return left.expected_bytes == right.expected_bytes
+    return not pairing_failure(left, right)
 
 
 def _unavailable(reason: str) -> EquivalenceEvidence:
@@ -95,44 +142,58 @@ def _fingerprint_kind(value) -> str:
         return str(getattr(value, "kind", FingerprintKind.FULL_CONTENT_SAMPLE))
 
 
-def _diagnose(left, evidence: EquivalenceEvidence) -> EquivalenceEvidence:
+def _diagnose(left, right, evidence: EquivalenceEvidence, pair_reason: str = "") -> EquivalenceEvidence:
     """Emit only sanitized equivalence facts: never endpoints, headers or secrets."""
     logger.debug(
-        "cross-transfer equivalence candidate=%r declared_size=%d evidence=%s reason=%s",
-        logical_key(left), max(0, int(left.expected_bytes or 0)), evidence.kind,
+        "cross-transfer equivalence artifact=%r candidate_size=%d canonical_size=%d pairable=%s "
+        "source_independent=%s evidence=%s reason=%s failure_class=%s",
+        logical_key(right) or logical_key(left),
+        max(0, int(right.expected_bytes or 0)),
+        max(0, int(left.expected_bytes or 0)),
+        not bool(pair_reason),
+        _source_key(left) != _source_key(right),
+        evidence.kind,
         evidence.reason or "none",
+        evidence.failure_class,
     )
     return evidence
 
 
 async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
     """Return structured provider-neutral evidence without speculative merging."""
-    if not comparable(left, right):
-        return _diagnose(left, _unavailable("pairing_mismatch"))
+    pair_reason = pairing_failure(left, right)
+    if pair_reason:
+        return _diagnose(left, right, _unavailable(pair_reason), pair_reason)
     size = left.expected_bytes
-    if _strong_integrity(left) & _strong_integrity(right):
-        return _diagnose(left, EquivalenceEvidence(EvidenceKind.STRONG_INTEGRITY, size))
+    left_integrity = _strong_integrity(left)
+    right_integrity = _strong_integrity(right)
+    if left_integrity & right_integrity:
+        return _diagnose(left, right, EquivalenceEvidence(EvidenceKind.STRONG_INTEGRITY, size))
+    left_by_algorithm = {algorithm for algorithm, _ in left_integrity}
+    right_by_algorithm = {algorithm for algorithm, _ in right_integrity}
+    if left_by_algorithm & right_by_algorithm:
+        return _diagnose(left, right, _unavailable("integrity_mismatch"))
     try:
         first, second = registry.executor_for(left), registry.executor_for(right)
         if not isinstance(first, CandidateSampling) or not isinstance(second, CandidateSampling):
-            return _diagnose(left, _unavailable("sampler_unavailable"))
+            return _diagnose(left, right, _unavailable("sampler_unavailable"))
         a, b = await asyncio.gather(first.fingerprint(left), second.fingerprint(right))
         if a is None or b is None:
-            return _diagnose(left, _unavailable("sampler_unavailable"))
-        if a.total_bytes != size or b.total_bytes != size:
-            reason = str(getattr(a, "reason", "") or getattr(b, "reason", "") or "size_disagreement")
-            return _diagnose(left, _unavailable(reason))
-        if _fingerprint_kind(a) == FingerprintKind.UNAVAILABLE.value:
-            return _diagnose(left, _unavailable(str(getattr(a, "reason", "") or "sampler_unavailable")))
-        if _fingerprint_kind(b) == FingerprintKind.UNAVAILABLE.value:
-            return _diagnose(left, _unavailable(str(getattr(b, "reason", "") or "sampler_unavailable")))
+            return _diagnose(left, right, _unavailable("sampler_unavailable"))
 
         a_kind = _fingerprint_kind(a)
         b_kind = _fingerprint_kind(b)
+        if a_kind == FingerprintKind.UNAVAILABLE.value:
+            return _diagnose(left, right, _unavailable(str(getattr(a, "reason", "") or "sampler_unavailable")))
+        if b_kind == FingerprintKind.UNAVAILABLE.value:
+            return _diagnose(left, right, _unavailable(str(getattr(b, "reason", "") or "sampler_unavailable")))
+        if a.total_bytes != size or b.total_bytes != size:
+            return _diagnose(left, right, _unavailable("size_disagreement"))
+
         if a_kind == FingerprintKind.FULL_CONTENT_SAMPLE.value and b_kind == FingerprintKind.FULL_CONTENT_SAMPLE.value:
             if str(a.signature).strip() and a.signature == b.signature:
-                return _diagnose(left, EquivalenceEvidence(EvidenceKind.FULL_CONTENT_SAMPLE, size))
-            return _diagnose(left, _unavailable("sample_mismatch"))
+                return _diagnose(left, right, EquivalenceEvidence(EvidenceKind.FULL_CONTENT_SAMPLE, size))
+            return _diagnose(left, right, _unavailable("sample_mismatch"))
 
         a_prefix = str(getattr(a, "prefix_signature", "") or (
             a.signature if a_kind == FingerprintKind.PREFIX_CONTENT_SAMPLE.value else ""))
@@ -140,11 +201,15 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
             b.signature if b_kind == FingerprintKind.PREFIX_CONTENT_SAMPLE.value else ""))
         if a_prefix and a_prefix == b_prefix:
             reason = str(getattr(a, "reason", "") or getattr(b, "reason", "") or "range_ignored")
-            return _diagnose(left, EquivalenceEvidence(EvidenceKind.PREFIX_CONTENT_SAMPLE, size, reason))
-        return _diagnose(left, _unavailable("sample_mismatch"))
+            return _diagnose(left, right, EquivalenceEvidence(EvidenceKind.PREFIX_CONTENT_SAMPLE, size, reason))
+        return _diagnose(left, right, _unavailable("sample_mismatch"))
+    except TimeoutError:
+        return _diagnose(left, right, _unavailable("timeout"))
+    except socket.gaierror:
+        return _diagnose(left, right, _unavailable("dns_failure"))
     except Exception:
         # Inability to prove equivalence is a normal independent-download path.
-        return _diagnose(left, _unavailable("sampler_unavailable"))
+        return _diagnose(left, right, _unavailable("sampler_unavailable"))
 
 
 async def shared_size(left, right, registry) -> int | None:

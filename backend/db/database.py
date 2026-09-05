@@ -402,7 +402,12 @@ TRANSFER_REPOSITORY_SCHEMA = (
 
 TRANSFER_REPOSITORY_COLUMNS = {
     'torrents': {'normalized_error': 'TEXT', 'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0', 'delete_remote': 'INTEGER NOT NULL DEFAULT 0'},
-    'transfer_requests': {'metadata': 'TEXT'},
+    'transfer_requests': {
+        'metadata': 'TEXT',
+        'equivalence_retry_count': 'INTEGER NOT NULL DEFAULT 0',
+        'equivalence_reason': 'TEXT',
+        'equivalence_disposition': "TEXT NOT NULL DEFAULT ''",
+    },
     'provider_resources': {'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0'},
     'resolution_attempts': {'result': 'TEXT'},
     'execution_attempts': {'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT'},
@@ -424,7 +429,10 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
-    'transfer_requests': {'attempts', 'error', 'id', 'metadata', 'ordinal', 'parent_id', 'payload', 'resource', 'retry_at', 'state', 'transfer_id'},
+    'transfer_requests': {
+        'attempts', 'error', 'id', 'metadata', 'ordinal', 'parent_id', 'payload', 'resource', 'retry_at', 'state',
+        'transfer_id', 'equivalence_retry_count', 'equivalence_reason', 'equivalence_disposition',
+    },
 }
 
 

@@ -14,7 +14,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional, AsyncGenerator, Literal
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from fastapi import Depends, APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
@@ -30,6 +30,7 @@ from core.config import (
 )
 from core.config_validator import validate_and_sanitise
 from core.logging_utils import sanitize_exception, sanitize_log_value
+from core.presentation_safety import safe_original_http_resource
 from core.version import is_version_newer, normalize_version_tag, read_version
 from auth.models import AuthMechanism
 from auth.oidc_version import oidc_configuration_version
@@ -199,25 +200,7 @@ def _safe_original_resource(request_payload) -> str | None:
     raw = request.payload.decode("utf-8", "replace") if isinstance(request.payload, bytes) else str(request.payload or "")
 
     if kind in {"http", "https"}:
-        try:
-            parsed = urlparse(raw)
-            if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
-                raise ValueError("not a safe HTTP source")
-            host = parsed.hostname
-            if ":" in host and not host.startswith("["):
-                host = f"[{host}]"
-            try:
-                if parsed.port is not None:
-                    host = f"{host}:{parsed.port}"
-            except ValueError:
-                pass
-            path = parsed.path or "/"
-            safe = urlunparse((parsed.scheme.lower(), host, path, "", "", ""))
-            if parsed.query:
-                safe += "?…"
-            return sanitize_log_value(safe, max_length=180)
-        except ValueError:
-            return request.name or "HTTP/HTTPS resource"
+        return safe_original_http_resource(raw, max_length=180) or request.name or "HTTP/HTTPS resource"
 
     if kind == "magnet" or raw.lower().startswith("magnet:?"):
         return sanitize_log_value(raw, max_length=180)
@@ -1725,7 +1708,7 @@ async def prometheus_metrics():
            by_file_status.get("pending", 0))
 
     _gauge("alldebrid_sse_subscribers",
-           "Number of active SSE connections",
+           "Number of SSE connections",
            len(_sse_subscribers))
 
     _gauge("alldebrid_downloaded_bytes_total",
