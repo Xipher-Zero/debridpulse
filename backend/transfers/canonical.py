@@ -92,11 +92,12 @@ class CanonicalOwnership:
         return tuple(self._artifact(row) for row in rows)
 
     async def lower_materializing(self, record: RequestRecord):
-        """Return only contenders with an earlier durable admission identity.
+        """Return cross-transfer contenders with an earlier durable admission identity.
 
-        Transfer ids are AUTOINCREMENT admission identities.  Request ordinal and
-        the persisted SQLite insertion rowid provide deterministic ordering for
-        requests admitted within the same transfer.
+        Transfer ids are AUTOINCREMENT admission identities. Same-transfer
+        siblings deliberately stay on the established path-lock convergence path;
+        this tie-breaker exists only to choose between independently admitted
+        transfers before either owns a canonical artifact.
         """
         async with get_db() as db:
             current = await db.fetchone(
@@ -111,10 +112,10 @@ class CanonicalOwnership:
             rows = await db.fetchall(
                 """SELECT r.*,r.rowid AS admission_rowid,t.status AS transfer_status
                     FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
-                    WHERE r.id!=? AND r.state='materializing'
+                    WHERE r.id!=? AND r.transfer_id!=? AND r.state='materializing'
                     AND t.status NOT IN ('completed','deleted','cancelled','error')
                     ORDER BY r.transfer_id,r.ordinal,r.rowid,r.id""",
-                (record.id,),
+                (record.id, record.transfer_id),
             )
             result = []
             for row in rows:
