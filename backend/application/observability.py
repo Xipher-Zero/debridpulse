@@ -1,4 +1,5 @@
 """Deliver canonical lifecycle events to browser and notification adapters."""
+from application.consolidation_events import ConsolidationEvents
 from core.config import get_settings
 from services.event_bus import publish
 from services.notification_service import NotificationService
@@ -6,10 +7,15 @@ from services.notifications import COLOR_PARTIAL
 
 
 class Observability:
-    def __init__(self, repository):
+    def __init__(self, repository, consolidation_events=None):
         self.repository = repository
+        self.consolidation_events = consolidation_events
 
     async def deliver(self):
+        if self.consolidation_events is not None:
+            # Hidden post-commit markers become public only after the incoming
+            # logical submission has a stable complete/partial disposition.
+            await self.consolidation_events.finalize_pending()
         for event in await self.repository.pending_events():
             item = await self.repository.presentation(event["transfer_id"], details=True)
             if item is None or not await self.repository.claim_event(event["id"]):
@@ -19,9 +25,14 @@ class Observability:
             # that ambiguous delivery automatically.
             await publish("torrent_updated", item)
             await publish("stats_changed", {})
+            kind = event["kind"]
+            if kind == "duplicate_consolidated":
+                payload = ConsolidationEvents.public_payload(event.get("detail"))
+                if payload is not None:
+                    await publish("duplicate_consolidated", payload)
+
             cfg = get_settings()
             notify = NotificationService().client()
-            kind = event["kind"]
             if kind == "accepted" and cfg.discord_notify_added:
                 await notify.send_added(item["name"], source=item["source"], transfer_id=str(item["id"]))
             elif kind == "completed":

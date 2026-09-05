@@ -48,6 +48,7 @@
     downloading: {icon: 'download', label: 'Downloading', className: 'downloading'},
     ready: {icon: 'play', label: 'Ready', className: 'ready'},
     completed: {icon: 'circleCheck', label: 'Done', className: 'completed'},
+    consolidated: {icon: 'circleCheck', label: 'Consolidated', className: 'consolidated'},
     downloading_with_errors: {icon: 'triangleAlert', label: 'Downloading', className: 'partial'},
     completed_with_errors: {icon: 'triangleAlert', label: 'Completed with errors', className: 'partial'},
     error: {icon: 'x', label: 'Error', className: 'error'},
@@ -119,13 +120,96 @@
     const toast = document.createElement('div');
     toast.className = 'toast ' + tone;
     toast.innerHTML = lucideSvg(TOAST_ICON[tone] || 'info', 'dp-toast-icon');
-    const copy = document.createElement('span');
-    copy.className = 'dp-toast-copy';
-    copy.textContent = String(message == null ? '' : message);
-    toast.appendChild(copy);
+    if (message && typeof message === 'object' && message.title && message.body) {
+      const copy = document.createElement('div');
+      copy.className = 'dp-toast-copy';
+      const title = document.createElement('div');
+      title.className = 'dp-toast-title';
+      title.textContent = String(message.title);
+      const body = document.createElement('div');
+      body.className = 'dp-toast-body';
+      body.textContent = String(message.body);
+      copy.appendChild(title);
+      copy.appendChild(body);
+      toast.appendChild(copy);
+    } else {
+      const copy = document.createElement('span');
+      copy.className = 'dp-toast-copy';
+      copy.textContent = String(message == null ? '' : message);
+      toast.appendChild(copy);
+    }
     host.appendChild(toast);
     window.setTimeout(function () { toast.style.opacity = '0'; }, 3000);
     window.setTimeout(function () { toast.remove(); }, 3400);
+  }
+
+  function positiveInteger(value) {
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }
+
+  function nonnegativeInteger(value) {
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+
+  function consolidationToastCopy(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const sourceTransferId = positiveInteger(payload.source_transfer_id);
+    const matched = positiveInteger(payload.matched_count);
+    const unmatched = nonnegativeInteger(payload.unmatched_count);
+    if (sourceTransferId == null || matched == null || unmatched == null || !Array.isArray(payload.canonical_transfer_ids)) return null;
+    const targets = new Set();
+    for (const value of payload.canonical_transfer_ids) {
+      const target = positiveInteger(value);
+      if (target == null) return null;
+      targets.add(target);
+    }
+    if (!targets.size || targets.size > matched) return null;
+
+    const matchingNoun = matched === 1 ? 'file' : 'files';
+    const matchingVerb = matched === 1 ? 'was' : 'were';
+    const candidateNoun = matched === 1 ? 'a failover candidate' : 'failover candidates';
+    const sourceLinkNoun = matched === 1 ? 'link' : 'links';
+    const sourceLinkVerb = matched === 1 ? 'was' : 'were';
+    const destination = targets.size === 1 ? 'the existing download' : 'existing downloads';
+
+    if (unmatched > 0) {
+      const newNoun = unmatched === 1 ? 'file' : 'files';
+      return {
+        title: 'Duplicate files consolidated',
+        body: matched + ' matching ' + matchingNoun + ' ' + matchingVerb + ' merged into ' + destination + ' and retained as ' + candidateNoun + '. ' + unmatched + ' new ' + newNoun + ' will download normally.'
+      };
+    }
+
+    return {
+      title: targets.size === 1 ? 'Duplicate download consolidated' : 'Duplicate downloads consolidated',
+      body: matched + ' matching ' + matchingNoun + ' ' + matchingVerb + ' merged into ' + destination + '. The new source ' + sourceLinkNoun + ' ' + sourceLinkVerb + ' retained as ' + candidateNoun + '.'
+    };
+  }
+
+  function installConsolidationEventConsumer() {
+    const NativeEventSource = window.EventSource;
+    if (typeof NativeEventSource !== 'function' || NativeEventSource.__dpConsolidationConsumer === true) return;
+
+    function DPEventSource(url, init) {
+      const source = arguments.length > 1 ? new NativeEventSource(url, init) : new NativeEventSource(url);
+      const endpoint = String(url == null ? '' : url);
+      if (endpoint === '/api/events/stream' || endpoint.endsWith('/api/events/stream')) {
+        source.addEventListener('duplicate_consolidated', function (event) {
+          try {
+            const copy = consolidationToastCopy(JSON.parse(event.data));
+            if (copy) canonicalToast(copy, 'success');
+          } catch (_error) {
+            // Invalid public event data is ignored rather than rendered.
+          }
+        });
+      }
+      return source;
+    }
+
+    DPEventSource.prototype = NativeEventSource.prototype;
+    try { Object.setPrototypeOf(DPEventSource, NativeEventSource); } catch (_error) { /* older browsers */ }
+    Object.defineProperty(DPEventSource, '__dpConsolidationConsumer', {value: true});
+    window.EventSource = DPEventSource;
   }
 
   window.DPIcons = Object.freeze({
@@ -135,9 +219,11 @@
     toastMap: TOAST_ICON,
     decorateButton: decorateButton,
     toast: canonicalToast,
+    consolidationToastCopy: consolidationToastCopy,
     renderThemeGlyph: renderThemeGlyph
   });
 
+  installConsolidationEventConsumer();
 
   function renderThemeGlyph(isLight) {
     const button = document.getElementById('theme-toggle');

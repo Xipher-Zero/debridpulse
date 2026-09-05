@@ -1,6 +1,7 @@
 """Production integration composition. Concrete imports terminate here."""
 from dataclasses import replace
 
+from application.consolidation_events import ConsolidationEventCanonical, ConsolidationEvents
 from application.service import ApplicationService
 from core.config import get_settings, save_settings, apply_settings
 from integrations.catalog import definitions, register
@@ -95,18 +96,21 @@ def configure(application):
 
     application.lifecycle = (runtime_state, host_maintenance, administration)
     from application.observability import Observability
-    application.observability = Observability(application.repository)
+    application.observability = Observability(application.repository, application.consolidation_events)
 
 
 def compose():
     settings = get_settings()
     repository = TransferRepository()
     engine = TransferEngine(repository, IntegrationRegistry(), download_root=settings.download_folder, policy=TransferPolicy())
+    consolidation_events = ConsolidationEvents(repository)
+    engine.canonical = ConsolidationEventCanonical(engine.canonical, consolidation_events)
     def pause_changed(paused):
         settings = get_settings().model_copy(update={"paused": paused})
         save_settings(settings)
         apply_settings(settings)
     service = ApplicationService(engine, configure=configure, pause_changed=pause_changed)
+    service.consolidation_events = consolidation_events
     configure(service)
     return service
 
