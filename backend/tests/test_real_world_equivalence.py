@@ -1,4 +1,5 @@
 """Workspace 4 Phase 1 real-world equivalence and cohort regression tests."""
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -7,9 +8,10 @@ import pytest_asyncio
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
+from transfers.mirrors import comparable
 from transfers.models import (
     ArtifactFingerprint, FingerprintKind, ResolutionResult, ResourceState,
-    TransferRequest,
+    SourceIdentity, TransferRequest,
 )
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -61,6 +63,21 @@ async def submit_batch(pair, provider, prefix):
         for index in range(1, 8)
     )
     return await pair.engine.submit(requests, name=prefix, deduplicate=False)
+
+
+def test_exact_known_size_is_a_hard_pairing_rule():
+    provider = ParcelProvider()
+    base = provider.candidate("same.bin")
+    left = replace(base, expected_bytes=1000, source_identity=SourceIdentity("host", "one"))
+    same = replace(provider.candidate("same.bin"), expected_bytes=1000,
+                   source_identity=SourceIdentity("host", "two"))
+    near = replace(provider.candidate("same.bin"), expected_bytes=1001,
+                   source_identity=SourceIdentity("host", "three"))
+    unknown = replace(provider.candidate("same.bin"), expected_bytes=0,
+                      source_identity=SourceIdentity("host", "four"))
+    assert comparable(left, same)
+    assert not comparable(left, near)
+    assert not comparable(left, unknown)
 
 
 @pytest.mark.asyncio
@@ -130,3 +147,68 @@ async def test_real_world_seven_plus_seven_prefix_cohort_consolidates_without_du
     assert int(origins["n"]) == 14
     assert int(mappings["n"]) == 7
     assert duplicates == []
+
+
+@pytest.mark.asyncio
+async def test_seven_plus_seven_one_prefix_mismatch_releases_whole_weak_cohort(batch_pair, monkeypatch):
+    first = await submit_batch(batch_pair, batch_pair.a, "submission-a")
+    await batch_pair.engine.tick()
+
+    async def prefix(candidate):
+        signature = f"prefix:{candidate.name.casefold()}"
+        if candidate.provider_id == batch_pair.b.descriptor.id and candidate.name == "part7.rar":
+            signature += ":different"
+        return ArtifactFingerprint(candidate.expected_bytes, signature,
+                                   FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                   "range_ignored", signature)
+
+    monkeypatch.setattr(batch_pair.executor, "fingerprint", prefix)
+    second = await submit_batch(batch_pair, batch_pair.b, "submission-b")
+    for _ in range(3):
+        await batch_pair.engine.tick()
+
+    assert len(await batch_pair.repository.artifacts(first.id)) == 7
+    assert len(await batch_pair.repository.artifacts(second.id)) == 7
+    assert (await batch_pair.repository.get(second.id)).state.value != "consolidated"
+    async with database.get_db() as db:
+        mappings = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_transfer_id=?",
+            (second.id,),
+        )
+    assert int(mappings["n"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_duplicate_filename_never_uses_collection_guess(batch_pair, monkeypatch):
+    first_candidates = (
+        replace(batch_pair.a.candidate("same.rar", payload="left"), source_identity=SourceIdentity("host", "a-left")),
+        replace(batch_pair.a.candidate("same.rar", payload="right"), source_identity=SourceIdentity("host", "a-right")),
+    )
+    batch_pair.a.responses = [ResolutionResult(ResourceState.AVAILABLE, (first_candidates[0],)),
+                              ResolutionResult(ResourceState.AVAILABLE, (first_candidates[1],))]
+    # Use the inherited responder for this deliberately ambiguous setup.
+    batch_pair.a.resolve = ParcelProvider.resolve.__get__(batch_pair.a, BatchProvider)
+    first = await batch_pair.engine.submit(
+        (TransferRequest("parcel", "a1", name="same.rar", preferred_provider=batch_pair.a.descriptor.id),
+         TransferRequest("parcel", "a2", name="same.rar", preferred_provider=batch_pair.a.descriptor.id)),
+        name="ambiguous-a", deduplicate=False,
+    )
+    await batch_pair.engine.tick()
+    assert len(await batch_pair.repository.artifacts(first.id)) == 2
+
+    async def prefix(candidate):
+        signature = "same-prefix"
+        return ArtifactFingerprint(candidate.expected_bytes, signature,
+                                   FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                   "range_ignored", signature)
+
+    monkeypatch.setattr(batch_pair.executor, "fingerprint", prefix)
+    second = await batch_pair.engine.submit(
+        (TransferRequest("parcel", "b1", name="same.rar", preferred_provider=batch_pair.b.descriptor.id),
+         TransferRequest("parcel", "b2", name="same.rar", preferred_provider=batch_pair.b.descriptor.id)),
+        name="ambiguous-b", deduplicate=False,
+    )
+    for _ in range(2):
+        await batch_pair.engine.tick()
+    assert len(await batch_pair.repository.artifacts(second.id)) == 2
+    assert (await batch_pair.repository.get(second.id)).state.value != "consolidated"

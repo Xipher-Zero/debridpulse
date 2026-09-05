@@ -23,36 +23,25 @@ class DestinationLookupError(ConnectionError):
 
 
 def validate_provider_download_url(value: object, *, context: str = "download link") -> str:
-    """Validate a provider-issued URL before handing it to the local downloader.
-
-    A provider may broker the remote object, but the returned capability
-    URL still crosses a network trust boundary: aria2 will resolve and connect to
-    it from the DebridPulse host. Keep that boundary explicit and reject schemes,
-    credentials, and literal/local destinations that should never be necessary
-    for a public download URL.
-    """
     raw = str(value or "").strip()
     if not raw:
         raise UnsafeDestinationError(f"Provider returned an empty {context}")
     try:
         parsed = urlsplit(raw)
-        port = parsed.port  # force validation of malformed/out-of-range ports
+        port = parsed.port
     except ValueError as exc:
         raise UnsafeDestinationError(f"Provider returned an invalid {context}") from exc
-
     if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
         raise UnsafeDestinationError(f"Provider returned a non-HTTP(S) {context}")
     if parsed.username is not None or parsed.password is not None:
         raise UnsafeDestinationError(f"Provider returned a credential-bearing {context}")
     if port is not None and not (1 <= port <= 65535):
         raise UnsafeDestinationError(f"Provider returned an invalid {context}")
-
     host = parsed.hostname.rstrip(".").casefold()
     if not host or "%" in host:
         raise UnsafeDestinationError(f"Provider returned an invalid {context} host")
     if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
         raise UnsafeDestinationError(f"Provider returned a local {context} host")
-
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
@@ -62,7 +51,6 @@ def validate_provider_download_url(value: object, *, context: str = "download li
             address = None
     if address is not None and not address.is_global:
         raise UnsafeDestinationError(f"Provider returned a non-public {context} address")
-
     return raw
 
 
@@ -75,61 +63,42 @@ def _public_ip(address: str) -> bool:
 
 
 def reject_non_public_resolution(addresses: Iterable[str], *, host: str) -> None:
-    normalized = {
-        str(address or "").strip()
-        for address in addresses
-        if str(address or "").strip()
-    }
+    normalized = {str(address or "").strip() for address in addresses if str(address or "").strip()}
     if not normalized:
         raise UnsafeDestinationError(f"Provider download host {host!r} did not resolve to an address")
     blocked = sorted(address for address in normalized if not _public_ip(address))
     if blocked:
         raise UnsafeDestinationError(
-            f"Provider download host {host!r} resolved to non-public address(es): "
-            + ", ".join(blocked[:4])
+            f"Provider download host {host!r} resolved to non-public address(es): " + ", ".join(blocked[:4])
         )
 
 
 async def validate_resolved_public_destination(uri: str) -> str:
-    """Validate syntax and current DNS answers before any provider capability use."""
     validated = validate_provider_download_url(uri, context="aria2 download link")
     parsed = urlsplit(validated)
     host = str(parsed.hostname or "").rstrip(".").casefold()
     if not host:
         raise UnsafeDestinationError("Provider download URL has no hostname")
-
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
         literal = None
-
     if literal is not None:
         if not literal.is_global:
             raise UnsafeDestinationError(f"Provider download host {host!r} is not public")
         return validated
-
     port = int(parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
     loop = asyncio.get_running_loop()
     try:
-        answers = await loop.getaddrinfo(
-            host,
-            port,
-            family=socket.AF_UNSPEC,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
+        answers = await loop.getaddrinfo(host, port, family=socket.AF_UNSPEC,
+                                         type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     except socket.gaierror as exc:
         raise DestinationLookupError(f"Provider download host {host!r} could not be resolved") from exc
-
-    reject_non_public_resolution(
-        (entry[4][0] for entry in answers if entry and len(entry) >= 5 and entry[4]),
-        host=host,
-    )
+    reject_non_public_resolution((entry[4][0] for entry in answers if entry and len(entry) >= 5 and entry[4]), host=host)
     return validated
 
 
 def _content_range(value: str) -> tuple[int, int, int] | None:
-    """Parse a byte Content-Range semantically rather than by string identity."""
     match = re.fullmatch(r"\s*bytes\s+(\d+)\s*-\s*(\d+)\s*/\s*(\d+)\s*", str(value or ""), re.I)
     if not match:
         return None
@@ -158,13 +127,8 @@ def _digest_full(total: int, first: bytes, last: bytes | None = None) -> str:
     return digest.hexdigest()
 
 
-def _sample(
-    total: int,
-    signature: str,
-    kind: FingerprintKind,
-    reason: str = "",
-    prefix_signature: str = "",
-) -> tuple[int, str, FingerprintKind, str, str]:
+def _sample(total: int, signature: str, kind: FingerprintKind, reason: str = "",
+            prefix_signature: str = "") -> tuple[int, str, FingerprintKind, str, str]:
     return total, signature, kind, reason, prefix_signature
 
 
@@ -172,8 +136,15 @@ def _unavailable(reason: str) -> tuple[int, str, FingerprintKind, str, str]:
     return _sample(0, "", FingerprintKind.UNAVAILABLE, reason)
 
 
+async def _read_exactly(response, count: int) -> bytes | None:
+    """Read exactly one bounded sample; never consume past its declared region."""
+    try:
+        return await response.content.readexactly(count)
+    except asyncio.IncompleteReadError:
+        return None
+
+
 class PublicDestinationResolver(aiohttp.abc.AbstractResolver):
-    """Authorize the exact DNS answers supplied to an HTTP connection."""
     async def resolve(self, host, port=0, family=socket.AF_UNSPEC):
         answers = await asyncio.get_running_loop().getaddrinfo(
             host, port, family=family, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
@@ -189,23 +160,24 @@ class PublicDestinationResolver(aiohttp.abc.AbstractResolver):
 def _origin(uri: str) -> tuple[str, str, int]:
     parsed = urlsplit(uri)
     return parsed.scheme.casefold(), str(parsed.hostname or "").casefold(), int(
-        parsed.port or (443 if parsed.scheme.casefold() == "https" else 80)
-    )
+        parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
 
 
 async def _range_request(session, uri: str, headers: dict, *, max_redirects: int = 3):
-    """Issue one request with explicit, SSRF-safe, bounded redirect handling."""
     current = uri
     current_headers = dict(headers)
-    original_origin = _origin(uri)
+    prior_origin = _origin(uri)
+    redirected = False
     for hop in range(max_redirects + 1):
         try:
             validated = await validate_resolved_public_destination(current)
-        except (UnsafeDestinationError, DestinationLookupError):
+        except DestinationLookupError:
+            return None, "dns_failure"
+        except UnsafeDestinationError:
             return None, "destination_rejected"
         response = await session.get(validated, headers=current_headers, allow_redirects=False)
         if not (300 <= response.status < 400):
-            return response, "redirect" if hop else ""
+            return response, "redirect" if redirected else ""
         location = str(response.headers.get("Location") or "").strip()
         response.release()
         if not location or hop >= max_redirects:
@@ -215,12 +187,13 @@ async def _range_request(session, uri: str, headers: dict, *, max_redirects: int
             validate_provider_download_url(next_uri, context="redirect target")
         except UnsafeDestinationError:
             return None, "destination_rejected"
-        if _origin(next_uri) != original_origin:
-            current_headers = {
-                key: value for key, value in current_headers.items()
-                if key.casefold() in {"range", "accept-encoding"}
-            }
+        next_origin = _origin(next_uri)
+        if next_origin != prior_origin:
+            current_headers = {key: value for key, value in current_headers.items()
+                               if key.casefold() in {"range", "accept-encoding"}}
+        prior_origin = next_origin
         current = next_uri
+        redirected = True
     return None, "redirect"
 
 
@@ -230,15 +203,9 @@ async def sampled_public_artifact_fingerprint(
     sample_bytes: int = 64 * 1024,
     timeout_seconds: float = 20.0,
     headers: dict | None = None,
+    expected_bytes: int = 0,
 ) -> tuple[int, str, FingerprintKind, str, str]:
-    """Return bounded structured content evidence for a public HTTP(S) capability.
-
-    Full evidence hashes bounded first+last regions. A large endpoint that safely
-    ignores Range yields only bounded prefix evidence; callers must not promote
-    that weaker fact to arbitrary single-artifact identity. Redirects are handled
-    manually and every hop is independently revalidated by the public-destination
-    policy before contact.
-    """
+    """Return bounded structured content evidence for a public HTTP(S) capability."""
     try:
         validated = await validate_resolved_public_destination(uri)
     except DestinationLookupError:
@@ -247,6 +214,7 @@ async def sampled_public_artifact_fingerprint(
         return _unavailable("destination_rejected")
 
     sample_bytes = max(4096, int(sample_bytes))
+    expected_bytes = max(0, int(expected_bytes or 0))
     timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
     base_headers = {**(headers or {}), "Accept-Encoding": "identity"}
     connector = aiohttp.TCPConnector(resolver=PublicDestinationResolver(), use_dns_cache=False)
@@ -264,8 +232,11 @@ async def sampled_public_artifact_fingerprint(
                         length = 0
                     if length <= 0:
                         return _unavailable("range_ignored")
-                    first = await response.content.read(min(sample_bytes, length) + 1)
-                    if len(first) != min(sample_bytes, length):
+                    if expected_bytes and length != expected_bytes:
+                        return _unavailable("size_disagreement")
+                    count = min(sample_bytes, length)
+                    first = await _read_exactly(response, count)
+                    if first is None:
                         return _unavailable("sampler_unavailable")
                     prefix = _digest_prefix(length, first)
                     if length <= sample_bytes:
@@ -279,11 +250,13 @@ async def sampled_public_artifact_fingerprint(
                 if parsed is None:
                     return _unavailable("invalid_content_range")
                 start, end, total = parsed
+                if expected_bytes and total != expected_bytes:
+                    return _unavailable("size_disagreement")
                 expected_end = min(total - 1, sample_bytes - 1)
                 if start != 0 or end != expected_end:
                     return _unavailable("invalid_content_range")
-                first = await response.content.read((end - start + 1) + 1)
-                if len(first) != end - start + 1:
+                first = await _read_exactly(response, end - start + 1)
+                if first is None:
                     return _unavailable("sampler_unavailable")
                 prefix = _digest_prefix(total, first)
             finally:
@@ -311,8 +284,8 @@ async def sampled_public_artifact_fingerprint(
                 if start != last_start or end != total - 1 or repeated_total != total:
                     return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
                                    "size_disagreement" if repeated_total != total else "invalid_content_range", prefix)
-                last = await response.content.read((end - start + 1) + 1)
-                if len(last) != end - start + 1:
+                last = await _read_exactly(response, end - start + 1)
+                if last is None:
                     return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
                                    "sampler_unavailable", prefix)
             finally:
