@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
+from api.operational_downloads import router as operational_downloads_router
 from api.settings_validation_routes import router as settings_validation_router
 from api.storage_health_routes import router as storage_health_router
 from auth.middleware import enforce_authentication, enforce_general_web_security
@@ -411,6 +412,19 @@ app.include_router(auth_config_router)
 app.include_router(auth_router)
 app.include_router(settings_validation_router, prefix="/api")
 app.include_router(storage_health_router, prefix="/api")
+# The operational list has a canonical lifecycle rule that differs from the
+# legacy history-inclusive route. Remove that one GET registration before the
+# generic router is included; explicit status=consolidated remains available on
+# the replacement route for durable provenance/history inspection.
+router.routes[:] = [
+    route
+    for route in router.routes
+    if not (
+        getattr(route, "path", None) == "/torrents"
+        and "GET" in (getattr(route, "methods", set()) or set())
+    )
+]
+app.include_router(operational_downloads_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────
