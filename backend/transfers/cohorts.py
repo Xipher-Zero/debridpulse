@@ -8,13 +8,15 @@ the established canonical owner.
 from __future__ import annotations
 
 from dataclasses import replace
+import logging
 
 from db.database import get_db
-from transfers.mirrors import EvidenceKind, EquivalenceEvidence, shared_evidence
+from transfers.mirrors import EvidenceKind, EquivalenceEvidence, logical_key, shared_evidence
 
 
+logger = logging.getLogger(__name__)
 _PENDING_STATES = {
-    "pending", "resolving", "waiting", "waiting_parent", "input_required",
+    "pending", "resolving", "waiting", "waiting_parent",
 }
 
 
@@ -78,6 +80,19 @@ async def _durable_mapping(request_id: str) -> int | None:
     return next(iter(values)) if len(values) == 1 else None
 
 
+def _decision(record, incoming, decision: str, reason: str = "") -> None:
+    """Record sanitized cohort disposition without endpoint/source secrets."""
+    candidate = incoming[0] if incoming else None
+    logger.debug(
+        "cross-transfer collection request=%s candidate=%r declared_size=%d decision=%s reason=%s",
+        record.id,
+        logical_key(candidate) if candidate is not None else "",
+        max(0, int(candidate.expected_bytes or 0)) if candidate is not None else 0,
+        decision,
+        reason or "none",
+    )
+
+
 async def coordinate_collection(engine, record, candidates) -> bool:
     """Coordinate one request before ordinary path allocation.
 
@@ -99,17 +114,22 @@ async def coordinate_collection(engine, record, candidates) -> bool:
 
     current_mapping = await _mapping(canonicals, incoming, engine.registry)
     if current_mapping is None:
+        _decision(record, incoming, "independent", "no_unique_mapping")
         return False
     current_primary, current_evidence = current_mapping
 
     # Strong integrity and full first+last proof retain the existing immediate
     # single-artifact fast path and never wait for siblings.
     if current_evidence.proves_individual:
-        return await engine.canonical.attach(
+        attached = await engine.canonical.attach(
             current_primary, record, incoming, current_evidence.total_bytes,
         )
+        _decision(record, incoming, "consolidated_individual" if attached else "revalidate_retry",
+                  current_evidence.kind)
+        return attached
 
     if current_evidence.kind != EvidenceKind.PREFIX_CONTENT_SAMPLE:
+        _decision(record, incoming, "independent", current_evidence.reason)
         return False
 
     records = await engine.repository.requests(record.transfer_id)
@@ -121,26 +141,31 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         cohort = tuple(item for item in leaves if item.parent_id is None)
     material = tuple(item for item in cohort if item.state != "skipped")
     if len(material) < 2:
+        _decision(record, incoming, "independent", "single_member_prefix")
         return False
 
-    artifacts = {item.request_id: item for item in await engine.repository.artifacts(record.transfer_id)}
     mappings = {}
     pending = False
     for sibling in material:
         if sibling.state in _PENDING_STATES:
             pending = True
             continue
-        if sibling.state == "failed":
+        if sibling.state in {"failed", "input_required"}:
+            # Input-required is operator-owned and may be unbounded. It cannot
+            # hold an unrelated weak-prefix member behind the cohort barrier.
+            _decision(record, incoming, "independent", f"sibling_{sibling.state}")
             return False
         if sibling.state == "resolved":
             canonical_id = await _durable_mapping(sibling.id)
             if canonical_id is None:
                 # An ordinary already-materialized member makes complete weak
                 # collection proof impossible; do not rewrite it retrospectively.
+                _decision(record, incoming, "independent", "sibling_materialized")
                 return False
             mappings[sibling.id] = (canonical_id, None, None, None)
             continue
         if sibling.state != "materializing":
+            _decision(record, incoming, "independent", f"sibling_{sibling.state}")
             return False
 
         sibling_candidates = incoming if sibling.id == record.id else _normalized_candidates(
@@ -153,9 +178,11 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             canonicals, sibling_candidates, engine.registry,
         )
         if match is None:
+            _decision(record, incoming, "independent", "collection_mapping_incomplete")
             return False
         primary, evidence = match
         if not evidence.proves_collection_member:
+            _decision(record, incoming, "independent", evidence.reason)
             return False
         mappings[sibling.id] = (primary.id, primary, evidence, sibling_candidates)
 
@@ -163,13 +190,16 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     # the missing corroboration. MATERIALIZING is already durable and is retried
     # by the normal resolution cycle, including after restart.
     if pending:
+        _decision(record, incoming, "pending_collection", "sibling_pending")
         return True
     if len(mappings) != len(material):
+        _decision(record, incoming, "independent", "collection_incomplete")
         return False
 
     canonical_ids = [item[0] for item in mappings.values()]
     if len(canonical_ids) != len(set(canonical_ids)):
         # Ambiguous duplicate names/paths or many-to-one mapping: never guess.
+        _decision(record, incoming, "independent", "ambiguous_mapping")
         return False
 
     attached_current = False
@@ -183,6 +213,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             primary = next((item for item in canonicals if item.id == canonical_id), None)
         if primary is None:
             if sibling.id == record.id:
+                _decision(record, incoming, "independent", "canonical_disappeared")
                 return False
             continue
         attached = await engine.canonical.attach(
@@ -191,4 +222,6 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         if sibling.id == record.id:
             attached_current = attached
 
+    _decision(record, incoming, "consolidated_by_collection" if attached_current else "revalidate_retry",
+              f"{len(mappings)}/{len(material)}")
     return attached_current
