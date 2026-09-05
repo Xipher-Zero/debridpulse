@@ -47,14 +47,15 @@ class TransferEngine(_QualifiedTransferEngine):
         return bool(provider and provider.descriptor.enabled)
 
     async def _materialize(self, record, candidates):
-        """Materialize through the qualified owner, then formalize every local candidate origin.
+        """Formalize exact origins only for local multi-candidate failover sets.
 
-        WS1 P2 already formalizes cross-transfer candidates during canonical
-        attachment. A provider may also return multiple ordered candidates in a
-        single successful resolution, including candidates whose size is not yet
-        known. Bind those candidates immediately from their exact persisted
-        request/resolution/candidate identities while the artifact is healthy so
-        later recovery never needs URL/path/provider-state inference.
+        WS1 P2 already formalizes cross-transfer alternates during canonical
+        attachment. A single-candidate artifact needs no additional WS2 binding
+        and therefore follows the qualified WS1 P2 materialization path exactly.
+        When one successful resolution yields multiple ordered candidates,
+        however, bind each immediately from persisted request/resolution/candidate
+        identities while the artifact is healthy so later failover never needs
+        URL/path/provider-state inference.
         """
         await super()._materialize(record, candidates)
         artifact = next(
@@ -62,7 +63,7 @@ class TransferEngine(_QualifiedTransferEngine):
              if item.request_id == record.id),
             None,
         )
-        if artifact is None:
+        if artifact is None or len(artifact.candidates) < 2:
             return
         for candidate in artifact.candidates:
             await self.canonical.origin_for(artifact, candidate)
@@ -124,8 +125,6 @@ class TransferEngine(_QualifiedTransferEngine):
             return False
         sidecars = self._candidate_sidecars(artifact)
 
-        # First transition is the durable writer-safety barrier. UNKNOWN and all
-        # other mutation-capable states are vetoed by the repository.
         if not await self.repository.transition_recovery(
             artifact.id, "error", error=error, retry_at=0,
         ):
@@ -445,9 +444,6 @@ class TransferEngine(_QualifiedTransferEngine):
                 Category.SOURCE_EXPIRED,
                 Category.SOURCE_NOT_FOUND,
             })
-            # Preserve the established single-candidate parent-resource renewal
-            # sequence exactly. With a proven alternate available, exhaustion
-            # instead proceeds forward to that standby candidate.
             if parent_renewal and next_index is None:
                 await self._terminal_recovery(current, error)
                 await self._renew_source_parent(record)
