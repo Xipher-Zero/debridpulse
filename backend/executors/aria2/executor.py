@@ -120,7 +120,11 @@ class Aria2Executor:
         for key, value in endpoint.headers.items():
             if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
                 return None
-        result = await sampled_public_artifact_fingerprint(endpoint.address, headers=dict(endpoint.headers))
+        result = await sampled_public_artifact_fingerprint(
+            endpoint.address,
+            headers=dict(endpoint.headers),
+            expected_bytes=max(0, int(candidate.expected_bytes or 0)),
+        )
         return ArtifactFingerprint(*result) if result else None
 
     def input_requirement(self, candidate, observed: ExecutionObservation) -> InputRequirement | None:
