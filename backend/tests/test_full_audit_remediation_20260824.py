@@ -143,7 +143,13 @@ async def test_concurrent_extractions_cannot_clobber_same_new_target(tmp_path):
     assert first.exists() and second.exists()
 
 
-def test_sample_fingerprints_request_identity_bytes_and_refuse_redirects():
+def test_sample_fingerprints_request_identity_bytes_with_manual_redirect_control():
     source = (Path(__file__).resolve().parents[1] / "services/network_safety.py").read_text()
-    assert source.count('"Accept-Encoding": "identity"') == 2
-    assert source.count("allow_redirects=False") == 2
+    # Workspace 4 centralizes identity encoding and redirect control in reusable
+    # helpers: both first/last samples inherit one identity header definition,
+    # and every hop is explicit with aiohttp redirects disabled.
+    assert source.count('"Accept-Encoding": "identity"') == 1
+    assert source.count("allow_redirects=False") == 1
+    assert "async def _range_request" in source
+    assert "urljoin(validated, location)" in source
+    assert "validate_resolved_public_destination(current)" in source
