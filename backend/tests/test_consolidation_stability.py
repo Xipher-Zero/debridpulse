@@ -1,10 +1,11 @@
 import pytest
+import pytest_asyncio
 
 from application.consolidation_events import ConsolidationEvents
 from db import database
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def stability_db(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "consolidation-stability.sqlite")
     await database.init_db()

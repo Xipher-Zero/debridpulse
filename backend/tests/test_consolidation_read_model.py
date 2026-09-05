@@ -1,12 +1,13 @@
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 
 from api.operational_downloads import list_operational_torrents
 from db import database
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def operational_db(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "operational-downloads.sqlite")
     await database.init_db()

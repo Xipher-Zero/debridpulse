@@ -2,13 +2,14 @@ import json
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 
 from application.consolidation_events import ConsolidationEventCanonical, ConsolidationEvents
 from application.observability import Observability
 from db import database
 
 
-@pytest.fixture()
+@pytest_asyncio.fixture()
 async def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "consolidation-events.sqlite")
     await database.init_db()
