@@ -188,7 +188,7 @@ async def test_complete_seven_across_multiple_canonical_targets_has_no_singular_
     assert set(relation["canonical_transfer_ids"]) == {first.id, second.id}
     assert len(relation["artifact_mappings"]) == 7
     assert (await ws3.repository.get(source.id)).state == TransferState.CONSOLIDATED
-    assert await ws3.repository.artifacts(source.id) == []
+    assert not await ws3.repository.artifacts(source.id)
     assert source.id not in {item.id for item in await ws3.repository.active()}
 
     restarted, repository = await restart(ws3)
