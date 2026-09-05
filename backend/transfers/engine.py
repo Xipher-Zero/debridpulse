@@ -7,10 +7,12 @@ in the universal repository observation path, not in any provider or executor.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 
 from transfers import _engine_base
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
+from transfers.cohorts import coordinate_collection
 from transfers.contracts import CandidateRefresh
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
@@ -73,16 +75,21 @@ class TransferEngine(_QualifiedTransferEngine):
         return bool(provider and provider.descriptor.enabled)
 
     async def _materialize(self, record, candidates):
-        """Formalize exact origins only for local multi-candidate failover sets.
+        """Coordinate cohort proof, then preserve qualified materialization.
 
-        WS1 P2 already formalizes cross-transfer alternates during canonical
-        attachment. A single-candidate artifact needs no additional WS2 binding
-        and therefore follows the qualified WS1 P2 materialization path exactly.
-        When one successful resolution yields multiple ordered candidates,
-        however, bind each immediately from persisted request/resolution/candidate
-        identities while the artifact is healthy so later failover never needs
-        URL/path/provider-state inference.
+        Weak-prefix collection candidates are held only at the existing durable
+        MATERIALIZING seam. Related requests share a small in-memory lock so
+        sibling proof cannot race itself, while unrelated transfers and all
+        canonical/path ownership locks remain independent of remote sampling.
         """
+        locks = getattr(self, "_cohort_locks", None)
+        if locks is None:
+            locks = self._cohort_locks = {}
+        lock = locks.setdefault(record.transfer_id, asyncio.Lock())
+        async with lock:
+            if await coordinate_collection(self, record, candidates):
+                return
+
         await super()._materialize(record, candidates)
         artifact = next(
             (item for item in await self.repository.artifacts(record.transfer_id)

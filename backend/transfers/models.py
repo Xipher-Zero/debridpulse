@@ -217,10 +217,20 @@ class SourceIdentity:
     key: str
 
 
+class FingerprintKind(StrEnum):
+    """Provider-neutral strength of bounded remote content evidence."""
+    FULL_CONTENT_SAMPLE = "full_content_sample"
+    PREFIX_CONTENT_SAMPLE = "prefix_content_sample"
+    UNAVAILABLE = "unavailable"
+
+
 @dataclass(frozen=True)
 class ArtifactFingerprint:
     total_bytes: int
     signature: str
+    kind: FingerprintKind = FingerprintKind.FULL_CONTENT_SAMPLE
+    reason: str = ""
+    prefix_signature: str = ""
 
 
 @dataclass(frozen=True)
