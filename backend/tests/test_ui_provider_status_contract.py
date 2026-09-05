@@ -21,18 +21,20 @@ def test_provider_status_owner_is_provider_neutral():
     assert 'data-provider-id="alldebrid"' not in lower
     assert "integration.kind === 'provider'" in STATUS
     assert "integration.enabled !== false" in STATUS
-    assert "presentation.status_name" in STATUS
+    assert "presentation?.status_name" in STATUS
     assert "presentation.status_endpoint" in STATUS
     assert "presentation.static_status" in STATUS
     assert "No download providers enabled" in STATUS
 
 
-def test_operational_health_is_not_synthesized_from_enabled_or_configured_state():
+def test_operational_health_is_derived_from_member_observations_not_enablement():
     assert "configured ? 'healthy'" not in STATUS
     assert "enabled ? 'healthy'" not in STATUS
-    assert "staticStatus" in STATUS
+    assert "enabled.every(entry => entry.state === 'healthy')" in STATUS
+    assert "enabled.some(entry => ['unhealthy', 'auth_required'].includes(entry.state))" in STATUS
+    assert "enabled.length !== entries.length" in STATUS
     assert "await api('GET', candidate.endpoint)" in STATUS
-    assert "state !== 'disabled'" in STATUS
+    assert "candidate.staticStatus" in STATUS
 
 
 def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
@@ -44,10 +46,12 @@ def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
     assert "candidate.id === 'alldebrid'" not in STATUS.lower()
 
 
-def test_presentation_identity_and_health_sources_are_provider_owned():
+def test_presentation_identity_and_direct_source_group_are_provider_owned():
     assert 'status_name="AllDebrid"' in ALLDEBRID_DEF
     assert 'status_endpoint="/integration-status/alldebrid"' in ALLDEBRID_DEF
-    assert 'status_name="General Downloads"' in GENERAL_DEF
+    assert 'status_name="HTTP & HTTPS"' in GENERAL_DEF
+    assert 'status_group="direct_sources"' in GENERAL_DEF
+    assert 'status_group_label="Direct Sources"' in GENERAL_DEF
     assert 'static_status="healthy"' in GENERAL_DEF
 
 
@@ -57,7 +61,8 @@ def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_d
     assert "dp-settings-provider-disclosure" in CARDS
     assert "Configuration required" in CARDS
     assert "Provider configured" in CARDS
-    assert "dirty(context)" in CARDS
+    assert "const dirty=" in CARDS or "const dirty =" in CARDS
+    assert "signature(" in CARDS
 
 
 def test_application_shell_explicitly_loads_the_single_provider_owners():
