@@ -16,8 +16,10 @@ def build(options, environment):
 definition = IntegrationDefinition(
     "general_http", "provider", "HTTP & HTTPS", GeneralHttpOptions, build,
     presentation=IntegrationPresentation(
-        status_name="General Downloads",
+        status_name="HTTP & HTTPS",
         static_status="healthy",
         display_order=100,
+        status_group="direct_sources",
+        status_group_label="Direct Sources",
     ),
 )

@@ -64,3 +64,6 @@
 @import url('/ui-settings-authentication.css?v=2');
 @import url('/ui-settings-card-icons.css?v=2');
 @import url('/ui-shell-brand.css?v=2');
+
+/* 1.0.12 UI Correction Batch 1 cross-surface calibration. */
+@import url('/ui-correction-batch1.css?v=6');

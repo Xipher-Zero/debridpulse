@@ -22,8 +22,8 @@ class IntegrationEnvironment:
 class IntegrationPresentation:
     """Safe, provider-owned presentation facts for neutral UI surfaces.
 
-    Operational state is never inferred from enabled/configured state. Providers
-    either expose a status endpoint or explicitly declare a local static state.
+    Operational state is never inferred from configured state. Providers either
+    expose a status endpoint or explicitly declare a local static state.
     """
 
     status_name: Optional[str] = None
@@ -31,6 +31,8 @@ class IntegrationPresentation:
     status_endpoint: Optional[str] = None
     static_status: Optional[str] = None
     display_order: int = 100
+    status_group: Optional[str] = None
+    status_group_label: Optional[str] = None
 
     def public(self) -> dict:
         return {
@@ -39,6 +41,8 @@ class IntegrationPresentation:
             "status_endpoint": self.status_endpoint,
             "static_status": self.static_status,
             "display_order": self.display_order,
+            "status_group": self.status_group,
+            "status_group_label": self.status_group_label,
         }
 
 

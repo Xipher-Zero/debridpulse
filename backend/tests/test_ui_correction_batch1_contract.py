@@ -1,4 +1,11 @@
 from pathlib import Path
+from zipfile import ZipFile
+
+import pytest
+
+from providers.general_http.provider import GeneralHttpProvider
+from transfers.models import TransferRequest
+from transfers.presentation_repository import public_root_source_identity
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,17 +32,23 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "dp-downloads-pause-shim" in runtime
     assert "dp-global-pause-center" in runtime
     assert "width: 136px" in batch_css
+    assert "canonicalLoadTorrents" in runtime
+    assert "correctedLoadTorrents" not in runtime
 
 
-def test_host_artwork_and_domain_matching_contract():
+def test_host_artwork_archive_and_domain_matching_contract():
     runtime = (STATIC / "ui-correction-batch1.js").read_text()
-    host_dir = STATIC / "icons" / "hosts"
+    archive = ROOT / "frontend" / "host-icons.zip"
 
     assert "host === domain || host.endsWith('.' + domain)" in runtime
     assert "rapidgator.net" in runtime
     assert "mega.nz" in runtime
-    assert (host_dir / "rapidgator.png").is_file()
-    assert (host_dir / "mega.svg").is_file()
+    assert archive.is_file()
+    with ZipFile(archive) as package:
+        names = set(package.namelist())
+    assert "rapidgator.png" in names
+    assert "mega.svg" in names
+    assert len(names) == 29
 
 
 def test_quick_add_import_capability_is_not_removed_from_backend():
@@ -43,4 +56,50 @@ def test_quick_add_import_capability_is_not_removed_from_backend():
     runtime = (STATIC / "ui-correction-batch1.js").read_text()
 
     assert "/torrents/import-existing" in routes
-    assert "importExisting" in runtime
+    assert 'btn-import-existing' in runtime
+    assert 'button[onclick*="importExisting"]' in runtime
+
+
+def test_direct_sources_group_is_explicit_backend_presentation_metadata():
+    definition = (ROOT / "backend" / "providers" / "general_http" / "definition.py").read_text()
+    presentation = (ROOT / "backend" / "integrations" / "definition.py").read_text()
+
+    assert 'status_group="direct_sources"' in definition
+    assert 'status_group_label="Direct Sources"' in definition
+    assert '"status_group": self.status_group' in presentation
+    assert '"status_group_label": self.status_group_label' in presentation
+
+
+@pytest.mark.asyncio
+async def test_general_http_candidate_persists_neutral_host_source_identity():
+    provider = GeneralHttpProvider()
+    result = await provider.resolve(
+        TransferRequest("https", "https://sub.rapidgator.net/file/abc?token=secret", name="payload.bin")
+    )
+    candidate = result.candidates[0]
+
+    assert candidate.source_identity is not None
+    assert candidate.source_identity.scope == "host"
+    assert candidate.source_identity.key == "sub.rapidgator.net"
+    assert "token" not in candidate.source_identity.key
+    assert "secret" not in candidate.source_identity.key
+
+
+def test_public_root_source_identity_obeys_root_request_precedence_and_never_exposes_urls():
+    http = public_root_source_identity(
+        TransferRequest("https", "https://rapidgator.net/file/abc?token=secret")
+    )
+    magnet = public_root_source_identity(
+        TransferRequest("magnet", "magnet:?xt=urn:btih:deadbeef")
+    )
+    torrent = public_root_source_identity(
+        TransferRequest("torrent_file", b"d4:infod4:name4:testee")
+    )
+
+    assert http == {"kind": "host", "host": "rapidgator.net"}
+    assert magnet == {"kind": "magnet"}
+    assert torrent == {"kind": "torrent_file"}
+    serialized = repr((http, magnet, torrent))
+    assert "token" not in serialized
+    assert "secret" not in serialized
+    assert "magnet:?" not in serialized

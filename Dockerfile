@@ -46,6 +46,23 @@ RUN pip install --no-cache-dir -r requirements.txt
 # App
 COPY backend/ /app/
 COPY frontend/ /app/frontend/
+RUN python - <<'PY'
+from pathlib import Path
+from zipfile import ZipFile
+archive = Path('/app/frontend/host-icons.zip')
+target = Path('/app/frontend/static/icons/hosts')
+target.mkdir(parents=True, exist_ok=True)
+with ZipFile(archive) as package:
+    for member in package.infolist():
+        name = Path(member.filename)
+        if member.is_dir():
+            continue
+        if name.name != member.filename or name.suffix.lower() not in {'.png', '.svg'}:
+            raise RuntimeError('Unexpected host artwork archive member')
+        with package.open(member) as source, (target / name.name).open('wb') as output:
+            output.write(source.read())
+archive.unlink()
+PY
 COPY CHANGELOG.md /app/CHANGELOG.md
 COPY VERSION /app/VERSION
 COPY LICENSE NOTICE SOURCE_OFFER.md /app/

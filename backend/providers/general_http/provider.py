@@ -6,7 +6,7 @@ from transfers.errors import Category, Domain, NormalizedError, Recovery, Retrya
 from transfers.filesystem import safe_name
 from transfers.models import (
     Capability, Endpoint, IntegrationDescriptor, ResolutionResult, ResourceState,
-    TransferCandidate, TransferRequest,
+    SourceIdentity, TransferCandidate, TransferRequest,
 )
 from transfers.requests import direct_link_filename
 
@@ -40,6 +40,10 @@ class GeneralHttpProvider:
         if parsed.username is not None or parsed.password is not None:
             raise self._failure(Category.SECURITY_POLICY_REJECTED, domain=Domain.SECURITY)
 
+        host = str(parsed.hostname or "").strip().lower().rstrip(".")
+        if not host:
+            raise self._failure(Category.INVALID_REQUEST)
+
         name = safe_name(request.name or direct_link_filename(address))
         if not name:
             name = direct_link_filename(address)
@@ -48,5 +52,6 @@ class GeneralHttpProvider:
             endpoints=(Endpoint(scheme, address),),
             provider_id=self.descriptor.id,
             context={"accepted_input_methods": ("username_password",)},
+            source_identity=SourceIdentity("host", host),
         )
         return ResolutionResult(ResourceState.AVAILABLE, (candidate,))

@@ -1,137 +1,99 @@
-/* Neutral download-provider status presentation.
- *
- * Canonical integration metadata supplies display identity/order and declares
- * how operational truth is obtained. This renderer never treats enabled or
- * configured state as proof of health.
- */
+/* Neutral provider/direct-source status presentation owner. */
 (function () {
   'use strict';
-
   let generation = 0;
-
-  function invalidate() {
-    generation += 1;
-    return generation;
-  }
-
-  function integrationsOf(settings) {
-    const integrations = settings && settings.integrations;
-    return integrations && typeof integrations === 'object' ? integrations : null;
-  }
-
-  function candidates(settings) {
-    const integrations = integrationsOf(settings);
-    if (!integrations) return null;
+  function invalidate(){ generation += 1; return generation; }
+  function integrationsOf(settings){ const value=settings&&settings.integrations; return value&&typeof value==='object'?value:null; }
+  function candidates(settings){
+    const integrations=integrationsOf(settings); if(!integrations)return null;
     return Object.entries(integrations)
-      .filter(([, integration]) => {
-        const presentation = integration && integration.presentation;
-        return integration && integration.kind === 'provider' && integration.enabled !== false &&
-          presentation && String(presentation.status_name || '').trim();
-      })
-      .map(([id, integration]) => ({
+      .filter(([,integration])=>integration?.kind==='provider'&&String(integration?.presentation?.status_name||'').trim())
+      .map(([id,integration])=>({
         id,
-        name: String(integration.presentation.status_name),
-        configured: !!integration.configured,
-        premium: !!integration.presentation.premium,
-        endpoint: String(integration.presentation.status_endpoint || '').trim(),
-        staticStatus: String(integration.presentation.static_status || '').trim(),
-        order: Number.isFinite(Number(integration.presentation.display_order))
-          ? Number(integration.presentation.display_order) : 100,
+        name:String(integration.presentation.status_name),
+        enabled:integration.enabled!==false,
+        configured:!!integration.configured,
+        premium:!!integration.presentation.premium,
+        endpoint:String(integration.presentation.status_endpoint||'').trim(),
+        staticStatus:String(integration.presentation.static_status||'').trim(),
+        order:Number.isFinite(Number(integration.presentation.display_order))?Number(integration.presentation.display_order):100,
+        groupId:String(integration.presentation.status_group||'').trim(),
+        groupLabel:String(integration.presentation.status_group_label||'').trim()
       }))
-      .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+      .sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
   }
-
-  function host() {
-    let node = document.getElementById('provider-status-list');
-    if (node) return node;
-
-    node = document.createElement('div');
-    node.id = 'provider-status-list';
-    node.className = 'dp-provider-status-list';
-    node.setAttribute('aria-label', 'Provider Status');
-    const footer = document.querySelector('.sidebar-footer');
-    const aria2Row = document.getElementById('dot-aria2')?.closest('.conn-row');
-    if (footer) footer.insertBefore(node, aria2Row || footer.firstChild);
+  function host(){
+    let node=document.getElementById('provider-status-list');
+    if(node)return node;
+    node=document.createElement('div');
+    node.id='provider-status-list';
+    node.className='dp-provider-status-list';
+    node.setAttribute('aria-label','Provider Status');
+    const footer=document.querySelector('.sidebar-footer');
+    const aria2=document.getElementById('dot-aria2')?.closest('.conn-row');
+    if(footer)footer.insertBefore(node,aria2||footer.firstChild);
     return node;
   }
-
-  function dotState(state) {
-    return ({
-      healthy: 'ok',
-      auth_required: 'error',
-      unhealthy: 'error',
-      unconfigured: 'warn',
-      unknown: 'check',
-    })[state] || 'check';
+  function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function dotClass(state){return ({healthy:'ok',auth_required:'error',unhealthy:'error',unconfigured:'warn',unknown:'check',mixed:'warn',disabled:'error'})[state]||'check';}
+  function entryHtml(entry){
+    const premium=entry.premium?'<span class="dp-provider-premium" role="img" title="Premium provider" aria-label="Premium provider"></span>':'';
+    return `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}${premium}</span></div>`;
   }
-
-  function render(entries, mode = 'ready') {
-    const node = host();
-    if (!node) return;
-    if (mode === 'loading') {
-      node.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="checking"><div class="dot check"></div><span>Provider Status: checking…</span></div>';
-      return;
-    }
-    if (mode === 'unknown') {
-      node.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="unknown"><div class="dot check"></div><span>Provider Status unavailable</span></div>';
-      return;
-    }
-    if (!entries.length) {
-      node.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>';
-      return;
-    }
-    node.innerHTML = entries.map(entry =>
-      `<div class="conn-row dp-provider-status-row" data-provider-id="${escapeAttribute(entry.id)}" data-provider-state="${escapeAttribute(entry.state)}">` +
-      `<div class="dot ${dotState(entry.state)}"></div><span>${escapeText(entry.name)}</span></div>`
-    ).join('');
+  function aggregateState(entries){
+    const enabled=entries.filter(entry=>entry.enabled);
+    if(!enabled.length)return 'disabled';
+    if(enabled.length!==entries.length)return 'mixed';
+    return 'healthy';
   }
-
-  function escapeText(value) {
-    return String(value ?? '').replace(/[&<>"']/g, character => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    })[character]);
+  function aggregateHtml(id,label,entries){
+    const state=aggregateState(entries);
+    const children=entries.filter(entry=>entry.enabled&&entry.state!=='disabled').map(entryHtml).join('');
+    return `<div class="dp-provider-status-group" data-provider-group="${esc(id)}"><div class="conn-row dp-provider-status-group-row" data-provider-state="${esc(state)}"><div class="dot ${dotClass(state)}"></div><span>${esc(label)}</span></div>${children?`<div class="dp-provider-status-group-items">${children}</div>`:''}</div>`;
   }
-
-  function escapeAttribute(value) {
-    return escapeText(value);
+  function render(entries,mode='ready'){
+    const node=host();if(!node)return;
+    const heading='<div class="dp-provider-status-heading">Provider Status</div>';
+    if(mode==='loading'){node.innerHTML=heading+'<div class="conn-row dp-provider-status-row" data-provider-state="checking"><div class="dot check"></div><span>Checking providers…</span></div>';return;}
+    if(mode==='unknown'){node.innerHTML=heading+'<div class="conn-row dp-provider-status-row" data-provider-state="unknown"><div class="dot check"></div><span>Provider status unavailable</span></div>';return;}
+    const output=[];const groups=new Map();
+    entries.forEach(entry=>{
+      if(entry.groupId&&entry.groupLabel){
+        let group=groups.get(entry.groupId);
+        if(!group){group={id:entry.groupId,label:entry.groupLabel,entries:[]};groups.set(entry.groupId,group);output.push(group);}
+        group.entries.push(entry);
+      }else if(entry.enabled&&entry.state!=='disabled')output.push({entry});
+    });
+    node.innerHTML=heading+(output.length?output.map(item=>item.entry?entryHtml(item.entry):aggregateHtml(item.id,item.label,item.entries)).join(''):'<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>');
   }
-
-  async function observe(candidate) {
-    if (candidate.staticStatus) return {...candidate, state: candidate.staticStatus, status: {state: candidate.staticStatus}};
-    if (!candidate.endpoint) return {...candidate, state: 'unknown', status: {state: 'unknown'}};
-    try {
-      const status = await api('GET', candidate.endpoint);
-      return {...candidate, state: String(status?.state || 'unknown'), status};
-    } catch (_) {
-      return {...candidate, state: 'unknown', status: {state: 'unknown'}};
-    }
+  async function observe(candidate){
+    if(!candidate.enabled)return {...candidate,state:'disabled'};
+    if(candidate.staticStatus)return {...candidate,state:candidate.staticStatus};
+    if(!candidate.endpoint)return {...candidate,state:'unknown'};
+    try{const status=await api('GET',candidate.endpoint);return {...candidate,state:String(status?.state||'unknown'),status};}
+    catch(_){return {...candidate,state:'unknown'};}
   }
-
-  async function refresh() {
-    const ownedGeneration = invalidate();
-    let settings;
-    try { settings = settingsData; } catch (_) { settings = null; }
-    const providers = candidates(settings);
-    if (providers === null) {
-      render([], 'unknown');
-      return null;
-    }
-
-    const observations = await Promise.all(providers.map(observe));
-    if (ownedGeneration !== generation) return null;
-
-    const entries = observations.filter(entry => entry.state !== 'disabled');
-    render(entries);
-    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {
-      detail: {entries, generation: ownedGeneration},
-    }));
-    return entries;
+  async function refresh(){
+    const owned=invalidate();
+    let settings;try{settings=settingsData;}catch(_){settings=null;}
+    const providers=candidates(settings);
+    if(providers===null){render([],'unknown');return null;}
+    const observations=await Promise.all(providers.map(observe));
+    if(owned!==generation)return null;
+    render(observations);
+    document.dispatchEvent(new CustomEvent('debridpulse:provider-status',{detail:{entries:observations,generation:owned}}));
+    return observations;
   }
-
-  window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates});
-
-  render([], 'loading');
-  document.addEventListener('DOMContentLoaded', () => {
-    refresh().catch(() => render([], 'unknown'));
-  }, {once: true});
+  function loadBatch1(){
+    if(document.getElementById('dp-ui-correction-batch1-script')||window.DPUICorrectionBatch1)return;
+    const script=document.createElement('script');
+    script.id='dp-ui-correction-batch1-script';
+    script.src='/ui-correction-batch1.js?v=6';
+    script.defer=true;
+    document.head.appendChild(script);
+  }
+  window.DPProviderStatus=Object.freeze({refresh,invalidate,candidates,aggregateState});
+  render([],'loading');
+  loadBatch1();
+  document.addEventListener('DOMContentLoaded',()=>refresh().catch(()=>render([],'unknown')),{once:true});
 })();

@@ -1,18 +1,18 @@
 /* DebridPulse 1.0.12 UI Correction Batch 1 visual contract. */
 
-/* Recent Activity geometry: fixed progress and source slots. */
-.dash-row .dash-row-bar-slot {
+/* Recent Activity owns a permanent progress rail slot so row controls never jump. */
+#dash-tbody .dash-row-bar-slot {
   display: block;
   height: 4px;
   min-height: 4px;
   margin: 4px 0 3px;
   overflow: hidden;
 }
-.dash-row .dash-row-bar-slot .dash-row-bar {
+#dash-tbody .dash-row-bar-slot .dash-row-bar {
   height: 3px;
   margin: 0;
 }
-.dash-row .dash-row-bar-slot .dash-row-bar.is-empty {
+#dash-tbody .dash-row-bar-slot .dash-row-bar.is-empty {
   visibility: hidden;
   border-color: transparent !important;
   background: transparent !important;
@@ -45,8 +45,11 @@
   height: 17px;
 }
 
-/* Explicit Provider Status ownership and premium crown optical alignment. */
-.dp-provider-status-list::before { content: none !important; display: none !important; }
+/* Provider Status is explicit markup; only AllDebrid's premium crown is optically lifted. */
+.dp-provider-status-list::before {
+  content: none !important;
+  display: none !important;
+}
 .dp-provider-status-heading {
   margin: 0 0 5px;
   font-size: 9px;
@@ -56,24 +59,38 @@
   text-transform: uppercase;
   color: var(--text3);
 }
-#premium-row::before { transform: translateY(-2px) !important; }
+.dp-provider-status-row[data-provider-id="alldebrid"] .dp-provider-premium {
+  position: relative;
+  top: -2px;
+}
+.dp-provider-status-group-items {
+  padding-left: 10px;
+}
 
-/* Quick Add global pause center. */
-#view-dashboard .quick-add .card-header,
-#view-dashboard [data-quick-add] .card-header {
+/* Quick Add keeps title/action columns stable while the authoritative pause state appears centrally. */
+.dp-dashboard-quick-add > .card-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(230px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(250px, auto) minmax(0, 1fr);
   align-items: center;
+  column-gap: 12px;
+}
+.dp-dashboard-quick-add > .card-header > .card-title {
+  justify-self: start;
+}
+.dp-dashboard-quick-add > .card-header > .dp-card-header-actions {
+  justify-self: end;
 }
 .dp-global-pause-center {
   visibility: hidden;
   justify-self: center;
   text-align: center;
   color: var(--yellow);
-  max-width: 430px;
+  max-width: 440px;
   min-height: 38px;
 }
-.dp-global-pause-center.is-visible { visibility: visible; }
+.dp-global-pause-center.is-visible {
+  visibility: visible;
+}
 .dp-global-pause-title {
   display: inline-flex;
   align-items: center;
@@ -83,7 +100,10 @@
   font-weight: 800;
   letter-spacing: .08em;
 }
-.dp-global-pause-title svg { width: 14px; height: 14px; }
+.dp-global-pause-title svg {
+  width: 14px;
+  height: 14px;
+}
 .dp-global-pause-copy {
   margin-top: 2px;
   font-size: 9px;
@@ -91,7 +111,7 @@
   color: var(--text2);
 }
 
-/* Downloads pause state participates in vertical capacity. */
+/* Downloads pause state is a real vertical geometry owner. */
 .dp-downloads-pause-shim {
   display: none;
   min-height: 30px;
@@ -106,37 +126,68 @@
   background: color-mix(in srgb, var(--yellow) 7%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--yellow) 20%, var(--border));
 }
-.dp-downloads-pause-shim.is-visible { display: flex; }
+.dp-downloads-pause-shim.is-visible {
+  display: flex;
+}
 
-/* Three-slot pager keeps the page number at a fixed center. */
+/* Pagination keeps controls at the physical center regardless of missing arrows. */
 #torrent-pagination {
   display: grid !important;
-  grid-template-columns: 34px auto 34px;
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
-.dp-pager-slot {
+#torrent-page-info {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+#torrent-page-btns {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid !important;
+  grid-template-columns: 34px 34px 34px;
+  align-items: center;
+  gap: 6px !important;
+}
+.dp-pager-slot,
+.dp-pager-placeholder,
+.dp-pager-current,
+.dp-pager-btn {
   width: 34px;
   height: 30px;
+  box-sizing: border-box;
+}
+.dp-pager-slot {
   display: grid;
   place-items: center;
 }
 .dp-pager-placeholder {
-  width: 34px;
-  height: 30px;
   display: block;
 }
 .dp-pager-current {
-  min-width: 34px;
-  height: 30px;
   display: grid;
   place-items: center;
   font-size: 11px;
   font-weight: 700;
 }
+.dp-pager-btn {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  background: transparent;
+  cursor: pointer;
+}
+.dp-pager-btn:hover,
+.dp-pager-btn:focus-visible {
+  color: var(--text);
+  background: var(--surface2);
+}
 
-/* Date presentation menu: options, not sorting. */
+/* Date presentation menu is a dedicated option control, never a sort affordance. */
 #view-torrents th:has(.dp-date-menu-trigger) {
   position: relative;
   white-space: nowrap;
@@ -181,9 +232,11 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 10px 28px rgba(0,0,0,.24);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .24);
 }
-.dp-date-menu[hidden] { display: none; }
+.dp-date-menu[hidden] {
+  display: none;
+}
 .dp-date-menu-title {
   padding: 5px 7px 3px;
   color: var(--text3);
@@ -203,15 +256,25 @@
   cursor: pointer;
 }
 .dp-date-menu button:hover,
+.dp-date-menu button:focus-visible,
 .dp-date-menu button[aria-checked="true"] {
   color: var(--text);
   background: var(--surface2);
 }
+.dp-downloads-date-value {
+  display: inline-block;
+  border-radius: 3px;
+}
+.dp-downloads-date-value:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
-/* Details Files status badges have one safe, centered footprint. */
-.dp-detail-files-card tbody td:last-child .badge,
-#detail-files tbody td:last-child .badge,
-#detail-files-table tbody td:last-child .badge {
+/* Only Details -> Files status cells receive the vocabulary-safe common footprint. */
+.dp-detail-files-card tbody td[data-role="file-status"] .badge,
+#detail-files tbody td[data-role="file-status"] .badge,
+#detail-files-table tbody td[data-role="file-status"] .badge,
+.dp-detail-files-table tbody td:last-child .badge {
   width: 136px;
   min-width: 136px;
   height: 28px;
@@ -226,13 +289,16 @@
   box-sizing: border-box;
 }
 
-/* Adaptive toast affordances. */
+/* Adaptive toast controls keep manual dismissal and focus interaction available. */
 .toast {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
-.dp-toast-message { flex: 1 1 auto; min-width: 0; }
+.dp-toast-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .dp-toast-close {
   appearance: none;
   flex: 0 0 auto;
@@ -252,10 +318,17 @@
   opacity: .72;
 }
 .dp-toast-close:hover,
-.dp-toast-close:focus-visible { opacity: 1; background: color-mix(in srgb, currentColor 8%, transparent); }
+.dp-toast-close:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
 
 @media (max-width: 700px) {
-  #view-dashboard .quick-add .card-header,
-  #view-dashboard [data-quick-add] .card-header { display: flex; }
-  .dp-global-pause-center { min-height: 0; max-width: 300px; }
+  .dp-dashboard-quick-add > .card-header {
+    display: flex;
+  }
+  .dp-global-pause-center {
+    min-height: 0;
+    max-width: 300px;
+  }
 }

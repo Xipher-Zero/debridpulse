@@ -11,7 +11,7 @@ from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.engine import TransferEngine
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
+from transfers.presentation_repository import TransferRepository
 from transfers.storage import DiskCapacity, register_storage_health
 
 
