@@ -46,6 +46,27 @@ class TransferEngine(_QualifiedTransferEngine):
         provider = self.registry.providers.get(candidate.provider_id)
         return bool(provider and provider.descriptor.enabled)
 
+    async def _materialize(self, record, candidates):
+        """Materialize through the qualified owner, then formalize every local candidate origin.
+
+        WS1 P2 already formalizes cross-transfer candidates during canonical
+        attachment. A provider may also return multiple ordered candidates in a
+        single successful resolution, including candidates whose size is not yet
+        known. Bind those candidates immediately from their exact persisted
+        request/resolution/candidate identities while the artifact is healthy so
+        later recovery never needs URL/path/provider-state inference.
+        """
+        await super()._materialize(record, candidates)
+        artifact = next(
+            (item for item in await self.repository.artifacts(record.transfer_id)
+             if item.request_id == record.id),
+            None,
+        )
+        if artifact is None:
+            return
+        for candidate in artifact.candidates:
+            await self.canonical.origin_for(artifact, candidate)
+
     async def _next_alternate_index(self, artifact: Artifact) -> int | None:
         """Return the next ordered, provenance-bound, currently executable alternate."""
         for index in range(artifact.selected + 1, len(artifact.candidates)):
