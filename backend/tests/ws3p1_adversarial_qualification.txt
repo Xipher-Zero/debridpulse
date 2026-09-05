@@ -1,0 +1,11 @@
+# Workspace 3 Phase 1 — adversarial consolidation boundary qualification
+# Keep this focused gate provider-neutral and deterministic.
+tests/test_cross_transfer_equivalence.py
+tests/test_candidate_provenance_consolidation.py
+tests/test_consolidation_events.py
+tests/test_consolidation_read_model.py
+tests/test_consolidation_stability.py
+tests/test_ws2p1_failover_depth.py
+tests/test_ws2p1_failover_progress.py
+tests/test_two_provider_canonical_architecture.py
+tests/test_ws3p1_adversarial_freeze.py

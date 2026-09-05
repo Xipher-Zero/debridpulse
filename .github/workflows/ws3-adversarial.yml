@@ -1,0 +1,50 @@
+name: WS3 Adversarial
+
+on:
+  push:
+    branches:
+      - '1.0.12'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements-dev.txt
+
+      - name: Run WS3 P1 adversarial qualification
+        run: |
+          set -o pipefail
+          cd backend
+          mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/ws3p1_adversarial_qualification.txt)
+          python -m pytest "${cases[@]}" -v --tb=short 2>&1 | tee "$RUNNER_TEMP/ws3p1-adversarial.log"
+
+      - name: Upload WS3 P1 adversarial qualification output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ws3p1-adversarial-${{ github.sha }}
+          path: ${{ runner.temp }}/ws3p1-adversarial.log
+          if-no-files-found: error
+          retention-days: 14
