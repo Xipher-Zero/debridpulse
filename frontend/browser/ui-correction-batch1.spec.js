@@ -129,3 +129,68 @@ for (const height of [760, 980]) {
     expect(size).toBeLessThan(15);
   });
 }
+
+test('Provider Status heading precedes premium row and Direct Sources aggregate reflects enablement', async ({ page }) => {
+  await waitForBatch(page);
+
+  const order = await page.evaluate(() => {
+    const footer = document.querySelector('.sidebar-footer');
+    const heading = footer?.querySelector(':scope > .dp-provider-status-heading');
+    const premium = document.getElementById('premium-row');
+    return {
+      heading: heading ? Array.from(footer.children).indexOf(heading) : -1,
+      premium: premium ? Array.from(footer.children).indexOf(premium) : -1,
+    };
+  });
+  expect(order.heading).toBeGreaterThanOrEqual(0);
+  expect(order.premium).toBeGreaterThan(order.heading);
+
+  const states = await page.evaluate(() => {
+    const base = {
+      integrations: {
+        general_http: {
+          kind: 'provider', enabled: false, configured: true,
+          presentation: {
+            status_name: 'HTTP & HTTPS', static_status: 'healthy', display_order: 100,
+            status_group: 'direct_sources', status_group_label: 'Direct Sources',
+          },
+        },
+      },
+    };
+    const disabled = DPProviderStatus.candidates(base);
+    const disabledState = DPProviderStatus.aggregateState(disabled);
+    base.integrations.future_direct = {
+      ...base.integrations.general_http,
+      enabled: true,
+      presentation: {...base.integrations.general_http.presentation, status_name: 'Future Direct'},
+    };
+    const mixed = DPProviderStatus.candidates(base).map(entry => ({...entry, state: entry.enabled ? 'healthy' : 'disabled'}));
+    base.integrations.general_http.enabled = true;
+    const enabled = DPProviderStatus.candidates(base).map(entry => ({...entry, state: 'healthy'}));
+    return {disabledState, mixedState: DPProviderStatus.aggregateState(mixed), enabledState: DPProviderStatus.aggregateState(enabled)};
+  });
+  expect(states).toEqual({disabledState: 'disabled', mixedState: 'mixed', enabledState: 'healthy'});
+});
+
+test('supplied Rapidgator host artwork is served with bounded source-icon geometry in both themes', async ({ page }) => {
+  await waitForBatch(page);
+  const response = await page.request.get('/icons/hosts/rapidgator.png');
+  expect(response.ok()).toBeTruthy();
+  expect((await response.body()).length).toBeGreaterThan(1000);
+
+  await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.id = 'batch1-source-geometry-probe';
+    host.innerHTML = `<span class="dp-source-icon-slot">${DPUICorrectionBatch1.sourceIconMarkup({kind: 'host', host: 'rapidgator.net'})}</span>`;
+    document.body.appendChild(host);
+  });
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme);
+    const slot = page.locator('#batch1-source-geometry-probe .dp-source-icon-slot');
+    const logo = slot.locator('img.dp-source-host-logo');
+    await expect(logo).toHaveCount(1);
+    const box = await slot.boundingBox();
+    expect(Math.round(box.width)).toBe(20);
+    expect(Math.round(box.height)).toBe(20);
+  }
+});

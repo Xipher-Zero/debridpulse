@@ -52,6 +52,19 @@
     return node;
   }
 
+  function heading() {
+    let node = document.querySelector('.sidebar-footer > .dp-provider-status-heading');
+    if (node) return node;
+    const footer = document.querySelector('.sidebar-footer');
+    if (!footer) return null;
+    node = document.createElement('div');
+    node.className = 'dp-provider-status-heading';
+    node.textContent = 'Provider Status';
+    const premium = document.getElementById('premium-row');
+    footer.insertBefore(node, premium || footer.firstChild);
+    return node;
+  }
+
   function esc(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -99,15 +112,15 @@
   }
 
   function render(entries, mode = 'ready') {
+    heading();
     const node = host();
     if (!node) return;
-    const heading = '<div class="dp-provider-status-heading">Provider Status</div>';
     if (mode === 'loading') {
-      node.innerHTML = heading + '<div class="conn-row dp-provider-status-row" data-provider-state="checking"><div class="dot check"></div><span>Checking providers…</span></div>';
+      node.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="checking"><div class="dot check"></div><span>Checking providers…</span></div>';
       return;
     }
     if (mode === 'unknown') {
-      node.innerHTML = heading + '<div class="conn-row dp-provider-status-row" data-provider-state="unknown"><div class="dot check"></div><span>Provider status unavailable</span></div>';
+      node.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="unknown"><div class="dot check"></div><span>Provider status unavailable</span></div>';
       return;
     }
 
@@ -127,9 +140,9 @@
       }
     });
 
-    node.innerHTML = heading + (output.length
+    node.innerHTML = output.length
       ? output.map(item => item.entry ? entryHtml(item.entry) : aggregateHtml(item.id, item.label, item.entries)).join('')
-      : '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>');
+      : '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>';
   }
 
   async function observe(candidate) {
@@ -185,6 +198,7 @@
   }
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
+  heading();
   render([], 'loading');
   loadBatch1();
   document.addEventListener('DOMContentLoaded', () => refresh().catch(() => render([], 'unknown')), {once: true});
