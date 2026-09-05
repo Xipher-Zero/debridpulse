@@ -9,20 +9,12 @@
   const DESKTOP_QUERY = '(min-width: 701px)';
   const originalApi = typeof api === 'function' ? api : null;
   const originalToast = typeof toast === 'function' ? toast : null;
-  const originalLoadTorrents = typeof loadTorrents === 'function' ? loadTorrents : null;
 
   function downloadsActive() {
     return Boolean(
       window.matchMedia(DESKTOP_QUERY).matches
       && document.getElementById('view-torrents')?.classList.contains('active')
     );
-  }
-
-  function confirmationOverlayOpen() {
-    const overlay = document.querySelector('.dp-settings-confirm-overlay');
-    if (!overlay || !overlay.isConnected || overlay.hidden) return false;
-    const style = getComputedStyle(overlay);
-    return style.display !== 'none' && style.visibility !== 'hidden';
   }
 
   function effectivePageSize() {
@@ -58,18 +50,6 @@
     } catch (_) {}
   }
 
-  /* A deferred capacity measurement must not replace the opener row while a
-     canonical confirmation dialog is active. Accept removes the overlay before
-     its caller continues, so post-confirm refreshes still run normally. */
-  if (originalLoadTorrents) {
-    try {
-      loadTorrents = function (...args) {
-        if (confirmationOverlayOpen()) return Promise.resolve(null);
-        return originalLoadTorrents.apply(this, args);
-      };
-    } catch (_) {}
-  }
-
   /* Preserve the canonical toast DOM contract while retaining Batch 1 adaptive
      timing. Existing error/storage owners legitimately target .dp-toast-copy. */
   if (originalToast) {
@@ -85,6 +65,5 @@
   window.DPBatch1CapacityBridge = Object.freeze({
     rewriteDownloadsListPath,
     effectivePageSize,
-    confirmationOverlayOpen,
   });
 })();

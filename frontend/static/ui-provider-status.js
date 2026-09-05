@@ -179,12 +179,12 @@
     if (document.getElementById('dp-ui-correction-batch1-capacity-script')) return;
     const capacity = document.createElement('script');
     capacity.id = 'dp-ui-correction-batch1-capacity-script';
-    capacity.src = '/ui-correction-batch1-capacity.js?v=1';
+    capacity.src = '/ui-correction-batch1-capacity.js?v=2';
     capacity.defer = true;
     document.head.appendChild(capacity);
   }
 
-  function loadBatch1() {
+  function loadBatchRuntime() {
     if (document.getElementById('dp-ui-correction-batch1-script') || window.DPUICorrectionBatch1) {
       loadCapacityCorrection();
       return;
@@ -195,6 +195,23 @@
     script.defer = true;
     script.addEventListener('load', loadCapacityCorrection, {once: true});
     document.head.appendChild(script);
+  }
+
+  function loadBatch1() {
+    if (window.DPBatch1ObserverGuard) {
+      loadBatchRuntime();
+      return;
+    }
+
+    let guard = document.getElementById('dp-ui-correction-batch1-observer-guard-script');
+    if (!guard) {
+      guard = document.createElement('script');
+      guard.id = 'dp-ui-correction-batch1-observer-guard-script';
+      guard.src = '/ui-correction-batch1-observer-guard.js?v=1';
+      guard.defer = true;
+      document.head.appendChild(guard);
+    }
+    guard.addEventListener('load', loadBatchRuntime, {once: true});
   }
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});

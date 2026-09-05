@@ -41,7 +41,10 @@ test('authoritative pause state owns both Quick Add and Downloads pause surfaces
 
 test('pager keeps three physical slots and current page stays centered at both boundaries', async ({ page }) => {
   await waitForBatch(page);
-  await page.evaluate(() => nav(document.querySelector('[data-view="torrents"]')));
+  await page.evaluate(async () => {
+    nav(document.querySelector('[data-view="torrents"]'));
+    await loadTorrents();
+  });
 
   const buttons = page.locator('#torrent-page-btns');
   await page.evaluate(() => renderTorrentPagination(30, 10, 0));

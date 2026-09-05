@@ -58,10 +58,12 @@ test('INPUT_REQUIRED remains a neutral nonterminal transfer state while AUTH_REQ
   await page.goto('/');
 
   // AUTH_REQUIRED is intentionally modal and blocks pointer navigation. Move the
-  // underlying view through the canonical navigation function so this test can
-  // continue proving the neutral transfer-row presentation without weakening
-  // modal input containment.
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
+  // underlying view through the canonical navigation function, then await the
+  // canonical Downloads renderer so the assertion cannot race its async fetch.
+  await page.evaluate(async () => {
+    nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]'));
+    await loadTorrents();
+  });
   await expect(page.locator('#view-torrents')).toHaveClass(/\bactive\b/);
 
   const row = page.locator('#t-tbody tr[data-torrent-id="903"]');
