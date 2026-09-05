@@ -126,12 +126,18 @@ class ConsolidationEvents:
         unmatched = 0
         canonical_transfer_ids: set[int] = set()
         for row in rows:
-            if str(row.get("request_state") or "").lower() == "skipped":
+            request_state = str(row.get("request_state") or "").lower()
+            if request_state == "skipped":
                 continue
+            # Both canonical attach and ordinary materialization transition the
+            # leaf request from MATERIALIZING to RESOLVED as their final durable
+            # step.  Requiring RESOLVED prevents an observability tick between
+            # sibling materializations from announcing a premature partial
+            # summary while another leaf can still become a canonical match.
+            if request_state != "resolved":
+                return None
             artifact_id = row.get("artifact_id")
             if artifact_id is None:
-                # Resolution/materialization is still in flight; do not emit a
-                # summary whose matched/unmatched counts could still change.
                 return None
             if bool(row.get("blocked")):
                 continue
