@@ -486,7 +486,55 @@ class CanonicalOwnership:
     async def origin_for(self, artifact: Artifact, candidate: TransferCandidate) -> CandidateOrigin | None:
         await self.initialize()
         async with get_db() as db:
-            return await self._bound_origin(db, artifact.id, candidate)
+            bound = await self._bound_origin(db, artifact.id, candidate)
+            if bound is not None:
+                return bound
+            await db.execute("BEGIN IMMEDIATE")
+            current = await db.fetchone(
+                """SELECT f.torrent_id,f.candidates FROM download_files f JOIN torrents t ON t.id=f.torrent_id
+                    WHERE f.id=? AND f.request_id IS NOT NULL AND COALESCE(f.mirror_state,'')!='standby'
+                    AND f.status NOT IN ('completed','cancelled','error','duplicate')
+                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled','error')""",
+                (artifact.id,),
+            )
+            if not current:
+                await db.rollback()
+                return None
+            stored = tuple(codec.candidate(item) for item in codec.load(current.get("candidates"), []))
+            order = next((index for index, item in enumerate(stored, start=1)
+                          if str(item.id) == str(candidate.id)), None)
+            if order is None:
+                await db.rollback()
+                return None
+            exact = await self._p1_origin_for_candidate(db, artifact.id, candidate)
+            if exact is None:
+                await db.rollback()
+                return None
+            occupied = await db.fetchone(
+                "SELECT candidate_id FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_order=?",
+                (artifact.id, order),
+            )
+            if occupied and str(occupied["candidate_id"]) != str(candidate.id):
+                await db.rollback()
+                return None
+            scope, key = self._source_parts(exact.source)
+            binding_id = await db.execute_returning_id(
+                """INSERT OR IGNORE INTO canonical_candidate_bindings(
+                    canonical_artifact_id,candidate_id,provider_id,source_scope,source_key,role,candidate_order)
+                    VALUES(?,?,?,?,?,'canonical',?)""",
+                (artifact.id, str(candidate.id), str(exact.provider_id or candidate.provider_id or ""), scope, key, order),
+            )
+            binding = await db.fetchone(
+                "SELECT id FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_id=?",
+                (artifact.id, str(candidate.id)),
+            )
+            if not binding:
+                await db.rollback()
+                return None
+            await self._insert_origin(db, int(binding["id"]), exact)
+            rebound = await self._bound_origin(db, artifact.id, candidate)
+            await db.commit()
+            return rebound
 
     async def origins(self, canonical_artifact_id: int) -> tuple[CandidateOrigin, ...]:
         await self.initialize()
