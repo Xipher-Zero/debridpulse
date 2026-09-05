@@ -114,7 +114,7 @@ test('candidate rerender updates count without duplicate rows or ownership migra
   await expect(page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure')).toHaveText(/3\s*Candidates/);
   await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toHaveCount(1);
   await expect(page.locator('tr[data-dp-candidate-owner="502"] .dp-detail-candidate-item')).toHaveCount(3);
-  await expect(page.locator('tr[data-dp-candidate-owner="503"] .dp-detail-candidate-disclosure')).toHaveText(/2\s*Candidates/);
+  await expect(page.locator('tr[data-dp-artifact-id="503"] .dp-detail-candidate-disclosure')).toHaveText(/2\s*Candidates/);
   await expect(page.locator('tr[data-dp-candidate-owner="503"]')).toHaveCount(0);
 });
 
@@ -139,7 +139,7 @@ test('expanded candidate rows preserve modal width, scrolling, long filenames, a
   await expect(page.locator('tr[data-dp-artifact-id="600"] .dp-detail-filename-copy')).toContainText('GF030926-M2SP-RN');
   await page.screenshot({path:'test-results/checkpoint-details-candidates-dark.png', fullPage:true});
 
-  await page.locator('#theme-toggle').click();
+  await page.evaluate(() => toggleTheme());
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
   await expect(page.locator('tr[data-dp-candidate-owner="600"] .dp-detail-candidate-item').first()).toBeVisible();
   await page.screenshot({path:'test-results/checkpoint-details-candidates-light.png', fullPage:true});

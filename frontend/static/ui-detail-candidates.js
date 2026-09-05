@@ -173,7 +173,8 @@
     }
 
     document.addEventListener('click', function (event) {
-      const control = event.target.closest('.dp-detail-candidate-disclosure');
+      const target = event.target instanceof Element ? event.target : null;
+      const control = target ? target.closest('.dp-detail-candidate-disclosure') : null;
       if (!control) return;
       event.preventDefault();
       event.stopPropagation();
@@ -182,7 +183,7 @@
       if (expandedArtifacts.has(artifactId)) expandedArtifacts.delete(artifactId);
       else expandedArtifacts.add(artifactId);
       if (latestDetail) render(latestDetail);
-    });
+    }, true);
 
     document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
