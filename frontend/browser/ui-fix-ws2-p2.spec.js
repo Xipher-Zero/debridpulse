@@ -298,9 +298,13 @@ test('WS2-P2 Downloads pagination changes explicitly clear stable selection scop
   await page.locator('.t-chk[data-id="1"]').check();
   expect(await selectedIds(page)).toEqual([1]);
   await expect(page.locator('#torrent-page-btns button[aria-label="Next page"]')).toBeVisible();
+  const pageSize = await page.evaluate(() => torrentPageSize);
+  expect(pageSize).toBeGreaterThan(0);
+  expect(pageSize).toBeLessThan(30);
 
   await page.locator('#torrent-page-btns button[aria-label="Next page"]').click();
   await expect.poll(() => selectedIds(page)).toEqual([]);
-  await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="26"]')).toBeVisible();
+  const expectedId = pageSize + 1;
+  await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${expectedId}"]`)).toBeVisible();
   await expect(page.locator('#bulk-bar')).not.toHaveClass(/\bvisible\b/);
 });

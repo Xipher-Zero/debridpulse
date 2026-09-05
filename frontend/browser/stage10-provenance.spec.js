@@ -52,7 +52,7 @@ test('Sources & Providers exposes canonical AllDebrid and General HTTP enable co
   await expect(page.locator('.dp-settings-debrid-services')).toContainText('Debrid Services');
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toContainText('AllDebrid');
   await expect(integrationControl(page, 'alldebrid')).toBeVisible();
-  await expect(page.locator('.dp-settings-general-sources')).toContainText('General Sources');
+  await expect(page.locator('.dp-settings-general-sources')).toContainText('Direct Sources');
   const httpCard = page.locator('.dp-settings-provider-card--general-http');
   await expect(httpCard).toContainText('HTTP & HTTPS');
   await expect(httpCard).toContainText('Direct downloads from standard HTTP and HTTPS URLs.');

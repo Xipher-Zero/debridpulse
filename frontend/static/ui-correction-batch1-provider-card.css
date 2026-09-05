@@ -1,0 +1,31 @@
+/* Batch 1 provider-card compatibility geometry.
+ * AllDebrid is the only premium provider in this slice. Its persisted
+ * configuration status remains truly centered without moving title/actions.
+ */
+@media (min-width: 1181px) {
+  body.dp-v11-structural #view-settings .dp-settings-provider-card--alldebrid > .card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-card--alldebrid > .card-header > .card-title,
+  body.dp-v11-structural #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-card-title--with-icon {
+    grid-column: 1;
+    justify-self: start;
+    min-width: 0;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-provider-config-status {
+    grid-column: 2;
+    justify-self: center;
+    text-align: center;
+  }
+
+  body.dp-v11-structural #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-provider-header-controls {
+    grid-column: 3;
+    justify-self: end;
+    min-width: 0;
+  }
+}

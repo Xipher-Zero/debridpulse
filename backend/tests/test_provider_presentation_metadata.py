@@ -19,6 +19,8 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         "status_endpoint": "/integration-status/alldebrid",
         "static_status": None,
         "display_order": 10,
+        "status_group": None,
+        "status_group_label": None,
     }
     assert alldebrid["options"]["api_key"] == ""
     assert alldebrid["options"]["api_key_configured"] is False
@@ -27,11 +29,13 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
     assert general["kind"] == "provider"
     assert general["configured"] is True
     assert general["presentation"] == {
-        "status_name": "General Downloads",
+        "status_name": "HTTP & HTTPS",
         "premium": False,
         "status_endpoint": None,
         "static_status": "healthy",
         "display_order": 100,
+        "status_group": "direct_sources",
+        "status_group_label": "Direct Sources",
     }
 
 

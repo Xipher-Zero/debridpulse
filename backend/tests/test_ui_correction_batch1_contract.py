@@ -40,6 +40,7 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "ui-correction-batch1.js" in provider_status
     assert "ui-correction-batch1-capacity.js" in provider_status
     assert "ui-correction-batch1.css" in styles
+    assert "ui-correction-batch1-provider-card.css" in styles
     assert "DebridPulse stared at that for a moment" in runtime
     assert "Checking transfers for recoverable work" in runtime
     assert "File Archive" not in runtime
@@ -58,7 +59,8 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "size >= 15" in capacity
     assert "query.set('limit', String(size))" in capacity
     assert "query.set('offset', String((effectivePage() - 1) * size))" in capacity
-    assert "originalPagination.call(this, total, size, (page - 1) * size)" in capacity
+    assert "originalPagination" not in capacity
+    assert "dp-toast-copy" in capacity
 
 
 def test_supplied_host_artwork_is_losslessly_reconstructable_and_domain_matching_is_safe():

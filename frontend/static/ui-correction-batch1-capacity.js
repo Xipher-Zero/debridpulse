@@ -1,15 +1,14 @@
 /* Batch 1 Downloads capacity bridge.
  * Canonical app.js remains the transfer/list renderer; this bridge corrects the
  * legacy minimum-15 request clamp so the measured desktop page size is honored.
+ * Pagination presentation remains owned by the Batch 1 renderer itself.
  */
 (function () {
   'use strict';
 
   const DESKTOP_QUERY = '(min-width: 701px)';
   const originalApi = typeof api === 'function' ? api : null;
-  const originalPagination = typeof renderTorrentPagination === 'function'
-    ? renderTorrentPagination
-    : null;
+  const originalToast = typeof toast === 'function' ? toast : null;
 
   function downloadsActive() {
     return Boolean(
@@ -51,14 +50,14 @@
     } catch (_) {}
   }
 
-  if (originalPagination) {
+  /* Preserve the canonical toast DOM contract while retaining Batch 1 adaptive
+     timing. Existing error/storage owners legitimately target .dp-toast-copy. */
+  if (originalToast) {
     try {
-      renderTorrentPagination = function (total, limit, offset) {
-        if (!downloadsActive()) return originalPagination.call(this, total, limit, offset);
-        const size = effectivePageSize();
-        if (!size) return originalPagination.call(this, total, limit, offset);
-        const page = effectivePage();
-        return originalPagination.call(this, total, size, (page - 1) * size);
+      toast = function (...args) {
+        const node = originalToast.apply(this, args);
+        node?.querySelector('.dp-toast-message')?.classList.add('dp-toast-copy');
+        return node;
       };
     } catch (_) {}
   }
