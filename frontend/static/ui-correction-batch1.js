@@ -77,6 +77,7 @@
   }
 
   function correctedToastMessage(message) {
+    if (message && typeof message === 'object') return message;
     const text = String(message ?? '');
     if (/^Line \d+: enter an HTTP\(S\) link or magnet URI$/i.test(text)) {
       return 'DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.';
@@ -87,74 +88,28 @@
     return text;
   }
 
-  function toastDuration(message, type = 'info') {
-    const text = String(message || '').trim();
-    const words = text ? text.split(/\s+/).length : 0;
-    const chars = text.length;
-    const severity = String(type || 'info').toLowerCase();
-    const floor = ['warn', 'warning', 'error'].includes(severity) ? 4500 : 3500;
-    const reading = 3000 + Math.round(words * 230) + Math.min(1700, chars * 7);
-    return Math.max(floor, Math.min(12000, reading));
+  function toastDuration(message) {
+    const corrected = correctedToastMessage(message);
+    if (window.DPIcons && typeof window.DPIcons.toastDuration === 'function') {
+      return window.DPIcons.toastDuration(corrected);
+    }
+    const parts = corrected && typeof corrected === 'object'
+      ? [corrected.title, corrected.body]
+      : [corrected];
+    const text = parts.filter(value => value != null).map(String).join(' ').trim();
+    const words = text ? text.split(/\s+/u).filter(Boolean).length : 0;
+    return Math.max(3000, Math.min(10000, words * 250));
   }
 
-  function adaptiveToast(message, type = 'info') {
-    const msg = correctedToastMessage(message);
-    const root = document.getElementById('toasts');
-    if (!root) return null;
-
-    const node = document.createElement('div');
-    node.className = `toast ${String(type || 'info')}`;
-    node.tabIndex = 0;
-    node.setAttribute('role', ['warn', 'warning', 'error'].includes(String(type).toLowerCase()) ? 'alert' : 'status');
-
-    const body = document.createElement('span');
-    body.className = 'dp-toast-message dp-toast-copy';
-    body.textContent = msg;
-
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'dp-toast-close';
-    close.setAttribute('aria-label', 'Dismiss notification');
-    close.textContent = '×';
-
-    node.append(body, close);
-    root.appendChild(node);
-
-    let remaining = toastDuration(msg, type);
-    let started = performance.now();
-    let timer = null;
-    const remove = () => {
-      if (timer != null) window.clearTimeout(timer);
-      timer = null;
-      if (node.isConnected) node.remove();
-    };
-    const start = () => {
-      if (remaining <= 0) return remove();
-      started = performance.now();
-      timer = window.setTimeout(remove, remaining);
-    };
-    const pause = () => {
-      if (timer == null) return;
-      window.clearTimeout(timer);
-      timer = null;
-      remaining = Math.max(0, remaining - (performance.now() - started));
-    };
-    const resume = () => {
-      if (timer == null && remaining > 0 && node.isConnected) start();
-    };
-
-    close.addEventListener('click', remove);
-    node.addEventListener('mouseenter', pause);
-    node.addEventListener('mouseleave', resume);
-    node.addEventListener('focusin', pause);
-    node.addEventListener('focusout', event => {
-      if (!node.contains(event.relatedTarget)) resume();
-    });
-    start();
-    return node;
+  function batchToast(message, type = 'info') {
+    const presenter = window.DPIcons && typeof window.DPIcons.toast === 'function'
+      ? window.DPIcons.toast
+      : null;
+    if (!presenter) return null;
+    return presenter(correctedToastMessage(message), type);
   }
 
-  try { toast = adaptiveToast; } catch (_) {}
+  try { toast = batchToast; } catch (_) {}
   window.DPToastDuration = toastDuration;
 
   async function correctedLoadRecent() {
