@@ -150,10 +150,10 @@ test('canonical toast has no dismiss control and independent lifetimes include f
   });
 });
 
-test('desktop toast rectangle remains inside topbar safe lane and clear of rendered occupants after resize', async ({ page }) => {
+test('desktop structured toast stays in the topbar and resize recomputes a short toast without occupant overlap', async ({ page }) => {
   await page.setViewportSize({width: 1440, height: 900});
   await ready(page);
-  const node = await create(page, {
+  let node = await create(page, {
     title:'Transfer route updated',
     body:'The selected provider changed while the original source and acquisition history remain available in Details.',
   }, 'info');
@@ -197,8 +197,10 @@ test('desktop toast rectangle remains inside topbar safe lane and clear of rende
   expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.lane.bottom + 1);
   expect(geometry.overlaps).toBe(false);
 
+  await clearToasts(page);
   await page.setViewportSize({width: 1180, height: 900});
   await settle(page);
+  node = await create(page, 'aria2 queue resumed', 'info');
   geometry = await inspect();
   expect(geometry.lane.narrow).toBe(false);
   expect(geometry.rect.left).toBeGreaterThanOrEqual(geometry.lane.left - 1);
