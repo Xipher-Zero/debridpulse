@@ -196,12 +196,10 @@
     const topbarStyle = window.getComputedStyle(topbar);
     const paddingLeft = parseFloat(topbarStyle.paddingLeft) || 0;
     const paddingRight = parseFloat(topbarStyle.paddingRight) || 0;
-    const paddingTop = parseFloat(topbarStyle.paddingTop) || 0;
-    const paddingBottom = parseFloat(topbarStyle.paddingBottom) || 0;
     const interiorLeft = topbarRect.left + paddingLeft + TOAST_GUTTER;
     const interiorRight = topbarRect.right - paddingRight - TOAST_GUTTER;
-    const usableTop = topbarRect.top + paddingTop;
-    const usableBottom = topbarRect.bottom - paddingBottom;
+    const usableTop = topbarRect.top;
+    const usableBottom = topbarRect.bottom;
     const occupied = Array.from(topbar.children)
       .map(topbarOccupantRect)
       .filter(Boolean)
