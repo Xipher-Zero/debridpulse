@@ -113,6 +113,38 @@ body.dp-v11-structural #view-events #ev-level + .dp-dropdown-shell {
   flex: 0 0 160px;
 }
 
+/* P4 Activity filters add two labeled projected selects plus a conditional
+   Reset control. Own the desktop geometry here so shared compact-control rules
+   cannot collapse the selected-value text. */
+@media (min-width: 901px) {
+  body.dp-v11-structural #view-events .dp-activity-search-row {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(170px, 190px) minmax(170px, 190px) auto;
+    align-items: end;
+    gap: 12px;
+  }
+
+  body.dp-v11-structural #view-events .dp-activity-filter-field {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  body.dp-v11-structural #view-events .dp-activity-filter-field .input,
+  body.dp-v11-structural #view-events .dp-activity-filter-field .dp-dropdown-shell,
+  body.dp-v11-structural #view-events .dp-activity-filter-field .dp-dropdown__trigger {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-sizing: border-box;
+  }
+
+  body.dp-v11-structural #view-events #ev-reset {
+    justify-self: end;
+    white-space: nowrap;
+  }
+}
+
 /* ── Event viewport ───────────────────────────────────────────────────── */
 body.dp-v11-structural #view-events .dp-activity-list {
   position: relative;
