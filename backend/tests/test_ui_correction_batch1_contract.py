@@ -39,6 +39,8 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
 
     assert "ui-correction-batch1.js" in provider_status
     assert "ui-correction-batch1-capacity.js" in provider_status
+    assert "ui-correction-batch1-observer-guard" not in provider_status
+    assert not (STATIC / "ui-correction-batch1-observer-guard.js").exists()
     assert "ui-correction-batch1.css" in styles
     assert "ui-correction-batch1-provider-card.css" in styles
     assert "DebridPulse stared at that for a moment" in runtime
@@ -46,6 +48,7 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "File Archive" not in runtime
     assert "torrent_file" in runtime
     assert "ResizeObserver" in runtime
+    assert "MutationObserver" not in runtime
     assert "Math.floor(oldOffset / measured) + 1" in runtime
     assert "Friendly" in runtime and "International" in runtime and "ISO" in runtime
     assert "12-hour" in runtime and "24-hour" in runtime
@@ -55,12 +58,13 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "width: 136px" in batch_css
     assert "canonicalLoadTorrents" in runtime
     assert "correctedLoadTorrents" not in runtime
+    assert "dp-toast-copy" in runtime
 
     assert "size >= 15" in capacity
     assert "query.set('limit', String(size))" in capacity
     assert "query.set('offset', String((effectivePage() - 1) * size))" in capacity
     assert "originalPagination" not in capacity
-    assert "dp-toast-copy" in capacity
+    assert "originalToast" not in capacity
 
 
 def test_supplied_host_artwork_is_losslessly_reconstructable_and_domain_matching_is_safe():
