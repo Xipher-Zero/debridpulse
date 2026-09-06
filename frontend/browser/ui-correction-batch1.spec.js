@@ -90,25 +90,21 @@ test('date menu is an options control and host icons use domain-boundary matchin
   expect(assets.unknown).toBe('');
 });
 
-test('adaptive toast duration scales and focus pause preserves remaining lifetime', async ({ page }) => {
+test('Batch 1 toast compatibility delegates duration and rendering to the canonical presenter', async ({ page }) => {
   await waitForBatch(page);
-  const durations = await page.evaluate(() => ({
-    short: DPToastDuration('Saved', 'info'),
-    medium: DPToastDuration('This is a medium notification with enough words to require a little more reading time.', 'info'),
-    error: DPToastDuration('Request failed', 'error'),
+  const contract = await page.evaluate(() => ({
+    three: DPToastDuration('one two three', 'info'),
+    twelve: DPUICorrectionBatch1.toastDuration('one two three four five six seven eight nine ten eleven twelve', 'error'),
+    canonicalThree: DPIcons.toastDuration('one two three'),
+    publicBridge: Boolean(window.DPToastContract),
   }));
-  expect(durations.short).toBeGreaterThanOrEqual(3500);
-  expect(durations.medium).toBeGreaterThan(durations.short);
-  expect(durations.medium).toBeLessThanOrEqual(12000);
-  expect(durations.error).toBeGreaterThanOrEqual(4500);
+  expect(contract).toEqual({three: 3000, twelve: 3000, canonicalThree: 3000, publicBridge: true});
 
-  await page.evaluate(() => toast('A focused toast remains available while the user is reading it.', 'info'));
-  const toastNode = page.locator('#toasts .toast').last();
-  await toastNode.focus();
-  await page.waitForTimeout(3800);
-  await expect(toastNode).toBeVisible();
-  await toastNode.locator('.dp-toast-close').click();
-  await expect(toastNode).toHaveCount(0);
+  await page.evaluate(() => toast('Compatibility rendering remains canonical now.', 'info'));
+  const node = page.locator('#toasts .toast').last();
+  await expect(node).toBeVisible();
+  await expect(node.locator('.dp-toast-close, .dp-toast-dismiss, button')).toHaveCount(0);
+  await expect(node).toHaveAttribute('data-dp-toast-duration-ms', '3000');
 });
 
 for (const height of [760, 980]) {

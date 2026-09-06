@@ -124,3 +124,16 @@
   if (finalScript) finalScript.addEventListener('load', loadRepair, {once: true});
   else document.addEventListener('DOMContentLoaded', loadRepair, {once: true});
 })();
+
+/* Toast lifecycle and geometry are global shell concerns. Load the compatibility
+ * bridge after the established application runtimes so legacy Batch-1 globals
+ * cannot retain an independent presenter. */
+(function loadToastContract() {
+  'use strict';
+  if (document.getElementById('dp-toast-contract-script') || window.DPToastContract) return;
+  const script = document.createElement('script');
+  script.id = 'dp-toast-contract-script';
+  script.src = '/ui-toast-contract.js?v=1';
+  script.defer = true;
+  document.head.appendChild(script);
+})();

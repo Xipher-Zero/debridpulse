@@ -72,6 +72,15 @@
     error: 'circleX',
     info: 'info'
   });
+  const TOAST_MIN_MS = 3000;
+  const TOAST_MAX_MS = 10000;
+  const TOAST_WORD_MS = 250;
+  const TOAST_FADE_MS = 250;
+  const TOAST_MAX_WIDTH = 480;
+  const TOAST_GUTTER = 10;
+  let toastPositionFrame = 0;
+  let toastTopbarResizeObserver = null;
+  let toastTopbarMutationObserver = null;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -112,119 +121,219 @@
     button.dataset.defaultLabel = copy;
   }
 
-  function visibleTopbarContentBottom(topbar) {
-    const children = Array.from(topbar.children).filter(function (element) {
-      if (!(element instanceof HTMLElement)) return false;
-      const style = window.getComputedStyle(element);
-      return style.display !== 'none' && style.visibility !== 'hidden';
-    });
-    const bottoms = children.map(function (element) {
-      return element.getBoundingClientRect().bottom;
-    }).filter(Number.isFinite);
-    return bottoms.length ? Math.max.apply(null, bottoms) : topbar.getBoundingClientRect().bottom;
+  function toastWordCount(message) {
+    const parts = [];
+    if (message && typeof message === 'object') {
+      if (message.title != null) parts.push(String(message.title));
+      if (message.body != null) parts.push(String(message.body));
+    } else {
+      parts.push(String(message == null ? '' : message));
+    }
+    const text = parts.join(' ').trim();
+    return text ? text.split(/\s+/u).filter(Boolean).length : 0;
   }
 
-  function toastDeadspaceAnchor() {
+  function toastDuration(message) {
+    return Math.max(TOAST_MIN_MS, Math.min(TOAST_MAX_MS, toastWordCount(message) * TOAST_WORD_MS));
+  }
+
+  function visibleElement(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function unionRect(elements) {
+    const rects = elements.filter(visibleElement).map(function (element) {
+      return element.getBoundingClientRect();
+    });
+    if (!rects.length) return null;
+    return {
+      left: Math.min.apply(null, rects.map(function (rect) { return rect.left; })),
+      right: Math.max.apply(null, rects.map(function (rect) { return rect.right; })),
+      top: Math.min.apply(null, rects.map(function (rect) { return rect.top; })),
+      bottom: Math.max.apply(null, rects.map(function (rect) { return rect.bottom; }))
+    };
+  }
+
+  function topbarOccupantRect(element) {
+    if (!visibleElement(element)) return null;
+    const style = window.getComputedStyle(element);
+    if (element.classList.contains('dp-page-heading') || parseFloat(style.flexGrow) > 0) {
+      const contentRect = unionRect(Array.from(element.children));
+      if (contentRect) return contentRect;
+    }
+    return element.getBoundingClientRect();
+  }
+
+  function toastSafeLane() {
     const topbar = document.getElementById('topbar');
-    const content = document.getElementById('content');
-    if (!topbar || !content) return 64;
-
+    if (!topbar) {
+      return {narrow: false, left: 16, right: Math.max(17, window.innerWidth - 16), top: 0, bottom: 80};
+    }
     const topbarRect = topbar.getBoundingClientRect();
-    const activeView = content.querySelector(':scope > .view.active');
-    const contentStyle = window.getComputedStyle(content);
-    const contentTop = activeView
-      ? activeView.getBoundingClientRect().top
-      : topbarRect.bottom + (parseFloat(contentStyle.paddingTop) || 0);
-
     if (window.matchMedia('(max-width: 700px)').matches) {
-      // Narrow layouts have little inter-surface deadspace. Keep notifications
-      // below the header controls rather than centering them over those controls.
-      return topbarRect.bottom + 8;
+      return {
+        narrow: true,
+        left: 16,
+        right: Math.max(17, window.innerWidth - 16),
+        top: topbarRect.bottom + 8,
+        bottom: window.innerHeight - 8
+      };
     }
 
-    const controlsBottom = Math.min(
-      topbarRect.bottom,
-      Math.max(topbarRect.top, visibleTopbarContentBottom(topbar))
-    );
-    const lower = Math.max(topbarRect.bottom, contentTop);
-    return controlsBottom + Math.max(0, lower - controlsBottom) / 2;
+    const interiorLeft = topbarRect.left + TOAST_GUTTER;
+    const interiorRight = topbarRect.right - TOAST_GUTTER;
+    const occupied = Array.from(topbar.children)
+      .map(topbarOccupantRect)
+      .filter(Boolean)
+      .map(function (rect) {
+        return {
+          left: Math.max(interiorLeft, rect.left - TOAST_GUTTER),
+          right: Math.min(interiorRight, rect.right + TOAST_GUTTER)
+        };
+      })
+      .filter(function (rect) { return rect.right > rect.left; })
+      .sort(function (a, b) { return a.left - b.left; });
+
+    const merged = [];
+    occupied.forEach(function (rect) {
+      const last = merged[merged.length - 1];
+      if (last && rect.left <= last.right) last.right = Math.max(last.right, rect.right);
+      else merged.push({left: rect.left, right: rect.right});
+    });
+
+    const free = [];
+    let cursor = interiorLeft;
+    merged.forEach(function (rect) {
+      if (rect.left > cursor) free.push({left: cursor, right: rect.left});
+      cursor = Math.max(cursor, rect.right);
+    });
+    if (cursor < interiorRight) free.push({left: cursor, right: interiorRight});
+    if (!free.length) free.push({left: interiorLeft, right: Math.max(interiorLeft + 1, interiorRight)});
+
+    const preference = window.innerWidth / 2;
+    free.sort(function (a, b) {
+      const aDistance = preference < a.left ? a.left - preference : (preference > a.right ? preference - a.right : 0);
+      const bDistance = preference < b.left ? b.left - preference : (preference > b.right ? preference - b.right : 0);
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return (b.right - b.left) - (a.right - a.left);
+    });
+    return {
+      narrow: false,
+      left: free[0].left,
+      right: free[0].right,
+      top: topbarRect.top,
+      bottom: topbarRect.bottom
+    };
   }
 
   function updateToastHostPosition() {
+    toastPositionFrame = 0;
     const host = document.getElementById('toasts');
     if (!host) return;
-    host.style.top = toastDeadspaceAnchor() + 'px';
+    const lane = toastSafeLane();
+    const laneWidth = Math.max(1, lane.right - lane.left);
+    const maxToastWidth = Math.max(1, Math.min(TOAST_MAX_WIDTH, laneWidth));
+    Array.from(host.children).forEach(function (node) {
+      normalizeToastNode(node);
+      if (node instanceof HTMLElement) node.style.maxWidth = maxToastWidth + 'px';
+    });
 
-    if (window.matchMedia('(max-width: 700px)').matches) {
-      host.style.transform = 'translateX(-50%)';
-    } else {
-      host.style.transform = 'translate(-50%, -50%)';
+    host.style.right = 'auto';
+    host.style.bottom = 'auto';
+    host.style.maxWidth = laneWidth + 'px';
+    host.style.height = 'auto';
+    host.style.maxHeight = 'none';
+    host.style.justifyContent = 'flex-start';
+
+    if (lane.narrow) {
+      host.style.left = lane.left + 'px';
+      host.style.top = lane.top + 'px';
+      host.style.width = laneWidth + 'px';
+      host.style.transform = 'none';
+      return;
     }
+
+    host.style.width = 'max-content';
+    host.style.top = ((lane.top + lane.bottom) / 2) + 'px';
+    const hostWidth = Math.min(laneWidth, host.getBoundingClientRect().width || maxToastWidth);
+    const half = hostWidth / 2;
+    const desired = window.innerWidth / 2;
+    const center = Math.max(lane.left + half, Math.min(lane.right - half, desired));
+    host.style.left = center + 'px';
+    host.style.transform = 'translate(-50%, -50%)';
+  }
+
+  function scheduleToastHostPosition() {
+    if (toastPositionFrame) return;
+    toastPositionFrame = window.requestAnimationFrame(updateToastHostPosition);
   }
 
   function normalizeToastNode(node) {
     if (!(node instanceof HTMLElement) || !node.classList.contains('toast')) return;
-    // The host itself is intentionally pointer-transparent so empty lane space
-    // never blocks the application. Individual notifications remain fully
-    // interactive for hover/focus pause and explicit dismissal.
-    node.style.pointerEvents = 'auto';
+    node.style.pointerEvents = 'none';
     node.style.position = 'relative';
-    // The legacy corner entrance animation translates each card on X. That
-    // makes a centered host measurably off-center during the entrance interval.
-    // Placement now owns the transition, so suppress only that obsolete motion.
     node.style.animation = 'none';
+    node.style.whiteSpace = 'normal';
+    node.style.overflowWrap = 'anywhere';
   }
 
   function ensureToastHost() {
     const host = document.getElementById('toasts');
     if (!host) return null;
     host.style.position = 'fixed';
-    host.style.left = '50vw';
-    host.style.right = 'auto';
-    host.style.bottom = 'auto';
     host.style.zIndex = '1000';
     host.style.display = 'flex';
     host.style.flexDirection = 'column';
     host.style.alignItems = 'center';
     host.style.gap = '8px';
-    host.style.width = 'max-content';
-    host.style.maxWidth = 'calc(100vw - 32px)';
     host.style.pointerEvents = 'none';
-
     Array.from(host.children).forEach(normalizeToastNode);
 
     if (host.dataset.dpToastLaneBound !== '1') {
-      const update = function () {
-        window.requestAnimationFrame(updateToastHostPosition);
-      };
-      window.addEventListener('resize', update);
-      document.addEventListener('debridpulse:navigation', update);
-      host.addEventListener('animationstart', function (event) {
-        normalizeToastNode(event.target);
-        update();
-      });
+      window.addEventListener('resize', scheduleToastHostPosition, {passive: true});
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleToastHostPosition, {passive: true});
+      document.addEventListener('debridpulse:navigation', scheduleToastHostPosition);
+      const topbar = document.getElementById('topbar');
+      if (topbar && 'ResizeObserver' in window) {
+        toastTopbarResizeObserver = new ResizeObserver(scheduleToastHostPosition);
+        toastTopbarResizeObserver.observe(topbar);
+      }
+      if (topbar && 'MutationObserver' in window) {
+        toastTopbarMutationObserver = new MutationObserver(scheduleToastHostPosition);
+        toastTopbarMutationObserver.observe(topbar, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+          attributeFilter: ['class', 'hidden', 'style']
+        });
+      }
       host.dataset.dpToastLaneBound = '1';
     }
-    updateToastHostPosition();
+    scheduleToastHostPosition();
     return host;
   }
 
   function canonicalToast(message, type) {
     const host = ensureToastHost();
-    if (!host) return;
+    if (!host) return null;
     const requested = String(type || 'info').toLowerCase();
     const tone = requested === 'warning' ? 'warn' : (TOAST_ICON[requested] ? requested : 'info');
     const toast = document.createElement('div');
     toast.className = 'toast ' + tone;
     toast.style.width = 'max-content';
-    toast.style.maxWidth = 'min(480px, calc(100vw - 32px))';
     toast.style.whiteSpace = 'normal';
-    toast.style.pointerEvents = 'auto';
+    toast.style.pointerEvents = 'none';
     toast.style.position = 'relative';
     toast.style.animation = 'none';
-    toast.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    toast.style.opacity = '1';
+    toast.style.transition = 'opacity ' + TOAST_FADE_MS + 'ms ease';
+    toast.setAttribute('role', tone === 'error' || tone === 'warn' ? 'alert' : 'status');
     toast.innerHTML = lucideSvg(TOAST_ICON[tone] || 'info', 'dp-toast-icon');
-    if (message && typeof message === 'object' && message.title && message.body) {
+    if (message && typeof message === 'object' && message.title != null && message.body != null) {
       const copy = document.createElement('div');
       copy.className = 'dp-toast-copy';
       const title = document.createElement('div');
@@ -243,41 +352,28 @@
       toast.appendChild(copy);
     }
 
-    const dismiss = document.createElement('button');
-    dismiss.type = 'button';
-    dismiss.className = 'dp-toast-dismiss';
-    dismiss.setAttribute('aria-label', 'Dismiss notification');
-    dismiss.title = 'Dismiss notification';
-    dismiss.innerHTML = lucideSvg('x');
-    Object.assign(dismiss.style, {
-      border: '0',
-      background: 'transparent',
-      color: 'inherit',
-      cursor: 'pointer',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '2px',
-      marginLeft: '2px',
-      flex: '0 0 auto',
-      pointerEvents: 'auto'
-    });
-    toast.appendChild(dismiss);
-
+    const duration = toastDuration(message);
+    const fadeAt = Math.max(0, duration - TOAST_FADE_MS);
+    toast.dataset.dpToastDurationMs = String(duration);
+    toast.dataset.dpToastFadeAtMs = String(fadeAt);
     let fadeTimer = null;
     let removeTimer = null;
     const remove = function () {
-      if (fadeTimer) window.clearTimeout(fadeTimer);
-      if (removeTimer) window.clearTimeout(removeTimer);
-      toast.remove();
-      updateToastHostPosition();
+      if (fadeTimer !== null) window.clearTimeout(fadeTimer);
+      if (removeTimer !== null) window.clearTimeout(removeTimer);
+      fadeTimer = null;
+      removeTimer = null;
+      if (toast.isConnected) toast.remove();
+      scheduleToastHostPosition();
     };
-    dismiss.addEventListener('click', remove);
 
     host.appendChild(toast);
-    updateToastHostPosition();
-    fadeTimer = window.setTimeout(function () { toast.style.opacity = '0'; }, 3000);
-    removeTimer = window.setTimeout(remove, 3400);
+    scheduleToastHostPosition();
+    fadeTimer = window.setTimeout(function () {
+      toast.dataset.dpToastFading = '1';
+      toast.style.opacity = '0';
+    }, fadeAt);
+    removeTimer = window.setTimeout(remove, duration);
     return toast;
   }
 
@@ -357,7 +453,11 @@
     toastMap: TOAST_ICON,
     decorateButton: decorateButton,
     toast: canonicalToast,
+    toastDuration: toastDuration,
+    toastWordCount: toastWordCount,
     ensureToastHost: ensureToastHost,
+    toastSafeLane: toastSafeLane,
+    repositionToasts: scheduleToastHostPosition,
     consolidationToastCopy: consolidationToastCopy,
     renderThemeGlyph: renderThemeGlyph
   });

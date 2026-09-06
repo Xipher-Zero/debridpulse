@@ -251,18 +251,16 @@ test('repair: Recent Activity progress visibility changes do not alter row or ac
   expect(Math.abs(before.action.y - after.action.y)).toBeLessThanOrEqual(0.5);
 });
 
-test('repair: malformed Quick Add copy uses adaptive lifetime and hover pauses remaining time', async ({ page }) => {
+test('repair: malformed Quick Add copy keeps the canonical lifetime and has no hover or dismiss override', async ({ page }) => {
   await waitForBatch(page);
   const duration = await page.evaluate(() => DPToastDuration('DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.', 'info'));
-  expect(duration).toBeGreaterThan(3500);
-  expect(duration).toBeLessThanOrEqual(12000);
+  expect(duration).toBe(3750);
 
   await page.evaluate(() => toast('Line 1: enter an HTTP(S) link or magnet URI', 'info'));
   const node = page.locator('#toasts .toast').last();
   await expect(node).toContainText('DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.');
-  await node.hover();
-  await page.waitForTimeout(3800);
-  await expect(node).toBeVisible();
-  await node.locator('.dp-toast-close').click();
+  await expect(node.locator('.dp-toast-close, .dp-toast-dismiss, button')).toHaveCount(0);
+  await node.hover({force: true});
+  await page.waitForTimeout(3950);
   await expect(node).toHaveCount(0);
 });

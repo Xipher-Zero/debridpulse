@@ -81,19 +81,18 @@ body.light.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
   outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
 }
 
-/* Global toast position uses the Settings footer as the minimum safe lower
-   datum while remaining identical across pages at a given viewport width. */
-:root {
-  --dp-toast-bottom-offset: 96px;
-}
-
+/* Toast coordinates are calculated from live topbar geometry by the canonical
+   presenter. CSS owns only neutral fixed-layer and fade material; no corner or
+   footer offset may compete with that geometry. */
 body.dp-v11-structural #toasts {
-  bottom: var(--dp-toast-bottom-offset);
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  z-index: 1000;
+  pointer-events: none;
 }
-
-@media (max-width: 900px) {
-  :root {
-    --dp-toast-bottom-offset: 160px;
-  }
+body.dp-v11-structural #toasts .toast {
+  animation: none;
+  pointer-events: none;
+  transition: opacity 250ms ease;
 }
-

@@ -99,7 +99,13 @@ async function createToast(page, message = 'Corrective placement probe') {
   await page.evaluate(value => window.DPIcons.toast(value, 'info'), message);
   const toast = page.locator('#toasts .toast').last();
   await expect(toast).toBeVisible();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   return toast;
+}
+
+async function removeToast(page, toast) {
+  await toast.evaluate(node => node.remove());
+  await expect(toast).toHaveCount(0);
 }
 
 async function toastGeometry(page, toast) {
@@ -107,26 +113,12 @@ async function toastGeometry(page, toast) {
     const rect = element.getBoundingClientRect();
     const host = document.getElementById('toasts');
     const topbar = document.getElementById('topbar');
-    const content = document.getElementById('content');
     const topbarRect = topbar.getBoundingClientRect();
-    const activeView = content.querySelector(':scope > .view.active');
-    const contentStyle = getComputedStyle(content);
-    const contentTop = activeView
-      ? activeView.getBoundingClientRect().top
-      : topbarRect.bottom + (parseFloat(contentStyle.paddingTop) || 0);
-    const visibleChildren = Array.from(topbar.children).filter(child => {
-      if (!(child instanceof HTMLElement)) return false;
-      const style = getComputedStyle(child);
-      return style.display !== 'none' && style.visibility !== 'hidden';
-    });
-    const visibleBottoms = visibleChildren
-      .map(child => child.getBoundingClientRect().bottom)
-      .filter(Number.isFinite);
-    const controlsBottom = Math.min(
-      topbarRect.bottom,
-      Math.max(topbarRect.top, visibleBottoms.length ? Math.max(...visibleBottoms) : topbarRect.bottom)
+    const lane = DPIcons.toastSafeLane();
+    const expectedCenterX = Math.max(
+      lane.left + rect.width / 2,
+      Math.min(lane.right - rect.width / 2, window.innerWidth / 2)
     );
-    const lower = Math.max(topbarRect.bottom, contentTop);
     return {
       left:rect.left,
       right:rect.right,
@@ -138,21 +130,16 @@ async function toastGeometry(page, toast) {
       centerY:(rect.top + rect.bottom) / 2,
       viewportWidth:window.innerWidth,
       viewportHeight:window.innerHeight,
+      topbarTop:topbarRect.top,
       topbarBottom:topbarRect.bottom,
-      controlsBottom,
-      contentTop:lower,
-      expectedDesktopAnchor:controlsBottom + Math.max(0, lower - controlsBottom) / 2,
+      laneLeft:lane.left,
+      laneRight:lane.right,
+      laneNarrow:lane.narrow,
+      expectedCenterX,
       hostPointerEvents:getComputedStyle(host).pointerEvents,
       toastPointerEvents:getComputedStyle(element).pointerEvents,
     };
   });
-}
-
-async function dismissToast(page, toast) {
-  const close = toast.locator('.dp-toast-dismiss');
-  await expect(close).toBeVisible();
-  await close.click();
-  await expect(toast).toHaveCount(0);
 }
 
 test('Candidates remains an inline real-pointer disclosure without capture ownership or destructive click rerender', async ({ page }) => {
@@ -233,47 +220,47 @@ test('Candidates remains an inline real-pointer disclosure without capture owner
   await expect(page.locator('.dp-detail-candidate-row')).toHaveCount(0);
 });
 
-test('global toast lane is viewport-centered in the same shell deadspace across normal pages', async ({ page }) => {
+test('global toast lane remains inside the rendered desktop topbar safe interval across normal pages', async ({ page }) => {
   await isolateExternalFonts(page);
   await page.goto('/');
 
   const views = ['dashboard', 'torrents', 'events', 'stats', 'settings', 'help'];
-  const centers = [];
   for (const view of views) {
     await clickNav(page, view);
-    const toast = await createToast(page, `Placement probe: ${view}`);
+    const toast = await createToast(page, `Placement probe ${view}`);
     const geometry = await toastGeometry(page, toast);
-    expect(Math.abs(geometry.centerX - geometry.viewportWidth / 2)).toBeLessThanOrEqual(1.5);
-    expect(geometry.centerY).toBeGreaterThanOrEqual(geometry.controlsBottom - 1);
-    expect(geometry.centerY).toBeLessThanOrEqual(geometry.contentTop + 1);
-    expect(Math.abs(geometry.centerY - geometry.expectedDesktopAnchor)).toBeLessThanOrEqual(2);
+    expect(geometry.laneNarrow).toBe(false);
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.laneLeft - 1);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.laneRight + 1);
+    expect(geometry.top).toBeGreaterThanOrEqual(geometry.topbarTop - 1);
+    expect(geometry.bottom).toBeLessThanOrEqual(geometry.topbarBottom + 1);
+    expect(Math.abs(geometry.centerX - geometry.expectedCenterX)).toBeLessThanOrEqual(2);
     expect(geometry.hostPointerEvents).toBe('none');
-    expect(geometry.toastPointerEvents).toBe('auto');
-    centers.push(geometry.centerY);
-    await dismissToast(page, toast);
+    expect(geometry.toastPointerEvents).toBe('none');
+    await removeToast(page, toast);
   }
-  expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(2);
 });
 
-test('multiline toast stays centered around the deadspace anchor, wraps, dismisses, and leaves transparent page interaction', async ({ page }) => {
+test('multiline structured toast wraps inside the topbar lane and remains transparent to page interaction', async ({ page }) => {
   await isolateExternalFonts(page);
   await page.goto('/');
 
   const shortToast = await createToast(page, 'Short notification');
   const shortGeometry = await toastGeometry(page, shortToast);
-  await dismissToast(page, shortToast);
+  await removeToast(page, shortToast);
 
   const longToast = await createToast(page, {
     title:'Duplicate files consolidated',
-    body:'This deliberately long notification verifies that multiline content wraps inside the bounded application-wide notification lane without moving the card away from the shell deadspace center or covering lower page controls.',
+    body:'Matching files were merged into the existing download while alternate source candidates remain available for later failover.',
   });
   const longGeometry = await toastGeometry(page, longToast);
   expect(longGeometry.height).toBeGreaterThan(shortGeometry.height);
   expect(longGeometry.width).toBeLessThanOrEqual(480.5);
-  expect(longGeometry.left).toBeGreaterThanOrEqual(15);
-  expect(longGeometry.right).toBeLessThanOrEqual(longGeometry.viewportWidth - 15);
-  expect(Math.abs(longGeometry.centerX - longGeometry.viewportWidth / 2)).toBeLessThanOrEqual(1.5);
-  expect(Math.abs(longGeometry.centerY - longGeometry.expectedDesktopAnchor)).toBeLessThanOrEqual(2);
+  expect(longGeometry.left).toBeGreaterThanOrEqual(longGeometry.laneLeft - 1);
+  expect(longGeometry.right).toBeLessThanOrEqual(longGeometry.laneRight + 1);
+  expect(longGeometry.top).toBeGreaterThanOrEqual(longGeometry.topbarTop - 1);
+  expect(longGeometry.bottom).toBeLessThanOrEqual(longGeometry.topbarBottom + 1);
+  expect(Math.abs(longGeometry.centerX - longGeometry.expectedCenterX)).toBeLessThanOrEqual(2);
 
   const downloadsNav = page.locator('.nav-item[data-view="torrents"]');
   const hitIsNavigation = await downloadsNav.evaluate(element => {
@@ -286,15 +273,17 @@ test('multiline toast stays centered around the deadspace anchor, wraps, dismiss
   await expect(page.locator('#page-title')).toHaveText('Downloads');
 
   const afterNavigation = await toastGeometry(page, longToast);
-  expect(Math.abs(afterNavigation.centerX - longGeometry.centerX)).toBeLessThanOrEqual(1.5);
-  expect(Math.abs(afterNavigation.centerY - longGeometry.centerY)).toBeLessThanOrEqual(2);
+  expect(afterNavigation.top).toBeGreaterThanOrEqual(afterNavigation.topbarTop - 1);
+  expect(afterNavigation.bottom).toBeLessThanOrEqual(afterNavigation.topbarBottom + 1);
+  expect(afterNavigation.left).toBeGreaterThanOrEqual(afterNavigation.laneLeft - 1);
+  expect(afterNavigation.right).toBeLessThanOrEqual(afterNavigation.laneRight + 1);
 
-  await dismissToast(page, longToast);
+  await removeToast(page, longToast);
   await page.locator('.nav-item[data-view="dashboard"]').click();
   await expect(page.locator('#page-title')).toHaveText('Dashboard');
 });
 
-test('centered toast and expanded Candidates remain mutually non-blocking in Details', async ({ page }) => {
+test('topbar toast and expanded Candidates remain mutually non-blocking in Details', async ({ page }) => {
   await isolateExternalFonts(page);
   await installDetailRoute(page, [file(502, 'GF200826-TMNTSFS-RN.rar', 'paused', three)]);
   await page.goto('/');
@@ -313,7 +302,7 @@ test('centered toast and expanded Candidates remain mutually non-blocking in Det
   expect((await dragSelectText(page, filename)).length).toBeGreaterThan(0);
   await disclosure.click();
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-  await dismissToast(page, toast);
+  await removeToast(page, toast);
   await disclosure.click();
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   await page.locator('.dp-detail-close').click();
@@ -330,12 +319,13 @@ test('mobile toast lane remains centered, bounded, and below responsive header c
     body:'A narrow viewport still keeps the notification readable and clear of the mobile header controls.',
   });
   const geometry = await toastGeometry(page, toast);
+  expect(geometry.laneNarrow).toBe(true);
   expect(Math.abs(geometry.centerX - geometry.viewportWidth / 2)).toBeLessThanOrEqual(1.5);
   expect(geometry.left).toBeGreaterThanOrEqual(15);
   expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth - 15);
   expect(geometry.top).toBeGreaterThanOrEqual(geometry.topbarBottom + 6);
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight - 8);
-  await dismissToast(page, toast);
+  await removeToast(page, toast);
 
   await page.locator('#mobile-menu-btn').click();
   await expect(page.locator('#sidebar')).toHaveClass(/\bopen\b/);

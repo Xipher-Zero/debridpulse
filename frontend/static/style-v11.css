@@ -17,7 +17,7 @@
 @import url('/ui-dropdown-contract.css?v=20');
 @import url('/icon-system.css?v=20');
 @import url('/ui-universal-language.css?v=20');
-@import url('/ui-shared-contract.css?v=31');
+@import url('/ui-shared-contract.css?v=32');
 @import url('/ui-modal-contract.css?v=25');
 @import url('/ui-auth-required.css?v=1');
 
@@ -68,3 +68,6 @@
 /* 1.0.12 UI Correction Batch 1 cross-surface calibration. */
 @import url('/ui-correction-batch1.css?v=6');
 @import url('/ui-correction-batch1-provider-card.css?v=1');
+
+/* Canonical toast presentation must outrank legacy Batch-1/card material. */
+@import url('/ui-toast-contract.css?v=1');
