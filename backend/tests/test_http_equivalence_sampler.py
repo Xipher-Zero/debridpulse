@@ -90,6 +90,17 @@ async def test_proper_ranges_produce_full_sample(sampler_server):
 
 
 @pytest.mark.asyncio
+async def test_content_range_reported_size_mismatch_still_returns_discovered_evidence(sampler_server):
+    base, _ = sampler_server
+    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+        base + "/range", sample_bytes=4096, expected_bytes=len(PAYLOAD) + 1)
+    assert total == len(PAYLOAD)
+    assert signature and prefix
+    assert kind == FingerprintKind.FULL_CONTENT_SAMPLE
+    assert reason == ""
+
+
+@pytest.mark.asyncio
 async def test_range_ignored_returns_bounded_prefix_without_full_consumption(sampler_server, monkeypatch):
     base, _ = sampler_server
     reads = []
@@ -110,13 +121,14 @@ async def test_range_ignored_returns_bounded_prefix_without_full_consumption(sam
 
 
 @pytest.mark.asyncio
-async def test_range_ignored_size_disagreement_yields_no_evidence(sampler_server):
+async def test_range_ignored_reported_size_mismatch_still_returns_discovered_evidence(sampler_server):
     base, _ = sampler_server
     total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
         base + "/mismatch-size", sample_bytes=4096, expected_bytes=len(PAYLOAD))
-    assert (total, signature, prefix) == (0, "", "")
-    assert kind == FingerprintKind.UNAVAILABLE
-    assert reason == "size_disagreement"
+    assert total == len(PAYLOAD) + 1
+    assert signature == prefix and signature
+    assert kind == FingerprintKind.PREFIX_CONTENT_SAMPLE
+    assert reason == "range_ignored"
 
 
 @pytest.mark.asyncio
