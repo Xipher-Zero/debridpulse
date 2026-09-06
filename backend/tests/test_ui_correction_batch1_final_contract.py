@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -47,12 +48,12 @@ def test_archive_password_final_contract_is_click_toggle_line_aware_and_append_r
     assert "visible = revealed ? 'Hide all' : 'Show all'" in repair
     assert "stroke', 'currentColor'" in repair
     assert "button.querySelector('img')" in repair
-    assert "background: transparent !important" in repair
-    assert "border: 1px solid" in repair
-    assert "box-shadow: var(--dp-focus-ring)" in repair
-    assert "padding: 8px 11px 50px !important" in repair
-    assert "max-height: none !important" in repair
-    assert "overflow: visible !important" in repair
+    assert re.search(r"background:\s*transparent\s*!important", repair)
+    assert re.search(r"border:\s*1px\s+solid", repair)
+    assert re.search(r"box-shadow:\s*var\(--dp-focus-ring\)", repair)
+    assert re.search(r"padding:\s*8px\s+11px\s+50px\s*!important", repair)
+    assert re.search(r"max-height:\s*none\s*!important", repair)
+    assert re.search(r"overflow:\s*visible\s*!important", repair)
 
 
 def test_activity_log_final_contract_matches_reviewed_controls_and_server_filtering():
@@ -76,8 +77,8 @@ def test_activity_log_final_contract_matches_reviewed_controls_and_server_filter
     assert "label.textContent = 'Severity'" in repair
     assert "select._dpDropdownShell" in repair
     assert "field.appendChild(shell)" in repair
-    assert "display: flex !important" in repair
-    assert "align-items: center !important" in repair
+    assert re.search(r"display:\s*flex\s*!important", repair)
+    assert re.search(r"align-items:\s*center\s*!important", repair)
 
     # Existing functional behavior remains owned by the final runtime.
     assert "Reset Filters" in final
