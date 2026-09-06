@@ -80,7 +80,6 @@
   const TOAST_GUTTER = 10;
   let toastPositionFrame = 0;
   let toastTopbarResizeObserver = null;
-  let toastTopbarMutationObserver = null;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -301,15 +300,6 @@
       if (topbar && 'ResizeObserver' in window) {
         toastTopbarResizeObserver = new ResizeObserver(scheduleToastHostPosition);
         toastTopbarResizeObserver.observe(topbar);
-      }
-      if (topbar && 'MutationObserver' in window) {
-        toastTopbarMutationObserver = new MutationObserver(scheduleToastHostPosition);
-        toastTopbarMutationObserver.observe(topbar, {
-          attributes: true,
-          childList: true,
-          subtree: true,
-          attributeFilter: ['class', 'hidden', 'style']
-        });
       }
       host.dataset.dpToastLaneBound = '1';
     }
