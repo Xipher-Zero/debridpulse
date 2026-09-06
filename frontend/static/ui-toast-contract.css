@@ -1,0 +1,56 @@
+/* DebridPulse 1.0.12 canonical toast presentation contract.
+ * Live coordinates are written by operator-title.js from rendered topbar bounds.
+ */
+body.dp-v11-structural #toasts {
+  position: fixed;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+body.dp-v11-structural #toasts .toast {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  animation: none !important;
+  pointer-events: none !important;
+  transition: opacity 250ms ease;
+}
+
+body.dp-v11-structural #toasts .dp-toast-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+body.dp-v11-structural #toasts .dp-toast-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+body.dp-v11-structural #toasts .dp-toast-title {
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+body.dp-v11-structural #toasts .dp-toast-body {
+  margin-top: 2px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* Legacy dismissal controls are not part of the canonical toast structure. */
+body.dp-v11-structural #toasts .dp-toast-close,
+body.dp-v11-structural #toasts .dp-toast-dismiss {
+  display: none !important;
+}
