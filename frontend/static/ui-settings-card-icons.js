@@ -101,3 +101,26 @@
   script.defer = true;
   document.head.appendChild(script);
 })();
+
+/* P4 presentation repair is deliberately loaded after the final Batch 1 runtime
+ * because it corrects that runtime's projected-select grouping and reveal-button
+ * presentation without duplicating its backend or editor state ownership. */
+(function loadP4PresentationRepair() {
+  'use strict';
+  const loadRepair = () => {
+    if (document.getElementById('dp-ui-correction-p4-repair-script') || window.DPUICorrectionP4Repair) return;
+    const script = document.createElement('script');
+    script.id = 'dp-ui-correction-p4-repair-script';
+    script.src = '/ui-correction-p4-repair.js?v=1';
+    script.defer = true;
+    document.head.appendChild(script);
+  };
+
+  if (window.DPUICorrectionBatch1Final) {
+    loadRepair();
+    return;
+  }
+  const finalScript = document.getElementById('dp-ui-correction-batch1-final-script');
+  if (finalScript) finalScript.addEventListener('load', loadRepair, {once: true});
+  else document.addEventListener('DOMContentLoaded', loadRepair, {once: true});
+})();

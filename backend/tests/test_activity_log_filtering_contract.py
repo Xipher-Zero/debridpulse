@@ -52,6 +52,20 @@ async def test_activity_log_combined_filters_are_parameterized_before_limit(monk
     assert "%100%_literal%" not in fake.params
 
 
+@pytest.mark.parametrize(("timeframe", "modifier"), [("12h", "-12 hours"), ("72h", "-72 hours")])
+@pytest.mark.asyncio
+async def test_activity_log_restored_timeframes_use_fixed_parameterized_modifiers(monkeypatch, timeframe, modifier):
+    fake = _FakeDb([])
+    monkeypatch.setattr(activity_routes, "get_db", lambda: _fake_db(fake))
+
+    await activity_routes.list_activity_events(timeframe=timeframe, limit=500, include_meta=True)
+
+    assert "datetime(e.created_at) >= datetime('now', ?)" in fake.sql
+    assert fake.params == [modifier, 501]
+    assert timeframe not in fake.sql
+    assert modifier not in fake.sql
+
+
 @pytest.mark.asyncio
 async def test_activity_log_default_contract_remains_a_list(monkeypatch):
     rows = [
@@ -90,10 +104,10 @@ async def test_activity_log_metadata_reports_only_actual_truncation(monkeypatch)
 
 def test_activity_log_timeframe_api_matches_reviewed_filter_set():
     source = (ROOT / "backend" / "api" / "operational_downloads.py").read_text(encoding="utf-8")
-    assert 'EventTimeframe = Literal["all", "1h", "24h", "7d", "30d"]' in source
+    assert 'EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]' in source
+    assert '"12h": "-12 hours"' in source
+    assert '"72h": "-72 hours"' in source
     assert 'limit: Annotated[int, Query(ge=1, le=500)] = 200' in source
     assert 'include_meta: bool = False' in source
     assert 'instr(LOWER(COALESCE(e.message, \'\')), ?) > 0' in source
     assert 'instr(LOWER(COALESCE(t.name, \'\')), ?) > 0' in source
-    assert '"12h"' not in source
-    assert '"72h"' not in source

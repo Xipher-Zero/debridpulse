@@ -34,11 +34,13 @@ legacy_router.routes[:] = [
 
 _EVENT_TIMEFRAME_MODIFIERS = {
     "1h": "-1 hour",
+    "12h": "-12 hours",
     "24h": "-24 hours",
+    "72h": "-72 hours",
     "7d": "-7 days",
     "30d": "-30 days",
 }
-EventTimeframe = Literal["all", "1h", "24h", "7d", "30d"]
+EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
 
 

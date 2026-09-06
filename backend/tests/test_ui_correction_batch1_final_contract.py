@@ -5,25 +5,27 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 
 
-def test_batch1_final_runtime_is_loaded_after_settings_runtimes():
+def test_batch1_final_and_p4_repair_runtimes_are_loaded_in_order():
     card_icons = (STATIC / "ui-settings-card-icons.js").read_text(encoding="utf-8")
     final = (STATIC / "ui-correction-batch1-final.js").read_text(encoding="utf-8")
+    repair = (STATIC / "ui-correction-p4-repair.js").read_text(encoding="utf-8")
 
     assert "ui-correction-batch1-final.js?v=1" in card_icons
     assert "DPUICorrectionBatch1Final" in card_icons
     assert "DPUICorrectionBatch1Final" in final
+    assert "ui-correction-p4-repair.js?v=1" in card_icons
+    assert "finalScript.addEventListener('load', loadRepair" in card_icons
+    assert "DPUICorrectionP4Repair" in repair
 
 
 def test_archive_password_final_contract_is_click_toggle_line_aware_and_append_ready():
     final = (STATIC / "ui-correction-batch1-final.js").read_text(encoding="utf-8")
+    repair = (STATIC / "ui-correction-p4-repair.js").read_text(encoding="utf-8")
 
     assert "Show all passwords" in final
     assert "Hide all passwords" in final
     assert "aria-pressed" in final
     assert "dpLatchedReveal" in final
-    assert "/icons/lucide/${icon}.svg" in final
-    assert (STATIC / "icons" / "lucide" / "eye.svg").is_file()
-    assert (STATIC / "icons" / "lucide" / "eye-off.svg").is_file()
     assert "Hold to reveal all archive passwords" not in final
     assert "pointerdown" not in final
     assert "pointerup" not in final
@@ -37,24 +39,47 @@ def test_archive_password_final_contract_is_click_toggle_line_aware_and_append_r
     assert "event.key === 'Backspace'" in final
     assert "event.altKey" in final
     assert "clipboardData" in final
-    assert "max-height: none !important" in final
-    assert "overflow: visible !important" in final
+
+    # The correction must render the designed ghost button, not merely expose an
+    # accessible name on an icon-only control.
+    assert "dp-settings-password-eye--ghost" in repair
+    assert "dp-settings-password-eye-label" in repair
+    assert "visible = revealed ? 'Hide all' : 'Show all'" in repair
+    assert "stroke', 'currentColor'" in repair
+    assert "button.querySelector('img')" in repair
+    assert "background: transparent !important" in repair
+    assert "border: 1px solid" in repair
+    assert "box-shadow: var(--dp-focus-ring)" in repair
+    assert "padding: 8px 11px 50px !important" in repair
+    assert "max-height: none !important" in repair
+    assert "overflow: visible !important" in repair
 
 
 def test_activity_log_final_contract_matches_reviewed_controls_and_server_filtering():
     final = (STATIC / "ui-correction-batch1-final.js").read_text(encoding="utf-8")
+    repair = (STATIC / "ui-correction-p4-repair.js").read_text(encoding="utf-8")
 
-    for label in ("All time", "Last hour", "Last 24 hours", "Last 7 days", "Last 30 days"):
-        assert label in final
-    for value in ("['all'", "['1h'", "['24h'", "['7d'", "['30d'"):
-        assert value in final
-    assert "Last 12 hours" not in final
-    assert "Last 3 days" not in final
-    assert "Available history" not in final
+    for label in (
+        "Last hour", "Last 12 hours", "Last day", "Last 3 days",
+        "Last week", "Last 30 days", "Available history",
+    ):
+        assert label in repair
+    for value in ("['1h'", "['12h'", "['24h'", "['72h'", "['7d'", "['30d'", "['all'"):
+        assert value in repair
 
-    assert "Time window" in final
-    assert "Severity" in final
-    assert "All levels" in final
+    assert "['', 'All']" in repair
+    assert "['info', 'Info']" in repair
+    assert "['warning', 'Warning']" in repair
+    assert "['error', 'Error']" in repair
+    assert "first.textContent = 'Time'" in repair
+    assert "second.textContent = 'Window'" in repair
+    assert "label.textContent = 'Severity'" in repair
+    assert "select._dpDropdownShell" in repair
+    assert "field.appendChild(shell)" in repair
+    assert "display: flex !important" in repair
+    assert "align-items: center !important" in repair
+
+    # Existing functional behavior remains owned by the final runtime.
     assert "Reset Filters" in final
     assert "reset.hidden = !activityFiltersActive" in final
     assert "EVENT_LIMIT = 500" in final
