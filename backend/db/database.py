@@ -401,7 +401,12 @@ TRANSFER_REPOSITORY_SCHEMA = (
 )
 
 TRANSFER_REPOSITORY_COLUMNS = {
-    'torrents': {'normalized_error': 'TEXT', 'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0', 'delete_remote': 'INTEGER NOT NULL DEFAULT 0'},
+    'torrents': {
+        'normalized_error': 'TEXT',
+        'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
+        'delete_remote': 'INTEGER NOT NULL DEFAULT 0',
+        'collection_route_provider_id': 'TEXT',
+    },
     'transfer_requests': {
         'metadata': 'TEXT',
         'equivalence_retry_count': 'INTEGER NOT NULL DEFAULT 0',
@@ -426,7 +431,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
     'canonical_candidate_origins': {'id', 'binding_id', 'contributing_artifact_id', 'contributing_transfer_id', 'request_id', 'resolution_attempt_id', 'discovered_candidate_id', 'created_at'},
     'artifact_consolidations': {'contributing_artifact_id', 'source_transfer_id', 'source_request_id', 'canonical_artifact_id', 'created_at', 'updated_at'},
-    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote'},
+    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
     'transfer_requests': {

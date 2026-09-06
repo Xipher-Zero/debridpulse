@@ -35,6 +35,88 @@ def _safe_source_label(scope, key) -> str:
 
 
 class TransferRepository(_QualifiedTransferRepository):
+    async def collection_route_provider(self, transfer_id: int) -> str | None:
+        """Return the durable specialized route owner for a collection, if any."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT collection_route_provider_id FROM torrents WHERE id=?",
+                (transfer_id,),
+            )
+        value = str((row or {}).get("collection_route_provider_id") or "").strip()
+        return value or None
+
+    async def bind_collection_route(self, transfer_id: int, provider_id: str) -> str | None:
+        """Atomically establish one collection route owner before resolution starts.
+
+        Existing route attempts are a hard compatibility veto: historical mixed
+        transfers retain their truthful request-level provenance rather than
+        being retroactively rebound by this correction. New or still-untouched
+        multi-request direct-link collections may acquire exactly one owner.
+        """
+        provider_id = str(provider_id or "").strip()
+        if not provider_id:
+            raise ValueError("Collection route provider identity is required")
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            parent = await db.fetchone(
+                "SELECT source,collection_route_provider_id FROM torrents WHERE id=?",
+                (transfer_id,),
+            )
+            if not parent or str(parent.get("source") or "") != "direct_link":
+                await db.rollback()
+                return None
+            existing = str(parent.get("collection_route_provider_id") or "").strip()
+            if existing:
+                await db.rollback()
+                return existing
+            roots = await db.fetchone(
+                """SELECT COUNT(*) AS count FROM transfer_requests
+                    WHERE transfer_id=? AND parent_id IS NULL""",
+                (transfer_id,),
+            )
+            if int((roots or {}).get("count") or 0) <= 1:
+                await db.rollback()
+                return None
+            routed = await db.fetchone(
+                """SELECT 1 AS present FROM resolution_attempts a
+                    JOIN transfer_requests r ON r.id=a.request_id
+                    WHERE r.transfer_id=? LIMIT 1""",
+                (transfer_id,),
+            )
+            if routed:
+                await db.rollback()
+                return None
+            cursor = await db.execute(
+                """UPDATE torrents SET collection_route_provider_id=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND collection_route_provider_id IS NULL""",
+                (provider_id, transfer_id),
+            )
+            if cursor.rowcount != 1:
+                current = await db.fetchone(
+                    "SELECT collection_route_provider_id FROM torrents WHERE id=?",
+                    (transfer_id,),
+                )
+                await db.rollback()
+                value = str((current or {}).get("collection_route_provider_id") or "").strip()
+                return value or None
+            await db.commit()
+        return provider_id
+
+    async def bound_route_provider(self, request_id: str) -> str | None:
+        """Prefer truthful request history, then inherit durable collection affinity."""
+        routed = await super().bound_route_provider(request_id)
+        if routed:
+            return routed
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT t.collection_route_provider_id
+                    FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                    WHERE r.id=?""",
+                (request_id,),
+            )
+        value = str((row or {}).get("collection_route_provider_id") or "").strip()
+        return value or None
+
     async def accept_execution_total(self, artifact_id: int, handle, total_bytes: int) -> bool:
         """Durably accept positive runtime size evidence for the current execution.
 

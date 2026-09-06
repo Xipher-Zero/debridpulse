@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from transfers.applicability import (
+    ApplicabilityClass,
     ApplicabilityUnresolved,
     ProviderApplicabilityInput,
     assess_provider_applicability,
@@ -118,6 +119,46 @@ class IntegrationRegistry:
         ]
         applicable.sort(key=lambda provider: self._provider_selection_key(provider, request))
         return tuple(applicable), assessment
+
+    def collection_provider_for(self, requests: tuple[TransferRequest, ...]) -> Provider | None:
+        """Select one specialized route owner for a logical request collection.
+
+        Collection affinity is deliberately a higher-level decision than the
+        single-request classifier. Each request still contributes only the
+        provider-neutral applicability facts already used by normal routing.
+        An authoritative specialized match anywhere closes generic competition
+        for the collection; unresolved specialized readiness blocks generic
+        work only when no authoritative specialized owner can yet be selected.
+        """
+        represented: dict[str, Provider] = {}
+        unresolved: set[str] = set()
+        preferred_ids = {
+            request.preferred_provider for request in requests
+            if request.preferred_provider
+        }
+        for request in requests:
+            providers, assessment = self._provider_selection(request)
+            unresolved.update(assessment.unresolved_specialized)
+            specialized_ids = {
+                match.provider_id for match in assessment.matches
+                if match.classification == ApplicabilityClass.SPECIALIZED
+            }
+            for provider in providers:
+                if provider.descriptor.id in specialized_ids:
+                    represented[provider.descriptor.id] = provider
+
+        if represented:
+            return min(
+                represented.values(),
+                key=lambda provider: (
+                    provider.descriptor.id not in preferred_ids,
+                    -provider.descriptor.priority,
+                    provider.descriptor.id,
+                ),
+            )
+        if unresolved:
+            raise ApplicabilityUnresolved(sorted(unresolved))
+        return None
 
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE) -> tuple[Provider, ...]:
         providers, _assessment = self._provider_selection(request, capability=capability)

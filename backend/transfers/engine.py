@@ -12,6 +12,7 @@ from dataclasses import replace
 
 from transfers import _engine_base
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
+from transfers.applicability import ApplicabilityUnresolved
 from transfers.cohorts import coordinate_collection
 from transfers.contracts import CandidateRefresh
 from transfers.errors import (
@@ -25,10 +26,6 @@ from transfers.models import (
 )
 
 
-# Preserve the canonical module monkeypatch surface used by existing lifecycle
-# qualification while the WS2 implementation remains layered over the exact
-# qualified WS1 P2 base. The proxy makes base lifecycle calls observe patches to
-# ``transfers.engine.stable_payload`` exactly as before this extension existed.
 stable_payload = _engine_base.stable_payload
 
 
@@ -41,6 +38,73 @@ _engine_base.stable_payload = _stable_payload_proxy
 
 class TransferEngine(_QualifiedTransferEngine):
     """Qualified lifecycle plus WS2 P1 alternate-recovery behavior."""
+
+    def _collection_affinity_lock(self, transfer_id: int) -> asyncio.Lock:
+        locks = getattr(self, "_collection_affinity_locks", None)
+        if locks is None:
+            locks = self._collection_affinity_locks = {}
+        return locks.setdefault(transfer_id, asyncio.Lock())
+
+    async def _ensure_collection_affinity(self, transfer_id: int) -> bool:
+        """Establish collection ownership before any sibling may resolve.
+
+        Returns True only when specialized readiness is unresolved and the whole
+        collection must remain pending. The transfer-scoped lock prevents sibling
+        coroutines from racing the durable bind; the repository repeats the
+        history and compare/set checks transactionally for crash-safe authority.
+        """
+        async with self._collection_affinity_lock(transfer_id):
+            transfer = await self.repository.get(transfer_id)
+            if transfer is None or transfer.source != "direct_link":
+                return False
+            records = await self.repository.requests(transfer_id)
+            roots = tuple(record for record in records if record.parent_id is None)
+            if len(roots) <= 1:
+                return False
+            if await self.repository.collection_route_provider(transfer_id):
+                return False
+            for record in records:
+                if await self.repository.bound_route_provider(record.id):
+                    return False
+            try:
+                provider = self.registry.collection_provider_for(
+                    tuple(record.request for record in roots)
+                )
+            except ApplicabilityUnresolved:
+                return True
+            if provider is not None:
+                await self.repository.bind_collection_route(
+                    transfer_id, provider.descriptor.id,
+                )
+            return False
+
+    async def _prepare_collection_affinity(self) -> set[int]:
+        """Proactively bind or hold active direct-link collections for this cycle."""
+        blocked: set[int] = set()
+        for transfer in await self.repository.active():
+            if await self._ensure_collection_affinity(transfer.id):
+                blocked.add(transfer.id)
+        return blocked
+
+    async def resolve_pending(self):
+        """Preflight collection affinity, then run the qualified resolution cycle."""
+        lock = getattr(self, "_collection_resolution_lock", None)
+        if lock is None:
+            lock = self._collection_resolution_lock = asyncio.Lock()
+        async with lock:
+            blocked = await self._prepare_collection_affinity()
+            self._collection_affinity_blocked = blocked
+            try:
+                return await super().resolve_pending()
+            finally:
+                self._collection_affinity_blocked = set()
+
+    async def _process_request(self, record):
+        if record.transfer_id in getattr(self, "_collection_affinity_blocked", set()):
+            return
+        if await self._ensure_collection_affinity(record.transfer_id):
+            return
+        return await super()._process_request(record)
 
     async def _serial_global_control(self, transfers):
         """Converge global controls in one deterministic capacity order.
@@ -130,10 +194,15 @@ class TransferEngine(_QualifiedTransferEngine):
         return executors[0].resumable_paths(artifact.target) if executors else ()
 
     async def _terminal_recovery(self, artifact: Artifact, error: NormalizedError) -> bool:
-        """Retire proven-terminal execution authority before exposing an error."""
-        return await self.repository.transition_recovery(
+        """Retire proven-terminal remote-source partial state after revoking its writer."""
+        sidecars = self._candidate_sidecars(artifact)
+        if not await self.repository.transition_recovery(
             artifact.id, "error", error=error, retry_at=0,
-        )
+        ):
+            return False
+        if error.origin == Origin.REMOTE_SOURCE:
+            retire_partial(self.root, artifact.target, sidecars)
+        return True
 
     async def _activate_alternate(
         self,

@@ -265,6 +265,8 @@ class NormalizedError:
 
     @property
     def message(self) -> str:
+        if self.category == Category.UNMAPPED_EXECUTOR_ERROR:
+            return "Download failed"
         return self.category.value.replace("_", " ").capitalize()
 
     def as_dict(self, *, diagnostics: bool = False) -> dict:
