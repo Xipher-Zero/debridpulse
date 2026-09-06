@@ -1,9 +1,7 @@
 /* DebridPulse 1.0.12 P4 corrective presentation runtime.
- *
- * Repairs only the two reviewed P4 presentation defects that escaped the first
- * qualification pass: Activity Log filter grouping/options and the Archive
- * Passwords reveal control. Existing server filtering and line-editor state
- * remain owned by ui-correction-batch1-final.js.
+ * Repairs only the reviewed Activity Log filter presentation and Archive
+ * Passwords reveal-button presentation. Functional state remains owned by
+ * ui-correction-batch1-final.js.
  */
 (function () {
   'use strict';
@@ -23,7 +21,6 @@
     ['warning', 'Warning'],
     ['error', 'Error'],
   ]);
-
   let scheduled = false;
 
   function injectStyles() {
@@ -32,140 +29,140 @@
     style.id = 'dp-ui-correction-p4-repair-style';
     style.textContent = `
       body.dp-v11-structural #view-events .dp-activity-search-row {
-        display: flex !important;
-        align-items: center !important;
-        gap: 12px !important;
+        display:flex !important;
+        align-items:center !important;
+        gap:12px !important;
       }
       body.dp-v11-structural #view-events .dp-activity-search-row > #ev-search {
-        flex: 1 1 360px !important;
-        width: auto !important;
-        min-width: 260px !important;
-        min-height: 38px !important;
-        height: 38px !important;
-        margin: 0 !important;
+        flex:1 1 360px !important;
+        width:auto !important;
+        min-width:260px !important;
+        min-height:38px !important;
+        height:38px !important;
+        margin:0 !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field {
-        display: inline-flex !important;
-        flex: 0 0 auto !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        gap: 8px !important;
-        width: auto !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        margin: 0 !important;
+        display:inline-flex !important;
+        flex:0 0 auto !important;
+        flex-direction:row !important;
+        align-items:center !important;
+        gap:8px !important;
+        width:auto !important;
+        min-width:0 !important;
+        max-width:none !important;
+        margin:0 !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-label {
-        display: inline-flex !important;
-        flex: 0 0 auto !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin: 0 !important;
-        color: var(--dp-text-secondary, var(--text2)) !important;
-        font-size: 11px !important;
-        line-height: 1.1 !important;
-        font-weight: 600 !important;
+        display:inline-flex !important;
+        flex:0 0 auto !important;
+        align-items:center !important;
+        justify-content:center !important;
+        margin:0 !important;
+        color:var(--dp-text-secondary,var(--text2)) !important;
+        font-size:11px !important;
+        line-height:1.1 !important;
+        font-weight:600 !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field--time .dp-activity-filter-label {
-        width: 42px !important;
-        flex-direction: column !important;
-        text-align: center !important;
-        white-space: normal !important;
+        width:42px !important;
+        flex-direction:column !important;
+        text-align:center !important;
+        white-space:normal !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field--severity .dp-activity-filter-label {
-        white-space: nowrap !important;
+        white-space:nowrap !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field--time .dp-dropdown-shell {
-        width: 174px !important;
-        min-width: 174px !important;
-        max-width: 174px !important;
-        flex: 0 0 174px !important;
+        width:174px !important;
+        min-width:174px !important;
+        max-width:174px !important;
+        flex:0 0 174px !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field--severity .dp-dropdown-shell {
-        width: 116px !important;
-        min-width: 116px !important;
-        max-width: 116px !important;
-        flex: 0 0 116px !important;
+        width:116px !important;
+        min-width:116px !important;
+        max-width:116px !important;
+        flex:0 0 116px !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field .dp-dropdown__trigger {
-        width: 100% !important;
-        min-width: 0 !important;
-        max-width: none !important;
-        min-height: 38px !important;
-        height: 38px !important;
-        box-sizing: border-box !important;
+        width:100% !important;
+        min-width:0 !important;
+        max-width:none !important;
+        min-height:38px !important;
+        height:38px !important;
+        box-sizing:border-box !important;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-field select:not(.dp-native-select--enhanced) {
-        min-height: 38px !important;
-        height: 38px !important;
+        min-height:38px !important;
+        height:38px !important;
       }
       body.dp-v11-structural #view-events #ev-reset {
-        flex: 0 0 auto !important;
-        align-self: center !important;
-        white-space: nowrap !important;
+        flex:0 0 auto !important;
+        align-self:center !important;
+        white-space:nowrap !important;
       }
 
       body.dp-v11-structural #view-settings .dp-settings-extraction-password-editor {
-        max-height: none !important;
-        padding: 8px 11px 50px !important;
-        overflow: visible !important;
+        max-height:none !important;
+        padding:8px 11px 50px !important;
+        overflow:visible !important;
       }
       body.dp-v11-structural #view-settings .dp-settings-password-eye.dp-settings-password-eye--ghost {
-        appearance: none !important;
-        position: absolute !important;
-        right: 9px !important;
-        bottom: 9px !important;
-        width: auto !important;
-        min-width: 88px !important;
-        max-width: none !important;
-        height: 32px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 7px !important;
-        padding: 5px 10px !important;
-        border: 1px solid color-mix(in srgb, var(--dp-border-strong) 64%, transparent) !important;
-        border-radius: 8px !important;
-        background: transparent !important;
-        color: var(--dp-text-secondary) !important;
-        font-family: var(--dp-font-sans) !important;
-        font-size: 11px !important;
-        line-height: 1 !important;
-        font-weight: 600 !important;
-        white-space: nowrap !important;
-        cursor: pointer !important;
-        box-shadow: none !important;
-        transition: color .14s ease, border-color .14s ease, background-color .14s ease, box-shadow .14s ease !important;
+        appearance:none !important;
+        position:absolute !important;
+        right:9px !important;
+        bottom:9px !important;
+        width:auto !important;
+        min-width:88px !important;
+        max-width:none !important;
+        height:32px !important;
+        display:inline-flex !important;
+        align-items:center !important;
+        justify-content:center !important;
+        gap:7px !important;
+        padding:5px 10px !important;
+        border:1px solid color-mix(in srgb,var(--dp-border-strong) 64%,transparent) !important;
+        border-radius:8px !important;
+        background:transparent !important;
+        color:var(--dp-text-secondary) !important;
+        font-family:var(--dp-font-sans) !important;
+        font-size:11px !important;
+        line-height:1 !important;
+        font-weight:600 !important;
+        white-space:nowrap !important;
+        cursor:pointer !important;
+        box-shadow:none !important;
+        transition:color .14s ease,border-color .14s ease,background-color .14s ease,box-shadow .14s ease !important;
       }
       body.dp-v11-structural #view-settings .dp-settings-password-eye.dp-settings-password-eye--ghost:hover {
-        color: var(--dp-text-primary) !important;
-        border-color: var(--dp-border-strong) !important;
-        background: color-mix(in srgb, var(--dp-surface-2) 58%, transparent) !important;
+        color:var(--dp-text-primary) !important;
+        border-color:var(--dp-border-strong) !important;
+        background:color-mix(in srgb,var(--dp-surface-2) 58%,transparent) !important;
       }
       body.dp-v11-structural #view-settings .dp-settings-password-eye.dp-settings-password-eye--ghost:focus-visible {
-        color: var(--dp-text-primary) !important;
-        border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 58%, var(--dp-border-strong)) !important;
-        background: color-mix(in srgb, var(--dp-surface-2) 48%, transparent) !important;
-        outline: none !important;
-        box-shadow: var(--dp-focus-ring) !important;
+        color:var(--dp-text-primary) !important;
+        border-color:color-mix(in srgb,var(--dp-accent-purple-bright) 58%,var(--dp-border-strong)) !important;
+        background:color-mix(in srgb,var(--dp-surface-2) 48%,transparent) !important;
+        outline:none !important;
+        box-shadow:var(--dp-focus-ring) !important;
       }
       body.dp-v11-structural #view-settings .dp-settings-password-eye.dp-settings-password-eye--ghost.is-open {
-        color: var(--dp-accent-purple-bright) !important;
-        border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 42%, var(--dp-border-default)) !important;
-        background: color-mix(in srgb, var(--dp-accent-purple) 8%, transparent) !important;
+        color:var(--dp-accent-purple-bright) !important;
+        border-color:color-mix(in srgb,var(--dp-accent-purple-bright) 42%,var(--dp-border-default)) !important;
+        background:color-mix(in srgb,var(--dp-accent-purple) 8%,transparent) !important;
       }
       body.dp-v11-structural #view-settings .dp-settings-password-eye.dp-settings-password-eye--ghost svg {
-        width: 16px !important;
-        height: 16px !important;
-        flex: 0 0 16px !important;
-        display: block !important;
-        fill: none !important;
-        stroke: currentColor !important;
-        color: currentColor !important;
+        width:16px !important;
+        height:16px !important;
+        flex:0 0 16px !important;
+        display:block !important;
+        fill:none !important;
+        stroke:currentColor !important;
+        color:currentColor !important;
       }
       body.dp-v11-structural #view-settings .dp-settings-password-eye-label {
-        display: inline-block !important;
-        color: currentColor !important;
+        display:inline-block !important;
+        color:currentColor !important;
       }
     `;
     document.head.appendChild(style);
@@ -174,9 +171,10 @@
   function setOptions(select, definitions, fallback) {
     if (!select) return;
     const current = select.value;
-    const expected = definitions.map(([, label]) => label);
-    const actual = Array.from(select.options || []).map(option => option.textContent || '');
-    const exact = expected.length === actual.length && expected.every((label, index) => actual[index] === label);
+    const actual = Array.from(select.options || []).map(option => [option.value, option.textContent || '']);
+    const exact = actual.length === definitions.length && definitions.every(([value, label], index) => (
+      actual[index][0] === value && actual[index][1] === label
+    ));
     if (!exact) {
       select.replaceChildren();
       definitions.forEach(([value, label]) => {
@@ -186,8 +184,7 @@
         select.appendChild(option);
       });
     }
-    const valid = definitions.some(([value]) => value === current);
-    select.value = valid ? current : fallback;
+    select.value = definitions.some(([value]) => value === current) ? current : fallback;
     select.dataset.dpOptions = '1';
     select.dataset.dpP4Options = '1';
   }
@@ -195,36 +192,31 @@
   function projectedShell(select) {
     if (!select) return null;
     if (select._dpDropdownShell?.isConnected) return select._dpDropdownShell;
-    if (select.nextElementSibling?.classList?.contains('dp-dropdown-shell')) return select.nextElementSibling;
-    return null;
+    return select.nextElementSibling?.classList?.contains('dp-dropdown-shell')
+      ? select.nextElementSibling
+      : null;
   }
 
-  function ensureTimeLabel(field) {
+  function ensureLabel(field, kind) {
     let label = field.querySelector(':scope > .dp-activity-filter-label');
     if (!label) {
       label = document.createElement('span');
       label.className = 'dp-activity-filter-label';
       field.prepend(label);
     }
-    const lines = Array.from(label.children).map(node => node.textContent || '');
-    if (lines.length !== 2 || lines[0] !== 'Time' || lines[1] !== 'Window') {
-      label.replaceChildren();
-      const first = document.createElement('span');
-      first.textContent = 'Time';
-      const second = document.createElement('span');
-      second.textContent = 'Window';
-      label.append(first, second);
+    if (kind === 'time') {
+      const lines = Array.from(label.children).map(node => node.textContent || '');
+      if (lines.length !== 2 || lines[0] !== 'Time' || lines[1] !== 'Window') {
+        label.replaceChildren();
+        const first = document.createElement('span');
+        first.textContent = 'Time';
+        const second = document.createElement('span');
+        second.textContent = 'Window';
+        label.append(first, second);
+      }
+    } else if (label.textContent !== 'Severity' || label.children.length) {
+      label.textContent = 'Severity';
     }
-  }
-
-  function ensureSeverityLabel(field) {
-    let label = field.querySelector(':scope > .dp-activity-filter-label');
-    if (!label) {
-      label = document.createElement('span');
-      label.className = 'dp-activity-filter-label';
-      field.prepend(label);
-    }
-    if (label.textContent !== 'Severity' || label.children.length) label.textContent = 'Severity';
   }
 
   function repairFilterField(select, kind) {
@@ -238,13 +230,18 @@
     }
     field.classList.toggle('dp-activity-filter-field--time', kind === 'time');
     field.classList.toggle('dp-activity-filter-field--severity', kind === 'severity');
-    if (kind === 'time') ensureTimeLabel(field);
-    else ensureSeverityLabel(field);
+    ensureLabel(field, kind);
 
     const shell = projectedShell(select);
     if (shell && shell.parentElement !== field) field.appendChild(shell);
-    else if (shell && shell.previousElementSibling !== select) field.append(select, shell);
+    if (shell && shell.previousElementSibling !== select) field.append(select, shell);
     return field;
+  }
+
+  function orderActivityRow(row, desired) {
+    const current = Array.from(row.children).filter(node => desired.includes(node));
+    const alreadyOrdered = current.length === desired.length && desired.every((node, index) => current[index] === node);
+    if (!alreadyOrdered) desired.forEach(node => row.appendChild(node));
   }
 
   function repairActivity() {
@@ -259,15 +256,14 @@
     setOptions(severity, SEVERITIES, '');
     timeframe.setAttribute('aria-label', 'Time window');
     severity.setAttribute('aria-label', 'Severity');
-
     if (window.DPDropdowns?.refresh) window.DPDropdowns.refresh();
 
     const timeField = repairFilterField(timeframe, 'time');
     const severityField = repairFilterField(severity, 'severity');
     if (!timeField || !severityField) return;
-
-    row.append(search, timeField, severityField);
-    if (reset) row.appendChild(reset);
+    const desired = [search, timeField, severityField];
+    if (reset) desired.push(reset);
+    orderActivityRow(row, desired);
     row.dataset.dpP4Presentation = '1';
   }
 
@@ -282,7 +278,6 @@
     svg.setAttribute('aria-hidden', 'true');
     svg.setAttribute('focusable', 'false');
     svg.dataset.lucide = hidden ? 'eye-off' : 'eye';
-
     const path = value => {
       const node = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       node.setAttribute('d', value);
@@ -308,7 +303,6 @@
     const editor = document.querySelector('#view-settings .dp-settings-extraction-password-editor');
     const button = editor?.querySelector('.dp-settings-password-eye');
     if (!editor || !button) return;
-
     const revealed = button.getAttribute('aria-pressed') === 'true';
     const visible = revealed ? 'Hide all' : 'Show all';
     const action = revealed ? 'Hide all passwords' : 'Show all passwords';
@@ -320,7 +314,6 @@
     button.setAttribute('aria-label', action);
     button.title = action;
     button.dataset.dpP4GhostButton = '1';
-
     if (currentIcon !== icon || currentLabel !== visible || button.querySelector('img')) {
       const label = document.createElement('span');
       label.className = 'dp-settings-password-eye-label';
@@ -345,13 +338,12 @@
   }
 
   function observe() {
-    const root = document.body;
-    if (!root) return;
-    new MutationObserver(scheduleApply).observe(root, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['aria-pressed'],
+    if (!document.body) return;
+    new MutationObserver(scheduleApply).observe(document.body, {
+      childList:true,
+      subtree:true,
+      attributes:true,
+      attributeFilter:['aria-pressed'],
     });
     document.addEventListener('debridpulse:settings-rendered', scheduleApply);
     document.addEventListener('debridpulse:navigation', scheduleApply);
@@ -362,7 +354,6 @@
     timeframes: TIMEFRAMES.map(([value]) => value),
     severities: SEVERITIES.map(([value]) => value),
   });
-
   apply();
   observe();
   window.setTimeout(scheduleApply, 0);
