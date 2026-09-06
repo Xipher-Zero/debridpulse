@@ -5,10 +5,11 @@ explicit CONSOLIDATED lifecycle state, but the normal operational list excludes
 it alongside soft-deleted history. Pagination and totals therefore reflect the
 same canonical lifecycle rule as the visible rows.
 
-Activity Log filtering is owned here so search, severity, and rolling timeframe
-constraints are applied before the hard result ceiling. The legacy /events route
-is removed from the generic router at import time, preserving the public path
-without retaining two long-term owners.
+Activity Log filtering lives here so optional search, severity, and timeframe
+predicates are applied before the result ceiling. The legacy unfiltered GET is
+removed from the generic router at import time so /api/events keeps one owner.
+The default response remains the historical JSON list; the UI opts into metadata
+when it needs an explicit truncation signal.
 """
 from typing import Literal, Optional
 
@@ -22,8 +23,6 @@ from db.database import get_db
 router = APIRouter()
 
 
-# The operational read model supersedes the legacy unfiltered Activity Log GET.
-# Keep every unrelated generic route registered exactly as before.
 legacy_router.routes[:] = [
     route
     for route in legacy_router.routes
@@ -35,14 +34,12 @@ legacy_router.routes[:] = [
 
 _EVENT_TIMEFRAME_MODIFIERS = {
     "1h": "-1 hour",
-    "12h": "-12 hours",
     "24h": "-24 hours",
-    "72h": "-72 hours",
     "7d": "-7 days",
     "30d": "-30 days",
 }
-EventTimeframe = Literal["1h", "12h", "24h", "72h", "7d", "30d", "all"]
-EventLevel = Literal["info", "warn", "warning", "error"]
+EventTimeframe = Literal["all", "1h", "24h", "7d", "30d"]
+EventLevel = Literal["info", "warning", "warn", "error"]
 
 
 @router.get("/events")
@@ -50,14 +47,15 @@ async def list_activity_events(
     search: Optional[str] = None,
     level: Optional[EventLevel] = None,
     timeframe: EventTimeframe = "all",
-    limit: int = Query(500, ge=1, le=500),
+    limit: int = Query(200, ge=1, le=500),
+    include_meta: bool = False,
 ):
-    """Return newest matching events after applying all Activity Log filters.
+    """Return newest matching events with filters applied before LIMIT.
 
-    ``limit + 1`` is intentionally fetched after every predicate so truncation
-    is explicit and an exact-limit result is never mistaken for truncation.
-    ``instr`` preserves literal browser substring semantics for ``%`` and ``_``
-    while keeping all user text parameterized.
+    ``limit + 1`` is fetched after every predicate so a metadata caller can
+    distinguish an exact-limit result from a capped result. ``instr`` keeps the
+    browser's literal substring semantics for ``%`` and ``_`` while all user
+    supplied values remain SQL parameters.
     """
     async with get_db() as db:
         clauses = []
@@ -86,7 +84,8 @@ async def list_activity_events(
             params.extend([needle, needle])
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        query = f"""
+        rows = await db.fetchall(
+            f"""
             SELECT
                 e.level,
                 e.message,
@@ -97,14 +96,13 @@ async def list_activity_events(
             {where}
             ORDER BY e.created_at DESC, e.id DESC
             LIMIT ?
-        """
-        rows = await db.fetchall(query, [*params, limit + 1])
-        truncated = len(rows) > limit
-        return {
-            "items": rows[:limit],
-            "truncated": truncated,
-            "limit": limit,
-        }
+            """,
+            [*params, limit + 1],
+        )
+        items = rows[:limit]
+        if include_meta:
+            return {"items": items, "truncated": len(rows) > limit, "limit": limit}
+        return items
 
 
 @router.get("/torrents")
@@ -120,8 +118,6 @@ async def list_operational_torrents(
         params = []
 
         if status:
-            # Explicit lifecycle queries retain access to durable history,
-            # including status=consolidated for provenance/details tooling.
             clauses.append("t.status = ?")
             params.append(status)
         else:

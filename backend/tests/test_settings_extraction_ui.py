@@ -5,10 +5,8 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 COMPLETION_JS = STATIC / "ui-settings-downloads-completion.js"
 COMPLETION_CSS = STATIC / "ui-settings-downloads-completion.css"
+FINAL_JS = STATIC / "ui-correction-batch1-final.js"
 SETTINGS_PAGE_JS = STATIC / "ui-settings-page.js"
-LOADER_JS = STATIC / "ui-presentation-loader.js"
-EXTRACTION_ICON = STATIC / "icons" / "dp" / "automatic-extraction.svg"
-ICON_MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 SETTINGS_VALIDATION = ROOT / "backend" / "api" / "settings_validation_routes.py"
 SETTINGS_ROUTES = ROOT / "backend" / "api" / "routes.py"
 
@@ -64,8 +62,9 @@ def test_extraction_body_uses_reviewed_concurrency_and_delete_copy():
     assert "align-self: center;" in delete
 
 
-def test_archive_passwords_are_directly_editable_line_aware_and_hold_to_reveal():
+def test_archive_passwords_use_reviewed_click_reveal_contract_without_secret_regression():
     runtime = source(COMPLETION_JS)
+    final = source(FINAL_JS)
     css = source(COMPLETION_CSS)
     settings_page = source(SETTINGS_PAGE_JS)
     validation = source(SETTINGS_VALIDATION)
@@ -74,33 +73,26 @@ def test_archive_passwords_are_directly_editable_line_aware_and_hold_to_reveal()
     assert '@router.get("/settings/extraction-passwords")' in validation
     assert 'return {"passwords": str(get_settings().extraction_password or "")}' in validation
 
-    # The broad Settings API must continue redacting extraction passwords; only
-    # the purpose-built editor endpoint returns this non-operational password list.
     assert '"extraction_password",' in routes
     assert 'data[f"{field}_configured"]' in routes
     assert 'data[field] = ""' in routes
+    assert "redactExtractionPasswordSettings" in runtime
+    assert "delete settingsData.extraction_password" in runtime
 
     assert "api('GET', '/settings/extraction-passwords')" in runtime
     assert "Archive Passwords (one per line)" in runtime
-    assert (
-        "Passwords DebridPulse should try when extracting protected archives. "
-        "Add, edit, or remove entries as needed."
-    ) in runtime
     assert "return '*'.repeat(String(value || '').length);" in runtime
     assert "data-password-index" in runtime
-    assert "activatePasswordLine" in runtime
-    assert "pointerdown" in runtime
-    assert "pointerup" in runtime
-    assert "pointercancel" in runtime
-    assert "pointerleave" in runtime
-    assert "setPointerCapture" in runtime
-    assert "Hold to reveal all archive passwords" in runtime
-    assert "event.key === 'Enter'" in runtime
-    assert "clipboardData" in runtime
-    assert "event.altKey" in runtime
+    assert "Show all passwords" in final
+    assert "Hide all passwords" in final
+    assert "Hold to reveal all archive passwords" not in final
+    assert "event.key === 'Escape'" in final
+    assert "event.key === 'Enter'" in final
+    assert "clipboardData" in final
+    assert "event.altKey" in final
+    assert "max-height: none !important" in final
+    assert "overflow: visible !important" in final
 
-    # The existing Apply Settings serializer stays authoritative. The editor
-    # synchronizes its actual newline list into this source control.
     assert "extraction_password: valueOf('extraction_password')" in settings_page
     assert "hiddenClear.dataset.clearSecret = 'extraction_password';" in runtime
     assert "hiddenClear.dataset.dpExtractionClearCompat = '1';" in runtime
@@ -109,7 +101,6 @@ def test_archive_passwords_are_directly_editable_line_aware_and_hold_to_reveal()
     assert ".dp-settings-extraction-password-source" in css
     assert "display: none !important;" in css
     assert ".dp-settings-password-eye" in css
-    assert ".dp-settings-password-eye-open" in css
 
 
 def test_archive_password_clear_action_is_not_a_visible_second_source_of_truth():

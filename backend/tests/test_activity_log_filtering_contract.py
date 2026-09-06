@@ -7,7 +7,6 @@ import api.operational_downloads as activity_routes
 
 
 ROOT = Path(__file__).resolve().parents[2]
-STATIC = ROOT / "frontend" / "static"
 
 
 class _FakeDb:
@@ -30,15 +29,16 @@ async def _fake_db(fake):
 @pytest.mark.asyncio
 async def test_activity_log_combined_filters_are_parameterized_before_limit(monkeypatch):
     fake = _FakeDb([
-        {"level": "warn", "message": "one", "created_at": "2026-09-06 01:00:00", "torrent_name": "A"},
+        {"level": "warning", "message": "one", "created_at": "2026-09-06 01:00:00", "torrent_name": "A"},
     ])
     monkeypatch.setattr(activity_routes, "get_db", lambda: _fake_db(fake))
 
     result = await activity_routes.list_activity_events(
         search="100%_literal",
-        level="warn",
-        timeframe="12h",
+        level="warning",
+        timeframe="24h",
         limit=500,
+        include_meta=True,
     )
 
     assert result["truncated"] is False
@@ -48,31 +48,28 @@ async def test_activity_log_combined_filters_are_parameterized_before_limit(monk
     assert "instr(LOWER(COALESCE(e.message, '')), ?) > 0" in fake.sql
     assert "instr(LOWER(COALESCE(t.name, '')), ?) > 0" in fake.sql
     assert "ORDER BY e.created_at DESC, e.id DESC" in fake.sql
-    assert fake.params == ["-12 hours", "100%_literal", "100%_literal", 501]
+    assert fake.params == ["-24 hours", "100%_literal", "100%_literal", 501]
     assert "%100%_literal%" not in fake.params
 
 
 @pytest.mark.asyncio
-async def test_activity_log_available_history_has_no_cutoff_and_all_severity_has_no_predicate(monkeypatch):
-    fake = _FakeDb([])
+async def test_activity_log_default_contract_remains_a_list(monkeypatch):
+    rows = [
+        {"level": "info", "message": "ready", "created_at": "2026-09-06 01:00:00", "torrent_name": None},
+    ]
+    fake = _FakeDb(rows)
     monkeypatch.setattr(activity_routes, "get_db", lambda: _fake_db(fake))
 
-    result = await activity_routes.list_activity_events(
-        search=None,
-        level=None,
-        timeframe="all",
-        limit=500,
-    )
+    result = await activity_routes.list_activity_events()
 
-    assert result == {"items": [], "truncated": False, "limit": 500}
+    assert result == rows
+    assert fake.params == [201]
     assert "datetime(e.created_at)" not in fake.sql
-    assert "e.level" in fake.sql  # selected for presentation, not filtered
     assert "COALESCE(e.level" not in fake.sql
-    assert fake.params == [501]
 
 
 @pytest.mark.asyncio
-async def test_activity_log_truncation_is_explicit_and_exact_limit_is_not_truncated(monkeypatch):
+async def test_activity_log_metadata_reports_only_actual_truncation(monkeypatch):
     rows_501 = [
         {"level": "info", "message": str(i), "created_at": "2026-09-06 01:00:00", "torrent_name": None}
         for i in range(501)
@@ -80,20 +77,23 @@ async def test_activity_log_truncation_is_explicit_and_exact_limit_is_not_trunca
     fake = _FakeDb(rows_501)
     monkeypatch.setattr(activity_routes, "get_db", lambda: _fake_db(fake))
 
-    result = await activity_routes.list_activity_events(timeframe="all", limit=500)
+    result = await activity_routes.list_activity_events(timeframe="all", limit=500, include_meta=True)
     assert len(result["items"]) == 500
     assert result["truncated"] is True
     assert fake.params[-1] == 501
 
     fake.rows = rows_501[:500]
-    result = await activity_routes.list_activity_events(timeframe="all", limit=500)
+    result = await activity_routes.list_activity_events(timeframe="all", limit=500, include_meta=True)
     assert len(result["items"]) == 500
     assert result["truncated"] is False
 
 
-def test_activity_log_timeframe_api_is_a_fixed_literal_enum():
+def test_activity_log_timeframe_api_matches_reviewed_filter_set():
     source = (ROOT / "backend" / "api" / "operational_downloads.py").read_text(encoding="utf-8")
-    assert 'EventTimeframe = Literal["1h", "12h", "24h", "72h", "7d", "30d", "all"]' in source
-    assert 'limit: int = Query(500, ge=1, le=500)' in source
+    assert 'EventTimeframe = Literal["all", "1h", "24h", "7d", "30d"]' in source
+    assert 'limit: int = Query(200, ge=1, le=500)' in source
+    assert 'include_meta: bool = False' in source
     assert 'instr(LOWER(COALESCE(e.message, \'\')), ?) > 0' in source
     assert 'instr(LOWER(COALESCE(t.name, \'\')), ?) > 0' in source
+    assert '"12h"' not in source
+    assert '"72h"' not in source

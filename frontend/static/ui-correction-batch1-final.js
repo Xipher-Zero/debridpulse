@@ -1,21 +1,27 @@
 /* DebridPulse 1.0.12 UI Correction Batch 1 — final interaction corrections.
- * Owns the last two review deltas only: archive-password interaction and
- * server-backed Activity Log filtering. Canonical Settings/API owners remain
- * unchanged.
+ *
+ * This narrow layer owns only the final review deltas for Archive Passwords and
+ * Activity Log. It runs after the established Settings runtimes, replacing the
+ * obsolete momentary password-reveal controls with the reviewed click contract
+ * and binding Activity Log controls to server-side filtering.
  */
 (function () {
   'use strict';
 
   const EVENT_LIMIT = 500;
-  const SEARCH_DEBOUNCE_MS = 275;
+  const SEARCH_DEBOUNCE_MS = 250;
   const TIMEFRAMES = Object.freeze([
+    ['all', 'All time'],
     ['1h', 'Last hour'],
-    ['12h', 'Last 12 hours'],
-    ['24h', 'Last day'],
-    ['72h', 'Last 3 days'],
-    ['7d', 'Last week'],
+    ['24h', 'Last 24 hours'],
+    ['7d', 'Last 7 days'],
     ['30d', 'Last 30 days'],
-    ['all', 'Available history'],
+  ]);
+  const SEVERITIES = Object.freeze([
+    ['', 'All levels'],
+    ['info', 'Info'],
+    ['warning', 'Warning'],
+    ['error', 'Error'],
   ]);
 
   let eventGeneration = 0;
@@ -42,8 +48,8 @@
         display: grid;
         grid-template-rows: auto auto;
         gap: 5px;
-        flex: 0 0 164px;
-        width: 164px;
+        flex: 0 0 170px;
+        width: 170px;
         min-width: 0;
       }
       body.dp-v11-structural #view-events .dp-activity-filter-label {
@@ -58,6 +64,7 @@
         max-width: 100% !important;
         flex: 1 1 auto !important;
       }
+      body.dp-v11-structural #view-events #ev-reset[hidden] { display: none !important; }
       body.dp-v11-structural #view-events .dp-activity-result-note {
         margin: 10px 16px 0;
         padding: 8px 10px;
@@ -69,21 +76,25 @@
         line-height: 1.4;
       }
       body.dp-v11-structural #view-events .dp-activity-result-note[hidden] { display: none; }
+      body.dp-v11-structural #view-settings .dp-settings-extraction-password-editor {
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      body.dp-v11-structural #view-settings .dp-settings-password-eye img {
+        width: 18px;
+        height: 18px;
+        display: block;
+      }
       body.dp-v11-structural #view-settings .dp-settings-extraction-password-field > .form-hint {
         display: block;
         margin-top: 7px;
         max-width: 760px;
       }
-      @media (max-width: 900px) {
-        body.dp-v11-structural #view-events .dp-activity-search-row { flex-wrap: wrap; align-items: stretch; }
-        body.dp-v11-structural #view-events .dp-activity-search-row > #ev-search { flex: 1 0 100%; width: 100%; }
-        body.dp-v11-structural #view-events .dp-activity-filter-field { flex: 1 1 180px; width: auto; }
-      }
     `;
     document.head.appendChild(style);
   }
 
-  function sanitizeText(value) {
+  function text(value) {
     return String(value ?? '');
   }
 
@@ -96,7 +107,7 @@
     }
   }
 
-  function parseApiTimestamp(value) {
+  function parseTimestamp(value) {
     if (!value) return null;
     try {
       if (typeof parseApiDate === 'function') return parseApiDate(value);
@@ -108,8 +119,8 @@
   }
 
   function formatActivityTimestamp(value) {
-    const date = parseApiTimestamp(value);
-    if (!date) return sanitizeText(value) || '—';
+    const date = parseTimestamp(value);
+    if (!date) return text(value) || '—';
     try {
       return new Intl.DateTimeFormat('en-US', {
         timeZone: configuredTimeZone(),
@@ -128,28 +139,54 @@
     }
   }
 
-  function visibleSeverity(level) {
-    const normalized = String(level || 'info').trim().toLowerCase();
-    if (normalized === 'warn' || normalized === 'warning') return 'Warning';
-    if (normalized === 'error') return 'Error';
+  function normalizedSeverity(level) {
+    const value = String(level || 'info').trim().toLowerCase();
+    return value === 'warn' ? 'warning' : value;
+  }
+
+  function severityLabel(level) {
+    const value = normalizedSeverity(level);
+    if (value === 'warning') return 'Warning';
+    if (value === 'error') return 'Error';
     return 'Info';
   }
 
   function severityClass(level) {
-    const normalized = String(level || 'info').trim().toLowerCase();
-    if (normalized === 'warning') return 'warn';
-    return ['info', 'warn', 'error'].includes(normalized) ? normalized : 'info';
+    const value = normalizedSeverity(level);
+    if (value === 'warning') return 'warn';
+    return value === 'error' ? 'error' : 'info';
   }
 
-  function renderActivity(events) {
+  function activityFiltersActive(controls = null) {
+    const current = controls || {
+      search: document.getElementById('ev-search'),
+      timeframe: document.getElementById('ev-timeframe'),
+      severity: document.getElementById('ev-level'),
+    };
+    return Boolean(
+      current.search?.value?.trim()
+      || (current.timeframe?.value || 'all') !== 'all'
+      || (current.severity?.value || '') !== ''
+    );
+  }
+
+  function syncResetButton(controls) {
+    if (!controls?.reset) return;
+    controls.reset.hidden = !activityFiltersActive(controls);
+  }
+
+  function renderActivity(events, controls) {
     const list = document.getElementById('event-list');
     if (!list) return;
     const items = Array.isArray(events) ? events : [];
     list.replaceChildren();
+
     if (!items.length) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'No events match the current filters.';
+      empty.textContent = activityFiltersActive(controls)
+        ? 'No events match your filters.'
+        : 'No events yet.';
       list.appendChild(empty);
       document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));
       return;
@@ -161,31 +198,44 @@
 
       const level = document.createElement('div');
       level.className = `elevel dp-activity-level ${severityClass(event.level)}`;
-      level.setAttribute('aria-label', visibleSeverity(event.level));
-      level.title = visibleSeverity(event.level);
+      level.setAttribute('aria-label', severityLabel(event.level));
+      level.title = severityLabel(event.level);
 
       const copy = document.createElement('div');
       copy.className = 'dp-activity-copy';
       const message = document.createElement('div');
       message.className = 'emsg dp-activity-message';
-      message.textContent = sanitizeText(event.message);
+      message.textContent = text(event.message);
       copy.appendChild(message);
       if (event.torrent_name) {
         const transfer = document.createElement('div');
         transfer.className = 'ename dp-activity-transfer';
-        transfer.textContent = sanitizeText(event.torrent_name);
+        transfer.textContent = text(event.torrent_name);
         copy.appendChild(transfer);
       }
 
       const time = document.createElement('div');
       time.className = 'etime dp-activity-time';
       time.textContent = formatActivityTimestamp(event.created_at);
-      time.title = sanitizeText(event.created_at);
+      time.title = text(event.created_at);
 
       row.append(level, copy, time);
       list.appendChild(row);
     });
     document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));
+  }
+
+  function setSelectOptions(select, values) {
+    const current = select.value;
+    select.replaceChildren();
+    values.forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+    if (values.some(([value]) => value === current)) select.value = current;
+    else select.value = values[0][0];
   }
 
   function ensureActivityControls() {
@@ -195,7 +245,7 @@
     if (!row || !search || !severity) return null;
 
     search.removeAttribute('oninput');
-    search.setAttribute('aria-label', 'Search activity messages or download names');
+    search.setAttribute('aria-label', 'Search events');
 
     let timeframe = document.getElementById('ev-timeframe');
     if (!timeframe) {
@@ -203,20 +253,19 @@
       field.className = 'dp-activity-filter-field';
       const label = document.createElement('span');
       label.className = 'dp-activity-filter-label';
-      label.textContent = 'Timeframe';
+      label.textContent = 'Time window';
       timeframe = document.createElement('select');
-      timeframe.className = 'input';
       timeframe.id = 'ev-timeframe';
-      timeframe.setAttribute('aria-label', 'Timeframe');
-      TIMEFRAMES.forEach(([value, text]) => {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = text;
-        timeframe.appendChild(option);
-      });
-      timeframe.value = 'all';
+      timeframe.className = 'input';
+      timeframe.setAttribute('aria-label', 'Time window');
       field.append(label, timeframe);
-      row.insertBefore(field, severity);
+      const severityShell = severity.closest('.dp-dropdown-shell');
+      row.insertBefore(field, severityShell || severity);
+    }
+    if (timeframe.dataset.dpOptions !== '1') {
+      setSelectOptions(timeframe, TIMEFRAMES);
+      timeframe.value = 'all';
+      timeframe.dataset.dpOptions = '1';
     }
 
     let severityField = severity.closest('.dp-activity-filter-field');
@@ -226,18 +275,28 @@
       const label = document.createElement('span');
       label.className = 'dp-activity-filter-label';
       label.textContent = 'Severity';
-      row.insertBefore(severityField, severity);
-      severityField.append(label, severity);
+      const shell = severity.closest('.dp-dropdown-shell');
+      row.insertBefore(severityField, shell || severity);
+      severityField.append(label, shell || severity);
     }
     severity.removeAttribute('onchange');
     severity.setAttribute('aria-label', 'Severity');
-    severity.replaceChildren();
-    [['', 'All'], ['info', 'Info'], ['warn', 'Warning'], ['error', 'Error']].forEach(([value, text]) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = text;
-      severity.appendChild(option);
-    });
+    if (severity.dataset.dpOptions !== '1') {
+      setSelectOptions(severity, SEVERITIES);
+      severity.value = '';
+      severity.dataset.dpOptions = '1';
+    }
+
+    let reset = document.getElementById('ev-reset');
+    if (!reset) {
+      reset = document.createElement('button');
+      reset.type = 'button';
+      reset.id = 'ev-reset';
+      reset.className = 'btn btn-ghost btn-sm';
+      reset.textContent = 'Reset Filters';
+      reset.hidden = true;
+      row.appendChild(reset);
+    }
 
     const card = document.querySelector('#view-events > .dp-activity-card');
     let note = document.getElementById('dp-activity-result-note');
@@ -251,9 +310,12 @@
       card.insertBefore(note, list || null);
     }
 
+    const controls = {search, timeframe, severity, reset, note};
+
     if (search.dataset.dpServerFilter !== '1') {
       search.dataset.dpServerFilter = '1';
       search.addEventListener('input', () => {
+        syncResetButton(controls);
         if (searchTimer !== null) window.clearTimeout(searchTimer);
         searchTimer = window.setTimeout(() => {
           searchTimer = null;
@@ -263,19 +325,41 @@
     }
     if (timeframe.dataset.dpServerFilter !== '1') {
       timeframe.dataset.dpServerFilter = '1';
-      timeframe.addEventListener('change', () => void loadActivityEvents());
+      timeframe.addEventListener('change', () => {
+        syncResetButton(controls);
+        void loadActivityEvents();
+      });
     }
     if (severity.dataset.dpServerFilter !== '1') {
       severity.dataset.dpServerFilter = '1';
-      severity.addEventListener('change', () => void loadActivityEvents());
+      severity.addEventListener('change', () => {
+        syncResetButton(controls);
+        void loadActivityEvents();
+      });
     }
-    return {search, timeframe, severity, note};
+    if (reset.dataset.dpServerFilter !== '1') {
+      reset.dataset.dpServerFilter = '1';
+      reset.addEventListener('click', () => {
+        if (searchTimer !== null) {
+          window.clearTimeout(searchTimer);
+          searchTimer = null;
+        }
+        search.value = '';
+        timeframe.value = 'all';
+        severity.value = '';
+        syncResetButton(controls);
+        void loadActivityEvents();
+      });
+    }
+
+    syncResetButton(controls);
+    return controls;
   }
 
   function updateActivityNotice(note, payload) {
     if (!note) return;
     if (payload?.truncated === true) {
-      note.textContent = `Showing the latest ${EVENT_LIMIT} matching events. Narrow the timeframe, severity, or search filters to see a more specific result set.`;
+      note.textContent = `Showing the latest ${EVENT_LIMIT} matching events. Narrow your filters to see older matches.`;
       note.hidden = false;
       return;
     }
@@ -289,18 +373,18 @@
     const generation = ++eventGeneration;
     const params = new URLSearchParams();
     params.set('limit', String(EVENT_LIMIT));
+    params.set('include_meta', 'true');
     params.set('timeframe', controls.timeframe.value || 'all');
-    const severity = controls.severity.value || '';
-    const search = controls.search.value || '';
-    if (severity) params.set('level', severity);
-    if (search.trim()) params.set('search', search.trim());
+    if (controls.severity.value) params.set('level', controls.severity.value);
+    if (controls.search.value.trim()) params.set('search', controls.search.value.trim());
 
     try {
       const payload = await api('GET', `/events?${params.toString()}`);
       if (generation !== eventGeneration) return null;
-      const items = Array.isArray(payload) ? payload : (Array.isArray(payload?.items) ? payload.items : []);
-      renderActivity(items);
+      const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : []);
+      renderActivity(items, controls);
       updateActivityNotice(controls.note, Array.isArray(payload) ? {truncated: false} : payload);
+      syncResetButton(controls);
       return payload;
     } catch (error) {
       if (generation !== eventGeneration) return null;
@@ -326,13 +410,12 @@
   }
 
   function nextArchiveKey() {
-    const key = `new:${archiveKeySerial}`;
+    const key = `row:${archiveKeySerial}`;
     archiveKeySerial += 1;
     return key;
   }
 
-  function normalizeArchiveRows(values) {
-    const rows = Array.isArray(values) ? values : [];
+  function normalizeArchiveRows(rows) {
     while (rows.length > 1 && rows[rows.length - 1].value === '' && rows[rows.length - 2].value === '') {
       rows.pop();
     }
@@ -362,21 +445,20 @@
     if (clear) clear.checked = source.value.length === 0;
   }
 
-  function archiveEyeSvg(revealed) {
-    if (revealed) {
-      return '<svg class="lucide dp-utility-icon" data-dp-lucide="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m2 2 20 20"/><path d="M6.7 6.7C4.4 8.2 3 10.5 3 12c0 0 3.5 6 9 6 1.4 0 2.7-.4 3.8-1"/><path d="M10.7 10.7a2 2 0 0 0 2.6 2.6"/><path d="M9.9 4.2A10 10 0 0 1 12 4c5.5 0 9 6 9 8 0 .7-.3 1.5-.8 2.3"/></svg>';
-    }
-    return '<svg class="lucide dp-utility-icon" data-dp-lucide="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.1 12s3.5-7 9.9-7 9.9 7 9.9 7-3.5 7-9.9 7-9.9-7-9.9-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
-  }
-
   function setArchiveEyeState(button) {
     if (!button) return;
-    const label = archiveRevealAll ? 'Hide all passwords' : 'Show all passwords';
+    const nextAction = archiveRevealAll ? 'Hide all passwords' : 'Show all passwords';
+    const icon = archiveRevealAll ? 'eye-off' : 'eye';
     button.setAttribute('aria-pressed', archiveRevealAll ? 'true' : 'false');
-    button.setAttribute('aria-label', label);
-    button.title = label;
+    button.setAttribute('aria-label', nextAction);
+    button.title = nextAction;
     button.classList.toggle('is-open', archiveRevealAll);
-    button.innerHTML = archiveEyeSvg(archiveRevealAll);
+    button.replaceChildren();
+    const image = document.createElement('img');
+    image.src = `/icons/lucide/${icon}.svg`;
+    image.alt = '';
+    image.setAttribute('aria-hidden', 'true');
+    button.appendChild(image);
   }
 
   function focusArchiveKey(editor, key) {
@@ -389,6 +471,17 @@
       const end = input.value.length;
       try { input.setSelectionRange(end, end); } catch (_) {}
     });
+  }
+
+  function removeBlankPersistedRow(editor, source, row) {
+    const index = archiveRows.indexOf(row);
+    if (index < 0 || index === archiveRows.length - 1 || String(row.value || '').trim() !== '') return false;
+    archiveRows.splice(index, 1);
+    archiveActiveKey = null;
+    normalizeArchiveRows(archiveRows);
+    syncArchiveSource(source);
+    renderArchiveEditor(editor, source);
+    return true;
   }
 
   function renderArchiveEditor(editor, source, focusKey = null) {
@@ -417,6 +510,7 @@
         if (index === archiveRows.length - 1 && !row.value) input.placeholder = 'Add an archive password';
 
         input.addEventListener('focus', () => {
+          input.dataset.passwordEditStart = row.value;
           archiveActiveKey = row.key;
           input.type = 'text';
           if (!archiveRevealAll) {
@@ -425,8 +519,20 @@
             });
           }
         });
+        input.addEventListener('input', () => {
+          row.value = input.value;
+          syncArchiveSource(source);
+          if (index === archiveRows.length - 1 && row.value !== '') {
+            normalizeArchiveRows(archiveRows);
+            archiveActiveKey = row.key;
+            renderArchiveEditor(editor, source, row.key);
+          }
+        });
         input.addEventListener('blur', () => {
+          row.value = input.value;
+          syncArchiveSource(source);
           queueMicrotask(() => {
+            if (removeBlankPersistedRow(editor, source, row)) return;
             const active = document.activeElement;
             if (active?.closest('.dp-settings-extraction-password-editor') !== editor) {
               archiveActiveKey = null;
@@ -436,16 +542,15 @@
             }
           });
         });
-        input.addEventListener('input', () => {
-          row.value = input.value;
-          syncArchiveSource(source);
-          const wasTail = index === archiveRows.length - 1;
-          if (wasTail && row.value !== '') {
-            normalizeArchiveRows(archiveRows);
-            renderArchiveEditor(editor, source, row.key);
-          }
-        });
         input.addEventListener('keydown', event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            row.value = input.dataset.passwordEditStart ?? row.value;
+            input.value = row.value;
+            syncArchiveSource(source);
+            input.blur();
+            return;
+          }
           if (event.key === 'Enter') {
             event.preventDefault();
             row.value = input.value;
@@ -459,9 +564,7 @@
           }
           if (event.key === 'Backspace' && input.value === '' && archiveRows.length > 1) {
             event.preventDefault();
-            const removedKey = row.key;
             archiveRows.splice(index, 1);
-            if (archiveActiveKey === removedKey) archiveActiveKey = null;
             normalizeArchiveRows(archiveRows);
             const target = archiveRows[Math.max(0, Math.min(index - 1, archiveRows.length - 1))];
             archiveActiveKey = target?.key || null;
@@ -482,17 +585,16 @@
           }
         });
         input.addEventListener('paste', event => {
-          const text = event.clipboardData?.getData('text') || '';
-          if (!/[\r\n]/.test(text)) return;
+          const pasted = event.clipboardData?.getData('text') || '';
+          if (!/[\r\n]/.test(pasted)) return;
           event.preventDefault();
-          const normalized = text.replace(/\r\n?/g, '\n');
-          const incoming = normalized.split('\n');
+          const incoming = pasted.replace(/\r\n?/g, '\n').split('\n');
           const start = input.selectionStart ?? input.value.length;
           const end = input.selectionEnd ?? input.value.length;
           const before = input.value.slice(0, start);
           const after = input.value.slice(end);
           incoming[0] = before + incoming[0];
-          incoming[incoming.length - 1] = incoming[incoming.length - 1] + after;
+          incoming[incoming.length - 1] += after;
           const replacements = incoming.map(value => ({key: nextArchiveKey(), value}));
           archiveRows.splice(index, 1, ...replacements);
           normalizeArchiveRows(archiveRows);
@@ -501,7 +603,6 @@
           syncArchiveSource(source);
           renderArchiveEditor(editor, source, target.key);
         });
-
         rowsHost.appendChild(input);
       });
 
@@ -516,8 +617,8 @@
         eye.addEventListener('click', () => {
           archiveRevealAll = !archiveRevealAll;
           setArchiveEyeState(eye);
-          rowsHost.querySelectorAll('.dp-settings-password-line').forEach(input => {
-            input.type = archiveRevealAll || input.dataset.passwordKey === archiveActiveKey ? 'text' : 'password';
+          rowsHost.querySelectorAll('.dp-settings-password-line').forEach(inputNode => {
+            inputNode.type = archiveRevealAll || inputNode.dataset.passwordKey === archiveActiveKey ? 'text' : 'password';
           });
         });
       }
@@ -539,9 +640,8 @@
     const field = source.closest('.dp-settings-extraction-password-field');
     const hint = field?.querySelector(':scope > .form-hint');
     if (hint) {
-      hint.textContent = 'Add one password per line. Passwords stay hidden unless selected. Use the eye to show or hide all passwords.';
+      hint.textContent = 'Add one password per line. Select a row to edit it; use the eye to show or hide all passwords.';
     }
-
     if (editor.dataset.dpLatchedReveal !== '1') renderArchiveEditor(editor, source);
   }
 
