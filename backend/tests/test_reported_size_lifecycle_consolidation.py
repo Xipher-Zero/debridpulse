@@ -131,10 +131,18 @@ async def test_three_near_size_sibling_requests_consolidate_to_one_artifact_and_
 
     async with database.get_db() as db:
         physical = await db.fetchall(
-            "SELECT id,local_path FROM download_files WHERE torrent_id=?",
+            """SELECT id,local_path,mirror_group_id,mirror_state,status
+                FROM download_files WHERE torrent_id=? ORDER BY id""",
             (transfer.id,),
         )
-    assert len(physical) == 1
+    primaries = [row for row in physical if row["mirror_state"] != "standby"]
+    standbys = [row for row in physical if row["mirror_state"] == "standby"]
+    assert len(primaries) == 1
+    assert primaries[0]["id"] == artifact.id
+    assert len(standbys) == 2
+    assert {row["mirror_group_id"] for row in standbys} == {artifact.id}
+    assert {row["local_path"] for row in physical} == {artifact.target}
+    assert {row["status"] for row in standbys} == {"duplicate"}
 
 
 @pytest.mark.asyncio
