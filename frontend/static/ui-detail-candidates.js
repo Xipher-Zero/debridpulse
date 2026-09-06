@@ -6,13 +6,11 @@
   'use strict';
 
   const expandedArtifacts = new Set();
-  const filesByArtifact = new Map();
   let activeTransferId = null;
   let latestDetail = null;
   let providerNames = new Map();
+  let presentationGeneration = 0;
   let refreshTimer = null;
-  let refreshRunning = false;
-  let refreshAgain = false;
   let filesPointerActive = false;
   let deferredDetail = null;
   let deferredFrame = 0;
@@ -116,22 +114,12 @@
     }).join('');
   }
 
-  function rememberFiles(detail) {
-    filesByArtifact.clear();
-    if (!detail || !Array.isArray(detail.files)) return;
-    detail.files.forEach(function (file) {
-      filesByArtifact.set(String(file.id), file);
-    });
-  }
-
   function updateDisclosure(control, file, open) {
     const artifactId = String(control && control.dataset.dpArtifactId || '');
     const owner = control ? control.closest('tr.dp-detail-file-row') : null;
     if (!artifactId || !owner) return;
 
-    const fileCount = Number(file && file.candidate_count);
-    const dataCount = Number(control.dataset.dpCandidateCount || 0);
-    const count = Number.isInteger(fileCount) && fileCount > 0 ? fileCount : dataCount;
+    const count = Number(file && file.candidate_count || control.dataset.dpCandidateCount || 0);
     const filenameNode = owner.querySelector('.dp-detail-filename-copy');
     const filename = String((file && file.filename) || (filenameNode && filenameNode.textContent) || 'artifact');
 
@@ -149,39 +137,40 @@
       : null;
 
     if (open) {
-      if (file && !existing) owner.insertAdjacentHTML('afterend', candidateRow(file));
+      if (!existing) owner.insertAdjacentHTML('afterend', candidateRow(file));
       return;
     }
     if (existing) existing.remove();
   }
 
-  function activateDisclosure(control) {
-    const artifactId = String(control && control.dataset.dpArtifactId || '');
-    if (!artifactId) return;
+  function bindDisclosure(control, file) {
+    if (!control || control.dataset.dpCandidateBound === '1') return;
+    const artifactId = String(file.id);
+    control.addEventListener('click', function () {
+      const currentlyOpen = control.getAttribute('aria-expanded') === 'true';
+      if (currentlyOpen) {
+        expandedArtifacts.delete(artifactId);
+        updateDisclosure(control, file, false);
+        return;
+      }
 
-    const currentlyOpen = control.getAttribute('aria-expanded') === 'true';
-    if (currentlyOpen) {
-      // Closing is purely local presentation state. It must never depend on a
-      // still-current backend snapshot or an asynchronous refresh finishing.
-      expandedArtifacts.delete(artifactId);
-      updateDisclosure(control, null, false);
-      return;
-    }
-
-    const file = filesByArtifact.get(artifactId);
-    if (!file || Number(file.candidate_count || 0) <= 1) return;
-    expandedArtifacts.add(artifactId);
-
-    // Activation updates only this disclosure and its adjacent candidate row.
-    // The Files tbody is never replaced during the native click dispatch.
-    updateDisclosure(control, file, true);
+      if (Number(file.candidate_count || 0) <= 1) return;
+      expandedArtifacts.add(artifactId);
+      // Keep the native button alive for the entire pointer/keyboard dispatch.
+      // Only the adjacent presentation row changes during activation.
+      updateDisclosure(control, file, true);
+    });
+    control.dataset.dpCandidateBound = '1';
   }
 
-  function onCandidateClick(event) {
-    const target = event.target instanceof Element ? event.target : null;
-    const control = target ? target.closest('.dp-detail-candidate-disclosure') : null;
-    if (!control || !control.closest('#modal-body')) return;
-    activateDisclosure(control);
+  function bindDisclosures(files) {
+    files.forEach(function (file) {
+      const row = document.querySelector(
+        '#modal-body tr.dp-detail-file-row[data-dp-artifact-id="' + CSS.escape(String(file.id)) + '"]'
+      );
+      if (!row) return;
+      bindDisclosure(row.querySelector('.dp-detail-candidate-disclosure'), file);
+    });
   }
 
   function renderNow(detail) {
@@ -189,15 +178,15 @@
     const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
     if (!tbody) return;
 
-    rememberFiles(detail);
     const valid = new Set(detail.files.map(function (file) { return String(file.id); }));
     Array.from(expandedArtifacts).forEach(function (id) {
-      const file = filesByArtifact.get(id);
+      const file = detail.files.find(function (item) { return String(item.id) === id; });
       if (!valid.has(id) || !file || Number(file.candidate_count || 0) <= 1) {
         expandedArtifacts.delete(id);
       }
     });
     tbody.innerHTML = rows(detail.files);
+    bindDisclosures(detail.files);
   }
 
   function render(detail) {
@@ -226,14 +215,14 @@
     });
   }
 
-  async function fetchPresentation(id) {
+  async function fetchPresentation(id, generation) {
     if (typeof window.api !== 'function') return;
     const transferId = Number(id);
     const results = await Promise.all([
       window.api('GET', '/torrents/' + transferId),
       window.api('GET', '/settings').catch(function () { return null; })
     ]);
-    if (activeTransferId !== transferId) return;
+    if (activeTransferId !== transferId || generation !== presentationGeneration) return;
     latestDetail = results[0];
     if (results[1]) providerNames = integrationNames(results[1]);
     render(latestDetail);
@@ -244,33 +233,19 @@
     const overlay = document.getElementById('overlay');
     if (!overlay || !overlay.classList.contains('open')) return;
 
-    if (refreshTimer != null || refreshRunning) {
-      refreshAgain = true;
-      return;
-    }
-
-    refreshTimer = window.setTimeout(async function () {
+    const transferId = activeTransferId;
+    const generation = ++presentationGeneration;
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(function () {
       refreshTimer = null;
-      refreshRunning = true;
-      const transferId = activeTransferId;
-      try {
-        if (transferId != null) await fetchPresentation(transferId);
-      } catch (_error) {
-        // The canonical Details surface already owns request failure UX.
-      } finally {
-        refreshRunning = false;
-        if (refreshAgain) {
-          refreshAgain = false;
-          queueRefresh();
-        }
-      }
+      fetchPresentation(transferId, generation).catch(function () {});
     }, 120);
   }
 
   function clearRefreshState() {
     if (refreshTimer != null) window.clearTimeout(refreshTimer);
     refreshTimer = null;
-    refreshAgain = false;
+    presentationGeneration += 1;
   }
 
   function install() {
@@ -282,11 +257,11 @@
       clearRefreshState();
       activeTransferId = transferId;
       latestDetail = null;
-      filesByArtifact.clear();
       deferredDetail = null;
+      const generation = presentationGeneration;
       const result = await originalShowDetail.apply(this, arguments);
       try {
-        await fetchPresentation(transferId);
+        await fetchPresentation(transferId, generation);
       } catch (error) {
         console.error('Details candidate presentation unavailable', error);
       }
@@ -299,7 +274,6 @@
       const originalCloseModal = window.closeModal;
       const closeWrapped = function () {
         expandedArtifacts.clear();
-        filesByArtifact.clear();
         activeTransferId = null;
         latestDetail = null;
         deferredDetail = null;
@@ -314,15 +288,12 @@
     }
 
     const modalBody = document.getElementById('modal-body');
-    if (modalBody && modalBody.dataset.dpCandidateClickOwner !== '1') {
-      // Bubble-phase delegation survives table refreshes without capturing,
-      // cancelling, or globally owning unrelated pointer interaction.
-      modalBody.addEventListener('click', onCandidateClick);
+    if (modalBody && modalBody.dataset.dpCandidatePointerGuard !== '1') {
       modalBody.addEventListener('pointerdown', function (event) {
         const target = event.target instanceof Element ? event.target : null;
         if (target && target.closest('.dp-detail-files-card')) filesPointerActive = true;
       });
-      modalBody.dataset.dpCandidateClickOwner = '1';
+      modalBody.dataset.dpCandidatePointerGuard = '1';
     }
     document.addEventListener('pointerup', releaseFilesPointer);
     document.addEventListener('pointercancel', releaseFilesPointer);
