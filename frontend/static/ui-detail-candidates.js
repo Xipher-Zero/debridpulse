@@ -248,6 +248,17 @@
     presentationGeneration += 1;
   }
 
+  function resetDetailState() {
+    expandedArtifacts.clear();
+    activeTransferId = null;
+    latestDetail = null;
+    deferredDetail = null;
+    filesPointerActive = false;
+    clearRefreshState();
+    if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
+    deferredFrame = 0;
+  }
+
   function install() {
     if (typeof window.showDetail !== 'function' || window.showDetail.dpCandidateWrapped) return;
     const originalShowDetail = window.showDetail;
@@ -272,15 +283,15 @@
 
     if (typeof window.closeModal === 'function' && !window.closeModal.dpCandidateWrapped) {
       const originalCloseModal = window.closeModal;
-      const closeWrapped = function () {
-        expandedArtifacts.clear();
-        activeTransferId = null;
-        latestDetail = null;
-        deferredDetail = null;
-        filesPointerActive = false;
-        clearRefreshState();
-        if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
-        deferredFrame = 0;
+      const closeWrapped = function (eventObj) {
+        // The overlay's inline handler calls closeModal(event) for every bubbled
+        // click inside Details. Mirror the canonical close predicate before
+        // clearing Candidates state so ordinary modal interactions cannot
+        // silently orphan the active transfer presentation.
+        const overlay = document.getElementById('overlay');
+        if (!eventObj || (overlay && eventObj.target === overlay)) {
+          resetDetailState();
+        }
         return originalCloseModal.apply(this, arguments);
       };
       closeWrapped.dpCandidateWrapped = true;

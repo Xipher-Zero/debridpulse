@@ -216,11 +216,11 @@ test('Candidates remains an inline real-pointer disclosure without capture owner
   await page.keyboard.press('Enter');
   await expect(first).toHaveAttribute('aria-expanded', 'true');
 
-  const modal = page.locator('#modal');
-  await modal.hover();
-  const beforeScroll = await modal.evaluate(element => element.scrollTop);
+  const modalBody = page.locator('#modal-body');
+  await modalBody.hover();
+  const beforeScroll = await modalBody.evaluate(element => element.scrollTop);
   await page.mouse.wheel(0, 700);
-  await expect.poll(() => modal.evaluate(element => element.scrollTop)).toBeGreaterThan(beforeScroll);
+  await expect.poll(() => modalBody.evaluate(element => element.scrollTop)).toBeGreaterThan(beforeScroll);
   const last = page.locator('tr[data-dp-artifact-id="609"] .dp-detail-candidate-disclosure');
   await last.scrollIntoViewIfNeeded();
   await last.click();
