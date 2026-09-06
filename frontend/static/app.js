@@ -1028,7 +1028,7 @@ function goToTorrentPage(p) {
   loadTorrents();
 }
 function onPageSizeChange(v) {
-  const nextSize = Math.min(Math.max(parseInt(v)||25,15),100);
+  const nextSize = Math.min(Math.max(parseInt(v)||25,1),100);
   if (nextSize !== torrentPageSize || torrentPage !== 1) clearSelection();
   torrentPageSize = nextSize;
   torrentPage = 1;
@@ -1426,7 +1426,7 @@ function onTorrentSearchInput() {
 async function loadTorrents() {
   try {
     const params = new URLSearchParams();
-    const _limit = Math.min(Math.max(parseInt(torrentPageSize)||25,15),100);
+    const _limit = Math.min(Math.max(parseInt(torrentPageSize)||25,1),100);
     const _offset = (torrentPage - 1) * _limit;
     params.set('limit', String(_limit));
     params.set('offset', String(_offset));

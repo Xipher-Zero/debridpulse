@@ -471,13 +471,8 @@
 
   function correctedRenderTorrentPagination(total, limit, offset) {
     const normalizedTotal = Math.max(0, Number(total) || 0);
-    const measuredLimit = Math.max(1, Number(torrentPageSize) || 1);
-    const incomingLimit = Math.max(1, Number(limit) || measuredLimit);
-    const useMeasured = window.matchMedia(DESKTOP_QUERY).matches && measuredLimit < 15 && incomingLimit >= 15;
-    const normalizedLimit = useMeasured ? measuredLimit : incomingLimit;
-    const normalizedOffset = useMeasured
-      ? Math.max(0, (Math.max(1, Number(torrentPage) || 1) - 1) * normalizedLimit)
-      : Math.max(0, Number(offset) || 0);
+    const normalizedLimit = Math.max(1, Number(limit) || Number(torrentPageSize) || 1);
+    const normalizedOffset = Math.max(0, Number(offset) || 0);
     const totalPages = Math.max(1, Math.ceil(normalizedTotal / normalizedLimit));
     const current = Math.min(totalPages, Math.floor(normalizedOffset / normalizedLimit) + 1);
     torrentPage = current;

@@ -168,25 +168,12 @@
     return observations;
   }
 
-  function loadCapacityCorrection() {
-    if (document.getElementById('dp-ui-correction-batch1-capacity-script')) return;
-    const capacity = document.createElement('script');
-    capacity.id = 'dp-ui-correction-batch1-capacity-script';
-    capacity.src = '/ui-correction-batch1-capacity.js?v=3';
-    capacity.defer = true;
-    document.head.appendChild(capacity);
-  }
-
   function loadBatchRuntime() {
-    if (document.getElementById('dp-ui-correction-batch1-script') || window.DPUICorrectionBatch1) {
-      loadCapacityCorrection();
-      return;
-    }
+    if (document.getElementById('dp-ui-correction-batch1-script') || window.DPUICorrectionBatch1) return;
     const script = document.createElement('script');
     script.id = 'dp-ui-correction-batch1-script';
     script.src = '/ui-correction-batch1.js?v=7';
     script.defer = true;
-    script.addEventListener('load', loadCapacityCorrection, {once: true});
     document.head.appendChild(script);
   }
 

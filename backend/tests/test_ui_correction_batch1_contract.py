@@ -34,11 +34,12 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     provider_status = (STATIC / "ui-provider-status.js").read_text()
     styles = (STATIC / "style-v11.css").read_text()
     runtime = (STATIC / "ui-correction-batch1.js").read_text()
-    capacity = (STATIC / "ui-correction-batch1-capacity.js").read_text()
+    app = (STATIC / "app.js").read_text()
     batch_css = (STATIC / "ui-correction-batch1.css").read_text()
 
     assert "ui-correction-batch1.js" in provider_status
-    assert "ui-correction-batch1-capacity.js" in provider_status
+    assert "ui-correction-batch1-capacity.js" not in provider_status
+    assert not (STATIC / "ui-correction-batch1-capacity.js").exists()
     assert "ui-correction-batch1-observer-guard" not in provider_status
     assert not (STATIC / "ui-correction-batch1-observer-guard.js").exists()
     assert "ui-correction-batch1.css" in styles
@@ -60,11 +61,12 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "correctedLoadTorrents" not in runtime
     assert "dp-toast-copy" in runtime
 
-    assert "size >= 15" in capacity
-    assert "query.set('limit', String(size))" in capacity
-    assert "query.set('offset', String((effectivePage() - 1) * size))" in capacity
-    assert "originalPagination" not in capacity
-    assert "originalToast" not in capacity
+    assert "Math.min(Math.max(parseInt(v)||25,1),100)" in app
+    assert "Math.min(Math.max(parseInt(torrentPageSize)||25,1),100)" in app
+    assert "parseInt(v)||25,15" not in app
+    assert "parseInt(torrentPageSize)||25,15" not in app
+    assert "useMeasured" not in runtime
+    assert "measuredLimit < 15" not in runtime
 
 
 def test_supplied_host_artwork_is_losslessly_reconstructable_and_domain_matching_is_safe():
