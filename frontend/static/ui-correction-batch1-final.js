@@ -1,9 +1,8 @@
 /* DebridPulse 1.0.12 UI Correction Batch 1 — final interaction corrections.
  *
- * This narrow layer owns only the final review deltas for Archive Passwords and
- * Activity Log. It runs after the established Settings runtimes, replacing the
- * obsolete momentary password-reveal controls with the reviewed click contract
- * and binding Activity Log controls to server-side filtering.
+ * This runtime owns only the reviewed Archive Passwords interaction and the
+ * Activity Log filter controls. It is deliberately stateful but does not own
+ * Settings page rendering or any transfer/provider behavior.
  */
 (function () {
   'use strict';
@@ -26,11 +25,14 @@
 
   let eventGeneration = 0;
   let searchTimer = null;
+
   let archiveRows = null;
+  let archiveEditorNode = null;
+  let archiveSourceNode = null;
   let archiveKeySerial = 0;
   let archiveRevealAll = false;
   let archiveActiveKey = null;
-  let archiveRenderBusy = false;
+  let archiveApplyScheduled = false;
 
   function injectStyles() {
     if (document.getElementById('dp-ui-correction-batch1-final-style')) return;
@@ -133,8 +135,12 @@
       }).format(date);
     } catch (_) {
       return date.toLocaleString('en-US', {
-        year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
       });
     }
   }
@@ -234,8 +240,7 @@
       option.textContent = label;
       select.appendChild(option);
     });
-    if (values.some(([value]) => value === current)) select.value = current;
-    else select.value = values[0][0];
+    select.value = values.some(([value]) => value === current) ? current : values[0][0];
   }
 
   function ensureActivityControls() {
@@ -423,8 +428,7 @@
     return rows;
   }
 
-  function initializeArchiveRows(source) {
-    if (archiveRows) return;
+  function resetArchiveRows(source, editor) {
     const values = String(source?.value || '')
       .replace(/\r\n?/g, '\n')
       .split('\n')
@@ -432,6 +436,10 @@
       .filter(Boolean);
     archiveRows = values.map(value => ({key: nextArchiveKey(), value}));
     normalizeArchiveRows(archiveRows);
+    archiveEditorNode = editor;
+    archiveSourceNode = source;
+    archiveRevealAll = false;
+    archiveActiveKey = null;
   }
 
   function syncArchiveSource(source) {
@@ -473,6 +481,13 @@
     });
   }
 
+  function maskInactiveRows(editor) {
+    if (!editor || archiveRevealAll) return;
+    editor.querySelectorAll('.dp-settings-password-line').forEach(input => {
+      input.type = input.dataset.passwordKey === archiveActiveKey ? 'text' : 'password';
+    });
+  }
+
   function removeBlankPersistedRow(editor, source, row) {
     const index = archiveRows.indexOf(row);
     if (index < 0 || index === archiveRows.length - 1 || String(row.value || '').trim() !== '') return false;
@@ -485,173 +500,185 @@
   }
 
   function renderArchiveEditor(editor, source, focusKey = null) {
-    if (!editor || !source || archiveRenderBusy) return;
-    archiveRenderBusy = true;
-    try {
-      normalizeArchiveRows(archiveRows);
-      let rowsHost = editor.querySelector('.dp-settings-password-rows');
-      if (!rowsHost) {
-        rowsHost = document.createElement('div');
-        rowsHost.className = 'dp-settings-password-rows';
-        editor.prepend(rowsHost);
-      }
-      rowsHost.replaceChildren();
+    if (!editor || !source || !archiveRows) return;
+    normalizeArchiveRows(archiveRows);
 
-      archiveRows.forEach((row, index) => {
-        const input = document.createElement('input');
-        input.className = 'dp-settings-password-line';
-        input.type = archiveRevealAll || archiveActiveKey === row.key ? 'text' : 'password';
-        input.value = row.value;
-        input.dataset.passwordKey = row.key;
-        input.dataset.passwordIndex = String(index);
-        input.autocomplete = 'off';
-        input.spellcheck = false;
-        input.setAttribute('aria-label', `Archive password ${index + 1}`);
-        if (index === archiveRows.length - 1 && !row.value) input.placeholder = 'Add an archive password';
+    let rowsHost = editor.querySelector('.dp-settings-password-rows');
+    if (!rowsHost) {
+      rowsHost = document.createElement('div');
+      rowsHost.className = 'dp-settings-password-rows';
+      editor.prepend(rowsHost);
+    }
+    rowsHost.replaceChildren();
 
-        input.addEventListener('focus', () => {
-          input.dataset.passwordEditStart = row.value;
-          archiveActiveKey = row.key;
-          input.type = 'text';
-          if (!archiveRevealAll) {
-            rowsHost.querySelectorAll('.dp-settings-password-line').forEach(other => {
-              if (other !== input) other.type = 'password';
-            });
-          }
-        });
-        input.addEventListener('input', () => {
-          row.value = input.value;
-          syncArchiveSource(source);
-          if (index === archiveRows.length - 1 && row.value !== '') {
-            normalizeArchiveRows(archiveRows);
-            archiveActiveKey = row.key;
-            renderArchiveEditor(editor, source, row.key);
-          }
-        });
-        input.addEventListener('blur', () => {
-          row.value = input.value;
-          syncArchiveSource(source);
-          queueMicrotask(() => {
-            if (removeBlankPersistedRow(editor, source, row)) return;
-            const active = document.activeElement;
-            if (active?.closest('.dp-settings-extraction-password-editor') !== editor) {
-              archiveActiveKey = null;
-              if (!archiveRevealAll) {
-                rowsHost.querySelectorAll('.dp-settings-password-line').forEach(other => { other.type = 'password'; });
-              }
-            }
-          });
-        });
-        input.addEventListener('keydown', event => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            row.value = input.dataset.passwordEditStart ?? row.value;
-            input.value = row.value;
-            syncArchiveSource(source);
-            input.blur();
-            return;
-          }
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            row.value = input.value;
-            syncArchiveSource(source);
-            const inserted = {key: nextArchiveKey(), value: ''};
-            archiveRows.splice(index + 1, 0, inserted);
-            normalizeArchiveRows(archiveRows);
-            archiveActiveKey = inserted.key;
-            renderArchiveEditor(editor, source, inserted.key);
-            return;
-          }
-          if (event.key === 'Backspace' && input.value === '' && archiveRows.length > 1) {
-            event.preventDefault();
-            archiveRows.splice(index, 1);
-            normalizeArchiveRows(archiveRows);
-            const target = archiveRows[Math.max(0, Math.min(index - 1, archiveRows.length - 1))];
-            archiveActiveKey = target?.key || null;
-            syncArchiveSource(source);
-            renderArchiveEditor(editor, source, target?.key || null);
-            return;
-          }
-          if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-            const targetIndex = event.key === 'ArrowUp' ? index - 1 : index + 1;
-            if (targetIndex < 0 || targetIndex >= archiveRows.length) return;
-            event.preventDefault();
-            row.value = input.value;
-            [archiveRows[index], archiveRows[targetIndex]] = [archiveRows[targetIndex], archiveRows[index]];
-            normalizeArchiveRows(archiveRows);
-            archiveActiveKey = row.key;
-            syncArchiveSource(source);
-            renderArchiveEditor(editor, source, row.key);
-          }
-        });
-        input.addEventListener('paste', event => {
-          const pasted = event.clipboardData?.getData('text') || '';
-          if (!/[\r\n]/.test(pasted)) return;
-          event.preventDefault();
-          const incoming = pasted.replace(/\r\n?/g, '\n').split('\n');
-          const start = input.selectionStart ?? input.value.length;
-          const end = input.selectionEnd ?? input.value.length;
-          const before = input.value.slice(0, start);
-          const after = input.value.slice(end);
-          incoming[0] = before + incoming[0];
-          incoming[incoming.length - 1] += after;
-          const replacements = incoming.map(value => ({key: nextArchiveKey(), value}));
-          archiveRows.splice(index, 1, ...replacements);
-          normalizeArchiveRows(archiveRows);
-          const target = replacements[replacements.length - 1];
-          archiveActiveKey = target.key;
-          syncArchiveSource(source);
-          renderArchiveEditor(editor, source, target.key);
-        });
-        rowsHost.appendChild(input);
+    archiveRows.forEach((row, index) => {
+      const input = document.createElement('input');
+      input.className = 'dp-settings-password-line';
+      input.type = archiveRevealAll || archiveActiveKey === row.key ? 'text' : 'password';
+      input.value = row.value;
+      input.dataset.passwordKey = row.key;
+      input.dataset.passwordIndex = String(index);
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.setAttribute('aria-label', `Archive password ${index + 1}`);
+      if (index === archiveRows.length - 1 && !row.value) input.placeholder = 'Add an archive password';
+
+      input.addEventListener('focus', () => {
+        input.dataset.passwordEditStart = row.value;
+        archiveActiveKey = row.key;
+        input.type = 'text';
+        maskInactiveRows(editor);
       });
 
-      let eye = editor.querySelector('.dp-settings-password-eye');
-      if (eye && eye.dataset.dpLatchedReveal !== '1') {
-        const replacement = eye.cloneNode(false);
-        replacement.type = 'button';
-        replacement.className = eye.className;
-        replacement.dataset.dpLatchedReveal = '1';
-        eye.replaceWith(replacement);
-        eye = replacement;
-        eye.addEventListener('click', () => {
-          archiveRevealAll = !archiveRevealAll;
-          setArchiveEyeState(eye);
-          rowsHost.querySelectorAll('.dp-settings-password-line').forEach(inputNode => {
-            inputNode.type = archiveRevealAll || inputNode.dataset.passwordKey === archiveActiveKey ? 'text' : 'password';
-          });
+      input.addEventListener('input', () => {
+        row.value = input.value;
+        syncArchiveSource(source);
+        if (index === archiveRows.length - 1 && row.value !== '') {
+          normalizeArchiveRows(archiveRows);
+          archiveActiveKey = row.key;
+          renderArchiveEditor(editor, source, row.key);
+        }
+      });
+
+      input.addEventListener('blur', () => {
+        row.value = input.value;
+        syncArchiveSource(source);
+        queueMicrotask(() => {
+          if (removeBlankPersistedRow(editor, source, row)) return;
+          const active = document.activeElement;
+          if (active?.closest('.dp-settings-extraction-password-editor') !== editor) {
+            archiveActiveKey = null;
+            maskInactiveRows(editor);
+          }
         });
-      }
-      setArchiveEyeState(eye);
-      editor.dataset.dpLatchedReveal = '1';
-      syncArchiveSource(source);
-      if (focusKey) focusArchiveKey(editor, focusKey);
-    } finally {
-      archiveRenderBusy = false;
+      });
+
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          row.value = input.dataset.passwordEditStart ?? row.value;
+          input.value = row.value;
+          syncArchiveSource(source);
+          input.blur();
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          row.value = input.value;
+          syncArchiveSource(source);
+          const inserted = {key: nextArchiveKey(), value: ''};
+          archiveRows.splice(index + 1, 0, inserted);
+          normalizeArchiveRows(archiveRows);
+          archiveActiveKey = inserted.key;
+          renderArchiveEditor(editor, source, inserted.key);
+          return;
+        }
+        if (event.key === 'Backspace' && input.value === '' && archiveRows.length > 1) {
+          event.preventDefault();
+          archiveRows.splice(index, 1);
+          normalizeArchiveRows(archiveRows);
+          const target = archiveRows[Math.max(0, Math.min(index - 1, archiveRows.length - 1))];
+          archiveActiveKey = target?.key || null;
+          syncArchiveSource(source);
+          renderArchiveEditor(editor, source, target?.key || null);
+          return;
+        }
+        if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+          const targetIndex = event.key === 'ArrowUp' ? index - 1 : index + 1;
+          if (targetIndex < 0 || targetIndex >= archiveRows.length) return;
+          event.preventDefault();
+          row.value = input.value;
+          [archiveRows[index], archiveRows[targetIndex]] = [archiveRows[targetIndex], archiveRows[index]];
+          normalizeArchiveRows(archiveRows);
+          archiveActiveKey = row.key;
+          syncArchiveSource(source);
+          renderArchiveEditor(editor, source, row.key);
+        }
+      });
+
+      input.addEventListener('paste', event => {
+        const pasted = event.clipboardData?.getData('text') || '';
+        if (!/[\r\n]/.test(pasted)) return;
+        event.preventDefault();
+        const incoming = pasted.replace(/\r\n?/g, '\n').split('\n');
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        const before = input.value.slice(0, start);
+        const after = input.value.slice(end);
+        incoming[0] = before + incoming[0];
+        incoming[incoming.length - 1] += after;
+        const replacements = incoming.map(value => ({key: nextArchiveKey(), value}));
+        archiveRows.splice(index, 1, ...replacements);
+        normalizeArchiveRows(archiveRows);
+        const target = replacements[replacements.length - 1];
+        archiveActiveKey = target.key;
+        syncArchiveSource(source);
+        renderArchiveEditor(editor, source, target.key);
+      });
+
+      rowsHost.appendChild(input);
+    });
+
+    let eye = editor.querySelector('.dp-settings-password-eye');
+    if (eye && eye.dataset.dpLatchedReveal !== '1') {
+      const replacement = eye.cloneNode(false);
+      replacement.type = 'button';
+      replacement.className = eye.className;
+      replacement.dataset.dpLatchedReveal = '1';
+      eye.replaceWith(replacement);
+      eye = replacement;
+      eye.addEventListener('click', () => {
+        archiveRevealAll = !archiveRevealAll;
+        if (!archiveRevealAll) archiveActiveKey = null;
+        setArchiveEyeState(eye);
+        editor.querySelectorAll('.dp-settings-password-line').forEach(inputNode => {
+          inputNode.type = archiveRevealAll ? 'text' : 'password';
+        });
+      });
     }
+    setArchiveEyeState(eye);
+    editor.dataset.dpLatchedReveal = '1';
+    syncArchiveSource(source);
+    if (focusKey) focusArchiveKey(editor, focusKey);
   }
 
   function applyArchivePasswordContract() {
     const source = archiveSource();
     const editor = archiveEditor();
     if (!source || !editor) return;
-    initializeArchiveRows(source);
+
+    if (editor !== archiveEditorNode || source !== archiveSourceNode || !archiveRows) {
+      resetArchiveRows(source, editor);
+    }
 
     const field = source.closest('.dp-settings-extraction-password-field');
     const hint = field?.querySelector(':scope > .form-hint');
-    if (hint) {
-      hint.textContent = 'Add one password per line. Select a row to edit it; use the eye to show or hide all passwords.';
-    }
+    const copy = 'Add one password per line. Select a row to edit it; use the eye to show or hide all passwords.';
+    if (hint && hint.textContent !== copy) hint.textContent = copy;
+
     if (editor.dataset.dpLatchedReveal !== '1') renderArchiveEditor(editor, source);
+  }
+
+  function scheduleArchiveApply() {
+    if (archiveApplyScheduled) return;
+    archiveApplyScheduled = true;
+    queueMicrotask(() => {
+      archiveApplyScheduled = false;
+      const editor = archiveEditor();
+      if (!editor) return;
+      if (editor !== archiveEditorNode || editor.dataset.dpLatchedReveal !== '1') {
+        applyArchivePasswordContract();
+      }
+    });
   }
 
   function observeArchiveEditor() {
     const settings = document.getElementById('view-settings');
     if (!settings) return;
-    const observer = new MutationObserver(() => applyArchivePasswordContract());
+    const observer = new MutationObserver(scheduleArchiveApply);
     observer.observe(settings, {childList: true, subtree: true});
-    document.addEventListener('debridpulse:settings-rendered', applyArchivePasswordContract);
-    applyArchivePasswordContract();
+    document.addEventListener('debridpulse:settings-rendered', scheduleArchiveApply);
+    scheduleArchiveApply();
   }
 
   function init() {
