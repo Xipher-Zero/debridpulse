@@ -199,13 +199,10 @@
       };
       window.addEventListener('resize', update);
       document.addEventListener('debridpulse:navigation', update);
-      const observer = new MutationObserver(function (records) {
-        records.forEach(function (record) {
-          Array.from(record.addedNodes).forEach(normalizeToastNode);
-        });
+      host.addEventListener('animationstart', function (event) {
+        normalizeToastNode(event.target);
         update();
       });
-      observer.observe(host, {childList: true});
       host.dataset.dpToastLaneBound = '1';
     }
     updateToastHostPosition();

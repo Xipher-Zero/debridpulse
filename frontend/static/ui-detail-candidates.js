@@ -6,10 +6,13 @@
   'use strict';
 
   const expandedArtifacts = new Set();
+  const filesByArtifact = new Map();
   let activeTransferId = null;
   let latestDetail = null;
   let providerNames = new Map();
-  let refreshQueued = false;
+  let refreshTimer = null;
+  let refreshRunning = false;
+  let refreshAgain = false;
   let filesPointerActive = false;
   let deferredDetail = null;
   let deferredFrame = 0;
@@ -75,8 +78,9 @@
     const detailsId = 'dp-detail-candidates-' + artifactId;
     const filename = String(file.filename || 'artifact');
     return '<button type="button" class="dp-detail-candidate-disclosure" data-dp-artifact-id="' + html(artifactId) + '" ' +
-      'aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + html(detailsId) + '" ' +
-      'aria-label="' + html((open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename) + '">' +
+      'data-dp-candidate-count="' + count + '" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
+      'aria-controls="' + html(detailsId) + '" aria-label="' +
+      html((open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename) + '">' +
       '<span class="dp-detail-candidate-count" aria-hidden="true">' + count + '</span>' +
       '<span>Candidates</span></button>';
   }
@@ -112,20 +116,26 @@
     }).join('');
   }
 
-  function fileForArtifact(artifactId) {
-    if (!latestDetail || !Array.isArray(latestDetail.files)) return null;
-    return latestDetail.files.find(function (file) {
-      return String(file.id) === String(artifactId);
-    }) || null;
+  function rememberFiles(detail) {
+    filesByArtifact.clear();
+    if (!detail || !Array.isArray(detail.files)) return;
+    detail.files.forEach(function (file) {
+      filesByArtifact.set(String(file.id), file);
+    });
   }
 
   function updateDisclosure(control, file, open) {
-    const artifactId = String(file.id);
-    const count = Number(file.candidate_count || 0);
-    const filename = String(file.filename || 'artifact');
-    const owner = control.closest('tr.dp-detail-file-row');
-    if (!owner) return;
+    const artifactId = String(control && control.dataset.dpArtifactId || '');
+    const owner = control ? control.closest('tr.dp-detail-file-row') : null;
+    if (!artifactId || !owner) return;
 
+    const fileCount = Number(file && file.candidate_count);
+    const dataCount = Number(control.dataset.dpCandidateCount || 0);
+    const count = Number.isInteger(fileCount) && fileCount > 0 ? fileCount : dataCount;
+    const filenameNode = owner.querySelector('.dp-detail-filename-copy');
+    const filename = String((file && file.filename) || (filenameNode && filenameNode.textContent) || 'artifact');
+
+    control.dataset.dpCandidateCount = String(count);
     control.setAttribute('aria-expanded', open ? 'true' : 'false');
     control.setAttribute(
       'aria-label',
@@ -139,7 +149,7 @@
       : null;
 
     if (open) {
-      if (!existing) owner.insertAdjacentHTML('afterend', candidateRow(file));
+      if (file && !existing) owner.insertAdjacentHTML('afterend', candidateRow(file));
       return;
     }
     if (existing) existing.remove();
@@ -147,45 +157,47 @@
 
   function activateDisclosure(control) {
     const artifactId = String(control && control.dataset.dpArtifactId || '');
-    const file = fileForArtifact(artifactId);
-    if (!artifactId || !file || Number(file.candidate_count || 0) <= 1) return;
+    if (!artifactId) return;
 
-    // DOM state is authoritative for this native control. The Set is only the
-    // refresh projection, so stale asynchronous state cannot consume a real
-    // pointer or keyboard activation.
-    const open = control.getAttribute('aria-expanded') !== 'true';
-    if (open) expandedArtifacts.add(artifactId);
-    else expandedArtifacts.delete(artifactId);
+    const currentlyOpen = control.getAttribute('aria-expanded') === 'true';
+    if (currentlyOpen) {
+      // Closing is purely local presentation state. It must never depend on a
+      // still-current backend snapshot or an asynchronous refresh finishing.
+      expandedArtifacts.delete(artifactId);
+      updateDisclosure(control, null, false);
+      return;
+    }
 
-    // This is deliberately an in-place row update. Do not replace the Files
-    // tbody during the pointer/click dispatch that activated this control.
-    updateDisclosure(control, file, open);
+    const file = filesByArtifact.get(artifactId);
+    if (!file || Number(file.candidate_count || 0) <= 1) return;
+    expandedArtifacts.add(artifactId);
+
+    // Activation updates only this disclosure and its adjacent candidate row.
+    // The Files tbody is never replaced during the native click dispatch.
+    updateDisclosure(control, file, true);
   }
 
-  function bindDisclosure(control) {
-    if (!control || control.dataset.dpCandidateBound === '1') return;
-    control.addEventListener('click', function () {
-      activateDisclosure(control);
-    });
-    control.dataset.dpCandidateBound = '1';
-  }
-
-  function bindDisclosures() {
-    document.querySelectorAll('#modal-body .dp-detail-candidate-disclosure').forEach(bindDisclosure);
+  function onCandidateClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const control = target ? target.closest('.dp-detail-candidate-disclosure') : null;
+    if (!control || !control.closest('#modal-body')) return;
+    activateDisclosure(control);
   }
 
   function renderNow(detail) {
     if (!detail || !Array.isArray(detail.files)) return;
     const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
     if (!tbody) return;
+
+    rememberFiles(detail);
     const valid = new Set(detail.files.map(function (file) { return String(file.id); }));
     Array.from(expandedArtifacts).forEach(function (id) {
-      if (!valid.has(id) || Number((detail.files.find(function (file) { return String(file.id) === id; }) || {}).candidate_count || 0) <= 1) {
+      const file = filesByArtifact.get(id);
+      if (!valid.has(id) || !file || Number(file.candidate_count || 0) <= 1) {
         expandedArtifacts.delete(id);
       }
     });
     tbody.innerHTML = rows(detail.files);
-    bindDisclosures();
   }
 
   function render(detail) {
@@ -228,14 +240,37 @@
   }
 
   function queueRefresh() {
-    if (refreshQueued || activeTransferId == null) return;
+    if (activeTransferId == null) return;
     const overlay = document.getElementById('overlay');
     if (!overlay || !overlay.classList.contains('open')) return;
-    refreshQueued = true;
-    window.setTimeout(function () {
-      refreshQueued = false;
-      if (activeTransferId != null) fetchPresentation(activeTransferId).catch(function () {});
+
+    if (refreshTimer != null || refreshRunning) {
+      refreshAgain = true;
+      return;
+    }
+
+    refreshTimer = window.setTimeout(async function () {
+      refreshTimer = null;
+      refreshRunning = true;
+      const transferId = activeTransferId;
+      try {
+        if (transferId != null) await fetchPresentation(transferId);
+      } catch (_error) {
+        // The canonical Details surface already owns request failure UX.
+      } finally {
+        refreshRunning = false;
+        if (refreshAgain) {
+          refreshAgain = false;
+          queueRefresh();
+        }
+      }
     }, 120);
+  }
+
+  function clearRefreshState() {
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+    refreshAgain = false;
   }
 
   function install() {
@@ -244,8 +279,10 @@
     const wrapped = async function (id) {
       const transferId = Number(id);
       if (activeTransferId !== transferId) expandedArtifacts.clear();
+      clearRefreshState();
       activeTransferId = transferId;
       latestDetail = null;
+      filesByArtifact.clear();
       deferredDetail = null;
       const result = await originalShowDetail.apply(this, arguments);
       try {
@@ -262,10 +299,12 @@
       const originalCloseModal = window.closeModal;
       const closeWrapped = function () {
         expandedArtifacts.clear();
+        filesByArtifact.clear();
         activeTransferId = null;
         latestDetail = null;
         deferredDetail = null;
         filesPointerActive = false;
+        clearRefreshState();
         if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
         deferredFrame = 0;
         return originalCloseModal.apply(this, arguments);
@@ -275,12 +314,15 @@
     }
 
     const modalBody = document.getElementById('modal-body');
-    if (modalBody && modalBody.dataset.dpCandidatePointerGuard !== '1') {
+    if (modalBody && modalBody.dataset.dpCandidateClickOwner !== '1') {
+      // Bubble-phase delegation survives table refreshes without capturing,
+      // cancelling, or globally owning unrelated pointer interaction.
+      modalBody.addEventListener('click', onCandidateClick);
       modalBody.addEventListener('pointerdown', function (event) {
         const target = event.target instanceof Element ? event.target : null;
         if (target && target.closest('.dp-detail-files-card')) filesPointerActive = true;
       });
-      modalBody.dataset.dpCandidatePointerGuard = '1';
+      modalBody.dataset.dpCandidateClickOwner = '1';
     }
     document.addEventListener('pointerup', releaseFilesPointer);
     document.addEventListener('pointercancel', releaseFilesPointer);
