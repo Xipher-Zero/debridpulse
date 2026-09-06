@@ -205,7 +205,12 @@ async def sampled_public_artifact_fingerprint(
     headers: dict | None = None,
     expected_bytes: int = 0,
 ) -> tuple[int, str, FingerprintKind, str, str]:
-    """Return bounded structured content evidence for a public HTTP(S) capability."""
+    """Return bounded structured content evidence for a public HTTP(S) capability.
+
+    ``expected_bytes`` is retained for caller compatibility but is deliberately
+    not an identity gate. The sampler reports the payload size it discovers;
+    the Universal Core owns reported-size plausibility policy.
+    """
     try:
         validated = await validate_resolved_public_destination(uri)
     except DestinationLookupError:
@@ -214,7 +219,6 @@ async def sampled_public_artifact_fingerprint(
         return _unavailable("destination_rejected")
 
     sample_bytes = max(4096, int(sample_bytes))
-    expected_bytes = max(0, int(expected_bytes or 0))
     timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
     base_headers = {**(headers or {}), "Accept-Encoding": "identity"}
     connector = aiohttp.TCPConnector(resolver=PublicDestinationResolver(), use_dns_cache=False)
@@ -232,8 +236,6 @@ async def sampled_public_artifact_fingerprint(
                         length = 0
                     if length <= 0:
                         return _unavailable("range_ignored")
-                    if expected_bytes and length != expected_bytes:
-                        return _unavailable("size_disagreement")
                     count = min(sample_bytes, length)
                     first = await _read_exactly(response, count)
                     if first is None:
@@ -250,8 +252,6 @@ async def sampled_public_artifact_fingerprint(
                 if parsed is None:
                     return _unavailable("invalid_content_range")
                 start, end, total = parsed
-                if expected_bytes and total != expected_bytes:
-                    return _unavailable("size_disagreement")
                 expected_end = min(total - 1, sample_bytes - 1)
                 if start != 0 or end != expected_end:
                     return _unavailable("invalid_content_range")
