@@ -170,6 +170,8 @@ async def test_persistent_transient_failure_exhausts_bound_and_releases_independ
     assert int(failed["equivalence_retry_count"]) == 2
     assert failed["equivalence_disposition"] == "exhausted"
     assert float(failed["retry_at"] or 0) == 0
+    assert sum(row["equivalence_disposition"] == "exhausted" for row in rows) == 1
+    assert sum(row["equivalence_disposition"] == "released" for row in rows) == 6
     assert all(row["state"] != "materializing" for row in rows)
 
 

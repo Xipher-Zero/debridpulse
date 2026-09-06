@@ -155,6 +155,16 @@ def _retry_delay(engine) -> float:
     return min(_PROOF_RETRY_DELAY_CAP, max(0.1, configured))
 
 
+async def _proof_terminal(request_id: str) -> bool:
+    async with get_db() as db:
+        row = await db.fetchone(
+            "SELECT equivalence_disposition FROM transfer_requests WHERE id=?",
+            (request_id,),
+        )
+    disposition = str(row.get("equivalence_disposition") or "") if row else ""
+    return disposition in {"released", "independent", "contradictory", "exhausted"}
+
+
 async def _proof_disposition(request_id: str, disposition: str, reason: str, *,
                              clear_retry=False, preserve_reason=False) -> None:
     async with get_db() as db:
@@ -222,8 +232,9 @@ async def _release_cohort(records, reason: str) -> None:
             await db.execute(
                 """UPDATE transfer_requests SET retry_at=0,
                     equivalence_disposition=CASE
-                        WHEN equivalence_disposition='pending' THEN 'released'
-                        ELSE equivalence_disposition END,
+                        WHEN equivalence_disposition IN ('recovered','exhausted','contradictory','independent')
+                            THEN equivalence_disposition
+                        ELSE 'released' END,
                     equivalence_reason=CASE
                         WHEN COALESCE(equivalence_reason,'')='' THEN ?
                         ELSE equivalence_reason END
@@ -243,6 +254,12 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     """
     incoming = _normalized_candidates(record, candidates)
     if not incoming:
+        return False
+    # Once a cohort is conservatively released, every sibling must stay on the
+    # independent materialization path for this submission. Without this durable
+    # guard a later concurrently scheduled sibling can re-enter equivalence proof
+    # after another member exhausts, producing order-dependent partial attachment.
+    if await _proof_terminal(record.id):
         return False
 
     canonicals = tuple(

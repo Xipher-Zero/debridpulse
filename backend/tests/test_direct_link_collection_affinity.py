@@ -163,9 +163,9 @@ async def test_one_specialized_sibling_binds_entire_collection_regardless_of_ord
     await engine.resolve_pending()
 
     assert await repository.collection_route_provider(transfer.id) == "special"
-    assert [str(item.payload) for item in specialized.calls] == [
+    assert sorted(str(item.payload) for item in specialized.calls) == sorted(
         str(item.payload) for item in submitted
-    ]
+    )
     assert generic.calls == []
     details = await repository.presentation(transfer.id, details=True)
     assert [item["provider_id"] for item in details["route_attempts"]] == [
