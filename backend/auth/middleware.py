@@ -25,8 +25,9 @@ from auth.policy import (
     password_auth_enabled,
     password_auth_ready,
     safe_return_path,
+    trusted_request_origin,
 )
-from auth.sessions import CSRF_HEADER, request_is_secure, session_cookie_token, session_store
+from auth.sessions import CSRF_HEADER, session_cookie_token, session_store
 from auth.transitions import (
     authentication_configuration_lock,
     is_auth_settings_mutation,
@@ -162,7 +163,7 @@ async def enforce_general_web_security(
     *,
     allowed_origins: Iterable[str] = (),
 ) -> Response:
-    """Reject explicit cross-site browser mutations independently of authentication."""
+    """Reject untrusted browser mutations independently of authentication."""
     if request.method.upper() not in MUTATING_HTTP_METHODS:
         return await call_next(request)
 
@@ -173,14 +174,15 @@ async def enforce_general_web_security(
             return Response(content="Forbidden request context", status_code=403)
         return await call_next(request)
 
+    # Host is client-controlled browser input. Establish an intentionally trusted
+    # application authority before comparing Origin with it. The operator-owned
+    # public base URL covers reverse-proxy deployments; direct localhost/IP and
+    # the transport-owned ASGI server authority preserve ordinary local access.
+    request_identity = trusted_request_origin(request, settings=get_settings())
+    if request_identity is None:
+        return Response(content="Forbidden authority", status_code=403)
+
     origin_identity = normalized_origin(origin)
-    request_host = str(request.headers.get("Host", "") or "").strip()
-    # Public HTTPS behind an internal HTTP reverse-proxy hop is established only
-    # from trusted ASGI proxy handling or the operator-owned canonical base URL.
-    # Direct LAN hosts do not match that canonical authority and retain their
-    # actual request scheme.
-    request_scheme = "https" if request_is_secure(request) else str(request.url.scheme or "http").casefold()
-    request_identity = normalized_origin(f"{request_scheme}://{request_host}")
     configured_identities = {
         identity
         for item in allowed_origins
@@ -195,7 +197,6 @@ async def enforce_general_web_security(
 
     if (
         origin_identity is None
-        or request_identity is None
         or (origin_identity != request_identity and not configured_cross_origin)
     ):
         return Response(content="Forbidden origin", status_code=403)
