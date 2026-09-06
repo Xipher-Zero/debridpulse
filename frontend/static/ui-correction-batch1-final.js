@@ -361,10 +361,15 @@
     return controls;
   }
 
-  function updateActivityNotice(note, payload) {
+  function updateActivityNotice(note, payload, items = []) {
     if (!note) return;
     if (payload?.truncated === true) {
       note.textContent = `Showing the latest ${EVENT_LIMIT} matching events. Narrow your filters to see older matches.`;
+      note.hidden = false;
+      return;
+    }
+    if (payload?.legacyDefault === true && items.length >= EVENT_LIMIT) {
+      note.textContent = `Showing the latest ${EVENT_LIMIT} events.`;
       note.hidden = false;
       return;
     }
@@ -376,19 +381,26 @@
     const controls = ensureActivityControls();
     if (!controls || typeof api !== 'function') return null;
     const generation = ++eventGeneration;
+    const filtered = activityFiltersActive(controls);
     const params = new URLSearchParams();
     params.set('limit', String(EVENT_LIMIT));
-    params.set('include_meta', 'true');
-    params.set('timeframe', controls.timeframe.value || 'all');
-    if (controls.severity.value) params.set('level', controls.severity.value);
-    if (controls.search.value.trim()) params.set('search', controls.search.value.trim());
+    if (filtered) {
+      params.set('include_meta', 'true');
+      params.set('timeframe', controls.timeframe.value || 'all');
+      if (controls.severity.value) params.set('level', controls.severity.value);
+      if (controls.search.value.trim()) params.set('search', controls.search.value.trim());
+    }
 
     try {
       const payload = await api('GET', `/events?${params.toString()}`);
       if (generation !== eventGeneration) return null;
       const items = Array.isArray(payload?.items) ? payload.items : (Array.isArray(payload) ? payload : []);
       renderActivity(items, controls);
-      updateActivityNotice(controls.note, Array.isArray(payload) ? {truncated: false} : payload);
+      updateActivityNotice(
+        controls.note,
+        Array.isArray(payload) ? {legacyDefault: !filtered, truncated: false} : payload,
+        items,
+      );
       syncResetButton(controls);
       return payload;
     } catch (error) {
