@@ -166,6 +166,11 @@ def assert_real_sampler_reached_both_candidates(calls):
     assert len(calls) >= 4
 
 
+def assert_both_providers_are_canonical_candidates(artifact):
+    assert len(artifact.candidates) == 2
+    assert {candidate.provider_id for candidate in artifact.candidates} == {"provider-a", "provider-b"}
+
+
 @pytest.mark.asyncio
 async def test_intra_transfer_near_size_reports_reach_real_http_sampler_and_consolidate(runtime_engine):
     ctx = runtime_engine
@@ -185,7 +190,7 @@ async def test_intra_transfer_near_size_reports_reach_real_http_sampler_and_cons
 
     artifacts = await ctx.repository.artifacts(transfer.id)
     assert len(artifacts) == 1
-    assert [candidate.provider_id for candidate in artifacts[0].candidates] == ["provider-a", "provider-b"]
+    assert_both_providers_are_canonical_candidates(artifacts[0])
     assert_real_sampler_reached_both_candidates(ctx.calls)
 
 
@@ -203,6 +208,6 @@ async def test_cross_transfer_near_size_reports_reach_same_real_http_sampler_and
         await ctx.engine.resolve_pending()
 
     canonical = (await ctx.repository.artifacts(first.id))[0]
-    assert [candidate.provider_id for candidate in canonical.candidates] == ["provider-a", "provider-b"]
+    assert_both_providers_are_canonical_candidates(canonical)
     assert await ctx.repository.artifacts(second.id) == ()
     assert_real_sampler_reached_both_candidates(ctx.calls)
