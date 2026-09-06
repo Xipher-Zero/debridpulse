@@ -247,7 +247,6 @@
       return 'UTC';
     }
   }
-
   function dateParts(date) {
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: applicationTimeZone(),
@@ -495,13 +494,13 @@
 
     const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
     const previous = current > 1
-      ? `<button type="button" class="dp-pager-btn" aria-label="Previous page" onclick="goToTorrentPage(${current - 1})">${icon('chevronLeft')}</button>`
+      ? `<button type="button" class="btn btn-ghost btn-sm dp-pager-btn" aria-label="Previous page" onclick="goToTorrentPage(${current - 1})">${icon('chevronLeft')}</button>`
       : '<span class="dp-pager-placeholder" aria-hidden="true"></span>';
     const next = current < totalPages
-      ? `<button type="button" class="dp-pager-btn" aria-label="Next page" onclick="goToTorrentPage(${current + 1})">${icon('chevronRight')}</button>`
+      ? `<button type="button" class="btn btn-ghost btn-sm dp-pager-btn" aria-label="Next page" onclick="goToTorrentPage(${current + 1})">${icon('chevronRight')}</button>`
       : '<span class="dp-pager-placeholder" aria-hidden="true"></span>';
 
-    buttons.innerHTML = `<span class="dp-pager-slot">${previous}</span><span class="dp-pager-current" aria-current="page" aria-label="Page ${current}, current page">${current}</span><span class="dp-pager-slot">${next}</span>`;
+    buttons.innerHTML = `<span class="dp-pager-slot">${previous}</span><span class="btn btn-primary btn-sm dp-pager-current" aria-current="page" aria-label="Page ${current}, current page">${current}</span><span class="dp-pager-slot">${next}</span>`;
   }
 
   try { renderTorrentPagination = correctedRenderTorrentPagination; } catch (_) {}
@@ -592,10 +591,51 @@
     scheduleCapacityCheck();
   }
 
+  function configuredMaxConcurrency() {
+    let data = null;
+    try { data = settingsData; } catch (_) {}
+    const primary = Number(data?.max_concurrent_downloads);
+    if (Number.isFinite(primary) && primary > 0) return Math.trunc(primary);
+    const legacy = Number(data?.aria2_max_active_downloads);
+    if (Number.isFinite(legacy) && legacy > 0) return Math.trunc(legacy);
+    return data && Object.keys(data).length ? 3 : null;
+  }
+
+  function syncConfiguredConcurrency() {
+    if (typeof updateAria2TopbarBadge !== 'function') return;
+    updateAria2TopbarBadge({maxDl: configuredMaxConcurrency()});
+  }
+
+  try {
+    const canonicalLoadAria2SpeedLimit = loadAria2SpeedLimit;
+    loadAria2SpeedLimit = async function () {
+      const configured = configuredMaxConcurrency() ?? 3;
+      try {
+        return await canonicalLoadAria2SpeedLimit.apply(this, arguments);
+      } finally {
+        if (settingsData) {
+          settingsData.max_concurrent_downloads = configured;
+          settingsData.aria2_max_active_downloads = configured;
+        }
+        syncConfiguredConcurrency();
+      }
+    };
+  } catch (_) {}
+
+  try {
+    const canonicalRenderSettings = renderSettings;
+    renderSettings = function () {
+      const result = canonicalRenderSettings.apply(this, arguments);
+      syncConfiguredConcurrency();
+      return result;
+    };
+  } catch (_) {}
+
   try {
     const canonicalRenderTopbarActions = renderTopbarActions;
     renderTopbarActions = function () {
       const result = canonicalRenderTopbarActions.apply(this, arguments);
+      syncConfiguredConcurrency();
       syncPauseUi();
       return result;
     };
@@ -628,11 +668,15 @@
     removeImportAction();
     patchSettingsTerminology();
     ensureDateMenu();
+    syncConfiguredConcurrency();
     syncPauseUi();
     observeDownloadsGeometry();
     window.addEventListener('resize', scheduleCapacityCheck, {passive: true});
     if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleCapacityCheck, {passive: true});
-    document.addEventListener('debridpulse:settings-rendered', patchSettingsTerminology);
+    document.addEventListener('debridpulse:settings-rendered', () => {
+      patchSettingsTerminology();
+      syncConfiguredConcurrency();
+    });
     document.addEventListener('debridpulse:dashboard-recent-rendered', removeImportAction);
     document.addEventListener('debridpulse:navigation', event => {
       if (event.detail?.view === 'torrents') {
@@ -651,5 +695,6 @@
     formatDownloadsDate,
     toastDuration,
     recalculateDownloadsCapacity,
+    configuredMaxConcurrency,
   });
 })();
