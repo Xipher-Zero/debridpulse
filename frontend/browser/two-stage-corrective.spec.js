@@ -5,16 +5,13 @@ async function waitForBatch(page) {
   await page.waitForFunction(() => Boolean(window.DPUICorrectionBatch1));
 }
 
-function center(box) {
-  return box.x + box.width / 2;
-}
-
 async function pagerGeometry(page, args) {
   await page.evaluate(value => renderTorrentPagination(value.total, value.limit, value.offset), args);
   return page.evaluate(() => {
     const footer = document.getElementById('torrent-pagination').getBoundingClientRect();
     const group = document.getElementById('torrent-page-btns').getBoundingClientRect();
-    const current = document.querySelector('#torrent-page-btns .dp-pager-current').getBoundingClientRect();
+    const currentNode = document.querySelector('#torrent-page-btns .dp-pager-current');
+    const current = currentNode.getBoundingClientRect();
     const slots = [...document.querySelectorAll('#torrent-page-btns .dp-pager-slot')].map(node => {
       const box = node.getBoundingClientRect();
       return { width: box.width, height: box.height };
@@ -37,7 +34,7 @@ async function pagerGeometry(page, args) {
         x: current.x,
         width: current.width,
         height: current.height,
-        classes: [...document.querySelector('#torrent-page-btns .dp-pager-current').classList],
+        classes: [...currentNode.classList],
       },
       slots,
       arrows,
@@ -49,6 +46,10 @@ async function pagerGeometry(page, args) {
 test('two-stage corrective: Downloads pager restores 1.0.11 controls while current page stays fixed at full-footer center', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await waitForBatch(page);
+  await page.evaluate(async () => {
+    nav(document.querySelector('[data-view="torrents"]'));
+    await loadTorrents();
+  });
 
   const cases = [
     { name: 'single', total: 5, limit: 10, offset: 0, arrows: 0, placeholders: 2 },
@@ -158,30 +159,72 @@ test('two-stage corrective: configured concurrency comes from authoritative sett
   expect(scenarios.defaults).toEqual({ active: '1', max: '3', resolved: 3 });
 });
 
-test('two-stage corrective: settings render updates the denominator immediately and later telemetry preserves it', async ({ page }) => {
+test('two-stage corrective: successful Settings save updates the denominator immediately and later telemetry preserves it', async ({ page }) => {
   await waitForBatch(page);
-
-  const values = await page.evaluate(() => {
-    settingsData = { aria2_mode: 'builtin', max_concurrent_downloads: 3, aria2_max_active_downloads: 3, paused: false };
-    renderTopbarActions();
-    updateAria2TopbarBadge({ active: 2 });
-    const before = document.getElementById('aria2-badge-max').textContent;
-
-    settingsData = { ...settingsData, max_concurrent_downloads: 6, aria2_max_active_downloads: 6 };
-    renderSettings();
-    const afterSettingsRender = document.getElementById('aria2-badge-max').textContent;
-
-    updateAria2TopbarBadge({ active: 3, liveBps: 1024 });
-    const afterTelemetry = {
-      active: document.getElementById('aria2-badge-active').textContent,
-      max: document.getElementById('aria2-badge-max').textContent,
-    };
-    return { before, afterSettingsRender, afterTelemetry };
+  await page.evaluate(async () => {
+    nav(document.querySelector('[data-view="settings"]'));
+    await loadSettings();
   });
 
-  expect(values.before).toBe('3');
-  expect(values.afterSettingsRender).toBe('6');
-  expect(values.afterTelemetry).toEqual({ active: '3', max: '6' });
+  const result = await page.evaluate(async () => {
+    settingsData = {
+      ...settingsData,
+      aria2_mode: 'builtin',
+      max_concurrent_downloads: 3,
+      aria2_max_active_downloads: 3,
+      paused: false,
+    };
+    renderTopbarActions();
+    updateAria2TopbarBadge({ active: 2 });
+
+    const originalApi = api;
+    const originalGetFormSettings = getFormSettings;
+    api = async function(method, path, body) {
+      if (method === 'PUT' && path === '/settings') {
+        return { ...body, max_concurrent_downloads: 6, aria2_max_active_downloads: 6 };
+      }
+      if (method === 'GET' && path === '/aria2/global-options') {
+        return {
+          max_download_speed: 0,
+          max_concurrent_downloads: 2,
+          global_options_read_only: false,
+        };
+      }
+      if (method === 'POST' && path === '/settings/test-aria2') return { version: 'test' };
+      return originalApi.apply(this, arguments);
+    };
+    getFormSettings = () => ({
+      ...settingsData,
+      max_concurrent_downloads: 6,
+      aria2_max_active_downloads: 6,
+    });
+
+    try {
+      await saveSettings(null);
+      await new Promise(resolve => setTimeout(resolve, 25));
+      const afterSave = document.getElementById('aria2-badge-max').textContent;
+      updateAria2TopbarBadge({ active: 3, liveBps: 1024 });
+      return {
+        canonical: settingsData.max_concurrent_downloads,
+        legacy: settingsData.aria2_max_active_downloads,
+        afterSave,
+        afterTelemetry: {
+          active: document.getElementById('aria2-badge-active').textContent,
+          max: document.getElementById('aria2-badge-max').textContent,
+        },
+      };
+    } finally {
+      api = originalApi;
+      getFormSettings = originalGetFormSettings;
+    }
+  });
+
+  expect(result).toEqual({
+    canonical: 6,
+    legacy: 6,
+    afterSave: '6',
+    afterTelemetry: { active: '3', max: '6' },
+  });
 });
 
 test('two-stage corrective: aria2 global-options refresh cannot overwrite configured application concurrency', async ({ page }) => {
