@@ -85,10 +85,7 @@
   }
 
   function entryHtml(entry) {
-    const premium = entry.premium
-      ? '<span class="dp-provider-premium" role="img" title="Premium provider" aria-label="Premium provider"></span>'
-      : '';
-    return `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}${premium}</span></div>`;
+    return `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}</span></div>`;
   }
 
   function aggregateState(entries) {
@@ -104,11 +101,7 @@
 
   function aggregateHtml(id, label, entries) {
     const state = aggregateState(entries);
-    const children = entries
-      .filter(entry => entry.enabled && entry.state !== 'disabled')
-      .map(entryHtml)
-      .join('');
-    return `<div class="dp-provider-status-group" data-provider-group="${esc(id)}"><div class="conn-row dp-provider-status-group-row" data-provider-state="${esc(state)}"><div class="dot ${dotClass(state)}"></div><span>${esc(label)}</span></div>${children ? `<div class="dp-provider-status-group-items">${children}</div>` : ''}</div>`;
+    return `<div class="dp-provider-status-group" data-provider-group="${esc(id)}"><div class="conn-row dp-provider-status-group-row" data-provider-state="${esc(state)}"><div class="dot ${dotClass(state)}"></div><span>${esc(label)}</span></div></div>`;
   }
 
   function render(entries, mode = 'ready') {
@@ -179,7 +172,7 @@
     if (document.getElementById('dp-ui-correction-batch1-capacity-script')) return;
     const capacity = document.createElement('script');
     capacity.id = 'dp-ui-correction-batch1-capacity-script';
-    capacity.src = '/ui-correction-batch1-capacity.js?v=2';
+    capacity.src = '/ui-correction-batch1-capacity.js?v=3';
     capacity.defer = true;
     document.head.appendChild(capacity);
   }
@@ -191,32 +184,15 @@
     }
     const script = document.createElement('script');
     script.id = 'dp-ui-correction-batch1-script';
-    script.src = '/ui-correction-batch1.js?v=6';
+    script.src = '/ui-correction-batch1.js?v=7';
     script.defer = true;
     script.addEventListener('load', loadCapacityCorrection, {once: true});
     document.head.appendChild(script);
   }
 
-  function loadBatch1() {
-    if (window.DPBatch1ObserverGuard) {
-      loadBatchRuntime();
-      return;
-    }
-
-    let guard = document.getElementById('dp-ui-correction-batch1-observer-guard-script');
-    if (!guard) {
-      guard = document.createElement('script');
-      guard.id = 'dp-ui-correction-batch1-observer-guard-script';
-      guard.src = '/ui-correction-batch1-observer-guard.js?v=1';
-      guard.defer = true;
-      document.head.appendChild(guard);
-    }
-    guard.addEventListener('load', loadBatchRuntime, {once: true});
-  }
-
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
   heading();
   render([], 'loading');
-  loadBatch1();
+  loadBatchRuntime();
   document.addEventListener('DOMContentLoaded', () => refresh().catch(() => render([], 'unknown')), {once: true});
 })();

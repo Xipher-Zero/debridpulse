@@ -1,14 +1,13 @@
-/* Batch 1 Downloads capacity bridge.
- * Canonical app.js remains the transfer/list renderer; this bridge corrects the
- * legacy minimum-15 request clamp so the measured desktop page size is honored.
- * Pagination presentation remains owned by the Batch 1 renderer itself.
+/* Batch 1 Downloads capacity compatibility bridge.
+ * app.js still contains the pre-Batch-1 minimum-15 request clamp. Until that
+ * legacy constructor is retired, this bridge narrows only Downloads list GETs
+ * so the measured desktop page size reaches the backend unchanged.
  */
 (function () {
   'use strict';
 
   const DESKTOP_QUERY = '(min-width: 701px)';
   const originalApi = typeof api === 'function' ? api : null;
-  const originalToast = typeof toast === 'function' ? toast : null;
 
   function downloadsActive() {
     return Boolean(
@@ -46,18 +45,6 @@
           ? rewriteDownloadsListPath(path)
           : path;
         return originalApi.call(this, method, correctedPath, body, timeoutMs, options);
-      };
-    } catch (_) {}
-  }
-
-  /* Preserve the canonical toast DOM contract while retaining Batch 1 adaptive
-     timing. Existing error/storage owners legitimately target .dp-toast-copy. */
-  if (originalToast) {
-    try {
-      toast = function (...args) {
-        const node = originalToast.apply(this, args);
-        node?.querySelector('.dp-toast-message')?.classList.add('dp-toast-copy');
-        return node;
       };
     } catch (_) {}
   }

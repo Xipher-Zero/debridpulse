@@ -1,6 +1,6 @@
 /* DebridPulse 1.0.12 UI Correction Batch 1.
- * Cross-surface corrections extend canonical app.js owners without creating a
- * second lifecycle, selection, filter, routing, or transfer-state authority.
+ * Cross-surface correction owner for presentation-only Batch 1 contracts.
+ * Transfer lifecycle, selection, filtering, routing and state authority remain canonical.
  */
 (function () {
   'use strict';
@@ -29,9 +29,7 @@
   let datePreference = loadDatePreference();
   let capacityTimer = null;
   let resizeObserver = null;
-  let mutationObserver = null;
   let capacityBusy = false;
-  let downloadsBootstrapped = false;
 
   function normalizeHost(value) {
     return String(value || '').trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
@@ -110,7 +108,7 @@
     node.setAttribute('role', ['warn', 'warning', 'error'].includes(String(type).toLowerCase()) ? 'alert' : 'status');
 
     const body = document.createElement('span');
-    body.className = 'dp-toast-message';
+    body.className = 'dp-toast-message dp-toast-copy';
     body.textContent = msg;
 
     const close = document.createElement('button');
@@ -181,12 +179,12 @@
 
       tb.innerHTML = items.map(t => {
         const pctValue = t.progress != null ? Math.round(t.progress) : 0;
-        const active = ['downloading', 'queued'].includes(String(t.status || '').toLowerCase());
+        const showProgress = String(t.status || '').toLowerCase() === 'downloading';
         return `<tr data-torrent-id="${t.id}" data-status="${esc(t.status)}" onclick="showDetail(${t.id})" style="cursor:pointer">
           <td>
             <div class="t-name" title="${esc(t.name) || ''}">${esc(t.name) || '(unnamed)'}</div>
             <div class="dash-row-bar-slot" aria-hidden="true">
-              <div class="dash-row-bar${active ? '' : ' is-empty'}"><div class="dash-row-bar-fill" style="width:${Math.max(0, Math.min(100, pctValue))}%;background:var(--blue)"></div></div>
+              <div class="dash-row-bar${showProgress ? '' : ' is-empty'}"><div class="dash-row-bar-fill" style="width:${Math.max(0, Math.min(100, pctValue))}%;background:var(--blue)"></div></div>
             </div>
             <div class="dp-transfer-provider-meta">${sourceSlot(t.current_source_identity)}${providerChip(t)}</div>
           </td>
@@ -486,16 +484,6 @@
   try {
     const canonicalLoadTorrents = loadTorrents;
     loadTorrents = async function () {
-      if (!downloadsBootstrapped && window.matchMedia(DESKTOP_QUERY).matches) {
-        downloadsBootstrapped = true;
-        const currentSize = Math.max(1, Number(torrentPageSize) || 25);
-        if (!document.querySelector('#t-tbody tr[data-torrent-id]') && currentSize > 8) {
-          const oldOffset = Math.max(0, (Math.max(1, Number(torrentPage) || 1) - 1) * currentSize);
-          torrentPageSize = 8;
-          torrentPage = Math.floor(oldOffset / 8) + 1;
-        }
-      }
-
       const previousFmtDate = fmtDate;
       fmtDate = downloadsDateMarkup;
       try {
@@ -571,22 +559,16 @@
 
   function observeDownloadsGeometry() {
     const card = document.querySelector('#view-torrents > .card');
-    if (!card) return;
-    if ('ResizeObserver' in window) {
-      resizeObserver?.disconnect();
-      resizeObserver = new ResizeObserver(scheduleCapacityCheck);
-      resizeObserver.observe(card);
-      const bulk = document.getElementById('bulk-bar');
-      if (bulk) resizeObserver.observe(bulk);
-    }
-    mutationObserver?.disconnect();
-    mutationObserver = new MutationObserver(scheduleCapacityCheck);
-    mutationObserver.observe(card, {
-      attributes: true,
-      childList: true,
-      subtree: true,
-      attributeFilter: ['class', 'style', 'hidden'],
-    });
+    if (!card || !('ResizeObserver' in window)) return;
+    resizeObserver?.disconnect();
+    resizeObserver = new ResizeObserver(scheduleCapacityCheck);
+    [
+      card,
+      card.querySelector('.dp-downloads-table-wrap'),
+      document.getElementById('bulk-bar'),
+      document.querySelector('.dp-downloads-pause-shim'),
+      document.getElementById('torrent-pagination'),
+    ].filter(Boolean).forEach(node => resizeObserver.observe(node));
   }
 
   function init() {
@@ -602,7 +584,10 @@
     document.addEventListener('debridpulse:dashboard-recent-rendered', removeImportAction);
     document.addEventListener('debridpulse:downloads-selection-changed', scheduleCapacityCheck);
     document.addEventListener('debridpulse:navigation', event => {
-      if (event.detail?.view === 'torrents') scheduleCapacityCheck();
+      if (event.detail?.view === 'torrents') {
+        observeDownloadsGeometry();
+        scheduleCapacityCheck();
+      }
     });
   }
 

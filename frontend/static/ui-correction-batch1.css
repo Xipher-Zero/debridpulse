@@ -45,48 +45,73 @@
   height: 17px;
 }
 
-/* Provider Status is explicit markup; only AllDebrid's premium crown is optically lifted. */
+/* Provider Status owns a full-width centered operational summary. */
 .dp-provider-status-list::before {
   content: none !important;
   display: none !important;
 }
 .dp-provider-status-heading {
+  width: 100%;
   margin: 0 0 5px;
   font-size: 9px;
   line-height: 1;
   font-weight: 700;
   letter-spacing: .12em;
   text-transform: uppercase;
+  text-align: center;
   color: var(--text3);
 }
-.dp-provider-status-row[data-provider-id="alldebrid"] .dp-provider-premium {
-  position: relative;
-  top: -2px;
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-row,
+body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-group-row {
+  width: 100%;
+  min-width: 0;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center;
+}
+.dp-provider-status-group {
+  width: 100%;
 }
 .dp-provider-status-group-items {
-  padding-left: 10px;
+  display: none !important;
 }
 
-/* Quick Add keeps title/action columns stable while the authoritative pause state appears centrally. */
+/* Preserve the premium text geometry; move only the crown optically upward. */
+body.dp-v11-structural #sidebar .sidebar-footer #premium-row::before {
+  transform: translateY(-2px) !important;
+}
+body.dp-v11-structural #sidebar .sidebar-footer #lbl-premium {
+  transform: none !important;
+}
+
+/* Quick Add: left/right ownership is independent of a truly frame-centered pause state. */
 .dp-dashboard-quick-add > .card-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, auto) minmax(0, 1fr);
+  position: relative;
+  display: flex;
   align-items: center;
-  column-gap: 12px;
+  justify-content: space-between;
+  gap: 12px;
 }
 .dp-dashboard-quick-add > .card-header > .card-title {
-  justify-self: start;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .dp-dashboard-quick-add > .card-header > .dp-card-header-actions {
-  justify-self: end;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .dp-global-pause-center {
   visibility: hidden;
-  justify-self: center;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100% - 390px));
+  max-width: 520px;
+  min-width: 240px;
   text-align: center;
   color: var(--yellow);
-  max-width: 440px;
-  min-height: 38px;
+  pointer-events: none;
 }
 .dp-global-pause-center.is-visible {
   visibility: visible;
@@ -95,19 +120,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  font-size: 10px;
+  gap: 8px;
+  font-size: clamp(15px, 1.45vw, 20px);
+  line-height: 1.05;
   font-weight: 800;
-  letter-spacing: .08em;
+  letter-spacing: .07em;
+  white-space: nowrap;
 }
 .dp-global-pause-title svg {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
 }
 .dp-global-pause-copy {
-  margin-top: 2px;
-  font-size: 9px;
-  line-height: 1.25;
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.3;
   color: var(--text2);
 }
 
@@ -130,7 +158,7 @@
   display: flex;
 }
 
-/* Pagination keeps controls at the physical center regardless of missing arrows. */
+/* Pagination keeps a compact three-slot group at the physical footer center. */
 #torrent-pagination {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -138,9 +166,10 @@
   gap: 8px;
 }
 #torrent-page-info {
-  grid-column: 1;
+  grid-column: 3;
   grid-row: 1;
-  justify-self: start;
+  justify-self: end;
+  text-align: right;
 }
 #torrent-page-btns {
   grid-column: 2;
@@ -149,6 +178,7 @@
   grid-template-columns: 34px 34px 34px;
   align-items: center;
   gap: 6px !important;
+  width: 114px;
 }
 .dp-pager-slot,
 .dp-pager-placeholder,
@@ -164,6 +194,7 @@
 }
 .dp-pager-placeholder {
   display: block;
+  pointer-events: none;
 }
 .dp-pager-current {
   display: grid;
@@ -226,8 +257,9 @@
   position: absolute;
   z-index: 30;
   top: calc(100% + 4px);
-  left: 0;
-  min-width: 160px;
+  right: 0;
+  left: auto;
+  min-width: 184px;
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -246,14 +278,23 @@
   text-transform: uppercase;
 }
 .dp-date-menu button {
+  position: relative;
   width: 100%;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 28px;
   text-align: left;
   border: 0;
   border-radius: 5px;
   color: var(--text2);
   background: transparent;
   cursor: pointer;
+}
+.dp-date-menu button[aria-checked="true"]::before {
+  content: '✓';
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 800;
 }
 .dp-date-menu button:hover,
 .dp-date-menu button:focus-visible,
@@ -271,21 +312,21 @@
 }
 
 /* Only Details -> Files status cells receive the vocabulary-safe common footprint. */
-.dp-detail-files-card tbody td[data-role="file-status"] .badge,
-#detail-files tbody td[data-role="file-status"] .badge,
-#detail-files-table tbody td[data-role="file-status"] .badge,
-.dp-detail-files-table tbody td:last-child .badge {
-  width: 136px;
-  min-width: 136px;
-  height: 28px;
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 10px;
-  white-space: nowrap;
-  overflow: hidden;
+body.dp-v11-structural .dp-detail-files-card tbody td:last-child .badge,
+body.dp-v11-structural #detail-files tbody td[data-role="file-status"] .badge,
+body.dp-v11-structural #detail-files-table tbody td[data-role="file-status"] .badge {
+  width: 136px !important;
+  min-width: 136px !important;
+  max-width: 136px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 0 10px !important;
+  white-space: nowrap !important;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -323,12 +364,40 @@
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
+@media (max-width: 1000px) and (min-width: 701px) {
+  .dp-global-pause-center {
+    width: min(390px, calc(100% - 300px));
+    min-width: 210px;
+  }
+  .dp-global-pause-title {
+    font-size: clamp(13px, 1.7vw, 16px);
+  }
+  .dp-global-pause-title svg {
+    width: 17px;
+    height: 17px;
+    flex-basis: 17px;
+  }
+  .dp-global-pause-copy {
+    font-size: 9px;
+  }
+}
+
 @media (max-width: 700px) {
   .dp-dashboard-quick-add > .card-header {
     display: flex;
+    flex-wrap: wrap;
   }
   .dp-global-pause-center {
-    min-height: 0;
-    max-width: 300px;
+    position: static;
+    transform: none;
+    order: 3;
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin-top: 6px;
+  }
+  .dp-global-pause-title {
+    font-size: 14px;
   }
 }
