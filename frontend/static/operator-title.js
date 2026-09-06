@@ -144,10 +144,7 @@
     return rect.width > 0 && rect.height > 0;
   }
 
-  function unionRect(elements) {
-    const rects = elements.filter(visibleElement).map(function (element) {
-      return element.getBoundingClientRect();
-    });
+  function unionRects(rects) {
     if (!rects.length) return null;
     return {
       left: Math.min.apply(null, rects.map(function (rect) { return rect.left; })),
@@ -157,11 +154,24 @@
     };
   }
 
+  function textContentRect(element) {
+    if (!visibleElement(element)) return null;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? rect : element.getBoundingClientRect();
+  }
+
   function topbarOccupantRect(element) {
     if (!visibleElement(element)) return null;
-    const style = window.getComputedStyle(element);
-    if (element.classList.contains('dp-page-heading') || parseFloat(style.flexGrow) > 0) {
-      const contentRect = unionRect(Array.from(element.children));
+    if (element.classList.contains('dp-page-heading')) {
+      const rects = [];
+      const title = element.querySelector('#page-title');
+      const subtitle = element.querySelector('#page-subtitle');
+      if (visibleElement(title)) rects.push(title.getBoundingClientRect());
+      const subtitleRect = textContentRect(subtitle);
+      if (subtitleRect) rects.push(subtitleRect);
+      const contentRect = unionRects(rects);
       if (contentRect) return contentRect;
     }
     return element.getBoundingClientRect();
@@ -183,8 +193,15 @@
       };
     }
 
-    const interiorLeft = topbarRect.left + TOAST_GUTTER;
-    const interiorRight = topbarRect.right - TOAST_GUTTER;
+    const topbarStyle = window.getComputedStyle(topbar);
+    const paddingLeft = parseFloat(topbarStyle.paddingLeft) || 0;
+    const paddingRight = parseFloat(topbarStyle.paddingRight) || 0;
+    const paddingTop = parseFloat(topbarStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(topbarStyle.paddingBottom) || 0;
+    const interiorLeft = topbarRect.left + paddingLeft + TOAST_GUTTER;
+    const interiorRight = topbarRect.right - paddingRight - TOAST_GUTTER;
+    const usableTop = topbarRect.top + paddingTop;
+    const usableBottom = topbarRect.bottom - paddingBottom;
     const occupied = Array.from(topbar.children)
       .map(topbarOccupantRect)
       .filter(Boolean)
@@ -224,9 +241,14 @@
       narrow: false,
       left: free[0].left,
       right: free[0].right,
-      top: topbarRect.top,
-      bottom: topbarRect.bottom
+      top: usableBottom > usableTop ? usableTop : topbarRect.top,
+      bottom: usableBottom > usableTop ? usableBottom : topbarRect.bottom
     };
+  }
+
+  function clamp(value, minimum, maximum) {
+    if (maximum < minimum) return minimum;
+    return Math.max(minimum, Math.min(maximum, value));
   }
 
   function updateToastHostPosition() {
@@ -247,23 +269,34 @@
     host.style.height = 'auto';
     host.style.maxHeight = 'none';
     host.style.justifyContent = 'flex-start';
+    host.style.boxSizing = 'border-box';
+    host.style.padding = '0';
+    host.style.margin = '0';
+    host.style.transform = 'none';
 
     if (lane.narrow) {
       host.style.left = lane.left + 'px';
       host.style.top = lane.top + 'px';
       host.style.width = laneWidth + 'px';
-      host.style.transform = 'none';
       return;
     }
 
+    host.style.left = '0px';
+    host.style.top = '0px';
     host.style.width = 'max-content';
-    host.style.top = ((lane.top + lane.bottom) / 2) + 'px';
-    const hostWidth = Math.min(laneWidth, host.getBoundingClientRect().width || maxToastWidth);
-    const half = hostWidth / 2;
-    const desired = window.innerWidth / 2;
-    const center = Math.max(lane.left + half, Math.min(lane.right - half, desired));
-    host.style.left = center + 'px';
-    host.style.transform = 'translate(-50%, -50%)';
+    const initialHostRect = host.getBoundingClientRect();
+    const childWidths = Array.from(host.children).filter(function (node) {
+      return node instanceof HTMLElement;
+    }).map(function (node) {
+      return node.getBoundingClientRect().width;
+    });
+    const renderedWidth = Math.min(laneWidth, Math.max(initialHostRect.width, 0, ...childWidths));
+    host.style.width = renderedWidth + 'px';
+    const renderedRect = host.getBoundingClientRect();
+    const desiredLeft = (window.innerWidth - renderedRect.width) / 2;
+    const desiredTop = lane.top + ((lane.bottom - lane.top) - renderedRect.height) / 2;
+    host.style.left = clamp(desiredLeft, lane.left, lane.right - renderedRect.width) + 'px';
+    host.style.top = clamp(desiredTop, lane.top, lane.bottom - renderedRect.height) + 'px';
   }
 
   function scheduleToastHostPosition() {
@@ -290,6 +323,9 @@
     host.style.alignItems = 'center';
     host.style.gap = '8px';
     host.style.pointerEvents = 'none';
+    host.style.boxSizing = 'border-box';
+    host.style.padding = '0';
+    host.style.margin = '0';
     Array.from(host.children).forEach(normalizeToastNode);
 
     if (host.dataset.dpToastLaneBound !== '1') {
@@ -348,18 +384,24 @@
     toast.dataset.dpToastFadeAtMs = String(fadeAt);
     let fadeTimer = null;
     let removeTimer = null;
+    const nativeRemove = toast.remove.bind(toast);
     const remove = function () {
       if (fadeTimer !== null) window.clearTimeout(fadeTimer);
       if (removeTimer !== null) window.clearTimeout(removeTimer);
       fadeTimer = null;
       removeTimer = null;
-      if (toast.isConnected) toast.remove();
+      if (toast.isConnected) nativeRemove();
       scheduleToastHostPosition();
     };
+    Object.defineProperty(toast, '__dpToastDispose', {value: remove});
 
     host.appendChild(toast);
     scheduleToastHostPosition();
     fadeTimer = window.setTimeout(function () {
+      if (!toast.isConnected) {
+        remove();
+        return;
+      }
       toast.dataset.dpToastFading = '1';
       toast.style.opacity = '0';
     }, fadeAt);
