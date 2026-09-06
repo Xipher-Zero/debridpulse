@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 
+from services.network_safety import sampled_public_artifact_fingerprint
 from transfers.engine import TransferEngine
 from transfers.mirrors import reported_sizes_compatible
 
@@ -24,3 +25,11 @@ def test_failover_and_refresh_delegate_reported_size_compatibility() -> None:
     assert "reported_sizes_compatible(" in refresh_source
     assert "artifact.expected_bytes != replacement.expected_bytes" not in alternate_source
     assert "artifact.expected_bytes != replacement_size" not in refresh_source
+
+
+def test_http_sampler_does_not_own_reported_size_equivalence_policy() -> None:
+    sampler_source = inspect.getsource(sampled_public_artifact_fingerprint)
+
+    assert "length != expected_bytes" not in sampler_source
+    assert "total != expected_bytes" not in sampler_source
+    assert 'return _unavailable("size_disagreement")' not in sampler_source
