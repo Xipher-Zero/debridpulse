@@ -164,9 +164,6 @@ test('two-stage corrective: successful Settings save updates the denominator imm
   await page.evaluate(async () => {
     nav(document.querySelector('[data-view="settings"]'));
     await loadSettings();
-  });
-
-  const result = await page.evaluate(async () => {
     settingsData = {
       ...settingsData,
       aria2_mode: 'builtin',
@@ -178,9 +175,11 @@ test('two-stage corrective: successful Settings save updates the denominator imm
     updateAria2TopbarBadge({ active: 2 });
 
     const originalApi = api;
-    const originalGetFormSettings = getFormSettings;
+    window.__dpTwoStageOriginalApi = originalApi;
+    window.__dpTwoStageSavedPayload = null;
     api = async function(method, path, body) {
       if (method === 'PUT' && path === '/settings') {
+        window.__dpTwoStageSavedPayload = body;
         return { ...body, max_concurrent_downloads: 6, aria2_max_active_downloads: 6 };
       }
       if (method === 'GET' && path === '/aria2/global-options') {
@@ -190,39 +189,49 @@ test('two-stage corrective: successful Settings save updates the denominator imm
           global_options_read_only: false,
         };
       }
-      if (method === 'POST' && path === '/settings/test-aria2') return { version: 'test' };
       return originalApi.apply(this, arguments);
     };
-    getFormSettings = () => ({
-      ...settingsData,
-      max_concurrent_downloads: 6,
-      aria2_max_active_downloads: 6,
-    });
+  });
 
-    try {
-      await saveSettings(null);
-      await new Promise(resolve => setTimeout(resolve, 25));
-      const afterSave = document.getElementById('aria2-badge-max').textContent;
-      updateAria2TopbarBadge({ active: 3, liveBps: 1024 });
-      return {
-        canonical: settingsData.max_concurrent_downloads,
-        legacy: settingsData.aria2_max_active_downloads,
-        afterSave,
-        afterTelemetry: {
-          active: document.getElementById('aria2-badge-active').textContent,
-          max: document.getElementById('aria2-badge-max').textContent,
-        },
-      };
-    } finally {
-      api = originalApi;
-      getFormSettings = originalGetFormSettings;
-    }
+  await page.locator('#view-settings .dp-settings-tabs [data-tab="downloads"]').click();
+  const maxDownloads = page.locator('#dp-settings-field-aria2-max-active-downloads');
+  await expect(maxDownloads).toBeVisible();
+  await maxDownloads.fill('6');
+
+  const saveButton = page.locator('#view-settings button[data-action="save"]').last();
+  await expect(saveButton).toBeVisible();
+  await saveButton.click();
+
+  await page.waitForFunction(() => (
+    settingsData?.max_concurrent_downloads === 6 &&
+    settingsData?.aria2_max_active_downloads === 6 &&
+    document.getElementById('aria2-badge-max')?.textContent === '6'
+  ));
+
+  const result = await page.evaluate(() => {
+    updateAria2TopbarBadge({ active: 3, liveBps: 1024 });
+    const result = {
+      payload: {
+        canonical: window.__dpTwoStageSavedPayload?.max_concurrent_downloads,
+        legacy: window.__dpTwoStageSavedPayload?.aria2_max_active_downloads,
+      },
+      canonical: settingsData.max_concurrent_downloads,
+      legacy: settingsData.aria2_max_active_downloads,
+      afterTelemetry: {
+        active: document.getElementById('aria2-badge-active').textContent,
+        max: document.getElementById('aria2-badge-max').textContent,
+      },
+    };
+    api = window.__dpTwoStageOriginalApi;
+    delete window.__dpTwoStageOriginalApi;
+    delete window.__dpTwoStageSavedPayload;
+    return result;
   });
 
   expect(result).toEqual({
+    payload: { canonical: 6, legacy: 6 },
     canonical: 6,
     legacy: 6,
-    afterSave: '6',
     afterTelemetry: { active: '3', max: '6' },
   });
 });
