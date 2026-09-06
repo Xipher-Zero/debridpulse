@@ -27,7 +27,7 @@ test('batch1 final: Activity Log filters are exact, server-backed, resettable, a
   });
 
   await waitForFinalBatch(page);
-  await page.evaluate(() => nav(document.querySelector('[data-view="events"]'));
+  await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
   await expect(page.locator('#ev-timeframe')).toBeAttached();
 
   await expect(page.locator('#view-events .dp-activity-filter-label')).toHaveText(['Time window', 'Severity']);
@@ -38,6 +38,7 @@ test('batch1 final: Activity Log filters are exact, server-backed, resettable, a
   await expect(page.locator('#ev-timeframe')).toHaveValue('all');
   await expect(page.locator('#ev-level')).toHaveValue('');
   await expect(page.locator('#ev-reset')).toBeHidden();
+  await page.screenshot({ path: 'test-results/checkpoint-activity-default.png', fullPage: true });
 
   await page.locator('#ev-timeframe').selectOption('24h');
   await page.locator('#ev-level').selectOption('warning');
@@ -55,6 +56,7 @@ test('batch1 final: Activity Log filters are exact, server-backed, resettable, a
   await expect(page.locator('.dp-activity-time')).toContainText('2026');
   await expect(page.locator('#dp-activity-result-note')).toBeVisible();
   await expect(page.locator('#dp-activity-result-note')).toContainText('Showing the latest 500 matching events');
+  await page.screenshot({ path: 'test-results/checkpoint-activity-filtered.png', fullPage: true });
 
   const beforeRefresh = requests.length;
   await page.locator('.dp-activity-refresh').click();
@@ -103,6 +105,7 @@ test('batch1 final: Archive Passwords use latched Lucide reveal, Escape revert, 
   await expect(rows.nth(0)).toHaveAttribute('type', 'password');
   await expect(rows.nth(1)).toHaveAttribute('type', 'password');
   await expect(rows.nth(2)).toHaveValue('');
+  await page.screenshot({ path: 'test-results/checkpoint-archive-passwords-masked.png', fullPage: true });
 
   await rows.nth(0).focus();
   await expect(rows.nth(0)).toHaveAttribute('type', 'text');
@@ -121,6 +124,7 @@ test('batch1 final: Archive Passwords use latched Lucide reveal, Escape revert, 
   await expect(eye.locator('img')).toHaveAttribute('src', /\/icons\/lucide\/eye-off\.svg$/);
   rows = editor.locator('.dp-settings-password-line');
   for (let i = 0; i < 3; i += 1) await expect(rows.nth(i)).toHaveAttribute('type', 'text');
+  await page.screenshot({ path: 'test-results/checkpoint-archive-passwords-revealed.png', fullPage: true });
 
   await eye.click();
   await expect(eye).toHaveAttribute('aria-pressed', 'false');
