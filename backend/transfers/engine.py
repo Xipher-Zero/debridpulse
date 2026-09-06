@@ -20,6 +20,7 @@ from transfers.errors import (
     TransferError, unknown_failure,
 )
 from transfers.filesystem import retire_partial
+from transfers.mirrors import reported_sizes_compatible
 from transfers.models import (
     Artifact, ExecutionObservation, ExecutionState, OutcomeKind, ResolutionResult,
     ResourceState, TransferOutcome,
@@ -234,7 +235,9 @@ class TransferEngine(_QualifiedTransferEngine):
             return False
         replacement = artifact.candidates[index]
         if (artifact.expected_bytes > 0 and replacement.expected_bytes > 0
-                and artifact.expected_bytes != replacement.expected_bytes):
+                and not reported_sizes_compatible(
+                    artifact.expected_bytes, replacement.expected_bytes,
+                )):
             return False
         sidecars = self._candidate_sidecars(artifact)
 
@@ -508,7 +511,9 @@ class TransferEngine(_QualifiedTransferEngine):
                 ))
             replacement_size = result.candidates[0].expected_bytes
             if (artifact.expected_bytes > 0 and replacement_size > 0
-                    and artifact.expected_bytes != replacement_size):
+                    and not reported_sizes_compatible(
+                        artifact.expected_bytes, replacement_size,
+                    )):
                 raise TransferError(self._error(
                     Category.SIZE_MISMATCH,
                     Stage.CANDIDATE_PREPARATION,
