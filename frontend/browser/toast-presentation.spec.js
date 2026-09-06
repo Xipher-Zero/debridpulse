@@ -19,7 +19,12 @@ async function create(page, message, type = 'info') {
 }
 
 async function clearToasts(page) {
-  await page.evaluate(() => document.getElementById('toasts')?.replaceChildren());
+  await page.evaluate(() => {
+    document.querySelectorAll('#toasts .toast').forEach(node => {
+      if (typeof node.__dpToastDispose === 'function') node.__dpToastDispose();
+      else node.remove();
+    });
+  });
 }
 
 test('canonical toast lifetime is exact word-count clamp for simple and structured copy', async ({ page }) => {
@@ -49,20 +54,100 @@ test('canonical toast lifetime is exact word-count clamp for simple and structur
   });
 });
 
-test('canonical toast has no dismiss control and fades during, not after, total lifetime', async ({ page }) => {
+test('toast source contract contains no legacy dismissal presentation', async ({ page }) => {
   await ready(page);
-  const message = 'one two three four five six seven eight nine ten eleven twelve';
-  const node = await create(page, message, 'warning');
-  await expect(node).toHaveAttribute('role', 'alert');
-  await expect(node).toHaveAttribute('data-dp-toast-duration-ms', '3000');
-  await expect(node).toHaveAttribute('data-dp-toast-fade-at-ms', '2750');
-  await expect(node.locator('button, .dp-toast-dismiss, .dp-toast-close')).toHaveCount(0);
+  const [legacyResponse, canonicalResponse] = await Promise.all([
+    page.request.get('/ui-correction-batch1.css'),
+    page.request.get('/ui-toast-contract.css'),
+  ]);
+  expect(legacyResponse.ok()).toBeTruthy();
+  expect(canonicalResponse.ok()).toBeTruthy();
+  const source = `${await legacyResponse.text()}\n${await canonicalResponse.text()}`;
+  expect(source).not.toContain('.dp-toast-close');
+  expect(source).not.toContain('.dp-toast-dismiss');
+  expect(source).not.toContain('manual dismissal');
+});
 
-  await page.waitForTimeout(2810);
-  await expect(node).toHaveAttribute('data-dp-toast-fading', '1');
-  await expect(node).toHaveCount(1);
-  await page.waitForTimeout(330);
-  await expect(node).toHaveCount(0);
+test('canonical toast has no dismiss control and independent lifetimes include fade inside total lifetime', async ({ page }) => {
+  await ready(page);
+  const captured = await page.evaluate(() => {
+    const nativeSetTimeout = window.setTimeout;
+    const nativeClearTimeout = window.clearTimeout;
+    let nextId = -1000000;
+    const timers = [];
+    const words = count => Array.from({length: count}, (_, index) => `w${index + 1}`).join(' ');
+
+    window.setTimeout = (fn, delay) => {
+      const id = nextId--;
+      timers.push({id, delay:Number(delay), fn, ran:false});
+      return id;
+    };
+    window.clearTimeout = id => {
+      const timer = timers.find(item => item.id === id);
+      if (timer) timer.ran = true;
+    };
+    try {
+      const short = DPIcons.toast(words(12), 'warning');
+      short.dataset.dpTimingProbe = 'short';
+      const long = DPIcons.toast(words(20), 'info');
+      long.dataset.dpTimingProbe = 'long';
+    } finally {
+      window.setTimeout = nativeSetTimeout;
+      window.clearTimeout = nativeClearTimeout;
+    }
+
+    window.__runToastTimers = cutoff => {
+      timers
+        .filter(timer => !timer.ran && timer.delay <= cutoff)
+        .sort((a, b) => a.delay - b.delay || b.id - a.id)
+        .forEach(timer => {
+          if (timer.ran) return;
+          timer.ran = true;
+          timer.fn();
+        });
+    };
+    window.__toastCapturedDelays = timers.map(timer => timer.delay).sort((a, b) => a - b);
+    return window.__toastCapturedDelays;
+  });
+  expect(captured).toEqual([2750, 3000, 4750, 5000]);
+
+  const short = page.locator('#toasts .toast[data-dp-timing-probe="short"]');
+  const long = page.locator('#toasts .toast[data-dp-timing-probe="long"]');
+  await expect(short).toHaveAttribute('role', 'alert');
+  await expect(short).toHaveAttribute('data-dp-toast-duration-ms', '3000');
+  await expect(short).toHaveAttribute('data-dp-toast-fade-at-ms', '2750');
+  await expect(long).toHaveAttribute('role', 'status');
+  await expect(long).toHaveAttribute('data-dp-toast-duration-ms', '5000');
+  await expect(long).toHaveAttribute('data-dp-toast-fade-at-ms', '4750');
+  await expect(short.locator('button, .dp-toast-dismiss, .dp-toast-close')).toHaveCount(0);
+  await expect(long.locator('button, .dp-toast-dismiss, .dp-toast-close')).toHaveCount(0);
+
+  const alignment = await long.evaluate(element => ({
+    alignItems:getComputedStyle(element).alignItems,
+    justifyContent:getComputedStyle(element).justifyContent,
+    textAlign:getComputedStyle(element).textAlign,
+  }));
+  expect(alignment).toEqual({alignItems:'center', justifyContent:'center', textAlign:'center'});
+
+  await page.evaluate(() => window.__runToastTimers(2750));
+  await expect(short).toHaveAttribute('data-dp-toast-fading', '1');
+  await expect(short).toHaveCount(1);
+  await expect(long).not.toHaveAttribute('data-dp-toast-fading', '1');
+
+  await page.evaluate(() => window.__runToastTimers(3000));
+  await expect(short).toHaveCount(0);
+  await expect(long).toHaveCount(1);
+
+  await page.evaluate(() => window.__runToastTimers(4750));
+  await expect(long).toHaveAttribute('data-dp-toast-fading', '1');
+  await expect(long).toHaveCount(1);
+
+  await page.evaluate(() => window.__runToastTimers(5000));
+  await expect(long).toHaveCount(0);
+  await page.evaluate(() => {
+    delete window.__runToastTimers;
+    delete window.__toastCapturedDelays;
+  });
 });
 
 test('desktop toast rectangle remains inside topbar safe lane and clear of rendered occupants after resize', async ({ page }) => {
@@ -78,17 +163,26 @@ test('desktop toast rectangle remains inside topbar safe lane and clear of rende
     const topbarRect = document.getElementById('topbar').getBoundingClientRect();
     const lane = DPIcons.toastSafeLane();
     const heading = document.querySelector('.dp-page-heading');
-    const candidates = [
-      ...Array.from(heading?.children || []),
+    const title = heading?.querySelector('#page-title');
+    const subtitle = heading?.querySelector('#page-subtitle');
+    const candidates = [];
+    if (title) candidates.push(title.getBoundingClientRect());
+    if (subtitle) {
+      const range = document.createRange();
+      range.selectNodeContents(subtitle);
+      const subtitleRect = range.getBoundingClientRect();
+      if (subtitleRect.width > 0 && subtitleRect.height > 0) candidates.push(subtitleRect);
+    }
+    [
       document.getElementById('update-badge'),
       document.getElementById('topbar-actions'),
       document.getElementById('aria2-speed-badge'),
       document.querySelector('.topbar-theme-control'),
-    ].filter(Boolean).filter(item => {
+    ].filter(Boolean).forEach(item => {
       const style = getComputedStyle(item);
       const box = item.getBoundingClientRect();
-      return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0;
-    }).map(item => item.getBoundingClientRect());
+      if (style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0) candidates.push(box);
+    });
     const overlaps = candidates.some(box => (
       rect.left < box.right && rect.right > box.left && rect.top < box.bottom && rect.bottom > box.top
     ));
@@ -99,8 +193,8 @@ test('desktop toast rectangle remains inside topbar safe lane and clear of rende
   expect(geometry.lane.narrow).toBe(false);
   expect(geometry.rect.left).toBeGreaterThanOrEqual(geometry.lane.left - 1);
   expect(geometry.rect.right).toBeLessThanOrEqual(geometry.lane.right + 1);
-  expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.topbarRect.top - 1);
-  expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.topbarRect.bottom + 1);
+  expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.lane.top - 1);
+  expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.lane.bottom + 1);
   expect(geometry.overlaps).toBe(false);
 
   await page.setViewportSize({width: 1180, height: 900});
@@ -109,8 +203,8 @@ test('desktop toast rectangle remains inside topbar safe lane and clear of rende
   expect(geometry.lane.narrow).toBe(false);
   expect(geometry.rect.left).toBeGreaterThanOrEqual(geometry.lane.left - 1);
   expect(geometry.rect.right).toBeLessThanOrEqual(geometry.lane.right + 1);
-  expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.topbarRect.top - 1);
-  expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.topbarRect.bottom + 1);
+  expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.lane.top - 1);
+  expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.lane.bottom + 1);
   expect(geometry.overlaps).toBe(false);
 });
 
@@ -170,12 +264,15 @@ test('toast visual checkpoints cover short, medium, multiline, and structured co
       const node = await create(page, message, name === 'structured' ? 'success' : 'info');
       const bounds = await node.evaluate(element => {
         const rect = element.getBoundingClientRect();
-        const topbar = document.getElementById('topbar').getBoundingClientRect();
-        return {rect, topbar};
+        const lane = DPIcons.toastSafeLane();
+        return {rect, lane};
       });
-      expect(bounds.rect.top).toBeGreaterThanOrEqual(bounds.topbar.top - 1);
-      expect(bounds.rect.bottom).toBeLessThanOrEqual(bounds.topbar.bottom + 1);
+      expect(bounds.rect.left).toBeGreaterThanOrEqual(bounds.lane.left - 1);
+      expect(bounds.rect.right).toBeLessThanOrEqual(bounds.lane.right + 1);
+      expect(bounds.rect.top).toBeGreaterThanOrEqual(bounds.lane.top - 1);
+      expect(bounds.rect.bottom).toBeLessThanOrEqual(bounds.lane.bottom + 1);
       await page.screenshot({path:`test-results/checkpoint-toast-${theme}-${name}.png`, fullPage:false});
     }
   }
+  await clearToasts(page);
 });
