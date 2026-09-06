@@ -46,13 +46,16 @@ class TransferEngine(_QualifiedTransferEngine):
         return locks.setdefault(transfer_id, asyncio.Lock())
 
     async def _ensure_collection_affinity(self, transfer_id: int) -> bool:
-        """Establish collection ownership before any sibling may resolve.
+        """Establish collection ownership before any direct-link sibling resolves.
 
-        Returns True only when specialized readiness is unresolved and the whole
-        collection must remain pending. The transfer-scoped lock prevents sibling
-        coroutines from racing the durable bind; the repository repeats the
-        history and compare/set checks transactionally for crash-safe authority.
+        Non-direct-link transfers return before taking the collection lock so the
+        correction cannot serialize qualified torrent/magnet/provider cohorts.
+        The transfer is re-read inside the lock before classification so a stale
+        precheck cannot create affinity after lifecycle state changes.
         """
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None or transfer.source != "direct_link":
+            return False
         async with self._collection_affinity_lock(transfer_id):
             transfer = await self.repository.get(transfer_id)
             if transfer is None or transfer.source != "direct_link":
@@ -82,12 +85,12 @@ class TransferEngine(_QualifiedTransferEngine):
         """Proactively bind or hold active direct-link collections for this cycle."""
         blocked: set[int] = set()
         for transfer in await self.repository.active():
-            if await self._ensure_collection_affinity(transfer.id):
+            if transfer.source == "direct_link" and await self._ensure_collection_affinity(transfer.id):
                 blocked.add(transfer.id)
         return blocked
 
     async def resolve_pending(self):
-        """Preflight collection affinity, then run the qualified resolution cycle."""
+        """Preflight collection affinity, run resolution, then aggregate direct links."""
         lock = getattr(self, "_collection_resolution_lock", None)
         if lock is None:
             lock = self._collection_resolution_lock = asyncio.Lock()
@@ -95,7 +98,14 @@ class TransferEngine(_QualifiedTransferEngine):
             blocked = await self._prepare_collection_affinity()
             self._collection_affinity_blocked = blocked
             try:
-                return await super().resolve_pending()
+                result = await super().resolve_pending()
+                # Request failure is provider-cadence state; aggregate it here for
+                # direct-link collections so an all-source terminal failure does
+                # not remain externally PENDING until an execution pass happens.
+                for transfer in await self.repository.active():
+                    if transfer.source == "direct_link":
+                        await self._aggregate(transfer.id)
+                return result
             finally:
                 self._collection_affinity_blocked = set()
 
