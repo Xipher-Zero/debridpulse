@@ -144,7 +144,10 @@ test('repair: Downloads pager current slot stays at footer center for one/first/
     const group = await page.locator('#torrent-page-btns').boundingBox();
     expect(Math.abs(center(footer) - center(current))).toBeLessThanOrEqual(1);
     expect(group.width).toBeLessThanOrEqual(116);
-    await expect(page.locator('#torrent-page-btns .dp-pager-placeholder')).not.toBeFocused();
+    const placeholdersAreInert = await page.locator('#torrent-page-btns .dp-pager-placeholder').evaluateAll(nodes => (
+      nodes.every(node => node.tabIndex < 0 && document.activeElement !== node)
+    ));
+    expect(placeholdersAreInert).toBe(true);
   }
 
   const relation = await page.evaluate(() => {

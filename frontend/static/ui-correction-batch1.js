@@ -394,8 +394,7 @@
     const head = table?.querySelector('thead');
     const rows = Array.from(table?.querySelectorAll('tbody tr[data-torrent-id]') || []);
     const pagination = document.getElementById('torrent-pagination');
-    const content = document.getElementById('content');
-    if (!view || !wrap || !table || !head || !rows.length || !pagination || !content) return null;
+    if (!view || !wrap || !table || !head || !rows.length || !pagination) return null;
 
     const heights = rows
       .map(row => row.getBoundingClientRect().height)
@@ -404,10 +403,8 @@
 
     const rowHeight = Math.max(...heights);
     const wrapRect = wrap.getBoundingClientRect();
-    const contentRect = content.getBoundingClientRect();
     const paginationHeight = pagination.getBoundingClientRect().height;
-    const viewportBottom = Math.min(window.innerHeight, contentRect.bottom);
-    const tableBudget = Math.max(0, viewportBottom - wrapRect.top - paginationHeight - 4);
+    const tableBudget = Math.max(0, window.innerHeight - wrapRect.top - paginationHeight - 4);
     const bodyBudget = Math.max(0, tableBudget - head.getBoundingClientRect().height);
     const fitted = Math.floor(bodyBudget / rowHeight);
     return Math.max(1, Math.min(100, fitted || 1));
@@ -422,26 +419,66 @@
     return true;
   }
 
+  function captureDownloadsFocus() {
+    const view = document.getElementById('view-torrents');
+    const active = document.activeElement;
+    if (!view || !active || active === document.body || !view.contains(active)) return null;
+    const row = active.closest('[data-torrent-id]');
+    return {
+      id: String(active.id || ''),
+      torrentId: String(row?.dataset?.torrentId || ''),
+      defaultLabel: String(active.getAttribute('data-default-label') || ''),
+      ariaLabel: String(active.getAttribute('aria-label') || ''),
+    };
+  }
+
+  function restoreDownloadsFocus(snapshot) {
+    if (!snapshot) return;
+    let target = snapshot.id ? document.getElementById(snapshot.id) : null;
+    if (!target && snapshot.torrentId) {
+      const row = document.querySelector(`#view-torrents [data-torrent-id="${CSS.escape(snapshot.torrentId)}"]`);
+      if (row && snapshot.defaultLabel) {
+        target = Array.from(row.querySelectorAll('[data-default-label]')).find(node => node.getAttribute('data-default-label') === snapshot.defaultLabel) || null;
+      }
+      if (!target && row && snapshot.ariaLabel) {
+        target = Array.from(row.querySelectorAll('[aria-label]')).find(node => node.getAttribute('aria-label') === snapshot.ariaLabel) || null;
+      }
+    }
+    if (target && target.isConnected && typeof target.focus === 'function') target.focus({preventScroll: true});
+  }
+
+  async function recalculateDownloadsCapacity() {
+    if (capacityBusy || !document.getElementById('view-torrents')?.classList.contains('active')) return false;
+    const measured = downloadPageSizeFromGeometry();
+    if (!setMeasuredPageSize(measured)) return false;
+    const focus = captureDownloadsFocus();
+    capacityBusy = true;
+    try {
+      await loadTorrents();
+    } finally {
+      capacityBusy = false;
+      restoreDownloadsFocus(focus);
+    }
+    return true;
+  }
+
   function scheduleCapacityCheck() {
     if (capacityTimer != null) window.clearTimeout(capacityTimer);
-    capacityTimer = window.setTimeout(async () => {
+    capacityTimer = window.setTimeout(() => {
       capacityTimer = null;
-      if (capacityBusy || !document.getElementById('view-torrents')?.classList.contains('active')) return;
-      const measured = downloadPageSizeFromGeometry();
-      if (!setMeasuredPageSize(measured)) return;
-      capacityBusy = true;
-      try {
-        await loadTorrents();
-      } finally {
-        capacityBusy = false;
-      }
+      recalculateDownloadsCapacity().catch(() => {});
     }, 120);
   }
 
   function correctedRenderTorrentPagination(total, limit, offset) {
     const normalizedTotal = Math.max(0, Number(total) || 0);
-    const normalizedLimit = Math.max(1, Number(limit) || 1);
-    const normalizedOffset = Math.max(0, Number(offset) || 0);
+    const measuredLimit = Math.max(1, Number(torrentPageSize) || 1);
+    const incomingLimit = Math.max(1, Number(limit) || measuredLimit);
+    const useMeasured = window.matchMedia(DESKTOP_QUERY).matches && measuredLimit < 15 && incomingLimit >= 15;
+    const normalizedLimit = useMeasured ? measuredLimit : incomingLimit;
+    const normalizedOffset = useMeasured
+      ? Math.max(0, (Math.max(1, Number(torrentPage) || 1) - 1) * normalizedLimit)
+      : Math.max(0, Number(offset) || 0);
     const totalPages = Math.max(1, Math.ceil(normalizedTotal / normalizedLimit));
     const current = Math.min(totalPages, Math.floor(normalizedOffset / normalizedLimit) + 1);
     torrentPage = current;
@@ -486,12 +523,27 @@
     loadTorrents = async function () {
       const previousFmtDate = fmtDate;
       fmtDate = downloadsDateMarkup;
+      let focus = null;
       try {
-        return await canonicalLoadTorrents.apply(this, arguments);
+        let result = await canonicalLoadTorrents.apply(this, arguments);
+        ensureDateMenu();
+        if (!capacityBusy && document.getElementById('view-torrents')?.classList.contains('active')) {
+          const measured = downloadPageSizeFromGeometry();
+          if (setMeasuredPageSize(measured)) {
+            focus = captureDownloadsFocus();
+            capacityBusy = true;
+            try {
+              result = await canonicalLoadTorrents.apply(this, arguments);
+              ensureDateMenu();
+            } finally {
+              capacityBusy = false;
+              restoreDownloadsFocus(focus);
+            }
+          }
+        }
+        return result;
       } finally {
         fmtDate = previousFmtDate;
-        ensureDateMenu();
-        scheduleCapacityCheck();
       }
     };
   } catch (_) {}
@@ -582,7 +634,6 @@
     if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleCapacityCheck, {passive: true});
     document.addEventListener('debridpulse:settings-rendered', patchSettingsTerminology);
     document.addEventListener('debridpulse:dashboard-recent-rendered', removeImportAction);
-    document.addEventListener('debridpulse:downloads-selection-changed', scheduleCapacityCheck);
     document.addEventListener('debridpulse:navigation', event => {
       if (event.detail?.view === 'torrents') {
         observeDownloadsGeometry();
@@ -599,6 +650,6 @@
     sourceIconMarkup,
     formatDownloadsDate,
     toastDuration,
-    recalculateDownloadsCapacity: scheduleCapacityCheck,
+    recalculateDownloadsCapacity,
   });
 })();
