@@ -88,3 +88,16 @@
 
   document.addEventListener('debridpulse:settings-rendered', scheduleApply);
 })();
+
+/* Batch 1 final behavior is intentionally loaded after all Settings runtimes so
+ * it can retire the last ADC-era interactions without reopening canonical page
+ * ownership. */
+(function loadBatch1FinalRuntime() {
+  'use strict';
+  if (document.getElementById('dp-ui-correction-batch1-final-script') || window.DPUICorrectionBatch1Final) return;
+  const script = document.createElement('script');
+  script.id = 'dp-ui-correction-batch1-final-script';
+  script.src = '/ui-correction-batch1-final.js?v=1';
+  script.defer = true;
+  document.head.appendChild(script);
+})();
