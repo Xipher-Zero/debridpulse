@@ -10,6 +10,9 @@
   let latestDetail = null;
   let providerNames = new Map();
   let refreshQueued = false;
+  let filesPointerActive = false;
+  let deferredDetail = null;
+  let deferredFrame = 0;
 
   function html(value) {
     if (typeof window.esc === 'function') return window.esc(value);
@@ -109,19 +112,6 @@
     }).join('');
   }
 
-  function render(detail) {
-    if (!detail || !Array.isArray(detail.files)) return;
-    const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
-    if (!tbody) return;
-    const valid = new Set(detail.files.map(function (file) { return String(file.id); }));
-    Array.from(expandedArtifacts).forEach(function (id) {
-      if (!valid.has(id) || Number((detail.files.find(function (file) { return String(file.id) === id; }) || {}).candidate_count || 0) <= 1) {
-        expandedArtifacts.delete(id);
-      }
-    });
-    tbody.innerHTML = rows(detail.files);
-  }
-
   function fileForArtifact(artifactId) {
     if (!latestDetail || !Array.isArray(latestDetail.files)) return null;
     return latestDetail.files.find(function (file) {
@@ -144,8 +134,7 @@
 
     const existing = owner.parentElement
       ? owner.parentElement.querySelector(
-        'tr.dp-detail-candidate-row[data-dp-candidate-owner="' +
-        CSS.escape(artifactId) + '"]'
+        'tr.dp-detail-candidate-row[data-dp-candidate-owner="' + CSS.escape(artifactId) + '"]'
       )
       : null;
 
@@ -156,23 +145,73 @@
     if (existing) existing.remove();
   }
 
-  function onCandidateClick(event) {
-    const target = event.target instanceof Element ? event.target : null;
-    const control = target ? target.closest('.dp-detail-candidate-disclosure') : null;
-    if (!control || !control.closest('#modal-body')) return;
-
-    const artifactId = String(control.dataset.dpArtifactId || '');
+  function activateDisclosure(control) {
+    const artifactId = String(control && control.dataset.dpArtifactId || '');
     const file = fileForArtifact(artifactId);
     if (!artifactId || !file || Number(file.candidate_count || 0) <= 1) return;
 
-    const open = !expandedArtifacts.has(artifactId);
+    // DOM state is authoritative for this native control. The Set is only the
+    // refresh projection, so stale asynchronous state cannot consume a real
+    // pointer or keyboard activation.
+    const open = control.getAttribute('aria-expanded') !== 'true';
     if (open) expandedArtifacts.add(artifactId);
     else expandedArtifacts.delete(artifactId);
 
-    // Keep the clicked button and unrelated Details rows alive for the entire
-    // native pointer/click dispatch. Candidates is an inline disclosure, not a
-    // nested modal or document-global interaction mode.
+    // This is deliberately an in-place row update. Do not replace the Files
+    // tbody during the pointer/click dispatch that activated this control.
     updateDisclosure(control, file, open);
+  }
+
+  function bindDisclosure(control) {
+    if (!control || control.dataset.dpCandidateBound === '1') return;
+    control.addEventListener('click', function () {
+      activateDisclosure(control);
+    });
+    control.dataset.dpCandidateBound = '1';
+  }
+
+  function bindDisclosures() {
+    document.querySelectorAll('#modal-body .dp-detail-candidate-disclosure').forEach(bindDisclosure);
+  }
+
+  function renderNow(detail) {
+    if (!detail || !Array.isArray(detail.files)) return;
+    const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
+    if (!tbody) return;
+    const valid = new Set(detail.files.map(function (file) { return String(file.id); }));
+    Array.from(expandedArtifacts).forEach(function (id) {
+      if (!valid.has(id) || Number((detail.files.find(function (file) { return String(file.id) === id; }) || {}).candidate_count || 0) <= 1) {
+        expandedArtifacts.delete(id);
+      }
+    });
+    tbody.innerHTML = rows(detail.files);
+    bindDisclosures();
+  }
+
+  function render(detail) {
+    if (filesPointerActive) {
+      deferredDetail = detail;
+      return;
+    }
+    deferredDetail = null;
+    renderNow(detail);
+  }
+
+  function flushDeferredRender() {
+    if (filesPointerActive || !deferredDetail) return;
+    const detail = deferredDetail;
+    deferredDetail = null;
+    renderNow(detail);
+  }
+
+  function releaseFilesPointer() {
+    if (!filesPointerActive) return;
+    filesPointerActive = false;
+    if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
+    deferredFrame = window.requestAnimationFrame(function () {
+      deferredFrame = 0;
+      flushDeferredRender();
+    });
   }
 
   async function fetchPresentation(id) {
@@ -207,6 +246,7 @@
       if (activeTransferId !== transferId) expandedArtifacts.clear();
       activeTransferId = transferId;
       latestDetail = null;
+      deferredDetail = null;
       const result = await originalShowDetail.apply(this, arguments);
       try {
         await fetchPresentation(transferId);
@@ -224,6 +264,10 @@
         expandedArtifacts.clear();
         activeTransferId = null;
         latestDetail = null;
+        deferredDetail = null;
+        filesPointerActive = false;
+        if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
+        deferredFrame = 0;
         return originalCloseModal.apply(this, arguments);
       };
       closeWrapped.dpCandidateWrapped = true;
@@ -231,10 +275,15 @@
     }
 
     const modalBody = document.getElementById('modal-body');
-    if (modalBody && modalBody.dataset.dpCandidateClickOwner !== '1') {
-      modalBody.addEventListener('click', onCandidateClick);
-      modalBody.dataset.dpCandidateClickOwner = '1';
+    if (modalBody && modalBody.dataset.dpCandidatePointerGuard !== '1') {
+      modalBody.addEventListener('pointerdown', function (event) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target && target.closest('.dp-detail-files-card')) filesPointerActive = true;
+      });
+      modalBody.dataset.dpCandidatePointerGuard = '1';
     }
+    document.addEventListener('pointerup', releaseFilesPointer);
+    document.addEventListener('pointercancel', releaseFilesPointer);
 
     document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);

@@ -436,7 +436,7 @@ async def test_same_source_scope_key_does_not_collapse_distinct_inputs(core):
 
 
 @pytest.mark.asyncio
-async def test_near_size_mirrors_are_independent_before_sampling(core):
+async def test_near_size_mirrors_require_sampling_before_consolidation(core):
     from unittest.mock import AsyncMock
     first = replace(core.provider.candidate("same.bin"), expected_bytes=1000, source_identity=SourceIdentity("host", "one"))
     second = replace(core.provider.candidate("same.bin"), expected_bytes=1001, source_identity=SourceIdentity("host", "two"))
@@ -445,9 +445,10 @@ async def test_near_size_mirrors_are_independent_before_sampling(core):
     transfer = await core.engine.submit((TransferRequest("parcel", "one"), TransferRequest("parcel", "two")))
     await core.engine.tick()
     artifacts = await core.repository.artifacts(transfer.id)
-    assert len(artifacts) == 2
-    assert artifacts[0].target != artifacts[1].target
-    assert core.executor.fingerprint.await_count == 0
+    assert len(artifacts) == 1
+    assert len(artifacts[0].candidates) == 2
+    assert len([item for item in core.executor.calls if item[0] == "start"]) == 1
+    assert core.executor.fingerprint.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -511,10 +512,10 @@ async def test_resolution_retry_budget_and_zero_delay_drive_actual_attempts(core
 @pytest.mark.parametrize("left_size,right_size,expected", [
     (0, 0, False),
     (1000, 1000, True),
-    (1000, 1001, False),
+    (1000, 1001, True),
     (1000, 1002, False),
     (1024**4, 1024**4, True),
-    (1024**4, 1024**4 + 512 * 1024**2, False),
+    (1024**4, 1024**4 + 512 * 1024**2, True),
     (1024**4, 1024**4 + 512 * 1024**2 + 1, False),
 ])
 def test_mirror_size_boundaries_are_conservative(left_size, right_size, expected):

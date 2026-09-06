@@ -156,12 +156,23 @@
     host.style.top = toastDeadspaceAnchor() + 'px';
 
     if (window.matchMedia('(max-width: 700px)').matches) {
-      const primary = host.lastElementChild;
-      const height = primary instanceof HTMLElement ? primary.getBoundingClientRect().height : 0;
-      host.style.transform = 'translateX(-50%) translateY(' + (height ? '0' : '-50%') + ')';
+      host.style.transform = 'translateX(-50%)';
     } else {
       host.style.transform = 'translate(-50%, -50%)';
     }
+  }
+
+  function normalizeToastNode(node) {
+    if (!(node instanceof HTMLElement) || !node.classList.contains('toast')) return;
+    // The host itself is intentionally pointer-transparent so empty lane space
+    // never blocks the application. Individual notifications remain fully
+    // interactive for hover/focus pause and explicit dismissal.
+    node.style.pointerEvents = 'auto';
+    node.style.position = 'relative';
+    // The legacy corner entrance animation translates each card on X. That
+    // makes a centered host measurably off-center during the entrance interval.
+    // Placement now owns the transition, so suppress only that obsolete motion.
+    node.style.animation = 'none';
   }
 
   function ensureToastHost() {
@@ -180,12 +191,21 @@
     host.style.maxWidth = 'calc(100vw - 32px)';
     host.style.pointerEvents = 'none';
 
+    Array.from(host.children).forEach(normalizeToastNode);
+
     if (host.dataset.dpToastLaneBound !== '1') {
       const update = function () {
         window.requestAnimationFrame(updateToastHostPosition);
       };
       window.addEventListener('resize', update);
       document.addEventListener('debridpulse:navigation', update);
+      const observer = new MutationObserver(function (records) {
+        records.forEach(function (record) {
+          Array.from(record.addedNodes).forEach(normalizeToastNode);
+        });
+        update();
+      });
+      observer.observe(host, {childList: true});
       host.dataset.dpToastLaneBound = '1';
     }
     updateToastHostPosition();
@@ -204,6 +224,7 @@
     toast.style.whiteSpace = 'normal';
     toast.style.pointerEvents = 'auto';
     toast.style.position = 'relative';
+    toast.style.animation = 'none';
     toast.setAttribute('role', tone === 'error' ? 'alert' : 'status');
     toast.innerHTML = lucideSvg(TOAST_ICON[tone] || 'info', 'dp-toast-icon');
     if (message && typeof message === 'object' && message.title && message.body) {
