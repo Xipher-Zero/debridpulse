@@ -42,7 +42,7 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "/ui-foundation.css?v=20",
         "/ui-components.css?v=20",
         "/ui-universal-language.css?v=20",
-        "/ui-shared-contract.css?v=31",
+        "/ui-shared-contract.css?v=32",
         "/ui-modal-contract.css?v=25",
         "/ui-shell.css?v=21",
         "/ui-shell-structural.css?v=30",
@@ -93,7 +93,7 @@ def test_v11_cache_generations_remain_targeted() -> None:
     generations = dict(re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay))
     expected = {
         "/ui-language-tokens.css": "21",
-        "/ui-shared-contract.css": "31",
+        "/ui-shared-contract.css": "32",
         "/ui-modal-contract.css": "25",
         "/ui-shell.css": "21",
         "/ui-shell-structural.css": "30",

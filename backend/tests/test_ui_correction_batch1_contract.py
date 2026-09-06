@@ -59,7 +59,8 @@ def test_batch1_runtime_and_styles_are_wired_through_canonical_assets():
     assert "width: 136px" in batch_css
     assert "canonicalLoadTorrents" in runtime
     assert "correctedLoadTorrents" not in runtime
-    assert "dp-toast-copy" in runtime
+    assert "window.DPIcons.toast" in runtime
+    assert "dp-toast-copy" not in runtime
 
     assert "Math.min(Math.max(parseInt(v)||25,1),100)" in app
     assert "Math.min(Math.max(parseInt(torrentPageSize)||25,1),100)" in app

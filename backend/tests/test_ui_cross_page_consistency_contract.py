@@ -76,7 +76,7 @@ def test_quick_add_focus_resets_to_universal_field_language() -> None:
 
 def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
     overlay = read_static("style-v11.css")
-    shared = overlay.index("/ui-shared-contract.css?v=31")
+    shared = overlay.index("/ui-shared-contract.css?v=32")
     shell = overlay.index("/ui-shell.css?v=21")
     provider = overlay.index("/ui-shell-provider-status.css?v=24")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
@@ -87,14 +87,18 @@ def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
     assert shared < shell < provider < dashboard < downloads < transfer < visual < signal
 
 
-def test_global_toast_uses_one_footer_safe_anchor_across_pages() -> None:
+def test_global_toast_uses_one_topbar_safe_anchor_across_pages() -> None:
     shared = read_static("ui-shared-contract.css")
-    toast = shared[shared.index("/* Global toast position") :]
+    toast = read_static("ui-toast-contract.css")
+    operator = read_static("operator-title.js")
 
-    assert "--dp-toast-bottom-offset: 96px;" in toast
+    assert "--dp-toast-bottom-offset" not in shared
+    assert "bottom: var(--dp-toast-bottom-offset);" not in shared
     assert "body.dp-v11-structural #toasts" in toast
-    assert "bottom: var(--dp-toast-bottom-offset);" in toast
-    assert "@media (max-width: 900px)" in toast
-    assert "--dp-toast-bottom-offset: 160px;" in toast
+    assert "bottom: auto !important;" in toast
+    assert "pointer-events: none;" in toast
+    assert "function toastSafeLane()" in operator
+    assert "function updateToastHostPosition()" in operator
+    assert "const desiredTop = lane.top + ((lane.bottom - lane.top) - renderedRect.height) / 2;" in operator
     assert "#view-settings" not in toast
     assert ".active" not in toast
