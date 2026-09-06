@@ -73,11 +73,16 @@ def test_archive_passwords_use_reviewed_click_reveal_contract_without_secret_reg
     assert '@router.get("/settings/extraction-passwords")' in validation
     assert 'return {"passwords": str(get_settings().extraction_password or "")}' in validation
 
+    # The normal settings payload remains redacted server-side. Plaintext from
+    # the dedicated editor endpoint stays in module-local extractionPasswords
+    # state and is never copied into the global settingsData payload.
     assert '"extraction_password",' in routes
     assert 'data[f"{field}_configured"]' in routes
     assert 'data[field] = ""' in routes
-    assert "redactExtractionPasswordSettings" in runtime
-    assert "delete settingsData.extraction_password" in runtime
+    assert "const payload = await api('GET', '/settings/extraction-passwords');" in runtime
+    assert "extractionPasswords.values = normalizePasswordLines(payload?.passwords || '');" in runtime
+    assert "settingsData.extraction_password =" not in runtime
+    assert "settingsData.extraction_password =" not in final
 
     assert "api('GET', '/settings/extraction-passwords')" in runtime
     assert "Archive Passwords (one per line)" in runtime

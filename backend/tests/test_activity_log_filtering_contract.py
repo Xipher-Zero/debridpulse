@@ -91,7 +91,7 @@ async def test_activity_log_metadata_reports_only_actual_truncation(monkeypatch)
 def test_activity_log_timeframe_api_matches_reviewed_filter_set():
     source = (ROOT / "backend" / "api" / "operational_downloads.py").read_text(encoding="utf-8")
     assert 'EventTimeframe = Literal["all", "1h", "24h", "7d", "30d"]' in source
-    assert 'limit: int = Query(200, ge=1, le=500)' in source
+    assert 'limit: Annotated[int, Query(ge=1, le=500)] = 200' in source
     assert 'include_meta: bool = False' in source
     assert 'instr(LOWER(COALESCE(e.message, \'\')), ?) > 0' in source
     assert 'instr(LOWER(COALESCE(t.name, \'\')), ?) > 0' in source

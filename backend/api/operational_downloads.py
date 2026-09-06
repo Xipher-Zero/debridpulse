@@ -11,7 +11,7 @@ removed from the generic router at import time so /api/events keeps one owner.
 The default response remains the historical JSON list; the UI opts into metadata
 when it needs an explicit truncation signal.
 """
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -47,7 +47,7 @@ async def list_activity_events(
     search: Optional[str] = None,
     level: Optional[EventLevel] = None,
     timeframe: EventTimeframe = "all",
-    limit: int = Query(200, ge=1, le=500),
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
     include_meta: bool = False,
 ):
     """Return newest matching events with filters applied before LIMIT.
