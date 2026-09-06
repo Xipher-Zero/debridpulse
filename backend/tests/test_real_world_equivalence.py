@@ -65,7 +65,7 @@ async def submit_batch(pair, provider, prefix):
     return await pair.engine.submit(requests, name=prefix, deduplicate=False)
 
 
-def test_exact_known_size_is_a_hard_pairing_rule():
+def test_known_sizes_use_bounded_reported_size_compatibility():
     provider = ParcelProvider()
     base = provider.candidate("same.bin")
     left = replace(base, expected_bytes=1000, source_identity=SourceIdentity("host", "one"))
@@ -73,10 +73,13 @@ def test_exact_known_size_is_a_hard_pairing_rule():
                    source_identity=SourceIdentity("host", "two"))
     near = replace(provider.candidate("same.bin"), expected_bytes=1001,
                    source_identity=SourceIdentity("host", "three"))
+    outside = replace(provider.candidate("same.bin"), expected_bytes=1002,
+                      source_identity=SourceIdentity("host", "outside"))
     unknown = replace(provider.candidate("same.bin"), expected_bytes=0,
                       source_identity=SourceIdentity("host", "four"))
     assert comparable(left, same)
-    assert not comparable(left, near)
+    assert comparable(left, near)
+    assert not comparable(left, outside)
     assert not comparable(left, unknown)
 
 

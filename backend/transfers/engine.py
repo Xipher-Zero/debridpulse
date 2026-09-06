@@ -149,12 +149,13 @@ class TransferEngine(_QualifiedTransferEngine):
         return bool(provider and provider.descriptor.enabled)
 
     async def _materialize(self, record, candidates):
-        """Coordinate cohort proof, then preserve qualified materialization.
+        """Coordinate cohort proof and first canonical creation atomically.
 
         Weak-prefix collection candidates are held only at the existing durable
-        MATERIALIZING seam. Related requests share a small in-memory lock so
-        sibling proof cannot race itself, while unrelated transfers and all
-        canonical/path ownership locks remain independent of remote sampling.
+        MATERIALIZING seam. Related requests share a small per-transfer lock so
+        sibling proof and initial canonical allocation cannot race each other,
+        while unrelated transfers and canonical/path ownership locks remain
+        independent.
         """
         locks = getattr(self, "_cohort_locks", None)
         if locks is None:
@@ -164,16 +165,16 @@ class TransferEngine(_QualifiedTransferEngine):
             if await coordinate_collection(self, record, candidates):
                 return
 
-        await super()._materialize(record, candidates)
-        artifact = next(
-            (item for item in await self.repository.artifacts(record.transfer_id)
-             if item.request_id == record.id),
-            None,
-        )
-        if artifact is None or len(artifact.candidates) < 2:
-            return
-        for candidate in artifact.candidates:
-            await self.canonical.origin_for(artifact, candidate)
+            await super()._materialize(record, candidates)
+            artifact = next(
+                (item for item in await self.repository.artifacts(record.transfer_id)
+                 if item.request_id == record.id),
+                None,
+            )
+            if artifact is None or len(artifact.candidates) < 2:
+                return
+            for candidate in artifact.candidates:
+                await self.canonical.origin_for(artifact, candidate)
 
     async def _next_alternate_index(self, artifact: Artifact) -> int | None:
         """Return the next ordered, provenance-bound, currently executable alternate."""
