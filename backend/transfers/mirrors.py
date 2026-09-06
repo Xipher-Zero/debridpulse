@@ -18,6 +18,8 @@ _NONPAIRING_REASONS = frozenset({
     "same_candidate", "non_independent_source", "logical_pairing_mismatch", "size_unknown",
     "size_disagreement", "sample_mismatch", "integrity_mismatch",
 })
+_REPORTED_SIZE_RELATIVE_SCALE = 1000
+_REPORTED_SIZE_MAX_DELTA_BYTES = 512 * 1024 * 1024
 
 
 class EvidenceKind(str):
@@ -111,6 +113,42 @@ def _source_key(candidate):
     return "candidate", str(candidate.id)
 
 
+def _known_positive_size(value) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def reported_sizes_compatible(left_size, right_size) -> bool:
+    """Return whether two known positive reported sizes are plausibly equivalent.
+
+    This is deliberately only a pairing/plausibility rule. Identity still
+    requires canonical strong integrity or bounded content evidence.
+    """
+    left = _known_positive_size(left_size)
+    right = _known_positive_size(right_size)
+    if left is None or right is None:
+        return False
+    delta = abs(left - right)
+    larger = max(left, right)
+    return (
+        delta * _REPORTED_SIZE_RELATIVE_SCALE <= larger
+        and delta <= _REPORTED_SIZE_MAX_DELTA_BYTES
+    )
+
+
+def _sample_size_compatible_with_reports(actual_size, left, right) -> bool:
+    actual = _known_positive_size(actual_size)
+    if actual is None:
+        return False
+    return (
+        reported_sizes_compatible(actual, left.expected_bytes)
+        and reported_sizes_compatible(actual, right.expected_bytes)
+    )
+
+
 def pairing_failure(left, right) -> str:
     """Return the exact cheap pairing rejection reason; empty means pairable."""
     if str(left.id) == str(right.id):
@@ -119,15 +157,15 @@ def pairing_failure(left, right) -> str:
         return "non_independent_source"
     if not logical_key(left) or logical_key(left) != logical_key(right):
         return "logical_pairing_mismatch"
-    if left.expected_bytes <= 0 or right.expected_bytes <= 0:
+    if _known_positive_size(left.expected_bytes) is None or _known_positive_size(right.expected_bytes) is None:
         return "size_unknown"
-    if left.expected_bytes != right.expected_bytes:
+    if not reported_sizes_compatible(left.expected_bytes, right.expected_bytes):
         return "size_disagreement"
     return ""
 
 
 def comparable(left, right):
-    """Cheap exact pairing prefilter only; this never proves equivalence by itself."""
+    """Cheap bounded pairing prefilter only; this never proves equivalence by itself."""
     return not pairing_failure(left, right)
 
 
@@ -164,15 +202,24 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
     pair_reason = pairing_failure(left, right)
     if pair_reason:
         return _diagnose(left, right, _unavailable(pair_reason), pair_reason)
-    size = left.expected_bytes
+
+    # Preserve the established canonical side's report when integrity itself is
+    # the proof. A content fingerprint, when available, replaces this with the
+    # discovered payload size below.
+    canonical_reported_size = int(left.expected_bytes)
     left_integrity = _strong_integrity(left)
     right_integrity = _strong_integrity(right)
     if left_integrity & right_integrity:
-        return _diagnose(left, right, EquivalenceEvidence(EvidenceKind.STRONG_INTEGRITY, size))
+        return _diagnose(
+            left,
+            right,
+            EquivalenceEvidence(EvidenceKind.STRONG_INTEGRITY, canonical_reported_size),
+        )
     left_by_algorithm = {algorithm for algorithm, _ in left_integrity}
     right_by_algorithm = {algorithm for algorithm, _ in right_integrity}
     if left_by_algorithm & right_by_algorithm:
         return _diagnose(left, right, _unavailable("integrity_mismatch"))
+
     try:
         first, second = registry.executor_for(left), registry.executor_for(right)
         if not isinstance(first, CandidateSampling) or not isinstance(second, CandidateSampling):
@@ -190,12 +237,25 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
             return _diagnose(left, right, _unavailable(str(getattr(a, "reason", "") or "sampler_unavailable")))
         if b_kind == FingerprintKind.UNAVAILABLE.value:
             return _diagnose(left, right, _unavailable(str(getattr(b, "reason", "") or "sampler_unavailable")))
-        if a.total_bytes != size or b.total_bytes != size:
+
+        # Fingerprinting supplies a discovered payload size. It must remain
+        # plausible against both pre-download reports, and two independently
+        # sampled representations must agree on the actual payload length.
+        if (
+            not _sample_size_compatible_with_reports(a.total_bytes, left, right)
+            or not _sample_size_compatible_with_reports(b.total_bytes, left, right)
+            or int(a.total_bytes) != int(b.total_bytes)
+        ):
             return _diagnose(left, right, _unavailable("size_disagreement"))
+        actual_size = int(a.total_bytes)
 
         if a_kind == FingerprintKind.FULL_CONTENT_SAMPLE.value and b_kind == FingerprintKind.FULL_CONTENT_SAMPLE.value:
             if str(a.signature).strip() and a.signature == b.signature:
-                return _diagnose(left, right, EquivalenceEvidence(EvidenceKind.FULL_CONTENT_SAMPLE, size))
+                return _diagnose(
+                    left,
+                    right,
+                    EquivalenceEvidence(EvidenceKind.FULL_CONTENT_SAMPLE, actual_size),
+                )
             return _diagnose(left, right, _unavailable("sample_mismatch"))
 
         a_prefix = str(getattr(a, "prefix_signature", "") or (
@@ -204,7 +264,11 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
             b.signature if b_kind == FingerprintKind.PREFIX_CONTENT_SAMPLE.value else ""))
         if a_prefix and a_prefix == b_prefix:
             reason = str(getattr(a, "reason", "") or getattr(b, "reason", "") or "range_ignored")
-            return _diagnose(left, right, EquivalenceEvidence(EvidenceKind.PREFIX_CONTENT_SAMPLE, size, reason))
+            return _diagnose(
+                left,
+                right,
+                EquivalenceEvidence(EvidenceKind.PREFIX_CONTENT_SAMPLE, actual_size, reason),
+            )
         return _diagnose(left, right, _unavailable("sample_mismatch"))
     except TimeoutError:
         return _diagnose(left, right, _unavailable("timeout"))

@@ -88,19 +88,24 @@
     return '';
   }
 
+  function candidateRow(file) {
+    const artifactId = String(file.id);
+    const detailsId = 'dp-detail-candidates-' + artifactId;
+    return '<tr class="dp-detail-candidate-row" data-dp-candidate-owner="' + html(artifactId) + '">' +
+      '<td colspan="3"><div id="' + html(detailsId) + '" class="dp-detail-candidate-panel">' +
+      candidateList(file) + '</div></td></tr>';
+  }
+
   function rows(files) {
     return files.map(function (file) {
       const artifactId = String(file.id);
       const open = expandedArtifacts.has(artifactId) && Number(file.candidate_count || 0) > 1;
-      const detailsId = 'dp-detail-candidates-' + artifactId;
       const main = '<tr class="dp-detail-file-row" data-dp-artifact-id="' + html(artifactId) + '">' +
         '<td class="dp-detail-filename"><div class="dp-detail-filename-line"><span class="dp-detail-filename-copy">' + html(file.filename) + '</span>' +
         disclosure(file) + '</div>' + blockedPresentation(file) + '</td>' +
         '<td class="sz">' + fileSize(file.size_bytes) + '</td>' +
         '<td>' + fileStatus(file) + '</td></tr>';
-      if (!open) return main;
-      return main + '<tr class="dp-detail-candidate-row" data-dp-candidate-owner="' + html(artifactId) + '">' +
-        '<td colspan="3"><div id="' + html(detailsId) + '" class="dp-detail-candidate-panel">' + candidateList(file) + '</div></td></tr>';
+      return open ? main + candidateRow(file) : main;
     }).join('');
   }
 
@@ -115,6 +120,59 @@
       }
     });
     tbody.innerHTML = rows(detail.files);
+  }
+
+  function fileForArtifact(artifactId) {
+    if (!latestDetail || !Array.isArray(latestDetail.files)) return null;
+    return latestDetail.files.find(function (file) {
+      return String(file.id) === String(artifactId);
+    }) || null;
+  }
+
+  function updateDisclosure(control, file, open) {
+    const artifactId = String(file.id);
+    const count = Number(file.candidate_count || 0);
+    const filename = String(file.filename || 'artifact');
+    const owner = control.closest('tr.dp-detail-file-row');
+    if (!owner) return;
+
+    control.setAttribute('aria-expanded', open ? 'true' : 'false');
+    control.setAttribute(
+      'aria-label',
+      (open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename
+    );
+
+    const existing = owner.parentElement
+      ? owner.parentElement.querySelector(
+        'tr.dp-detail-candidate-row[data-dp-candidate-owner="' +
+        CSS.escape(artifactId) + '"]'
+      )
+      : null;
+
+    if (open) {
+      if (!existing) owner.insertAdjacentHTML('afterend', candidateRow(file));
+      return;
+    }
+    if (existing) existing.remove();
+  }
+
+  function onCandidateClick(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const control = target ? target.closest('.dp-detail-candidate-disclosure') : null;
+    if (!control || !control.closest('#modal-body')) return;
+
+    const artifactId = String(control.dataset.dpArtifactId || '');
+    const file = fileForArtifact(artifactId);
+    if (!artifactId || !file || Number(file.candidate_count || 0) <= 1) return;
+
+    const open = !expandedArtifacts.has(artifactId);
+    if (open) expandedArtifacts.add(artifactId);
+    else expandedArtifacts.delete(artifactId);
+
+    // Keep the clicked button and unrelated Details rows alive for the entire
+    // native pointer/click dispatch. Candidates is an inline disclosure, not a
+    // nested modal or document-global interaction mode.
+    updateDisclosure(control, file, open);
   }
 
   async function fetchPresentation(id) {
@@ -172,18 +230,11 @@
       window.closeModal = closeWrapped;
     }
 
-    document.addEventListener('click', function (event) {
-      const target = event.target instanceof Element ? event.target : null;
-      const control = target ? target.closest('.dp-detail-candidate-disclosure') : null;
-      if (!control) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const artifactId = String(control.dataset.dpArtifactId || '');
-      if (!artifactId) return;
-      if (expandedArtifacts.has(artifactId)) expandedArtifacts.delete(artifactId);
-      else expandedArtifacts.add(artifactId);
-      if (latestDetail) render(latestDetail);
-    }, true);
+    const modalBody = document.getElementById('modal-body');
+    if (modalBody && modalBody.dataset.dpCandidateClickOwner !== '1') {
+      modalBody.addEventListener('click', onCandidateClick);
+      modalBody.dataset.dpCandidateClickOwner = '1';
+    }
 
     document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);

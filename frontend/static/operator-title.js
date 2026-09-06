@@ -112,13 +112,99 @@
     button.dataset.defaultLabel = copy;
   }
 
-  function canonicalToast(message, type) {
+  function visibleTopbarContentBottom(topbar) {
+    const children = Array.from(topbar.children).filter(function (element) {
+      if (!(element instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(element);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+    const bottoms = children.map(function (element) {
+      return element.getBoundingClientRect().bottom;
+    }).filter(Number.isFinite);
+    return bottoms.length ? Math.max.apply(null, bottoms) : topbar.getBoundingClientRect().bottom;
+  }
+
+  function toastDeadspaceAnchor() {
+    const topbar = document.getElementById('topbar');
+    const content = document.getElementById('content');
+    if (!topbar || !content) return 64;
+
+    const topbarRect = topbar.getBoundingClientRect();
+    const activeView = content.querySelector(':scope > .view.active');
+    const contentStyle = window.getComputedStyle(content);
+    const contentTop = activeView
+      ? activeView.getBoundingClientRect().top
+      : topbarRect.bottom + (parseFloat(contentStyle.paddingTop) || 0);
+
+    if (window.matchMedia('(max-width: 700px)').matches) {
+      // Narrow layouts have little inter-surface deadspace. Keep notifications
+      // below the header controls rather than centering them over those controls.
+      return topbarRect.bottom + 8;
+    }
+
+    const controlsBottom = Math.min(
+      topbarRect.bottom,
+      Math.max(topbarRect.top, visibleTopbarContentBottom(topbar))
+    );
+    const lower = Math.max(topbarRect.bottom, contentTop);
+    return controlsBottom + Math.max(0, lower - controlsBottom) / 2;
+  }
+
+  function updateToastHostPosition() {
     const host = document.getElementById('toasts');
+    if (!host) return;
+    host.style.top = toastDeadspaceAnchor() + 'px';
+
+    if (window.matchMedia('(max-width: 700px)').matches) {
+      const primary = host.lastElementChild;
+      const height = primary instanceof HTMLElement ? primary.getBoundingClientRect().height : 0;
+      host.style.transform = 'translateX(-50%) translateY(' + (height ? '0' : '-50%') + ')';
+    } else {
+      host.style.transform = 'translate(-50%, -50%)';
+    }
+  }
+
+  function ensureToastHost() {
+    const host = document.getElementById('toasts');
+    if (!host) return null;
+    host.style.position = 'fixed';
+    host.style.left = '50vw';
+    host.style.right = 'auto';
+    host.style.bottom = 'auto';
+    host.style.zIndex = '1000';
+    host.style.display = 'flex';
+    host.style.flexDirection = 'column';
+    host.style.alignItems = 'center';
+    host.style.gap = '8px';
+    host.style.width = 'max-content';
+    host.style.maxWidth = 'calc(100vw - 32px)';
+    host.style.pointerEvents = 'none';
+
+    if (host.dataset.dpToastLaneBound !== '1') {
+      const update = function () {
+        window.requestAnimationFrame(updateToastHostPosition);
+      };
+      window.addEventListener('resize', update);
+      document.addEventListener('debridpulse:navigation', update);
+      host.dataset.dpToastLaneBound = '1';
+    }
+    updateToastHostPosition();
+    return host;
+  }
+
+  function canonicalToast(message, type) {
+    const host = ensureToastHost();
     if (!host) return;
     const requested = String(type || 'info').toLowerCase();
     const tone = requested === 'warning' ? 'warn' : (TOAST_ICON[requested] ? requested : 'info');
     const toast = document.createElement('div');
     toast.className = 'toast ' + tone;
+    toast.style.width = 'max-content';
+    toast.style.maxWidth = 'min(480px, calc(100vw - 32px))';
+    toast.style.whiteSpace = 'normal';
+    toast.style.pointerEvents = 'auto';
+    toast.style.position = 'relative';
+    toast.setAttribute('role', tone === 'error' ? 'alert' : 'status');
     toast.innerHTML = lucideSvg(TOAST_ICON[tone] || 'info', 'dp-toast-icon');
     if (message && typeof message === 'object' && message.title && message.body) {
       const copy = document.createElement('div');
@@ -138,9 +224,43 @@
       copy.textContent = String(message == null ? '' : message);
       toast.appendChild(copy);
     }
+
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'dp-toast-dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss notification');
+    dismiss.title = 'Dismiss notification';
+    dismiss.innerHTML = lucideSvg('x');
+    Object.assign(dismiss.style, {
+      border: '0',
+      background: 'transparent',
+      color: 'inherit',
+      cursor: 'pointer',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '2px',
+      marginLeft: '2px',
+      flex: '0 0 auto',
+      pointerEvents: 'auto'
+    });
+    toast.appendChild(dismiss);
+
+    let fadeTimer = null;
+    let removeTimer = null;
+    const remove = function () {
+      if (fadeTimer) window.clearTimeout(fadeTimer);
+      if (removeTimer) window.clearTimeout(removeTimer);
+      toast.remove();
+      updateToastHostPosition();
+    };
+    dismiss.addEventListener('click', remove);
+
     host.appendChild(toast);
-    window.setTimeout(function () { toast.style.opacity = '0'; }, 3000);
-    window.setTimeout(function () { toast.remove(); }, 3400);
+    updateToastHostPosition();
+    fadeTimer = window.setTimeout(function () { toast.style.opacity = '0'; }, 3000);
+    removeTimer = window.setTimeout(remove, 3400);
+    return toast;
   }
 
   function positiveInteger(value) {
@@ -219,10 +339,12 @@
     toastMap: TOAST_ICON,
     decorateButton: decorateButton,
     toast: canonicalToast,
+    ensureToastHost: ensureToastHost,
     consolidationToastCopy: consolidationToastCopy,
     renderThemeGlyph: renderThemeGlyph
   });
 
+  ensureToastHost();
   installConsolidationEventConsumer();
 
   function renderThemeGlyph(isLight) {
