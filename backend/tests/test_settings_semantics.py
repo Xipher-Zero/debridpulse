@@ -2,12 +2,12 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.config import AppSettings
 from core.scheduler import _coerce_int_setting, _stats_report_window_hours
+from providers.alldebrid.client import AllDebridService
 import providers.alldebrid.rate_limit as rate_limit
 
 
@@ -28,21 +28,21 @@ class SchedulerSettingsTests(unittest.TestCase):
         self.assertEqual(_stats_report_window_hours(types.SimpleNamespace(stats_report_window_hours=None)), 24)
 
 
-class AllDebridRateLimitTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
-        rate_limit._alldebrid_rate_limiter = rate_limit.TokenBucketRateLimiter(rate=60, window=60.0)
-
-    async def test_rate_limit_zero_means_effectively_unlimited(self):
-        cfg = types.SimpleNamespace(alldebrid_rate_limit_per_minute=0)
-        with patch("providers.alldebrid.rate_limit.get_settings", return_value=cfg):
-            limiter = await rate_limit.get_alldebrid_rate_limiter()
+class AllDebridRateLimitTests(unittest.TestCase):
+    def test_rate_limit_zero_means_effectively_unlimited(self):
+        limiter = rate_limit.TokenBucketRateLimiter(rate=0, window=60.0)
         self.assertGreaterEqual(limiter._rate, 1_000_000)
 
-    async def test_rate_limit_positive_value_is_respected(self):
-        cfg = types.SimpleNamespace(alldebrid_rate_limit_per_minute=12)
-        with patch("providers.alldebrid.rate_limit.get_settings", return_value=cfg):
-            limiter = await rate_limit.get_alldebrid_rate_limiter()
+    def test_rate_limit_positive_value_is_respected(self):
+        limiter = rate_limit.TokenBucketRateLimiter(rate=12, window=60.0)
         self.assertEqual(limiter._rate, 12)
+
+    def test_service_instances_own_independent_provider_local_limiters(self):
+        first = AllDebridService("first", rate_limit_per_minute=7)
+        second = AllDebridService("second", rate_limit_per_minute=19)
+        self.assertIsNot(first._rate_limiter, second._rate_limiter)
+        self.assertEqual(first._rate_limiter._rate, 7)
+        self.assertEqual(second._rate_limiter._rate, 19)
 
 
 class SQLiteOnlySettingsTests(unittest.TestCase):
