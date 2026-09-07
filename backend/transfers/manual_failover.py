@@ -30,6 +30,7 @@ _OPERATIONAL_STATES = frozenset({
     "pending", "processing", "ready", "queued", "downloading", "paused",
     "refresh_pending", "error",
 })
+_POST_RETIREMENT_STATES = _OPERATIONAL_STATES | frozenset({"cancelled", "lost"})
 _TERMINAL_EXECUTION_STATES = frozenset({
     ExecutionState.CANCELLED,
     ExecutionState.FAILED,
@@ -254,14 +255,6 @@ async def manual_candidate_failover(
                         Stage.CANDIDATE_PREPARATION,
                         domain=Domain.REQUEST,
                     )
-                if (
-                    artifact.state not in _OPERATIONAL_STATES
-                    or len(artifact.candidates) < 2
-                ):
-                    raise _error(
-                        Category.RESOURCE_STATE_CONFLICT,
-                        Stage.CANDIDATE_PREPARATION,
-                    )
 
                 index = _index_for(artifact, wanted)
                 if index is None:
@@ -269,6 +262,14 @@ async def manual_candidate_failover(
                         Category.SOURCE_NOT_FOUND,
                         Stage.CANDIDATE_PREPARATION,
                         domain=Domain.REQUEST,
+                    )
+                if (
+                    artifact.state not in _OPERATIONAL_STATES
+                    or len(artifact.candidates) < 2
+                ):
+                    raise _error(
+                        Category.RESOURCE_STATE_CONFLICT,
+                        Stage.CANDIDATE_PREPARATION,
                     )
                 if index == artifact.selected:
                     raise _error(
@@ -372,7 +373,7 @@ async def manual_candidate_failover(
                     retire_partial(engine.root, artifact.target, old_sidecars)
 
                 current = await engine._current_artifact(transfer_id, artifact_id)
-                if current is None or current.state not in _OPERATIONAL_STATES:
+                if current is None or current.state not in _POST_RETIREMENT_STATES:
                     raise _error(
                         Category.RESOURCE_STATE_CONFLICT,
                         Stage.RECONCILIATION,
