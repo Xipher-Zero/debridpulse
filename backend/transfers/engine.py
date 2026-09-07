@@ -16,15 +16,21 @@ from transfers.errors import (
 from transfers.models import CleanupAuthority, Ownership, ResolutionResult, ResourceState
 
 
-# Preserve the public monkeypatch seam that the qualified recovery engine exposed.
+# Preserve the public monkeypatch seams that the qualified recovery engine exposed.
 stable_payload = _engine_recovery.stable_payload
+retire_partial = _engine_recovery.retire_partial
 
 
 async def _stable_payload_proxy(*args, **kwargs):
     return await stable_payload(*args, **kwargs)
 
 
+def _retire_partial_proxy(*args, **kwargs):
+    return retire_partial(*args, **kwargs)
+
+
 _engine_recovery.stable_payload = _stable_payload_proxy
+_engine_recovery.retire_partial = _retire_partial_proxy
 
 
 class TransferEngine(_RecoveryTransferEngine):
