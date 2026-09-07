@@ -248,6 +248,8 @@ test('WS2-P1 bulk Remove uses the canonical app modal, restores focus, supports 
   expect(fixture.snapshot().requests.bulk).toEqual([]);
 
   await remove.click();
+  await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
+  await expect(cancel(page)).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.locator('.dp-settings-confirm-overlay')).toHaveCount(0);
   await expect(remove).toBeFocused();
