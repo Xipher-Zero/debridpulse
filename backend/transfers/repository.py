@@ -20,7 +20,10 @@ _RUNTIME_TOTAL_STATES = frozenset({
     ExecutionState.TRANSFERRING,
     ExecutionState.PAUSED,
 })
-_FAILED_CANDIDATE_OUTCOMES = frozenset({"failed", "error", "rejected", "cancelled", "absent"})
+# Cancellation retires one execution writer; it does not prove that the bound
+# acquisition candidate is unusable. Manual source switching intentionally
+# cancels the previous writer, and that candidate must remain selectable later.
+_FAILED_CANDIDATE_OUTCOMES = frozenset({"failed", "error", "rejected", "absent"})
 
 
 def _safe_source_label(scope, key) -> str:
