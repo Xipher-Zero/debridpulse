@@ -60,6 +60,27 @@ def test_statistics_composition_is_direct_static_owner_not_runtime_convergence()
     assert not (STATIC / "ui-statistics.css").exists()
     assert "/ui-statistics.css" not in style
 
+
+def test_statistics_period_labels_use_canonical_debridpulse_copy_without_changing_values() -> None:
+    view = statistics_view()
+    expected = (
+        ('1h', '1Hour'),
+        ('24h', '1Day'),
+        ('7d', '7Day'),
+        ('30d', '30Days'),
+        ('1y', '1Year'),
+        ('all', 'All Time'),
+    )
+    positions = []
+    for period, label in expected:
+        fragment = f'data-period="{period}" onclick="setStatsPeriod(this)">{label}</div>'
+        assert fragment in view
+        positions.append(view.index(fragment))
+    assert positions == sorted(positions)
+    for legacy_label in ('>1h</div>', '>24h</div>', '>7d</div>', '>30d</div>', '>1y</div>', '>All time</div>'):
+        assert legacy_label not in view
+
+
 def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_base() -> None:
     view = statistics_view()
     source = read(STATS)
