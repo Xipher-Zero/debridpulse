@@ -614,7 +614,6 @@ async def list_torrents(
 
         if status:
             clauses.append("t.status = ?")
-            params.append(status)
         else:
             # Deletion is intentionally a soft delete so the torrent hash and
             # prior ownership state remain available for duplicate detection
@@ -1190,7 +1189,7 @@ async def get_changelog():
                         body = (rel.get("body") or "").strip()
                         tag  = rel.get("tag_name", "")
                         date = (rel.get("published_at") or "")[:10]
-                        parts.append(body or "## " + tag + " \u2014 " + date)
+                        parts.append(body or "## " + tag + " — " + date)
                     combined = sep.join(parts)
                     cache["content"] = combined
                     cache["ts"] = now
@@ -1398,10 +1397,8 @@ async def aria2_get_global_options( application: ApplicationService = Depends(ge
             "global_options_read_only": external,
             "max_download_speed": int(opts.get("max-overall-download-limit") or 0),
             "max_upload_speed":   int(opts.get("max-overall-upload-limit")   or 0),
-            "max_concurrent_downloads": (
-                int(getattr(cfg, "max_concurrent_downloads", 1) or 1)
-                if external
-                else int(opts.get("max-concurrent-downloads") or 0)
+            "max_concurrent_downloads": int(
+                application.engine.policy.max_active_executions
             ),
             "raw": {k: v for k, v in opts.items() if "limit" in k or "speed" in k or "concurrent" in k},
         }
