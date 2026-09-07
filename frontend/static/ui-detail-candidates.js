@@ -1,124 +1,168 @@
-/* DebridPulse v1.0.12 Details candidate disclosure + manual failover runtime. */
+/* DebridPulse v1.0.12 Details candidate disclosure + manual failover runtime.
+ * Candidate presentation is backend-authored. Disclosure activation mutates only
+ * its adjacent row; authoritative refresh owns source-state changes after switch.
+ */
 (function () {
   'use strict';
 
-  const expanded = new Set();
-  const switching = new Set();
+  const expandedArtifacts = new Set();
+  const switchingArtifacts = new Set();
   let activeTransferId = null;
-  let generation = 0;
+  let latestDetail = null;
   let providerNames = new Map();
-  let pointerActive = false;
+  let presentationGeneration = 0;
+  let refreshTimer = null;
+  let filesPointerActive = false;
   let deferredDetail = null;
+  let deferredFrame = 0;
 
-  const h = value => typeof window.esc === 'function'
-    ? window.esc(value)
-    : String(value == null ? '' : value)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  function html(value) {
+    if (typeof window.esc === 'function') return window.esc(value);
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 
-  function names(settings) {
-    const result = new Map();
-    const integrations = settings?.integrations || {};
-    Object.entries(integrations).forEach(([id, value]) => {
-      if (id && value?.name) result.set(String(id), String(value.name));
+  function fileSize(value) {
+    return typeof window.fmtSize === 'function' ? window.fmtSize(value) : String(value || 0);
+  }
+
+  function fileStatus(file) {
+    return typeof window.badge === 'function'
+      ? window.badge(file.status, file)
+      : '<span>' + html(file.status || '') + '</span>';
+  }
+
+  function integrationNames(settings) {
+    const names = new Map();
+    const integrations = settings && settings.integrations && typeof settings.integrations === 'object'
+      ? settings.integrations : {};
+    Object.entries(integrations).forEach(function (entry) {
+      const identity = String(entry[0] || '').trim();
+      const value = entry[1] || {};
+      if (identity && value.name) names.set(identity, String(value.name));
     });
-    return result;
+    return names;
   }
 
   function providerName(candidate) {
-    return providerNames.get(String(candidate?.provider_id || '')) || 'Provider';
+    const identity = String(candidate && candidate.provider_id || '').trim();
+    return providerNames.get(identity) || 'Provider';
   }
 
-  function disposition(candidate) {
-    const values = Array.isArray(candidate?.dispositions)
-      ? candidate.dispositions.map(String).filter(value => !/^(active|selected|delivering)$/i.test(value))
-      : [];
-    return [String(candidate?.relationship || '').trim(), ...values].filter(Boolean).join(' · ');
+  function candidateDisposition(candidate) {
+    const values = Array.isArray(candidate && candidate.dispositions)
+      ? candidate.dispositions.map(String).filter(Boolean).filter(function (value) {
+        return !/^(active|selected|delivering)$/i.test(value);
+      }) : [];
+    return [String(candidate && candidate.relationship || '').trim(), ...values]
+      .filter(Boolean).join(' · ');
   }
 
-  function action(file, candidate) {
-    if (candidate?.is_active || candidate?.is_selected) {
+  function candidateAction(file, candidate) {
+    const active = Boolean(candidate && (candidate.is_active || candidate.is_selected));
+    if (active) {
       return '<span class="dp-detail-candidate-active" aria-label="Active source">ACTIVE</span>';
     }
-    if (!candidate?.switch_eligible) return '';
+    if (!candidate || !candidate.switch_eligible) return '';
     const artifactId = String(file.id);
-    return '<button type="button" class="dp-detail-candidate-switch" data-artifact-id="' + h(artifactId) +
-      '" data-candidate-id="' + h(candidate.candidate_id || '') + '"' +
-      (switching.has(artifactId) ? ' disabled aria-disabled="true"' : '') +
-      '>Switch to this source</button>';
+    const candidateId = String(candidate.candidate_id || '');
+    const busy = switchingArtifacts.has(artifactId);
+    return '<button type="button" class="dp-detail-candidate-switch" ' +
+      'data-dp-artifact-id="' + html(artifactId) + '" data-dp-candidate-id="' + html(candidateId) + '"' +
+      (busy ? ' disabled aria-disabled="true"' : '') + '>Switch to this source</button>';
   }
 
   function candidateList(file) {
-    const candidates = Array.isArray(file?.acquisition_candidates) ? file.acquisition_candidates : [];
-    return '<div class="dp-detail-candidate-list">' + candidates.map(candidate =>
-      '<div class="dp-detail-candidate-item" data-candidate-id="' + h(candidate.candidate_id || '') + '">' +
+    const candidates = Array.isArray(file.acquisition_candidates) ? file.acquisition_candidates : [];
+    return '<div class="dp-detail-candidate-list">' + candidates.map(function (candidate) {
+      return '<div class="dp-detail-candidate-item" data-dp-candidate-id="' + html(candidate.candidate_id || '') + '">' +
         '<div class="dp-detail-candidate-copy"><div class="dp-detail-candidate-route">' +
-          '<span class="dp-detail-candidate-source">' + h(candidate.source_label || 'Source') + '</span>' +
-          '<span class="dp-detail-candidate-arrow" aria-hidden="true">→</span>' +
-          '<span class="dp-detail-candidate-provider">' + h(providerName(candidate)) + '</span>' +
-        '</div><div class="dp-detail-candidate-disposition">' + h(disposition(candidate)) + '</div></div>' +
-        '<div class="dp-detail-candidate-action">' + action(file, candidate) + '</div>' +
-      '</div>'
-    ).join('') + '</div>';
+        '<span class="dp-detail-candidate-source">' + html(candidate.source_label || 'Source') + '</span>' +
+        '<span class="dp-detail-candidate-arrow" aria-hidden="true">→</span>' +
+        '<span class="dp-detail-candidate-provider">' + html(providerName(candidate)) + '</span></div>' +
+        '<div class="dp-detail-candidate-disposition">' + html(candidateDisposition(candidate)) + '</div></div>' +
+        '<div class="dp-detail-candidate-action">' + candidateAction(file, candidate) + '</div>' +
+      '</div>';
+    }).join('') + '</div>';
   }
 
   function disclosure(file) {
-    const count = Number(file?.candidate_count || 0);
+    const count = Number(file.candidate_count || 0);
     if (!Number.isInteger(count) || count <= 1) return '';
     const artifactId = String(file.id);
-    const open = expanded.has(artifactId);
-    return '<button type="button" class="dp-detail-candidate-disclosure" data-artifact-id="' + h(artifactId) +
-      '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="dp-detail-candidates-' + h(artifactId) +
-      '" aria-label="' + h((open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + String(file.filename || 'artifact')) + '">' +
-      '<span class="dp-detail-candidate-count" aria-hidden="true">' + count + '</span><span>Candidates</span></button>';
+    const open = expandedArtifacts.has(artifactId);
+    const detailsId = 'dp-detail-candidates-' + artifactId;
+    const filename = String(file.filename || 'artifact');
+    return '<button type="button" class="dp-detail-candidate-disclosure" data-dp-artifact-id="' + html(artifactId) + '" ' +
+      'data-dp-candidate-count="' + count + '" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
+      'aria-controls="' + html(detailsId) + '" aria-label="' +
+      html((open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename) + '">' +
+      '<span class="dp-detail-candidate-count" aria-hidden="true">' + count + '</span>' +
+      '<span>Candidates</span></button>';
   }
 
-  function fileRow(file) {
+  function blockedPresentation(file) {
+    if (file.blocked) {
+      return '<span class="badge badge-error dp-detail-file-blocked">BLOCKED: ' + html(file.block_reason) + '</span>';
+    }
+    if (file.block_reason) return '<div class="dp-detail-file-block-reason">' + html(file.block_reason) + '</div>';
+    return '';
+  }
+
+  function candidateRow(file) {
     const artifactId = String(file.id);
-    const blocked = file.blocked
-      ? '<span class="badge badge-error dp-detail-file-blocked">BLOCKED: ' + h(file.block_reason) + '</span>'
-      : (file.block_reason ? '<div class="dp-detail-file-block-reason">' + h(file.block_reason) + '</div>' : '');
-    const fmt = typeof window.fmtSize === 'function' ? window.fmtSize(file.size_bytes) : String(file.size_bytes || 0);
-    const badge = typeof window.badge === 'function' ? window.badge(file.status, file) : h(file.status || '');
-    const main = '<tr class="dp-detail-file-row" data-artifact-id="' + h(artifactId) + '">' +
-      '<td class="dp-detail-filename"><div class="dp-detail-filename-line"><span class="dp-detail-filename-copy">' + h(file.filename) +
-      '</span>' + disclosure(file) + '</div>' + blocked + '</td><td class="sz">' + fmt + '</td><td>' + badge + '</td></tr>';
-    if (!expanded.has(artifactId) || Number(file.candidate_count || 0) <= 1) return main;
-    return main + '<tr class="dp-detail-candidate-row" data-candidate-owner="' + h(artifactId) + '"><td colspan="3">' +
-      '<div id="dp-detail-candidates-' + h(artifactId) + '" class="dp-detail-candidate-panel">' + candidateList(file) + '</div></td></tr>';
+    return '<tr class="dp-detail-candidate-row" data-dp-candidate-owner="' + html(artifactId) + '">' +
+      '<td colspan="3"><div id="dp-detail-candidates-' + html(artifactId) + '" class="dp-detail-candidate-panel">' +
+      candidateList(file) + '</div></td></tr>';
   }
 
-  function renderNow(detail) {
-    if (!detail || !Array.isArray(detail.files)) return;
-    const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
-    if (!tbody) return;
-    const valid = new Set(detail.files.map(file => String(file.id)));
-    [...expanded].forEach(id => {
-      const file = detail.files.find(item => String(item.id) === id);
-      if (!valid.has(id) || !file || Number(file.candidate_count || 0) <= 1) expanded.delete(id);
-    });
-    tbody.innerHTML = detail.files.map(fileRow).join('');
-    bind(detail.files);
+  function rows(files) {
+    return files.map(function (file) {
+      const artifactId = String(file.id);
+      const open = expandedArtifacts.has(artifactId) && Number(file.candidate_count || 0) > 1;
+      const main = '<tr class="dp-detail-file-row" data-dp-artifact-id="' + html(artifactId) + '">' +
+        '<td class="dp-detail-filename"><div class="dp-detail-filename-line"><span class="dp-detail-filename-copy">' + html(file.filename) + '</span>' +
+        disclosure(file) + '</div>' + blockedPresentation(file) + '</td>' +
+        '<td class="sz">' + fileSize(file.size_bytes) + '</td><td>' + fileStatus(file) + '</td></tr>';
+      return open ? main + candidateRow(file) : main;
+    }).join('');
   }
 
-  function render(detail) {
-    if (pointerActive) {
-      deferredDetail = detail;
+  function updateDisclosure(control, file, open) {
+    const artifactId = String(control && control.dataset.dpArtifactId || '');
+    const owner = control ? control.closest('tr.dp-detail-file-row') : null;
+    if (!artifactId || !owner) return;
+    const count = Number(file && file.candidate_count || control.dataset.dpCandidateCount || 0);
+    const filenameNode = owner.querySelector('.dp-detail-filename-copy');
+    const filename = String((file && file.filename) || (filenameNode && filenameNode.textContent) || 'artifact');
+    control.dataset.dpCandidateCount = String(count);
+    control.setAttribute('aria-expanded', open ? 'true' : 'false');
+    control.setAttribute('aria-label', (open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename);
+    const existing = owner.parentElement ? owner.parentElement.querySelector(
+      'tr.dp-detail-candidate-row[data-dp-candidate-owner="' + CSS.escape(artifactId) + '"]') : null;
+    if (open) {
+      if (!existing) owner.insertAdjacentHTML('afterend', candidateRow(file));
+      bindSwitches(file);
       return;
     }
-    deferredDetail = null;
-    renderNow(detail);
+    if (existing) existing.remove();
   }
 
-  async function fetchDetail(transferId, expectedGeneration) {
-    const [detail, settings] = await Promise.all([
-      window.api('GET', '/torrents/' + transferId),
-      window.api('GET', '/settings').catch(() => null),
-    ]);
-    if (activeTransferId !== transferId || generation !== expectedGeneration) return null;
-    if (settings) providerNames = names(settings);
-    render(detail);
-    return detail;
+  function bindDisclosure(control, file) {
+    if (!control || control.dataset.dpCandidateBound === '1') return;
+    const artifactId = String(file.id);
+    control.addEventListener('click', function () {
+      const open = control.getAttribute('aria-expanded') === 'true';
+      if (open) {
+        expandedArtifacts.delete(artifactId);
+        updateDisclosure(control, file, false);
+      } else if (Number(file.candidate_count || 0) > 1) {
+        expandedArtifacts.add(artifactId);
+        updateDisclosure(control, file, true);
+      }
+    });
+    control.dataset.dpCandidateBound = '1';
   }
 
   function normalizedFailure(detail, fallback) {
@@ -132,13 +176,15 @@
 
   async function switchRequest(transferId, artifactId, candidateId) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
     try {
       const response = await fetch('/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({candidate_id:candidateId}), signal:controller.signal,
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({candidate_id: candidateId}),
+        signal: controller.signal
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(function () { return {}; });
       if (!response.ok) {
         const error = new Error(normalizedFailure(payload.detail, response.statusText));
         error.detail = payload.detail;
@@ -146,131 +192,211 @@
       }
       return payload;
     } catch (error) {
-      if (error?.name === 'AbortError') throw new Error('Request timed out after 8s');
+      if (error && error.name === 'AbortError') throw new Error('Request timed out after 8s');
       throw error;
     } finally {
-      clearTimeout(timeout);
+      window.clearTimeout(timeout);
     }
   }
 
-  async function refreshAll(artifactId) {
-    const transferId = activeTransferId;
-    const nextGeneration = ++generation;
-    await fetchDetail(transferId, nextGeneration);
-    const work = [];
-    if (typeof window.loadTorrents === 'function') work.push(Promise.resolve(window.loadTorrents()));
-    if (typeof window.loadRecent === 'function') work.push(Promise.resolve(window.loadRecent()));
-    await Promise.allSettled(work);
-    document.querySelector('#modal-body tr.dp-detail-file-row[data-artifact-id="' + CSS.escape(String(artifactId)) + '"] .dp-detail-candidate-disclosure')
-      ?.focus({preventScroll:true});
+  async function refreshAfterSwitch(transferId, artifactId) {
+    const generation = ++presentationGeneration;
+    await fetchPresentation(transferId, generation);
+    const jobs = [];
+    if (typeof window.loadTorrents === 'function') jobs.push(Promise.resolve(window.loadTorrents()));
+    if (typeof window.loadRecent === 'function') jobs.push(Promise.resolve(window.loadRecent()));
+    await Promise.allSettled(jobs);
+    const disclosureControl = document.querySelector(
+      '#modal-body tr.dp-detail-file-row[data-dp-artifact-id="' + CSS.escape(String(artifactId)) + '"] .dp-detail-candidate-disclosure');
+    if (disclosureControl) disclosureControl.focus({preventScroll:true});
   }
 
   async function requestSwitch(button, file) {
     if (!button || button.disabled || activeTransferId == null) return;
     const artifactId = String(file.id);
-    const candidateId = String(button.dataset.candidateId || '');
-    if (!candidateId || switching.has(artifactId)) return;
-    switching.add(artifactId);
+    const candidateId = String(button.dataset.dpCandidateId || '');
+    if (!candidateId || switchingArtifacts.has(artifactId)) return;
+    switchingArtifacts.add(artifactId);
     button.disabled = true;
-    button.setAttribute('aria-disabled','true');
+    button.setAttribute('aria-disabled', 'true');
     try {
       const result = await switchRequest(activeTransferId, artifactId, candidateId);
-      await refreshAll(artifactId);
-      window.toast?.(String(result.filename || file.filename || 'artifact') + ' file source switched to ' + String(result.source_host || 'source'), 'success');
+      switchingArtifacts.delete(artifactId);
+      await refreshAfterSwitch(activeTransferId, artifactId);
+      if (typeof window.toast === 'function') {
+        window.toast(String(result.filename || file.filename || 'artifact') + ' file source switched to ' + String(result.source_host || 'source'), 'success');
+      }
     } catch (error) {
-      await refreshAll(artifactId).catch(() => {});
-      window.toast?.('Unable to switch source for ' + String(file.filename || 'artifact') + ': ' + normalizedFailure(error?.detail, error?.message), 'error');
-    } finally {
-      switching.delete(artifactId);
+      switchingArtifacts.delete(artifactId);
+      await refreshAfterSwitch(activeTransferId, artifactId).catch(function () {});
+      if (typeof window.toast === 'function') {
+        window.toast({
+          title: 'Unable to switch source for ' + String(file.filename || 'artifact'),
+          body: normalizedFailure(error && error.detail, error && error.message)
+        }, 'error');
+      }
     }
   }
 
-  function bind(files) {
-    files.forEach(file => {
-      const artifactId = String(file.id);
-      const row = document.querySelector('#modal-body tr.dp-detail-file-row[data-artifact-id="' + CSS.escape(artifactId) + '"]');
-      const control = row?.querySelector('.dp-detail-candidate-disclosure');
-      if (control && control.dataset.bound !== '1') {
-        control.addEventListener('click', () => {
-          if (expanded.has(artifactId)) expanded.delete(artifactId); else expanded.add(artifactId);
-          renderNow({files});
-        });
-        control.dataset.bound = '1';
-      }
-      document.querySelectorAll('#modal-body tr.dp-detail-candidate-row[data-candidate-owner="' + CSS.escape(artifactId) + '"] .dp-detail-candidate-switch')
-        .forEach(button => {
-          if (button.dataset.bound === '1') return;
-          button.addEventListener('click', () => requestSwitch(button, file));
-          button.dataset.bound = '1';
-        });
+  function bindSwitches(file) {
+    const panel = document.querySelector(
+      '#modal-body tr.dp-detail-candidate-row[data-dp-candidate-owner="' + CSS.escape(String(file.id)) + '"]');
+    if (!panel) return;
+    panel.querySelectorAll('.dp-detail-candidate-switch').forEach(function (button) {
+      if (button.dataset.dpCandidateSwitchBound === '1') return;
+      button.addEventListener('click', function () { requestSwitch(button, file); });
+      button.dataset.dpCandidateSwitchBound = '1';
     });
   }
 
-  function reset() {
-    expanded.clear();
-    switching.clear();
-    activeTransferId = null;
+  function bindDisclosures(files) {
+    files.forEach(function (file) {
+      const row = document.querySelector(
+        '#modal-body tr.dp-detail-file-row[data-dp-artifact-id="' + CSS.escape(String(file.id)) + '"]');
+      if (!row) return;
+      bindDisclosure(row.querySelector('.dp-detail-candidate-disclosure'), file);
+      if (expandedArtifacts.has(String(file.id))) bindSwitches(file);
+    });
+  }
+
+  function renderNow(detail) {
+    if (!detail || !Array.isArray(detail.files)) return;
+    const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
+    if (!tbody) return;
+    const valid = new Set(detail.files.map(function (file) { return String(file.id); }));
+    Array.from(expandedArtifacts).forEach(function (id) {
+      const file = detail.files.find(function (item) { return String(item.id) === id; });
+      if (!valid.has(id) || !file || Number(file.candidate_count || 0) <= 1) expandedArtifacts.delete(id);
+    });
+    tbody.innerHTML = rows(detail.files);
+    bindDisclosures(detail.files);
+  }
+
+  function render(detail) {
+    if (filesPointerActive) {
+      deferredDetail = detail;
+      return;
+    }
     deferredDetail = null;
-    pointerActive = false;
-    generation += 1;
+    renderNow(detail);
+  }
+
+  function flushDeferredRender() {
+    if (filesPointerActive || !deferredDetail) return;
+    const detail = deferredDetail;
+    deferredDetail = null;
+    renderNow(detail);
+  }
+
+  function releaseFilesPointer() {
+    if (!filesPointerActive) return;
+    filesPointerActive = false;
+    if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
+    deferredFrame = window.requestAnimationFrame(function () {
+      deferredFrame = 0;
+      flushDeferredRender();
+    });
+  }
+
+  async function fetchPresentation(id, generation) {
+    if (typeof window.api !== 'function') return;
+    const transferId = Number(id);
+    const results = await Promise.all([
+      window.api('GET', '/torrents/' + transferId),
+      window.api('GET', '/settings').catch(function () { return null; })
+    ]);
+    if (activeTransferId !== transferId || generation !== presentationGeneration) return;
+    latestDetail = results[0];
+    if (results[1]) providerNames = integrationNames(results[1]);
+    render(latestDetail);
+  }
+
+  function queueRefresh() {
+    if (activeTransferId == null) return;
+    const overlay = document.getElementById('overlay');
+    if (!overlay || !overlay.classList.contains('open')) return;
+    const transferId = activeTransferId;
+    const generation = ++presentationGeneration;
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(function () {
+      refreshTimer = null;
+      fetchPresentation(transferId, generation).catch(function () {});
+    }, 120);
+  }
+
+  function clearRefreshState() {
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+    presentationGeneration += 1;
+  }
+
+  function resetDetailState() {
+    expandedArtifacts.clear();
+    switchingArtifacts.clear();
+    activeTransferId = null;
+    latestDetail = null;
+    deferredDetail = null;
+    filesPointerActive = false;
+    clearRefreshState();
+    if (deferredFrame) window.cancelAnimationFrame(deferredFrame);
+    deferredFrame = 0;
   }
 
   function install() {
     if (typeof window.showDetail !== 'function' || window.showDetail.dpCandidateWrapped) return;
-    const originalShow = window.showDetail;
-    const wrappedShow = async function (id) {
+    const originalShowDetail = window.showDetail;
+    const wrapped = async function (id) {
       const transferId = Number(id);
-      if (activeTransferId !== transferId) expanded.clear();
+      if (activeTransferId !== transferId) expandedArtifacts.clear();
+      clearRefreshState();
       activeTransferId = transferId;
-      const expectedGeneration = ++generation;
-      const result = await originalShow.apply(this, arguments);
-      try { await fetchDetail(transferId, expectedGeneration); }
+      latestDetail = null;
+      deferredDetail = null;
+      const generation = presentationGeneration;
+      const result = await originalShowDetail.apply(this, arguments);
+      try { await fetchPresentation(transferId, generation); }
       catch (error) { console.error('Details candidate presentation unavailable', error); }
       return result;
     };
-    wrappedShow.dpCandidateWrapped = true;
-    window.showDetail = wrappedShow;
+    wrapped.dpCandidateWrapped = true;
+    window.showDetail = wrapped;
 
     if (typeof window.closeModal === 'function' && !window.closeModal.dpCandidateWrapped) {
-      const originalClose = window.closeModal;
-      const wrappedClose = function (eventObj) {
+      const originalCloseModal = window.closeModal;
+      const closeWrapped = function (eventObj) {
         const overlay = document.getElementById('overlay');
-        if (!eventObj || eventObj.target === overlay) reset();
-        return originalClose.apply(this, arguments);
+        if (!eventObj || (overlay && eventObj.target === overlay)) resetDetailState();
+        return originalCloseModal.apply(this, arguments);
       };
-      wrappedClose.dpCandidateWrapped = true;
-      window.closeModal = wrappedClose;
+      closeWrapped.dpCandidateWrapped = true;
+      window.closeModal = closeWrapped;
     }
 
     const modalBody = document.getElementById('modal-body');
     if (modalBody && modalBody.dataset.dpCandidatePointerGuard !== '1') {
-      modalBody.addEventListener('pointerdown', event => {
-        if (!(event.target instanceof Element) || !event.target.closest('.dp-detail-files-card')) return;
-        pointerActive = true;
-        try { modalBody.setPointerCapture(event.pointerId); } catch (_) {}
+      modalBody.addEventListener('pointerdown', function (event) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target && target.closest('.dp-detail-files-card')) filesPointerActive = true;
       });
-      const release = event => {
-        try { if (modalBody.hasPointerCapture(event.pointerId)) modalBody.releasePointerCapture(event.pointerId); } catch (_) {}
-        pointerActive = false;
-        if (deferredDetail) {
-          const pending = deferredDetail;
-          deferredDetail = null;
-          requestAnimationFrame(() => renderNow(pending));
-        }
-      };
-      modalBody.addEventListener('pointerup', release);
-      modalBody.addEventListener('pointercancel', release);
+      modalBody.addEventListener('pointerup', releaseFilesPointer);
+      modalBody.addEventListener('pointercancel', releaseFilesPointer);
+      modalBody.addEventListener('pointerleave', function (event) {
+        if (!event.buttons) releaseFilesPointer();
+      });
       modalBody.dataset.dpCandidatePointerGuard = '1';
     }
+
+    document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
+    document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
   }
 
   function loadStyle() {
     if (document.querySelector('link[data-dp-detail-candidates-style]')) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = '/ui-detail-candidates.css?v=2';
-    link.dataset.dpDetailCandidatesStyle = '1';
-    document.head.appendChild(link);
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = '/ui-detail-candidates.css?v=3';
+    style.dataset.dpDetailCandidatesStyle = '1';
+    document.head.appendChild(style);
   }
 
   loadStyle();
