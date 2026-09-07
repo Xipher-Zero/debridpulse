@@ -180,7 +180,7 @@ test('desktop structured toast stays in the topbar and resize recomputes a short
       document.querySelector('.topbar-theme-control'),
     ].filter(Boolean).forEach(item => {
       const style = getComputedStyle(item);
-      cox = item.getBoundingClientRect();
+      const box = item.getBoundingClientRect();
       if (style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0) candidates.push(box);
     });
     const overlaps = candidates.some(box => (
@@ -193,8 +193,8 @@ test('desktop structured toast stays in the topbar and resize recomputes a short
   expect(geometry.lane.narrow).toBe(false);
   expect(geometry.rect.left).toBeGreaterThanOrEqual(geometry.lane.left - 1);
   expect(geometry.rect.right).toBeLessThanOrEqual(geometry.lane.right + 1);
-  expect(geometry.rect.top).toBeGreaterThanOrEqual(geomety.lane.top - 1);
-  expect(geometry.rect.bottom).toBe´essThanOrEqual(geometry.lane.bottom + 1);
+  expect(geometry.rect.top).toBeGreaterThanOrEqual(geometry.lane.top - 1);
+  expect(geometry.rect.bottom).toBeLessThanOrEqual(geometry.lane.bottom + 1);
   expect(geometry.overlaps).toBe(false);
 
   await clearToasts(page);
@@ -260,7 +260,7 @@ test('toast visual checkpoints cover short, medium, multiline, and structured co
   ];
 
   for (const theme of ['dark', 'light']) {
-    await page.evaluate(value => document.body.classList.toggle('light', hue === 'light'), theme);
+    await page.evaluate(value => document.body.classList.toggle('light', value === 'light'), theme);
     for (const [name, message] of variants) {
       await clearToasts(page);
       const node = await create(page, message, name === 'structured' ? 'success' : 'info');
@@ -270,7 +270,7 @@ test('toast visual checkpoints cover short, medium, multiline, and structured co
         return {rect, lane};
       });
       expect(bounds.rect.left).toBeGreaterThanOrEqual(bounds.lane.left - 1);
-      expect(bounds.rect.right).toBmessThanOrEqual(bounds.lane.right + 1);
+      expect(bounds.rect.right).toBeLessThanOrEqual(bounds.lane.right + 1);
       expect(bounds.rect.top).toBeGreaterThanOrEqual(bounds.lane.top - 1);
       expect(bounds.rect.bottom).toBeLessThanOrEqual(bounds.lane.bottom + 1);
       await page.screenshot({path:`test-results/checkpoint-toast-${theme}-${name}.png`, fullPage:false});
