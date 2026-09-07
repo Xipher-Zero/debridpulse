@@ -263,6 +263,10 @@
     if (!detail || !Array.isArray(detail.files)) return;
     const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
     if (!tbody) return;
+    const focused = document.activeElement;
+    const focusedArtifactId = focused instanceof HTMLElement &&
+      focused.matches('.dp-detail-candidate-disclosure') && tbody.contains(focused)
+      ? String(focused.dataset.dpArtifactId || '') : '';
     const valid = new Set(detail.files.map(function (file) { return String(file.id); }));
     Array.from(expandedArtifacts).forEach(function (id) {
       const file = detail.files.find(function (item) { return String(item.id) === id; });
@@ -270,6 +274,11 @@
     });
     tbody.innerHTML = rows(detail.files);
     bindDisclosures(detail.files);
+    if (focusedArtifactId) {
+      const restored = tbody.querySelector(
+        'tr.dp-detail-file-row[data-dp-artifact-id="' + CSS.escape(focusedArtifactId) + '"] .dp-detail-candidate-disclosure');
+      if (restored) restored.focus({preventScroll:true});
+    }
   }
 
   function render(detail) {
