@@ -249,7 +249,10 @@ _DATABASE_WIPE_PATH = "/api/admin/database/wipe"
 # These routes own a stronger maintenance admission inside the endpoint. Wrapping
 # them in application_operation() here would put the outer request and downstream
 # endpoint in different Starlette tasks and make maintenance wait on its own request.
-_SELF_MAINTAINED_MUTATION_PATHS = {"/api/settings"}
+_SELF_MAINTAINED_MUTATION_PATHS = {
+    "/api/settings",
+    "/api/aria2/global-options",
+}
 _AUTH_MUTATION_PATHS = {
     "/login",
     "/api/auth/logout",
