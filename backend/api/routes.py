@@ -614,6 +614,7 @@ async def list_torrents(
 
         if status:
             clauses.append("t.status = ?")
+            params.append(status)
         else:
             # Deletion is intentionally a soft delete so the torrent hash and
             # prior ownership state remain available for duplicate detection
@@ -1189,7 +1190,7 @@ async def get_changelog():
                         body = (rel.get("body") or "").strip()
                         tag  = rel.get("tag_name", "")
                         date = (rel.get("published_at") or "")[:10]
-                        parts.append(body or "## " + tag + " — " + date)
+                        parts.append(body or "## " + tag + " \u2014 " + date)
                     combined = sep.join(parts)
                     cache["content"] = combined
                     cache["ts"] = now
