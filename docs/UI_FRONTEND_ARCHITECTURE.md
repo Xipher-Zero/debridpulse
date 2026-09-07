@@ -2,6 +2,8 @@
 
 This document describes the live post-audit frontend ownership model. It records current owners and boot relationships; it does not describe historical correction layers as though they were still canonical.
 
+The application reports `1.0.12` for the current development tree.
+
 ## Core rule
 
 Every visible behavior has one bounded structural/render owner and intentionally composed styling. Broad post-render correction runtimes, correction-named stylesheets, and compatibility globals that replace unrelated page owners are prohibited.
