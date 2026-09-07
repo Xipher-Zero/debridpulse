@@ -1,8 +1,12 @@
 const { test, expect } = require('@playwright/test');
 
-test('topbar denominator renders canonical scheduler concurrency and rejects zero projection', async ({ page }) => {
+test('topbar denominator renders canonical scheduler concurrency and shipped page loads its projection', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => !!window.DPTopbarConcurrency);
+
+  const runtimeScript = page.locator('script[data-dp-topbar-concurrency="1"]');
+  await expect(runtimeScript).toHaveCount(1);
+  await expect(runtimeScript).toHaveAttribute('src', /\/ui-topbar-concurrency\.js\?v=1$/);
 
   await page.evaluate(() => {
     settingsData.transfer_policy = {
