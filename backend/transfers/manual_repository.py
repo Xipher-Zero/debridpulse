@@ -160,12 +160,14 @@ class TransferRepository(_PresentationRepository):
                     if not isinstance(candidate, dict):
                         continue
                     selected = bool(candidate.get("is_selected"))
-                    dispositions = {str(value).lower() for value in candidate.get("dispositions", [])}
                     candidate["is_active"] = selected
+                    # Historical execution failure is truthful provenance, not a
+                    # permanent capability verdict. The write path revalidates the
+                    # exact bound candidate/provider before switching, so the UI
+                    # must not suppress a retry solely because an older attempt failed.
                     candidate["switch_eligible"] = (
                         not selected
                         and state in _SWITCHABLE_STATES
-                        and "failed" not in dispositions
                     )
             result["manual_candidate_failovers"] = transitions
         return result

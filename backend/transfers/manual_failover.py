@@ -340,6 +340,7 @@ async def manual_candidate_failover(
                                 Category.RESOURCE_STATE_CONFLICT,
                                 Stage.RECONCILIATION,
                             )
+                        cancelled_here = False
                         if observed.state not in _TERMINAL_EXECUTION_STATES:
                             outcome = await old_executor.cancel(artifact.execution)
                             if (
@@ -354,7 +355,20 @@ async def manual_candidate_failover(
                                     Stage.RECONCILIATION,
                                     domain=Domain.RECONCILIATION,
                                 )
+                            cancelled_here = True
                             observed = await old_executor.observe(artifact.execution)
+                            # Some executors, including external aria2 daemons,
+                            # may forget a force-removed job immediately. Once this
+                            # exact command has successfully cancelled a live writer,
+                            # post-cancel absence is evidence of retirement, not an
+                            # orphaned/failed source. Pre-existing ABSENT/FAILED
+                            # observations are left untouched and remain truthful.
+                            if observed.state == ExecutionState.ABSENT:
+                                observed = replace(
+                                    observed,
+                                    state=ExecutionState.CANCELLED,
+                                    error=None,
+                                )
                         await engine.repository.execution(observed)
                         if observed.state not in _TERMINAL_EXECUTION_STATES:
                             raise _error(
