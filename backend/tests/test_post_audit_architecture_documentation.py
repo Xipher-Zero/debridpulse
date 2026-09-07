@@ -29,17 +29,21 @@ def test_core_docs_record_cancellation_and_migration_ownership() -> None:
     assert "db/migrations/v112.py" in doc
 
 
-def test_frontend_docs_describe_current_canonical_owners() -> None:
+def test_frontend_docs_describe_live_bounded_owners() -> None:
     doc = read("docs/UI_FRONTEND_ARCHITECTURE.md")
     assert doc.startswith("# DebridPulse v1.0.12 Frontend Architecture")
-    assert "Activity Log" in doc
-    assert "**single canonical owner** `ui-shell-provider-status.css`" in doc
-    assert "`ui-accessibility-runtime.js` is the retained cross-cutting compatibility module" in doc
-    assert "`ui-runtime.js` and `ui-downloads-runtime.js` are physically absent and unreferenced" in doc
-    assert "`style-v11.css` retains its filename for asset compatibility" in doc
+    assert "six reachable navigation surfaces" in doc
+    assert "`ui-presentation-loader.js`" in doc
+    assert "orchestration-only" in doc
+    for owner in ("ui-dashboard-transfer-presentation.js", "ui-downloads-presentation.js", "ui-processing-presentation.js", "ui-activity-log-runtime.js", "ui-settings-archive-passwords.js"):
+        assert owner in doc
+    assert "There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrectionP4Repair`" in doc
+    assert "Correction-named Batch-1 styles are absent" in doc
+    assert "`style-v11.css` is the canonical import graph" in doc
 
 
 def test_canonical_bundle_comment_no_longer_claims_v111_overlay() -> None:
     style = read("frontend/static/style-v11.css")
     assert "v1.0.12 canonical visual import graph" in style
     assert "v1.0.11 visual system overlay" not in style
+    assert "UI Correction Batch" not in style

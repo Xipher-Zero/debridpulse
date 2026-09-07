@@ -1,81 +1,63 @@
 # DebridPulse v1.0.12 Frontend Architecture
 
-This document describes the post-audit canonical frontend ownership model. It records final owners, not the historical correction layers used while the UI overhaul was being built. The frontend architecture reports `1.0.12` for the current development tree and does not promote that tree as a final release baseline.
+This document describes the live post-audit frontend ownership model. It records current owners and boot relationships; it does not describe historical correction layers as though they were still canonical.
 
 ## Core rule
 
-Every visible behavior has a canonical structural/render owner and intentionally composed styling. Current markup must be final when rendered; broad post-render DOM repair, duplicate semantic style generations, and "fix whatever the legacy page emitted" runtimes are not part of the architecture.
+Every visible behavior has one bounded structural/render owner and intentionally composed styling. Broad post-render correction runtimes, correction-named stylesheets, and compatibility globals that replace unrelated page owners are prohibited.
 
-`frontend/static/index.html` carries `data-dp-ui="v1.0.12-canonical"` and owns the static application shell structure. `frontend/static/app.js` owns the main application page state/rendering for Dashboard, Activity Log, Downloads, Details, navigation state, transfer presentation, and provider-status rendering. Page-specific clean-room modules own pages that were intentionally separated from `app.js`.
+`frontend/static/index.html` owns the static shell and the six reachable navigation surfaces: Dashboard, Downloads, Activity Log, Statistics, Settings, and Help & License. The retired `view-changelog`, `view-aria2queue`, and `view-support` surfaces are absent from the shell.
+
+## Boot graph
+
+`index.html` parser-loads the established application/runtime owners. `ui-provider-status.js`, which executes after `app.js`, starts `ui-presentation-loader.js`. The presentation loader is orchestration-only: it performs no API I/O and no DOM repair. It deterministically loads the bounded presentation owners below and exposes only its immutable manifest for qualification.
+
+The presentation owners are:
+
+- `ui-toast-contract.js` — public toast copy/timing bridge to the canonical `operator-title.js` presenter.
+- `ui-dashboard-transfer-presentation.js` — Dashboard Recent Activity row/source presentation.
+- `ui-downloads-presentation.js` — Downloads date options, pagination, and measured desktop capacity.
+- `ui-processing-presentation.js` — authoritative pause-state projection and scheduler-capacity synchronization.
+- `ui-activity-log-runtime.js` — Activity Log server-side filtering, timestamps, and filter-control projection.
+- `ui-settings-archive-passwords.js` — Automatic Extraction archive-password editor interaction.
+
+There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrectionP4Repair` runtime contract in the boot graph.
 
 ## Runtime ownership map
 
-| Surface | Markup / render owner | JavaScript behavior owner | Styling owner |
+| Surface | Structure/render owner | Behavior owner | Styling owner |
 | --- | --- | --- | --- |
-| Application shell and sidebar | `index.html` | `app.js` for navigation state; `operator-title.js` for canonical icon SVG geometry only | `ui-shell.css`, `ui-shell-structural.css`, `ui-shell-brand.css`, `ui-shell-signal-field.css` |
-| Top controls and theme first paint | `index.html` | `app.js`; `ui-theme-bootstrap.js` only for pre-paint stored-theme application | `ui-topbar-first-paint.css`, `ui-utility-controls.css` |
-| Provider status | `index.html` shell target + final markup from `app.js` | `app.js`, using provider-specific backend state | **single canonical owner** `ui-shell-provider-status.css` |
-| Dashboard | `index.html` + `app.js` dynamic content | `app.js` | `ui-dashboard.css` plus shared contracts |
-| Activity Log | `index.html` + `app.js` dynamic content | `app.js` | `ui-activity-log-page.css` plus shared transfer contracts |
-| Downloads | `index.html` + final rows/pagination from `app.js` | `app.js` | `ui-downloads-page.css`, `ui-downloads-desktop.css`, shared transfer contracts |
-| Details | static overlay shell in `index.html`, dynamic content from `app.js` | `app.js` | shared modal/transfer/shell contracts |
-| Statistics | page shell + `ui-statistics.js` rendering | `ui-statistics.js` is the single detailed-statistics I/O owner | `ui-statistics-page.css` |
-| Settings shell and Sources & Providers | generated clean-room markup | `ui-settings-page.js` is authoritative; scoped Settings modules handle their named subfeatures | `ui-settings-page.css`, `ui-settings-chrome.css`, and narrowly scoped Settings styles |
-| Help | generated Help page markup | `ui-help-page.js` and local legal-document helper | `ui-help-page.css` and scoped Help styles |
-| Shared cards/forms/buttons/toggles/dropdowns | canonical markup from the owning page renderer | page owner; `ui-accessibility-runtime.js` may project accessibility/dropdown semantics only | `ui-foundation.css`, `ui-components.css`, `ui-dropdown-contract.css`, `ui-shared-contract.css`, `ui-universal-language.css` |
-| Modal shell | owner page markup | owner page runtime | `ui-modal-contract.css` |
-| Authentication Required | `ui-auth-required.js` | `ui-auth-required.js` using only the neutral INPUT_REQUIRED challenge contract | `ui-auth-required.css` + modal contract |
-| Transfer provider/provenance presentation | final transfer markup from `app.js` | `app.js` consumes durable backend projection | `ui-transfer-contract.css` and owning page styles |
-| Responsive/theme modifiers | existing canonical structures only | no DOM-repair runtime | base/page styles using scoped responsive and light-theme modifiers |
-
-## Provider-status authority
-
-Generic application/API health is not provider health. `app.js` renders AllDebrid status only from provider-specific backend state and distinguishes disabled, unconfigured, authentication-required, healthy, unhealthy, and neutral/unknown states. A successful generic `/stats` or application-health request must never manufacture `AllDebrid: online`.
-
-The premium-status DOM is emitted in final form by `app.js`, including `.dp-provider-premium-until` and `.dp-provider-premium-days`. There is one provider-status stylesheet, `ui-shell-provider-status.css`. `ui-shell-provider-status-v2.css` is retired and mechanically forbidden by architecture tests.
-
-## Accessibility and dropdown runtime
-
-`ui-accessibility-runtime.js` is the retained cross-cutting compatibility module. Its scope is intentionally narrow: accessibility semantics, keyboard behavior, ARIA state, and universal native-select dropdown projection. It performs no application API I/O and does not repair canonical Activity Log naming, Downloads geometry, provider premium labels, provider status, or canonical page markup.
-
-A `MutationObserver` remains only to support its universal accessibility/dropdown projection across dynamically rendered controls. That observer is not a presentation-repair mechanism.
-
-## Retired correction runtimes
-
-`ui-runtime.js` and `ui-downloads-runtime.js` are physically absent and unreferenced. Their former presentation-repair responsibilities were moved into `index.html`, `app.js`, or the actual page owner. Archived runtimes such as `sidebar-v2.js`, `hamburger-v2.js`, and `provider-ui.js` are also mechanically barred from the effective boot graph.
-
-`operator-title.js` is not a loader or DOM-repair layer. It owns the canonical Lucide-compatible SVG geometry exposed through the icon contract and does not install runtimes, reparent markup, bind navigation, or inject corrective CSS.
+| Application shell/navigation | `index.html` + `app.js` | `app.js` | shell styles |
+| Provider status | shell target + `ui-provider-status.js` | `ui-provider-status.js` | `ui-shell-provider-status.css`, `ui-provider-summary.css` |
+| Dashboard | `index.html` + `app.js` | `app.js` plus `ui-dashboard-transfer-presentation.js` | `ui-dashboard.css`, `ui-dashboard-transfer-presentation.css` |
+| Downloads | `index.html` + `app.js` | `app.js` plus `ui-downloads-presentation.js` | `ui-downloads-page.css`, `ui-downloads-desktop.css`, `ui-downloads-presentation.css` |
+| Processing/topbar projection | shell/app controls | `app.js`, `ui-topbar-concurrency.js`, `ui-processing-presentation.js` | owning shell/page styles |
+| Activity Log | `index.html` + runtime rows | `ui-activity-log-runtime.js` | `ui-activity-log-page.css`, `ui-activity-log-controls.css` |
+| Details -> Files | `app.js` | `app.js` | `ui-transfer-contract.css`, `ui-detail-files.css` |
+| Statistics | generated page | `ui-statistics.js` | `ui-statistics-page.css` |
+| Settings | generated clean-room markup | `ui-settings-page.js` plus named subfeature owners | Settings styles plus `ui-settings-archive-passwords.css` |
+| Help | generated page | `ui-help-page.js` and legal-document helper | Help styles |
+| Accessibility/dropdowns | owner-page markup | `ui-accessibility-runtime.js` projection only | shared accessibility/dropdown styles |
+| Toasts | shell target | `operator-title.js` presenter; `ui-toast-contract.js` public bridge | `ui-toast-contract.css` |
 
 ## CSS composition
 
-`style.css` remains the legacy baseline stylesheet required by the accepted frontend. `style-v11.css` retains its filename for asset compatibility but is the canonical v1.0.12 import graph, not an audit-fix overlay. It composes tokens, foundation/components, shared language/contracts, shell, page-specific geometry, transfer semantics, and scoped final accents in a deterministic order.
+`style-v11.css` is the canonical import graph. Correction-named Batch-1 styles are absent. Accepted geometry is assigned to explicit component owners: provider summary, Dashboard transfer presentation, Downloads presentation, Activity Log controls, archive-password editor, and Details file-status geometry.
 
-Multiple stylesheets are legitimate when responsibility is intentionally split (for example base component language plus light-theme/responsive modifiers, or a page stylesheet plus a shared transfer contract). Duplicate generations that successively redefine the same semantic owner are not legitimate. The provider-status `-v2` generation was removed rather than concatenated into the canonical owner.
+`style.css` remains the accepted baseline dependency and `style-v11.css` retains its established URL. Multiple stylesheets are legitimate only when their responsibilities are intentionally different.
 
-## Page-specific modules
+## Accessibility and cross-cutting runtime
 
-Settings is a deliberate clean-room page owner: `ui-settings-page.js` owns generated Settings markup, API contracts, serialization, and navigation entry. Its narrowly scoped companion modules own named subfeatures such as aria2 live state, completion behavior, maintenance wipe, notifications, and card icons; they are not generic post-render correction layers.
+`ui-accessibility-runtime.js` remains a deliberately narrow cross-cutting module for ARIA, keyboard behavior, and universal select/dropdown projection across dynamically rendered controls. Its `MutationObserver` is not a general presentation-repair mechanism.
 
-Help and Statistics similarly have explicit page owners. Main application pages remain in `app.js`; this boundary is tested so generic correction runtimes cannot reclaim them.
+`operator-title.js` owns canonical icon/toast geometry and is not a runtime loader or DOM-repair layer.
 
-## Architectural tests
+## Permanent qualification
 
-Permanent tests prove semantic ownership rather than historical coexistence. In particular:
+Static architecture tests must prove correction-named runtime/style assets and legacy correction globals are absent; the presentation loader has unique paths/markers and contains no application API I/O; bounded owners contain their declared behavior and do not reclaim unrelated surfaces; the six canonical views remain the only shell navigation surfaces; and the canonical CSS graph references only current owners.
 
-- `test_uiarch001_e1_ownership.py` proves retired correction runtimes are absent and shell/download markup is final at render time.
-- `test_uiarch001_e2_ownership.py` proves one provider-status style owner, final Activity Log/Downloads/provider markup, and a non-repairing accessibility runtime.
-- `test_ui_runtime_architecture_contract.py` proves direct canonical shell/download owners and rejects archived runtimes.
-- `test_ui_frontend_deep_audit_contract.py` proves a bounded first-paint bootstrap, unique effective asset loading, I/O-free accessibility runtime, and CI syntax coverage.
-- page/component contract tests preserve the approved dark/light and responsive presentation.
-
-## Permanent browser validation
-
-The `Browser Runtime` workflow is permanent CI and provides the real-browser smoke contract across the six canonical navigation surfaces. It validates the canonical render owners directly, including responsive/theme behavior and visual checkpoints; it does not depend on retired presentation-loader/finalization dependencies or any post-render corrective pass. Removed correction runtimes must not be reintroduced as a corrective mechanism to satisfy browser validation.
-
-## Compatibility retained intentionally
-
-The filename `style-v11.css` is retained because it is the established canonical import-bundle URL and renaming it provides no architectural gain; its contents now document current v1.0.12 ownership. `style.css` remains an accepted baseline dependency. `ui-accessibility-runtime.js` remains because dynamic accessibility and dropdown projection is a legitimate cross-cutting concern. None of these retained pieces is permitted to repair canonical page markup after render.
+Browser Runtime remains the real-browser smoke gate for load, six-surface navigation/reload, theme behavior, auth/error presentation, Dashboard/Downloads/Activity/Settings contracts, and absence of requests for retired correction assets.
 
 ## Change rule
 
-New frontend work must modify the canonical owner or introduce a genuinely new scoped owner. It must not add a new correction stylesheet generation, broad post-render patch script, provider-specific override generation, or compatibility shim whose purpose is to undo another current owner.
+New frontend work modifies the canonical owner or introduces a genuinely scoped owner. It must not add a new correction stylesheet generation, broad post-render patch script, or compatibility global whose purpose is to undo another current owner.
