@@ -125,6 +125,19 @@
   else document.addEventListener('DOMContentLoaded', loadRepair, {once: true});
 })();
 
+/* Topbar scheduler capacity is a shell invariant. Load its projection contract
+ * after app.js has established the inherited badge renderer so stale/zero aria2
+ * observations cannot replace universal scheduler capacity in the denominator. */
+(function loadTopbarConcurrencyContract() {
+  'use strict';
+  if (document.getElementById('dp-topbar-concurrency-script') || window.DPTopbarConcurrency) return;
+  const script = document.createElement('script');
+  script.id = 'dp-topbar-concurrency-script';
+  script.src = '/ui-topbar-concurrency.js?v=1';
+  script.defer = true;
+  document.head.appendChild(script);
+})();
+
 /* Toast lifecycle and geometry are global shell concerns. Load the compatibility
  * bridge after the established application runtimes so legacy Batch-1 globals
  * cannot retain an independent presenter. */
