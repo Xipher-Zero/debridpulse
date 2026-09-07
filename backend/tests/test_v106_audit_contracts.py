@@ -142,11 +142,16 @@ def test_v106_transitional_and_mediainfo_residue_removed():
 
 
 def test_alldebrid_native_operation_is_rate_limited_without_hidden_retry():
-    source = (Path(__file__).resolve().parents[1] / "providers" / "alldebrid" / "client.py").read_text()
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "providers" / "alldebrid" / "client.py").read_text()
+    pacing = (root / "providers" / "alldebrid" / "rate_limit.py").read_text()
     post = source.split("async def _post", 1)[1].split("async def _multipart", 1)[0]
     assert "for attempt" not in post
-    assert post.index("await acquire_alldebrid_request_slot()") < post.index("session.post(")
-    assert post.count("await acquire_alldebrid_request_slot()") == 1
+    assert post.index("await self._rate_limiter.acquire()") < post.index("session.post(")
+    assert post.count("await self._rate_limiter.acquire()") == 1
+    assert "core.config" not in pacing
+    assert "get_settings" not in pacing
+    assert "_alldebrid_rate_limiter" not in pacing
 
 
 def test_dashboard_has_one_mixed_submission_control():
