@@ -66,7 +66,7 @@ def test_statistics_period_labels_use_canonical_debridpulse_copy_without_changin
     expected = (
         ('1h', '1Hour'),
         ('24h', '1Day'),
-        ('7d', '7Day'),
+        ('7d', '7Days'),
         ('30d', '30Days'),
         ('1y', '1Year'),
         ('all', 'All Time'),
@@ -77,7 +77,7 @@ def test_statistics_period_labels_use_canonical_debridpulse_copy_without_changin
         assert fragment in view
         positions.append(view.index(fragment))
     assert positions == sorted(positions)
-    for legacy_label in ('>1h</div>', '>24h</div>', '>7d</div>', '>30d</div>', '>1y</div>', '>All time</div>'):
+    for legacy_label in ('>1h</div>', '>24h</div>', '>7d</div>', '>7Day</div>', '>30d</div>', '>1y</div>', '>All time</div>'):
         assert legacy_label not in view
 
 
