@@ -4,9 +4,8 @@ test('topbar denominator renders canonical scheduler concurrency and shipped pag
   await page.goto('/');
   await page.waitForFunction(() => !!window.DPTopbarConcurrency);
 
-  const runtimeScript = page.locator('script[data-dp-topbar-concurrency="1"]');
+  const runtimeScript = page.locator('script[src="/ui-topbar-concurrency.js?v=1"]');
   await expect(runtimeScript).toHaveCount(1);
-  await expect(runtimeScript).toHaveAttribute('src', /\/ui-topbar-concurrency\.js\?v=1$/);
 
   await page.evaluate(() => {
     settingsData.transfer_policy = {
