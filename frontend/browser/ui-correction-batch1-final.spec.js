@@ -97,8 +97,12 @@ test('P4 repair: Activity Log filter presentation, options, server filtering, re
   expect(presentation.severityLabelRight).toBeLessThan(presentation.severityTriggerLeft);
   await page.screenshot({ path: 'test-results/checkpoint-activity-default.png', fullPage: true });
 
+  const timeProjected = page.locator('.dp-activity-filter-field--time .dp-dropdown__value');
+  const severityProjected = page.locator('.dp-activity-filter-field--severity .dp-dropdown__value');
   await page.locator('#ev-timeframe').selectOption('72h');
   await page.locator('#ev-level').selectOption('warning');
+  await expect(timeProjected).toHaveText('Last 3 days');
+  await expect(severityProjected).toHaveText('Warning');
   await page.locator('#ev-search').fill('Retry');
   await page.waitForTimeout(325);
   await page.waitForFunction(() => document.querySelector('.dp-activity-message')?.textContent === 'Retry delayed');
@@ -123,11 +127,18 @@ test('P4 repair: Activity Log filter presentation, options, server filtering, re
   expect(refreshed.level).toBe('warning');
   expect(refreshed.search).toBe('Retry');
 
+  const beforeReset = requests.length;
   await page.locator('#ev-reset').click();
   await expect(page.locator('#ev-search')).toHaveValue('');
   await expect(page.locator('#ev-timeframe')).toHaveValue('all');
   await expect(page.locator('#ev-level')).toHaveValue('');
+  await expect(timeProjected).toHaveText('Available history');
+  await expect(severityProjected).toHaveText('All');
   await expect(page.locator('#ev-reset')).toBeHidden();
+  await expect.poll(() => requests.length).toBeGreaterThan(beforeReset);
+  await page.waitForTimeout(50);
+  expect(requests.length).toBe(beforeReset + 1);
+  expect(requests[requests.length - 1]).toEqual({limit: '500'});
 
   await page.locator('#ev-search').fill('nothing');
   await page.waitForTimeout(325);

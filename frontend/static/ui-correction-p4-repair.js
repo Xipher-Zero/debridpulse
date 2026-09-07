@@ -244,6 +244,17 @@
     if (!alreadyOrdered) desired.forEach(node => row.appendChild(node));
   }
 
+  function bindResetProjectionSync(reset, timeframe, severity) {
+    if (!reset || reset.dataset.dpP4ResetProjectionSync === '1') return;
+    reset.dataset.dpP4ResetProjectionSync = '1';
+    reset.addEventListener('click', () => {
+      queueMicrotask(() => {
+        timeframe.dispatchEvent(new Event('input', {bubbles:true}));
+        severity.dispatchEvent(new Event('input', {bubbles:true}));
+      });
+    });
+  }
+
   function repairActivity() {
     const row = document.querySelector('#view-events .dp-activity-search-row');
     const search = document.getElementById('ev-search');
@@ -257,6 +268,7 @@
     timeframe.setAttribute('aria-label', 'Time window');
     severity.setAttribute('aria-label', 'Severity');
     if (window.DPDropdowns?.refresh) window.DPDropdowns.refresh();
+    bindResetProjectionSync(reset, timeframe, severity);
 
     const timeField = repairFilterField(timeframe, 'time');
     const severityField = repairFilterField(severity, 'severity');
