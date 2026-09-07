@@ -11,7 +11,7 @@ from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.engine import TransferEngine
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
-from transfers.presentation_repository import TransferRepository
+from transfers.manual_repository import TransferRepository
 from transfers.storage import DiskCapacity, register_storage_health
 
 
@@ -44,28 +44,16 @@ def configure(application):
         stalled_after_seconds=policy.stalled_timeout_hours * 3600,
         resource_poll_interval=policy.provider_poll_interval_seconds,
         local_resource_failure_handler=contain_local_resource_failure))
-    # DiskCapacity is the canonical storage owner. Reconfigure the existing
-    # instance so transition identity is not replaced on every Settings apply.
     from db import database
     capacity = getattr(application, "capacity", None)
     if isinstance(capacity, DiskCapacity):
-        capacity.configure(
-            settings.download_folder,
-            settings.min_free_disk_gb,
-            settings.disk_guard_resume_hysteresis_gb,
-            application_path=database.DB_PATH,
-        )
+        capacity.configure(settings.download_folder, settings.min_free_disk_gb,
+            settings.disk_guard_resume_hysteresis_gb, application_path=database.DB_PATH)
     else:
-        capacity = DiskCapacity(
-            settings.download_folder,
-            settings.min_free_disk_gb,
-            settings.disk_guard_resume_hysteresis_gb,
-            application_path=database.DB_PATH,
-        )
+        capacity = DiskCapacity(settings.download_folder, settings.min_free_disk_gb,
+            settings.disk_guard_resume_hysteresis_gb, application_path=database.DB_PATH)
         application.capacity = capacity
     register_storage_health(capacity)
-    # Establish real initial state immediately; the periodic guard owns later
-    # recovery probes. This probe does not write to either filesystem.
     initial_health = capacity.check()
     application.engine.dispatch_permitted = capacity.application_storage_permitted and not initial_health["active"]
     application.execution_poll_interval = policy.execution_poll_interval_seconds
@@ -79,20 +67,14 @@ def configure(application):
         runtime_state = ProviderRuntimeStateStore()
         application.runtime_state = runtime_state
 
-    # AllDebrid's supported-host inventory is provider maintenance, not request
-    # routing. Keep one coordinator across registry rebuilds so enable/disable
-    # transitions are observed while each new provider instance is rebound.
     from providers.alldebrid.host_runtime import AllDebridHostMaintenance
     host_maintenance = getattr(application, "alldebrid_host_maintenance", None)
     initial_host_binding = host_maintenance is None
     if host_maintenance is None:
         host_maintenance = AllDebridHostMaintenance(runtime_state)
         application.alldebrid_host_maintenance = host_maintenance
-    host_maintenance.bind(
-        registry.providers.get("alldebrid"),
-        initial=initial_host_binding,
-        notify=application.notify_applicability_changed,
-    )
+    host_maintenance.bind(registry.providers.get("alldebrid"), initial=initial_host_binding,
+        notify=application.notify_applicability_changed)
 
     application.lifecycle = (runtime_state, host_maintenance, administration)
     from application.observability import Observability

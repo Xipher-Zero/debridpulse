@@ -13,12 +13,14 @@ when it needs an explicit truncation signal.
 """
 from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from api.routes import _public_transfer_presentation, router as legacy_router
 from application.dependencies import get_application
+from application.manual_candidate_failover import switch_candidate
 from application.service import ApplicationService
 from db.database import get_db
+from transfers.errors import Category, TransferError
 
 router = APIRouter()
 
@@ -42,6 +44,26 @@ _EVENT_TIMEFRAME_MODIFIERS = {
 }
 EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
+
+
+@router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
+async def activate_artifact_candidate(
+    transfer_id: int,
+    artifact_id: int,
+    candidate_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
+    application: ApplicationService = Depends(get_application),
+):
+    """Request activation of one exact existing canonical acquisition candidate."""
+    try:
+        return await switch_candidate(application, transfer_id, artifact_id, candidate_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Transfer not found") from None
+    except TransferError as exc:
+        missing = exc.error.category in {Category.RESOURCE_NOT_FOUND, Category.SOURCE_NOT_FOUND}
+        raise HTTPException(
+            status_code=404 if missing else 409,
+            detail=exc.error.as_dict(),
+        ) from None
 
 
 @router.get("/events")
