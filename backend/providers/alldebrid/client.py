@@ -29,7 +29,7 @@ from typing import Optional, List, Dict, Any
 from services.network_safety import validate_provider_download_url
 from core.logging_utils import sanitize_exception
 from core.branding import APP_SHORT_NAME
-from providers.alldebrid.rate_limit import acquire_alldebrid_request_slot
+from providers.alldebrid.rate_limit import TokenBucketRateLimiter
 
 logger = logging.getLogger("alldebrid.api")
 
@@ -49,9 +49,13 @@ class AllDebridAPIError(Exception):
 
 
 class AllDebridService:
-    def __init__(self, api_key: str, agent: str = APP_SHORT_NAME):
+    def __init__(self, api_key: str, agent: str = APP_SHORT_NAME, *,
+                 rate_limit_per_minute: int = 60, rate_limiter=None):
         self.api_key = api_key
         self.agent   = agent
+        self._rate_limiter = rate_limiter or TokenBucketRateLimiter(
+            rate=rate_limit_per_minute, window=60.0,
+        )
 
     def _headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}"}
@@ -75,7 +79,7 @@ class AllDebridService:
                     data: Optional[Dict] = None) -> Dict[str, Any]:
         """One native operation; retry and ambiguous outcomes belong to core."""
         url = f"{base}/{endpoint}"
-        await acquire_alldebrid_request_slot()
+        await self._rate_limiter.acquire()
         async with aiohttp.ClientSession(headers=self._headers()) as session:
             async with session.post(url, data=data or {}, timeout=TIMEOUT) as response:
                 body = await response.text()
@@ -90,7 +94,7 @@ class AllDebridService:
         return result.get("data", {})
 
     async def _multipart(self, endpoint: str, form: aiohttp.FormData) -> Dict[str, Any]:
-        await acquire_alldebrid_request_slot()
+        await self._rate_limiter.acquire()
         url = f"{API_V4}/{endpoint}"
         try:
             async with aiohttp.ClientSession(headers=self._headers()) as s:

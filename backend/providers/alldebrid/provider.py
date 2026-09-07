@@ -43,8 +43,11 @@ class AllDebridProvider:
     # supported-host snapshot. Magnet/torrent remain descriptor request types.
     applicability = ProviderApplicability()
 
-    def __init__(self, api_key: str = "", agent: str = "DebridPulse", *, client=None):
-        self.client = client if client is not None else AllDebridService(api_key, agent)
+    def __init__(self, api_key: str = "", agent: str = "DebridPulse", *, client=None,
+                 rate_limit_per_minute: int = 60):
+        self.client = client if client is not None else AllDebridService(
+            api_key, agent, rate_limit_per_minute=rate_limit_per_minute,
+        )
         self._secrets = (api_key,)
         self.descriptor = IntegrationDescriptor(
             "alldebrid", "AllDebrid",

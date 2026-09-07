@@ -14,7 +14,10 @@ class AllDebridOptions(BaseModel):
 
 def build(options, environment):
     from providers.alldebrid.provider import AllDebridProvider
-    provider = AllDebridProvider(options.api_key, options.agent)
+    provider = AllDebridProvider(
+        options.api_key, options.agent,
+        rate_limit_per_minute=options.rate_limit_per_minute,
+    )
     # URL applicability is populated from AllDebrid's persisted/native host
     # inventory. Magnet/torrent remain neutral descriptor request-type claims.
     provider.applicability = ProviderApplicability()
@@ -24,6 +27,7 @@ def build(options, environment):
 definition = IntegrationDefinition(
     "alldebrid", "provider", "AllDebrid", AllDebridOptions, build,
     secret_fields=frozenset({"api_key"}),
+    ownership_fields=frozenset({"api_key"}),
     legacy_fields=(("alldebrid_api_key", "api_key"), ("alldebrid_agent", "agent"),
                    ("alldebrid_rate_limit_per_minute", "rate_limit_per_minute")),
     required_options=frozenset({"api_key"}),

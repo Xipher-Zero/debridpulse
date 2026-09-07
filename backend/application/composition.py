@@ -68,11 +68,18 @@ def configure(application):
         application.runtime_state = runtime_state
 
     from providers.alldebrid.host_runtime import AllDebridHostMaintenance
+    from providers.alldebrid.runtime_state import AllDebridRuntimeStateStore, credential_scope
+    alldebrid_options = settings.integrations["alldebrid"].options
+    host_scope = credential_scope(alldebrid_options.get("api_key", ""))
+    previous_scope = getattr(application, "alldebrid_host_scope", None)
     host_maintenance = getattr(application, "alldebrid_host_maintenance", None)
-    initial_host_binding = host_maintenance is None
-    if host_maintenance is None:
-        host_maintenance = AllDebridHostMaintenance(runtime_state)
+    initial_host_binding = host_maintenance is None or previous_scope != host_scope
+    if initial_host_binding:
+        host_maintenance = AllDebridHostMaintenance(
+            AllDebridRuntimeStateStore(runtime_state, host_scope)
+        )
         application.alldebrid_host_maintenance = host_maintenance
+        application.alldebrid_host_scope = host_scope
     host_maintenance.bind(registry.providers.get("alldebrid"), initial=initial_host_binding,
         notify=application.notify_applicability_changed)
 
