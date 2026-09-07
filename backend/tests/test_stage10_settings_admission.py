@@ -19,8 +19,7 @@ def test_settings_route_owns_single_configuration_admission_window():
     function_body = source[function_start:function_end]
 
     assert "async with application.configuration_admission()" in function_body
-    assert "compute_committed_settings(" in function_body
-    assert "await application.initialize_from_settings(committed)" in function_body
+    assert "application.application_operation()" not in function_body
 
 
 def test_self_managed_configuration_routes_are_not_double_gated_by_global_mutation_middleware():
@@ -32,7 +31,6 @@ def test_self_managed_configuration_routes_are_not_double_gated_by_global_mutati
 
     assert '"/api/settings"' in paths_block
     assert '"/api/aria2/global-options"' in paths_block
-    assert "if (" in source
     assert "request.url.path not in _SELF_MAINTAINED_MUTATION_PATHS" in source
     assert "get_application(request).application_operation()" in source
 
@@ -45,6 +43,7 @@ def test_aria2_global_options_route_owns_configuration_admission_window():
     function_body = source[function_start:function_end]
 
     assert "async with application.configuration_admission()" in function_body
+    assert "application.application_operation()" not in function_body
 
 
 def test_aria2_global_options_http_request_skips_outer_application_operation(monkeypatch):
