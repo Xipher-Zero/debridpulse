@@ -33,8 +33,8 @@ def test_frontend_docs_describe_live_bounded_owners() -> None:
     doc = read("docs/UI_FRONTEND_ARCHITECTURE.md")
     assert doc.startswith("# DebridPulse v1.0.12 Frontend Architecture")
     assert "six reachable navigation surfaces" in doc
-    assert "`ui-presentation-loader.js`" in doc
-    assert "orchestration-only" in doc
+    assert "`ui-presentation-loader.js` is physically absent" in doc
+    assert "bounded presentation owners" in doc
     for owner in ("ui-dashboard-transfer-presentation.js", "ui-downloads-presentation.js", "ui-processing-presentation.js", "ui-activity-log-runtime.js", "ui-settings-archive-passwords.js"):
         assert owner in doc
     assert "There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrectionP4Repair`" in doc

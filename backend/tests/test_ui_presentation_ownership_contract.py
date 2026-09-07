@@ -12,34 +12,36 @@ def test_retired_correction_assets_and_globals_are_absent() -> None:
     for name in (
         "ui-correction-batch1.js", "ui-correction-batch1-final.js",
         "ui-correction-p4-repair.js", "ui-correction-batch1.css",
-        "ui-correction-batch1-provider-card.css",
+        "ui-correction-batch1-provider-card.css", "ui-presentation-loader.js",
     ):
         assert not (STATIC / name).exists()
     joined = "\n".join(path.read_text(encoding="utf-8") for path in STATIC.glob("*.js"))
-    for token in ("DPUICorrectionBatch1", "DPUICorrectionBatch1Final", "DPUICorrectionP4Repair"):
+    for token in ("DPUICorrectionBatch1", "DPUICorrectionBatch1Final", "DPUICorrectionP4Repair", "DPPresentationLoader"):
         assert token not in joined
 
 
-def test_presentation_loader_is_order_only_and_unique() -> None:
-    loader = read("ui-presentation-loader.js")
+def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
+    provider = read("ui-provider-status.js")
     expected = (
-        ("/ui-toast-contract.js?v=2", "DPToastContract"),
-        ("/ui-dashboard-transfer-presentation.js?v=1", "DPDashboardTransferPresentation"),
-        ("/ui-downloads-presentation.js?v=1", "DPDownloadsPresentation"),
-        ("/ui-processing-presentation.js?v=1", "DPProcessingPresentation"),
-        ("/ui-activity-log-runtime.js?v=1", "DPActivityLog"),
-        ("/ui-settings-archive-passwords.js?v=1", "DPArchivePasswords"),
+        "/ui-toast-contract.js?v=2",
+        "/ui-dashboard-transfer-presentation.js?v=1",
+        "/ui-downloads-presentation.js?v=1",
+        "/ui-processing-presentation.js?v=1",
+        "/ui-activity-log-runtime.js?v=1",
+        "/ui-settings-archive-passwords.js?v=1",
     )
-    for src, marker in expected:
-        assert loader.count(src) == 1
-        assert loader.count(marker) >= 1
-    for forbidden in ("api(", "fetch(", "XMLHttpRequest", "EventSource", "MutationObserver"):
-        assert forbidden not in loader
+    positions = []
+    for src in expected:
+        assert provider.count(src) == 1
+        positions.append(provider.index(src))
+    assert positions == sorted(positions)
+    assert "bootPresentationOwners" in provider
+    assert "ui-presentation-loader.js" not in provider
+    assert "DPPresentationLoader" not in provider
 
 
 def test_bounded_runtime_owners_are_present() -> None:
     provider = read("ui-provider-status.js")
-    assert "ui-presentation-loader.js?v=1" in provider
     assert "ui-correction" not in provider
     assert "createElement('script')" not in read("ui-settings-card-icons.js")
     assert "window.DPDashboardTransferPresentation" in read("ui-dashboard-transfer-presentation.js")

@@ -12,9 +12,11 @@ Every visible behavior has one bounded structural/render owner and intentionally
 
 ## Boot graph
 
-`index.html` parser-loads the established application/runtime owners. `ui-provider-status.js`, which executes after `app.js`, starts `ui-presentation-loader.js`. The presentation loader is orchestration-only: it performs no API I/O and no DOM repair. It deterministically loads the bounded presentation owners below and exposes only its immutable manifest for qualification.
+`index.html` parser-loads the established application and canonical page owners. The provider-status owner executes after `app.js` and performs a one-time ordered startup of the bounded presentation owners needed by existing shell subfeatures. The startup list is fixed, contains no application API I/O, and does not perform post-render correction.
 
-The presentation owners are:
+`ui-presentation-loader.js` is physically absent. It is a retired presentation-loader dependency and must not return under another correction-layer role.
+
+The bounded presentation owners are:
 
 - `ui-toast-contract.js` — public toast copy/timing bridge to the canonical `operator-title.js` presenter.
 - `ui-dashboard-transfer-presentation.js` — Dashboard Recent Activity row/source presentation.
@@ -56,10 +58,12 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 
 ## Permanent qualification
 
-Static architecture tests must prove correction-named runtime/style assets and legacy correction globals are absent; the presentation loader has unique paths/markers and contains no application API I/O; bounded owners contain their declared behavior and do not reclaim unrelated surfaces; the six canonical views remain the only shell navigation surfaces; and the canonical CSS graph references only current owners.
+Permanent CI uses Browser Runtime as the real-browser smoke contract for all six canonical navigation surfaces. Static architecture tests additionally prove correction-named runtime/style assets and legacy correction globals are absent; bounded owners contain their declared behavior and do not reclaim unrelated surfaces; the canonical CSS graph references only current owners; and the retired presentation-loader/finalization dependencies remain absent.
 
-Browser Runtime remains the real-browser smoke gate for load, six-surface navigation/reload, theme behavior, auth/error presentation, Dashboard/Downloads/Activity/Settings contracts, and absence of requests for retired correction assets.
+`ui-runtime.js` and `ui-downloads-runtime.js` are physically absent and must not be reintroduced as a corrective mechanism.
+
+Browser Runtime validates load, six-surface navigation/reload, theme behavior, auth/error presentation, Dashboard/Downloads/Activity/Settings contracts, and absence of requests for retired correction assets.
 
 ## Change rule
 
-New frontend work modifies the canonical owner or introduces a genuinely scoped owner. It must not add a new correction stylesheet generation, broad post-render patch script, or compatibility global whose purpose is to undo another current owner.
+New frontend work modifies the canonical owner or introduces a genuinely scoped owner. It must not add a new correction stylesheet generation, broad post-render patch script, presentation-loader/finalization dependency, or compatibility global whose purpose is to undo another current owner.

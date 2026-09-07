@@ -1,6 +1,16 @@
 /* Neutral provider/direct-source status presentation owner. */
 (function () {
   'use strict';
+
+  const PRESENTATION_OWNERS = Object.freeze([
+    ['/ui-toast-contract.js?v=2', 'DPToastContract'],
+    ['/ui-dashboard-transfer-presentation.js?v=1', 'DPDashboardTransferPresentation'],
+    ['/ui-downloads-presentation.js?v=1', 'DPDownloadsPresentation'],
+    ['/ui-processing-presentation.js?v=1', 'DPProcessingPresentation'],
+    ['/ui-activity-log-runtime.js?v=1', 'DPActivityLog'],
+    ['/ui-settings-archive-passwords.js?v=1', 'DPArchivePasswords'],
+  ]);
+
   let generation = 0;
   function invalidate() { generation += 1; return generation; }
 
@@ -135,18 +145,40 @@
     return observations;
   }
 
-  function loadPresentationGraph() {
-    if (document.getElementById('dp-presentation-loader-script') || window.DPPresentationLoader) return;
-    const script = document.createElement('script');
-    script.id = 'dp-presentation-loader-script';
-    script.src = '/ui-presentation-loader.js?v=1';
-    script.async = false;
-    document.head.appendChild(script);
+  function bootPresentationOwners() {
+    let chain = Promise.resolve();
+    for (const [src, marker] of PRESENTATION_OWNERS) {
+      chain = chain.then(() => new Promise(resolve => {
+        if (window[marker]) { resolve(); return; }
+        const path = src.split('?')[0];
+        const existing = Array.from(document.scripts).find(node => {
+          try { return new URL(node.src, location.href).pathname === path; } catch (_) { return false; }
+        });
+        if (existing) {
+          if (window[marker]) { resolve(); return; }
+          existing.addEventListener('load', resolve, {once:true});
+          existing.addEventListener('error', resolve, {once:true});
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = false;
+        script.dataset.dpPresentationOwner = marker;
+        script.addEventListener('load', resolve, {once:true});
+        script.addEventListener('error', () => {
+          console.error('Unable to load bounded presentation owner:', src);
+          resolve();
+        }, {once:true});
+        document.head.appendChild(script);
+      }));
+    }
+    chain.finally(() => document.dispatchEvent(new CustomEvent('debridpulse:presentation-ready')));
+    return chain;
   }
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
   ensureHeading();
   render([], 'loading');
-  loadPresentationGraph();
+  bootPresentationOwners();
   document.addEventListener('DOMContentLoaded', () => refresh().catch(() => render([], 'unknown')), {once:true});
 })();
