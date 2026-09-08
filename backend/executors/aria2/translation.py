@@ -61,6 +61,8 @@ _ERRORS = {
 }
 
 _CODE1_DIAGNOSTICS = (
+    (re.compile(r"\bFailed to receive data\b[\s\S]{0,160}\bError decoding the received TLS packet\b", re.I),
+     D.NETWORK, C.TLS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
     (re.compile(r"\bSSL routines::unexpected eof while reading\b", re.I),
      D.NETWORK, C.TLS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
     (re.compile(r"\b(?:TLS|SSL)(?:/SSL)?\b.{0,80}\b(?:receive|read|record|decode)(?:d|ing)?\b.{0,80}\b(?:error|fail(?:ed|ure)?|unexpected eof)\b", re.I),
