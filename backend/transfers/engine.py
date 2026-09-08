@@ -15,7 +15,9 @@ from transfers.contracts import Manifest, ResourceLookup
 from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
-from transfers.models import CleanupAuthority, Ownership, ResolutionResult, ResourceState
+from transfers.models import (
+    CleanupAuthority, ExecutionState, Ownership, ResolutionResult, ResourceState, TransferState,
+)
 
 
 # Preserve the public monkeypatch seams that the qualified recovery engine exposed.
@@ -47,6 +49,38 @@ class TransferEngine(_RecoveryTransferEngine):
     async def _recover_artifact(self, artifact, error):
         """Enter recovery with a core-derived compatibility action."""
         return await super()._recover_artifact(artifact, self.policy.compatibility(error))
+
+    async def _aggregate(self, transfer_id: int):
+        """Repair durable paused truth after crash/restart convergence windows."""
+        result = await super()._aggregate(transfer_id)
+        transfer = await self.repository.get(transfer_id)
+        terminal = {
+            TransferState.DELETED,
+            TransferState.COMPLETED,
+            TransferState.CONSOLIDATED,
+            TransferState.CANCELLED,
+        }
+        if transfer is None or transfer.state in terminal:
+            return result
+
+        paused = transfer.paused or await self.repository.globally_paused()
+        if not paused:
+            return result
+
+        # Pause intent alone is not enough to claim parent PAUSED while a durable
+        # execution observation is still active/unknown. Once every recorded
+        # attempt is quiescent, repairing the parent is metadata-only: it does
+        # not dispatch, refresh, replace a GID, or consume recovery authority.
+        unsettled = {
+            "prepared",
+            ExecutionState.QUEUED.value,
+            ExecutionState.TRANSFERRING.value,
+            ExecutionState.UNKNOWN.value,
+        }
+        executions = await self.repository.executions(transfer_id)
+        if not any(str(item.state) in unsettled for item in executions):
+            await self.repository.state(transfer_id, TransferState.PAUSED)
+        return result
 
     def _bound_resource_provider(self, record):
         """Resolve an admitted resource owner through the canonical registry gate.
