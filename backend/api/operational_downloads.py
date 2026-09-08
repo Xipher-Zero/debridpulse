@@ -241,7 +241,20 @@ async def list_operational_torrents(
             GROUP BY r.transfer_id
         )
         SELECT
-            t.*,
+            t.id,
+            t.hash,
+            t.name,
+            t.status,
+            t.size_bytes,
+            t.progress,
+            t.source,
+            t.label,
+            t.error_message,
+            t.extraction_status,
+            t.extraction_error,
+            t.created_at,
+            t.updated_at,
+            t.completed_at,
             COALESCE(request_failures.failure_count, 0) AS source_failure_count,
             latest_route.provider_id AS current_provider_id,
             CASE

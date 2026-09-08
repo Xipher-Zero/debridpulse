@@ -1,7 +1,6 @@
 """Regression coverage for populated legacy Downloads read scaling."""
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 import sqlite3
@@ -21,18 +20,20 @@ FIXTURE = Path(__file__).with_name("fixtures") / "v1.0.11.1.sql"
 @pytest.mark.asyncio
 async def test_operational_list_releases_query_session_and_bounds_projection(monkeypatch):
     query_session_active = False
-    in_flight = 0
-    max_in_flight = 0
+    db_calls = []
     row_count = 12
 
     class FakeDb:
         async def fetchall(self, sql, params):
-            assert "SELECT t.id" in sql
+            db_calls.append(("fetchall", sql, tuple(params)))
+            assert "WITH page AS" in sql
             assert "file_count" not in sql
             assert "blocked_count" not in sql
+            assert "t.*" not in sql
             return [{"id": transfer_id} for transfer_id in range(1, row_count + 1)]
 
         async def fetchone(self, sql, params):
+            db_calls.append(("fetchone", sql, tuple(params)))
             assert "COUNT(*) AS cnt" in sql
             return {"cnt": row_count}
 
@@ -47,16 +48,10 @@ async def test_operational_list_releases_query_session_and_bounds_projection(mon
             query_session_active = False
 
     class FakeRepository:
-        async def presentation(self, transfer_id):
-            nonlocal in_flight, max_in_flight
-            assert not query_session_active, "list DB session leaked into canonical presentation"
-            in_flight += 1
-            max_in_flight = max(max_in_flight, in_flight)
-            try:
-                await asyncio.sleep(0.01)
-                return {"id": transfer_id}
-            finally:
-                in_flight -= 1
+        async def presentation(self, *_args, **_kwargs):
+            raise AssertionError(
+                "normal Downloads projection must not call comprehensive presentation"
+            )
 
     monkeypatch.setattr(operational_downloads, "get_db", fake_get_db)
     monkeypatch.setattr(
@@ -74,9 +69,10 @@ async def test_operational_list_releases_query_session_and_bounds_projection(mon
         application=application,
     )
 
+    assert query_session_active is False
     assert result["total"] == row_count
     assert [item["id"] for item in result["items"]] == list(range(1, row_count + 1))
-    assert 2 <= max_in_flight <= operational_downloads._PRESENTATION_CONCURRENCY
+    assert [kind for kind, _sql, _params in db_calls] == ["fetchall", "fetchone"]
 
 
 @pytest.mark.asyncio

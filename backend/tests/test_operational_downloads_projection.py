@@ -41,11 +41,12 @@ def _row(transfer_id: int):
         "local_path": "/download/private",
         "source": "https://example.invalid/file",
         "label": "fixture",
-        "error_code": None,
         "error_message": None,
         "created_at": "2026-09-08T12:00:00Z",
+        "updated_at": "2026-09-08T12:01:00Z",
+        "completed_at": "2026-09-08T12:01:00Z",
         "extraction_status": "not_required",
-        "extraction_message": None,
+        "extraction_error": None,
         "source_failure_count": 1,
         "current_provider_id": "alldebrid",
         "delivering_provider_id": "alldebrid",
@@ -92,6 +93,10 @@ def test_downloads_collection_uses_bounded_projection_not_comprehensive_presenta
     assert "transfer_requests" in projection_sql
     assert "AND p.provider_id IS NOT NULL" in projection_sql
     assert "COALESCE(a.provider_id" not in projection_sql
+    assert "t.*" not in projection_sql
+    assert "t.magnet" not in projection_sql
+    assert "t.download_url" not in projection_sql
+    assert "t.local_path" not in projection_sql
 
     assert result["total"] == 25
     assert len(result["items"]) == 25
@@ -102,7 +107,6 @@ def test_downloads_collection_uses_bounded_projection_not_comprehensive_presenta
     assert first["source_failure_count"] == 1
     assert "magnet" not in first
     assert "download_url" not in first
-    assert "local_path" not in first
 
 
 def test_downloads_collection_db_call_count_does_not_scale_with_page_size(monkeypatch):
@@ -116,24 +120,32 @@ def test_downloads_collection_db_call_count_does_not_scale_with_page_size(monkey
 
 
 def test_assembled_app_exposes_only_operational_downloads_collection_route():
-    collection_routes = [
+    legacy_collection_routes = [
         route
-        for route in backend_main.app.routes
-        if getattr(route, "path", None) == "/api/torrents"
+        for route in legacy_routes.router.routes
+        if getattr(route, "path", None) == "/torrents"
+        and "GET" in (getattr(route, "methods", set()) or set())
+    ]
+    operational_collection_routes = [
+        route
+        for route in downloads.router.routes
+        if getattr(route, "path", None) == "/torrents"
         and "GET" in (getattr(route, "methods", set()) or set())
     ]
 
-    assert len(collection_routes) == 1
-    assert collection_routes[0].endpoint is downloads.list_operational_torrents
+    assert legacy_collection_routes == []
+    assert len(operational_collection_routes) == 1
+    assert operational_collection_routes[0].endpoint is downloads.list_operational_torrents
 
-    detail_routes = [
-        route
-        for route in backend_main.app.routes
-        if getattr(route, "path", None) == "/api/torrents/{torrent_id}"
-        and "GET" in (getattr(route, "methods", set()) or set())
-    ]
-    assert len(detail_routes) == 1
-    assert detail_routes[0].endpoint is legacy_routes.get_torrent
+    paths = backend_main.app.openapi()["paths"]
+    assert "/api/torrents" in paths
+    assert paths["/api/torrents"]["get"]["operationId"].startswith(
+        "list_operational_torrents_"
+    )
+    assert "/api/torrents/{torrent_id}" in paths
+    assert paths["/api/torrents/{torrent_id}"]["get"]["operationId"].startswith(
+        "get_torrent_"
+    )
 
 
 class _RecordingRepository:
