@@ -8,10 +8,10 @@ from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
 from integrations.definition import IntegrationEnvironment
 from integrations.runtime_state import ProviderRuntimeStateStore
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
-from transfers.manual_repository import TransferRepository
+from transfers.recovery_repository import TransferRepository
 from transfers.storage import DiskCapacity, register_storage_health
 
 
