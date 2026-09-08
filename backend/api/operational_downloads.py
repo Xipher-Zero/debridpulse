@@ -21,7 +21,9 @@ from application.dependencies import get_application
 from application.manual_candidate_failover import switch_candidate
 from application.service import ApplicationService
 from db.database import get_db
+from transfers import codec
 from transfers.errors import Category, TransferError
+from transfers.presentation_repository import public_source_identity
 
 router = APIRouter()
 
@@ -45,6 +47,56 @@ _EVENT_TIMEFRAME_MODIFIERS = {
 }
 EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
+_SOURCE_PROJECTION_FIELDS = (
+    "_source_request_payload",
+    "_delivered_candidate_source",
+    "_active_candidate_source",
+    "_route_candidate_summary",
+)
+
+
+def _decode_projection_value(value, default=None):
+    try:
+        return codec.load(value, default)
+    except (TypeError, ValueError, KeyError):
+        return default
+
+
+def _bounded_source_identity(row) -> dict[str, str]:
+    """Derive the safe list icon identity without comprehensive presentation."""
+    request_kind = ""
+    request_payload = _decode_projection_value(row.get("_source_request_payload"), None)
+    if isinstance(request_payload, dict):
+        try:
+            request_kind = str(codec.request(request_payload).kind or "").strip().lower()
+        except (TypeError, ValueError, KeyError):
+            request_kind = ""
+
+    base_identity = public_source_identity(request_kind)
+    if base_identity.get("kind") in {"magnet", "torrent_file"}:
+        return base_identity
+
+    candidate_source = None
+    if str(row.get("status") or "").strip().lower() == "completed":
+        delivered = _decode_projection_value(row.get("_delivered_candidate_source"), None)
+        if public_source_identity(request_kind, delivered).get("kind") == "host":
+            candidate_source = delivered
+
+    if candidate_source is None:
+        active = _decode_projection_value(row.get("_active_candidate_source"), None)
+        if public_source_identity(request_kind, active).get("kind") == "host":
+            candidate_source = active
+
+    if candidate_source is None:
+        candidates = _decode_projection_value(row.get("_route_candidate_summary"), [])
+        if isinstance(candidates, list):
+            for candidate in candidates:
+                source = candidate.get("source") if isinstance(candidate, dict) else None
+                if public_source_identity(request_kind, source).get("kind") == "host":
+                    candidate_source = source
+                    break
+
+    return public_source_identity(request_kind, candidate_source)
 
 
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
@@ -201,14 +253,15 @@ async def list_operational_torrents(
             {page_sql}
         ),
         latest_route AS (
-            SELECT transfer_id, provider_id
+            SELECT transfer_id, provider_id, candidate_summary
             FROM (
                 SELECT
                     p.transfer_id,
                     a.provider_id,
+                    p.candidate_summary,
                     ROW_NUMBER() OVER (
                         PARTITION BY p.transfer_id
-                        ORDER BY p.ordinal DESC
+                        ORDER BY p.ordinal DESC, p.updated_at DESC
                     ) AS row_number
                 FROM route_attempt_provenance p
                 JOIN resolution_attempts a
@@ -229,6 +282,63 @@ async def list_operational_torrents(
             WHERE p.delivered = 1
               AND p.provider_id IS NOT NULL
             GROUP BY p.transfer_id
+        ),
+        delivered_source AS (
+            SELECT transfer_id, candidate_source
+            FROM (
+                SELECT
+                    p.transfer_id,
+                    p.candidate_source,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.transfer_id
+                        ORDER BY e.updated_at DESC, p.ordinal DESC, e.id DESC
+                    ) AS row_number
+                FROM execution_attempt_provenance p
+                JOIN execution_attempts e
+                  ON e.id = p.execution_attempt_id
+                JOIN page
+                  ON page.id = p.transfer_id
+                WHERE p.delivered = 1
+            )
+            WHERE row_number = 1
+        ),
+        active_source AS (
+            SELECT transfer_id, candidate_source
+            FROM (
+                SELECT
+                    f.torrent_id AS transfer_id,
+                    p.candidate_source,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY f.torrent_id
+                        ORDER BY f.updated_at DESC, p.ordinal DESC, f.id DESC
+                    ) AS row_number
+                FROM download_files f
+                JOIN execution_attempt_provenance p
+                  ON p.execution_attempt_id = f.execution_attempt_id
+                JOIN page
+                  ON page.id = f.torrent_id
+                WHERE f.execution_attempt_id IS NOT NULL
+                  AND COALESCE(f.mirror_state, '') != 'standby'
+            )
+            WHERE row_number = 1
+        ),
+        root_request AS (
+            SELECT transfer_id, payload
+            FROM (
+                SELECT
+                    r.transfer_id,
+                    r.payload,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY r.transfer_id
+                        ORDER BY CASE WHEN r.parent_id IS NULL THEN 0 ELSE 1 END,
+                                 r.ordinal,
+                                 r.id
+                    ) AS row_number
+                FROM transfer_requests r
+                JOIN page
+                  ON page.id = r.transfer_id
+            )
+            WHERE row_number = 1
         ),
         request_failures AS (
             SELECT
@@ -266,7 +376,11 @@ async def list_operational_torrents(
                 WHEN COALESCE(delivery.provider_count, 0) > 0 THEN 'recorded'
                 WHEN t.status = 'completed' THEN 'unknown_legacy'
                 ELSE 'pending'
-            END AS provider_provenance_status
+            END AS provider_provenance_status,
+            root_request.payload AS _source_request_payload,
+            delivered_source.candidate_source AS _delivered_candidate_source,
+            active_source.candidate_source AS _active_candidate_source,
+            latest_route.candidate_summary AS _route_candidate_summary
         FROM page
         JOIN torrents t
           ON t.id = page.id
@@ -274,6 +388,12 @@ async def list_operational_torrents(
           ON latest_route.transfer_id = t.id
         LEFT JOIN delivery
           ON delivery.transfer_id = t.id
+        LEFT JOIN delivered_source
+          ON delivered_source.transfer_id = t.id
+        LEFT JOIN active_source
+          ON active_source.transfer_id = t.id
+        LEFT JOIN root_request
+          ON root_request.transfer_id = t.id
         LEFT JOIN request_failures
           ON request_failures.transfer_id = t.id
         ORDER BY t.created_at DESC
@@ -286,8 +406,13 @@ async def list_operational_torrents(
         )
         total = total_row["cnt"] if total_row else 0
 
-    items = [
-        _public_transfer_presentation(row, application.definitions)
-        for row in rows
-    ]
+    items = []
+    for row in rows:
+        projected = dict(row)
+        source_identity = _bounded_source_identity(projected)
+        for field in _SOURCE_PROJECTION_FIELDS:
+            projected.pop(field, None)
+        item = _public_transfer_presentation(projected, application.definitions)
+        item["current_source_identity"] = source_identity
+        items.append(item)
     return {"items": items, "total": total}
