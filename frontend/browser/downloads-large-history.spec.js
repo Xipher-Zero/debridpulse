@@ -38,7 +38,13 @@ async function installLargeHistoryFixture(page, total = 1000) {
     const request = route.request();
     const url = new URL(request.url());
 
-    if (url.pathname !== '/api/torrents' || request.method() !== 'GET') {
+    // Only replace the paginated Downloads collection read. Dashboard recent
+    // activity and lifecycle probes intentionally continue to the real backend.
+    if (
+      url.pathname !== '/api/torrents' ||
+      request.method() !== 'GET' ||
+      !url.searchParams.has('offset')
+    ) {
       return route.fallback();
     }
 
@@ -64,7 +70,7 @@ async function installLargeHistoryFixture(page, total = 1000) {
     });
   });
 
-  return {listRequests};
+  return {listRequests, total};
 }
 
 async function openDownloads(page) {
@@ -72,6 +78,34 @@ async function openDownloads(page) {
   await expect(page.locator('#view-torrents')).toHaveClass(/\bactive\b/);
   await expect(page.locator('#page-title')).toHaveText('Downloads');
   await expect(page.locator('#t-tbody .dp-downloads-detail-row').first()).toBeVisible();
+}
+
+async function waitForDownloadsListToSettle(rows, fixture) {
+  let previousSignature = '';
+  let stableObservations = 0;
+
+  await expect.poll(async () => {
+    const request = fixture.listRequests.at(-1);
+    if (!request) return false;
+
+    const count = await rows.count();
+    const expectedCount = Math.min(
+      request.limit,
+      Math.max(0, fixture.total - request.offset)
+    );
+    const signature = `${fixture.listRequests.length}:${request.limit}:${request.offset}:${count}`;
+
+    if (signature === previousSignature) stableObservations += 1;
+    else stableObservations = 0;
+    previousSignature = signature;
+
+    return stableObservations >= 3 && count === expectedCount;
+  }, {
+    timeout: 4000,
+    intervals: [100, 100, 100, 100, 100, 200, 200],
+  }).toBe(true);
+
+  return fixture.listRequests.at(-1);
 }
 
 test('Session 3 Browser Runtime keeps a 1,000-item historical collection bounded and paginated', async ({ page }) => {
@@ -82,24 +116,43 @@ test('Session 3 Browser Runtime keeps a 1,000-item historical collection bounded
   await openDownloads(page);
 
   const rows = page.locator('#t-tbody .dp-downloads-detail-row');
-  await expect(rows).toHaveCount(25);
+  const firstRequest = await waitForDownloadsListToSettle(rows, fixture);
+  const pageSize = firstRequest.limit;
+
+  expect(firstRequest.offset).toBe(0);
+  expect(pageSize).toBeGreaterThan(0);
+  expect(pageSize).toBeLessThanOrEqual(100);
+  await expect(rows).toHaveCount(pageSize);
   await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="1"]')).toBeVisible();
-  await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="25"]')).toBeVisible();
+  await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${pageSize}"]`)).toBeVisible();
   await expect(page.locator('#torrent-page-info')).toContainText('1000');
-  expect(fixture.listRequests.some(request => request.limit === 25 && request.offset === 0)).toBe(true);
 
+  const beforeNext = fixture.listRequests.length;
   await page.locator('#torrent-page-btns button[aria-label="Next page"]').click();
-  await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="26"]')).toBeVisible();
-  await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="50"]')).toBeVisible();
-  await expect(rows).toHaveCount(25);
-  expect(fixture.listRequests.some(request => request.limit === 25 && request.offset === 25)).toBe(true);
+  await expect.poll(() => fixture.listRequests.length).toBeGreaterThan(beforeNext);
+  const nextRequest = await waitForDownloadsListToSettle(rows, fixture);
 
-  await page.evaluate(() => goToTorrentPage(40));
-  await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="976"]')).toBeVisible();
+  expect(nextRequest.limit).toBe(pageSize);
+  expect(nextRequest.offset).toBe(pageSize);
+  await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${pageSize + 1}"]`)).toBeVisible();
+  await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${pageSize * 2}"]`)).toBeVisible();
+  await expect(rows).toHaveCount(pageSize);
+
+  const lastPage = Math.ceil(fixture.total / pageSize);
+  const lastOffset = (lastPage - 1) * pageSize;
+  const lastCount = fixture.total - lastOffset;
+  const beforeLast = fixture.listRequests.length;
+
+  await page.evaluate(pageNumber => goToTorrentPage(pageNumber), lastPage);
+  await expect.poll(() => fixture.listRequests.length).toBeGreaterThan(beforeLast);
+  const lastRequest = await waitForDownloadsListToSettle(rows, fixture);
+
+  expect(lastRequest.limit).toBe(pageSize);
+  expect(lastRequest.offset).toBe(lastOffset);
+  await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${lastOffset + 1}"]`)).toBeVisible();
   await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="1000"]')).toBeVisible();
-  await expect(rows).toHaveCount(25);
+  await expect(rows).toHaveCount(lastCount);
   await expect(page.locator('#torrent-page-info')).toContainText('1000');
-  expect(fixture.listRequests.some(request => request.limit === 25 && request.offset === 975)).toBe(true);
 
   expect(fixture.listRequests.length).toBeGreaterThanOrEqual(3);
   expect(fixture.listRequests.every(request => request.limit <= 100)).toBe(true);
