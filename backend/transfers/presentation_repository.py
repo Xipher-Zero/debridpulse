@@ -177,6 +177,7 @@ class TransferRepository(_CanonicalTransferRepository):
         paused = False
         file_rows = []
         progress_rows = []
+        contexts = {}
         async with get_db() as db:
             root = await db.fetchone(
                 """SELECT payload FROM transfer_requests
@@ -201,8 +202,9 @@ class TransferRepository(_CanonicalTransferRepository):
             )
             paused = bool(pause_row and pause_row.get("paused"))
             file_rows = await db.fetchall(
-                """SELECT id,status,size_bytes,blocked,mirror_state FROM download_files
-                    WHERE torrent_id=? ORDER BY id""", (transfer_id,)
+                """SELECT id,torrent_id,status,size_bytes,blocked,mirror_state,
+                          recovery_failures,recovery_refreshes
+                    FROM download_files WHERE torrent_id=? ORDER BY id""", (transfer_id,)
             )
             progress_rows = await db.fetchall(
                 """SELECT artifact_id,progress FROM execution_attempts
@@ -253,6 +255,22 @@ class TransferRepository(_CanonicalTransferRepository):
                                     candidate_source = source
                                     break
 
+            # Presentation already owns this DB session. Reuse it for durable
+            # recovery snapshots instead of opening one fresh SQLite connection
+            # per artifact through recovery_context(). Details need every child;
+            # list rows can omit completed-child recovery history because the
+            # completed presentation is independent of recovery context.
+            snapshot_reader = getattr(self, "_recovery_snapshot", None)
+            if callable(snapshot_reader):
+                for row in file_rows:
+                    if not details and str(row.get("status") or "").lower() == "completed":
+                        continue
+                    artifact_id = int(row["id"])
+                    try:
+                        contexts[artifact_id] = await snapshot_reader(db, artifact_id, row=row)
+                    except (KeyError, TypeError, ValueError):
+                        contexts[artifact_id] = {}
+
         retained = {}
         for row in progress_rows:
             artifact_id = int(row["artifact_id"])
@@ -260,15 +278,6 @@ class TransferRepository(_CanonicalTransferRepository):
         for row in file_rows:
             if str(row.get("status") or "").lower() == "completed" and int(row.get("size_bytes") or 0) > 0:
                 retained[int(row["id"])] = max(retained.get(int(row["id"]), 0), int(row["size_bytes"]))
-
-        context_reader = getattr(self, "recovery_context", None)
-        contexts = {}
-        if callable(context_reader):
-            for row in file_rows:
-                try:
-                    contexts[int(row["id"])] = await context_reader(int(row["id"]))
-                except (KeyError, TypeError, ValueError):
-                    contexts[int(row["id"])] = {}
 
         challenge = bool(result.get("input_required"))
         file_presentations = []

@@ -11,6 +11,7 @@ removed from the generic router at import time so /api/events keeps one owner.
 The default response remains the historical JSON list; the UI opts into metadata
 when it needs an explicit truncation signal.
 """
+import asyncio
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -44,6 +45,7 @@ _EVENT_TIMEFRAME_MODIFIERS = {
 }
 EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
+_PRESENTATION_CONCURRENCY = 8
 
 
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
@@ -137,52 +139,54 @@ async def list_operational_torrents(
     offset: int = 0,
     application: ApplicationService = Depends(get_application),
 ):
+    clauses = []
+    params = []
+
+    if status:
+        clauses.append("t.status = ?")
+        params.append(status)
+    else:
+        clauses.append("t.status NOT IN ('deleted', 'consolidated')")
+
+    if search:
+        clauses.append(
+            """(
+                LOWER(COALESCE(t.name, '')) LIKE ?
+                OR LOWER(COALESCE(t.hash, '')) LIKE ?
+                OR LOWER(COALESCE(t.source, '')) LIKE ?
+                OR LOWER(COALESCE(t.label, '')) LIKE ?
+                OR LOWER(COALESCE(t.error_message, '')) LIKE ?
+            )"""
+        )
+        needle = f"%{search.strip().lower()}%"
+        params.extend([needle, needle, needle, needle, needle])
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    query = f"""SELECT t.id
+            FROM torrents t {where}
+            ORDER BY t.created_at DESC"""
+    query_params = list(params)
+    if limit > 0:
+        query += " LIMIT ? OFFSET ?"
+        query_params.extend([limit, offset])
+
+    # Release the list-query session before canonical presentation opens its
+    # own read sessions. Holding this session across every row amplified the
+    # migrated-history read fan-out and made an otherwise healthy DB appear
+    # unavailable to the browser timeout boundary.
     async with get_db() as db:
-        clauses = []
-        params = []
-
-        if status:
-            clauses.append("t.status = ?")
-            params.append(status)
-        else:
-            clauses.append("t.status NOT IN ('deleted', 'consolidated')")
-
-        if search:
-            clauses.append(
-                """(
-                    LOWER(COALESCE(t.name, '')) LIKE ?
-                    OR LOWER(COALESCE(t.hash, '')) LIKE ?
-                    OR LOWER(COALESCE(t.source, '')) LIKE ?
-                    OR LOWER(COALESCE(t.label, '')) LIKE ?
-                    OR LOWER(COALESCE(t.error_message, '')) LIKE ?
-                )"""
-            )
-            needle = f"%{search.strip().lower()}%"
-            params.extend([needle, needle, needle, needle, needle])
-
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        query = f"""SELECT t.*,
-                (SELECT COUNT(*) FROM download_files WHERE torrent_id=t.id) as file_count,
-                (SELECT COUNT(*) FROM download_files WHERE torrent_id=t.id AND blocked=1) as blocked_count
-                FROM torrents t {where}
-                ORDER BY t.created_at DESC"""
-        query_params = list(params)
-        if limit > 0:
-            query += " LIMIT ? OFFSET ?"
-            query_params.extend([limit, offset])
-
         rows = await db.fetchall(query, query_params)
         total_row = await db.fetchone(
             f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
         )
         total = total_row["cnt"] if total_row else 0
-        return {
-            "items": [
-                _public_transfer_presentation(
-                    await application.repository.presentation(row["id"]),
-                    application.definitions,
-                )
-                for row in rows
-            ],
-            "total": total,
-        }
+
+    semaphore = asyncio.Semaphore(_PRESENTATION_CONCURRENCY)
+
+    async def project(row):
+        async with semaphore:
+            presentation = await application.repository.presentation(row["id"])
+        return _public_transfer_presentation(presentation, application.definitions)
+
+    items = await asyncio.gather(*(project(row) for row in rows))
+    return {"items": items, "total": total}
