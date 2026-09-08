@@ -1,4 +1,4 @@
-"""Phase 1 transfer failure semantics and recovery-ownership contract."""
+"""Transfer failure semantics and universal recovery-ownership contracts."""
 from pathlib import Path
 import ssl
 
@@ -9,7 +9,10 @@ from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
     Permanence, Recovery, Retryability, Stage,
 )
-from transfers.policy import compatibility_error
+from transfers.policy import (
+    RecoveryAction, RecoveryContext, TransferPolicy, compatibility_error,
+    failure_signature, meaningful_progress_threshold,
+)
 
 
 def assert_factual(error):
@@ -86,7 +89,7 @@ def test_certificate_identity_failure_is_strict_and_factual():
     assert_factual(error)
 
 
-def test_core_compatibility_owns_legacy_action_selection():
+def test_core_compatibility_owns_only_context_free_legacy_projection():
     transport = native_failure("1", "connection reset by peer")
     translated = compatibility_error(transport)
     assert transport.recovery == Recovery.NONE
@@ -96,11 +99,92 @@ def test_core_compatibility_owns_legacy_action_selection():
     unknown = native_failure("1", "unrelated future executor problem")
     translated_unknown = compatibility_error(unknown)
     assert unknown.recovery == Recovery.NONE
-    assert translated_unknown.recovery == Recovery.REQUIRE_OPERATOR
-    assert translated_unknown.operator_action_required
+    assert translated_unknown.recovery == Recovery.NONE
+    assert not translated_unknown.operator_action_required
 
     disk = native_failure("9", "disk full")
     assert compatibility_error(disk).recovery == Recovery.REQUIRE_OPERATOR
+
+
+def test_unknown_recovery_is_context_sensitive_and_bounded():
+    error = NormalizedError(
+        Domain.EXECUTOR, Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION,
+        retryability=Retryability.UNKNOWN, origin=Origin.EXECUTOR,
+    )
+    policy = TransferPolicy(retry_delay=2)
+    first = policy.recover(error, RecoveryContext(
+        consecutive_no_progress_failures=1, same_signature_failures=1,
+    ), 100.0)
+    assert first.action == RecoveryAction.RETRY_SAME_CANDIDATE
+    assert first.retry_at == 102.0
+
+    refresh = policy.recover(error, RecoveryContext(
+        consecutive_no_progress_failures=2, same_signature_failures=2,
+        can_refresh=True,
+    ), 100.0)
+    assert refresh.action == RecoveryAction.REFRESH_CANDIDATE
+
+    alternate = policy.recover(error, RecoveryContext(
+        consecutive_no_progress_failures=2, same_signature_failures=2,
+        has_alternate=True,
+    ), 100.0)
+    assert alternate.action == RecoveryAction.TRY_ALTERNATE_CANDIDATE
+
+    exhausted = policy.recover(error, RecoveryContext(
+        consecutive_no_progress_failures=2, same_signature_failures=2,
+    ), 100.0)
+    assert exhausted.action == RecoveryAction.WAIT_FOR_OPERATOR
+    assert exhausted.quiescence_reason == "recovery_exhausted"
+    assert exhausted.wake_condition == "operator_retry"
+
+
+def test_structured_rate_limit_delay_is_honored_and_persistable():
+    error = NormalizedError(
+        Domain.PROVIDER, Category.RATE_LIMITED, Stage.EXECUTION,
+        retryability=Retryability.BACKOFF, retry_after_seconds=45,
+    )
+    decision = TransferPolicy(retry_delay=1).recover(
+        error, RecoveryContext(consecutive_no_progress_failures=1), 10.0,
+    )
+    assert decision.action == RecoveryAction.BACKOFF
+    assert decision.retry_at == 55.0
+    assert decision.quiescence_reason == "retry_backoff"
+    assert decision.wake_condition == "retry_at:55.0"
+
+
+def test_expiry_refreshes_immediately_and_security_never_loops():
+    expired = NormalizedError(
+        Domain.RESOLUTION, Category.CANDIDATE_EXPIRED, Stage.EXECUTION,
+        retryability=Retryability.AFTER_RERESOLUTION,
+    )
+    policy = TransferPolicy()
+    assert policy.recover(expired, RecoveryContext(can_refresh=True), 50).action == RecoveryAction.REFRESH_CANDIDATE
+
+    security = NormalizedError(
+        Domain.SECURITY, Category.TLS_IDENTITY_FAILURE, Stage.EXECUTION,
+        retryability=Retryability.NEVER,
+    )
+    assert policy.recover(security, RecoveryContext(can_refresh=True, has_alternate=True), 50).action == RecoveryAction.FAIL_PERMANENTLY
+
+
+def test_failure_signature_uses_only_canonical_facts():
+    left = NormalizedError(
+        Domain.NETWORK, Category.READ_TIMEOUT, Stage.EXECUTION,
+        retryability=Retryability.BACKOFF, integration_id="one",
+        native_code="17", diagnostic="first native message",
+    )
+    right = NormalizedError(
+        Domain.NETWORK, Category.READ_TIMEOUT, Stage.EXECUTION,
+        retryability=Retryability.BACKOFF, integration_id="two",
+        native_code="999", diagnostic="different diagnostic",
+    )
+    assert failure_signature(left) == failure_signature(right)
+
+
+def test_meaningful_progress_threshold_is_centralized_and_byte_based():
+    assert meaningful_progress_threshold(None) == 1024 * 1024
+    assert meaningful_progress_threshold(100 * 1024 * 1024) == 1024 * 1024
+    assert meaningful_progress_threshold(4) >= 1
 
 
 def test_normalized_error_roundtrip_preserves_evidence_without_policy_injection():

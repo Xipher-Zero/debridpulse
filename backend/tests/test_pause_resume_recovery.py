@@ -1,4 +1,4 @@
-"""Deterministic convergence and no-progress source-recovery contracts."""
+"""Deterministic convergence and progress-aware source-recovery contracts."""
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
@@ -199,16 +199,19 @@ async def test_unknown_execution_never_aggregates_to_transferring_or_spawns_writ
 
 
 @pytest.mark.asyncio
-async def test_first_source_failure_retries_same_candidate_without_destructive_cancel(recovery):
+async def test_first_source_failure_retries_same_candidate_in_durable_backoff(recovery):
     error = source_failure()
     recovery.executor.start_errors = [error]
     transfer = await submit(recovery)
     artifact = (await recovery.repository.artifacts(transfer.id))[0]
     old = (await recovery.repository.executions(transfer.id))[0].handle
 
-    assert artifact.state == "queued"
+    assert artifact.state == "recovery_wait"
     assert artifact.selected == 0
     assert await recovery.repository.recovery_budget(artifact.id) == (1, 0)
+    context = await recovery.repository.recovery_context(artifact.id)
+    assert context["quiescence_reason"] == "retry_backoff"
+    assert str(context["wake_condition"]).startswith("retry_at:")
     assert not [call for call in recovery.executor.calls if call[0] == "cancel"]
     assert not await recovery.repository.authorize_execution(old, "resume")
     assert not await recovery.repository.authorize_execution(old, "pause")
@@ -248,7 +251,7 @@ async def test_definitive_expiry_refreshes_immediately(recovery):
 
 
 @pytest.mark.asyncio
-async def test_actual_progress_resets_no_progress_recovery_episode(recovery):
+async def test_only_meaningful_progress_resets_recovery_epoch(recovery):
     error = source_failure()
     recovery.executor.start_errors = [error]
     transfer = await submit(recovery)
@@ -257,29 +260,42 @@ async def test_actual_progress_resets_no_progress_recovery_episode(recovery):
     artifact = (await recovery.repository.artifacts(transfer.id))[0]
     assert artifact.state == "downloading"
     handle = artifact.execution
+
     recovery.executor.jobs[handle.attempt_id] = replace(
         recovery.executor.jobs[handle.attempt_id], progress=TransferProgress(4, 1, 1),
     )
     await recovery.engine.tick()
+    assert await recovery.repository.recovery_budget(artifact.id) == (1, 0)
+    before = await recovery.repository.recovery_context(artifact.id)
+    assert before["recovery_epoch"] == 0
+
+    recovery.executor.jobs[handle.attempt_id] = replace(
+        recovery.executor.jobs[handle.attempt_id], progress=TransferProgress(4, 4, 1),
+    )
+    await recovery.engine.tick()
     assert await recovery.repository.recovery_budget(artifact.id) == (0, 0)
+    after_progress = await recovery.repository.recovery_context(artifact.id)
+    assert after_progress["recovery_epoch"] == 1
 
     recovery.executor.jobs[handle.attempt_id] = replace(
         recovery.executor.jobs[handle.attempt_id], state=ExecutionState.FAILED, error=error,
     )
     await recovery.engine.tick()
     after = (await recovery.repository.artifacts(transfer.id))[0]
-    assert after.state == "queued"
+    assert after.state == "recovery_wait"
     assert await recovery.repository.recovery_budget(artifact.id) == (1, 0)
     assert not [call for call in recovery.provider.calls if call[0] == "refresh"]
 
 
 @pytest.mark.asyncio
-async def test_recovery_budget_survives_engine_restart(recovery):
+async def test_recovery_budget_and_quiescence_survive_engine_restart(recovery):
     error = source_failure()
     recovery.executor.start_errors = [error]
     transfer = await submit(recovery)
     artifact = (await recovery.repository.artifacts(transfer.id))[0]
     assert await recovery.repository.recovery_budget(artifact.id) == (1, 0)
+    before = await recovery.repository.recovery_context(artifact.id)
+    assert before["quiescence_reason"] == "retry_backoff"
 
     restarted = TransferEngine(
         TransferRepository(), recovery.registry, download_root=recovery.engine.root,
@@ -305,8 +321,11 @@ async def test_refresh_generation_cannot_loop_without_progress(recovery):
     recovery.executor.start_errors = [error]
     await recovery.engine.tick()
     exhausted = (await recovery.repository.artifacts(transfer.id))[0]
-    assert exhausted.state == "error"
+    assert exhausted.state == "recovery_wait"
     assert await recovery.repository.recovery_budget(exhausted.id) == (3, 1)
+    context = await recovery.repository.recovery_context(exhausted.id)
+    assert context["quiescence_reason"] == "recovery_exhausted"
+    assert context["wake_condition"] == "operator_retry"
     assert len([call for call in recovery.provider.calls if call[0] == "refresh"]) == 1
 
 
