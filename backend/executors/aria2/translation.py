@@ -1,8 +1,10 @@
-"""aria2-native state and failure translation.
+"""aria2-native state and factual failure translation.
 
 The numeric meanings are documented at
-https://aria2.github.io/manual/en/html/aria2c.html#exit-status . Native messages
-are diagnostics only except for the protocol's explicit missing-GID response.
+https://aria2.github.io/manual/en/html/aria2c.html#exit-status . Specific native
+codes are semantic evidence. Generic code 1 is interpreted only through a small,
+auditable diagnostic table; recovery and lifecycle policy are universal-core
+responsibilities.
 """
 from __future__ import annotations
 
@@ -14,46 +16,60 @@ import aiohttp
 
 from executors.aria2.client import Aria2ConnectionError, Aria2RPCError
 from transfers.errors import (
-    Category as C, Domain as D, NormalizedError, Origin as O, Permanence as P,
-    Recovery as R, Retryability as T, Stage, TransferError, safe_diagnostic,
+    Category as C, Confidence as CF, Domain as D, EvidenceBasis as E,
+    NormalizedError, Origin as O, Permanence as P, Retryability as T, Stage,
+    TransferError, safe_diagnostic,
 )
 from transfers.models import ExecutionHandle, ExecutionObservation, ExecutionState, TransferProgress
 
 
-# Each value explicitly identifies what can change the outcome. Unknown codes
-# are deliberately absent and never inherit a transient network default.
+# Values are facts only: semantic domain/category, factual retryability legacy
+# property, provenance, and permanence. Recovery actions intentionally do not
+# exist in this adapter table.
 _ERRORS = {
-    "2": (D.NETWORK, C.READ_TIMEOUT, T.BACKOFF, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "3": (D.EXECUTOR, C.SOURCE_NOT_FOUND, T.AFTER_RERESOLUTION, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "4": (D.EXECUTOR, C.SOURCE_NOT_FOUND, T.AFTER_RERESOLUTION, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "5": (D.EXECUTOR, C.TRANSFER_STALLED, T.BACKOFF, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "6": (D.NETWORK, C.CONNECTION_FAILED, T.BACKOFF, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "7": (D.EXECUTOR, C.TRANSFER_INTERRUPTED, T.BACKOFF, R.RECONCILE, O.EXECUTOR),
-    "8": (D.EXECUTOR, C.REMOTE_READ_FAILED, T.AFTER_RERESOLUTION, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "9": (D.LOCAL_RESOURCE, C.DISK_FULL, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "10": (D.INTEGRITY, C.CONTENT_INVALID, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "11": (D.LIFECYCLE, C.LOCAL_PATH_CONFLICT, T.AFTER_RESOURCE_CHANGE, R.RECONCILE, O.EXECUTOR),
-    "12": (D.LIFECYCLE, C.RESOURCE_STATE_CONFLICT, T.AFTER_RESOURCE_CHANGE, R.RECONCILE, O.EXECUTOR),
-    "13": (D.LOCAL_RESOURCE, C.LOCAL_PATH_CONFLICT, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "14": (D.LOCAL_RESOURCE, C.LOCAL_IO_FAILURE, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "15": (D.LOCAL_RESOURCE, C.PATH_UNAVAILABLE, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "16": (D.LOCAL_RESOURCE, C.LOCAL_IO_FAILURE, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "17": (D.LOCAL_RESOURCE, C.LOCAL_IO_FAILURE, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "18": (D.LOCAL_RESOURCE, C.PATH_UNAVAILABLE, T.AFTER_RESOURCE_CHANGE, R.REQUIRE_OPERATOR, O.LOCAL_SYSTEM),
-    "19": (D.NETWORK, C.DNS_FAILURE, T.BACKOFF, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "20": (D.EXECUTOR, C.CONTENT_INVALID, T.NEVER, R.FAIL, O.REMOTE_SOURCE),
-    "21": (D.NETWORK, C.REMOTE_READ_FAILED, T.AFTER_RERESOLUTION, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "22": (D.NETWORK, C.PROTOCOL_ERROR, T.UNKNOWN, R.REQUIRE_OPERATOR, O.REMOTE_SOURCE),
-    "23": (D.SECURITY, C.UNSAFE_REDIRECT, T.NEVER, R.FAIL, O.SECURITY_POLICY),
-    "24": (D.EXECUTOR, C.CANDIDATE_EXPIRED, T.AFTER_RERESOLUTION, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "25": (D.EXECUTOR, C.CONTENT_INVALID, T.NEVER, R.FAIL, O.REMOTE_SOURCE),
-    "26": (D.EXECUTOR, C.CONTENT_INVALID, T.NEVER, R.FAIL, O.REMOTE_SOURCE),
-    "27": (D.REQUEST, C.INVALID_REQUEST, T.NEVER, R.FAIL, O.USER),
-    "28": (D.EXECUTOR, C.INVALID_CONFIGURATION, T.NEVER, R.REQUIRE_OPERATOR, O.EXECUTOR),
-    "29": (D.NETWORK, C.SOURCE_TEMPORARILY_UNAVAILABLE, T.BACKOFF, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
-    "30": (D.INTERNAL, C.EXECUTOR_PROTOCOL_VIOLATION, T.UNKNOWN, R.REQUIRE_OPERATOR, O.EXECUTOR),
-    "32": (D.INTEGRITY, C.CHECKSUM_MISMATCH, T.AFTER_RERESOLUTION, R.TRY_ALTERNATE_CANDIDATE, O.REMOTE_SOURCE),
+    "2": (D.NETWORK, C.READ_TIMEOUT, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    "3": (D.RESOLUTION, C.SOURCE_NOT_FOUND, T.AFTER_RERESOLUTION, O.REMOTE_SOURCE, P.UNKNOWN),
+    "4": (D.RESOLUTION, C.SOURCE_NOT_FOUND, T.AFTER_RERESOLUTION, O.REMOTE_SOURCE, P.UNKNOWN),
+    "5": (D.EXECUTOR, C.TRANSFER_STALLED, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    "6": (D.NETWORK, C.CONNECTION_FAILED, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    "7": (D.EXECUTOR, C.TRANSFER_INTERRUPTED, T.BACKOFF, O.EXECUTOR, P.UNKNOWN),
+    "8": (D.NETWORK, C.REMOTE_READ_FAILED, T.AFTER_RERESOLUTION, O.REMOTE_SOURCE, P.UNKNOWN),
+    "9": (D.LOCAL_RESOURCE, C.DISK_FULL, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "10": (D.INTEGRITY, C.CONTENT_INVALID, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "11": (D.LIFECYCLE, C.LOCAL_PATH_CONFLICT, T.AFTER_RESOURCE_CHANGE, O.EXECUTOR, P.PERMANENT),
+    "12": (D.LIFECYCLE, C.RESOURCE_STATE_CONFLICT, T.AFTER_RESOURCE_CHANGE, O.EXECUTOR, P.PERMANENT),
+    "13": (D.LOCAL_RESOURCE, C.LOCAL_PATH_CONFLICT, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "14": (D.LOCAL_RESOURCE, C.LOCAL_IO_FAILURE, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "15": (D.LOCAL_RESOURCE, C.PATH_UNAVAILABLE, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "16": (D.LOCAL_RESOURCE, C.LOCAL_IO_FAILURE, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "17": (D.LOCAL_RESOURCE, C.LOCAL_IO_FAILURE, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "18": (D.LOCAL_RESOURCE, C.PATH_UNAVAILABLE, T.AFTER_RESOURCE_CHANGE, O.LOCAL_SYSTEM, P.PERMANENT),
+    "19": (D.NETWORK, C.DNS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    "20": (D.INTEGRITY, C.CONTENT_INVALID, T.NEVER, O.REMOTE_SOURCE, P.PERMANENT),
+    "21": (D.NETWORK, C.REMOTE_READ_FAILED, T.AFTER_RERESOLUTION, O.REMOTE_SOURCE, P.UNKNOWN),
+    "22": (D.NETWORK, C.PROTOCOL_ERROR, T.UNKNOWN, O.REMOTE_SOURCE, P.UNKNOWN),
+    "23": (D.SECURITY, C.UNSAFE_REDIRECT, T.NEVER, O.SECURITY_POLICY, P.PERMANENT),
+    "24": (D.RESOLUTION, C.CANDIDATE_EXPIRED, T.AFTER_RERESOLUTION, O.REMOTE_SOURCE, P.PERMANENT),
+    "25": (D.INTEGRITY, C.CONTENT_INVALID, T.NEVER, O.REMOTE_SOURCE, P.PERMANENT),
+    "26": (D.INTEGRITY, C.CONTENT_INVALID, T.NEVER, O.REMOTE_SOURCE, P.PERMANENT),
+    "27": (D.REQUEST, C.INVALID_REQUEST, T.NEVER, O.USER, P.PERMANENT),
+    "28": (D.EXECUTOR, C.INVALID_CONFIGURATION, T.NEVER, O.EXECUTOR, P.PERMANENT),
+    "29": (D.NETWORK, C.SOURCE_TEMPORARILY_UNAVAILABLE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    "30": (D.INTERNAL, C.EXECUTOR_PROTOCOL_VIOLATION, T.UNKNOWN, O.EXECUTOR, P.UNKNOWN),
+    "32": (D.INTEGRITY, C.CHECKSUM_MISMATCH, T.AFTER_RERESOLUTION, O.REMOTE_SOURCE, P.PERMANENT),
 }
+
+_CODE1_DIAGNOSTICS = (
+    (re.compile(r"\bSSL routines::unexpected eof while reading\b", re.I),
+     D.NETWORK, C.TLS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    (re.compile(r"\b(?:TLS|SSL)(?:/SSL)?\b.{0,80}\b(?:receive|read|record|decode)(?:d|ing)?\b.{0,80}\b(?:error|fail(?:ed|ure)?|unexpected eof)\b", re.I),
+     D.NETWORK, C.TLS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    (re.compile(r"\bconnection reset by peer\b|\bECONNRESET\b", re.I),
+     D.NETWORK, C.REMOTE_RESET, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    (re.compile(r"\b(?:premature|unexpected) EOF\b", re.I),
+     D.NETWORK, C.REMOTE_READ_FAILED, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+)
+
 _STATES = {
     "active": ExecutionState.TRANSFERRING, "waiting": ExecutionState.QUEUED,
     "paused": ExecutionState.PAUSED, "complete": ExecutionState.SUCCEEDED,
@@ -61,18 +77,35 @@ _STATES = {
 }
 
 
+def _code1_failure(message: object):
+    text = str(message or "")
+    for pattern, domain, category, retryability, origin, permanence in _CODE1_DIAGNOSTICS:
+        if pattern.search(text):
+            return domain, category, retryability, origin, permanence
+    return None
+
+
 def native_failure(code: object, message: object = "", *, stage=Stage.EXECUTION, secrets=()) -> NormalizedError:
     native = str(code or "")
     spec = _ERRORS.get(native)
+    confidence = CF.HIGH
+    evidence = E.NATIVE_CODE
+    if native == "1":
+        spec = _code1_failure(message)
+        if spec is not None:
+            confidence = CF.MEDIUM
+            evidence = E.DIAGNOSTIC
     if spec is None:
-        spec = (D.EXECUTOR, C.UNMAPPED_EXECUTOR_ERROR, T.UNKNOWN, R.REQUIRE_OPERATOR, O.EXECUTOR)
-    domain, category, retryability, recovery, origin = spec
+        spec = (D.EXECUTOR, C.UNMAPPED_EXECUTOR_ERROR, T.UNKNOWN, O.EXECUTOR, P.UNKNOWN)
+        confidence = CF.UNKNOWN
+        evidence = E.UNKNOWN
+    domain, category, retryability, origin, permanence = spec
     return NormalizedError(
-        domain, category, stage, retryability=retryability, recovery=recovery,
-        origin=origin, permanence=P.PERMANENT if retryability == T.NEVER else P.UNKNOWN,
-        operator_action_required=recovery == R.REQUIRE_OPERATOR,
+        domain, category, stage, retryability=retryability,
+        origin=origin, permanence=permanence,
         integration_id="aria2", native_code=native,
         diagnostic=safe_diagnostic(message, secrets=tuple(secrets)),
+        confidence=confidence, evidence_basis=evidence,
     )
 
 
@@ -80,15 +113,23 @@ def exception_failure(exc: Exception, *, stage=Stage.EXECUTION, secrets=()) -> N
     if isinstance(exc, TransferError):
         return exc.error
     if isinstance(exc, (ssl.SSLCertVerificationError, aiohttp.ClientConnectorCertificateError)):
-        domain, category, retryability, recovery = D.SECURITY, C.TLS_IDENTITY_FAILURE, T.NEVER, R.FAIL
+        domain, category, retryability, origin, permanence, confidence = (
+            D.SECURITY, C.TLS_IDENTITY_FAILURE, T.NEVER, O.SECURITY_POLICY, P.PERMANENT, CF.HIGH,
+        )
     elif isinstance(exc, (asyncio.TimeoutError, Aria2ConnectionError, aiohttp.ClientConnectionError)):
-        domain, category, retryability, recovery = D.EXECUTOR, C.EXECUTOR_UNAVAILABLE, T.BACKOFF, R.RECONCILE
+        domain, category, retryability, origin, permanence, confidence = (
+            D.EXECUTOR, C.EXECUTOR_UNAVAILABLE, T.BACKOFF, O.EXECUTOR, P.TEMPORARY, CF.HIGH,
+        )
     else:
-        domain, category, retryability, recovery = D.EXECUTOR, C.UNMAPPED_EXECUTOR_ERROR, T.UNKNOWN, R.REQUIRE_OPERATOR
+        domain, category, retryability, origin, permanence, confidence = (
+            D.EXECUTOR, C.UNMAPPED_EXECUTOR_ERROR, T.UNKNOWN, O.EXECUTOR, P.UNKNOWN, CF.LOW,
+        )
     return NormalizedError(
-        domain, category, stage, retryability=retryability, recovery=recovery,
-        origin=O.EXECUTOR, integration_id="aria2", native_code=str(getattr(exc, "code", "") or ""),
+        domain, category, stage, retryability=retryability,
+        origin=origin, permanence=permanence, integration_id="aria2",
+        native_code=str(getattr(exc, "code", "") or ""),
         diagnostic=safe_diagnostic(exc, secrets=tuple(secrets)),
+        confidence=confidence, evidence_basis=E.TYPED_EXCEPTION,
     )
 
 

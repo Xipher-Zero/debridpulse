@@ -128,7 +128,7 @@ async def test_lost_ack_is_reconciled_without_second_job(execution):
     execution.daemon.lost_ack = True
     uncertain = await execution.executor.start(execution.request, execution.handle)
     assert uncertain.state == ExecutionState.UNKNOWN
-    assert uncertain.error.recovery == Recovery.RECONCILE
+    assert uncertain.error.recovery == Recovery.NONE
     recovered = await execution.executor.observe(execution.handle)
     assert recovered.state == ExecutionState.TRANSFERRING
     assert recovered.handle.attempt_id == execution.request.attempt_id
@@ -228,7 +228,7 @@ async def test_control_transport_failure_without_transition_is_reconciliation_un
     result = await execution.executor.resume(execution.handle)
     assert result.state == ExecutionState.UNKNOWN
     assert result.error.category == Category.RECONCILIATION_FAILED
-    assert result.error.recovery == Recovery.RECONCILE
+    assert result.error.recovery == Recovery.NONE
     assert result.error.category != Category.UNMAPPED_EXECUTOR_ERROR
 
 
@@ -304,10 +304,12 @@ def test_path_escape_is_security_failure(execution, tmp_path):
     ("1", Category.UNMAPPED_EXECUTOR_ERROR, Retryability.UNKNOWN),
     ("500000", Category.UNMAPPED_EXECUTOR_ERROR, Retryability.UNKNOWN),
 ])
-def test_error_translation_has_explicit_recovery_semantics(code, category, retryability):
+def test_error_translation_is_factual(code, category, retryability):
     error = native_failure(code)
     assert error.category == category
     assert error.retryability == retryability
+    assert error.recovery == Recovery.NONE
+    assert not error.operator_action_required
 
 
 def test_removed_and_unknown_are_not_ordinary_failures():

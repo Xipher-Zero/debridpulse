@@ -2,6 +2,8 @@
 
 Native diagnostics are opaque troubleshooting data. They are sanitized when an
 envelope is constructed, before they can reach persistence or an event consumer.
+Recovery fields remain in the canonical envelope for compatibility, but factual
+normalization never selects a recovery action or operator escalation.
 """
 from __future__ import annotations
 
@@ -165,6 +167,21 @@ class Permanence(StrEnum):
     UNKNOWN = "unknown"
 
 
+class Confidence(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    UNKNOWN = "unknown"
+
+
+class EvidenceBasis(StrEnum):
+    STRUCTURED = "structured"
+    TYPED_EXCEPTION = "typed_exception"
+    NATIVE_CODE = "native_code"
+    DIAGNOSTIC = "diagnostic"
+    UNKNOWN = "unknown"
+
+
 _SECURITY_CATEGORIES = frozenset({
     Category.DESTINATION_BLOCKED, Category.EGRESS_POLICY_VIOLATION,
     Category.UNSAFE_REDIRECT, Category.TLS_IDENTITY_FAILURE,
@@ -224,34 +241,35 @@ class NormalizedError:
     category: Category
     stage: Stage
     retryability: Retryability = Retryability.UNKNOWN
-    recovery: Recovery = Recovery.REQUIRE_OPERATOR
+    recovery: Recovery = Recovery.NONE
     origin: Origin = Origin.CORE
     permanence: Permanence = Permanence.UNKNOWN
     severity: str = "error"
-    operator_action_required: bool = True
+    operator_action_required: bool = False
     integration_id: str = ""
     native_code: str = ""
     diagnostic: str = ""
     context: Mapping = field(default_factory=dict)
     retry_after_seconds: float | None = None
+    confidence: Confidence = Confidence.UNKNOWN
+    evidence_basis: EvidenceBasis = EvidenceBasis.UNKNOWN
 
     def __post_init__(self):
-        # Validate reconstructed/persisted values, and never let an adapter turn
-        # a security/unknown condition into an automatic retry by accident.
+        # Reconstructed/persisted values are canonicalized here. This layer may
+        # harden semantic facts, but it deliberately does not select recovery or
+        # operator action; those compatibility/policy decisions are core-owned.
         for name, enum in (("domain", Domain), ("category", Category), ("stage", Stage),
                            ("retryability", Retryability), ("recovery", Recovery),
-                           ("origin", Origin), ("permanence", Permanence)):
+                           ("origin", Origin), ("permanence", Permanence),
+                           ("confidence", Confidence), ("evidence_basis", EvidenceBasis)):
             object.__setattr__(self, name, enum(getattr(self, name)))
         if self.domain == Domain.SECURITY or self.category in _SECURITY_CATEGORIES:
             object.__setattr__(self, "domain", Domain.SECURITY)
             object.__setattr__(self, "origin", Origin.SECURITY_POLICY)
             object.__setattr__(self, "retryability", Retryability.NEVER)
-            object.__setattr__(self, "recovery", Recovery.FAIL)
-            object.__setattr__(self, "operator_action_required", True)
         elif self.category in _UNKNOWN_CATEGORIES:
             object.__setattr__(self, "retryability", Retryability.UNKNOWN)
-            object.__setattr__(self, "recovery", Recovery.REQUIRE_OPERATOR)
-            object.__setattr__(self, "operator_action_required", True)
+            object.__setattr__(self, "permanence", Permanence.UNKNOWN)
         for name, limit in (("integration_id", 128), ("native_code", 128), ("diagnostic", 500)):
             object.__setattr__(self, name, safe_diagnostic(getattr(self, name), limit=limit))
         object.__setattr__(self, "context", MappingProxyType(safe_context(self.context)))
@@ -299,4 +317,6 @@ def unknown_failure(exc: Exception, *, integration_id: str, domain: Domain,
     origin = Origin.PROVIDER if domain == Domain.PROVIDER else Origin.EXECUTOR if domain == Domain.EXECUTOR else Origin.CORE
     return NormalizedError(domain, category, stage, origin=origin,
                            integration_id=integration_id,
-                           diagnostic=safe_diagnostic(exc, secrets=secrets))
+                           diagnostic=safe_diagnostic(exc, secrets=secrets),
+                           confidence=Confidence.LOW,
+                           evidence_basis=EvidenceBasis.TYPED_EXCEPTION)

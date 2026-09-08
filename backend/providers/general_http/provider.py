@@ -2,7 +2,7 @@
 from urllib.parse import urlparse
 
 from transfers.applicability import ProviderApplicability
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
+from transfers.errors import Category, Confidence, Domain, EvidenceBasis, NormalizedError, Retryability, Stage, TransferError
 from transfers.filesystem import safe_name
 from transfers.models import (
     Capability, Endpoint, IntegrationDescriptor, ResolutionResult, ResourceState,
@@ -23,7 +23,8 @@ class GeneralHttpProvider:
     def _failure(self, category: Category, *, domain=Domain.REQUEST) -> TransferError:
         return TransferError(NormalizedError(
             domain, category, Stage.RESOLUTION, retryability=Retryability.NEVER,
-            recovery=Recovery.FAIL, integration_id=self.descriptor.id,
+            integration_id=self.descriptor.id, confidence=Confidence.HIGH,
+            evidence_basis=EvidenceBasis.STRUCTURED,
         ))
 
     async def resolve(self, request: TransferRequest) -> ResolutionResult:

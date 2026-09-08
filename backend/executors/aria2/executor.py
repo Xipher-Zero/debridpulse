@@ -3,6 +3,7 @@
 Core persists a prepared handle before submitting. A lost response is recovered
 by observing that same handle, never by a second uncorrelated addUri. Authorization
 is injected by the application repository and checked before every native action.
+The executor reports factual observations only; recovery policy is core-owned.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.downloader_egress_guard import downloader_egress_guard
 from services.network_safety import DestinationLookupError, sampled_public_artifact_fingerprint, validate_resolved_public_destination
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
+from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, username_password
 from transfers.models import (
     ArtifactFingerprint, CancellationInitiator, Capability, ExecutionHandle, ExecutionObservation,
@@ -70,7 +71,7 @@ class Aria2Executor:
 
     def _failure(self, category: Category, stage=Stage.EXECUTION, *, domain=Domain.EXECUTOR) -> TransferError:
         return TransferError(NormalizedError(domain, category, stage, retryability=Retryability.NEVER,
-                                            recovery=Recovery.REQUIRE_OPERATOR, integration_id=self.descriptor.id))
+                                            integration_id=self.descriptor.id))
 
     def _target(self, target: str) -> Path:
         root = Path(self.configuration.local_root).resolve()
@@ -155,7 +156,7 @@ class Aria2Executor:
             address = await validate_resolved_public_destination(endpoint.address)
         except DestinationLookupError as exc:
             raise TransferError(NormalizedError(Domain.NETWORK, Category.DNS_FAILURE, Stage.QUEUE,
-                retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF, integration_id=self.descriptor.id)) from exc
+                retryability=Retryability.BACKOFF, integration_id=self.descriptor.id)) from exc
         except ValueError as exc:
             raise self._failure(Category.DESTINATION_BLOCKED, domain=Domain.SECURITY) from exc
         try:
@@ -226,7 +227,7 @@ class Aria2Executor:
             # A lost acknowledgement leaves an uncertain execution, not a
             # failed artifact and not permission to create another native job.
             error = exception_failure(exc, stage=Stage.QUEUE, secrets=self._secrets(handle))
-            uncertain = error.recovery == Recovery.RECONCILE or error.retryability == Retryability.UNKNOWN
+            uncertain = error.category == Category.EXECUTOR_UNAVAILABLE or error.retryability == Retryability.UNKNOWN
             return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
 
     async def start_with_input(self, request: ExecutionRequest, handle: ExecutionHandle,
@@ -256,7 +257,7 @@ class Aria2Executor:
             return await self.observe(handle)
         except Exception as exc:
             error = exception_failure(exc, stage=Stage.QUEUE, secrets=secrets)
-            uncertain = error.recovery == Recovery.RECONCILE or error.retryability == Retryability.UNKNOWN
+            uncertain = error.category == Category.EXECUTOR_UNAVAILABLE or error.retryability == Retryability.UNKNOWN
             return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
 
     async def observe(self, handle: ExecutionHandle) -> ExecutionObservation:
@@ -378,8 +379,7 @@ class Aria2Executor:
             diagnostic = mutation_error.diagnostic if mutation_error else (last.error.diagnostic if last.error else "")
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=NormalizedError(
                 Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-                retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE,
-                operator_action_required=False, integration_id=self.descriptor.id,
+                retryability=Retryability.BACKOFF, integration_id=self.descriptor.id,
                 diagnostic=diagnostic))
         except _AdmissionDeferred:
             return await self.observe(handle)
@@ -388,8 +388,7 @@ class Aria2Executor:
             if error.category == Category.UNMAPPED_EXECUTOR_ERROR:
                 error = NormalizedError(
                     Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-                    retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE,
-                    operator_action_required=False, integration_id=self.descriptor.id,
+                    retryability=Retryability.BACKOFF, integration_id=self.descriptor.id,
                     diagnostic=error.diagnostic,
                 )
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)

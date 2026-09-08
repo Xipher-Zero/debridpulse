@@ -1,14 +1,56 @@
-"""Universal lifecycle and retry decisions; no integration-native semantics."""
+"""Universal lifecycle and retry decisions; no integration-native semantics.
+
+Phase-1 compatibility keeps the legacy ``NormalizedError.recovery`` field alive
+only at this core-owned boundary. Integrations emit factual classifications; the
+core derives any legacy action required by the existing lifecycle machinery.
+"""
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from transfers.errors import Domain, NormalizedError, Recovery, Retryability
+from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability
 from transfers.models import TransferState
 
 
 _TERMINAL = {TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.DELETED, TransferState.CANCELLED}
+
+# Transitional Phase-1 coupling: these are the exact legacy aria2 actions that
+# used to live in the executor adapter. Native code is factual evidence, so the
+# compatibility policy can preserve broad behavior without returning ownership
+# to the executor. Phase 2 can replace this table with substantive recovery policy.
+_ARIA2_NATIVE_RECOVERY = {
+    "2": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "3": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "4": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "5": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "6": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "7": Recovery.RECONCILE,
+    "8": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "9": Recovery.REQUIRE_OPERATOR,
+    "10": Recovery.REQUIRE_OPERATOR,
+    "11": Recovery.RECONCILE,
+    "12": Recovery.RECONCILE,
+    "13": Recovery.REQUIRE_OPERATOR,
+    "14": Recovery.REQUIRE_OPERATOR,
+    "15": Recovery.REQUIRE_OPERATOR,
+    "16": Recovery.REQUIRE_OPERATOR,
+    "17": Recovery.REQUIRE_OPERATOR,
+    "18": Recovery.REQUIRE_OPERATOR,
+    "19": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "20": Recovery.FAIL,
+    "21": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "22": Recovery.REQUIRE_OPERATOR,
+    "23": Recovery.FAIL,
+    "24": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "25": Recovery.FAIL,
+    "26": Recovery.FAIL,
+    "27": Recovery.FAIL,
+    "28": Recovery.REQUIRE_OPERATOR,
+    "29": Recovery.TRY_ALTERNATE_CANDIDATE,
+    "30": Recovery.REQUIRE_OPERATOR,
+    "32": Recovery.TRY_ALTERNATE_CANDIDATE,
+}
 
 
 def transition_allowed(current: TransferState, target: TransferState, *, operator=False, verified=False) -> bool:
@@ -27,6 +69,63 @@ def transition_allowed(current: TransferState, target: TransferState, *, operato
     if current == TransferState.FAILED:
         return operator or (verified and target in {TransferState.COMPLETED, TransferState.POST_PROCESSING}) or target in {TransferState.RESOLVING, TransferState.QUEUED, TransferState.PAUSED}
     return target in set(TransferState) - {TransferState.ACCEPTED, TransferState.CONSOLIDATED}
+
+
+def compatibility_recovery(error: NormalizedError) -> Recovery:
+    """Derive the legacy Phase-1 action from normalized factual evidence.
+
+    Explicit core-owned actions are preserved. Integration output is expected to
+    carry ``Recovery.NONE``; only this universal boundary translates those facts
+    for lifecycle code that still consumes the compatibility field.
+    """
+    if error.recovery != Recovery.NONE:
+        return error.recovery
+    if error.domain == Domain.SECURITY:
+        return Recovery.FAIL
+    if error.retryability == Retryability.UNKNOWN:
+        return Recovery.REQUIRE_OPERATOR
+
+    if error.integration_id == "aria2":
+        action = _ARIA2_NATIVE_RECOVERY.get(error.native_code)
+        if action is not None:
+            return action
+        # Newly recognized generic-code-1 transport evidence follows the same
+        # existing aria2 candidate-recovery behavior as equivalent native facts.
+        if error.native_code == "1" and error.category in {
+            Category.TLS_FAILURE, Category.REMOTE_RESET, Category.REMOTE_READ_FAILED,
+        }:
+            return Recovery.TRY_ALTERNATE_CANDIDATE
+        # Typed daemon/control failures historically reconciled rather than
+        # selecting a new transfer candidate.
+        if error.category in {Category.EXECUTOR_UNAVAILABLE, Category.RECONCILIATION_FAILED}:
+            return Recovery.RECONCILE
+        # DNS discovered by the pre-dispatch destination guard was previously a
+        # plain backoff action, distinct from aria2 native exit code 19.
+        if error.category == Category.DNS_FAILURE:
+            return Recovery.BACKOFF
+
+    if error.retryability == Retryability.NEVER:
+        return Recovery.FAIL
+    if error.retryability == Retryability.IMMEDIATE:
+        return Recovery.RETRY
+    if error.retryability == Retryability.BACKOFF:
+        return Recovery.BACKOFF
+    if error.retryability == Retryability.AFTER_REAUTH:
+        return Recovery.REAUTHENTICATE
+    if error.retryability == Retryability.AFTER_RERESOLUTION:
+        return Recovery.RERESOLVE
+    if error.retryability == Retryability.AFTER_RESOURCE_CHANGE:
+        return Recovery.REQUIRE_OPERATOR
+    return Recovery.REQUIRE_OPERATOR
+
+
+def compatibility_error(error: NormalizedError) -> NormalizedError:
+    """Populate legacy policy fields at the core boundary, never in an adapter."""
+    action = compatibility_recovery(error)
+    operator = action in {Recovery.REQUIRE_OPERATOR, Recovery.REAUTHENTICATE} or error.domain == Domain.SECURITY
+    if error.recovery == action and error.operator_action_required == operator:
+        return error
+    return replace(error, recovery=action, operator_action_required=operator)
 
 
 @dataclass(frozen=True)
@@ -54,14 +153,18 @@ class TransferPolicy:
     stalled_after_seconds: float = 0
     local_resource_failure_handler: Callable[[NormalizedError], bool] | None = None
 
+    @staticmethod
+    def compatibility(error: NormalizedError) -> NormalizedError:
+        return compatibility_error(error)
+
     def retry_resolution(self, error, attempts, now):
-        from dataclasses import replace
         policy = replace(self,
             max_attempts=self.max_attempts if self.resolution_max_attempts is None else self.resolution_max_attempts,
             retry_delay=self.retry_delay if self.resolution_retry_delay is None else self.resolution_retry_delay)
         return policy.retry(error, attempts, now, can_refresh=True)
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
+        error = compatibility_error(error)
         # Universal-core semantics remain unchanged unless the application
         # explicitly installs an environmental local-resource admission hook.
         # The hook is provider-neutral and may prove that a LOCAL_RESOURCE

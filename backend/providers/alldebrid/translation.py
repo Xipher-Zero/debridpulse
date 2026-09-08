@@ -3,6 +3,7 @@
 Mappings are based on the existing integration and https://docs.alldebrid.com/.
 Explicit expired/no-peer descriptions preserve the repository's existing
 regression fixtures, whose numeric assignments differ from the documented table.
+Provider output is factual; recovery policy is owned by the universal core.
 """
 from __future__ import annotations
 
@@ -15,8 +16,8 @@ import aiohttp
 
 from providers.alldebrid.client import AllDebridAPIError
 from transfers.errors import (
-    Category, Domain, NormalizedError, Origin, Permanence, Recovery,
-    Retryability, Stage, TransferError, safe_diagnostic,
+    Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
+    Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.models import (
     Ownership, ProviderObservation, ProviderResource, ResourceState,
@@ -65,15 +66,6 @@ _ERRORS = {
     "MAGNET_LINKS_REMOVED": (Category.RESOURCE_EXPIRED, Retryability.AFTER_RERESOLUTION),
     "MAGNET_PROCESSING_FAILED": (Category.CONTENT_INVALID, Retryability.NEVER),
 }
-_RECOVERY = {
-    Retryability.NEVER: Recovery.FAIL,
-    Retryability.IMMEDIATE: Recovery.RETRY,
-    Retryability.BACKOFF: Recovery.BACKOFF,
-    Retryability.AFTER_REAUTH: Recovery.REAUTHENTICATE,
-    Retryability.AFTER_RERESOLUTION: Recovery.RERESOLVE,
-    Retryability.AFTER_RESOURCE_CHANGE: Recovery.REQUIRE_OPERATOR,
-    Retryability.UNKNOWN: Recovery.REQUIRE_OPERATOR,
-}
 _SOURCE_CATEGORIES = frozenset({
     Category.SOURCE_NOT_FOUND, Category.SOURCE_UNAVAILABLE,
     Category.SOURCE_TEMPORARILY_UNAVAILABLE, Category.SOURCE_EXPIRED,
@@ -86,12 +78,13 @@ def error_from_code(code: str, diagnostic: object = "", *, stage: Stage = Stage.
     category, retry = _ERRORS.get(code, (Category.UNMAPPED_PROVIDER_ERROR, Retryability.UNKNOWN))
     return NormalizedError(
         Domain.RESOLUTION if category in _SOURCE_CATEGORIES else Domain.PROVIDER,
-        category, stage, retryability=retry, recovery=_RECOVERY[retry],
+        category, stage, retryability=retry,
         origin=Origin.REMOTE_SOURCE if category in _SOURCE_CATEGORIES else Origin.PROVIDER,
         permanence=Permanence.PERMANENT if retry == Retryability.NEVER else Permanence.UNKNOWN,
-        operator_action_required=retry in {Retryability.UNKNOWN, Retryability.AFTER_REAUTH, Retryability.AFTER_RESOURCE_CHANGE},
         integration_id="alldebrid", native_code=safe_diagnostic(code, secrets=secrets, limit=128),
         diagnostic=safe_diagnostic(diagnostic, secrets=secrets),
+        confidence=Confidence.HIGH if code in _ERRORS else Confidence.UNKNOWN,
+        evidence_basis=EvidenceBasis.NATIVE_CODE if code in _ERRORS else EvidenceBasis.UNKNOWN,
     )
 
 
@@ -105,10 +98,10 @@ def translate_error(exc: Exception, *, stage: Stage = Stage.RESOLUTION,
         return NormalizedError(
             Domain.NETWORK,
             Category.CONNECTION_TIMEOUT if isinstance(exc, asyncio.TimeoutError) else Category.CONNECTION_FAILED,
-            stage, retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF,
+            stage, retryability=Retryability.BACKOFF,
             origin=Origin.PROVIDER, permanence=Permanence.TEMPORARY,
-            operator_action_required=False, integration_id="alldebrid",
-            diagnostic=safe_diagnostic(exc, secrets=secrets),
+            integration_id="alldebrid", diagnostic=safe_diagnostic(exc, secrets=secrets),
+            confidence=Confidence.HIGH, evidence_basis=EvidenceBasis.TYPED_EXCEPTION,
         )
     # Legacy client failures are interpreted only in this provider-local adapter.
     # Exact structural patterns preserve transport diagnostics until the native
@@ -116,23 +109,28 @@ def translate_error(exc: Exception, *, stage: Stage = Stage.RESOLUTION,
     text = str(exc)
     code = re.search(r"AllDebrid \[([A-Z0-9_]+)\]", text)
     if code:
-        return error_from_code(code.group(1), text, stage=stage, secrets=secrets)
+        return replace(error_from_code(code.group(1), text, stage=stage, secrets=secrets),
+                       confidence=Confidence.MEDIUM, evidence_basis=EvidenceBasis.DIAGNOSTIC)
     http = re.search(r"AllDebrid HTTP (\d{3})", text)
     if http and int(http.group(1)) >= 500:
         return replace(error_from_code("MAINTENANCE", text, stage=stage, secrets=secrets),
-                       category=Category.PROVIDER_UNAVAILABLE, native_code=http.group(1))
+                       category=Category.PROVIDER_UNAVAILABLE, native_code=http.group(1),
+                       confidence=Confidence.MEDIUM, evidence_basis=EvidenceBasis.DIAGNOSTIC)
     if text.startswith("Network error"):
         return NormalizedError(Domain.NETWORK, Category.CONNECTION_FAILED, stage,
-                               Retryability.BACKOFF, Recovery.BACKOFF,
-                               origin=Origin.PROVIDER, operator_action_required=False,
-                               integration_id="alldebrid", diagnostic=safe_diagnostic(text, secrets=secrets))
+                               Retryability.BACKOFF,
+                               origin=Origin.PROVIDER, permanence=Permanence.TEMPORARY,
+                               integration_id="alldebrid", diagnostic=safe_diagnostic(text, secrets=secrets),
+                               confidence=Confidence.MEDIUM, evidence_basis=EvidenceBasis.DIAGNOSTIC)
     if any(marker in text for marker in ("non-public", "local download", "local unlocked", "credential-bearing", "non-HTTP(S)")):
         return NormalizedError(Domain.SECURITY, Category.DESTINATION_BLOCKED, stage,
-                               integration_id="alldebrid", diagnostic=safe_diagnostic(text, secrets=secrets))
+                               integration_id="alldebrid", diagnostic=safe_diagnostic(text, secrets=secrets),
+                               confidence=Confidence.MEDIUM, evidence_basis=EvidenceBasis.DIAGNOSTIC)
     if any(marker in text for marker in ("invalid JSON", "empty response", "unexpected payload", "without an ID", "unexpected magnet response", "unexpected file response")):
         return NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, stage,
                                origin=Origin.PROVIDER, integration_id="alldebrid",
-                               diagnostic=safe_diagnostic(text, secrets=secrets))
+                               diagnostic=safe_diagnostic(text, secrets=secrets),
+                               confidence=Confidence.MEDIUM, evidence_basis=EvidenceBasis.DIAGNOSTIC)
     return error_from_code("UNMAPPED", text, stage=stage, secrets=secrets)
 
 

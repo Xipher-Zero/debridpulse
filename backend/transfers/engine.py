@@ -2,7 +2,9 @@
 
 The qualified recovery implementation remains in ``_engine_recovery``.  This
 public owner closes the admitted-resource continuation seam so every provider
-I/O path honors the registry's bound-route enablement/health contract.
+I/O path honors the registry's bound-route enablement/health contract. It is
+also the universal boundary that attaches transitional recovery compatibility
+to factual provider/executor failures before lifecycle policy consumes them.
 """
 from __future__ import annotations
 
@@ -35,6 +37,16 @@ _engine_recovery.retire_partial = _retire_partial_proxy
 
 class TransferEngine(_RecoveryTransferEngine):
     """Recovery-qualified engine plus authoritative bound-provider continuation."""
+
+    async def _request_failure(self, record, error, *, attempts=None, waiting=False):
+        """Attach legacy recovery fields only after factual integration output."""
+        return await super()._request_failure(
+            record, self.policy.compatibility(error), attempts=attempts, waiting=waiting,
+        )
+
+    async def _recover_artifact(self, artifact, error):
+        """Enter recovery with a core-derived compatibility action."""
+        return await super()._recover_artifact(artifact, self.policy.compatibility(error))
 
     def _bound_resource_provider(self, record):
         """Resolve an admitted resource owner through the canonical registry gate.
@@ -76,15 +88,16 @@ class TransferEngine(_RecoveryTransferEngine):
                 await self.repository.resource_observation(
                     record.transfer_id, previous.resource, previous.state,
                 )
+                previous_error = self.policy.compatibility(previous.error) if previous.error else None
                 restartable = previous.state in {ResourceState.EXPIRED, ResourceState.ABSENT} or (
                     previous.state == ResourceState.UNAVAILABLE
-                    and previous.error is not None
-                    and previous.error.retryability not in {Retryability.NEVER, Retryability.UNKNOWN}
-                    and previous.error.domain != Domain.SECURITY
-                    and previous.error.recovery in {Recovery.RETRY, Recovery.RERESOLVE, Recovery.BACKOFF}
+                    and previous_error is not None
+                    and previous_error.retryability not in {Retryability.NEVER, Retryability.UNKNOWN}
+                    and previous_error.domain != Domain.SECURITY
+                    and previous_error.recovery in {Recovery.RETRY, Recovery.RERESOLVE, Recovery.BACKOFF}
                 )
-                if previous.error and not restartable:
-                    raise TransferError(previous.error)
+                if previous_error and not restartable:
+                    raise TransferError(previous_error)
                 if previous.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}:
                     await self.repository.poll_after(record.id, self.clock(), waiting=True)
                     return
@@ -138,6 +151,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 stage=Stage.RESOLUTION,
                 secrets=(str(record.request.payload),),
             )
+            error = self.policy.compatibility(error)
             if attempt:
                 await self.repository.resolution(
                     attempt, ResolutionResult(ResourceState.UNKNOWN, error=error),

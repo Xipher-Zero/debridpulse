@@ -19,23 +19,24 @@ from transfers.registry import IntegrationRegistry
 @pytest.mark.parametrize("category", [Category.DESTINATION_BLOCKED, Category.UNSAFE_REDIRECT,
                                      Category.TLS_IDENTITY_FAILURE, Category.HOST_KEY_FAILURE,
                                      Category.SECURITY_POLICY_REJECTED])
-def test_security_cannot_be_downgraded_by_an_adapter(category):
+def test_security_semantics_are_hardened_without_selecting_recovery(category):
     error = NormalizedError(Domain.EXECUTOR, category, Stage.EXECUTION,
-                            Retryability.BACKOFF, Recovery.RETRY, operator_action_required=False)
+                            Retryability.BACKOFF, Recovery.NONE, operator_action_required=False)
     assert error.domain == Domain.SECURITY
     assert error.retryability == Retryability.NEVER
-    assert error.recovery == Recovery.FAIL
-    assert error.operator_action_required
+    assert error.recovery == Recovery.NONE
+    assert not error.operator_action_required
 
 
 @pytest.mark.parametrize("category", [Category.UNMAPPED_PROVIDER_ERROR, Category.UNMAPPED_EXECUTOR_ERROR,
                                      Category.INVALID_ADAPTER_RESPONSE, Category.PROVIDER_PROTOCOL_VIOLATION])
-def test_unknown_failures_preserve_uncertainty(category):
+def test_unknown_failures_preserve_uncertainty_without_policy_injection(category):
     error = NormalizedError(Domain.PROVIDER, category, Stage.RESOLUTION,
-                            Retryability.IMMEDIATE, Recovery.RETRY,
+                            Retryability.IMMEDIATE, Recovery.NONE,
                             native_code="FUTURE_ERROR", diagnostic="safe native explanation")
     assert error.retryability == Retryability.UNKNOWN
-    assert error.recovery == Recovery.REQUIRE_OPERATOR
+    assert error.recovery == Recovery.NONE
+    assert not error.operator_action_required
     assert error.native_code == "FUTURE_ERROR"
     assert "safe native explanation" in json.dumps(error.as_dict(diagnostics=True))
     assert "safe native explanation" not in json.dumps(error.as_dict())
@@ -56,7 +57,7 @@ def test_diagnostics_remove_short_signed_urls_headers_keys_and_known_secrets():
 
 def test_error_roundtrip_is_sanitized_and_cannot_mutate_diagnostics_after_validation():
     error = NormalizedError(Domain.NETWORK, Category.CONNECTION_TIMEOUT, Stage.EXECUTION,
-                            Retryability.BACKOFF, Recovery.BACKOFF,
+                            Retryability.BACKOFF, Recovery.NONE,
                             context={"attempt": 3, "authorization": "private"})
     restored = NormalizedError.from_dict(json.loads(json.dumps(error.as_dict(diagnostics=True))))
     assert restored == error
