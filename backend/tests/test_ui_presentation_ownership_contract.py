@@ -24,9 +24,9 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
     provider = read("ui-provider-status.js")
     expected = (
         "/ui-toast-contract.js?v=2",
+        "/ui-processing-presentation.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=1",
         "/ui-downloads-presentation.js?v=1",
-        "/ui-processing-presentation.js?v=1",
         "/ui-activity-log-runtime.js?v=1",
         "/ui-settings-archive-passwords.js?v=1",
     )
