@@ -11,6 +11,7 @@ removed from the generic router at import time so /api/events keeps one owner.
 The default response remains the historical JSON list; the UI opts into metadata
 when it needs an explicit truncation signal.
 """
+import asyncio
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -168,9 +169,33 @@ async def list_operational_torrents(
         page_sql += " LIMIT ? OFFSET ?"
         query_params.extend([limit, offset])
 
-    # The Downloads collection is a bounded read model. It intentionally does
-    # not reconstruct the comprehensive per-transfer presentation used by the
-    # detail route. All list-only enrichment is computed in this one SQL read.
+    # Explicit consolidated status is a durable-history diagnostic view, not
+    # the normal Downloads collection. Preserve its established comprehensive
+    # presentation semantics while keeping the default/current list bounded.
+    if status == "consolidated":
+        async with get_db() as db:
+            history_rows = await db.fetchall(page_sql, query_params)
+            total_row = await db.fetchone(
+                f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
+            )
+            total = total_row["cnt"] if total_row else 0
+
+        presentations = await asyncio.gather(
+            *(
+                application.repository.presentation(row["id"])
+                for row in history_rows
+            )
+        )
+        items = [
+            _public_transfer_presentation(item, application.definitions)
+            for item in presentations
+            if item is not None
+        ]
+        return {"items": items, "total": total}
+
+    # The normal Downloads collection is a bounded read model. It intentionally
+    # does not reconstruct the comprehensive per-transfer presentation used by
+    # the detail route. All list-only enrichment is computed in this one SQL read.
     query = f"""
         WITH page AS (
             {page_sql}
