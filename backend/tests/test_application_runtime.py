@@ -173,9 +173,12 @@ async def test_unknown_source_error_is_canonical_recoverable_and_excluded_from_p
     executor.finish(artifact.execution)
     await application.reconcile_executions()
     detail = (await client.get(f"/api/torrents/{item['id']}")).json()
+    requests = await application.repository.requests(item["id"])
+    bad = next(record for record in requests if record.request.name == "bad.bin")
     assert detail["status"] == "processing" and detail["progress"] == 100
-    assert detail["source_failure_count"] == 1
-    assert detail["source_outcomes"][0]["error"]["category"] == "unmapped_provider_error"
+    assert bad.state == "pending" and bad.error is not None
+    assert bad.error.category == Category.UNMAPPED_PROVIDER_ERROR
+    assert detail["source_failure_count"] == 0 and detail["source_outcomes"] == []
     assert "NATIVE_SECRET_CODE" not in str(detail) and "private provider detail" not in str(detail)
 
 
