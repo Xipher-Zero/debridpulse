@@ -9,8 +9,8 @@ from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
 from transfers.models import ExecutionState, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
+from transfers.presentation_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
 
 
 @pytest_asyncio.fixture
