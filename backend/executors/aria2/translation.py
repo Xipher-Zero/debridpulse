@@ -67,6 +67,8 @@ _CODE1_DIAGNOSTICS = (
      D.NETWORK, C.TLS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
     (re.compile(r"\b(?:TLS|SSL)(?:/SSL)?\b.{0,80}\b(?:receive|read|record|decode)(?:d|ing)?\b.{0,80}\b(?:error|fail(?:ed|ure)?|unexpected eof)\b", re.I),
      D.NETWORK, C.TLS_FAILURE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
+    (re.compile(r"\b(?:connect(?:ion)?\s+(?:timed\s*out|timeout)|connect timeout)\b", re.I),
+     D.NETWORK, C.CONNECTION_TIMEOUT, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
     (re.compile(r"\bconnection reset by peer\b|\bECONNRESET\b", re.I),
      D.NETWORK, C.REMOTE_RESET, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
     (re.compile(r"\b(?:premature|unexpected) EOF\b", re.I),

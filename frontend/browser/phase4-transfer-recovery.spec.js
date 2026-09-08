@@ -22,14 +22,24 @@ const states = [
   ['requires_attention', 'Requires attention', 'error'],
 ];
 
+function rawStatus(state) {
+  if (state === 'downloading') return 'downloading';
+  if (state === 'paused') return 'paused';
+  if (state === 'input_required') return 'input_required';
+  return 'error';
+}
+
 function item(id, state, label, badge) {
   return {
-    id, name: `Phase4 ${state}`, status: state === 'requires_attention' ? 'error' : state === 'recovering' ? 'error' : state,
+    id, name: `Phase4 ${state}`, status: rawStatus(state),
     presentation_status: state, presentation_label: label, presentation_badge_status: badge,
     attention_required: state === 'requires_attention', progress: 50, retained_bytes: 512,
     size_bytes: 1024, source: 'manual', hash: '', label: '', created_at: '2026-09-08T00:00:00Z',
     current_source_identity: {kind: 'link'}, providers: [], historical_providers: [], delivering_provider_ids: [],
-    input_required: state === 'input_required' ? {id:'phase4-input',generation:1,reason:'auth_required',origin:'provider',methods:[]} : null,
+    input_required: state === 'input_required' ? {
+      id:'phase4-input', generation:1, reason:'auth_required', origin:'provider',
+      methods:[{method:'username_password',fields:[{name:'username',required:true},{name:'password',required:true}]}],
+    } : null,
   };
 }
 
@@ -49,11 +59,18 @@ test('Phase-4 canonical recovery states render from backend truth with retained 
     const [state, label] = states[index];
     const row = page.locator(`#t-tbody tr[data-torrent-id="${940 + index}"]`);
     await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute('data-presentation-status', state);
     const status = row.locator('[data-role="transfer-status"]');
     await expect(status).toContainText(label);
     await expect(status.locator(`[data-dp-lifecycle-status="${state}"]`)).toHaveCount(1);
     await expect(row.locator('[data-role="transfer-progress"]')).toContainText('50');
-    if (state !== 'requires_attention') await expect(status.locator('.badge-error')).toHaveCount(0);
+    if (state !== 'requires_attention') {
+      await expect(status.locator('.badge-error')).toHaveCount(0);
+      await expect(row.locator('.dp-terminal-error-progress')).toHaveCount(0);
+    }
+    if (['recovering','waiting_for_retry','waiting_for_provider','waiting_for_storage'].includes(state)) {
+      await expect(row.locator('button[data-default-label="Retry"]')).toHaveCount(0);
+    }
   }
   expect(errors).toEqual([]);
 });
@@ -62,7 +79,6 @@ test('Recent Activity keeps retained progress visible while retry is quiescent',
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   const waiting = item(980, 'waiting_for_retry', 'Waiting for retry', 'queued');
-  waiting.status = 'error';
   waiting.progress = 61;
   waiting.retained_bytes = 610;
   waiting.size_bytes = 1000;
@@ -74,6 +90,7 @@ test('Recent Activity keeps retained progress visible while retry is quiescent',
   const row = page.locator('#dash-tbody tr[data-torrent-id="980"]');
   await expect(row.locator('[data-role="transfer-status"]')).toContainText('Waiting for retry');
   await expect(row.locator('[data-role="transfer-progress"]')).toContainText('61');
+  await expect(row.locator('[data-role="transfer-progress"] .dp-terminal-error-progress')).toHaveCount(0);
   await expect(row.locator('.dash-row-bar')).not.toHaveClass(/\bis-empty\b/);
   await expect(row.locator('.dash-row-bar-fill')).toHaveAttribute('style', /width:61%/);
   expect(errors).toEqual([]);
@@ -83,7 +100,6 @@ test('Details uses canonical artifact state and does not turn recovery into atte
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   const transfer = item(990, 'recovering', 'Recovering', 'processing');
-  transfer.status = 'error';
   transfer.files = [{
     id: 1, filename: 'payload.bin', size_bytes: 1024, status: 'error', progress: 50,
     retained_bytes: 512, presentation_status: 'waiting_for_retry', presentation_label: 'Waiting for retry',
