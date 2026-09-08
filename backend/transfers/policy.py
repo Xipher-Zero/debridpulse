@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
+from transfers.errors import Category, Domain, NormalizedError, Permanence, Recovery, Retryability, Stage
 from transfers.models import TransferState
 
 
@@ -24,6 +24,7 @@ _EXECUTION_ALTERNATE_CATEGORIES = frozenset({
 })
 _EXECUTION_RECONCILE_CATEGORIES = frozenset({Category.TRANSFER_INTERRUPTED, Category.RESOURCE_STATE_CONFLICT})
 _EXPIRY_CATEGORIES = frozenset({Category.CANDIDATE_EXPIRED, Category.SOURCE_EXPIRED, Category.RESOURCE_EXPIRED})
+_PERMANENT_CATEGORIES = frozenset({Category.CONTENT_INVALID})
 _TRANSIENT_CATEGORIES = frozenset({
     Category.READ_TIMEOUT, Category.CONNECTION_TIMEOUT, Category.CONNECTION_FAILED,
     Category.REMOTE_RESET, Category.REMOTE_READ_FAILED, Category.DNS_FAILURE,
@@ -84,6 +85,9 @@ def compatibility_recovery(error: NormalizedError) -> Recovery:
     if error.recovery != Recovery.NONE:
         return error.recovery
     if error.domain == Domain.SECURITY:
+        return Recovery.FAIL
+    if (error.domain == Domain.INTEGRITY or error.permanence == Permanence.PERMANENT
+            or error.category in _PERMANENT_CATEGORIES):
         return Recovery.FAIL
     if error.retryability == Retryability.UNKNOWN:
         return Recovery.NONE
@@ -213,6 +217,8 @@ class TransferPolicy:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "security_failure")
         if error.domain == Domain.INTEGRITY:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "integrity_failure")
+        if error.permanence == Permanence.PERMANENT or error.category in _PERMANENT_CATEGORIES:
+            return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "permanent_failure")
         if error.retryability == Retryability.NEVER:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "nonretryable_failure")
         if (error.domain == Domain.LOCAL_RESOURCE
@@ -324,12 +330,15 @@ class TransferPolicy:
         if (error.domain == Domain.LOCAL_RESOURCE and self.local_resource_failure_handler is not None
                 and self.local_resource_failure_handler(error)):
             return RetryDecision(Recovery.RETRY, now)
-        if error.domain == Domain.SECURITY or error.retryability == Retryability.NEVER:
+        if (error.domain in {Domain.SECURITY, Domain.INTEGRITY}
+                or error.permanence == Permanence.PERMANENT
+                or error.category in _PERMANENT_CATEGORIES
+                or error.retryability == Retryability.NEVER):
+            return RetryDecision()
+        if error.stage == Stage.CLEANUP and error.retryability == Retryability.UNKNOWN:
             return RetryDecision()
         if error.retryability == Retryability.UNKNOWN:
             if attempts >= max(1, self.max_attempts):
-                if can_refresh:
-                    return RetryDecision(Recovery.RERESOLVE, now)
                 if has_alternate:
                     return RetryDecision(Recovery.TRY_ALTERNATE_CANDIDATE, now)
                 return RetryDecision()

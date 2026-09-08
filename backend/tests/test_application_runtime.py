@@ -161,7 +161,7 @@ async def test_scheduler_uses_injected_application(runtime, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unknown_source_error_is_canonical_and_excluded_from_physical_progress(runtime):
+async def test_unknown_source_error_is_canonical_recoverable_and_excluded_from_physical_progress(runtime):
     application, provider, executor, client = runtime
     error = NormalizedError(Domain.PROVIDER, Category.UNMAPPED_PROVIDER_ERROR, Stage.RESOLUTION,
         native_code="NATIVE_SECRET_CODE", diagnostic="private provider detail")
@@ -173,7 +173,7 @@ async def test_unknown_source_error_is_canonical_and_excluded_from_physical_prog
     executor.finish(artifact.execution)
     await application.reconcile_executions()
     detail = (await client.get(f"/api/torrents/{item['id']}")).json()
-    assert detail["status"] == "completed" and detail["progress"] == 100
+    assert detail["status"] == "processing" and detail["progress"] == 100
     assert detail["source_failure_count"] == 1
     assert detail["source_outcomes"][0]["error"]["category"] == "unmapped_provider_error"
     assert "NATIVE_SECRET_CODE" not in str(detail) and "private provider detail" not in str(detail)

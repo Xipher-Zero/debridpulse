@@ -101,14 +101,17 @@ async def test_transient_retry_uses_durable_budget_and_elapsed_deadline(core):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("error", [failure(), failure(Category.DESTINATION_BLOCKED, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)])
-async def test_unknown_and_security_failures_never_automatically_retry(core, error):
-    core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)]
+@pytest.mark.parametrize("error,expected_calls", [
+    (failure(), 3),
+    (failure(Category.DESTINATION_BLOCKED, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY), 1),
+])
+async def test_unknown_retries_are_bounded_while_security_never_retries(core, error, expected_calls):
+    core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)] * 5
     transfer = await submit(core)
     for _ in range(5):
         await core.engine.tick()
         core.now[0] += 1000
-    assert len(core.provider.calls) == 1
+    assert len(core.provider.calls) == expected_calls
     assert (await core.repository.get(transfer.id)).state == TransferState.FAILED
     assert core.executor.calls == []
 
@@ -218,7 +221,11 @@ async def test_explicit_reacquisition_revalidates_completed_history(core):
 
 @pytest.mark.asyncio
 async def test_unknown_cleanup_failure_is_retained_without_retry_storm(core):
-    core.provider.cleanup_response = TransferOutcome(OutcomeKind.FAILURE, failure())
+    cleanup_error = NormalizedError(
+        Domain.CLEANUP, Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP,
+        retryability=Retryability.UNKNOWN,
+    )
+    core.provider.cleanup_response = TransferOutcome(OutcomeKind.FAILURE, cleanup_error)
     result = core.provider.parcel()
     core.provider.responses = [result]
     transfer = await submit(core)
@@ -412,16 +419,39 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(cor
     sidecar.write_bytes(b"resume")
     error = NormalizedError(Domain.NETWORK, Category.REMOTE_READ_FAILED, Stage.EXECUTION,
                             Retryability.BACKOFF, Recovery.TRY_ALTERNATE_CANDIDATE)
-    core.executor.jobs[artifact.execution.attempt_id] = replace(core.executor.jobs[artifact.execution.attempt_id], state=ExecutionState.FAILED, error=error)
+
+    core.executor.jobs[artifact.execution.attempt_id] = replace(
+        core.executor.jobs[artifact.execution.attempt_id], state=ExecutionState.FAILED, error=error,
+    )
     await core.engine.tick()
+    first_retry = (await core.repository.artifacts(transfer.id))[0]
+    assert first_retry.selected == 0 and first_retry.state == "recovery_wait"
+    assert target.exists() and sidecar.exists()
+
+    core.executor.start_errors = [error]
+    core.now[0] += 1
+    await core.engine.tick()
+    refresh = (await core.repository.artifacts(transfer.id))[0]
+    assert refresh.selected == 0 and refresh.state == "refresh_pending"
+    assert target.exists() and sidecar.exists()
+
+    await core.engine.tick()
+    refreshed = (await core.repository.artifacts(transfer.id))[0]
+    assert refreshed.selected == 0 and refreshed.state == "queued"
+    core.executor.start_errors = [error]
+    await core.engine.tick()
+    switched = (await core.repository.artifacts(transfer.id))[0]
+    assert switched.id == artifact.id and switched.target == artifact.target
+    assert switched.selected == 1 and switched.execution is None
     assert not target.exists() and not sidecar.exists()
+
     await core.engine.tick()
     retried = (await core.repository.artifacts(transfer.id))[0]
-    assert retried.id == artifact.id and retried.target == artifact.target
-    assert retried.selected == 1
+    assert retried.selected == 1 and retried.execution is not None
     attempts = await core.repository.executions(transfer.id)
-    assert len(attempts) == 2
+    assert len(attempts) == 4
     assert {item.candidate.id for item in attempts} == {first.id, second.id}
+    assert attempts[-1].candidate.id == second.id
 
 
 @pytest.mark.asyncio

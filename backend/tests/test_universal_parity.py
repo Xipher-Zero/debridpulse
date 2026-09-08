@@ -107,15 +107,34 @@ async def test_expired_resource_re_resolution_preserves_completed_sibling_and_pa
 
 @pytest.mark.asyncio
 async def test_manual_retry_opens_new_budget_without_erasing_attempt_history(core):
-    core.engine.policy = replace(core.engine.policy, max_attempts=1)
-    core.executor.start_errors = [failure(Category.REMOTE_RESET, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY, domain=Domain.NETWORK)]
+    error = failure(Category.REMOTE_RESET, retryability=Retryability.BACKOFF,
+                    recovery=Recovery.RETRY, domain=Domain.NETWORK)
+    core.executor.start_errors = [error, error]
     transfer = await submit(core)
     await core.engine.tick()
-    assert (await core.repository.get(transfer.id)).state == "error"
-    assert await core.engine.retry(transfer.id)
+    core.now[0] += 1
     await core.engine.tick()
-    assert len(await core.repository.executions(transfer.id)) == 2
-    assert (await core.repository.artifacts(transfer.id))[0].retries == 1
+    assert (await core.repository.artifacts(transfer.id))[0].state == "refresh_pending"
+    await core.engine.tick()
+    core.executor.start_errors = [error]
+    await core.engine.tick()
+
+    exhausted = (await core.repository.artifacts(transfer.id))[0]
+    assert exhausted.state == "error"
+    before = await core.repository.executions(transfer.id)
+    assert len(before) == 3
+    context = await core.repository.recovery_context(exhausted.id)
+    assert context["quiescence_reason"] == "recovery_exhausted"
+    assert context["wake_condition"] == "operator_retry"
+
+    assert await core.engine.retry(transfer.id)
+    reset = await core.repository.recovery_context(exhausted.id)
+    assert reset["quiescence_reason"] is None and reset["wake_condition"] is None
+    assert await core.repository.recovery_budget(exhausted.id) == (0, 0)
+    await core.engine.tick()
+    after = await core.repository.executions(transfer.id)
+    assert len(after) == 4
+    assert [item.handle.attempt_id for item in after[:3]] == [item.handle.attempt_id for item in before]
 
 
 @pytest.mark.asyncio

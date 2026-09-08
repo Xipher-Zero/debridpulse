@@ -47,7 +47,7 @@ async def details_runtime(tmp_path, monkeypatch):
         repository,
         registry,
         download_root=str(tmp_path / "payloads"),
-        policy=TransferPolicy(retry_delay=1, adoption_stability_seconds=0, max_active_executions=8, resolution_concurrency=8),
+        policy=TransferPolicy(retry_delay=0, adoption_stability_seconds=0, max_active_executions=8, resolution_concurrency=8),
     )
     await engine.initialize()
     return engine, repository, provider, executor
@@ -104,9 +104,6 @@ async def test_selected_failed_and_delivering_candidate_come_from_execution_prov
     await submit(engine, "1fichier")
     await engine.resolve_pending()
 
-    await engine.tick()
-    artifact = (await repository.artifacts(canonical.id))[0]
-    first_id = artifact.candidates[artifact.selected].id
     failure = NormalizedError(
         Domain.NETWORK,
         Category.REMOTE_READ_FAILED,
@@ -114,10 +111,34 @@ async def test_selected_failed_and_delivering_candidate_come_from_execution_prov
         Retryability.BACKOFF,
         Recovery.TRY_ALTERNATE_CANDIDATE,
     )
+    await engine.tick()
+    artifact = (await repository.artifacts(canonical.id))[0]
+    first_id = artifact.candidates[artifact.selected].id
+
     executor.jobs[artifact.execution.attempt_id] = replace(
         executor.jobs[artifact.execution.attempt_id], state=ExecutionState.FAILED, error=failure,
     )
     await engine.tick()
+    await engine.tick()
+    retry = (await repository.artifacts(canonical.id))[0]
+    assert retry.selected == 0 and retry.execution is not None
+
+    executor.jobs[retry.execution.attempt_id] = replace(
+        executor.jobs[retry.execution.attempt_id], state=ExecutionState.FAILED, error=failure,
+    )
+    await engine.tick()
+    assert (await repository.artifacts(canonical.id))[0].state == "refresh_pending"
+    await engine.tick()
+    await engine.tick()
+    refreshed = (await repository.artifacts(canonical.id))[0]
+    assert refreshed.selected == 0 and refreshed.execution is not None
+
+    executor.jobs[refreshed.execution.attempt_id] = replace(
+        executor.jobs[refreshed.execution.attempt_id], state=ExecutionState.FAILED, error=failure,
+    )
+    await engine.tick()
+    switched = (await repository.artifacts(canonical.id))[0]
+    assert switched.selected == 1 and switched.execution is None
     await engine.tick()
 
     current = (await repository.artifacts(canonical.id))[0]
