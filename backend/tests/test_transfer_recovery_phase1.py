@@ -103,7 +103,9 @@ def test_core_compatibility_owns_only_context_free_legacy_projection():
     assert not translated_unknown.operator_action_required
 
     disk = native_failure("9", "disk full")
-    assert compatibility_error(disk).recovery == Recovery.REQUIRE_OPERATOR
+    translated_disk = compatibility_error(disk)
+    assert translated_disk.recovery == Recovery.FAIL
+    assert not translated_disk.operator_action_required
 
 
 def test_unknown_recovery_is_context_sensitive_and_bounded():
