@@ -34,12 +34,23 @@ test('Dashboard Recent Activity keeps fixed row geometry across host artwork and
   return rows.map(row=>{
    const slot=row.querySelector('.dash-row-bar-slot'),bar=row.querySelector('.dash-row-bar'),meta=row.querySelector('.dp-transfer-provider-meta'),icon=row.querySelector('.dp-source-icon-slot'),host=row.querySelector('.dp-source-host-logo');
    const slotStyle=getComputedStyle(slot),metaStyle=getComputedStyle(meta);
-   return {status:row.dataset.status,rowHeight:row.getBoundingClientRect().height,slotHeight:slot.getBoundingClientRect().height,slotMarginTop:px(slotStyle.marginTop),slotMarginBottom:px(slotStyle.marginBottom),metaMarginTop:px(metaStyle.marginTop),iconHeight:icon.getBoundingClientRect().height,hostHeight:host.getBoundingClientRect().height,barVisibility:getComputedStyle(bar).visibility};
+   return {status:row.dataset.status,rowHeight:row.getBoundingClientRect().height,slotHeight:slot.getBoundingClientRect().height,slotMarginTop:px(slotStyle.marginTop),slotMarginBottom:px(slotStyle.marginBottom),slotFootprint:slot.getBoundingClientRect().height+px(slotStyle.marginTop)+px(slotStyle.marginBottom),metaMarginTop:px(metaStyle.marginTop),iconHeight:icon.getBoundingClientRect().height,hostHeight:host.getBoundingClientRect().height,barVisibility:getComputedStyle(bar).visibility};
   });
  });
  const heights=geometry.map(row=>row.rowHeight);expect(Math.max(...heights)-Math.min(...heights)).toBeLessThanOrEqual(0.5);expect(Math.max(...heights)).toBeLessThanOrEqual(58);
- for(const row of geometry){expect(row.slotHeight).toBeCloseTo(3,1);expect(row.slotMarginTop).toBeCloseTo(1,1);expect(row.slotMarginBottom).toBeCloseTo(1,1);expect(row.metaMarginTop).toBeCloseTo(0,1);expect(row.iconHeight).toBeCloseTo(20,1);expect(row.hostHeight).toBeCloseTo(17,1);}
+ for(const row of geometry){expect(row.slotHeight).toBeCloseTo(3,1);expect(row.slotMarginTop).toBeCloseTo(0,1);expect(row.slotMarginBottom).toBeCloseTo(2,1);expect(row.slotFootprint).toBeCloseTo(5,1);expect(row.metaMarginTop).toBeCloseTo(0,1);expect(row.iconHeight).toBeCloseTo(20,1);expect(row.hostHeight).toBeCloseTo(17,1);}
  expect(geometry.find(row=>row.status==='downloading').barVisibility).toBe('visible');expect(geometry.filter(row=>row.status==='completed').every(row=>row.barVisibility==='hidden')).toBe(true);
+});
+
+test('Downloads provider/source block adds host artwork and centers its two lines without moving the block',async({page})=>{
+ await page.setViewportSize({width:1440,height:800});
+ const item={id:77,name:'Rapidgator layout transfer',status:'paused',presentation_status:'paused',progress:18,size_bytes:7340032,created_at:'2026-09-08 18:00:00',source:'direct_link',hash:'request:layout',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:null,delivering_provider_name:null,provider_provenance_status:'known'};
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[item],total:1,page:1,page_size:1})}));
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
+ const row=page.locator('#t-tbody tr[data-torrent-id="77"]');await expect(row).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-block')).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-line .dp-source-host-logo')).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-line .dp-provider-chip')).toContainText('AllDebrid');await expect(row.locator('.dp-downloads-provider-block > .dp-transfer-source-label')).toHaveText('Direct link');
+ await expect.poll(()=>row.locator('.dp-source-host-logo').evaluate(node=>node.complete&&node.naturalWidth>0)).toBe(true);
+ const geometry=await row.locator('.dp-downloads-provider-cell').evaluate(cell=>{const block=cell.querySelector('.dp-downloads-provider-block'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector('.dp-transfer-source-label'),icon=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip'),cellStyle=getComputedStyle(cell),rect=node=>node.getBoundingClientRect(),center=node=>{const r=rect(node);return r.left+r.width/2;};return{cellLeft:rect(cell).left,paddingLeft:Number.parseFloat(cellStyle.paddingLeft)||0,blockLeft:rect(block).left,lineCenter:center(line),labelCenter:center(label),iconHeight:rect(icon).height,chipHeight:rect(chip).height};});
+ expect(Math.abs(geometry.blockLeft-(geometry.cellLeft+geometry.paddingLeft))).toBeLessThanOrEqual(1.5);expect(Math.abs(geometry.lineCenter-geometry.labelCenter)).toBeLessThanOrEqual(1.5);expect(geometry.iconHeight).toBeCloseTo(20,1);expect(geometry.chipHeight).toBeGreaterThanOrEqual(19.5);
 });
 
 test('Downloads owner exposes fixed three-slot pager and date options',async({page})=>{
