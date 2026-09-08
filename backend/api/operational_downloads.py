@@ -11,7 +11,6 @@ removed from the generic router at import time so /api/events keeps one owner.
 The default response remains the historical JSON list; the UI opts into metadata
 when it needs an explicit truncation signal.
 """
-import asyncio
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -45,7 +44,6 @@ _EVENT_TIMEFRAME_MODIFIERS = {
 }
 EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
-_PRESENTATION_CONCURRENCY = 8
 
 
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
@@ -162,18 +160,88 @@ async def list_operational_torrents(
         params.extend([needle, needle, needle, needle, needle])
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    query = f"""SELECT t.id
-            FROM torrents t {where}
-            ORDER BY t.created_at DESC"""
+    page_sql = f"""SELECT t.id
+        FROM torrents t {where}
+        ORDER BY t.created_at DESC"""
     query_params = list(params)
     if limit > 0:
-        query += " LIMIT ? OFFSET ?"
+        page_sql += " LIMIT ? OFFSET ?"
         query_params.extend([limit, offset])
 
-    # Release the list-query session before canonical presentation opens its
-    # own read sessions. Holding this session across every row amplified the
-    # migrated-history read fan-out and made an otherwise healthy DB appear
-    # unavailable to the browser timeout boundary.
+    # The Downloads collection is a bounded read model. It intentionally does
+    # not reconstruct the comprehensive per-transfer presentation used by the
+    # detail route. All list-only enrichment is computed in this one SQL read.
+    query = f"""
+        WITH page AS (
+            {page_sql}
+        ),
+        latest_route AS (
+            SELECT transfer_id, provider_id
+            FROM (
+                SELECT
+                    p.transfer_id,
+                    a.provider_id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.transfer_id
+                        ORDER BY p.ordinal DESC
+                    ) AS row_number
+                FROM route_attempt_provenance p
+                JOIN resolution_attempts a
+                  ON a.id = p.resolution_attempt_id
+                JOIN page
+                  ON page.id = p.transfer_id
+                WHERE COALESCE(a.provider_id, '') <> ''
+            )
+            WHERE row_number = 1
+        ),
+        delivery AS (
+            SELECT
+                p.transfer_id,
+                COUNT(DISTINCT p.provider_id) AS provider_count,
+                MIN(p.provider_id) AS provider_id
+            FROM execution_attempt_provenance p
+            JOIN page
+              ON page.id = p.transfer_id
+            WHERE p.delivered = 1
+              AND COALESCE(p.provider_id, '') <> ''
+            GROUP BY p.transfer_id
+        ),
+        request_failures AS (
+            SELECT
+                r.transfer_id,
+                COUNT(*) AS failure_count
+            FROM transfer_requests r
+            JOIN page
+              ON page.id = r.transfer_id
+            WHERE r.state = 'failed'
+            GROUP BY r.transfer_id
+        )
+        SELECT
+            t.*,
+            COALESCE(request_failures.failure_count, 0) AS source_failure_count,
+            latest_route.provider_id AS current_provider_id,
+            CASE
+                WHEN COALESCE(delivery.provider_count, 0) = 1
+                THEN delivery.provider_id
+                ELSE NULL
+            END AS delivering_provider_id,
+            CASE
+                WHEN COALESCE(delivery.provider_count, 0) > 0 THEN 'recorded'
+                WHEN t.status = 'completed' THEN 'unknown_legacy'
+                ELSE 'pending'
+            END AS provider_provenance_status
+        FROM page
+        JOIN torrents t
+          ON t.id = page.id
+        LEFT JOIN latest_route
+          ON latest_route.transfer_id = t.id
+        LEFT JOIN delivery
+          ON delivery.transfer_id = t.id
+        LEFT JOIN request_failures
+          ON request_failures.transfer_id = t.id
+        ORDER BY t.created_at DESC
+    """
+
     async with get_db() as db:
         rows = await db.fetchall(query, query_params)
         total_row = await db.fetchone(
@@ -181,12 +249,8 @@ async def list_operational_torrents(
         )
         total = total_row["cnt"] if total_row else 0
 
-    semaphore = asyncio.Semaphore(_PRESENTATION_CONCURRENCY)
-
-    async def project(row):
-        async with semaphore:
-            presentation = await application.repository.presentation(row["id"])
-        return _public_transfer_presentation(presentation, application.definitions)
-
-    items = await asyncio.gather(*(project(row) for row in rows))
+    items = [
+        _public_transfer_presentation(row, application.definitions)
+        for row in rows
+    ]
     return {"items": items, "total": total}
