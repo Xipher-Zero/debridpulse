@@ -138,7 +138,7 @@ class ApplicationService:
         download_folder_changed = previous.download_folder != current.download_folder
         if download_folder_changed and await self.repository.has_integration_references():
             raise ValueError("Finish or remove existing resources before changing the download folder")
-        # Only a Download Folder change is a candidate-save operation.  Runtime
+        # Only a Download Folder change is a candidate-save operation. Runtime
         # recovery owns active-path re-probing, so a degraded current Download
         # Folder cannot block unrelated Settings changes.
         if (
@@ -200,6 +200,17 @@ class ApplicationService:
             await publish("torrent_updated", item)
         await publish("stats_changed", {})
         return item
+
+    @staticmethod
+    def _active_overlay_item(transfer, *, status_changed=False):
+        """Project only mutable list fields needed by live browser updates."""
+        state = getattr(transfer.state, "value", transfer.state)
+        return {
+            "id": int(transfer.id),
+            "status": str(state),
+            "progress": float(transfer.progress or 0),
+            "status_changed": bool(status_changed),
+        }
 
     async def submit(self, requests, **options):
         async with self.application_operation():
@@ -343,8 +354,35 @@ class ApplicationService:
             before = await self.repository.active()
             await self.engine.reconcile_executions()
             await self._contain_download_storage_faults(before)
-            for transfer in before:
-                await self._publish(transfer.id)
+
+            # Periodic progress publication is a list/read concern, not a reason
+            # to reconstruct canonical transfer truth once per active transfer.
+            # Re-read the small durable active projection once, publish one batch,
+            # and let status transitions request one authoritative lightweight
+            # collection refresh in the browser.
+            after = await self.repository.active()
+            after_by_id = {transfer.id: transfer for transfer in after}
+            updates = []
+            for previous in before:
+                current = after_by_id.get(previous.id)
+                if current is None:
+                    updates.append(self._active_overlay_item(previous, status_changed=True))
+                    continue
+                previous_state = str(getattr(previous.state, "value", previous.state))
+                current_state = str(getattr(current.state, "value", current.state))
+                previous_progress = float(previous.progress or 0)
+                current_progress = float(current.progress or 0)
+                if current_state != previous_state or current_progress != previous_progress:
+                    updates.append(
+                        self._active_overlay_item(
+                            current,
+                            status_changed=current_state != previous_state,
+                        )
+                    )
+
+            if updates:
+                await publish("torrent_updated", {"progress_only": True, "items": updates})
+                await publish("stats_changed", {})
 
     async def process_postprocessors(self):
         async with self.application_operation():
