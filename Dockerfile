@@ -95,7 +95,7 @@ COPY docs/DEPENDENCY_LICENSES.md /app/docs/DEPENDENCY_LICENSES.md
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Directories - owned by nobody:users (65534:100) by default
+# Directories - owned by 99:100 by default
 # Override at runtime via PUID / PGID environment variables
 RUN mkdir -p /app/data /app/config /download && \
     chown -R 99:100 /app /download

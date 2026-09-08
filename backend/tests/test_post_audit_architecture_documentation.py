@@ -47,3 +47,36 @@ def test_canonical_bundle_comment_no_longer_claims_v111_overlay() -> None:
     assert "v1.0.12 canonical visual import graph" in style
     assert "v1.0.11 visual system overlay" not in style
     assert "UI Correction Batch" not in style
+
+
+def test_container_entrypoint_bootstrap_diagnostics_preserve_runtime_contract() -> None:
+    entrypoint = read("entrypoint.sh")
+
+    # Identity establishment must not silently continue after a real failure.
+    assert 'fatal "failed to create runtime group for PGID=${PGID}"' in entrypoint
+    assert 'fatal "failed to create runtime user for PUID=${PUID} PGID=${PGID}"' in entrypoint
+    assert 'fatal "failed to set primary group for ${RUN_USER} to PGID=${PGID} (PUID=${PUID})"' in entrypoint
+    assert 'groupadd -g "${PGID}" appgroup 2>/dev/null || true' not in entrypoint
+    assert 'useradd -u "${PUID}" -g "${PGID}" -M -s /bin/sh appuser 2>/dev/null || true' not in entrypoint
+    assert 'usermod -g "${PGID}" "${RUN_USER}" 2>/dev/null || true' not in entrypoint
+
+    # Host-controlled mount reconciliation remains non-fatal but observable.
+    assert 'if ! chown -R "${PUID}:${PGID}" "${DIR}"; then' in entrypoint
+    assert 'continuing so runtime storage checks can diagnose mount permissions' in entrypoint
+
+    # /download recursion remains explicit opt-in; default behavior touches only
+    # the mount root and must not regress to an unconditional recursive chown.
+    assert 'if [ "${CHOWN_DOWNLOADS_RECURSIVE:-false}" = "true" ]; then' in entrypoint
+    assert 'if ! chown -R "${PUID}:${PGID}" /download; then' in entrypoint
+    assert 'if ! chown "${PUID}:${PGID}" /download; then' in entrypoint
+
+
+def test_container_default_identity_contract_is_99_100() -> None:
+    entrypoint = read("entrypoint.sh")
+    dockerfile = read("Dockerfile")
+
+    assert 'PUID="${PUID:-99}"' in entrypoint
+    assert 'PGID="${PGID:-100}"' in entrypoint
+    assert "# Directories - owned by 99:100 by default" in dockerfile
+    assert "65534:100" not in dockerfile
+    assert "chown -R 99:100 /app /download" in dockerfile
