@@ -19,6 +19,29 @@ test('Dashboard source-domain matching is boundary safe and pause presentation i
  await expect(page.locator('.dp-global-pause-center')).toHaveClass(/is-visible/);await expect(page.locator('.dp-global-pause-center')).toContainText('PROCESSING PAUSED');await expect(page.locator('#btn-import-existing')).toHaveCount(0);
 });
 
+test('Dashboard Recent Activity keeps fixed row geometry across host artwork and progress states',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ const items=Array.from({length:6},(_,index)=>({
+  id:index+1,name:`Layout transfer ${index+1}`,status:index===0?'downloading':'completed',progress:index===0?42:100,size_bytes:1048576*(index+1),created_at:'2026-09-08 17:00:00',
+  current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'
+ }));
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length,page:1,page_size:items.length})}));
+ await ready(page);await expect(page.locator('#dash-tbody tr')).toHaveCount(6);await expect(page.locator('#dash-tbody .dp-source-host-logo')).toHaveCount(6);
+ await expect.poll(()=>page.locator('#dash-tbody .dp-source-host-logo').evaluateAll(nodes=>nodes.every(node=>node.complete&&node.naturalWidth>0))).toBe(true);
+ const geometry=await page.locator('#dash-tbody').evaluate(body=>{
+  const rows=[...body.querySelectorAll('tr')];
+  const px=value=>Number.parseFloat(value)||0;
+  return rows.map(row=>{
+   const slot=row.querySelector('.dash-row-bar-slot'),bar=row.querySelector('.dash-row-bar'),meta=row.querySelector('.dp-transfer-provider-meta'),icon=row.querySelector('.dp-source-icon-slot'),host=row.querySelector('.dp-source-host-logo');
+   const slotStyle=getComputedStyle(slot),metaStyle=getComputedStyle(meta);
+   return {status:row.dataset.status,rowHeight:row.getBoundingClientRect().height,slotHeight:slot.getBoundingClientRect().height,slotMarginTop:px(slotStyle.marginTop),slotMarginBottom:px(slotStyle.marginBottom),metaMarginTop:px(metaStyle.marginTop),iconHeight:icon.getBoundingClientRect().height,hostHeight:host.getBoundingClientRect().height,barVisibility:getComputedStyle(bar).visibility};
+  });
+ });
+ const heights=geometry.map(row=>row.rowHeight);expect(Math.max(...heights)-Math.min(...heights)).toBeLessThanOrEqual(0.5);expect(Math.max(...heights)).toBeLessThanOrEqual(58);
+ for(const row of geometry){expect(row.slotHeight).toBeCloseTo(3,1);expect(row.slotMarginTop).toBeCloseTo(1,1);expect(row.slotMarginBottom).toBeCloseTo(1,1);expect(row.metaMarginTop).toBeCloseTo(0,1);expect(row.iconHeight).toBeCloseTo(20,1);expect(row.hostHeight).toBeCloseTo(17,1);}
+ expect(geometry.find(row=>row.status==='downloading').barVisibility).toBe('visible');expect(geometry.filter(row=>row.status==='completed').every(row=>row.barVisibility==='hidden')).toBe(true);
+});
+
 test('Downloads owner exposes fixed three-slot pager and date options',async({page})=>{
  await page.setViewportSize({width:1440,height:800});await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();renderTorrentPagination(30,10,10);});
  await expect(page.locator('#torrent-page-btns .dp-pager-btn')).toHaveCount(2);await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveCount(1);
