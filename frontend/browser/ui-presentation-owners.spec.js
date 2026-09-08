@@ -7,6 +7,8 @@ test('bounded presentation graph loads without retired correction requests',asyn
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));await ready(page);
  const state=await page.evaluate(markers=>({loader:typeof window.DPPresentationLoader,retired:[typeof window.DPUICorrectionBatch1,typeof window.DPUICorrectionBatch1Final,typeof window.DPUICorrectionP4Repair],markers:markers.map(marker=>Boolean(window[marker]))}),MARKERS);
  expect(state.markers.every(Boolean)).toBe(true);expect(state.loader).toBe('undefined');expect(state.retired).toEqual(['undefined','undefined','undefined']);expect(requests.some(path=>path.includes('ui-correction-batch1')||path.includes('ui-correction-p4-repair')||path.includes('ui-presentation-loader'))).toBe(false);
+ const processing=requests.indexOf('/ui-processing-presentation.js'),dashboard=requests.indexOf('/ui-dashboard-transfer-presentation.js'),downloads=requests.indexOf('/ui-downloads-presentation.js');
+ expect(processing).toBeGreaterThan(-1);expect(dashboard).toBeGreaterThan(processing);expect(downloads).toBeGreaterThan(processing);
 });
 
 test('Dashboard source-domain matching is boundary safe and pause presentation is projected',async({page})=>{
