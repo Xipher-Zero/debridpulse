@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import api.operational_downloads as downloads
+import api.routes as legacy_routes
+import main as backend_main
 
 
 class _ExplodingRepository:
@@ -111,3 +113,53 @@ def test_downloads_collection_db_call_count_does_not_scale_with_page_size(monkey
     assert len(many_db.calls) == 2
     assert len(one_result["items"]) == 1
     assert len(many_result["items"]) == 50
+
+
+def test_assembled_app_exposes_only_operational_downloads_collection_route():
+    collection_routes = [
+        route
+        for route in backend_main.app.routes
+        if getattr(route, "path", None) == "/api/torrents"
+        and "GET" in (getattr(route, "methods", set()) or set())
+    ]
+
+    assert len(collection_routes) == 1
+    assert collection_routes[0].endpoint is downloads.list_operational_torrents
+
+    detail_routes = [
+        route
+        for route in backend_main.app.routes
+        if getattr(route, "path", None) == "/api/torrents/{torrent_id}"
+        and "GET" in (getattr(route, "methods", set()) or set())
+    ]
+    assert len(detail_routes) == 1
+    assert detail_routes[0].endpoint is legacy_routes.get_torrent
+
+
+class _RecordingRepository:
+    def __init__(self):
+        self.calls = []
+
+    async def presentation(self, transfer_id, **kwargs):
+        self.calls.append((transfer_id, kwargs))
+        return {
+            "id": transfer_id,
+            "hash": "detail-hash",
+            "name": "Detail transfer",
+            "status": "completed",
+            "size_bytes": 1024,
+            "progress": 100.0,
+            "source": "https://example.invalid/file",
+            "label": "detail",
+            "created_at": "2026-09-08T12:00:00Z",
+        }
+
+
+def test_download_detail_explicitly_requests_comprehensive_presentation():
+    repository = _RecordingRepository()
+    application = SimpleNamespace(repository=repository, definitions=[])
+
+    result = asyncio.run(legacy_routes.get_torrent(42, application=application))
+
+    assert repository.calls == [(42, {"details": True})]
+    assert result["id"] == 42
