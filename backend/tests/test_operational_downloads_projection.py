@@ -88,6 +88,8 @@ def test_downloads_collection_uses_bounded_projection_not_comprehensive_presenta
     assert "route_attempt_provenance" in projection_sql
     assert "execution_attempt_provenance" in projection_sql
     assert "transfer_requests" in projection_sql
+    assert "AND p.provider_id IS NOT NULL" in projection_sql
+    assert "COALESCE(a.provider_id" not in projection_sql
 
     assert result["total"] == 25
     assert len(result["items"]) == 25

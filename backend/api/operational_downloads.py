@@ -190,7 +190,6 @@ async def list_operational_torrents(
                   ON a.id = p.resolution_attempt_id
                 JOIN page
                   ON page.id = p.transfer_id
-                WHERE COALESCE(a.provider_id, '') <> ''
             )
             WHERE row_number = 1
         ),
@@ -203,7 +202,7 @@ async def list_operational_torrents(
             JOIN page
               ON page.id = p.transfer_id
             WHERE p.delivered = 1
-              AND COALESCE(p.provider_id, '') <> ''
+              AND p.provider_id IS NOT NULL
             GROUP BY p.transfer_id
         ),
         request_failures AS (
