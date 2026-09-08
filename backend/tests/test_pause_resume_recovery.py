@@ -321,7 +321,7 @@ async def test_refresh_generation_cannot_loop_without_progress(recovery):
     recovery.executor.start_errors = [error]
     await recovery.engine.tick()
     exhausted = (await recovery.repository.artifacts(transfer.id))[0]
-    assert exhausted.state == "recovery_wait"
+    assert exhausted.state == "error"
     assert await recovery.repository.recovery_budget(exhausted.id) == (3, 1)
     context = await recovery.repository.recovery_context(exhausted.id)
     assert context["quiescence_reason"] == "recovery_exhausted"

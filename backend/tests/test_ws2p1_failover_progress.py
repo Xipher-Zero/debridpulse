@@ -271,7 +271,7 @@ async def test_recovery_hierarchy_retries_refreshes_then_fails_over_forward_only
 
 
 @pytest.mark.asyncio
-async def test_disabled_current_candidate_fails_over_without_refreshing_it(tmp_path, monkeypatch):
+async def test_disabled_current_candidate_quiesces_until_same_provider_reenabled(tmp_path, monkeypatch):
     first = EquivalentParcelProvider("provider-a")
     second = EquivalentParcelProvider("provider-b")
     executor = NoProgressMemoryExecutor(None)
@@ -289,9 +289,21 @@ async def test_disabled_current_candidate_fails_over_without_refreshing_it(tmp_p
 
     await engine.reconcile_executions()
     artifact = (await repository.artifacts(canonical.id))[0]
-    assert artifact.selected == 1
+    assert artifact.selected == 0
+    assert artifact.state == "recovery_wait"
     assert artifact.execution is None
+    context = await repository.recovery_context(artifact.id)
+    assert context["quiescence_reason"] == "provider_disabled"
+    assert context["wake_condition"] == "provider_enabled:provider-a"
     assert not any(call[0] == "refresh_request" for call in first.calls)
+    assert not [call for call in executor.calls if call[0] == "start"]
+
+    first.descriptor = replace(first.descriptor, enabled=True)
+    await engine.reconcile_executions()
+    resumed = (await repository.artifacts(canonical.id))[0]
+    assert resumed.selected == 0
+    assert resumed.execution is not None
+    assert resumed.candidates[resumed.selected].provider_id == "provider-a"
 
 
 @pytest.mark.asyncio

@@ -235,8 +235,6 @@ async def test_slow_fingerprint_revalidates_owner_before_attachment(pair, monkey
     materializing = asyncio.create_task(pair.engine.resolve_pending())
     await entered.wait()
 
-    # Remote sampling must hold neither the path mutex nor a SQLite write
-    # transaction.  Both can be acquired while the sampling calls are blocked.
     async with asyncio.timeout(1):
         async with pair.engine._paths_lock:
             pass
@@ -373,21 +371,56 @@ async def test_cross_transfer_alternate_failover_keeps_same_canonical_artifact(p
         Retryability.BACKOFF,
         Recovery.TRY_ALTERNATE_CANDIDATE,
     )
+
     pair.executor.jobs[primary.execution.attempt_id] = replace(
         pair.executor.jobs[primary.execution.attempt_id],
         state=ExecutionState.FAILED,
         error=error,
     )
+    await pair.engine.tick()
+    parked = (await pair.repository.artifacts(first.id))[0]
+    assert parked.id == original_id
+    assert parked.target == original_target
+    assert parked.selected == 0
+    assert parked.state == "recovery_wait"
+    context = await pair.repository.recovery_context(parked.id)
+    assert context["decision_action"] == "backoff"
+    assert context["quiescence_reason"] == "retry_backoff"
+
+    pair.now[0] += 1
+    await pair.engine.tick()
+    retry = (await pair.repository.artifacts(first.id))[0]
+    assert retry.selected == 0 and retry.execution is not None
+    pair.executor.jobs[retry.execution.attempt_id] = replace(
+        pair.executor.jobs[retry.execution.attempt_id], state=ExecutionState.FAILED, error=error,
+    )
+    await pair.engine.tick()
+    refreshing = (await pair.repository.artifacts(first.id))[0]
+    assert refreshing.selected == 0
+    assert refreshing.state == "refresh_pending"
 
     await pair.engine.tick()
+    refreshed = (await pair.repository.artifacts(first.id))[0]
+    assert refreshed.selected == 0 and refreshed.state == "queued"
     await pair.engine.tick()
+    third = (await pair.repository.artifacts(first.id))[0]
+    assert third.selected == 0 and third.execution is not None
+    pair.executor.jobs[third.execution.attempt_id] = replace(
+        pair.executor.jobs[third.execution.attempt_id], state=ExecutionState.FAILED, error=error,
+    )
+    await pair.engine.tick()
+    switched = (await pair.repository.artifacts(first.id))[0]
+    assert switched.id == original_id
+    assert switched.target == original_target
+    assert switched.selected == 1
+    assert switched.candidates[switched.selected].provider_id == "provider-b"
+    assert switched.execution is None
 
+    await pair.engine.tick()
     current = (await pair.repository.artifacts(first.id))[0]
-    assert current.id == original_id
-    assert current.target == original_target
-    assert current.selected == 1
-    assert current.candidates[current.selected].provider_id == "provider-b"
+    assert current.execution is not None
     attempts = await pair.repository.executions(first.id)
-    assert len(attempts) == 2
-    assert {attempt.candidate.provider_id for attempt in attempts} == {"provider-a", "provider-b"}
+    assert [attempt.candidate.provider_id for attempt in attempts] == [
+        "provider-a", "provider-a", "provider-a", "provider-b",
+    ]
     assert await pair.repository.artifacts(second.id) == ()

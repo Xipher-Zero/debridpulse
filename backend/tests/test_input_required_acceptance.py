@@ -23,6 +23,7 @@ from transfers.models import (
     TransferRequest,
     TransferState,
 )
+from transfers.errors import Retryability
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -190,7 +191,18 @@ async def test_internal_continuation_exception_does_not_persist_or_echo_credenti
     assert_sensitive_absent(caplog.text, markers)
     assert not await engine.inputs.has(challenge)
     assert await engine.challenges.current(transfer.id) is None
-    assert (await repository.get(transfer.id)).state == TransferState.FAILED
+
+    # The continuation exception is low-confidence UNKNOWN provider evidence.
+    # Phase 2 must consume the one-shot secret material and clear the challenge,
+    # but must not turn uncertainty itself into an immediate terminal/operator
+    # outcome. The request is durably scheduled for a bounded fresh resolution.
+    current = await repository.get(transfer.id)
+    request = (await repository.requests(transfer.id))[0]
+    assert current.state != TransferState.FAILED
+    assert request.state == "pending"
+    assert request.error is not None
+    assert request.error.retryability == Retryability.UNKNOWN
+    assert request.retry_at > 0
 
 
 @pytest.mark.asyncio

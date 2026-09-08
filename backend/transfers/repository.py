@@ -3,7 +3,7 @@
 The qualified base remains the owner of ordinary transfer/request persistence.
 This public owner contains the atomic recovery extensions, progress-aware epoch
 accounting, candidate provenance presentation, and execution-discovered size
-acceptance.  Recovery snapshots use the existing durable ``application_events``
+acceptance. Recovery snapshots use the existing durable ``application_events``
 table and are marked claimed so they are state history, not work-queue events.
 """
 from __future__ import annotations
@@ -61,6 +61,8 @@ class TransferRepository(_QualifiedTransferRepository):
             "same_signature_failures": 0,
             "candidate_refreshes": int(row.get("recovery_refreshes") or 0),
             "candidate_switches": 0,
+            "decision_action": None,
+            "decision_reason": None,
             "quiescence_reason": None,
             "wake_condition": None,
         }
@@ -77,7 +79,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 for key in snapshot:
                     if key in stored:
                         snapshot[key] = stored[key]
-        # Existing Phase-1 counters are known facts.  If no Phase-2 snapshot
+        # Existing Phase-1 counters are known facts. If no Phase-2 snapshot
         # exists they seed only counters, never a fabricated signature/progress.
         snapshot["consecutive_no_progress_failures"] = max(
             int(snapshot.get("consecutive_no_progress_failures") or 0),
@@ -112,6 +114,23 @@ class TransferRepository(_QualifiedTransferRepository):
             )
         snapshot["execution_attempts"] = int((attempts or {}).get("n") or 0)
         return snapshot
+
+    async def record_recovery_decision(self, artifact_id: int, action: str, reason: str) -> None:
+        """Append the core-owned decision/reason without rewriting factual history."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                "SELECT torrent_id,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",
+                (artifact_id,),
+            )
+            if not row:
+                await db.rollback()
+                raise KeyError(artifact_id)
+            snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
+            snapshot["decision_action"] = str(action)
+            snapshot["decision_reason"] = str(reason)
+            await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+            await db.commit()
 
     async def record_source_failure(self, artifact_id: int, error=None) -> tuple[int, int]:
         """Consume one factual no-progress failure in the current recovery epoch."""
@@ -199,6 +218,8 @@ class TransferRepository(_QualifiedTransferRepository):
                 "failure_signature": None,
                 "same_signature_failures": 0,
                 "candidate_refreshes": 0,
+                "decision_action": None,
+                "decision_reason": None,
             })
             await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
             await db.commit()
@@ -226,6 +247,8 @@ class TransferRepository(_QualifiedTransferRepository):
                 "same_signature_failures": 0,
                 "candidate_refreshes": 0,
                 "candidate_switches": 0,
+                "decision_action": None,
+                "decision_reason": None,
                 "quiescence_reason": None,
                 "wake_condition": None,
             })
@@ -350,6 +373,8 @@ class TransferRepository(_QualifiedTransferRepository):
                         "same_signature_failures": 0,
                         "candidate_refreshes": 0,
                         "candidate_switches": 0,
+                        "decision_action": None,
+                        "decision_reason": None,
                         "quiescence_reason": None,
                         "wake_condition": None,
                     })

@@ -3,8 +3,9 @@
 The numeric meanings are documented at
 https://aria2.github.io/manual/en/html/aria2c.html#exit-status . Specific native
 codes are semantic evidence. Generic code 1 is interpreted only through a small,
-auditable diagnostic table; recovery and lifecycle policy are universal-core
-responsibilities.
+auditable diagnostic table; HTTP status evidence from code 22 is interpreted
+only through its strict numeric ``status=NNN`` field. Recovery and lifecycle
+policy are universal-core responsibilities.
 """
 from __future__ import annotations
 
@@ -69,6 +70,7 @@ _CODE1_DIAGNOSTICS = (
     (re.compile(r"\b(?:premature|unexpected) EOF\b", re.I),
      D.NETWORK, C.REMOTE_READ_FAILED, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY),
 )
+_HTTP_STATUS = re.compile(r"\bstatus\s*=\s*(\d{3})\b", re.I)
 
 _STATES = {
     "active": ExecutionState.TRANSFERRING, "waiting": ExecutionState.QUEUED,
@@ -85,6 +87,19 @@ def _code1_failure(message: object):
     return None
 
 
+def _http_status_failure(message: object):
+    """Extract only strict numeric HTTP status evidence; never recovery policy."""
+    match = _HTTP_STATUS.search(str(message or ""))
+    if match is None:
+        return None
+    status = int(match.group(1))
+    if status == 429:
+        return D.NETWORK, C.RATE_LIMITED, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY
+    if 500 <= status <= 599:
+        return D.NETWORK, C.SOURCE_TEMPORARILY_UNAVAILABLE, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY
+    return None
+
+
 def native_failure(code: object, message: object = "", *, stage=Stage.EXECUTION, secrets=()) -> NormalizedError:
     native = str(code or "")
     spec = _ERRORS.get(native)
@@ -94,6 +109,12 @@ def native_failure(code: object, message: object = "", *, stage=Stage.EXECUTION,
         spec = _code1_failure(message)
         if spec is not None:
             confidence = CF.MEDIUM
+            evidence = E.DIAGNOSTIC
+    elif native == "22":
+        status_spec = _http_status_failure(message)
+        if status_spec is not None:
+            spec = status_spec
+            confidence = CF.HIGH
             evidence = E.DIAGNOSTIC
     if spec is None:
         spec = (D.EXECUTOR, C.UNMAPPED_EXECUTOR_ERROR, T.UNKNOWN, O.EXECUTOR, P.UNKNOWN)

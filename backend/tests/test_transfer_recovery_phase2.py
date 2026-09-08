@@ -1,4 +1,4 @@
-"""Phase 2 durable quiescence/readiness and migration regression contracts."""
+"""Phase 2 durable quiescence/readiness, protocol evidence, and migration contracts."""
 from dataclasses import replace
 
 import pytest
@@ -6,11 +6,15 @@ import pytest_asyncio
 
 import db.database as database
 from db.database import get_db
+from executors.aria2.translation import native_failure
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
-from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage
+from transfers.errors import (
+    Category, Domain, EvidenceBasis, NormalizedError, Origin, Permanence,
+    Recovery, Retryability, Stage,
+)
 from transfers.models import TransferRequest
-from transfers.policy import TransferPolicy
+from transfers.policy import RecoveryAction, RecoveryContext, TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
 
@@ -144,6 +148,26 @@ async def test_phase1_database_counters_seed_context_without_fabricated_history(
     assert context["same_signature_failures"] == 0
     assert context["recovery_epoch"] == 0
     assert context["progress_anchor"] is None
+    assert context["decision_action"] is None
+    assert context["decision_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_recovery_decision_and_reason_are_durable_across_restart(runtime):
+    repository, _registry, _provider, engine, _now = runtime
+    _transfer, artifact = await materialize(engine)
+    await repository.record_recovery_decision(
+        artifact.id, RecoveryAction.BACKOFF.value, "rate_limited_backoff",
+    )
+    before = await repository.recovery_context(artifact.id)
+    assert before["decision_action"] == RecoveryAction.BACKOFF.value
+    assert before["decision_reason"] == "rate_limited_backoff"
+
+    restarted = TransferRepository()
+    await restarted.initialize()
+    after = await restarted.recovery_context(artifact.id)
+    assert after["decision_action"] == before["decision_action"]
+    assert after["decision_reason"] == before["decision_reason"]
 
 
 @pytest.mark.asyncio
@@ -156,17 +180,78 @@ async def test_operator_retry_clears_exhaustion_without_claiming_progress(runtim
     )
     await repository.record_source_failure(artifact.id, error)
     await repository.record_source_failure(artifact.id, error)
+    await repository.record_recovery_decision(
+        artifact.id, RecoveryAction.WAIT_FOR_OPERATOR.value, "recovery_budget_exhausted",
+    )
     assert await repository.transition_recovery(
-        artifact.id, "recovery_wait", error=error,
+        artifact.id, "error", error=error,
         quiescence_reason="recovery_exhausted", wake_condition="operator_retry",
     )
     before = await repository.recovery_context(artifact.id)
     assert before["recovery_epoch"] == 0
     assert before["same_signature_failures"] == 2
+    assert before["quiescence_reason"] == "recovery_exhausted"
 
     await repository.reset_retry_budget(artifact.id)
     after = await repository.recovery_context(artifact.id)
     assert after["recovery_epoch"] == 0
     assert after["consecutive_no_progress_failures"] == 0
     assert after["same_signature_failures"] == 0
+    assert after["decision_action"] is None
+    assert after["decision_reason"] is None
     assert after["quiescence_reason"] is None
+
+
+def test_reconcile_is_bounded_by_no_progress_accounting():
+    policy = TransferPolicy(retry_delay=2, same_candidate_no_progress_limit=2)
+    error = NormalizedError(
+        Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
+        retryability=Retryability.BACKOFF, origin=Origin.CORE,
+    )
+    first = policy.recover(
+        error,
+        RecoveryContext(consecutive_no_progress_failures=1, same_signature_failures=1),
+        100.0,
+    )
+    assert first.action == RecoveryAction.RECONCILE
+    assert first.reason == "reconciliation_backoff"
+    assert first.quiescence_reason == "retry_backoff"
+    assert first.retry_at == 102.0
+    assert first.wake_condition == "retry_at:102.0"
+
+    exhausted = policy.recover(
+        error,
+        RecoveryContext(consecutive_no_progress_failures=2, same_signature_failures=2),
+        100.0,
+    )
+    assert exhausted.action == RecoveryAction.WAIT_FOR_OPERATOR
+    assert exhausted.reason == "reconciliation_exhausted"
+    assert exhausted.quiescence_reason == "recovery_exhausted"
+    assert exhausted.wake_condition == "operator_retry"
+
+
+@pytest.mark.parametrize("status,category", [
+    (429, Category.RATE_LIMITED),
+    (500, Category.SOURCE_TEMPORARILY_UNAVAILABLE),
+    (503, Category.SOURCE_TEMPORARILY_UNAVAILABLE),
+    (599, Category.SOURCE_TEMPORARILY_UNAVAILABLE),
+])
+def test_aria2_http_status_is_factual_protocol_evidence_only(status, category):
+    error = native_failure("22", f"The response status is not successful. status={status}")
+    assert error.domain == Domain.NETWORK
+    assert error.category == category
+    assert error.retryability == Retryability.BACKOFF
+    assert error.origin == Origin.REMOTE_SOURCE
+    assert error.permanence == Permanence.TEMPORARY
+    assert error.evidence_basis == EvidenceBasis.DIAGNOSTIC
+    assert error.recovery == Recovery.NONE
+    assert not error.operator_action_required
+
+
+def test_aria2_code22_without_strict_status_remains_unknown_protocol_evidence():
+    error = native_failure("22", "The response status is not successful. status=unknown")
+    assert error.domain == Domain.NETWORK
+    assert error.category == Category.PROTOCOL_ERROR
+    assert error.retryability == Retryability.UNKNOWN
+    assert error.permanence == Permanence.UNKNOWN
+    assert error.recovery == Recovery.NONE

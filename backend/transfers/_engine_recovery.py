@@ -1,6 +1,6 @@
 """Canonical recovery extension over the qualified universal lifecycle base.
 
-Recovery mechanics remain provider/executor neutral.  This owner asks universal
+Recovery mechanics remain provider/executor neutral. This owner asks universal
 policy for a decision using normalized failure evidence, durable progress/recovery
 context and current registry/resource readiness, then applies that decision using
 the existing lifecycle seams.
@@ -219,9 +219,14 @@ class TransferEngine(_QualifiedTransferEngine):
 
     async def _quiesce(self, artifact: Artifact, error: NormalizedError, *, reason: str,
                        wake: str, retry_at: float = 0) -> bool:
+        # Recovery exhaustion uses the established error lifecycle state while
+        # retaining durable wake metadata; every other automatic wait remains a
+        # nonterminal recovery_wait. This preserves presentation compatibility
+        # without allowing exhausted work to consume resources.
+        state = "error" if reason == "recovery_exhausted" else "recovery_wait"
         return await self.repository.transition_recovery(
             artifact.id,
-            "recovery_wait",
+            state,
             error=error,
             retry_at=retry_at,
             quiescence_reason=reason,
@@ -278,9 +283,14 @@ class TransferEngine(_QualifiedTransferEngine):
         if decision.action == RecoveryAction.FAIL_PERMANENTLY:
             return await self._terminal_recovery(artifact, error)
         if decision.action == RecoveryAction.RECONCILE:
-            # Keep the same execution identity under observation.  No new writer
-            # is admitted and no retry budget is consumed merely for observing it.
-            return True
+            retry_at = decision.retry_at if decision.retry_at is not None else self.clock()
+            return await self._quiesce(
+                artifact,
+                error,
+                reason=decision.quiescence_reason or "retry_backoff",
+                wake=decision.wake_condition or f"retry_at:{retry_at}",
+                retry_at=retry_at,
+            )
         if decision.action == RecoveryAction.REFRESH_CANDIDATE:
             if await self.repository.consume_recovery_refresh(artifact.id):
                 return await self.repository.transition_recovery(
@@ -322,7 +332,10 @@ class TransferEngine(_QualifiedTransferEngine):
         retry_at = decision.retry_at if decision.retry_at is not None else self.clock()
         if retry_at > self.clock():
             return await self._quiesce(
-                artifact, error, reason="retry_backoff", wake=f"retry_at:{retry_at}", retry_at=retry_at,
+                artifact, error,
+                reason=decision.quiescence_reason or "retry_backoff",
+                wake=decision.wake_condition or f"retry_at:{retry_at}",
+                retry_at=retry_at,
             )
         return await self.repository.transition_recovery(
             artifact.id, "queued", error=error, retry_at=retry_at, clear_quiescence=True,
@@ -337,6 +350,9 @@ class TransferEngine(_QualifiedTransferEngine):
             artifact, can_refresh=can_refresh, has_alternate=next_index is not None,
         )
         decision = self.policy.recover(error, context, self.clock())
+        await self.repository.record_recovery_decision(
+            artifact.id, decision.action.value, decision.reason,
+        )
         return await self._apply_recovery_decision(
             artifact, error, decision, next_index=next_index,
         )

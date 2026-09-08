@@ -132,9 +132,6 @@ async def test_p1_origin_handoff_migrates_without_filename_or_path_inference(p2)
     primary = (await p2.repository.artifacts(canonical_transfer.id))[0]
     source_request = (await p2.repository.requests(source_transfer.id))[0]
 
-    # Recreate the exact durable P1 handoff shape: canonical + foreign standby
-    # + route provenance, but no P2 binding/consolidation rows. Deliberately
-    # change display/path fields that must never participate in reconstruction.
     async with database.get_db() as db:
         await db.execute("DELETE FROM canonical_candidate_origins")
         await db.execute("DELETE FROM artifact_consolidations")
@@ -289,10 +286,31 @@ async def test_foreign_alternate_execution_provenance_uses_foreign_resolution_at
         error=failure,
     )
     await p2.engine.tick()
+    parked = (await p2.repository.artifacts(canonical.id))[0]
+    assert parked.selected == 0 and parked.state == "recovery_wait"
+
+    p2.now[0] += 1
+    await p2.engine.tick()
+    retry = (await p2.repository.artifacts(canonical.id))[0]
+    p2.executor.jobs[retry.execution.attempt_id] = replace(
+        p2.executor.jobs[retry.execution.attempt_id], state=ExecutionState.FAILED, error=failure,
+    )
+    await p2.engine.tick()
+    assert (await p2.repository.artifacts(canonical.id))[0].state == "refresh_pending"
+    await p2.engine.tick()
+    await p2.engine.tick()
+    third = (await p2.repository.artifacts(canonical.id))[0]
+    p2.executor.jobs[third.execution.attempt_id] = replace(
+        p2.executor.jobs[third.execution.attempt_id], state=ExecutionState.FAILED, error=failure,
+    )
+    await p2.engine.tick()
+    switched = (await p2.repository.artifacts(canonical.id))[0]
+    assert switched.selected == 1 and switched.execution is None
     await p2.engine.tick()
 
     current = (await p2.repository.artifacts(canonical.id))[0]
     assert current.candidates[current.selected].provider_id == "provider-b"
+    assert current.execution is not None
     p2.executor.finish(current.execution)
     await p2.engine.tick()
 

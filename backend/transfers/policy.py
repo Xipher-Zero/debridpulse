@@ -33,6 +33,12 @@ _TRANSIENT_CATEGORIES = frozenset({
     Category.RESOLUTION_TEMPORARILY_FAILED, Category.TRANSFER_STALLED,
     Category.RATE_LIMITED, Category.CONCURRENCY_LIMITED,
 })
+_RECONCILE_CATEGORIES = frozenset({
+    Category.EXECUTOR_UNAVAILABLE,
+    Category.RECONCILIATION_FAILED,
+    Category.TRANSFER_INTERRUPTED,
+    Category.RESOURCE_STATE_CONFLICT,
+})
 
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024
@@ -147,6 +153,7 @@ class RecoveryContext:
 @dataclass(frozen=True)
 class RecoveryDecision:
     action: RecoveryAction
+    reason: str
     retry_at: float | None = None
     quiescence_reason: str | None = None
     wake_condition: str | None = None
@@ -202,66 +209,114 @@ class TransferPolicy:
 
     def recover(self, error: NormalizedError, context: RecoveryContext, now: float) -> RecoveryDecision:
         """Choose from normalized evidence, durable accounting and readiness."""
-        if error.domain in {Domain.SECURITY, Domain.INTEGRITY} or error.retryability == Retryability.NEVER:
-            return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY)
+        if error.domain == Domain.SECURITY:
+            return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "security_failure")
+        if error.domain == Domain.INTEGRITY:
+            return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "integrity_failure")
+        if error.retryability == Retryability.NEVER:
+            return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "nonretryable_failure")
         if (error.domain == Domain.LOCAL_RESOURCE
                 and self.local_resource_failure_handler is not None
                 and self.local_resource_failure_handler(error)):
             context = replace(context, storage_ready=False)
         if context.input_required:
-            return RecoveryDecision(RecoveryAction.WAIT_FOR_OPERATOR,
-                                    quiescence_reason="input_required", wake_condition="operator_input")
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_OPERATOR, "input_required",
+                quiescence_reason="input_required", wake_condition="operator_input",
+            )
         if error.domain == Domain.LOCAL_RESOURCE and not context.storage_ready:
-            return RecoveryDecision(RecoveryAction.WAIT_FOR_RESOURCE,
-                                    quiescence_reason="storage_unavailable",
-                                    wake_condition=f"storage_healthy:{error.domain.value}")
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_RESOURCE, "storage_unavailable",
+                quiescence_reason="storage_unavailable",
+                wake_condition=f"storage_healthy:{error.domain.value}",
+            )
         if not context.provider_ready:
-            return RecoveryDecision(RecoveryAction.WAIT_FOR_PROVIDER,
-                                    quiescence_reason="provider_disabled", wake_condition="provider_enabled")
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_PROVIDER, "provider_unavailable",
+                quiescence_reason="provider_disabled", wake_condition="provider_enabled",
+            )
         if not context.executor_ready:
-            return RecoveryDecision(RecoveryAction.WAIT_FOR_RESOURCE,
-                                    quiescence_reason="executor_unavailable", wake_condition="executor_available")
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_RESOURCE, "executor_unavailable",
+                quiescence_reason="executor_unavailable", wake_condition="executor_available",
+            )
 
         can_refresh = context.can_refresh and context.candidate_refreshes < max(1, self.refreshes_per_recovery_epoch)
         if error.category in _EXPIRY_CATEGORIES:
             if can_refresh:
-                return RecoveryDecision(RecoveryAction.REFRESH_CANDIDATE, retry_at=now)
+                return RecoveryDecision(
+                    RecoveryAction.REFRESH_CANDIDATE, "candidate_expired_refresh", retry_at=now,
+                )
             if context.has_alternate:
-                return RecoveryDecision(RecoveryAction.TRY_ALTERNATE_CANDIDATE, retry_at=now)
-            return RecoveryDecision(RecoveryAction.WAIT_FOR_OPERATOR,
-                                    quiescence_reason="recovery_exhausted", wake_condition="operator_retry")
-
-        if error.category in {Category.EXECUTOR_UNAVAILABLE, Category.RECONCILIATION_FAILED,
-                              Category.TRANSFER_INTERRUPTED, Category.RESOURCE_STATE_CONFLICT}:
-            return RecoveryDecision(RecoveryAction.RECONCILE,
-                                    retry_at=now + self._delay(error, max(1, context.same_signature_failures)),
-                                    quiescence_reason="retry_backoff")
+                return RecoveryDecision(
+                    RecoveryAction.TRY_ALTERNATE_CANDIDATE, "candidate_expired_alternate", retry_at=now,
+                )
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_OPERATOR, "candidate_expired_exhausted",
+                quiescence_reason="recovery_exhausted", wake_condition="operator_retry",
+            )
 
         no_progress = max(context.consecutive_no_progress_failures, context.same_signature_failures)
+        if error.category in _RECONCILE_CATEGORIES:
+            if no_progress < max(1, self.same_candidate_no_progress_limit):
+                retry_at = now + self._delay(error, max(1, no_progress))
+                return RecoveryDecision(
+                    RecoveryAction.RECONCILE, "reconciliation_backoff",
+                    retry_at=retry_at, quiescence_reason="retry_backoff",
+                    wake_condition=f"retry_at:{retry_at}",
+                )
+            if error.category == Category.TRANSFER_INTERRUPTED and context.has_alternate:
+                return RecoveryDecision(
+                    RecoveryAction.TRY_ALTERNATE_CANDIDATE,
+                    "reconciliation_exhausted_alternate", retry_at=now,
+                )
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_OPERATOR, "reconciliation_exhausted",
+                quiescence_reason="recovery_exhausted", wake_condition="operator_retry",
+            )
+
         if no_progress < max(1, self.same_candidate_no_progress_limit):
-            action = RecoveryAction.BACKOFF if (
-                error.retryability == Retryability.BACKOFF or error.category == Category.RATE_LIMITED
-            ) else RecoveryAction.RETRY_SAME_CANDIDATE
+            if error.category == Category.RATE_LIMITED:
+                action = RecoveryAction.BACKOFF
+                reason = "rate_limited_backoff"
+            elif error.retryability == Retryability.BACKOFF:
+                action = RecoveryAction.BACKOFF
+                reason = "transient_backoff"
+            else:
+                action = RecoveryAction.RETRY_SAME_CANDIDATE
+                reason = "bounded_same_candidate_retry"
             retry_at = now + self._delay(error, max(1, no_progress))
-            return RecoveryDecision(action, retry_at=retry_at,
-                                    quiescence_reason="retry_backoff" if retry_at > now else None,
-                                    wake_condition=f"retry_at:{retry_at}" if retry_at > now else None)
+            return RecoveryDecision(
+                action, reason, retry_at=retry_at,
+                quiescence_reason="retry_backoff" if retry_at > now else None,
+                wake_condition=f"retry_at:{retry_at}" if retry_at > now else None,
+            )
 
         if can_refresh and (error.retryability in {Retryability.UNKNOWN, Retryability.BACKOFF,
                                                    Retryability.AFTER_RERESOLUTION}
                             or error.category in _TRANSIENT_CATEGORIES):
-            return RecoveryDecision(RecoveryAction.REFRESH_CANDIDATE, retry_at=now)
-        if context.has_alternate:
-            return RecoveryDecision(RecoveryAction.TRY_ALTERNATE_CANDIDATE, retry_at=now)
-        if error.retryability == Retryability.AFTER_RESOURCE_CHANGE:
             return RecoveryDecision(
-                RecoveryAction.WAIT_FOR_RESOURCE,
-                quiescence_reason="storage_unavailable" if error.domain == Domain.LOCAL_RESOURCE else "recovery_exhausted",
-                wake_condition=(f"storage_healthy:{error.domain.value}"
-                                if error.domain == Domain.LOCAL_RESOURCE else "operator_retry"),
+                RecoveryAction.REFRESH_CANDIDATE, "no_progress_refresh", retry_at=now,
             )
-        return RecoveryDecision(RecoveryAction.WAIT_FOR_OPERATOR,
-                                quiescence_reason="recovery_exhausted", wake_condition="operator_retry")
+        if context.has_alternate:
+            return RecoveryDecision(
+                RecoveryAction.TRY_ALTERNATE_CANDIDATE, "no_progress_alternate", retry_at=now,
+            )
+        if error.retryability == Retryability.AFTER_RESOURCE_CHANGE:
+            if error.domain == Domain.LOCAL_RESOURCE:
+                return RecoveryDecision(
+                    RecoveryAction.WAIT_FOR_RESOURCE, "resource_change_required",
+                    quiescence_reason="storage_unavailable",
+                    wake_condition=f"storage_healthy:{error.domain.value}",
+                )
+            return RecoveryDecision(
+                RecoveryAction.WAIT_FOR_OPERATOR, "resource_change_operator",
+                quiescence_reason="recovery_exhausted", wake_condition="operator_retry",
+            )
+        return RecoveryDecision(
+            RecoveryAction.WAIT_FOR_OPERATOR, "recovery_budget_exhausted",
+            quiescence_reason="recovery_exhausted", wake_condition="operator_retry",
+        )
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
         """Compatibility retry path for request-resolution callers."""
