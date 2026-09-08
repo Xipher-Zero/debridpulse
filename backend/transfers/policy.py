@@ -217,7 +217,10 @@ class TransferPolicy:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "security_failure")
         if error.domain == Domain.INTEGRITY:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "integrity_failure")
-        if error.permanence == Permanence.PERMANENT or error.category in _PERMANENT_CATEGORIES:
+        # Expiry permanence is scoped to the current candidate/source/resource;
+        # the logical transfer may still refresh or select an alternate below.
+        if ((error.permanence == Permanence.PERMANENT and error.category not in _EXPIRY_CATEGORIES)
+                or error.category in _PERMANENT_CATEGORIES):
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "permanent_failure")
         if error.retryability == Retryability.NEVER:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "nonretryable_failure")
