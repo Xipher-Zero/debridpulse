@@ -26,7 +26,7 @@ test('Dashboard Recent Activity keeps fixed row geometry across host artwork and
   current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'
  }));
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length,page:1,page_size:items.length})}));
- await ready(page);await expect(page.locator('#dash-tbody tr')).toHaveCount(6);await expect(page.locator('#dash-tbody .dp-source-host-logo')).toHaveCount(6);
+ await ready(page);await page.evaluate(async()=>{await loadRecent();});await expect(page.locator('#dash-tbody tr')).toHaveCount(6);await expect(page.locator('#dash-tbody .dp-source-host-logo')).toHaveCount(6);
  await expect.poll(()=>page.locator('#dash-tbody .dp-source-host-logo').evaluateAll(nodes=>nodes.every(node=>node.complete&&node.naturalWidth>0))).toBe(true);
  const geometry=await page.locator('#dash-tbody').evaluate(body=>{
   const rows=[...body.querySelectorAll('tr')];
