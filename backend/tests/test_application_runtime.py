@@ -165,7 +165,13 @@ async def test_unknown_source_error_is_canonical_recoverable_and_excluded_from_p
     application, provider, executor, client = runtime
     error = NormalizedError(Domain.PROVIDER, Category.UNMAPPED_PROVIDER_ERROR, Stage.RESOLUTION,
         native_code="NATIVE_SECRET_CODE", diagnostic="private provider detail")
-    provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)]
+    original_resolve = provider.resolve
+    async def resolve(request):
+        if request.payload == "bad":
+            provider.calls.append(("resolve", request.payload))
+            return ResolutionResult(ResourceState.UNKNOWN, error=error)
+        return await original_resolve(request)
+    provider.resolve = resolve
     item = await application.submit((TransferRequest("parcel", "bad", name="bad.bin"), TransferRequest("parcel", "good", name="good.bin")))
     await application.resolve_pending()
     await application.reconcile_executions()
