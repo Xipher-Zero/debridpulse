@@ -93,10 +93,17 @@ async def get_file_selection(
     transfer_id: int,
     application: ApplicationService = Depends(get_application),
 ):
+    """Safe idempotent read model. The browser queries this on every Details
+    open, so a transfer with no file-selection generation — the common case,
+    and an unknown transfer id alike — is reported as ``{"eligible": false}``
+    with 200 rather than 404. The response is identical for both, so transfer
+    existence is not disclosed. Confirm and Dismiss keep their 404 for a
+    missing transfer, where "not found" is a real mutation error.
+    """
     try:
         view = await application.file_selection(transfer_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
+        return {"eligible": False}
     if view is None:
         return {"eligible": False}
     return _public_selection_view(view)

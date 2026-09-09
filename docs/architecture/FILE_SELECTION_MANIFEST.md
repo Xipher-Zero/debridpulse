@@ -154,8 +154,12 @@ POST /api/torrents/{transfer_id}/file-selection/confirm
 POST /api/torrents/{transfer_id}/file-selection/dismiss
 ```
 
-Transport codes: `404` transfer not found, `409` stale manifest / already
-committed / no longer mutable, `422` invalid shape / empty selection.
+Transport codes: `409` stale manifest / already committed / no longer mutable,
+`422` invalid shape / empty selection. Confirm and Dismiss return `404` for a
+missing transfer. The `GET` read model is queried on every Details open, so a
+transfer with no file-selection generation — and an unknown transfer id alike —
+is reported as `{"eligible": false}` with `200` (identical for both, so transfer
+existence is not disclosed), never `404`.
 
 ### Public read model — fixed whitelist
 

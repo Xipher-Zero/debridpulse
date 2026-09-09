@@ -130,8 +130,24 @@ async def test_get_file_selection_returns_safe_core_facts_only(api):
 
 
 @pytest.mark.asyncio
-async def test_get_file_selection_404_for_unknown_transfer(api):
-    assert (await api.client.get("/api/torrents/999999/file-selection")).status_code == 404
+async def test_get_file_selection_reports_not_eligible_for_unknown_transfer(api):
+    # The read model is queried on every Details open; an unknown transfer id is
+    # reported as not eligible (200), identical to a real transfer with no
+    # file-selection generation, so transfer existence is not disclosed.
+    response = await api.client.get("/api/torrents/999999/file-selection")
+    assert response.status_code == 200
+    assert response.json() == {"eligible": False}
+
+
+@pytest.mark.asyncio
+async def test_confirm_and_dismiss_still_404_for_unknown_transfer(api):
+    assert (await api.client.post(
+        "/api/torrents/999999/file-selection/confirm",
+        json={"manifest_id": "m", "entry_ids": ["e"]},
+    )).status_code == 404
+    assert (await api.client.post(
+        "/api/torrents/999999/file-selection/dismiss", json={"manifest_id": "m"},
+    )).status_code == 404
 
 
 @pytest.mark.asyncio
