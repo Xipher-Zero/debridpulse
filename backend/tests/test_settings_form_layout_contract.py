@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 RUNTIME = STATIC / "ui-settings-downloads-completion.js"
+ARCHIVE = STATIC / "ui-settings-archive-passwords.js"
 LAYOUT = STATIC / "ui-settings-form-layout.css"
 LOADER = STATIC / "ui-presentation-loader.js"
 
@@ -14,24 +15,31 @@ def source(path: Path) -> str:
 
 
 def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_state() -> None:
-    runtime = source(RUNTIME)
-    visibility = runtime.split("function setRowVisibility", 1)[1].split("function setRevealAll", 1)[0]
-    assert "input.dataset.passwordDisplay = reveal ? 'raw' : 'masked';" in visibility
+    # ui-settings-archive-passwords.js is the sole owner of the editor; the
+    # completion runtime must not carry a competing password editor.
+    completion = source(RUNTIME)
+    for token in (
+        "extractionPasswords",
+        "renderPasswordRows",
+        "loadExtractionPasswords",
+        "buildPasswordEditor",
+        "syncExtractionPasswordSource",
+        "dpExtractionClearCompat",
+    ):
+        assert token not in completion
 
-    commit = runtime.split("function commitPasswordLine", 1)[1].split("function eyeSvg", 1)[0]
-    assert "if (input.dataset.passwordDisplay === 'masked') return;" in commit
-    assert commit.index("input.dataset.passwordDisplay === 'masked'") < commit.index(
-        "extractionPasswords.values[index] = String(input.value || '');"
-    )
+    archive = source(ARCHIVE)
 
-    activate = runtime.split("function activatePasswordLine", 1)[1].split("function commitPasswordLine", 1)[0]
-    assert "commitPasswordLine(editor?.closest('[data-panel=\"extraction\"]'), previous);" in activate
-    assert "setRowVisibility(previous, previousIndex, false);" in activate
-    assert activate.index("commitPasswordLine") < activate.index("setRowVisibility(previous, previousIndex, false);")
+    # The mask is rendered by present() and is flagged non-authoritative.
+    present = archive.split("function present(", 1)[1].split("function refreshPresentation", 1)[0]
+    assert "input.dataset.passwordDisplay=raw?'raw':'masked'" in present
+    assert "input.value=raw?String(row.value||''):mask(row.value)" in present
 
-    render = runtime.split("function renderPasswordRows", 1)[1].split("async function loadExtractionPasswords", 1)[0]
-    assert "setRowVisibility(" in render
-    assert "input.value = extractionPasswords.revealAll || index === extractionPasswords.activeIndex" not in render
+    # A masked field can never write its displayed value back into row state:
+    # every commit path is guarded on passwordDisplay==='raw'.
+    assert "input.addEventListener('input',()=>{if(input.dataset.passwordDisplay!=='raw')return;" in archive
+    assert "input.addEventListener('blur',()=>{if(input.dataset.passwordDisplay==='raw'){row.value=input.value;" in archive
+    assert "function mask(value){return'•'.repeat(String(value||'').length);}" in archive
 
 
 def test_settings_secret_fields_and_extraction_controls_keep_accepted_geometry() -> None:

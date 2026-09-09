@@ -1,17 +1,17 @@
 /* DebridPulse v1.0.12 Settings completion runtime.
  *
  * The clean Settings renderer remains authoritative for values and persistence.
- * This idempotent layer finishes Downloads/Sources presentation details, owns
- * the Built-in Download Folder browse interaction, and finishes the Extraction
- * editing experience after that renderer paints the persistent root. It does
- * not own the Apply Settings commit boundary.
+ * This idempotent layer finishes Downloads/Sources presentation details and owns
+ * the Built-in Download Folder browse interaction. The Automatic Extraction
+ * archive-password editor is owned solely by ui-settings-archive-passwords.js;
+ * this file only arranges the surrounding Extraction card layout. It does not
+ * own the Apply Settings commit boundary.
  */
 (function () {
   'use strict';
 
   const CONFIGURED_SECRET_MASK = '••••••••••••••••••••••••••••••••••••••••••••••••';
   const EXTRACTION_HEADER_COPY = 'Automatically extract supported archives after a download completes.';
-  const EXTRACTION_PASSWORD_HINT = 'Passwords DebridPulse should try when extracting protected archives. Add, edit, or remove entries as needed.';
 
   const RECOVERY_COPY = Object.freeze([
     [
@@ -65,15 +65,6 @@
     path_unavailable: 'The requested directory is currently unavailable.',
     browser_unavailable: 'The server filesystem browser is currently unavailable.',
   });
-
-  const extractionPasswords = {
-    loaded: false,
-    failed: false,
-    loading: null,
-    values: [],
-    activeIndex: -1,
-    revealAll: false,
-  };
 
   const root = () => document.getElementById('view-settings');
 
@@ -421,297 +412,6 @@
     ensureDownloadFolderBrowse(panel);
   }
 
-  function normalizePasswordLines(raw) {
-    const text = String(raw || '').replace(/\r\n?/g, '\n');
-    if (!text) return [''];
-    const lines = text.split('\n').map(value => value.trim()).filter(Boolean);
-    return lines.length ? lines : [''];
-  }
-
-  function serializedPasswords() {
-    return extractionPasswords.values
-      .map(value => String(value || '').trim())
-      .filter(Boolean)
-      .join('\n');
-  }
-
-  function passwordMask(value) {
-    return '*'.repeat(String(value || '').length);
-  }
-
-  function extractionSource(panel) {
-    return panel?.querySelector('[data-setting="extraction_password"]') || null;
-  }
-
-  function extractionEditor(panel) {
-    return panel?.querySelector('.dp-settings-extraction-password-editor') || null;
-  }
-
-  function extractionClearCompat(panel) {
-    return panel?.querySelector('[data-dp-extraction-clear-compat="1"]') || null;
-  }
-
-  function syncExtractionPasswordSource(panel) {
-    if (!extractionPasswords.loaded) return;
-    const source = extractionSource(panel);
-    if (!source) return;
-
-    const value = serializedPasswords();
-    source.value = value;
-
-    const clear = extractionClearCompat(panel);
-    if (clear) clear.checked = value.length === 0;
-  }
-
-  function rowInput(editor, index) {
-    return editor?.querySelector(`input[data-password-index="${index}"]`) || null;
-  }
-
-  function setRowVisibility(input, index, reveal) {
-    if (!input) return;
-    const value = String(extractionPasswords.values[index] || '');
-    const next = reveal ? value : passwordMask(value);
-    input.dataset.passwordDisplay = reveal ? 'raw' : 'masked';
-    if (input.value !== next) input.value = next;
-  }
-
-  function setRevealAll(editor, reveal) {
-    extractionPasswords.revealAll = reveal;
-    editor?.classList.toggle('is-revealing-all', reveal);
-    editor?.querySelector('.dp-settings-password-eye')?.classList.toggle('is-open', reveal);
-    editor?.querySelectorAll('input[data-password-index]').forEach(input => {
-      const index = Number(input.dataset.passwordIndex);
-      setRowVisibility(input, index, reveal || index === extractionPasswords.activeIndex);
-    });
-  }
-
-  function activatePasswordLine(editor, index) {
-    if (extractionPasswords.activeIndex !== index) {
-      const previousIndex = extractionPasswords.activeIndex;
-      const previous = rowInput(editor, previousIndex);
-      if (previous && !extractionPasswords.revealAll) {
-        /* Commit the still-raw edit before changing its presentation. The blur
-           that follows a pointer switch will see a masked field and no-op. */
-        commitPasswordLine(editor?.closest('[data-panel="extraction"]'), previous);
-        setRowVisibility(previous, previousIndex, false);
-      }
-    }
-    extractionPasswords.activeIndex = index;
-    setRowVisibility(rowInput(editor, index), index, true);
-  }
-
-  function commitPasswordLine(panel, input) {
-    const index = Number(input.dataset.passwordIndex);
-    if (!Number.isInteger(index) || index < 0) return;
-    /* A mask is presentation only and must never cross into canonical state. */
-    if (input.dataset.passwordDisplay === 'masked') return;
-    extractionPasswords.values[index] = String(input.value || '');
-    syncExtractionPasswordSource(panel);
-  }
-
-  function eyeSvg() {
-    return `
-      <svg class="dp-settings-password-eye-closed" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3 3l18 18"></path>
-        <path d="M10.6 10.7a2 2 0 002.8 2.8"></path>
-        <path d="M9.9 4.2A10.8 10.8 0 0112 4c5.5 0 9 5 9 5a16.7 16.7 0 01-2 2.6"></path>
-        <path d="M6.6 6.6C4.4 8 3 10 3 10s3.5 5 9 5a10.6 10.6 0 004-.8"></path>
-      </svg>
-      <svg class="dp-settings-password-eye-open" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path>
-        <circle cx="12" cy="12" r="3"></circle>
-      </svg>`;
-  }
-
-  function buildPasswordEditor(panel, field, source) {
-    const editor = document.createElement('div');
-    editor.className = 'input dp-settings-extraction-password-editor';
-    editor.setAttribute('role', 'group');
-    editor.setAttribute('aria-label', 'Archive passwords');
-
-    const rows = document.createElement('div');
-    rows.className = 'dp-settings-password-rows';
-    editor.appendChild(rows);
-
-    const eye = document.createElement('button');
-    eye.type = 'button';
-    eye.className = 'dp-settings-password-eye';
-    eye.setAttribute('aria-label', 'Hold to reveal all archive passwords');
-    eye.title = 'Hold to reveal all archive passwords';
-    eye.innerHTML = eyeSvg();
-    editor.appendChild(eye);
-
-    const hiddenClear = document.createElement('input');
-    hiddenClear.type = 'checkbox';
-    hiddenClear.hidden = true;
-    hiddenClear.tabIndex = -1;
-    hiddenClear.dataset.clearSecret = 'extraction_password';
-    hiddenClear.dataset.dpExtractionClearCompat = '1';
-    field.appendChild(hiddenClear);
-
-    const stopReveal = () => setRevealAll(editor, false);
-    eye.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      try { eye.setPointerCapture(event.pointerId); } catch (_) {}
-      setRevealAll(editor, true);
-    });
-    eye.addEventListener('pointerup', event => {
-      event.preventDefault();
-      try { eye.releasePointerCapture(event.pointerId); } catch (_) {}
-      stopReveal();
-    });
-    eye.addEventListener('pointercancel', stopReveal);
-    eye.addEventListener('pointerleave', stopReveal);
-    eye.addEventListener('blur', stopReveal);
-    eye.addEventListener('keydown', event => {
-      if (event.key !== ' ' && event.key !== 'Enter') return;
-      event.preventDefault();
-      setRevealAll(editor, true);
-    });
-    eye.addEventListener('keyup', event => {
-      if (event.key !== ' ' && event.key !== 'Enter') return;
-      event.preventDefault();
-      stopReveal();
-    });
-
-    source.classList.add('dp-settings-extraction-password-source');
-    source.setAttribute('aria-hidden', 'true');
-    source.tabIndex = -1;
-    source.insertAdjacentElement('afterend', editor);
-
-    extractionPasswords.activeIndex = -1;
-    extractionPasswords.revealAll = false;
-    renderPasswordRows(panel, editor);
-    syncExtractionPasswordSource(panel);
-    return editor;
-  }
-
-  function renderPasswordRows(panel, editor, focusIndex = null) {
-    const rows = editor.querySelector('.dp-settings-password-rows');
-    if (!rows) return;
-    rows.replaceChildren();
-
-    if (!extractionPasswords.values.length) extractionPasswords.values = [''];
-
-    extractionPasswords.values.forEach((value, index) => {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'dp-settings-password-line';
-      input.dataset.passwordIndex = String(index);
-      input.autocomplete = 'off';
-      input.spellcheck = false;
-      input.setAttribute('aria-label', `Archive password ${index + 1}`);
-      input.placeholder = index === 0 && !value ? 'Add an archive password' : '';
-      setRowVisibility(
-        input,
-        index,
-        extractionPasswords.revealAll || index === extractionPasswords.activeIndex
-      );
-
-      input.addEventListener('pointerdown', () => activatePasswordLine(editor, index));
-      input.addEventListener('focus', () => activatePasswordLine(editor, index));
-      input.addEventListener('input', () => commitPasswordLine(panel, input));
-      input.addEventListener('blur', () => {
-        commitPasswordLine(panel, input);
-        queueMicrotask(() => {
-          const active = document.activeElement;
-          if (active?.closest('.dp-settings-extraction-password-editor') !== editor) {
-            extractionPasswords.activeIndex = -1;
-          }
-          if (!extractionPasswords.revealAll) {
-            setRowVisibility(input, index, index === extractionPasswords.activeIndex);
-          }
-        });
-      });
-      input.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          commitPasswordLine(panel, input);
-          extractionPasswords.values.splice(index + 1, 0, '');
-          extractionPasswords.activeIndex = index + 1;
-          renderPasswordRows(panel, editor, index + 1);
-          syncExtractionPasswordSource(panel);
-          return;
-        }
-        if (event.key === 'Backspace' && input.value === '' && extractionPasswords.values.length > 1) {
-          event.preventDefault();
-          extractionPasswords.values.splice(index, 1);
-          const next = Math.max(0, index - 1);
-          extractionPasswords.activeIndex = next;
-          renderPasswordRows(panel, editor, next);
-          syncExtractionPasswordSource(panel);
-          return;
-        }
-        if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-          const target = event.key === 'ArrowUp' ? index - 1 : index + 1;
-          if (target < 0 || target >= extractionPasswords.values.length) return;
-          event.preventDefault();
-          commitPasswordLine(panel, input);
-          const current = extractionPasswords.values[index];
-          extractionPasswords.values[index] = extractionPasswords.values[target];
-          extractionPasswords.values[target] = current;
-          extractionPasswords.activeIndex = target;
-          renderPasswordRows(panel, editor, target);
-          syncExtractionPasswordSource(panel);
-        }
-      });
-      input.addEventListener('paste', event => {
-        const paste = event.clipboardData?.getData('text') || '';
-        if (!/[\r\n]/.test(paste)) return;
-        event.preventDefault();
-        commitPasswordLine(panel, input);
-        const incoming = paste.replace(/\r\n?/g, '\n').split('\n');
-        const before = String(extractionPasswords.values[index] || '').slice(0, input.selectionStart ?? 0);
-        const after = String(extractionPasswords.values[index] || '').slice(input.selectionEnd ?? input.value.length);
-        incoming[0] = before + incoming[0];
-        incoming[incoming.length - 1] = incoming[incoming.length - 1] + after;
-        extractionPasswords.values.splice(index, 1, ...incoming);
-        extractionPasswords.activeIndex = index + incoming.length - 1;
-        renderPasswordRows(panel, editor, extractionPasswords.activeIndex);
-        syncExtractionPasswordSource(panel);
-      });
-
-      rows.appendChild(input);
-    });
-
-    if (Number.isInteger(focusIndex)) {
-      const target = rowInput(editor, focusIndex);
-      if (target) {
-        requestAnimationFrame(() => {
-          target.focus();
-          const end = target.value.length;
-          try { target.setSelectionRange(end, end); } catch (_) {}
-        });
-      }
-    }
-  }
-
-  async function loadExtractionPasswords() {
-    if (extractionPasswords.loaded || extractionPasswords.failed || extractionPasswords.loading) {
-      return extractionPasswords.loading;
-    }
-    if (typeof api !== 'function') {
-      extractionPasswords.failed = true;
-      return null;
-    }
-
-    extractionPasswords.loading = (async () => {
-      try {
-        const payload = await api('GET', '/settings/extraction-passwords');
-        extractionPasswords.values = normalizePasswordLines(payload?.passwords || '');
-        extractionPasswords.loaded = true;
-        extractionPasswords.failed = false;
-        scheduleApply();
-      } catch (error) {
-        extractionPasswords.failed = true;
-        console.error('[DebridPulse Settings] unable to load archive password list for editing');
-      } finally {
-        extractionPasswords.loading = null;
-      }
-    })();
-    return extractionPasswords.loading;
-  }
-
   function ensureExtractionIdentity(card) {
     const header = directChild(card, '.card-header');
     const titleNode = header?.querySelector('.card-title');
@@ -780,8 +480,7 @@
     const concurrentField = concurrentInput?.closest('.dp-settings-field');
     const deleteInput = panel.querySelector('[data-setting="extract_delete_archive"]');
     const deleteRow = deleteInput?.closest('.dp-settings-toggle');
-    const passwordSource = extractionSource(panel);
-    const passwordField = passwordSource?.closest('.dp-settings-field');
+    const passwordField = panel.querySelector('[data-setting="extraction_password"]')?.closest('.dp-settings-field');
 
     if (deleteRow) {
       deleteRow.classList.add('dp-settings-extraction-delete');
@@ -805,28 +504,8 @@
       controls.appendChild(deleteRow);
     }
 
-    if (passwordField) {
-      passwordField.classList.add('dp-settings-extraction-password-field');
-      const label = directChild(passwordField, '.form-label');
-      if (label && label.textContent !== 'Archive Passwords (one per line)') {
-        label.textContent = 'Archive Passwords (one per line)';
-      }
-      let hint = directChild(passwordField, '.form-hint');
-      if (!hint) {
-        hint = document.createElement('span');
-        hint.className = 'form-hint';
-        passwordField.appendChild(hint);
-      }
-      if (hint.textContent !== EXTRACTION_PASSWORD_HINT) hint.textContent = EXTRACTION_PASSWORD_HINT;
-
-      panel.querySelectorAll('[data-clear-secret="extraction_password"]:not([data-dp-extraction-clear-compat="1"])')
-        .forEach(control => control.closest('label')?.remove());
-
-      if (extractionPasswords.loaded) {
-        if (!extractionEditor(panel)) buildPasswordEditor(panel, passwordField, passwordSource);
-        else syncExtractionPasswordSource(panel);
-      }
-    }
+    // The archive-password field label, hint, editor, reveal control, and
+    // persistence sync are owned entirely by ui-settings-archive-passwords.js.
   }
 
   function applyExtraction(view) {
@@ -837,7 +516,6 @@
 
     ensureExtractionIdentity(card);
     arrangeExtractionControls(panel, card);
-    if (!extractionPasswords.loaded && !extractionPasswords.failed) void loadExtractionPasswords();
   }
 
   function apply() {

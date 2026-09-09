@@ -17,7 +17,8 @@ def test_extraction_passwords_keep_backend_secret_boundary() -> None:
     assert '"extraction_password",' in routes
     assert 'data[f"{field}_configured"]' in routes
     assert 'data[field] = ""' in routes
-    assert "api('GET', '/settings/extraction-passwords')" in completion
+    assert "api('GET','/settings/extraction-passwords')" in archive
+    assert "extraction-passwords" not in completion
     assert "settingsData.extraction_password =" not in completion
     assert "settingsData.extraction_password =" not in archive
 
@@ -39,14 +40,38 @@ def test_archive_password_editor_uses_click_reveal_and_line_editing() -> None:
     assert "box-shadow:var(--dp-focus-ring)!important" in compact
 
 
-def test_completion_runtime_keeps_hidden_source_compatibility() -> None:
+def test_archive_password_editor_is_the_sole_owner() -> None:
     completion = read("frontend/static/ui-settings-downloads-completion.js")
+    archive = read("frontend/static/ui-settings-archive-passwords.js")
     page = read("frontend/static/ui-settings-page.js")
+    app = read("frontend/static/app.js")
     css = read("frontend/static/ui-settings-downloads-completion.css")
-    assert "Archive Passwords (one per line)" in completion
-    assert "data-password-index" in completion
+
+    # The completion runtime and app.js must not carry a competing archive
+    # password editor: exactly one owner writes the extraction_password field.
+    for token in (
+        "extractionPasswords",
+        "renderPasswordRows",
+        "buildPasswordEditor",
+        "loadExtractionPasswords",
+        "syncExtractionPasswordSource",
+        "dp-extraction-clear-compat",
+        "data-password-index",
+    ):
+        assert token not in completion
+    for token in ("_extractionPasswords", "initExtractionPasswordList", "s-extraction_password"):
+        assert token not in app
+
+    # The sole owner builds its own editor scaffold and hides the raw textarea.
+    assert "dp-settings-extraction-password-editor" in archive
+    assert "dp-settings-extraction-password-source" in archive
+    assert "dp-settings-password-rows" in archive
+    assert "insertAdjacentElement('afterend'" in archive
+
+    # The serializer still reads the field and the visible clear checkbox is the
+    # only clear-secret control for archive passwords.
     assert "extraction_password: valueOf('extraction_password')" in page
-    assert "hiddenClear.dataset.clearSecret = 'extraction_password';" in completion
-    assert "hiddenClear.dataset.dpExtractionClearCompat = '1';" in completion
+    assert 'data-clear-secret="extraction_password"' in page
+
     assert ".dp-settings-extraction-password-source" in css
     assert "display: none !important;" in css
