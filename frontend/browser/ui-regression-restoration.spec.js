@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const MARKERS=['DPActivityLog','DPArchivePasswords','DPDownloadsPresentation'];
+const MARKERS=['DPActivityLog','DPArchivePasswords','DPDownloadsPresentation','DPDashboardTransferPresentation'];
 async function ready(page){await page.goto('/');await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);}
 
 test('Activity Log keeps search, Time Window dropdown, Severity label, and Severity dropdown in order',async({page})=>{
@@ -46,6 +46,93 @@ test('Archive Passwords hydrate stored values and Show all/Hide all keep identic
  expect(show.whiteSpace).toBe('nowrap');expect(show.buttonWhiteSpace).toBe('nowrap');expect(show.labelHeight).toBeLessThan(20);
  expect(hide.whiteSpace).toBe('nowrap');expect(hide.buttonWhiteSpace).toBe('nowrap');expect(hide.labelHeight).toBeLessThan(20);
  expect({width:show.width,height:show.height,fontFamily:show.fontFamily,fontSize:show.fontSize,fontWeight:show.fontWeight,lineHeight:show.lineHeight}).toEqual({width:hide.width,height:hide.height,fontFamily:hide.fontFamily,fontSize:hide.fontSize,fontWeight:hide.fontWeight,lineHeight:hide.lineHeight});
+});
+
+test('Archive Passwords persist edits across Apply, rerender, navigation, and fresh reload',async({page})=>{
+ let passwords='alpha\nbeta',saved=false,postSaveReads=0,releasePostSaveHydrate;
+ const postSaveHydrateGate=new Promise(resolve=>{releasePostSaveHydrate=resolve;});
+ const puts=[];
+ await page.route('**/api/settings/extraction-passwords',async route=>{
+  if(saved){postSaveReads+=1;await postSaveHydrateGate;}
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords})});
+ });
+ await page.route(/\/api\/settings(?:\?.*)?$/,async route=>{
+  const request=route.request();
+  if(request.method()==='GET'){
+   const response=await route.fetch();
+   const body=await response.json();
+   body.extraction_password='';body.extraction_password_configured=Boolean(passwords);
+   await route.fulfill({response,json:body});return;
+  }
+  if(request.method()!=='PUT'){await route.continue();return;}
+  const payload=request.postDataJSON();puts.push(payload);
+  const clears=new Set(payload.clear_secrets||[]);
+  if(clears.has('extraction_password'))passwords='';
+  else if(String(payload.extraction_password||'').trim())passwords=String(payload.extraction_password).trim();
+  saved=true;
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...payload,extraction_password:'',extraction_password_configured:Boolean(passwords),ok:true})});
+ });
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
+ await page.locator('#view-settings [data-tab="extraction"]').click();
+ const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
+ await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
+ let rows=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-line');await expect(rows).toHaveCount(3);
+ await rows.nth(0).fill('gamma');
+ await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
+ await page.locator('#view-settings button[data-action="save"]').click();
+ await expect.poll(()=>puts.length).toBe(1);
+ expect(puts[0].extraction_password).toBe('gamma\nbeta');
+ expect(puts[0].clear_secrets||[]).not.toContain('extraction_password');
+ await expect.poll(()=>postSaveReads).toBeGreaterThan(0);
+ await expect(source).toHaveValue('gamma\nbeta');
+ const clear=page.locator('#view-settings [data-panel="extraction"] [data-clear-secret="extraction_password"]');
+ await expect(clear).not.toBeChecked();
+ releasePostSaveHydrate();
+ await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
+ await page.locator('#view-settings [data-tab="downloads"]').click();
+ await page.locator('#view-settings [data-tab="extraction"]').click();
+ await expect(source).toHaveValue('gamma\nbeta');
+ await page.reload();await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);
+ await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
+ await page.locator('#view-settings [data-tab="extraction"]').click();
+ await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
+ rows=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-line');
+ const eye=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-eye');await eye.click();
+ await expect(rows.nth(0)).toHaveValue('gamma');await expect(rows.nth(1)).toHaveValue('beta');
+});
+
+test('Archive Passwords never arm explicit clear while hydration is pending',async({page})=>{
+ let passwords='alpha\nbeta',releaseHydrate,putPayload=null;
+ const hydrateGate=new Promise(resolve=>{releaseHydrate=resolve;});
+ await page.route('**/api/settings/extraction-passwords',async route=>{await hydrateGate;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords})});});
+ await page.route(/\/api\/settings(?:\?.*)?$/,async route=>{
+  const request=route.request();
+  if(request.method()==='GET'){
+   const response=await route.fetch();const body=await response.json();body.extraction_password='';body.extraction_password_configured=true;await route.fulfill({response,json:body});return;
+  }
+  if(request.method()!=='PUT'){await route.continue();return;}
+  const payload=request.postDataJSON();putPayload=payload;
+  const clears=new Set(payload.clear_secrets||[]);if(clears.has('extraction_password'))passwords='';else if(String(payload.extraction_password||'').trim())passwords=String(payload.extraction_password).trim();
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...payload,extraction_password:'',extraction_password_configured:Boolean(passwords),ok:true})});
+ });
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
+ await page.locator('#view-settings [data-tab="extraction"]').click();
+ const clear=page.locator('#view-settings [data-panel="extraction"] [data-clear-secret="extraction_password"]');await expect(clear).toBeVisible();await expect(clear).not.toBeChecked();
+ await page.locator('#view-settings button[data-action="save"]').click();await expect.poll(()=>putPayload!==null).toBe(true);
+ expect(putPayload.clear_secrets||[]).not.toContain('extraction_password');expect(passwords).toBe('alpha\nbeta');
+ releaseHydrate();
+ const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
+});
+
+test('Torrent and magnet source identities use teal Lucide Boxes while MegaUp reuses the Mega host asset',async({page})=>{
+ await ready(page);
+ const result=await page.evaluate(()=>{
+  const presentation=window.DPDashboardTransferPresentation;
+  const probe=identity=>{const slot=document.createElement('span');slot.className='dp-source-icon-slot';slot.innerHTML=presentation.sourceIconMarkup(identity);document.body.appendChild(slot);const svg=slot.querySelector('svg'),img=slot.querySelector('img'),value={slotColor:getComputedStyle(slot).color,glyphColor:svg?getComputedStyle(svg).color:null,classes:svg?[...svg.classList]:[],pathCount:svg?.querySelectorAll('path').length||0,firstPath:svg?.querySelector('path')?.getAttribute('d')||'',src:img?.getAttribute('src')||''};slot.remove();return value;};
+  return {magnet:probe({kind:'magnet'}),torrent:probe({kind:'torrent_file'}),megaup:probe({kind:'host',host:'megaup.net'}),megaupAsset:presentation.hostAsset('cdn.megaup.net')};
+ });
+ for(const item of [result.magnet,result.torrent]){expect(item.classes).toContain('lucide-boxes');expect(item.classes).toContain('dp-source-boxes');expect(item.glyphColor).toBe('rgb(15, 189, 136)');expect(item.slotColor).not.toBe(item.glyphColor);expect(item.pathCount).toBe(12);expect(item.firstPath).toBe('M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z');}
+ expect(result.megaup.src).toBe('/icons/hosts/mega.svg');expect(result.megaupAsset).toBe('/icons/hosts/mega.svg');
 });
 
 test('Downloads Provider Inventory icon, provider badge, and source label share canonical alignment',async({page})=>{
