@@ -124,6 +124,40 @@ test('Archive Passwords never arm explicit clear while hydration is pending',asy
  const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
 });
 
+test('Archive Passwords Apply submits the full edited multi-row list with no clear request',async({page})=>{
+ let passwords='alpha\nbeta\ngamma',putBody=null;
+ await page.route('**/api/settings/extraction-passwords',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords})}));
+ await page.route(/\/api\/settings(?:\?.*)?$/,async route=>{
+  const request=route.request();
+  if(request.method()==='GET'){
+   const response=await route.fetch();const body=await response.json();
+   body.extraction_password='';body.extraction_password_configured=true;
+   await route.fulfill({response,json:body});return;
+  }
+  if(request.method()!=='PUT'){await route.continue();return;}
+  putBody=request.postDataJSON();
+  const clears=new Set(putBody.clear_secrets||[]);
+  if(clears.has('extraction_password'))passwords='';
+  else if(String(putBody.extraction_password||'').trim())passwords=String(putBody.extraction_password).trim();
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...putBody,extraction_password:'',extraction_password_configured:Boolean(passwords),ok:true})});
+ });
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
+ await page.locator('#view-settings [data-tab="extraction"]').click();
+ const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
+ await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta\ngamma');
+ const rows=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-line');
+ await expect(rows).toHaveCount(4);
+ await rows.nth(0).fill('ALPHA');
+ await expect.poll(()=>rows.count()).toBe(4);
+ await rows.nth(3).fill('delta');
+ await expect.poll(()=>source.inputValue()).toBe('ALPHA\nbeta\ngamma\ndelta');
+ await page.locator('#view-settings button[data-action="save"]').click();
+ await expect.poll(()=>putBody!==null).toBe(true);
+ expect(putBody.extraction_password).toBe('ALPHA\nbeta\ngamma\ndelta');
+ expect(putBody.clear_secrets||[]).not.toContain('extraction_password');
+ expect(passwords).toBe('ALPHA\nbeta\ngamma\ndelta');
+});
+
 test('Torrent and magnet source identities use teal Lucide Boxes while MegaUp reuses the Mega host asset',async({page})=>{
  await ready(page);
  const result=await page.evaluate(()=>{

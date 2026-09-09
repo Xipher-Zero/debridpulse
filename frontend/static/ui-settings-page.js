@@ -1384,10 +1384,35 @@
     return !!fieldFor(key)?.checked;
   }
 
+  function archivePasswordEditorMounted() {
+    return !!root()?.querySelector('.dp-settings-extraction-password-editor');
+  }
+
+  function archivePasswordsHydrated() {
+    try {
+      return !!(window.DPArchivePasswords && window.DPArchivePasswords.hydrated);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function extractionPasswordValue() {
+    // Never submit the archive-password field as authoritative until its editor
+    // has read the stored list. An un-hydrated editor holds only the redacted
+    // (empty) server value or racy pre-hydration input; an empty value is
+    // treated as "keep the stored list" by the backend.
+    if (archivePasswordEditorMounted() && !archivePasswordsHydrated()) return '';
+    return valueOf('extraction_password');
+  }
+
   function clearSecrets() {
-    return Array.from(root()?.querySelectorAll('[data-clear-secret]:checked') || [])
+    const checked = Array.from(root()?.querySelectorAll('[data-clear-secret]:checked') || [])
       .map(input => input.dataset.clearSecret)
       .filter(Boolean);
+    if (archivePasswordEditorMounted() && !archivePasswordsHydrated()) {
+      return checked.filter(name => name !== 'extraction_password');
+    }
+    return checked;
   }
 
   function integrationPayload(current) {
@@ -1443,7 +1468,7 @@
       extract_enabled: boolOf('extract_enabled'),
       extract_delete_archive: boolOf('extract_delete_archive'),
       extract_max_concurrent: intOf('extract_max_concurrent', 1),
-      extraction_password: valueOf('extraction_password'),
+      extraction_password: extractionPasswordValue(),
 
       discord_username: valueOf('discord_username', 'DebridPulse'),
       discord_avatar_url: valueOf('discord_avatar_url'),

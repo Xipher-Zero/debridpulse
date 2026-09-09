@@ -68,10 +68,31 @@ def test_archive_password_editor_is_the_sole_owner() -> None:
     assert "dp-settings-password-rows" in archive
     assert "insertAdjacentElement('afterend'" in archive
 
-    # The serializer still reads the field and the visible clear checkbox is the
-    # only clear-secret control for archive passwords.
-    assert "extraction_password: valueOf('extraction_password')" in page
+    # The serializer reads the field through the hydration gate and the visible
+    # clear checkbox is the only clear-secret control for archive passwords.
+    assert "extraction_password: extractionPasswordValue()" in page
     assert 'data-clear-secret="extraction_password"' in page
 
     assert ".dp-settings-extraction-password-source" in css
     assert "display: none !important;" in css
+
+
+def test_archive_password_serializer_gates_on_editor_hydration() -> None:
+    archive = read("frontend/static/ui-settings-archive-passwords.js")
+    page = read("frontend/static/ui-settings-page.js")
+    routes = read("backend/api/routes.py")
+
+    # The editor exposes whether it has read the authoritative stored list.
+    assert "get hydrated(){return hydrated;}" in archive
+    assert "hydrated=true;" in archive
+
+    # The serializer will not submit extraction_password (value or clear) while
+    # the editor is mounted but has not hydrated.
+    assert "window.DPArchivePasswords.hydrated" in page
+    assert "if (archivePasswordEditorMounted() && !archivePasswordsHydrated()) return '';" in page
+    assert "return checked.filter(name => name !== 'extraction_password');" in page
+
+    # A supplied non-empty secret overrides a contradictory clear request.
+    merge = routes.split("def _merge_secret_settings", 1)[1].split("\n\n", 1)[0]
+    assert 'if str(merged.get(field) or "").strip():' in merge
+    assert merge.index('if str(merged.get(field) or "").strip():') < merge.index("if field in requested_clears:")

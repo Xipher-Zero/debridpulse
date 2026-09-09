@@ -330,9 +330,14 @@ def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
         if field not in explicitly_set:
             merged[field] = getattr(previous, field)
     for field in _SECRET_SETTINGS:
+        if str(merged.get(field) or "").strip():
+            # An explicit non-empty value is authoritative and overrides a
+            # contradictory clear request: a payload that both supplies a
+            # secret and asks to clear it must not destroy the supplied value.
+            continue
         if field in requested_clears:
             merged[field] = ""
-        elif not str(merged.get(field) or "").strip():
+        else:
             merged[field] = getattr(previous, field, "")
     return merged
 
