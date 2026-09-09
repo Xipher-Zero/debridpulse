@@ -63,8 +63,12 @@ neutral applicability facts; executors execute; the classifier is provider-neutr
 `backend/requirements.in` → compiled `requirements.txt`. Key pins: `fastapi`, `uvicorn`,
 `uvloop`, `httptools`, `aiohttp`, `aiosqlite`, `pydantic` v2, `bencode2`, `google-re2`,
 `python-multipart`, `prometheus-client`, `argon2-cffi`, `authlib`, `httpx`, `joserfc`.
-Dev (`requirements-dev.in`): `pytest`, `pytest-asyncio`, `pytest-cov`. `ruff` is
-pip-installed ad hoc in CI (not pinned in a file).
+Dev (`requirements-dev.in`): `pytest`, `pytest-asyncio`, `pytest-cov`.
+Lint/security qualification tooling (`requirements-qa.in` → compiled
+`requirements-qa.txt`, full transitive closure, constrained to `requirements-dev.txt`):
+`ruff`, `bandit`, `pip-audit` — pinned as of DEP-001 (2026-09-09); `tests.yml`
+installs this set instead of `pip install ruff` / `pip install pip-audit bandit`.
+All three `requirements*.in` files are compiled with `pip-compile … --strip-extras`.
 
 ---
 

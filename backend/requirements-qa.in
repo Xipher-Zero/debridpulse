@@ -1,0 +1,16 @@
+# Lint / security qualification tooling.
+#
+# CI (tests.yml) previously `pip install`ed ruff, bandit and pip-audit unpinned,
+# so an exact-SHA qualification run could silently pick up a new tool release
+# (DEP-001). This set is compiled to a full transitive closure so those runs are
+# reproducible; bumps happen here and are reviewed like any other dependency
+# change.
+#
+# Constrained to the dev dependency set so shared transitive packages resolve to
+# a single version when this file is installed alongside requirements-dev.txt
+# (the `test` job) or requirements.txt (the `security` job).
+-c requirements-dev.txt
+
+ruff==0.16.6
+bandit==1.9.4
+pip-audit==2.10.1

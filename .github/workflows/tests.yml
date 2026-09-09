@@ -41,6 +41,7 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements-dev.txt
+            backend/requirements-qa.txt
 
       - name: Install downloader regression dependencies
         run: |
@@ -52,8 +53,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd backend
-          pip install -r requirements-dev.txt
-          pip install ruff
+          pip install -r requirements-dev.txt -r requirements-qa.txt
 
       - name: Check undefined Python names
         run: |
@@ -134,13 +134,14 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-qa.txt
 
       - name: Install dependencies + audit tools
         run: |
           cd backend
-          pip install -r requirements.txt
-          pip install pip-audit bandit
+          pip install -r requirements.txt -r requirements-qa.txt
 
       - name: pip-audit (known CVEs in dependencies)
         run: |

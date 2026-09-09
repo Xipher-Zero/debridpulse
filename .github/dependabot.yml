@@ -1,5 +1,6 @@
 # Dependabot: automated dependency update PRs.
-# - Python (pip): weekly check for backend/requirements.txt
+# - Python (pip): weekly check for backend/requirements*.{in,txt}
+#   (runtime, dev, and the qa lint/security tooling set)
 # - GitHub Actions: weekly check for workflow action versions
 version: 2
 updates:
