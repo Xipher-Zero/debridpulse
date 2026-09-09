@@ -6,17 +6,18 @@ it alongside soft-deleted history. Pagination and totals therefore reflect the
 same canonical lifecycle rule as the visible rows.
 
 Activity Log filtering lives here so optional search, severity, and timeframe
-predicates are applied before the result ceiling. The legacy unfiltered GET is
-removed from the generic router at import time so /api/events keeps one owner.
-The default response remains the historical JSON list; the UI opts into metadata
-when it needs an explicit truncation signal.
+predicates are applied before the result ceiling. This module is the sole
+declaring owner of GET /api/events; api.routes no longer declares an unfiltered
+variant. The default response remains the historical JSON list; the UI opts into
+metadata when it needs an explicit truncation signal.
 """
 import asyncio
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from api.routes import _public_transfer_presentation, router as legacy_router
+from api.routes import _public_transfer_presentation
+from api.serializers import public_payload
 from application.dependencies import get_application
 from application.manual_candidate_failover import switch_candidate
 from application.service import ApplicationService
@@ -27,15 +28,6 @@ from transfers.presentation_repository import public_source_identity
 
 router = APIRouter()
 
-
-legacy_router.routes[:] = [
-    route
-    for route in legacy_router.routes
-    if not (
-        getattr(route, "path", None) == "/events"
-        and "GET" in (getattr(route, "methods", set()) or set())
-    )
-]
 
 _EVENT_TIMEFRAME_MODIFIERS = {
     "1h": "-1 hour",
@@ -176,7 +168,10 @@ async def list_activity_events(
             """,
             [*params, limit + 1],
         )
-        items = rows[:limit]
+        # Match the browser-facing serialization the generic router applied to
+        # this collection before it moved here: naive SQLite UTC timestamps gain
+        # an explicit "Z" designator and known capability fields are stripped.
+        items = public_payload(rows[:limit])
         if include_meta:
             return {"items": items, "truncated": len(rows) > limit, "limit": limit}
         return items

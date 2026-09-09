@@ -415,18 +415,10 @@ app.include_router(auth_config_router)
 app.include_router(auth_router)
 app.include_router(settings_validation_router, prefix="/api")
 app.include_router(storage_health_router, prefix="/api")
-# The operational list has a canonical lifecycle rule that differs from the
-# legacy history-inclusive route. Remove that one GET registration before the
-# generic router is included; explicit status=consolidated remains available on
-# the replacement route for durable provenance/history inspection.
-router.routes[:] = [
-    route
-    for route in router.routes
-    if not (
-        getattr(route, "path", None) == "/torrents"
-        and "GET" in (getattr(route, "methods", set()) or set())
-    )
-]
+# operational_downloads owns the canonical GET /api/torrents and GET /api/events
+# collection routes (bounded projection + lifecycle/filter rules). It is included
+# before the generic router purely for readable ordering; each canonical route
+# now has exactly one declaring owner, so include order is not load-bearing.
 app.include_router(operational_downloads_router, prefix="/api")
 app.include_router(router, prefix="/api")
 

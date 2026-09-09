@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional, AsyncGenerator, Literal
+from typing import AsyncGenerator, Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, APIRouter, File, HTTPException, Query, Request, UploadFile
@@ -606,60 +606,12 @@ async def aria2_download_action(gid: str, action: str, application: ApplicationS
 
 
 # ── Torrents ───────────────────────────────────────────────────────────────────
-
-@router.get("/torrents")
-async def list_torrents(
-    status: Optional[str] = None,
-    search: Optional[str] = None,
-    limit: int = Query(0, ge=0, le=5000),
-    offset: int = 0, application: ApplicationService = Depends(get_application)):
-    async with get_db() as db:
-        clauses = []
-        params = []
-
-        if status:
-            clauses.append("t.status = ?")
-            params.append(status)
-        else:
-            # Deletion is intentionally a soft delete so the torrent hash and
-            # prior ownership state remain available for duplicate detection
-            # and controlled revival.  Soft-deleted rows must not remain in
-            # the normal "All Downloads" view, however.
-            clauses.append("t.status != 'deleted'")
-
-        if search:
-            clauses.append(
-                """(
-                    LOWER(COALESCE(t.name, '')) LIKE ?
-                    OR LOWER(COALESCE(t.hash, '')) LIKE ?
-                    OR LOWER(COALESCE(t.source, '')) LIKE ?
-                    OR LOWER(COALESCE(t.label, '')) LIKE ?
-                    OR LOWER(COALESCE(t.error_message, '')) LIKE ?
-                )"""
-            )
-            needle = f"%{search.strip().lower()}%"
-            params.extend([needle, needle, needle, needle, needle])
-
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        query = f"""SELECT t.*,
-                (SELECT COUNT(*) FROM download_files WHERE torrent_id=t.id) as file_count,
-                (SELECT COUNT(*) FROM download_files WHERE torrent_id=t.id AND blocked=1) as blocked_count
-                FROM torrents t {where}
-                ORDER BY t.created_at DESC"""
-        query_params = list(params)
-        if limit > 0:
-            query += " LIMIT ? OFFSET ?"
-            query_params.extend([limit, offset])
-
-        rows = await db.fetchall(query, query_params)
-        total_row = await db.fetchone(
-            f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
-        )
-        total = total_row["cnt"] if total_row else 0
-        return {"items": [_public_transfer_presentation(
-            await application.repository.presentation(row["id"]), application.definitions
-        ) for row in rows], "total": total}
-
+#
+# The operational torrents collection (GET /api/torrents) is owned solely by
+# api.operational_downloads.list_operational_torrents. Its canonical lifecycle
+# rule (soft-deleted *and* fully consolidated rows excluded from the default
+# view) and its bounded single-read projection differ from the historical
+# per-row presentation rebuild, so it is declared there rather than here.
 
 @router.post("/torrents/add-magnet")
 async def add_magnet(body: dict, application: ApplicationService = Depends(get_application)):
@@ -918,19 +870,11 @@ async def bulk_action(body: BulkAction, application: ApplicationService = Depend
 
 
 # ── Events ─────────────────────────────────────────────────────────────────────
-
-@router.get("/events")
-async def get_events(limit: int = Query(200, le=500)):
-    async with get_db() as db:
-        rows = await db.fetchall(
-            """SELECT e.*, t.name AS torrent_name
-               FROM events e
-               LEFT JOIN torrents t ON t.id = e.torrent_id
-               ORDER BY e.created_at DESC LIMIT ?""",
-            (limit,),
-        )
-    return public_payload(rows)
-
+#
+# The activity events collection (GET /api/events) is owned solely by
+# api.operational_downloads.list_activity_events, which applies the optional
+# search / severity / timeframe predicates before the result ceiling. The
+# streaming and subscriber-count event routes below remain here.
 
 @router.get("/admin/performance")
 async def performance_diagnostics( application: ApplicationService = Depends(get_application)):

@@ -50,15 +50,22 @@ def test_event_and_snapshot_routes_use_public_timestamp_serialization():
     detail = source.split("async def get_torrent(torrent_id: int,", 1)[1].split(
         '@router.delete("/torrents/{torrent_id}")', 1
     )[0]
-    events = source.split("async def get_events(", 1)[1].split(
-        '@router.get("/admin/performance")', 1
-    )[0]
     snapshots = source.split("async def list_stats_snapshots", 1)[1].split("@router", 1)[0]
     presentation = source.split("def _public_transfer_presentation", 1)[1].split("def _password_auth_binding", 1)[0]
     assert "result = public_payload(value)" in presentation
     assert "return _public_transfer_presentation(item, application.definitions)" in detail
-    assert "return public_payload(rows)" in events
     assert 'return {"snapshots": public_payload(rows)}' in snapshots
+
+    # GET /api/events is owned by api.operational_downloads.list_activity_events;
+    # it must keep the same browser-facing serialization (naive SQLite UTC ->
+    # explicit "Z") the generic router applied before the route moved there.
+    events_source = (
+        Path(__file__).parents[1] / "api" / "operational_downloads.py"
+    ).read_text()
+    events = events_source.split("async def list_activity_events(", 1)[1].split(
+        "async def list_operational_torrents(", 1
+    )[0]
+    assert "public_payload(rows[:limit])" in events
 
 
 def test_public_payload_normalizes_event_timestamp():

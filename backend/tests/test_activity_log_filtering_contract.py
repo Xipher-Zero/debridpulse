@@ -76,7 +76,12 @@ async def test_activity_log_default_contract_remains_a_list(monkeypatch):
 
     result = await activity_routes.list_activity_events()
 
-    assert result == rows
+    # Bare list contract, but browser-facing timestamp normalization is applied
+    # (naive SQLite UTC -> explicit "Z"), matching the generic router's prior
+    # public_payload() serialization of this collection.
+    assert result == [
+        {"level": "info", "message": "ready", "created_at": "2026-09-06T01:00:00Z", "torrent_name": None},
+    ]
     assert fake.params == [201]
     assert "datetime(e.created_at)" not in fake.sql
     assert "COALESCE(e.level" not in fake.sql

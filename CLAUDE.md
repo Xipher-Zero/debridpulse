@@ -95,8 +95,14 @@ Starlette runs the last-registered outermost, so `request_id` is outermost and
 
 Routers included (`main.py`, all `prefix="/api"` except the auth routers): `auth_config_router`,
 `auth_router`, `settings_validation_router`, `storage_health_router`,
-`operational_downloads_router`, then the generic `router` from `api/routes.py`. `main.py`
-strips the generic `GET /torrents` route before including so `operational_downloads` owns it.
+`operational_downloads_router`, then the generic `router` from `api/routes.py`.
+`operational_downloads` is the sole declaring owner of `GET /api/torrents` and
+`GET /api/events` (`list_operational_torrents` / `list_activity_events`); `api/routes.py`
+declares neither, and `main.py` no longer performs any startup-time `router.routes[:]`
+surgery (ARCH-001, 2026-09-09). Include order is not load-bearing. Regression coverage:
+`backend/tests/test_canonical_http_route_ownership.py`. The one remaining intentional
+same-path dual registration is `GET /auth/oidc/callback` (pending-aware callback tried
+before the session-issuing one) — ordered registration, not route-list surgery.
 
 ### Frontend architecture rules (`docs/UI_FRONTEND_ARCHITECTURE.md`)
 
