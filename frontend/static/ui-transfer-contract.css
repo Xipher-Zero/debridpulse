@@ -185,6 +185,42 @@ body.dp-v11-structural :is(#dash-tbody, #t-tbody) tr[data-status] .prog-pct {
   background: color-mix(in srgb, var(--dp-text-muted, var(--text3)) 7%, transparent);
   color: var(--dp-text-muted, var(--text3));
 }
+/* ── Multi-source candidate chip (shared passive/base contract) ─────────
+   One visual family for the passive Dashboard/Downloads indicator and the
+   interactive Details disclosure. This owner holds the common material and
+   geometry; surface files add only bounded layout differences. Muted
+   slate / blue-gray, deliberately subordinate to the purple provider badge:
+   no glow, no purple styling, never the word "Candidates" on the passive form. */
+.dp-candidate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  min-height: 20px;
+  padding: 2px 6px 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-ready, var(--text3)) 40%, var(--dp-divider, var(--border)));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dp-state-ready, var(--text3)) 12%, transparent);
+  color: var(--dp-text-secondary, var(--text2));
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.dp-candidate-chip svg,
+.dp-candidate-chip .lucide {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  flex: 0 0 12px;
+  stroke-width: 2;
+}
+.dp-candidate-chip .dp-candidate-chip-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .dp-transfer-provider-meta { display:flex; align-items:center; gap:6px; min-width:0; margin-top:4px; }
 .dp-downloads-provider-cell { min-width:0; }
 .dp-downloads-provider-cell .dp-provider-chip { margin-bottom:3px; }

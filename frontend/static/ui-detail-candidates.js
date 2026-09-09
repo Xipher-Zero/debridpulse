@@ -87,6 +87,11 @@
     }).join('') + '</div>';
   }
 
+  function candidateGlyph() {
+    return (window.DPIcons && typeof window.DPIcons.svg === 'function')
+      ? window.DPIcons.svg('network', 'dp-candidate-chip-icon') : '';
+  }
+
   function disclosure(file) {
     const count = Number(file.candidate_count || 0);
     if (!Number.isInteger(count) || count <= 1) return '';
@@ -94,11 +99,16 @@
     const open = expandedArtifacts.has(artifactId);
     const detailsId = 'dp-detail-candidates-' + artifactId;
     const filename = String(file.filename || 'artifact');
-    return '<button type="button" class="dp-detail-candidate-disclosure" data-dp-artifact-id="' + html(artifactId) + '" ' +
+    // One coherent ghost-style rounded button sharing the passive chip visual
+    // family (dp-candidate-chip) and the canonical Network glyph. No circular
+    // count badge. Interactive: aria-expanded / aria-controls / dynamic
+    // Show/Hide label are preserved for the disclosure contract.
+    return '<button type="button" class="dp-candidate-chip dp-detail-candidate-disclosure" data-dp-artifact-id="' + html(artifactId) + '" ' +
       'data-dp-candidate-count="' + count + '" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
       'aria-controls="' + html(detailsId) + '" aria-label="' +
       html((open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename) + '">' +
-      '<span class="dp-detail-candidate-count" aria-hidden="true">' + count + '</span>' +
+      candidateGlyph() +
+      '<span class="dp-candidate-chip-count">' + count + '</span>' +
       '<span>Candidates</span></button>';
   }
 
@@ -139,6 +149,8 @@
     control.dataset.dpCandidateCount = String(count);
     control.setAttribute('aria-expanded', open ? 'true' : 'false');
     control.setAttribute('aria-label', (open ? 'Hide ' : 'Show ') + count + ' Candidates for ' + filename);
+    const countNode = control.querySelector('.dp-candidate-chip-count');
+    if (countNode) countNode.textContent = String(count);
     const existing = owner.parentElement ? owner.parentElement.querySelector(
       'tr.dp-detail-candidate-row[data-dp-candidate-owner="' + CSS.escape(artifactId) + '"]') : null;
     if (open) {
@@ -399,16 +411,8 @@
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
   }
 
-  function loadStyle() {
-    if (document.querySelector('link[data-dp-detail-candidates-style]')) return;
-    const style = document.createElement('link');
-    style.rel = 'stylesheet';
-    style.href = '/ui-detail-candidates.css?v=3';
-    style.dataset.dpDetailCandidatesStyle = '1';
-    document.head.appendChild(style);
-  }
-
-  loadStyle();
+  // Candidate styling is loaded through the canonical style-v11.css @import
+  // graph, not injected here, so it has one loaded owner.
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, {once:true});
   else install();
 })();

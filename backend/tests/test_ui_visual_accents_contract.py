@@ -12,7 +12,7 @@ def read(name: str) -> str:
 
 def test_visual_accents_load_after_shared_transfer_semantics() -> None:
     entry = read("style-v11.css")
-    assert entry.index("/ui-transfer-contract.css?v=31") < entry.index("/ui-visual-accents.css?v=21")
+    assert entry.index("/ui-transfer-contract.css?v=32") < entry.index("/ui-visual-accents.css?v=21")
 
 
 def test_status_badges_are_lucide_only_and_keep_semantic_glow() -> None:

@@ -71,6 +71,44 @@ test('structured server rejection stays truthful and does not move ACTIVE', asyn
   await expect(panel.locator('.dp-detail-candidate-switch')).toBeEnabled();
 });
 
+test('disclosure is one ghost candidate button with the Network glyph and "N Candidates" text', async ({page}) => {
+  const holder={detail:detail('a')};
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status:200,contentType:'text/css',body:''}));
+  await page.route(url => url.pathname === '/api/torrents/990', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(holder.detail)}));
+  await page.goto('/');
+  await page.evaluate(() => showDetail(990));
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  const disclosure=page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure');
+
+  // One coherent control: it is the ghost candidate chip button itself.
+  await expect(disclosure).toHaveJSProperty('tagName','BUTTON');
+  await expect(disclosure).toHaveClass(/\bdp-candidate-chip\b/);
+  // Network glyph from the canonical Lucide owner, rendered once.
+  await expect(disclosure.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
+  // Text reads "N Candidates" with the count NOT in a circular nested badge.
+  await expect(disclosure).toContainText('Candidates');
+  await expect(disclosure.locator('.dp-candidate-chip-count')).toHaveText('2');
+  await expect(disclosure.locator('.dp-detail-candidate-count')).toHaveCount(0);
+  const badge=await disclosure.locator('.dp-candidate-chip-count').evaluate(n=>{
+    const s=getComputedStyle(n);
+    return {radius:s.borderRadius,border:s.borderTopWidth,bg:s.backgroundColor};
+  });
+  expect(badge.radius === '' || badge.radius === '0px').toBe(true);
+  expect(parseFloat(badge.border) || 0).toBe(0);
+  // Disclosure contract preserved.
+  await expect(disclosure).toHaveAttribute('aria-expanded','false');
+  await expect(disclosure).toHaveAttribute('aria-controls','dp-detail-candidates-502');
+  await expect(disclosure).toHaveAttribute('aria-label',/^Show 2 Candidates for/);
+
+  await disclosure.click();
+  await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toBeVisible();
+  await expect(disclosure).toHaveAttribute('aria-expanded','true');
+  await expect(disclosure).toHaveAttribute('aria-label',/^Hide 2 Candidates for/);
+  await disclosure.press('Enter');
+  await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toHaveCount(0);
+  await expect(disclosure).toBeFocused();
+});
+
 test('in-flight suppression prevents duplicate candidate POSTs', async ({page}) => {
   const holder={detail:detail('a')}; let posts=0;
   await openCandidates(page,holder,async route=>{posts+=1;await new Promise(resolve=>setTimeout(resolve,180));holder.detail=detail('b');await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,filename:'GF030926-M2SP-RN.rar',candidate_id:'b',source_host:'megaup.net'})});});

@@ -344,6 +344,35 @@ async def list_operational_torrents(
               ON page.id = r.transfer_id
             WHERE r.state = 'failed'
             GROUP BY r.transfer_id
+        ),
+        -- Transfer-level multi-source summary derived only from canonical
+        -- acquisition-candidate storage. Eligibility mirrors the detail
+        -- candidate projection (physical, unblocked, non-standby artifacts).
+        -- Details candidate cardinality is per artifact; artifacts of one
+        -- transfer may legitimately carry different candidate-set sizes, so the
+        -- truthful transfer-level summary is the largest per-artifact distinct
+        -- candidate count, never the sum. This stays inside the one bounded
+        -- projection read: no per-row query, no comprehensive presentation.
+        candidate_cardinality AS (
+            SELECT
+                artifact.transfer_id,
+                MAX(artifact.candidate_sources) AS candidate_source_max
+            FROM (
+                SELECT
+                    f.torrent_id AS transfer_id,
+                    f.id AS artifact_id,
+                    COUNT(DISTINCT b.candidate_id) AS candidate_sources
+                FROM download_files f
+                JOIN page
+                  ON page.id = f.torrent_id
+                LEFT JOIN canonical_candidate_bindings b
+                  ON b.canonical_artifact_id = f.id
+                WHERE f.request_id IS NOT NULL
+                  AND COALESCE(f.blocked, 0) = 0
+                  AND COALESCE(f.mirror_state, '') != 'standby'
+                GROUP BY f.torrent_id, f.id
+            ) artifact
+            GROUP BY artifact.transfer_id
         )
         SELECT
             t.id,
@@ -361,6 +390,7 @@ async def list_operational_torrents(
             t.updated_at,
             t.completed_at,
             COALESCE(request_failures.failure_count, 0) AS source_failure_count,
+            COALESCE(candidate_cardinality.candidate_source_max, 0) AS candidate_source_max,
             latest_route.provider_id AS current_provider_id,
             CASE
                 WHEN COALESCE(delivery.provider_count, 0) = 1
@@ -391,6 +421,8 @@ async def list_operational_torrents(
           ON root_request.transfer_id = t.id
         LEFT JOIN request_failures
           ON request_failures.transfer_id = t.id
+        LEFT JOIN candidate_cardinality
+          ON candidate_cardinality.transfer_id = t.id
         ORDER BY t.created_at DESC
     """
 
@@ -405,9 +437,14 @@ async def list_operational_torrents(
     for row in rows:
         projected = dict(row)
         source_identity = _bounded_source_identity(projected)
+        candidate_source_max = max(0, int(projected.get("candidate_source_max") or 0))
         for field in _SOURCE_PROJECTION_FIELDS:
             projected.pop(field, None)
         item = _public_transfer_presentation(projected, application.definitions)
         item["current_source_identity"] = source_identity
+        # Passive multi-source indicator: the transfer genuinely exposes more
+        # than one equivalent canonical acquisition candidate only when this is
+        # greater than 1. Always present as a plain non-negative integer.
+        item["candidate_source_max"] = candidate_source_max
         items.append(item)
     return {"items": items, "total": total}

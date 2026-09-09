@@ -81,7 +81,7 @@ def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
     provider = overlay.index("/ui-shell-provider-status.css?v=24")
     dashboard = overlay.index("/ui-dashboard.css?v=20")
     downloads = overlay.index("/ui-downloads-page.css?v=28")
-    transfer = overlay.index("/ui-transfer-contract.css?v=31")
+    transfer = overlay.index("/ui-transfer-contract.css?v=32")
     visual = overlay.index("/ui-visual-accents.css?v=21")
     signal = overlay.index("/ui-shell-signal-field.css?v=20")
     assert shared < shell < provider < dashboard < downloads < transfer < visual < signal

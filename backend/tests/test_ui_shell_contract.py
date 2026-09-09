@@ -32,8 +32,8 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
     assert not (STATIC / "style-legacy.css").exists()
     index = read(INDEX)
     assert "/style.css?v=15" in index
-    assert "/style-v11.css?v=26" in index
-    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=26")
+    assert "/style-v11.css?v=27" in index
+    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=27")
 
     overlay = read(V11_STYLE)
     imports = (
@@ -55,7 +55,7 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "/ui-settings-page.css?v=2",
         "/ui-help-page.css?v=22",
         "/ui-panel-surface-treatment.css?v=22",
-        "/ui-transfer-contract.css?v=31",
+        "/ui-transfer-contract.css?v=32",
         "/ui-visual-accents.css?v=21",
         "/ui-shell-signal-field.css?v=20",
     )
@@ -108,7 +108,8 @@ def test_v11_cache_generations_remain_targeted() -> None:
         "/ui-help-page.css": "22",
         "/ui-feature-icon-contract.css": "4",
         "/ui-panel-surface-treatment.css": "22",
-        "/ui-transfer-contract.css": "31",
+        "/ui-transfer-contract.css": "32",
+        "/ui-detail-candidates.css": "4",
         "/ui-visual-accents.css": "21",
     }
     for path, version in expected.items():

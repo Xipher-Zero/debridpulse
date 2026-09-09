@@ -37,7 +37,7 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 | Downloads | `index.html` + `app.js` | `app.js` plus `ui-downloads-presentation.js` | `ui-downloads-page.css`, `ui-downloads-desktop.css`, `ui-downloads-presentation.css` |
 | Processing/topbar projection | shell/app controls | `app.js`, `ui-topbar-concurrency.js`, `ui-processing-presentation.js` | owning shell/page styles |
 | Activity Log | `index.html` + runtime rows | `ui-activity-log-runtime.js` | `ui-activity-log-page.css`, `ui-activity-log-controls.css` |
-| Details -> Files | `app.js` | `app.js` | `ui-transfer-contract.css`, `ui-detail-files.css` |
+| Details -> Files | `app.js` | `app.js` plus `ui-detail-candidates.js` | `ui-transfer-contract.css`, `ui-detail-files.css`, `ui-detail-candidates.css` |
 | Statistics | generated page | `ui-statistics.js` | `ui-statistics-page.css` |
 | Settings | generated clean-room markup | `ui-settings-page.js` plus named subfeature owners | Settings styles plus `ui-settings-archive-passwords.css` |
 | Help | generated page | `ui-help-page.js` and legal-document helper | Help styles |
@@ -49,6 +49,8 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 `style-v11.css` is the canonical import graph. Correction-named Batch-1 styles are absent. Accepted geometry is assigned to explicit component owners: provider summary, Dashboard transfer presentation, Downloads presentation, Activity Log controls, archive-password editor, and Details file-status geometry.
 
 `style.css` remains the accepted baseline dependency and `style-v11.css` retains its established URL. Multiple stylesheets are legitimate only when their responsibilities are intentionally different.
+
+`ui-detail-candidates.css` is the single bounded owner of candidate disclosure/panel styling and is loaded through the `style-v11.css` `@import` graph (not runtime-injected). The multi-source candidate chip has one shared visual contract: `.dp-candidate-chip` material and geometry live in `ui-transfer-contract.css` (which already owns the reusable transfer/provider row contract); surface files add only bounded layout differences — Details interactive hover/focus in `ui-detail-candidates.css`, constrained Downloads-row geometry in `ui-downloads-presentation.css`. The Dashboard/Downloads passive chip is a non-interactive `role="img"` element built by `DPDashboardTransferPresentation.candidateChipMarkup()`; the Details disclosure keeps its interactive `<button>` but shares that chip family. The Lucide `network` glyph geometry has exactly one owner, the `LUCIDE` set in `operator-title.js`, rendered through `window.DPIcons.svg('network', …)`.
 
 ## Accessibility and cross-cutting runtime
 

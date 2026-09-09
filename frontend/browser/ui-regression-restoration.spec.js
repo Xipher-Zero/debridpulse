@@ -217,6 +217,74 @@ test('Downloads Provider Inventory icon, provider badge, and source label share 
  expect(Math.abs(geometry[0].icon.left-geometry[2].icon.left)).toBeLessThanOrEqual(0.75);
 });
 
+test('Dashboard passive multi-source candidate chip renders only for multi-source transfers, in [source][provider][network N] order',async({page})=>{
+ await page.setViewportSize({width:1600,height:900});
+ const base={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 17:00:00',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'};
+ const items=[
+  {...base,id:1,name:'Single source transfer',current_source_identity:{kind:'host',host:'rapidgator.net'},candidate_source_max:1},
+  {...base,id:2,name:'Multi source transfer',current_source_identity:{kind:'host',host:'rapidgator.net'},candidate_source_max:3},
+ ];
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
+ await ready(page);
+ await expect(page.locator('#dash-tbody tr[data-torrent-id]')).toHaveCount(2);
+ await expect(page.locator('#dash-tbody tr[data-torrent-id="1"] .dp-candidate-chip')).toHaveCount(0);
+ const chip=page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-candidate-chip');
+ await expect(chip).toHaveCount(1);
+ const order=await page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-transfer-provider-meta').evaluate(meta=>[...meta.children].map(node=>node.className.split(' ')[0]));
+ expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
+ await expect(chip.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
+ await expect(chip.locator('.dp-candidate-chip-count')).toHaveText('3');
+ await expect(chip).toHaveJSProperty('tagName','SPAN');
+ await expect(chip).toHaveAttribute('role','img');
+ await expect(chip).not.toHaveAttribute('tabindex');
+ await expect(chip).not.toHaveAttribute('onclick');
+ await expect(chip).toHaveAttribute('title',/3 equivalent sources available/);
+ await expect(chip).toHaveAttribute('aria-label',/up to 3 equivalent sources available/i);
+ const passive=await chip.evaluate(node=>{
+  const style=getComputedStyle(node);
+  const provider=getComputedStyle(node.parentElement.querySelector('.dp-provider-chip'));
+  return {shadow:style.boxShadow,chipColor:style.color,providerColor:provider.color};
+ });
+ expect(passive.shadow==='none'||passive.shadow==='').toBe(true);
+ expect(passive.chipColor).not.toBe(passive.providerColor);
+ // Light theme keeps the chip legible.
+ await page.locator('#theme-toggle').click();
+ expect(await page.evaluate(()=>document.body.classList.contains('light'))).toBe(true);
+ await expect(chip).toBeVisible();
+ const lightBorder=await chip.evaluate(node=>getComputedStyle(node).borderTopWidth);
+ expect(parseFloat(lightBorder)).toBeGreaterThan(0);
+});
+
+test('Downloads passive candidate chip joins the first line for multi-source transfers only, with the source label kept beneath',async({page})=>{
+ await page.setViewportSize({width:1600,height:900});
+ const common={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'recorded',source:'direct_link'};
+ const items=[
+  {...common,id:81,name:'Single',hash:'direct:81',candidate_source_max:1},
+  {...common,id:82,name:'Multi',hash:'direct:82',candidate_source_max:4},
+ ];
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:2,page:1,page_size:2})}));
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
+ await expect(page.locator('#t-tbody .dp-downloads-provider-block')).toHaveCount(2);
+ const singleCells=await page.locator('#t-tbody tr[data-torrent-id="81"] > td').count();
+ const multiCells=await page.locator('#t-tbody tr[data-torrent-id="82"] > td').count();
+ expect(multiCells).toBe(singleCells);
+ await expect(page.locator('#t-tbody tr[data-torrent-id="81"] .dp-candidate-chip')).toHaveCount(0);
+ const line=page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-provider-line');
+ await expect(line.locator('.dp-candidate-chip')).toHaveCount(1);
+ const order=await line.evaluate(node=>[...node.children].map(child=>child.className.split(' ')[0]));
+ expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
+ await expect(page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-provider-block > .dp-transfer-source-label')).toHaveText('Direct link');
+ await expect(line.locator('.dp-candidate-chip .dp-candidate-chip-count')).toHaveText('4');
+ const geometry=await page.locator('#t-tbody tr[data-torrent-id="82"]').evaluate(row=>{
+  const cell=row.querySelector('.dp-downloads-provider-cell');
+  const chip=row.querySelector('.dp-candidate-chip');
+  const chipRect=chip.getBoundingClientRect(),cellRect=cell.getBoundingClientRect();
+  return {withinCell:chipRect.right<=cellRect.right+0.5,noClip:chip.scrollWidth<=chip.clientWidth,rowHeight:row.getBoundingClientRect().height};
+ });
+ expect(geometry.withinCell).toBe(true);
+ expect(geometry.noClip).toBe(true);
+});
+
 test('Details candidate switch remains available after comprehensive presentation refresh',async({page})=>{
  const candidate=(id,source,active)=>({candidate_id:id,source_label:source,provider_id:'alldebrid',relationship:'Original',dispositions:active?['Active']:[],is_selected:active,is_active:active,is_delivering:false,switch_eligible:!active});
  const detail={id:990,name:'Candidate review fixture',status:'downloading',progress:42,size_bytes:1024,source:'direct_link',label:'',hash:'',created_at:'2026-09-06T10:00:00Z',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',route_attempts:[],execution_attempts:[],executors:['aria2'],source_outcomes:[],events:[],files:[{id:502,filename:'fixture.rar',size_bytes:1024,status:'downloading',blocked:false,block_reason:null,candidate_count:2,acquisition_candidates:[candidate('a','rapidgator.net',true),candidate('b','megaup.net',false)]}]};

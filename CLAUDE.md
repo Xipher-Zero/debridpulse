@@ -131,6 +131,22 @@ before the session-issuing one) — ordered registration, not route-list surgery
 - `ui-settings-page.js` renders Settings clean-room markup; `ui-settings-downloads-completion.js`
   finishes Downloads/Extraction *layout* (card identity, controls row, download-folder
   browser) but owns **no** Settings persistence and **no** archive-password editor.
+- **Multi-source candidate chip** (2026-09-09): `/api/torrents` list rows carry
+  `candidate_source_max` — the largest per-artifact distinct canonical candidate count
+  across a transfer's eligible artifacts, computed inside the one bounded projection SQL
+  in `api/operational_downloads.py` (a `canonical_candidate_bindings` CTE; never a
+  per-row query, never `repository.presentation(..., details=True)`). It is a **max**,
+  not a sum, because artifacts of one transfer may carry different candidate-set sizes;
+  tooltip wording is "up to N". Chip renders only when `> 1`. Shared visual contract:
+  `.dp-candidate-chip` material lives in `ui-transfer-contract.css`; the passive
+  Dashboard/Downloads chip (`role="img"`, non-interactive) is built by
+  `DPDashboardTransferPresentation.candidateChipMarkup()` and reused by
+  `ui-downloads-presentation.js`; the Details disclosure keeps its interactive
+  `<button>` (`ui-detail-candidates.js`) but shares that family and drops the old
+  circular count badge. The Lucide `network` glyph has one geometry owner — the
+  `LUCIDE` set in `operator-title.js` — rendered via `window.DPIcons.svg('network')`.
+  `ui-detail-candidates.css` is now loaded through the `style-v11.css` `@import` graph
+  (it was previously runtime-injected by `ui-detail-candidates.js`).
 
 ---
 

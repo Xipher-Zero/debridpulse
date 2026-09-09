@@ -17,7 +17,7 @@ def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     dashboard = "/ui-dashboard.css?v=20"
     downloads = "/ui-downloads-page.css?v=28"
     help_page = "/ui-help-page.css?v=22"
-    transfer = "/ui-transfer-contract.css?v=31"
+    transfer = "/ui-transfer-contract.css?v=32"
 
     for layer in (dashboard, downloads, help_page, transfer):
         assert layer in overlay
