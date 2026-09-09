@@ -5,7 +5,7 @@
   const PRESENTATION_OWNERS = Object.freeze([
     ['/ui-toast-contract.js?v=2', 'DPToastContract'],
     ['/ui-processing-presentation.js?v=1', 'DPProcessingPresentation'],
-    ['/ui-dashboard-transfer-presentation.js?v=1', 'DPDashboardTransferPresentation'],
+    ['/ui-dashboard-transfer-presentation.js?v=2', 'DPDashboardTransferPresentation'],
     ['/ui-downloads-presentation.js?v=1', 'DPDownloadsPresentation'],
     ['/ui-activity-log-runtime.js?v=1', 'DPActivityLog'],
     ['/ui-settings-archive-passwords.js?v=1', 'DPArchivePasswords'],

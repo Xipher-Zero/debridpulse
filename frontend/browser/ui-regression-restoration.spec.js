@@ -169,6 +169,34 @@ test('Torrent and magnet source identities use teal Lucide Boxes while MegaUp re
  expect(result.megaup.src).toBe('/icons/hosts/mega.svg');expect(result.megaupAsset).toBe('/icons/hosts/mega.svg');
 });
 
+test('Dashboard Recent Items renders host artwork on cold load without navigation and emits one canonical event per render',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ const items=Array.from({length:6},(_,i)=>({
+  id:i+1,name:`Cold load transfer ${i+1}`,status:'completed',progress:100,size_bytes:1048576*(i+1),created_at:'2026-09-08 17:00:00',
+  current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'
+ }));
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length,page:1,page_size:items.length})}));
+ await page.addInitScript(()=>{window.__recentEvents=0;document.addEventListener('debridpulse:dashboard-recent-rendered',()=>{window.__recentEvents+=1;});});
+ // Dashboard is the default surface; no nav() runs at startup. The bootstrap
+ // loadRecent() fires before the lazy-loaded canonical owner registers, yet the
+ // Recent Items table must still reconcile to host artwork once the owner is ready.
+ await page.goto('/');
+ await expect(page.locator('#dash-tbody .dp-source-host-logo')).toHaveCount(6);
+ await expect.poll(()=>page.locator('#dash-tbody .dp-source-host-logo').evaluateAll(nodes=>nodes.every(node=>node.complete&&node.naturalWidth>0))).toBe(true);
+ await page.waitForLoadState('networkidle');
+ // The canonical owner is the sole producer of the event and the app.js
+ // entrypoint never becomes a second renderer: one explicit refresh => one event.
+ const state=await page.evaluate(async()=>{
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const before=window.__recentEvents;
+  await window.loadRecent();
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  return {registered:typeof window.__dpRegisterRecentRenderer,delta:window.__recentEvents-before};
+ });
+ expect(state.registered).toBe('function');
+ expect(state.delta).toBe(1);
+});
+
 test('Downloads Provider Inventory icon, provider badge, and source label share canonical alignment',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  const common={status:'completed',presentation_status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'link'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'recorded'};

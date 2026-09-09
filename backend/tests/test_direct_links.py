@@ -179,7 +179,12 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("content.classList.toggle('dashboard-active', v === 'dashboard');", js)
         self.assertIn("function dashboardRecentLimit()", js)
         self.assertIn("window.matchMedia('(max-width: 700px)').matches ? 4 : 6", js)
-        self.assertIn("api('GET', `/torrents?limit=${recentLimit}`)", js)
+        # Recent Items row rendering is owned by the bounded presentation owner;
+        # app.js only holds the viewport-limit helper and the delegating entrypoint.
+        owner = (
+            repo_root / "frontend/static/ui-dashboard-transfer-presentation.js"
+        ).read_text()
+        self.assertIn("api('GET',`/torrents?limit=${recentLimit}`)", owner)
         self.assertIn("#content.dashboard-active { overflow-y: hidden; }", css)
         self.assertIn("#view-dashboard.active {", css)
         self.assertIn("#dash-activity-card {", css)

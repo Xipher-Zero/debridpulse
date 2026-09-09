@@ -1090,54 +1090,37 @@ function dashboardRecentLimit() {
   return Math.max(1, Math.min(32, fitted || 1));
 }
 
-async function loadRecent() {
-  try {
-    const recentLimit = dashboardRecentLimit();
-    _dashboardRecentFitLimit = recentLimit;
-    const {items} = await api('GET', `/torrents?limit=${recentLimit}`);
-    const tb = document.getElementById('dash-tbody');
-    if (!items.length) {
-      tb.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>No downloads yet. Add a link, magnet, or torrent file to get started.</div></td></tr>';
-      const countEl = document.getElementById('dash-activity-count');
-      if (countEl) countEl.textContent = 'Recent transfer history';
-      return;
-    }
-    // Update activity count
-    const countEl = document.getElementById('dash-activity-count');
-    if (countEl) countEl.textContent = items.length + ' most recent download' + (items.length === 1 ? '' : 's');
-    tb.innerHTML = items.map(t => {
-      const pct_val = t.progress != null ? Math.round(t.progress) : 0;
-      const is_active = ['downloading','queued'].includes(t.status);
-      return `<tr data-torrent-id="${t.id}" data-status="${esc(t.status)}" onclick="showDetail(${t.id})" style="cursor:pointer">
-        <td>
-          <div class="t-name" title="${esc(t.name)||''}">${esc(t.name)||'(unnamed)'}</div>
-          ${is_active ? `<div class="dash-row-bar"><div class="dash-row-bar-fill" style="width:${pct_val}%;background:var(--blue)"></div></div>` : ''}
-          <div class="dp-transfer-provider-meta">${providerChip(t)}</div>
-        </td>
-        <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
-        <td data-role="transfer-progress">${progress(t.progress,t.status)}</td>
-        <td class="sz">${fmtSize(t.size_bytes)}</td>
-        <td class="sz">${fmtDate(t.created_at)}</td>
-        <td onclick="event.stopPropagation()">
-          <div class="actions">
-            ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)" title="Pause this download">Pause</button>` : ''}
-            ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)" title="Resume this download">Resume</button>` : ''}
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
+// Dashboard Recent Items has exactly one canonical renderer: renderRecent() in
+// ui-dashboard-transfer-presentation.js (a bounded presentation owner that is
+// lazy-loaded after app.js). This is the stable delegation entrypoint for it:
+// it is wrapped once by coalesceAsync (below) and never rebound afterwards, so
+// every loadRecent() trigger — startup, nav, SSE, polling, resize, pause/resume,
+// submission/import — routes through here for the life of the page.
+//
+// Calls made before the canonical owner has registered collapse into a single
+// owed refresh that fires once, at registration. This entrypoint never renders
+// rows and never emits the dashboard-recent-rendered event — the canonical
+// owner is the sole producer of both.
+let _recentRenderer = null;
+let _recentRefreshOwed = false;
 
-    requestAnimationFrame(() => {
-      if (!document.getElementById('view-dashboard')?.classList.contains('active')) return;
-      const fittedLimit = dashboardRecentLimit();
-      if (fittedLimit !== _dashboardRecentFitLimit) {
-        _dashboardRecentFitLimit = fittedLimit;
-        loadRecent().catch(() => {});
-      }
-    });
-  } catch(e) { console.error(e); }
-  document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered'));
+async function loadRecent() {
+  if (typeof _recentRenderer !== 'function') {
+    _recentRefreshOwed = true;
+    return;
+  }
+  return _recentRenderer();
 }
+
+// One-time registration hook for the canonical Dashboard Recent Items renderer.
+window.__dpRegisterRecentRenderer = function registerRecentRenderer(renderer) {
+  if (typeof renderer !== 'function' || _recentRenderer === renderer) return;
+  _recentRenderer = renderer;
+  if (_recentRefreshOwed) {
+    _recentRefreshOwed = false;
+    loadRecent().catch(() => {});
+  }
+};
 
 function openTorrentFilePicker() {
   const input = document.getElementById('torrent-file-input');

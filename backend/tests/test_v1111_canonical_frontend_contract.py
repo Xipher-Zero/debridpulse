@@ -304,10 +304,18 @@ def test_canonical_coordination_uses_explicit_events_not_page_convergence_observ
     app = read(APP)
     operator = read(STATIC / "operator-title.js")
     for event in (
-        "debridpulse:navigation", "debridpulse:dashboard-recent-rendered",
+        "debridpulse:navigation",
         "debridpulse:activity-rendered", "debridpulse:dashboard-stats-rendered",
     ):
         assert event in app
+    # The Dashboard Recent Items renderer was consolidated into its bounded
+    # presentation owner (ui-dashboard-transfer-presentation.js). That owner is
+    # now the sole producer of debridpulse:dashboard-recent-rendered; the app.js
+    # loadRecent() entrypoint is a stable delegator that neither renders rows nor
+    # emits the event.
+    dashboard_owner = read(STATIC / "ui-dashboard-transfer-presentation.js")
+    assert "debridpulse:dashboard-recent-rendered" in dashboard_owner
+    assert "debridpulse:dashboard-recent-rendered" not in app
     assert "new MutationObserver" not in operator
     assert "window.loadStats =" not in operator
     assert not (STATIC / "ui-runtime.js").exists()

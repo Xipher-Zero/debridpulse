@@ -189,8 +189,13 @@ def test_dashboard_recent_activity_exposes_pause_resume_but_not_remove():
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
 
-    recent_renderer = frontend.split("async function loadRecent()", 1)[1].split(
-        "function openTorrentFilePicker()", 1
+    # Dashboard Recent Items has one canonical renderer: renderRecent() in the
+    # bounded presentation owner. app.js's loadRecent() is a stable delegator.
+    owner = (
+        REPO_ROOT / "frontend/static/ui-dashboard-transfer-presentation.js"
+    ).read_text()
+    recent_renderer = owner.split("async function renderRecent()", 1)[1].split(
+        "window.__dpRegisterRecentRenderer(renderRecent)", 1
     )[0]
     recent_markup = index.split('id="dash-activity-card"', 1)[1].split(
         "</table>", 1
@@ -201,8 +206,18 @@ def test_dashboard_recent_activity_exposes_pause_resume_but_not_remove():
     assert "Pause this download" in recent_renderer
     assert "Resume this download" in recent_renderer
     assert "deleteT(" not in recent_renderer
+    assert "Remove" not in recent_renderer
     assert "Remove" not in recent_markup
     assert 'colspan="6"' in recent_markup
+
+    # The app.js entrypoint delegates and never becomes a second renderer.
+    delegator = frontend.split("async function loadRecent()", 1)[1].split(
+        "function openTorrentFilePicker()", 1
+    )[0]
+    assert "__dpRegisterRecentRenderer" in delegator
+    assert "_recentRenderer" in delegator
+    assert "dash-tbody" not in delegator
+    assert "innerHTML" not in delegator
 
     pause_item_handler = frontend.split(
         "async function pauseT(id, button)", 1
