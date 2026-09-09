@@ -8,7 +8,7 @@ to factual provider/executor failures before lifecycle policy consumes them.
 """
 from __future__ import annotations
 
-from transfers import _engine_base, _engine_recovery
+from transfers import _engine_base, _engine_recovery, file_selection as fs
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.contracts import Manifest, ResourceLookup
@@ -16,7 +16,8 @@ from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.models import (
-    CleanupAuthority, ExecutionState, Ownership, ResolutionResult, ResourceState, TransferState,
+    Capability, CleanupAuthority, ExecutionState, Ownership, ResolutionResult, ResourceState,
+    TransferState,
 )
 
 
@@ -104,6 +105,30 @@ class TransferEngine(_RecoveryTransferEngine):
             ):
                 return None
             raise
+
+    async def _after_resolution_persisted(self, record, provider, result):
+        """Establish the universal file-selection window for a FILE_MANIFEST
+        provider once its resource is durably known and its initial availability
+        is still observable. Generation-scoped to (request, provider resource);
+        a re-resolution onto a new resource opens a fresh generation and never
+        inherits the prior subset.
+        """
+        if record.parent_id is not None:
+            return
+        if Capability.FILE_MANIFEST not in provider.descriptor.capabilities:
+            return
+        observation = result.observation
+        if observation is None or observation.resource is None:
+            return
+        now = self.clock()
+        await self.repository.begin_file_selection_window(
+            record.id, record.transfer_id, observation.resource.id, provider.descriptor.id,
+            initially_available=(observation.state == ResourceState.AVAILABLE), now=now,
+        )
+        if observation.file_manifest is not None:
+            await self.repository.record_file_manifest(
+                record.id, observation.resource.id, observation.file_manifest, now=now,
+            )
 
     async def _resolve(self, record):
         attempt = None
@@ -213,6 +238,15 @@ class TransferEngine(_RecoveryTransferEngine):
             )
             if not await self._live(record.transfer_id, admission=True):
                 return
+            file_manifest_capable = (
+                record.parent_id is None
+                and Capability.FILE_MANIFEST in provider.descriptor.capabilities
+            )
+            if file_manifest_capable and observation.file_manifest is not None:
+                await self.repository.record_file_manifest(
+                    record.id, record.resource.id, observation.file_manifest, now=self.clock(),
+                )
+
             if observation.error:
                 await self._request_failure(record, observation.error, waiting=True)
             elif observation.state == ResourceState.AVAILABLE:
@@ -223,6 +257,20 @@ class TransferEngine(_RecoveryTransferEngine):
                         domain=Domain.REQUEST,
                         retryability=Retryability.NEVER,
                     ))
+                if file_manifest_capable:
+                    gate = await self.repository.file_selection_gate(
+                        record.id, record.resource.id, now=self.clock(),
+                    )
+                    if gate != fs.SelectionGate.PROCEED:
+                        # Provider-side acquisition is done; only local executable
+                        # materialization is held while the selector window / cached
+                        # decision hold is still open. Re-uses the ordinary resolution
+                        # wakeup cadence; no new loop, no browser polling.
+                        await self.repository.poll_after(
+                            record.id, self.clock() + self.policy.resource_poll_interval,
+                            waiting=True,
+                        )
+                        return
                 entries = await provider.manifest(record.resource)
                 entries = tuple({
                     _engine_base.codec.dump(entry): entry for entry in entries
@@ -245,7 +293,14 @@ class TransferEngine(_RecoveryTransferEngine):
                         Stage.CANDIDATE_PREPARATION,
                         domain=Domain.SECURITY,
                     ))
-                await self.repository.manifest(record, entries)
+                # Core filters the full executable manifest to the authorized
+                # subset (ALL / confirmed EXPLICIT) and durably records the
+                # materialization-commit fact before child fan-out. A confirmed
+                # subset that can no longer be proven fails closed here.
+                authorized = await self.repository.commit_selected_manifest(
+                    record, entries, now=self.clock(),
+                ) if file_manifest_capable else entries
+                await self.repository.manifest(record, authorized)
             elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
                 error = self._error(
                     Category.RESOURCE_EXPIRED

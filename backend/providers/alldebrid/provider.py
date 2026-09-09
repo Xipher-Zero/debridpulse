@@ -7,7 +7,9 @@ from urllib.parse import urlsplit
 
 from providers.alldebrid.client import AllDebridService, API_V4, flatten_files
 from services.network_safety import validate_provider_download_url
-from providers.alldebrid.translation import observation_from_native, resource_from_native, translate_error
+from providers.alldebrid.translation import (
+    file_manifest_from_files_response, observation_from_native, resource_from_native, translate_error,
+)
 from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
 from transfers.models import (
@@ -52,8 +54,9 @@ class AllDebridProvider:
         self.descriptor = IntegrationDescriptor(
             "alldebrid", "AllDebrid",
             frozenset({Capability.RESOLVE, Capability.REFRESH, Capability.METADATA,
-                       Capability.RESOURCE_CREATION, Capability.RESOURCE_LOOKUP,
-                       Capability.INVENTORY, Capability.CLEANUP, Capability.HEALTH}),
+                       Capability.FILE_MANIFEST, Capability.RESOURCE_CREATION,
+                       Capability.RESOURCE_LOOKUP, Capability.INVENTORY,
+                       Capability.CLEANUP, Capability.HEALTH}),
             request_types=frozenset({"magnet", "torrent", "http", "https"}),
             enabled=bool(api_key) or client is not None,
         )
@@ -113,7 +116,20 @@ class AllDebridProvider:
                 raise TransferError(NormalizedError(Domain.PROVIDER, Category.INVALID_ADAPTER_RESPONSE,
                                                     Stage.RECONCILIATION, integration_id=self.descriptor.id))
             return ProviderObservation(resource, ResourceState.ABSENT)
-        return observation_from_native(matches[0], resource=resource)
+        observation = observation_from_native(matches[0], resource=resource)
+        # Provider-local fallback: an AVAILABLE status without an inline file tree
+        # can still yield the complete neutral manifest from the existing file
+        # endpoint. Core never learns which endpoint produced the facts.
+        if observation.state == ResourceState.AVAILABLE and observation.file_manifest is None:
+            try:
+                files = await self._call(self.client.get_magnet_files, [native_id],
+                                         stage=Stage.CANDIDATE_PREPARATION)
+            except TransferError:
+                files = None
+            tree = file_manifest_from_files_response(files, native_id)
+            if tree is not None:
+                observation = replace(observation, file_manifest=tree)
+        return observation
 
     @normalized_boundary(Stage.RECONCILIATION)
     async def inventory(self) -> ResourceSnapshot:

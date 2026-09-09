@@ -20,6 +20,9 @@ _PROVIDER_CAPABILITIES = {
     Capability.INVENTORY: Inventory, Capability.HEALTH: Health,
     Capability.RESOURCE_LOOKUP: ResourceLookup,
     Capability.METADATA: Manifest,
+    # A neutral early file-manifest requires ordinary resource observation; it
+    # does not imply provider ownership of selection policy.
+    Capability.FILE_MANIFEST: ResourceLookup,
 }
 
 

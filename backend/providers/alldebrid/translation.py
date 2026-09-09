@@ -20,8 +20,8 @@ from transfers.errors import (
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.models import (
-    Ownership, ProviderObservation, ProviderResource, ResourceState,
-    TransferProgress, TransferRequest,
+    FileManifest, FileManifestEntry, Ownership, ProviderObservation, ProviderResource,
+    ResourceState, TransferProgress, TransferRequest,
 )
 
 
@@ -143,6 +143,52 @@ def resource_from_native(native: dict, *, ownership: Ownership = Ownership.OBSER
                             uuid5(NAMESPACE_URL, f"alldebrid:resource:{native_id}").hex)
 
 
+def _manifest_entries(nodes, prefix: str = "") -> list[FileManifestEntry]:
+    """Flatten AllDebrid's nested file representation into neutral entries.
+
+    Reads only ``n`` (name), ``s`` (size) and ``e`` (child list). Any download
+    link (``l``) or capability URL on a native node is discarded here.
+    """
+    entries: list[FileManifestEntry] = []
+    for node in nodes or ():
+        if not isinstance(node, dict):
+            continue
+        name = str(node.get("n") or node.get("name") or "").strip()
+        children = node.get("e")
+        current = f"{prefix}/{name}".strip("/") if name else prefix
+        if isinstance(children, list):
+            entries.extend(_manifest_entries(children, current))
+            continue
+        if not name:
+            continue
+        try:
+            size = max(0, int(node.get("s") or node.get("size") or 0))
+        except (TypeError, ValueError, OverflowError):
+            size = 0
+        entries.append(FileManifestEntry(name, current or name, size))
+    return entries
+
+
+def file_manifest_from_native(native: dict) -> FileManifest | None:
+    """Neutral early FileManifest from a status record's file tree, or ``None``.
+
+    Absent/empty tree yields ``None``: the provider reports no selectable
+    manifest until it has a complete authoritative tree.
+    """
+    entries = _manifest_entries(native.get("files"))
+    return FileManifest(tuple(entries)) if entries else None
+
+
+def file_manifest_from_files_response(records, native_id: str) -> FileManifest | None:
+    """Neutral FileManifest from a /magnet/files response (links discarded)."""
+    for record in records or ():
+        if isinstance(record, dict) and str(record.get("id")) == str(native_id):
+            entries = _manifest_entries(record.get("files"))
+            if entries:
+                return FileManifest(tuple(entries))
+    return None
+
+
 def observation_from_native(native: dict, *, resource: ProviderResource | None = None,
                             request: TransferRequest | None = None) -> ProviderObservation:
     resource = resource or resource_from_native(native)
@@ -155,10 +201,19 @@ def observation_from_native(native: dict, *, resource: ProviderResource | None =
         raise TransferError(NormalizedError(Domain.PROVIDER, Category.INVALID_ADAPTER_RESPONSE,
                                             Stage.RECONCILIATION, integration_id="alldebrid")) from exc
     description = str(native.get("status") or "").casefold()
+    # An upload response can expose an explicit readiness fact before any status
+    # poll. Precedence: explicit statusCode/status_code -> existing translation;
+    # else native ready boolean; else conservative existing behavior.
+    has_status_code = "statusCode" in native or "status_code" in native
+    ready = native.get("ready")
     error = None
     if "expired" in description or "files removed from cache" in description:
         state = ResourceState.EXPIRED
         error = error_from_code("MAGNET_LINKS_REMOVED", native.get("status"), stage=Stage.RECONCILIATION)
+    elif not has_status_code and ready is True:
+        state = ResourceState.AVAILABLE
+    elif not has_status_code and ready is False:
+        state = ResourceState.PREPARING
     elif code == 4:
         state = ResourceState.AVAILABLE
     elif code in (0, 1, 2, 3):
@@ -186,4 +241,5 @@ def observation_from_native(native: dict, *, resource: ProviderResource | None =
                                   fingerprint, "alldebrid")
     return ProviderObservation(resource, state,
                                str(native.get("filename") or native.get("name") or ""),
-                               fingerprint, progress, error, request)
+                               fingerprint, progress, error, request,
+                               file_manifest=file_manifest_from_native(native))

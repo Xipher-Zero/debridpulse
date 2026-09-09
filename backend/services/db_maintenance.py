@@ -34,6 +34,10 @@ TABLES = [
     "transfer_controls",
     "transfer_requests",
     "provider_resources",
+    "transfer_file_manifests",
+    "transfer_file_manifest_entries",
+    "transfer_file_selections",
+    "transfer_file_selection_entries",
     "resolution_attempts",
     "route_attempt_provenance",
     "execution_attempts",
@@ -57,6 +61,10 @@ _TABLE_ORDER = {
     "transfer_controls": "key",
     "transfer_requests": "id",
     "provider_resources": "id",
+    "transfer_file_manifests": "id",
+    "transfer_file_manifest_entries": "manifest_id,ordinal",
+    "transfer_file_selections": "id",
+    "transfer_file_selection_entries": "selection_id,entry_id",
     "resolution_attempts": "id",
     "route_attempt_provenance": "transfer_id,ordinal",
     "execution_attempts": "id",
@@ -242,6 +250,12 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         # ordinary integration disablement never reaches this path.
         await db.execute("DELETE FROM integration_runtime_state")
         await db.execute("DELETE FROM transfer_input_challenges")
+        # File-selection provenance is deleted child-first so no orphan can
+        # outlive an explicit whole-database wipe.
+        await db.execute("DELETE FROM transfer_file_selection_entries")
+        await db.execute("DELETE FROM transfer_file_selections")
+        await db.execute("DELETE FROM transfer_file_manifest_entries")
+        await db.execute("DELETE FROM transfer_file_manifests")
         for table in (
             "application_events", "postprocess_attempts", "transfer_outcomes",
             "execution_attempt_provenance", "route_attempt_provenance",

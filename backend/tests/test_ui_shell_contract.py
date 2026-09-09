@@ -32,8 +32,8 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
     assert not (STATIC / "style-legacy.css").exists()
     index = read(INDEX)
     assert "/style.css?v=15" in index
-    assert "/style-v11.css?v=27" in index
-    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=27")
+    assert "/style-v11.css?v=28" in index
+    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=28")
 
     overlay = read(V11_STYLE)
     imports = (

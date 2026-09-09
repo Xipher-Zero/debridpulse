@@ -36,3 +36,10 @@ tests/test_universal_lifecycle.py::test_multiple_mirrors_keep_one_physical_artif
 tests/test_universal_parity.py::test_resume_all_obeys_capacity_and_releases_parked_successors
 tests/test_two_provider_checkpoint_documentation.py
 tests/test_license_policy.py
+# Universal file-selection / manifest overlay (1.0.12): AllDebrid is only the
+# first provider to claim FILE_MANIFEST; the core, API, and executor boundary
+# stay provider-neutral. Added with the Gate B two-provider integration.
+tests/test_file_selection_contract.py
+tests/test_file_selection_lifecycle.py
+tests/test_file_selection_persistence.py
+tests/test_file_selection_api.py

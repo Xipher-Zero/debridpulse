@@ -52,6 +52,29 @@ The current qualified development slice is AllDebrid + General HTTP & HTTPS over
 
 Deferred Items 12–16 remain future work, including FTP, SCP, SFTP/SSH, rsync, additional providers/executors/dependencies, and richer routing/failover behavior where the roadmap later requires it. Saved credential discovery/persistence and protocol-specific authentication UI are not introduced here.
 
+## Universal file-selection / manifest overlay
+
+The v1.0.12 universal torrent file-selection capability is provider-neutral: a
+provider declares `Capability.FILE_MANIFEST` and reports facts only, while the
+Universal Transfer Core owns ALL-vs-subset policy, the 60s/120s windows, durable
+per-provider-resource selection generations, SQLite `BEGIN IMMEDIATE`
+Confirm-vs-materialization serialization, fail-closed executable reconciliation,
+and final `SourceEntry` filtering. The executor remains selection-blind. Items
+12–16 remain intentionally deferred and this overlay does not change that.
+
+| Current contract | Canonical regression owners |
+| --- | --- |
+| Neutral capability/identity, pure gate, reconciliation, no wall-clock in policy | `test_file_selection_contract.py`, `test_universal_contracts.py`, `test_universal_boundaries.py` |
+| Fake-provider-driven cached/uncached lifecycle, 60s/120s windows, restart survival, executor-boundary proof | `test_file_selection_lifecycle.py` |
+| Additive schema, backup/wipe, FK integrity, per-resource generation across re-resolution, two-phase crash recovery, Confirm-vs-materialization concurrency | `test_file_selection_persistence.py` |
+| Dedicated API, `SelectionOutcome` transport codes, fixed public whitelist, A→B re-resolution regression, durable browser event | `test_file_selection_api.py` |
+| AllDebrid adapter capability, `ready`-flag initial availability, nested-tree → neutral `FileManifest` without links, file-list fallback | `test_alldebrid_provider_contract.py` |
+| One shared modal shell / coordinator, `ui-detail-candidates.js` no longer wraps the modal globals, one file-selection runtime + style owner | `test_ui_presentation_ownership_contract.py` |
+| Browser selector: auto-open rules, tri-state tree, countdown from server deadline, stale-409 refresh, Close/X parity, Cancel Transfer routing | `frontend/browser/file-selection.spec.js`, `frontend/browser/details-candidates.spec.js` |
+
+`backend/tests/two_provider_checkpoint_qualification.txt` now also composes the
+four `test_file_selection_*` production-path modules.
+
 ## Historical migration census
 
 `LEGACY_TEST_MIGRATION.json` remains a traceability artifact for the earlier Universal Transfer cutover. Its historical stage labels do not define current ownership or current support. Real historical bugs keep their permanent regression owners even when the implementation layer that originally exposed them has been removed.

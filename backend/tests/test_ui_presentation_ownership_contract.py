@@ -136,3 +136,108 @@ def test_import_existing_backend_capability_and_direct_source_metadata_remain() 
     assert "btn-import-existing" in read("ui-processing-presentation.js")
     assert 'status_group="direct_sources"' in definition
     assert 'status_group_label="Direct Sources"' in definition
+
+
+# ── Universal file-selection modal ownership (specification section 62) ──────
+
+def _all_js() -> list[Path]:
+    return sorted(STATIC.glob("*.js"))
+
+
+def test_shared_modal_shell_has_exactly_one_overlay_modal_and_footer() -> None:
+    index = read("index.html")
+    assert index.count('id="overlay"') == 1
+    assert index.count('id="modal"') == 1
+    assert index.count('id="modal-footer"') == 1
+    modal_fragment = index[index.index('id="modal"'):index.index('id="toasts"')]
+    assert 'id="modal-body"' in modal_fragment
+    assert 'id="modal-footer"' in modal_fragment
+    assert 'class="modal-ftr dp-card__footer"' in modal_fragment
+    assert "dp-file-selection-overlay" not in index
+    for name in _all_js():
+        assert "dp-file-selection-overlay" not in name.read_text(encoding="utf-8"), name.name
+
+
+def test_app_js_is_the_sole_modal_coordinator_and_showdetail_owner() -> None:
+    app = read("app.js")
+    assert "const DPModal = (function" in app
+    assert "window.DPModal = DPModal" in app
+    assert "window.showDetail = showDetail" in app
+    assert "window.closeModal = closeModal" in app
+    assert "debridpulse:detail-rendered" in app
+    assert "debridpulse:detail-closed" in app
+    assert "requestModalClose" in app
+    for name in _all_js():
+        if name.name == "app.js":
+            continue
+        source = name.read_text(encoding="utf-8")
+        assert "window.showDetail =" not in source, name.name
+        assert "window.showDetail=" not in source, name.name
+        assert "window.closeModal =" not in source, name.name
+        assert "window.closeModal=" not in source, name.name
+
+
+def test_detail_candidates_listens_to_lifecycle_events_without_wrapping_globals() -> None:
+    runtime = read("ui-detail-candidates.js")
+    assert "window.showDetail" not in runtime
+    assert "window.closeModal" not in runtime
+    assert "dpCandidateWrapped" not in runtime
+    assert "debridpulse:detail-rendered" in runtime
+    assert "debridpulse:detail-closed" in runtime
+
+
+def test_file_selection_has_one_bounded_runtime_and_style_owner() -> None:
+    assert (STATIC / "ui-file-selection.js").exists()
+    assert (STATIC / "ui-file-selection.css").exists()
+
+    style = read("style-v11.css")
+    assert style.count("/ui-file-selection.css") == 1
+    assert "@import url('/ui-file-selection.css?v=1');" in style
+
+    provider = read("ui-provider-status.js")
+    assert provider.count("/ui-file-selection.js?v=1") == 1
+    assert "'DPFileSelection'" in provider
+
+    runtime = read("ui-file-selection.js")
+    assert "window.DPFileSelection = Object.freeze" in runtime
+    assert "createElement('link')" not in runtime
+    assert "createElement('style')" not in runtime
+    assert "rel = 'stylesheet'" not in runtime
+    assert "'/ui-file-selection.css" not in runtime
+    for banned in ("ui-correction", "ui-compat"):
+        assert banned not in runtime
+        assert banned not in style
+    assert "refreshAuthoritative" in runtime
+    for native in ("alldebrid", "statusCode", "magnet/files", "provider_resource_id", "selection_id"):
+        assert native not in runtime
+
+    marker_owners = [
+        path.name for path in _all_js()
+        if "window.DPFileSelection = Object.freeze" in path.read_text(encoding="utf-8")
+    ]
+    assert marker_owners == ["ui-file-selection.js"]
+
+
+def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
+    provider = read("ui-provider-status.js")
+    ordered = (
+        "/ui-toast-contract.js?v=2",
+        "/ui-processing-presentation.js?v=1",
+        "/ui-dashboard-transfer-presentation.js?v=3",
+        "/ui-downloads-presentation.js?v=2",
+        "/ui-activity-log-runtime.js?v=1",
+        "/ui-settings-archive-passwords.js?v=1",
+        "/ui-file-selection.js?v=1",
+    )
+    positions = [provider.index(item) for item in ordered]
+    assert positions == sorted(positions)
+    assert "bootPresentationOwners()" in provider
+
+
+def test_details_exposes_a_stable_file_selection_action_host() -> None:
+    app = read("app.js")
+    assert 'id="dp-detail-actions"' in app
+    runtime = read("ui-file-selection.js")
+    assert "dp-detail-actions" in runtime
+    assert "Select files" in runtime
+    assert "Change file selection" in runtime

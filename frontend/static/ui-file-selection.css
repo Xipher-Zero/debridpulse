@@ -1,0 +1,235 @@
+/* DebridPulse v1.0.12 universal file-selection modal presentation.
+ * Consumes the shared #overlay / #modal shell and the canonical dp-card
+ * primitives. Owns only the file-tree, summary, footer, and Details entry
+ * point composition. Theme-aware through the semantic --dp-* tokens.
+ */
+
+/* ── Shared footer host ─────────────────────────────────────────────────── */
+body.dp-v11-structural #modal > #modal-footer {
+  flex: 0 0 auto;
+}
+body.dp-v11-structural #modal:not([data-dp-modal-mode="file-selection"]) > #modal-footer {
+  display: none;
+}
+
+/* ── Details manual entry point ─────────────────────────────────────────── */
+.dp-detail-actions:empty {
+  display: none;
+}
+.dp-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--dp-space-2, 8px);
+  margin-bottom: 14px;
+}
+.dp-file-selection-summary {
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+/* ── Selector body ─────────────────────────────────────────────────────── */
+body.dp-v11-structural #modal[data-dp-modal-mode="file-selection"] .modal-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dp-fs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.dp-fs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px var(--dp-card-padding, 16px);
+  border-bottom: 1px solid var(--dp-border-subtle);
+  background: var(--dp-panel-header-surface, var(--dp-surface-2));
+}
+.dp-fs-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-fs-toggle-all {
+  flex: 0 0 auto;
+}
+
+.dp-fs-tree {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 46vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 6px 0;
+}
+
+.dp-fs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 2px var(--dp-card-padding, 16px) 2px
+    calc(var(--dp-card-padding, 16px) + (var(--dp-fs-depth, 0) * 18px));
+}
+.dp-fs-row--file:hover,
+.dp-fs-row--folder:hover {
+  background: var(--dp-table-row-hover, var(--dp-surface-2));
+}
+
+.dp-fs-caret {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dp-text-muted);
+  cursor: pointer;
+}
+.dp-fs-caret--spacer {
+  cursor: default;
+}
+.dp-fs-caret-glyph {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  transition: transform .12s ease;
+}
+.dp-fs-caret[aria-expanded="true"] .dp-fs-caret-glyph {
+  transform: rotate(90deg);
+}
+
+.dp-fs-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  cursor: pointer;
+}
+.dp-fs-check {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--dp-accent-purple);
+}
+.dp-fs-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-fs-name--folder {
+  font-family: var(--dp-font-sans);
+  font-weight: 600;
+}
+.dp-fs-size {
+  flex: 0 0 auto;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 11px;
+}
+
+.dp-fs-children[hidden] {
+  display: none;
+}
+
+.dp-fs-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px var(--dp-card-padding, 16px);
+  border-top: 1px solid var(--dp-border-subtle);
+  background: var(--dp-surface-2);
+}
+.dp-fs-count {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dp-fs-bytes {
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 11px;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+body.dp-v11-structural #modal[data-dp-modal-mode="file-selection"] > #modal-footer {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px var(--dp-card-padding, 16px) 14px;
+}
+.dp-fs-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dp-fs-foot-note,
+.dp-fs-foot-countdown {
+  margin: 0;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.dp-fs-foot-countdown[hidden] {
+  display: none;
+}
+.dp-fs-clock {
+  color: var(--dp-text-primary);
+  font-family: var(--dp-font-mono);
+  font-weight: 600;
+}
+.dp-fs-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dp-fs-actions-spacer {
+  flex: 1 1 auto;
+}
+.dp-fs-confirm[disabled] {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+  .dp-fs-tree { max-height: 40vh; }
+  .dp-fs-actions {
+    flex-wrap: wrap;
+  }
+  .dp-fs-actions-spacer {
+    flex-basis: 100%;
+    height: 0;
+  }
+  .dp-fs-cancel {
+    order: 3;
+    width: 100%;
+  }
+}

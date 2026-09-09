@@ -44,10 +44,17 @@ def test_detail_modal_opens_before_detail_request_finishes():
         "function closeModal", 1
     )[0]
 
+    # The shared modal coordinator opens the overlay synchronously before the
+    # detail fetch is awaited, so the modal chrome is visible immediately.
     assert detail.index(
-        "overlay.classList.add('open')"
+        "DPModal.open({mode: 'details'"
     ) < detail.index(
         "await api('GET',`/torrents/${id}`)"
+    )
+
+    coordinator = js.split("const DPModal = (function", 1)[1]
+    assert coordinator.index("overlay.classList.add('open')") < coordinator.index(
+        "function requestModalClose"
     )
 
     assert "Loading transfer details…" in detail

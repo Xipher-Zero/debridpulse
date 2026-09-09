@@ -17,6 +17,7 @@ class Capability(StrEnum):
     RESOLVE = "resolve"
     AVAILABILITY = "availability"
     METADATA = "metadata"
+    FILE_MANIFEST = "file_manifest"
     REFRESH = "refresh"
     ALTERNATES = "alternates"
     RESOURCE_CREATION = "resource_creation"
@@ -262,6 +263,28 @@ class TransferProgress:
 
 
 @dataclass(frozen=True)
+class FileManifestEntry:
+    """One neutral file fact for human selection: safe name, relative path, size.
+
+    Carries no URL, endpoint, signed token, header, credential, provider-native
+    decision, selection flag, timeout, or executor information.
+    """
+    name: str
+    relative_path: str
+    expected_bytes: int = 0
+
+
+@dataclass(frozen=True)
+class FileManifest:
+    """A complete provider-neutral file-level tree observed for one resource.
+
+    A provider reports ``None`` until it has a complete authoritative tree;
+    partial trees are never exposed as a selectable manifest.
+    """
+    entries: tuple[FileManifestEntry, ...]
+
+
+@dataclass(frozen=True)
 class ProviderObservation:
     resource: ProviderResource
     state: ResourceState
@@ -270,6 +293,7 @@ class ProviderObservation:
     progress: TransferProgress = field(default_factory=TransferProgress)
     error: NormalizedError | None = None
     request: TransferRequest | None = field(default=None, repr=False)
+    file_manifest: FileManifest | None = None
 
 
 @dataclass(frozen=True)

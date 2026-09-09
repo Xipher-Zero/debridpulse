@@ -322,6 +322,44 @@ class ApplicationService:
             await self._publish(transfer_id)
             return {"ok": True, "file_id": artifact_id, "blocked": not selected}
 
+    # -- Universal file selection (specification sections 34-40) ---------------
+    # Neutral commands over the durable core selection state. No provider or
+    # executor is ever contacted here; the engine already owns provider I/O and
+    # the 60s/120s timing through its injected clock.
+
+    async def file_selection(self, transfer_id):
+        await self.require(transfer_id)
+        return await self.repository.file_selection_presentation(
+            transfer_id, now=self.engine.clock(),
+        )
+
+    async def file_selection_offers(self):
+        return await self.repository.active_file_selection_offers(now=self.engine.clock())
+
+    async def confirm_file_selection(self, transfer_id, manifest_id, entry_ids):
+        async with self.application_operation():
+            await self.require(transfer_id)
+            result = await self.repository.confirm_file_selection(
+                transfer_id, manifest_id, entry_ids, now=self.engine.clock(),
+            )
+            if result.outcome == "confirmed":
+                # A confirmed subset releases any active cached hold; re-drive the
+                # ordinary resolution wakeup so materialization proceeds at once.
+                self.resolution_wakeup.set()
+                await self._publish(transfer_id)
+            return result
+
+    async def dismiss_file_selection(self, transfer_id, manifest_id):
+        async with self.application_operation():
+            await self.require(transfer_id)
+            result = await self.repository.dismiss_file_selection(
+                transfer_id, manifest_id, now=self.engine.clock(),
+            )
+            if result.outcome == "dismissed" and result.detail == "closed_hold":
+                self.resolution_wakeup.set()
+                await self._publish(transfer_id)
+            return result
+
     async def preview(self, transfer_id):
         await self.require(transfer_id)
         item = await self.repository.presentation(transfer_id, details=True)

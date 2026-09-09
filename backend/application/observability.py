@@ -17,6 +17,14 @@ class Observability:
             # logical submission has a stable complete/partial disposition.
             await self.consolidation_events.finalize_pending()
         for event in await self.repository.pending_events():
+            if event["kind"] == "file_selection_available":
+                # A new automatically presentable multi-file selection offer.
+                # No provider identity is sent to the browser for selection
+                # policy; the browser reads authoritative state from the
+                # dedicated file-selection API.
+                if await self.repository.claim_event(event["id"]):
+                    await publish("file_selection_available", {"transfer_id": int(event["transfer_id"])})
+                continue
             item = await self.repository.presentation(event["transfer_id"], details=True)
             if item is None or not await self.repository.claim_event(event["id"]):
                 continue

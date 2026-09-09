@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.12 development — Universal torrent file-selection / manifest overlay
+
+- Added a provider-neutral `FILE_MANIFEST` capability: a capable provider reports a neutral early `FileManifest` (safe name, relative path, expected size only — links and native context discarded at the adapter boundary) on `ProviderObservation` before the core commits that resource's executable manifest. AllDebrid is the first adapter; no selection policy exists in any provider or executor.
+- The Universal Transfer Core owns every selection decision: ALL-vs-explicit-subset policy (default remains ALL), a 60-second automatic presentation window, a 120-second cached decision hold that applies only to a resource whose initial observation was `AVAILABLE` and never retroactively to one that started `PREPARING`, durable per-`(request, provider resource)` selection generations that a re-resolution never inherits, stale-manifest rejection, fail-closed executable-manifest reconciliation that never broadens back to ALL, and the final `SourceEntry` filtering before canonical child fan-out.
+- Provider-side acquisition/resolution starts immediately and never waits on the browser. Only local materialization / executor dispatch is ever held.
+- The Confirm-vs-materialization race is serialized entirely by durable SQLite (`BEGIN IMMEDIATE` on the selection-generation row plus a conditional update); an in-memory lock is never the correctness authority. All 60s/120s timing derives from the injected core clock with persisted absolute deadlines that survive restart without resetting.
+- Added four additive current-schema tables with backup/wipe ownership; `db/migrations/v112.py` is untouched. Selection/manifest provenance is durable and never reconstructed from URLs, and does not survive an explicit database wipe.
+- Added a dedicated file-selection API (`GET /api/file-selections/offers`, `GET|POST /api/torrents/{id}/file-selection[/confirm|/dismiss]`) that projects a fixed public whitelist — `selection_id`, `provider_resource_id`, `provider_id`, native resource ids, endpoints, signed URLs, tokens, and executor state never cross the browser boundary. The browser identifies mutable state by transfer context plus `manifest_id`, and a durable `file_selection_available` event carries only `{transfer_id}`.
+- Added one bounded frontend owner (`window.DPFileSelection`) reusing the single shared `#overlay`/`#modal` shell with a new `#modal-footer` host. `app.js` is now the sole modal coordinator and `showDetail`/`closeModal` owner and emits `debridpulse:detail-rendered` / `debridpulse:detail-closed`; `ui-detail-candidates.js` no longer monkey-patches the modal globals. The countdown is presentation-only and never authorizes ALL locally; Confirm posts `manifest_id` + `entry_ids` only and a `409` refreshes authoritative state instead of claiming success.
+- The aria2 executor is unchanged and continues to receive ordinary canonical candidates only; it knows nothing about torrent file selection. Downloads/Dashboard bounded projections are unchanged.
+
 ## v1.0.12 development — Two-provider canonical checkpoint
 
 - Converged the completed Items 0–11 architecture into the early Stage 17/18 **two-provider canonical development checkpoint**; this is not final v1.0.12 release convergence and Items 12–16 remain intentionally deferred.

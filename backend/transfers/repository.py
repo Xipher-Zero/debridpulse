@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from db.database import get_db
 from transfers import codec
+from transfers import file_selection as fs
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.models import ExecutionState, TransferProgress
@@ -542,3 +543,507 @@ class TransferRepository(_QualifiedTransferRepository):
             if projection["candidate_count"] > 1:
                 file_row["acquisition_candidates"] = projection["acquisition_candidates"]
         return result
+
+    # -------------------------------------------------------------------------
+    # Universal file-selection manifest overlay (specification sections 13-38).
+    #
+    # The repository stores and atomically transitions durable facts; it never
+    # sources wall time for product timing. Core passes ``now`` and absolute
+    # deadlines derived from the injected engine clock. The
+    # Confirm-vs-materialization race is serialized entirely by SQLite
+    # ``BEGIN IMMEDIATE`` on the ``transfer_file_selections`` row; an in-memory
+    # lock is never the correctness authority.
+    #
+    # Selection provenance follows the provider resource that produced the file
+    # facts. Each row in ``transfer_file_selections`` is one selection
+    # *generation* keyed by (request_id, provider_resource_id). A request that is
+    # re-resolved onto a new provider resource gets a fresh generation; the prior
+    # generation stays as historical truth and is never inherited or overwritten.
+    # Every mutating/materializing operation binds to a specific generation, not
+    # merely to the durable request id.
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    async def _selection_generation(db, request_id: str, provider_resource_id: str):
+        return await db.fetchone(
+            "SELECT * FROM transfer_file_selections WHERE request_id=? AND provider_resource_id=?",
+            (request_id, provider_resource_id),
+        )
+
+    @staticmethod
+    async def _current_generation(db, transfer_id: int):
+        """The transfer's current selection generation: the newest one.
+
+        A re-resolution onto a new provider resource always creates a strictly
+        newer generation, so the newest row is the live selector; older
+        generations remain only as historical truth.
+        """
+        return await db.fetchone(
+            """SELECT * FROM transfer_file_selections WHERE transfer_id=?
+               ORDER BY created_at DESC, id DESC LIMIT 1""",
+            (transfer_id,),
+        )
+
+    @classmethod
+    async def _selection_by_manifest(cls, db, transfer_id: int, manifest_id: str):
+        """Resolve the CURRENT selection generation only if it observed this
+        manifest. ``manifest_id`` is UUIDv5(provider-resource-id : digest), so a
+        stale browser tab holding an older generation's manifest id resolves to
+        nothing here and the caller returns a stale-manifest conflict — never a
+        re-interpretation against the newer generation.
+        """
+        current = await cls._current_generation(db, transfer_id)
+        if current is not None and str(current["manifest_id"] or "") == str(manifest_id):
+            return current
+        return None
+
+    @staticmethod
+    def _selection_state(row, file_count: int) -> fs.SelectionWindowState:
+        return fs.SelectionWindowState(
+            decision=str(row["decision"]),
+            initially_available=bool(row["initially_available"]),
+            manifest_wait_until=float(row["manifest_wait_until"]),
+            hold_until=row["hold_until"],
+            manifest_id=row["manifest_id"],
+            manifest_file_count=int(file_count),
+            manifest_committed_at=row["manifest_committed_at"],
+            auto_offer_dismissed_at=row["auto_offer_dismissed_at"],
+        )
+
+    @staticmethod
+    async def _manifest_file_count(db, manifest_id) -> int:
+        if not manifest_id:
+            return 0
+        row = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM transfer_file_manifest_entries WHERE manifest_id=?",
+            (manifest_id,),
+        )
+        return int((row or {}).get("n") or 0)
+
+    async def begin_file_selection_window(
+        self, request_id: str, transfer_id: int, provider_resource_id: str,
+        provider_id: str, *, initially_available: bool, now: float,
+    ):
+        """Idempotently open the durable file-selection generation for
+        (request, provider resource).
+
+        A different provider resource for the same durable request creates a new
+        generation; it never overwrites the prior generation and never inherits
+        its explicit subset. The 60-second automatic manifest window is anchored
+        to ``now`` here and is never reset by a later call, an application
+        restart, or a re-resolution. The factual initial-availability
+        observation is captured once per generation.
+        """
+        selection_id = fs.selection_identity(request_id, provider_resource_id)
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (transfer_id,))
+            if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
+                await db.rollback()
+                return None
+            if not await db.fetchone("SELECT 1 FROM transfer_requests WHERE id=? AND transfer_id=?", (request_id, transfer_id)):
+                await db.rollback()
+                return None
+            if not await db.fetchone("SELECT 1 FROM provider_resources WHERE id=?", (provider_resource_id,)):
+                await db.rollback()
+                return None
+            await db.execute(
+                """INSERT OR IGNORE INTO transfer_file_selections(
+                        id, request_id, transfer_id, provider_resource_id, provider_id,
+                        initially_available, manifest_wait_until, created_at, updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?)""",
+                (selection_id, request_id, transfer_id, provider_resource_id, str(provider_id),
+                 int(bool(initially_available)), fs.manifest_wait_deadline(now), now, now),
+            )
+            row = await self._selection_generation(db, request_id, provider_resource_id)
+            await db.commit()
+        return row
+
+    async def record_file_manifest(self, request_id: str, provider_resource_id: str, manifest, *, now: float):
+        """Validate and persist a neutral early manifest, then bind it to the
+        (request, provider resource) selection generation.
+
+        Returns the canonical manifest on success, or ``None`` when there is no
+        open generation for this resource, when mutation is already closed, or
+        when the optional early manifest is malformed. A malformed early manifest
+        is deliberately non-fatal before explicit confirmation: the selector
+        stays unavailable and default ALL keeps governing the full transfer.
+        """
+        async with get_db() as db:
+            sel = await self._selection_generation(db, request_id, provider_resource_id)
+            if not sel or sel["manifest_committed_at"] is not None or sel["decision"] != "pending":
+                return None
+            try:
+                canonical = fs.canonicalize_manifest(provider_resource_id, manifest)
+            except fs.ManifestInvalid:
+                return None
+            await db.execute("BEGIN IMMEDIATE")
+            sel = await self._selection_generation(db, request_id, provider_resource_id)
+            if not sel or sel["manifest_committed_at"] is not None or sel["decision"] != "pending":
+                await db.rollback()
+                return None
+            await db.execute(
+                """INSERT OR IGNORE INTO transfer_file_manifests(
+                        id, transfer_id, request_id, provider_resource_id, provider_id,
+                        manifest_digest, observed_at)
+                    VALUES(?,?,?,?,?,?,?)""",
+                (canonical.manifest_id, sel["transfer_id"], request_id, provider_resource_id,
+                 sel["provider_id"], canonical.manifest_digest, now),
+            )
+            for entry in canonical.entries:
+                await db.execute(
+                    """INSERT OR IGNORE INTO transfer_file_manifest_entries(
+                            manifest_id, entry_id, ordinal, name, relative_path, expected_bytes)
+                        VALUES(?,?,?,?,?,?)""",
+                    (canonical.manifest_id, entry.entry_id, entry.ordinal, entry.name,
+                     entry.relative_path, entry.expected_bytes),
+                )
+            assignments = ["manifest_id=?", "updated_at=?"]
+            params = [canonical.manifest_id, now]
+            # The 120-second decision hold begins only when a populated multi-file
+            # selector is usable, and only for an initially-available resource.
+            # It is anchored once and never restarted.
+            hold_until = sel["hold_until"]
+            if bool(sel["initially_available"]) and canonical.file_count > 1 and hold_until is None:
+                hold_until = fs.decision_hold_deadline(now)
+                assignments.append("hold_until=?")
+                params.append(hold_until)
+            # An offer is queued (and the durable browser event emitted, once)
+            # only when this manifest is genuinely auto-presentable now: multi-file,
+            # not previously dismissed, and inside the 60s window or an active
+            # cached hold. Repeated provider polls cannot re-queue it.
+            bound_state = fs.SelectionWindowState(
+                decision="pending", initially_available=bool(sel["initially_available"]),
+                manifest_wait_until=float(sel["manifest_wait_until"]), hold_until=hold_until,
+                manifest_id=canonical.manifest_id, manifest_file_count=canonical.file_count,
+                manifest_committed_at=None, auto_offer_dismissed_at=sel["auto_offer_dismissed_at"],
+            )
+            queue_offer = sel["auto_offer_queued_at"] is None and fs.auto_offer_active(bound_state, now)
+            if queue_offer:
+                assignments.append("auto_offer_queued_at=?")
+                params.append(now)
+            params.append(sel["id"])
+            await db.execute(
+                f"UPDATE transfer_file_selections SET {','.join(assignments)} WHERE id=?",
+                tuple(params),
+            )
+            if queue_offer:
+                await db.execute(
+                    "INSERT INTO application_events(transfer_id,kind,detail,claimed) VALUES(?,?,?,0)",
+                    (sel["transfer_id"], "file_selection_available", None),
+                )
+            await db.commit()
+        return canonical
+
+    async def file_selection_gate(self, request_id: str, provider_resource_id: str, *, now: float) -> str:
+        """Neutral gate: may executable child fan-out proceed for this
+        (request, provider resource)?
+
+        Atomically settles a still-``pending`` decision to durable ALL with a
+        neutral reason when a bounded window has elapsed or the manifest is
+        single-file. Returns one of :class:`fs.SelectionGate`.
+        """
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await self._selection_generation(db, request_id, provider_resource_id)
+            if not row:
+                await db.rollback()
+                return str(fs.SelectionGate.PROCEED)
+            file_count = await self._manifest_file_count(db, row["manifest_id"])
+            evaluation = fs.evaluate_gate(self._selection_state(row, file_count), now)
+            if (evaluation.resolve_decision is not None and row["decision"] == "pending"
+                    and row["manifest_committed_at"] is None):
+                await db.execute(
+                    """UPDATE transfer_file_selections
+                       SET decision=?, decision_reason=?, decision_at=?, updated_at=?
+                       WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
+                    (str(evaluation.resolve_decision), str(evaluation.resolve_reason), now, now, row["id"]),
+                )
+            await db.commit()
+        return str(evaluation.gate)
+
+    async def confirm_file_selection(
+        self, transfer_id: int, manifest_id: str, entry_ids, *, now: float,
+    ) -> "fs.SelectionCommandResult":
+        """Durably commit an explicit file subset, or lose the race to materialization.
+
+        The selection generation is resolved from (transfer, manifest): the
+        manifest id is bound to exactly one provider resource, so a stale browser
+        tab holding an older manifest id cannot reach a newer generation. The
+        ``BEGIN IMMEDIATE`` write lock on ``transfer_file_selections`` is the sole
+        correctness authority for the Confirm-vs-materialization race. Confirm
+        never reports success once the executable manifest is committed.
+        """
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await self._selection_by_manifest(db, transfer_id, str(manifest_id))
+            if not row:
+                await db.rollback()
+                return fs.SelectionCommandResult(str(fs.SelectionOutcome.CONFLICT), "stale_manifest")
+            if row["manifest_committed_at"] is not None:
+                await db.rollback()
+                return fs.SelectionCommandResult(
+                    str(fs.SelectionOutcome.CONFLICT), "materialization_committed",
+                    decision=str(row["decision"]), manifest_id=row["manifest_id"], committed=True,
+                )
+            if str(row["decision"]) == "all":
+                await db.rollback()
+                return fs.SelectionCommandResult(
+                    str(fs.SelectionOutcome.CONFLICT), "already_all",
+                    decision="all", manifest_id=row["manifest_id"],
+                )
+            known = {
+                r["entry_id"] for r in await db.fetchall(
+                    "SELECT entry_id FROM transfer_file_manifest_entries WHERE manifest_id=?", (manifest_id,))
+            }
+            requested, seen = [], set()
+            for value in (entry_ids or ()):
+                text = str(value)
+                if text in seen:
+                    await db.rollback()
+                    return fs.SelectionCommandResult(str(fs.SelectionOutcome.INVALID), "duplicate_selection")
+                seen.add(text)
+                requested.append(text)
+            if not requested:
+                await db.rollback()
+                return fs.SelectionCommandResult(str(fs.SelectionOutcome.INVALID), "empty_selection")
+            if len(requested) > fs.MAX_SELECTION_ENTRIES:
+                await db.rollback()
+                return fs.SelectionCommandResult(str(fs.SelectionOutcome.INVALID), "too_many_selected")
+            if not seen.issubset(known):
+                await db.rollback()
+                return fs.SelectionCommandResult(str(fs.SelectionOutcome.INVALID), "unknown_selection_entry")
+            existing = {
+                r["entry_id"] for r in await db.fetchall(
+                    "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (row["id"],))
+            }
+            if str(row["decision"]) == "explicit":
+                await db.rollback()
+                if existing == seen:
+                    return fs.SelectionCommandResult(
+                        str(fs.SelectionOutcome.CONFIRMED), "idempotent",
+                        decision="explicit", manifest_id=row["manifest_id"],
+                    )
+                return fs.SelectionCommandResult(
+                    str(fs.SelectionOutcome.CONFLICT), "selection_superseded",
+                    decision="explicit", manifest_id=row["manifest_id"],
+                )
+            for entry_id in requested:
+                await db.execute(
+                    "INSERT OR IGNORE INTO transfer_file_selection_entries(selection_id, manifest_id, entry_id) VALUES(?,?,?)",
+                    (row["id"], str(manifest_id), entry_id),
+                )
+            cursor = await db.execute(
+                """UPDATE transfer_file_selections
+                   SET decision='explicit', decision_reason=?, decision_at=?, updated_at=?
+                   WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
+                (str(fs.DecisionReason.CONFIRMED), now, now, row["id"]),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return fs.SelectionCommandResult(str(fs.SelectionOutcome.CONFLICT), "materialization_won")
+            await db.commit()
+        return fs.SelectionCommandResult(
+            str(fs.SelectionOutcome.CONFIRMED), "confirmed",
+            decision="explicit", manifest_id=str(manifest_id),
+        )
+
+    async def dismiss_file_selection(
+        self, transfer_id: int, manifest_id: str, *, now: float,
+    ) -> "fs.SelectionCommandResult":
+        """Record a Close/X. Releases an active cached hold immediately; otherwise
+        leaves default ALL and keeps the decision mutable for later Details use."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await self._selection_by_manifest(db, transfer_id, str(manifest_id))
+            if not row:
+                await db.rollback()
+                return fs.SelectionCommandResult(str(fs.SelectionOutcome.CONFLICT), "stale_manifest")
+            if row["manifest_committed_at"] is not None:
+                await db.rollback()
+                return fs.SelectionCommandResult(
+                    str(fs.SelectionOutcome.CONFLICT), "materialization_committed",
+                    decision=str(row["decision"]), committed=True,
+                )
+            file_count = await self._manifest_file_count(db, row["manifest_id"])
+            active_hold = (
+                bool(row["initially_available"]) and file_count > 1
+                and row["hold_until"] is not None and str(row["decision"]) == "pending"
+            )
+            if active_hold:
+                await db.execute(
+                    """UPDATE transfer_file_selections
+                       SET decision='all', decision_reason=?, decision_at=?,
+                           auto_offer_dismissed_at=?, updated_at=?
+                       WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
+                    (str(fs.DecisionReason.CLOSED), now, now, now, row["id"]),
+                )
+            else:
+                await db.execute(
+                    """UPDATE transfer_file_selections
+                       SET auto_offer_dismissed_at=?, updated_at=?
+                       WHERE id=? AND manifest_committed_at IS NULL""",
+                    (now, now, row["id"]),
+                )
+            await db.commit()
+        return fs.SelectionCommandResult(
+            str(fs.SelectionOutcome.DISMISSED), "closed_hold" if active_hold else "dismissed",
+            decision="all" if active_hold else str(row["decision"]), manifest_id=str(manifest_id),
+        )
+
+    async def commit_selected_manifest(self, record, full_entries, *, now: float):
+        """Filter the full executable manifest to the authorized subset and durably
+        record the materialization-commit fact for this provider resource.
+
+        The selection generation is bound to ``(record.id, record.resource.id)``:
+        a replacement provider resource for the same durable request can never
+        consume a prior resource's selection rows. Returns the authorized
+        ``tuple[SourceEntry, ...]``:
+
+        * no selection generation for this resource, or a settled ALL /
+          still-pending decision -> the full provider list;
+        * a confirmed EXPLICIT subset -> only the members proven to match the
+          executable manifest by normalized relative path and compatible size.
+
+        A confirmed explicit subset that can no longer be proven fails closed
+        with a neutral ``RESOURCE_STATE_CONFLICT`` and never broadens to ALL.
+
+        ``manifest_committed_at`` marks that core has *authorized* materialization
+        for this generation and frozen mutation. The child-request fan-out
+        (``repository.manifest``) is a following idempotent transaction; a crash
+        between the two is recovered by the engine re-driving observation ->
+        gate PROCEED -> this call (idempotent) -> fan-out (INSERT OR IGNORE).
+        """
+        full_entries = tuple(full_entries)
+        resource_id = record.resource.id if record.resource is not None else None
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = (
+                await self._selection_generation(db, record.id, resource_id)
+                if resource_id else None
+            )
+            if not row:
+                await db.rollback()
+                return full_entries
+            already = row["manifest_committed_at"] is not None
+            if str(row["decision"]) in ("pending", "all"):
+                authorized = full_entries
+                if not already:
+                    reason = row["decision_reason"] or str(fs.DecisionReason.DEFAULT_MATERIALIZATION)
+                    await db.execute(
+                        """UPDATE transfer_file_selections
+                           SET decision='all',
+                               decision_reason=COALESCE(decision_reason, ?),
+                               decision_at=COALESCE(decision_at, ?),
+                               manifest_committed_at=?, updated_at=?
+                           WHERE id=?""",
+                        (reason, now, now, now, row["id"]),
+                    )
+            else:
+                selected = await db.fetchall(
+                    """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
+                       FROM transfer_file_selection_entries s
+                       JOIN transfer_file_manifest_entries e
+                         ON e.manifest_id=s.manifest_id AND e.entry_id=s.entry_id
+                       WHERE s.selection_id=? ORDER BY e.ordinal""",
+                    (row["id"],),
+                )
+                if not selected:
+                    await db.rollback()
+                    raise TransferError(NormalizedError(
+                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
+                try:
+                    authorized = fs.reconcile_executable_subset(
+                        [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected],
+                        full_entries,
+                    )
+                except fs.SelectionUnprovable as exc:
+                    await db.rollback()
+                    raise TransferError(NormalizedError(
+                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                    )) from exc
+                if not already:
+                    await db.execute(
+                        "UPDATE transfer_file_selections SET manifest_committed_at=?, updated_at=? WHERE id=?",
+                        (now, now, row["id"]),
+                    )
+            await db.commit()
+        return authorized
+
+    async def file_selection_presentation(self, transfer_id: int, *, now: float):
+        """Safe core-only read model for one transfer's file selection.
+
+        Reads durable state only: no provider call, no executor handle, no
+        signed URL, no per-row Downloads-projection work.
+        """
+        async with get_db() as db:
+            row = await self._current_generation(db, transfer_id)
+            if row is None:
+                return None
+            file_count = await self._manifest_file_count(db, row["manifest_id"])
+            entries = []
+            if row["manifest_id"]:
+                entries = await db.fetchall(
+                    """SELECT entry_id, name, relative_path, expected_bytes, ordinal
+                       FROM transfer_file_manifest_entries WHERE manifest_id=? ORDER BY ordinal""",
+                    (row["manifest_id"],),
+                )
+            selected = [
+                r["entry_id"] for r in await db.fetchall(
+                    "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (row["id"],))
+            ]
+        state = self._selection_state(row, file_count)
+        return {
+            "eligible": True,
+            "mutable": fs.selection_mutable(state),
+            "selection_id": row["id"],
+            "request_id": row["request_id"],
+            "provider_resource_id": row["provider_resource_id"],
+            "manifest_id": row["manifest_id"],
+            "decision": str(row["decision"]),
+            "decision_reason": row["decision_reason"],
+            "file_count": file_count,
+            "total_size_bytes": sum(int(e["expected_bytes"] or 0) for e in entries),
+            "entries": [
+                {"entry_id": e["entry_id"], "name": e["name"],
+                 "relative_path": e["relative_path"], "size_bytes": int(e["expected_bytes"] or 0)}
+                for e in entries
+            ],
+            "selected_entry_ids": selected,
+            "auto_offer": fs.auto_offer_active(state, now),
+            "auto_offer_until": float(row["manifest_wait_until"]),
+            "decision_deadline": row["hold_until"],
+            "initially_available": bool(row["initially_available"]),
+            "server_now": float(now),
+        }
+
+    async def active_file_selection_offers(self, *, now: float) -> list:
+        """Bounded list of currently auto-presentable multi-file offers."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT s.*,
+                          (SELECT COUNT(*) FROM transfer_file_manifest_entries e
+                           WHERE e.manifest_id=s.manifest_id) AS file_count
+                   FROM transfer_file_selections s
+                   JOIN torrents t ON t.id=s.transfer_id
+                   WHERE s.manifest_committed_at IS NULL AND s.decision='pending'
+                     AND s.manifest_id IS NOT NULL AND s.auto_offer_dismissed_at IS NULL
+                     AND t.status NOT IN ('deleted','completed','consolidated','cancelled')
+                   ORDER BY s.transfer_id LIMIT 500""",
+            )
+        offers = []
+        for row in rows:
+            file_count = int(row["file_count"] or 0)
+            if file_count <= 1:
+                continue
+            if fs.auto_offer_active(self._selection_state(row, file_count), now):
+                offers.append({
+                    "transfer_id": int(row["transfer_id"]),
+                    "selection_id": row["id"],
+                    "request_id": row["request_id"],
+                    "manifest_id": row["manifest_id"],
+                    "file_count": file_count,
+                    "decision_deadline": row["hold_until"],
+                    "auto_offer_until": float(row["manifest_wait_until"]),
+                })
+        return offers

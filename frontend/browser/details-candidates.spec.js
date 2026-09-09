@@ -109,6 +109,44 @@ test('disclosure is one ghost candidate button with the Network glyph and "N Can
   await expect(disclosure).toBeFocused();
 });
 
+test('candidate disclosure survives the modal-coordinator ownership refactor', async ({page}) => {
+  // ui-detail-candidates.js no longer wraps window.showDetail / window.closeModal;
+  // it listens to app.js lifecycle events. Disclosure + close/reopen must be intact
+  // and the file-selection Details host must not interfere.
+  const holder = {detail: detail('a')};
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  await page.route(url => url.pathname === '/api/torrents/990', route => route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(holder.detail)}));
+  await page.route(url => url.pathname === '/api/torrents/990/file-selection', route => route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({eligible: false})}));
+
+  const rendered = [];
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.__dpDetailEvents = [];
+    document.addEventListener('debridpulse:detail-rendered', e => window.__dpDetailEvents.push(['rendered', e.detail && e.detail.transferId]));
+    document.addEventListener('debridpulse:detail-closed', () => window.__dpDetailEvents.push(['closed']));
+  });
+
+  await page.evaluate(() => showDetail(990));
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  await expect(page.locator('#dp-detail-actions')).toHaveCount(1);
+
+  await page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure').click();
+  await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toBeVisible();
+
+  await page.locator('#modal .modal-close').click();
+  await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+
+  await page.evaluate(() => showDetail(990));
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  await page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure').click();
+  await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toBeVisible();
+
+  const events = await page.evaluate(() => window.__dpDetailEvents);
+  expect(events).toContainEqual(['rendered', 990]);
+  expect(events).toContainEqual(['closed']);
+  void rendered;
+});
+
 test('in-flight suppression prevents duplicate candidate POSTs', async ({page}) => {
   const holder={detail:detail('a')}; let posts=0;
   await openCandidates(page,holder,async route=>{posts+=1;await new Promise(resolve=>setTimeout(resolve,180));holder.detail=detail('b');await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,filename:'GF030926-M2SP-RN.rar',candidate_id:'b',source_host:'megaup.net'})});});

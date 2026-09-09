@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
+from api.file_selection_routes import router as file_selection_router
 from api.operational_downloads import router as operational_downloads_router
 from api.settings_validation_routes import router as settings_validation_router
 from api.storage_health_routes import router as storage_health_router
@@ -420,6 +421,9 @@ app.include_router(storage_health_router, prefix="/api")
 # before the generic router purely for readable ordering; each canonical route
 # now has exactly one declaring owner, so include order is not load-bearing.
 app.include_router(operational_downloads_router, prefix="/api")
+# Dedicated universal file-selection API (offers, per-transfer read model,
+# confirm, dismiss). Kept out of the generic route file.
+app.include_router(file_selection_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────

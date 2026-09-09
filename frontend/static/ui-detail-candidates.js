@@ -15,6 +15,7 @@
   let filesPointerActive = false;
   let deferredDetail = null;
   let deferredFrame = 0;
+  let installed = false;
 
   function html(value) {
     if (typeof window.esc === 'function') return window.esc(value);
@@ -363,35 +364,34 @@
     deferredFrame = 0;
   }
 
-  function install() {
-    if (typeof window.showDetail !== 'function' || window.showDetail.dpCandidateWrapped) return;
-    const originalShowDetail = window.showDetail;
-    const wrapped = async function (id) {
-      const transferId = Number(id);
-      if (activeTransferId !== transferId) expandedArtifacts.clear();
-      clearRefreshState();
-      activeTransferId = transferId;
-      latestDetail = null;
-      deferredDetail = null;
-      const generation = presentationGeneration;
-      const result = await originalShowDetail.apply(this, arguments);
-      try { await fetchPresentation(transferId, generation); }
-      catch (error) { console.error('Details candidate presentation unavailable', error); }
-      return result;
-    };
-    wrapped.dpCandidateWrapped = true;
-    window.showDetail = wrapped;
+  // app.js is the sole owner of the shared detail-modal globals and the
+  // #overlay shell. Candidate presentation attaches to the stable lifecycle
+  // events it emits (debridpulse:detail-rendered / debridpulse:detail-closed)
+  // and never wraps or reassigns a coordinator global.
+  function onDetailRendered(event) {
+    const transferId = Number(event && event.detail && event.detail.transferId);
+    if (!Number.isFinite(transferId)) return;
+    if (activeTransferId !== transferId) expandedArtifacts.clear();
+    clearRefreshState();
+    activeTransferId = transferId;
+    latestDetail = null;
+    deferredDetail = null;
+    const generation = presentationGeneration;
+    fetchPresentation(transferId, generation).catch(function (error) {
+      console.error('Details candidate presentation unavailable', error);
+    });
+  }
 
-    if (typeof window.closeModal === 'function' && !window.closeModal.dpCandidateWrapped) {
-      const originalCloseModal = window.closeModal;
-      const closeWrapped = function (eventObj) {
-        const overlay = document.getElementById('overlay');
-        if (!eventObj || (overlay && eventObj.target === overlay)) resetDetailState();
-        return originalCloseModal.apply(this, arguments);
-      };
-      closeWrapped.dpCandidateWrapped = true;
-      window.closeModal = closeWrapped;
-    }
+  function onDetailClosed() {
+    resetDetailState();
+  }
+
+  function install() {
+    if (installed) return;
+    installed = true;
+
+    document.addEventListener('debridpulse:detail-rendered', onDetailRendered);
+    document.addEventListener('debridpulse:detail-closed', onDetailClosed);
 
     const modalBody = document.getElementById('modal-body');
     if (modalBody && modalBody.dataset.dpCandidatePointerGuard !== '1') {

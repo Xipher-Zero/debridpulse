@@ -1641,23 +1641,91 @@ async function resumeT(id, button) {
   }
 }
 
+// ── Shared modal coordinator ───────────────────────────────────────────────
+// app.js is the single owner of the shared #overlay/#modal shell. Bounded
+// presentation owners (Details candidates, file selection) drive it through
+// this contract and never wrap window.closeModal or window.showDetail.
+const DPModal = (function () {
+  let activeMode = null;            // 'details' | 'file-selection' | null
+  let onCloseCallback = null;
+  let focusReturnTarget = null;
+
+  function open(options) {
+    const opts = options || {};
+    const overlay = document.getElementById('overlay');
+    const modal = document.getElementById('modal');
+    const titleEl = document.getElementById('modal-title');
+    const footer = document.getElementById('modal-footer');
+    const closeBtn = modal ? modal.querySelector('.modal-close') : null;
+
+    activeMode = opts.mode || 'details';
+    onCloseCallback = typeof opts.onClose === 'function' ? opts.onClose : null;
+    focusReturnTarget = opts.focusReturn ||
+      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+
+    if (overlay) { overlay.classList.add('open'); overlay.dataset.dpModalMode = activeMode; }
+    if (modal) modal.dataset.dpModalMode = activeMode;
+    if (titleEl && opts.title != null) titleEl.textContent = opts.title;
+    if (closeBtn) {
+      const label = opts.closeLabel || 'Close details';
+      closeBtn.setAttribute('aria-label', label);
+      closeBtn.title = label;
+    }
+    if (footer) { footer.hidden = true; footer.innerHTML = ''; }
+    return activeMode;
+  }
+
+  function requestModalClose(reason) {
+    const callback = onCloseCallback;
+    if (callback && callback(reason) === false) return false;   // owner vetoed
+    finishClose(reason);
+    return true;
+  }
+
+  function finishClose(reason) {
+    const overlay = document.getElementById('overlay');
+    const modal = document.getElementById('modal');
+    const footer = document.getElementById('modal-footer');
+    const closedMode = activeMode;
+
+    if (overlay) { overlay.classList.remove('open'); delete overlay.dataset.dpModalMode; }
+    if (modal) delete modal.dataset.dpModalMode;
+    if (footer) { footer.hidden = true; footer.innerHTML = ''; }
+
+    activeMode = null;
+    onCloseCallback = null;
+    const returnTarget = focusReturnTarget;
+    focusReturnTarget = null;
+
+    if (closedMode === 'details') {
+      document.dispatchEvent(new CustomEvent('debridpulse:detail-closed',
+        {detail: {reason: reason || null}}));
+    }
+    if (returnTarget && typeof returnTarget.focus === 'function') {
+      try { returnTarget.focus({preventScroll: true}); } catch (_) {}
+    }
+  }
+
+  return {
+    open,
+    requestModalClose,
+    finishClose,
+    footer: function () { return document.getElementById('modal-footer'); },
+    get mode() { return activeMode; },
+  };
+})();
+window.DPModal = DPModal;
+
 // ── Detail Modal ───────────────────────────────────────────────────────────
 async function showDetail(id) {
-  const overlay = document.getElementById('overlay');
   const modalTitle = document.getElementById('modal-title');
   const modalBody = document.getElementById('modal-body');
 
-  if (modalTitle) {
-    modalTitle.textContent = 'Loading…';
-  }
+  DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details'});
 
   if (modalBody) {
     modalBody.innerHTML =
       '<div class="empty" style="padding:24px">Loading transfer details…</div>';
-  }
-
-  if (overlay) {
-    overlay.classList.add('open');
   }
 
   try {
@@ -1670,6 +1738,7 @@ async function showDetail(id) {
 
     const providerPresentation = transferProviderPresentation(t);
     if (modalBody) modalBody.innerHTML = `
+      <div id="dp-detail-actions" class="dp-detail-actions"></div>
       <div class="detail-grid">
         <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
         <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
@@ -1743,6 +1812,9 @@ async function showDetail(id) {
         </div>
       `:''}
     `;
+
+    document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
+      {detail: {transferId: Number(id), transfer: t}}));
   } catch(e) {
     if (modalBody) {
       modalBody.innerHTML =
@@ -1750,13 +1822,20 @@ async function showDetail(id) {
     }
 
     toast(sanitizeErrorMsg(e.message),'error');
+    document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
+      {detail: {transferId: Number(id), transfer: null, error: true}}));
   }
 }
 
+// Thin global entry retained for the inline #overlay / close-button handlers.
+// The shared modal coordinator owns the actual close decision and lifecycle
+// events; this is not a wrapper layer.
 function closeModal(e) {
-  if (!e || e.target === document.getElementById('overlay'))
-    document.getElementById('overlay').classList.remove('open');
+  if (e && e.target !== document.getElementById('overlay')) return;
+  DPModal.requestModalClose(e ? 'backdrop' : 'button');
 }
+window.closeModal = closeModal;
+window.showDetail = showDetail;
 
 // ── Theme toggle ─────────────────────────────────────────────────────────────
 function toggleSidebar() {
@@ -2935,6 +3014,22 @@ async function triggerStatsSnapshot(button) {
 
               fallbackTimer = null;
             }
+
+            // Cold-load / reconnect recovery hook for bounded owners that must
+            // re-query authoritative state (e.g. file-selection offers, §40).
+            document.dispatchEvent(new CustomEvent('debridpulse:pulse-connected'));
+          }
+        );
+
+        // Neutral file-selection availability signal (§39). Carries only
+        // { transfer_id }; the owner then GETs authoritative state (§40, §48).
+        es.addEventListener(
+          'file_selection_available',
+          function(e) {
+            let payload = {};
+            try { payload = JSON.parse(e.data || '{}'); } catch (_) {}
+            document.dispatchEvent(new CustomEvent('debridpulse:file-selection-available',
+              {detail: payload}));
           }
         );
 

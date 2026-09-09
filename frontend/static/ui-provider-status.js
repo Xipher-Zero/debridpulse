@@ -9,6 +9,7 @@
     ['/ui-downloads-presentation.js?v=2', 'DPDownloadsPresentation'],
     ['/ui-activity-log-runtime.js?v=1', 'DPActivityLog'],
     ['/ui-settings-archive-passwords.js?v=1', 'DPArchivePasswords'],
+    ['/ui-file-selection.js?v=1', 'DPFileSelection'],
   ]);
 
   let generation = 0;

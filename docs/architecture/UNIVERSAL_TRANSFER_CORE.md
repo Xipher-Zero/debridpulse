@@ -274,3 +274,21 @@ Logical cancellation authority is committed on the parent transfer before remote
 ### Database startup and migration
 
 Current-schema startup and historical migration are distinct owners. Normal repository initialization ensures the current schema required by runtime code; it does not reconstruct historical migration state. Supported predecessor upgrades are prepared and applied by the explicit v1.0.12 migration owner, including historical provenance backfill, with backup-before-current-mutation semantics. Migration helpers may live beside runtime repositories, but production migration invocation remains in `db/migrations/v112.py`.
+
+## Universal file-selection / manifest overlay (v1.0.12)
+
+A capable provider may declare `Capability.FILE_MANIFEST` and report a neutral
+`FileManifest` on `ProviderObservation` before the core commits that resource's
+executable manifest. The core — not the provider or executor — owns every
+selection decision: ALL-vs-explicit-subset policy, the 60-second automatic
+presentation window, the 120-second cached decision hold (only for a resource
+whose initial observation was `AVAILABLE`, never retroactively for one that
+started `PREPARING`), durable per-provider-resource selection generations, stale
+manifest rejection, fail-closed executable-manifest reconciliation, and the
+final `SourceEntry` filtering before child fan-out. Default policy remains ALL;
+provider-side acquisition never waits on the browser. The Confirm-vs-
+materialization race is serialized by durable SQLite (`BEGIN IMMEDIATE` on the
+selection-generation row), never an in-memory lock. All timing derives from the
+injected core clock with persisted absolute deadlines that survive restart. The
+executor still receives ordinary canonical candidates only and knows nothing
+about file selection. See [FILE_SELECTION_MANIFEST.md](FILE_SELECTION_MANIFEST.md).

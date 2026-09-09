@@ -103,6 +103,19 @@ def test_declaring_a_capability_does_not_substitute_for_implementing_it():
         IntegrationRegistry().register_provider(provider)
 
 
+def test_file_manifest_capability_requires_ordinary_resource_observation():
+    # The neutral early file-manifest capability is expressed through the
+    # existing observation contract; it introduces no new provider protocol and
+    # no concrete-provider branch. A provider that declares it without being a
+    # resource-observation source is rejected at registration.
+    provider = MinimalProvider("manifest-incomplete")
+    provider.descriptor = replace(
+        provider.descriptor, capabilities=frozenset({Capability.RESOLVE, Capability.FILE_MANIFEST}),
+    )
+    with pytest.raises(TypeError):
+        IntegrationRegistry().register_provider(provider)
+
+
 def test_candidate_secrets_do_not_appear_in_repr():
     candidate = TransferCandidate("payload", (Endpoint("https", "https://host/signed-secret"),),
                                   context={"token": "context-secret"},

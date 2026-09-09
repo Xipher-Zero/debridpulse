@@ -453,6 +453,7 @@ class TransferEngine:
             if await self.repository.delete_remote_requested(record.transfer_id):
                 await self._cleanup_resources(record.transfer_id, explicit=True)
             return
+        await self._after_resolution_persisted(record, provider, result)
         if result.error:
             await self._request_failure(record, result.error, attempts=record.attempts + 1)
         elif result.candidates:
@@ -464,6 +465,17 @@ class TransferEngine:
                 await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
         else:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
+
+    async def _after_resolution_persisted(self, record: RequestRecord, provider, result: ResolutionResult) -> None:
+        """Neutral seam: the provider resource is now durably known and its
+        initial availability is still known, before an immediately available
+        resource proceeds to executable manifest materialization.
+
+        The qualified base owns no policy here. A public engine may use this to
+        establish a universal file-selection window without teaching this layer
+        any provider-specific behavior.
+        """
+        return None
 
     async def _continue_provider_input(self, challenge: InputChallenge):
         if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):

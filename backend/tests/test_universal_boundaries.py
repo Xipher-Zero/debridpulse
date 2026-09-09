@@ -51,6 +51,36 @@ def test_universal_modules_never_import_or_branch_on_native_integrations():
                 assert node.attr not in forbidden, (path, node.attr)
 
 
+def test_file_selection_policy_sources_no_wall_clock():
+    # All manifest-window and decision-hold calculations must derive from the
+    # injected core clock. The policy owner imports neither `time` nor `datetime`
+    # and never calls a direct wall-clock API.
+    source = (Path(__file__).parents[1] / "transfers" / "file_selection.py").read_text()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert not any(alias.name.split(".")[0] in {"time", "datetime"} for alias in node.names)
+        if isinstance(node, ast.ImportFrom):
+            assert (node.module or "").split(".")[0] not in {"time", "datetime"}
+    for banned in ("time.time(", "time.monotonic(", "datetime.now(", "datetime.utcnow(", "utcnow("):
+        assert banned not in source
+
+
+def test_file_selection_api_and_engine_integration_stay_provider_neutral():
+    root = Path(__file__).parents[1]
+    for relative in ("api/file_selection_routes.py", "transfers/file_selection.py"):
+        source = (root / relative).read_text().casefold()
+        for token in ("alldebrid", "realdebrid", "real-debrid", "aria2", "statuscode",
+                      "general_http", "magnet/files"):
+            assert token not in source, relative
+    # The engine's file-selection wiring speaks only to the repository, never a
+    # provider- or executor-specific selection concept.
+    engine = ast.parse((root / "transfers" / "engine.py").read_text())
+    for node in ast.walk(engine):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            assert node.value not in {"alldebrid", "aria2", "statusCode", "file_manifest_index"}
+
+
 def test_core_policy_ignores_native_code_message_and_context():
     policy = TransferPolicy()
     error = NormalizedError(Domain.NETWORK, Category.CONNECTION_TIMEOUT, Stage.EXECUTION,

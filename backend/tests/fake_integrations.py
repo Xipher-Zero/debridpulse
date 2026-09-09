@@ -5,22 +5,30 @@ from pathlib import Path
 from transfers.applicability import ProviderApplicability
 from transfers.models import (
     ArtifactFingerprint, Capability, CleanupDirective, Endpoint, ExecutionHandle, ExecutionObservation,
-    ExecutionState, IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
-    ProviderResource, ResolutionResult, ResourceSnapshot, ResourceState, SourceEntry,
+    ExecutionState, FileManifest, FileManifestEntry, IntegrationDescriptor, OutcomeKind, Ownership,
+    ProviderObservation, ProviderResource, ResolutionResult, ResourceSnapshot, ResourceState, SourceEntry,
     TransferCandidate, TransferOutcome, TransferProgress, TransferRequest,
 )
 
 
 class ParcelProvider:
-    def __init__(self, identity="parcel-lab"):
-        self.descriptor = IntegrationDescriptor(identity, "Parcel lab", frozenset({
+    def __init__(self, identity="parcel-lab", *, file_manifest=False):
+        capabilities = {
             Capability.RESOLVE, Capability.RESOURCE_LOOKUP, Capability.METADATA,
             Capability.INVENTORY, Capability.CLEANUP, Capability.REFRESH,
-        }), request_types=frozenset({"parcel", "parcel-member"}))
+        }
+        # A non-debrid provider that opts in to the neutral early file-manifest
+        # capability, so universal file-selection is proven without AllDebrid.
+        if file_manifest:
+            capabilities.add(Capability.FILE_MANIFEST)
+        self.descriptor = IntegrationDescriptor(identity, "Parcel lab", frozenset(capabilities),
+            request_types=frozenset({"parcel", "parcel-member"}))
+        self.declares_file_manifest = bool(file_manifest)
         self.calls = []
         self.responses = []
         self.resources = {}
         self.members = {}
+        self.file_manifests = {}
         self.inventory_items = ()
         self.cleanup_response = TransferOutcome(OutcomeKind.SUCCESS)
         self.entered = None
@@ -34,11 +42,26 @@ class ParcelProvider:
         return TransferCandidate(name, (Endpoint("memory", f"memory:{payload}"),), expected_bytes=4,
                                  provider_id=self.descriptor.id, refresh_request=TransferRequest("parcel-member", payload, name=name))
 
-    def parcel(self, payload="parcel", *, state=ResourceState.PREPARING, ownership=Ownership.CREATED):
+    def parcel(self, payload="parcel", *, state=ResourceState.PREPARING, ownership=Ownership.CREATED,
+               files=None, file_manifest=None):
         resource = ProviderResource(self.descriptor.id, {"box_ticket": payload}, ownership, id=f"{self.descriptor.id}:{payload}")
-        observed = ProviderObservation(resource, state, "Parcel", request=TransferRequest("parcel", payload))
+        tree = file_manifest
+        if tree is None and files is not None:
+            tree = FileManifest(tuple(
+                FileManifestEntry(name, path, size) for name, path, size in files
+            ))
+        observed = ProviderObservation(resource, state, "Parcel", request=TransferRequest("parcel", payload),
+                                       file_manifest=tree if self.declares_file_manifest else None)
         self.resources[resource.id] = observed
-        self.members[resource.id] = (SourceEntry("payload.bin", 4, "folder/payload.bin", TransferRequest("parcel-member", payload)),)
+        members = (SourceEntry("payload.bin", 4, "folder/payload.bin", TransferRequest("parcel-member", payload)),)
+        if files is not None:
+            members = tuple(
+                SourceEntry(name, size, path, TransferRequest("parcel-member", f"{payload}:{path}", name=name))
+                for name, path, size in files
+            )
+        self.members[resource.id] = members
+        if tree is not None:
+            self.file_manifests[resource.id] = tree
         return ResolutionResult(state, observation=observed)
 
     async def resolve(self, request):
