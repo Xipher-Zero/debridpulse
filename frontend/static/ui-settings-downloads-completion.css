@@ -499,12 +499,6 @@ body.dp-v11-structural #view-settings .dp-settings-password-eye.is-open .dp-sett
   display: block;
 }
 
-/* The old one-click archive-password clear action is intentionally retired;
-   the directly editable list is the only visible source of truth. */
-body.dp-v11-structural #view-settings [data-panel="extraction"] .dp-settings-clear-secret:has([data-clear-secret="extraction_password"]) {
-  display: none !important;
-}
-
 @media (max-width: 1180px) {
   body.dp-v11-structural #view-settings .dp-settings-extraction-card > .card-header {
     grid-template-columns: minmax(210px, 1fr) minmax(260px, 1.35fr) auto;

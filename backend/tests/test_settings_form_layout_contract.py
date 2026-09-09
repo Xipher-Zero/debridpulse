@@ -30,10 +30,12 @@ def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_sta
 
     archive = source(ARCHIVE)
 
-    # The mask is rendered by present() and is flagged non-authoritative.
+    # The mask is rendered by present() and is flagged non-authoritative. The
+    # displayed value is only reassigned when it actually differs, so a
+    # Playwright/keyboard fill that focuses a masked row is not clobbered.
     present = archive.split("function present(", 1)[1].split("function refreshPresentation", 1)[0]
     assert "input.dataset.passwordDisplay=raw?'raw':'masked'" in present
-    assert "input.value=raw?String(row.value||''):mask(row.value)" in present
+    assert "const next=raw?String(row.value||''):mask(row.value);if(input.value!==next)input.value=next;" in present
 
     # A masked field can never write its displayed value back into row state:
     # every commit path is guarded on passwordDisplay==='raw'.

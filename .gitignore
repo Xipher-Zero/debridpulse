@@ -41,3 +41,8 @@ Thumbs.db
 .env.*
 !.env.example
 backend/tests/_tmp_watch_scan/
+
+# Node / Playwright (browser contract suite)
+frontend/browser/node_modules/
+frontend/browser/test-results/
+frontend/browser/playwright-report/
