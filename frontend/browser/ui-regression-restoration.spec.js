@@ -51,16 +51,21 @@ test('Archive Passwords hydrate stored values and Show all/Hide all keep identic
 test('Downloads Provider Inventory icon, provider badge, and source label share canonical alignment',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  const common={status:'completed',presentation_status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'link'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'recorded'};
- const items=[{...common,id:71,name:'Direct',hash:'direct:71',source:'direct_link'},{...common,id:72,name:'Inventory',hash:'inventory:72',source:'alldebrid_existing'}];
- await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:2,page:1,page_size:2})}));
+ const items=[
+  {...common,id:71,name:'Direct',hash:'direct:71',source:'direct_link'},
+  {...common,id:72,name:'Inventory',hash:'inventory:72',source:'alldebrid_existing'},
+  {...common,id:73,name:'General HTTP',hash:'direct:73',source:'direct_link',current_provider_id:'general_http',current_provider_name:'HTTP & HTTPS',delivering_provider_id:'general_http',delivering_provider_name:'HTTP & HTTPS'}
+ ];
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:3,page:1,page_size:3})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
- const blocks=page.locator('#t-tbody .dp-downloads-provider-block');await expect(blocks).toHaveCount(2);
- const labels=blocks.locator(':scope > .dp-transfer-source-label');await expect(labels.nth(0)).toHaveText('Direct link');await expect(labels.nth(1)).toHaveText('Provider inventory');
- const geometry=await blocks.evaluateAll(nodes=>nodes.map(block=>{const cell=block.closest('.dp-downloads-provider-cell'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector(':scope > .dp-transfer-source-label'),icon=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip');const box=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2};};return{cell:box(cell),block:box(block),line:box(line),label:box(label),icon:box(icon),chip:box(chip)};}));
- for(const row of geometry){expect(Math.abs(row.line.left-row.label.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.left-row.line.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.centerY-row.chip.centerY)).toBeLessThanOrEqual(0.75);expect(row.chip.right).toBeLessThanOrEqual(row.cell.right+0.5);}
+ const blocks=page.locator('#t-tbody .dp-downloads-provider-block');await expect(blocks).toHaveCount(3);
+ const labels=blocks.locator(':scope > .dp-transfer-source-label');await expect(labels.nth(0)).toHaveText('Direct link');await expect(labels.nth(1)).toHaveText('Provider inventory');await expect(labels.nth(2)).toHaveText('Direct link');
+ const geometry=await blocks.evaluateAll(nodes=>nodes.map(block=>{const cell=block.closest('.dp-downloads-provider-cell'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector(':scope > .dp-transfer-source-label'),icon=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip');const box=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};};return{cell:box(cell),block:box(block),line:box(line),label:box(label),icon:box(icon),chip:box(chip)};}));
+ for(const row of geometry){expect(Math.abs(row.line.left-row.label.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.left-row.line.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.centerY-row.chip.centerY)).toBeLessThanOrEqual(0.75);expect(row.chip.right).toBeLessThanOrEqual(row.cell.right+0.5);expect(row.chip.scrollWidth).toBeLessThanOrEqual(row.chip.clientWidth);}
  expect(Math.abs(geometry[0].label.left-geometry[1].label.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].icon.left-geometry[1].icon.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].chip.left-geometry[1].chip.left)).toBeLessThanOrEqual(0.75);
+ expect(Math.abs(geometry[0].icon.left-geometry[2].icon.left)).toBeLessThanOrEqual(0.75);
 });
 
 test('Details candidate switch remains available after comprehensive presentation refresh',async({page})=>{
