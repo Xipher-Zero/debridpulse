@@ -57,40 +57,71 @@ Deferred Items 12–16 remain future work, including FTP, SCP, SFTP/SSH, rsync, 
 
 The v1.0.12 universal torrent file-selection capability is provider-neutral: a
 provider declares `Capability.FILE_MANIFEST` and reports facts only, while the
-Universal Transfer Core owns ALL-vs-subset policy, the 60s/120s windows, durable
-per-provider-resource selection generations, SQLite `BEGIN IMMEDIATE`
-Confirm-vs-materialization serialization, fail-closed executable reconciliation,
-and final `SourceEntry` filtering. The executor remains selection-blind. Items
-12–16 remain intentionally deferred and this overlay does not change that.
+Universal Transfer Core owns ALL-vs-subset policy, the three independent timing
+dimensions, durable per-provider-resource selection generations, SQLite
+`BEGIN IMMEDIATE` Confirm-vs-materialization serialization, fail-closed
+executable reconciliation, and final `SourceEntry` filtering. The executor
+remains selection-blind. Items 12–16 remain intentionally deferred and this
+overlay does not change that.
 
-The decision hold is established in the same durable transaction that queues any
-auto-presented multi-file offer, whether the resource was initially `AVAILABLE`
-or initially `PREPARING`: an automatically actionable offer never coexists with
-immediate ALL materialization. `initially_available` remains a persisted
-provenance fact but no longer gates the decision opportunity.
+**Torrent/Magnet File-Selection Lifecycle Correction.** Provider preparation,
+user file-selection authorization, and executor dispatch are three separate
+dimensions:
+
+* Provider preparation is eager and **independent of executor capacity** — an
+  interactive torrent added while every execution slot is full still resolves,
+  observes, records its manifest, opens its hold, and queues its offer.
+* The 120-second **user-decision hold** is anchored exactly once to the first
+  actionable multi-file manifest, `PREPARING` or `AVAILABLE`, with no
+  submission-relative cutoff on when that manifest may arrive. A provider may
+  stay `PREPARING` far longer than 60 seconds without losing the interactive
+  selection opportunity. `decision_timeout` on expiry.
+* The 60-second bound is **only** a post-`AVAILABLE` manifest-acquisition grace,
+  anchored to `available_at` (the first `AVAILABLE`-without-manifest
+  observation); it never runs while `PREPARING`. `manifest_timeout` on expiry.
+* `initially_available` is a persisted provenance fact only and gates no timing;
+  `available_at` (additive nullable column, no backfill) is the durable anchor.
+* Gate authority and the wait it schedules are **one `BEGIN IMMEDIATE`
+  transaction** (`repository.file_selection_gate`) — a settled `EXPLICIT`/`ALL`
+  can never have a selection-derived `retry_at` recreated by stale gate work;
+  both legal orders converge. The engine no longer performs a separate
+  `poll_after` after the gate.
+* `selection_mode` (a neutral per-request policy on the `TransferRequest`
+  payload, excluded from the dedupe fingerprint) gates only whether a *new*
+  selection generation is created. The browser opts in on every magnet /
+  bulk-magnet / torrent-file path; historical / headless API callers default to
+  ALL. **Upgrade-boundary invariant:** once a durable selection generation
+  exists for a `(request, binding)`, that generation — not the request's
+  current/defaulted `selection_mode` — governs manifest recording, gating,
+  Confirm/Close/timeout and executable-manifest filtering. A pre-`selection_mode`
+  database keeps every existing PENDING hold, EXPLICIT subset and PREPARING
+  selection opportunity; every engine step past creation checks
+  `repository.selection_generation_exists`, never the policy field.
 
 The 120-second hold is a **maximum unanswered-decision window, not a minimum
 delay**. Confirm (`→ explicit`) and an active-hold Close (`→ all/closed`) settle
-the decision and, in the same `BEGIN IMMEDIATE` transaction, release the
-file-selection gate's scheduler `retry_at` on the owning request — the next
-resolution cycle materialises immediately, without waiting the remaining deadline
-or the last provider poll. `retry_at` is multi-purpose (gate wait + provider
-backoff via `request_failure`); only the selection-induced component
-(`state='waiting' AND error IS NULL`) is released, never a coexisting legitimate
-backoff. `decision_deadline` is exposed only while the decision is pending.
+the decision and, in the same transaction, release the file-selection gate's
+scheduler `retry_at` on the owning request. `retry_at` is multi-purpose (gate
+wait + provider backoff via `request_failure`); only the selection-induced
+component (`state='waiting' AND error IS NULL`) is released or rescheduled, never
+a coexisting legitimate backoff. `decision_deadline` is exposed only while the
+decision is pending.
 
 | Current contract | Canonical regression owners |
 | --- | --- |
 | Neutral capability/identity, pure gate, reconciliation, no wall-clock in policy | `test_file_selection_contract.py`, `test_universal_contracts.py`, `test_universal_boundaries.py` |
-| Fake-provider-driven cached & PREPARING-origin lifecycle, 60s/120s windows, PREPARING→AVAILABLE decision-window reproducer, **Confirm/Close release the gate wait without advancing the clock**, unanswered hold still waits the full window, provider-backoff isolation, restart survival, executor-boundary proof | `test_file_selection_lifecycle.py` |
-| Additive schema, backup/wipe, FK integrity, per-resource generation across re-resolution, two-phase crash recovery, Confirm-vs-materialization concurrency, **Confirm/Dismiss retry_at release + idempotent self-heal + multi-cause isolation** | `test_file_selection_persistence.py` |
+| Fake-provider-driven cached & PREPARING-origin lifecycle, 120s hold anchored to first manifest, uncached long-PREPARING keeps the decision window, post-`AVAILABLE` 60s grace (starts only at first `AVAILABLE`, expires to `manifest_timeout`), PREPARING→AVAILABLE reproducer, **Confirm/Close release the gate wait without advancing the clock**, unanswered hold still waits the full window, provider-backoff isolation, restart survival (incl. PREPARING > 60s never converts to ALL) | `test_file_selection_lifecycle.py` |
+| Additive schema (incl. `available_at`), backup/wipe, FK integrity, per-resource generation across re-resolution, two-phase crash recovery, Confirm-vs-materialization concurrency, **atomic gate + Confirm has no stale-WAIT resurrection window (both orders)**, **Confirm/Dismiss retry_at release + idempotent self-heal + multi-cause isolation** | `test_file_selection_persistence.py` |
+| Provider preparation eager & independent of executor capacity: cached & uncached interactive torrent fully prepares / records manifest / opens hold / queues offer while every slot is full; only the confirmed subset dispatches once a slot frees | `test_file_selection_executor_independence.py` |
+| Explicit `selection_mode` intent: `normalize_selection_mode` validation, default-ALL never creates a generation/offer, explicit `interactive` enters the lifecycle, dedupe/fingerprint identity unchanged, serialization round-trip + legacy-payload default, add-magnet body / add-file form field / invalid rejection | `test_file_selection_selection_mode.py` |
+| Upgrade boundary: a genuinely pre-existing generation (legacy payload with no `selection_mode`, no `available_at` anchor) — PENDING hold survives restart and still governs/times-out, EXPLICIT subset materialises subset-only after PREPARING→AVAILABLE, PREPARING/no-manifest generation keeps the 120s opportunity (stale `manifest_wait_until` never settles ALL), genuinely-new default-ALL submission unchanged, legacy re-resolution opens a fresh generation for the new binding | `test_file_selection_upgrade_boundary.py` |
 | Dedicated API, `SelectionOutcome` transport codes, fixed public whitelist, A→B re-resolution regression, durable browser event, **settled read model drops the active `decision_deadline`** | `test_file_selection_api.py` |
 | AllDebrid adapter capability, `ready`-flag initial availability, nested-tree → neutral `FileManifest` without links, file-list fallback | `test_alldebrid_provider_contract.py` |
 | One shared modal shell / coordinator, `ui-detail-candidates.js` no longer wraps the modal globals, one file-selection runtime + style owner | `test_ui_presentation_ownership_contract.py` |
-| Browser selector: auto-open rules, tri-state tree, countdown from server deadline, stale-409 refresh, Close/X parity, Cancel Transfer routing | `frontend/browser/file-selection.spec.js`, `frontend/browser/details-candidates.spec.js` |
+| Browser selector: auto-open obeys `auto_offer` (no browser-derived window), tri-state tree, countdown from server deadline, stale-409 refresh, Close/X parity, Cancel Transfer routing; **browser sends `selection_mode=interactive` on magnet / bulk-magnet / torrent-file, not on direct-link** | `frontend/browser/file-selection.spec.js`, `frontend/browser/file-selection-submission-intent.spec.js`, `frontend/browser/details-candidates.spec.js` |
 
 `backend/tests/two_provider_checkpoint_qualification.txt` now also composes the
-four `test_file_selection_*` production-path modules.
+seven `test_file_selection_*` production-path modules.
 
 ## Historical migration census
 

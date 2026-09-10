@@ -1149,6 +1149,10 @@ async function uploadTorrentFile(input) {
 
   const form = new FormData();
   form.append('file', file, file.name);
+  // The built-in browser is an interactive client: opt every torrent/magnet
+  // submission into the interactive file-selection lifecycle. Historical /
+  // headless callers that omit this keep the ALL default (correction §6).
+  form.append('selection_mode', 'interactive');
 
   try {
     const res = await api('POST', '/torrents/add-file', form, 60000);
@@ -1268,7 +1272,7 @@ async function addDashboardEntries() {
       const results = await mapWithConcurrency(
         magnets,
         3,
-        entry => api('POST', '/torrents/add-magnet', {magnet: entry.value}, 30000)
+        entry => api('POST', '/torrents/add-magnet', {magnet: entry.value, selection_mode: 'interactive'}, 30000)
       );
       results.forEach((result, index) => {
         if (result.ok) {
@@ -1469,7 +1473,7 @@ async function addMagnet() {
     return;
   }
   try {
-    const res = await api('POST','/torrents/add-magnet',{magnet:v}, 30000);
+    const res = await api('POST','/torrents/add-magnet',{magnet:v, selection_mode:'interactive'}, 30000);
     if (res && res._duplicate && res._duplicate.action === 'skip') {
       toast('Already in queue: ' + (res.name || res._duplicate.reason), 'warn');
     } else if (res && res._duplicate && res._duplicate.action === 'warn') {

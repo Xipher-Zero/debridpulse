@@ -106,19 +106,41 @@ class TransferEngine(_RecoveryTransferEngine):
                 return None
             raise
 
-    async def _after_resolution_persisted(self, record, provider, result):
-        """Establish the universal file-selection window for a FILE_MANIFEST
-        provider once its resource is durably known and its initial availability
-        is still observable. Generation-scoped to (request, provider resource);
-        a re-resolution onto a new resource opens a fresh generation and never
-        inherits the prior subset.
+    @staticmethod
+    def _file_manifest_root(record, provider) -> bool:
+        """A root request routed to a provider DP trusts for a neutral file
+        manifest. This is capability only — it says nothing about whether the
+        interactive lifecycle is engaged (that is generation existence, not
+        policy; see ``repository.selection_generation_exists``).
         """
-        if record.parent_id is not None:
-            return
-        if Capability.FILE_MANIFEST not in provider.descriptor.capabilities:
+        return (
+            record.parent_id is None
+            and Capability.FILE_MANIFEST in provider.descriptor.capabilities
+        )
+
+    async def _after_resolution_persisted(self, record, provider, result):
+        """Open a file-selection generation for this (request, provider resource)
+        binding, once the resource is durably known and its initial availability
+        is still observable.
+
+        ``selection_mode`` gates ONLY this creation step. A new generation is
+        opened when the submitter explicitly opted into interactive selection
+        (``selection_mode == "interactive"``) OR when the transfer already owns a
+        durable selection generation (an earlier interactive submission, or a
+        database that predates ``selection_mode``) — in which case a
+        re-resolution onto a new provider resource stays interactive and opens a
+        fresh generation for the new binding, never inheriting the prior subset
+        (specification section 13). It is never inferred from browser presence
+        (correction section 6). Every engine step past this point checks
+        generation existence, not the request's policy field.
+        """
+        if not self._file_manifest_root(record, provider):
             return
         observation = result.observation
         if observation is None or observation.resource is None:
+            return
+        wants_new = getattr(record.request, "selection_mode", fs.SELECTION_MODE_ALL) == fs.SELECTION_MODE_INTERACTIVE
+        if not wants_new and not await self.repository.transfer_has_selection_generation(record.transfer_id):
             return
         now = self.clock()
         # File-selection state is keyed on the durable (transfer, resource)
@@ -258,15 +280,23 @@ class TransferEngine(_RecoveryTransferEngine):
             )
             if not await self._live(record.transfer_id, admission=True):
                 return
-            file_manifest_capable = (
-                record.parent_id is None
-                and Capability.FILE_MANIFEST in provider.descriptor.capabilities
-            )
+            file_manifest_capable = self._file_manifest_root(record, provider)
             binding_id = (
                 await self.repository.resource_binding_id(record.transfer_id, record.resource.id)
                 if file_manifest_capable else None
             )
-            if file_manifest_capable and observation.file_manifest is not None:
+            # ``selection_mode`` decided whether a generation was created in
+            # ``_after_resolution_persisted``. From here on the engine is bound
+            # by generation EXISTENCE, never the request's current/defaulted
+            # policy field: a pre-``selection_mode`` database whose request now
+            # deserializes as ``selection_mode="all"`` must still have its
+            # durable PENDING hold / EXPLICIT subset / PREPARING selection
+            # opportunity honored. ``selection_mode=all`` with no generation
+            # skips straight to the executable manifest.
+            selecting = bool(binding_id) and await self.repository.selection_generation_exists(
+                record.id, binding_id,
+            )
+            if selecting and observation.file_manifest is not None:
                 await self.repository.record_file_manifest(
                     record.id, binding_id, observation.file_manifest, now=self.clock(),
                 )
@@ -281,22 +311,22 @@ class TransferEngine(_RecoveryTransferEngine):
                         domain=Domain.REQUEST,
                         retryability=Retryability.NEVER,
                     ))
-                if file_manifest_capable:
+                if selecting:
+                    # Provider-side acquisition is done; only local executable
+                    # materialization is held while the interactive selector's
+                    # user-decision hold, or the bounded post-AVAILABLE
+                    # manifest-acquisition grace, is still legitimately open. The
+                    # gate decision AND the scheduling of the wait it produces
+                    # are one atomic transaction (specification section 8), so a
+                    # settled EXPLICIT/ALL can never have a stale WAIT recreate a
+                    # future retry_at. Re-uses the ordinary resolution wakeup
+                    # cadence; no new loop, no browser polling.
                     gate = await self.repository.file_selection_gate(
                         record.id, binding_id, now=self.clock(),
+                        poll_interval=self.policy.resource_poll_interval,
+                        resource_available=True,
                     )
                     if gate != fs.SelectionGate.PROCEED:
-                        # Provider-side acquisition is done; only local executable
-                        # materialization is held while the selector window / cached
-                        # decision hold is still open. Re-uses the ordinary resolution
-                        # wakeup cadence; no new loop, no browser polling. The
-                        # observation just succeeded, so ``clear_error`` drops any
-                        # stale request error — this poll's retry_at is a gate
-                        # cadence, never a provider backoff.
-                        await self.repository.poll_after(
-                            record.id, self.clock() + self.policy.resource_poll_interval,
-                            waiting=True, clear_error=True,
-                        )
                         return
                 entries = await provider.manifest(record.resource)
                 entries = tuple({
@@ -326,7 +356,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 # subset that can no longer be proven fails closed here.
                 authorized = await self.repository.commit_selected_manifest(
                     record, entries, now=self.clock(),
-                ) if file_manifest_capable else entries
+                ) if selecting else entries
                 await self.repository.manifest(record, authorized)
             elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
                 error = self._error(

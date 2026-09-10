@@ -25,7 +25,9 @@ function selectionView(overrides) {
     entries: ENTRIES,
     selected_entry_ids: [],
     auto_offer: true,
-    auto_offer_until: 1060.0,
+    // The selector auto-presents for the life of the decision hold; the core
+    // now reports the same absolute deadline for both.
+    auto_offer_until: 1120.0,
     decision_deadline: 1120.0,
     initially_available: true,
     server_now: 1000.0,
@@ -293,8 +295,11 @@ test('a single-file resource never opens the selector', async ({page}) => {
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
 });
 
-test('a manifest that appears after the 60s window (auto_offer false) never auto-opens', async ({page}) => {
-  const state = {view: selectionView({auto_offer: false, auto_offer_until: 1060.0, decision_deadline: null,
+test('the browser never auto-opens the selector when the core reports auto_offer=false', async ({page}) => {
+  // The Universal Transfer Core is the sole authority for whether the selector
+  // may auto-present. The browser presentation owner obeys auto_offer and never
+  // re-derives a window of its own.
+  const state = {view: selectionView({auto_offer: false, auto_offer_until: null, decision_deadline: null,
     initially_available: false})};
   await stub(page, state);
   await boot(page);

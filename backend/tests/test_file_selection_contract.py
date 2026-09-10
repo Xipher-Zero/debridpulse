@@ -198,20 +198,33 @@ def test_validate_selection_ids_orders_by_manifest_and_rejects_bad_input():
 
 def state(**kw):
     base = dict(
-        decision="pending", initially_available=True, manifest_wait_until=1060.0,
-        hold_until=None, manifest_id=None, manifest_file_count=0,
-        manifest_committed_at=None, auto_offer_dismissed_at=None,
+        decision="pending", initially_available=True, resource_available=True,
+        available_grace_until=1060.0, hold_until=None, manifest_id=None,
+        manifest_file_count=0, manifest_committed_at=None, auto_offer_dismissed_at=None,
     )
     base.update(kw)
     return fs.SelectionWindowState(**base)
 
 
-def test_gate_cached_waits_for_manifest_then_times_out_to_all():
+def test_gate_available_without_manifest_waits_then_times_out_on_grace_expiry():
+    # The post-AVAILABLE manifest-acquisition grace: the resource is AVAILABLE
+    # but no usable manifest is obtainable. Grace anchored at t=1000, ends 1060.
     assert fs.evaluate_gate(state(), now=1000.0).gate == fs.SelectionGate.WAIT_FOR_MANIFEST
     late = fs.evaluate_gate(state(), now=1060.0)
     assert late.gate == fs.SelectionGate.PROCEED
     assert late.resolve_decision == fs.SelectionDecision.ALL
     assert late.resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
+
+
+def test_gate_preparing_without_manifest_never_starts_any_countdown():
+    # Correction §4/§5/§12/§19 — provider preparation is eager and open-ended.
+    # No manifest, resource NOT available: WAIT with no timeout, no matter how
+    # far the clock has advanced past any 60s or 120s boundary from creation.
+    preparing = state(resource_available=False, available_grace_until=None)
+    for now in (1000.0, 1061.0, 1200.0, 99999.0):
+        result = fs.evaluate_gate(preparing, now=now)
+        assert result.gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+        assert result.resolve_decision is None
 
 
 def test_gate_single_file_proceeds_immediately_as_all():
@@ -243,35 +256,32 @@ def test_gate_preparing_origin_multi_file_honors_an_established_decision_hold():
 
 
 def test_gate_timeout_reasons_are_deterministic_and_never_mislabelled():
-    # DECISION_TIMEOUT is emitted ONLY when a persisted hold actually expired.
-    cached_hold = state(manifest_id="m", manifest_file_count=4, hold_until=1125.0)
-    assert fs.evaluate_gate(cached_hold, now=1130.0).resolve_reason == fs.DecisionReason.DECISION_TIMEOUT
+    # DECISION_TIMEOUT is emitted ONLY when a persisted user-decision hold
+    # actually expired.
+    hold = state(manifest_id="m", manifest_file_count=4, hold_until=1125.0)
+    assert fs.evaluate_gate(hold, now=1130.0).resolve_reason == fs.DecisionReason.DECISION_TIMEOUT
+    assert fs.evaluate_gate(hold, now=1120.0).gate == fs.SelectionGate.WAIT_FOR_DECISION
 
-    # A multi-file manifest with NO hold, recorded only after the 60s window
-    # closed: the manifest opportunity genuinely expired, so MANIFEST_TIMEOUT for
-    # a cached origin and DEFAULT_MATERIALIZATION for an uncached origin — never
-    # DECISION_TIMEOUT (no hold ever existed).
-    late_cached = fs.evaluate_gate(
-        state(initially_available=True, manifest_id="m", manifest_file_count=4,
-              hold_until=None), now=1065.0)
-    assert late_cached.resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
-    late_uncached = fs.evaluate_gate(
-        state(initially_available=False, manifest_id="m", manifest_file_count=4,
-              hold_until=None), now=1065.0)
-    assert late_uncached.resolve_reason == fs.DecisionReason.DEFAULT_MATERIALIZATION
+    # A multi-file manifest ALWAYS co-establishes the 120s hold at first arrival
+    # (there is no submission-relative cutoff). A degenerate multi-file / no-hold
+    # row is only reachable for a pre-correction generation; while the resource
+    # is AVAILABLE it converges through the bounded post-AVAILABLE grace to
+    # MANIFEST_TIMEOUT — never DECISION_TIMEOUT (no hold existed) and never
+    # DEFAULT_MATERIALIZATION.
+    degenerate = state(manifest_id="m", manifest_file_count=4, hold_until=None,
+                       resource_available=True, available_grace_until=1060.0)
+    assert fs.evaluate_gate(degenerate, now=1005.0).gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert fs.evaluate_gate(degenerate, now=1065.0).resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
+    # Same degenerate row while PREPARING: it simply keeps waiting, no timeout.
+    degenerate_preparing = state(manifest_id="m", manifest_file_count=4, hold_until=None,
+                                 resource_available=False, available_grace_until=None)
+    assert fs.evaluate_gate(degenerate_preparing, now=99999.0).resolve_decision is None
 
-    # The impossible in-window multi-file / no-hold state never auto-settles ALL:
-    # record_file_manifest co-establishes the hold in the same transaction, so
-    # the gate keeps waiting rather than mislabelling a timeout.
-    in_window_no_hold = fs.evaluate_gate(
-        state(initially_available=True, manifest_id="m", manifest_file_count=4,
-              hold_until=None), now=1005.0)
-    assert in_window_no_hold.gate == fs.SelectionGate.WAIT_FOR_MANIFEST
-    assert in_window_no_hold.resolve_decision is None
-
-    # No manifest at all: MANIFEST_TIMEOUT only once the 60s opportunity expired.
-    assert fs.evaluate_gate(state(initially_available=True), now=1005.0).gate == fs.SelectionGate.WAIT_FOR_MANIFEST
-    assert fs.evaluate_gate(state(initially_available=True), now=1065.0).resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
+    # No manifest at all + AVAILABLE: MANIFEST_TIMEOUT only once the 60s grace
+    # expired; while the grace has not started (None) the gate keeps waiting.
+    assert fs.evaluate_gate(state(available_grace_until=None), now=99999.0).gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert fs.evaluate_gate(state(), now=1005.0).gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert fs.evaluate_gate(state(), now=1065.0).resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
 
 
 def test_gate_respects_settled_and_committed_facts():
@@ -282,15 +292,19 @@ def test_gate_respects_settled_and_committed_facts():
     ).gate == fs.SelectionGate.PROCEED
 
 
-def test_auto_offer_active_window_and_hold_semantics():
-    within = state(manifest_id="m", manifest_file_count=3)
-    assert fs.auto_offer_active(within, now=1030.0) is True
-    assert fs.auto_offer_active(within, now=1075.0) is False   # past 60s, no hold
+def test_auto_offer_active_tracks_the_decision_hold_only():
+    # The selector auto-presents for exactly the life of the active decision
+    # hold — no separate pre-hold presentation window exists.
+    no_hold = state(manifest_id="m", manifest_file_count=3, hold_until=None)
+    assert fs.auto_offer_active(no_hold, now=1000.0) is False
     held = state(manifest_id="m", manifest_file_count=3, hold_until=1125.0)
-    assert fs.auto_offer_active(held, now=1075.0) is True       # active cached hold recoverable
-    dismissed = state(manifest_id="m", manifest_file_count=3, auto_offer_dismissed_at=1010.0)
+    assert fs.auto_offer_active(held, now=1030.0) is True
+    assert fs.auto_offer_active(held, now=1075.0) is True       # cold-load recovery within the hold
+    assert fs.auto_offer_active(held, now=1125.0) is False      # hold expired
+    dismissed = state(manifest_id="m", manifest_file_count=3, hold_until=1125.0,
+                      auto_offer_dismissed_at=1010.0)
     assert fs.auto_offer_active(dismissed, now=1020.0) is False
-    single = state(manifest_id="m", manifest_file_count=1)
+    single = state(manifest_id="m", manifest_file_count=1, hold_until=1125.0)
     assert fs.auto_offer_active(single, now=1010.0) is False
 
 

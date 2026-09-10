@@ -9,18 +9,25 @@ owns every decision.
 ```
 PROVIDER                        UNIVERSAL CORE                     EXECUTOR
 declares FILE_MANIFEST     ->    owns ALL-vs-subset policy    ->   receives
-reports ProviderObservation     owns the 60s auto-offer window     ordinary
-reports a neutral FileManifest  owns the 120s decision hold        canonical
+reports ProviderObservation     owns the 120s user-decision hold   ordinary
+reports a neutral FileManifest  owns the 60s post-AVAILABLE grace   canonical
 continues acquisition alone     owns durable provenance            candidates
-                                owns stale-manifest rejection      only — knows
-                                owns executable reconciliation     nothing about
+(eager, open-ended, capacity-    owns stale-manifest rejection      only — knows
+ independent)                    owns executable reconciliation     nothing about
                                 filters the final SourceEntry list selection
 ```
 
-Default acquisition policy is always **ALL FILES**. File selection is an
-optional override. If no explicit subset is confirmed, DebridPulse processes the
-full torrent exactly as before. Provider-side acquisition/resolution starts
-immediately and never waits on the browser.
+Default acquisition policy is always **ALL FILES**. Interactive file selection
+is an explicit opt-in (`selection_mode=interactive`). If no explicit subset is
+confirmed, DebridPulse processes the full torrent exactly as before.
+
+**Provider preparation, user file-selection authorization, and executor dispatch
+are three separate lifecycle dimensions.** Provider preparation is eager and
+independent of executor capacity; the user's decision time begins only when
+there is an actionable multi-file manifest to decide on; executor capacity
+matters only when executable work is ready to dispatch. A resource may remain
+`PREPARING` for far longer than 60 seconds without losing the interactive
+selection opportunity.
 
 ## Neutral provider contract
 
@@ -48,9 +55,22 @@ Canonical neutral policy/normalization owner. Contains no `alldebrid`,
 `realdebrid`, `aria2`, `statusCode`, or provider-native error strings, and
 imports neither `time` nor `datetime`.
 
-* `AUTO_MANIFEST_WINDOW_SECONDS = 60.0` — automatic presentation window.
-* `IMMEDIATE_DECISION_HOLD_SECONDS = 120.0` — decision hold (any auto-presented
-  multi-file offer, cached or PREPARING-origin).
+* `POST_AVAILABLE_MANIFEST_GRACE_SECONDS = 60.0` — bounded grace, and **only**
+  a grace: it runs solely after an interactive `FILE_MANIFEST`-capable resource
+  is observed executable/`AVAILABLE` while a usable manifest is still
+  unobtainable. It never runs while the provider is `PREPARING`, and it is never
+  submission-relative or resource-creation-relative. (Was
+  `AUTO_MANIFEST_WINDOW_SECONDS`; renamed with the Torrent/Magnet File-Selection
+  Lifecycle Correction.)
+* `IMMEDIATE_DECISION_HOLD_SECONDS = 120.0` — the maximum unanswered
+  user-decision time. Anchored exactly once to the first actionable multi-file
+  manifest, `PREPARING` or `AVAILABLE`. Never a provider-preparation timeout, a
+  manifest-discovery timeout from submission, or a minimum delay before
+  execution.
+* `SELECTION_MODE_ALL` / `SELECTION_MODE_INTERACTIVE` and
+  `normalize_selection_mode()` — the neutral per-submission intent policy. The
+  interactive lifecycle is entered only for `selection_mode=interactive`; it is
+  never inferred from an SSE connection, a session, a user agent, or `source`.
 * Manifest identity:
   * `manifest_digest = SHA-256` over the sorted canonical
     `(normalized_path\0size\n)` pairs — order-independent, so a provider
@@ -68,52 +88,72 @@ imports neither `time` nor `datetime`.
 
 ## Timing semantics
 
-Two distinct windows, both driven by the injected engine clock; deadlines are
-persisted as absolute values and survive restart without resetting.
+Three independent, non-overlapping dimensions, all driven by the injected engine
+clock; deadlines are persisted as absolute values and survive restart without
+resetting or extending.
 
-| Window | Length | Applies when | On expiry |
+| Dimension | Length | Anchored at | On expiry |
 | --- | --- | --- | --- |
-| Automatic manifest presentation | 60 s | a `FILE_MANIFEST`-capable provider resource is durably bound | no more auto-popup; Details entry stays available while mutable |
-| Decision hold | 120 s | provider declares `FILE_MANIFEST` **and** a complete multi-file manifest becomes populated and usable **while the 60 s auto-presentation window is still open** — whatever the resource's initial availability | modal closes, draft discarded, default ALL wins (`decision_reason = decision_timeout`), local materialization proceeds |
+| Provider preparation | unbounded | — | (no timer; provider work continues on its own cadence) |
+| User-decision hold | 120 s | the **first actionable multi-file manifest**, whether the resource is `PREPARING` or `AVAILABLE` at that moment | modal closes, draft discarded, default ALL wins (`decision_reason = decision_timeout`), local materialization proceeds |
+| Post-`AVAILABLE` manifest grace | 60 s | the **first `AVAILABLE`-without-usable-manifest observation** (`available_at`) | default ALL wins (`decision_reason = manifest_timeout`), local materialization proceeds |
+
+Key statements (Torrent/Magnet File-Selection Lifecycle Correction §25):
+
+* File selection is an interactive pre-execution authorization dimension.
+  Provider preparation is eager and independent of executor capacity.
+* The 120-second timeout measures unanswered user decision time beginning at the
+  first actionable multi-file manifest. It does not measure provider preparation
+  time.
+* A provider may remain `PREPARING` for longer than 60 seconds without losing
+  the interactive selection opportunity.
+* The 60-second bound, when applicable, is only a grace period after an
+  interactive `FILE_MANIFEST`-capable resource is `AVAILABLE` but a usable
+  manifest is still unavailable.
+* Settled `EXPLICIT`/`ALL` decisions cannot have a selection-derived scheduler
+  wait recreated by stale gate work.
+* Browser UI submissions explicitly opt into interactive selection. Historical /
+  headless API submissions default to ALL.
 
 **An automatically actionable multi-file offer and immediate irreversible ALL
-materialization must never coexist** (specification sections 5/7). Whenever core
-queues an auto-offer, the *same* durable transaction persists
-`hold_until = now + 120 s`, and `evaluate_gate` then returns
-`WAIT_FOR_DECISION` — regardless of whether the provider resource was initially
-`AVAILABLE` or initially `PREPARING`. The production reproducer (a torrent that
-begins `PREPARING` and, on one later observation, becomes `AVAILABLE` *and*
-exposes its first complete manifest) therefore gets a real bounded decision
-window instead of a millisecond race to `default_materialization`.
+materialization must never coexist.** `record_file_manifest` persists
+`hold_until = manifest_observed_at + 120 s` in the *same* durable transaction
+that binds the first multi-file manifest and queues the auto-offer — there is no
+submission-relative cutoff on when that manifest may arrive. `evaluate_gate`
+then returns `WAIT_FOR_DECISION` until the hold expires. The production
+reproducer (a torrent that stays `PREPARING` for minutes, then becomes
+`AVAILABLE` *and* exposes its first complete manifest) gets the full bounded
+decision window.
 
-`initially_available` is still persisted as an immutable provenance/diagnostic
-fact, but it no longer decides whether an auto-presented manifest receives a
-decision opportunity. It still governs one narrower thing: whether a resource
-with *no manifest yet* keeps `WAIT_FOR_MANIFEST` until the 60 s discovery window
-elapses (initially `AVAILABLE`) or lets provider-side work continue with default
-ALL settling later (initially `PREPARING`).
+`initially_available` is persisted only as an immutable provenance/diagnostic
+fact; it no longer decides any timing. The gate reads the live
+`resource_available` fact plus `available_at` (the durable first-`AVAILABLE`
+anchor). While `PREPARING` with no manifest, the gate `WAIT_FOR_MANIFEST`s with
+**no** countdown of any kind. Once `AVAILABLE` without a manifest, the 60-second
+grace runs from `available_at`; a manifest arriving inside it starts the 120-second
+hold from that arrival, and grace expiry settles `manifest_timeout`.
 
-A manifest first observed *after* the 60 s window has closed gets **no**
-automatic hold and **no** auto-popup; manual Details selection stays available
-while the selection is still mutable. It settles `decision_reason =
-manifest_timeout` for an initially-`AVAILABLE` origin (the 60 s manifest
-opportunity genuinely expired) and `decision_reason = default_materialization`
-for a `PREPARING` origin. Only local materialization / executor dispatch is ever
-held; provider-side acquisition and resolution are never blocked.
+The settle reason is deterministic: `decision_timeout` **only** when a persisted
+`hold_until` actually expired while still pending; `manifest_timeout` **only**
+when the post-`AVAILABLE` grace expired. `default_materialization` is no longer
+emitted by `evaluate_gate` (it survives only as the `commit_selected_manifest`
+fallback reason for a straight ALL commit).
 
-The settle reason is deterministic: `decision_timeout` is emitted **only** when a
-persisted `hold_until` actually expired while still pending; `manifest_timeout`
-**only** when the 60 s manifest opportunity expired. `record_file_manifest`
-establishes the decision hold in the same durable transaction that binds an
-in-window multi-file manifest, so an in-window multi-file manifest can never lack
-a hold — if that state is somehow observed the gate keeps waiting rather than
-settling a mislabelled timeout.
+`decision_deadline` (the persisted `hold_until`, surfaced only while
+`decision = pending`) is the authoritative user-decision deadline. A browser
+that cold-loads or reconnects any time before `hold_until` recovers the active
+offer through `GET /api/file-selections/offers`.
 
-`decision_deadline` (the persisted `hold_until`) is the authoritative
-user-decision deadline and is **not** the same as the 60 s manifest-discovery
-cutoff. A browser that cold-loads or reconnects after the discovery cutoff but
-before `hold_until` still recovers the active offer through
-`GET /api/file-selections/offers`.
+### Legacy `manifest_wait_until` / new `available_at`
+
+`available_at REAL` (nullable) is an **additive metadata-only column** — no data
+backfill. Pre-correction rows get `NULL`, the correct "resource not yet observed
+`AVAILABLE` under the corrected engine" value; their next ordinary `AVAILABLE`
+observation anchors a fresh grace, so a stale submission-relative
+`manifest_wait_until` can never settle ALL for an uncached `PREPARING` transfer
+after upgrade. `manifest_wait_until` is retired as a window: it is now only a
+mirror of the post-`AVAILABLE` grace deadline (`0.0` = not started) and the gate
+never reads it.
 
 ## Hold release — the 120 s window is a maximum, never a minimum
 
@@ -128,6 +168,20 @@ or the last provider-poll timestamp. `application/service.py` then re-drives the
 existing `resolution_wakeup`; no new scheduler, no new lifecycle state, no
 frontend-owned release.
 
+**Gate authority and the scheduling of the wait it produces are transactionally
+coupled** (Torrent/Magnet File-Selection Lifecycle Correction §7-8).
+`repository.file_selection_gate(...)` is one `BEGIN IMMEDIATE` on the
+selection-generation row that: anchors the post-`AVAILABLE` grace once; evaluates
+the pure gate; settles a still-pending timeout/single-file decision; and — only
+for a genuine still-pending selection `WAIT`, and only when the engine passes a
+`poll_interval` — persists the next selection-derived `retry_at`. A stale `WAIT`
+can therefore never recreate `retry_at` after Confirm/Close/timeout has settled
+the decision: a concurrent settle either commits first (this transaction then
+sees `EXPLICIT`/`ALL` and schedules nothing) or blocks on the row's write lock
+until this transaction commits and then releases the wait itself. Both legal
+orders converge to `decision = explicit/all` with `retry_at <= now`. The engine
+no longer performs a separate `poll_after` after the gate.
+
 `decision_deadline` in the public read model is `hold_until` **only while
 `decision == "pending"`** and `null` for any settled decision. The durable
 `hold_until` column is retained as historical evidence of the anchored deadline.
@@ -137,9 +191,9 @@ frontend-owned release.
 `transfer_requests.retry_at` is set forward by two paths that both leave the
 request `state='waiting'`:
 
-* `_repository_base.poll_after()` — the file-selection gate wait
-  (`engine._observe_resource`: `gate != PROCEED` →
-  `poll_after(..., waiting=True, clear_error=True)`) and the PREPARING re-poll
+* the interactive file-selection gate wait (scheduled atomically inside
+  `repository.file_selection_gate(...)` when the gate `WAIT`s for a still-pending
+  decision) and the generic `_repository_base.poll_after()` `PREPARING` re-poll
   cadence. Neither records an `error`.
 * `_repository_base.request_failure()` (via `_engine_base._request_failure(...,
   waiting=True)`) — a provider observation error / `ABSENT` / `EXPIRED` /
@@ -150,17 +204,22 @@ request `state='waiting'`:
 (A cross-transfer equivalence proof-retry also writes `retry_at` forward, but
 only for `state='materializing'` rows — never `state='waiting'`.)
 
-The release therefore targets `state='waiting' AND error IS NULL AND retry_at >
-now`. A genuine provider backoff coexisting with an active hold keeps its longer,
-legitimate `retry_at` because it recorded an `error`; the confirmed selection
-still materialises, just after that backoff. `clear_error=True` on the gate-wait
-`poll_after` keeps this predicate honest for a request that recovered from an
-earlier transient failure before reaching the gate.
+Both the release (`confirm`/`dismiss`) and the atomic gate reschedule target
+`state='waiting' AND error IS NULL`. A genuine provider backoff coexisting with
+an active hold keeps its longer, legitimate `retry_at` because it recorded an
+`error`: it is never shortened to a selection cadence and never stripped of its
+failure evidence. The confirmed selection still materialises, just after that
+backoff. `poll_after()` no longer takes a `clear_error` flag (the atomic gate is
+the only remaining file-selection scheduler and it never touches an
+`error IS NOT NULL` request).
 
 ## Persistence — `backend/db/database.py` (additive current schema)
 
-Four additive tables (no new migration number; `db/migrations/v112.py` is
-untouched):
+Four additive tables plus one additive nullable column
+(`transfer_file_selections.available_at REAL`) — no new migration number;
+`db/migrations/v112.py` is untouched, and `available_at` is added by
+`_ensure_column` with **no data backfill** (see "Legacy `manifest_wait_until` /
+new `available_at`" above):
 
 * `transfer_file_manifests` — `UNIQUE(provider_resource_id, manifest_digest)`.
 * `transfer_file_manifest_entries` — `PRIMARY KEY(manifest_id, entry_id)`,
@@ -195,23 +254,75 @@ test.
 ## Engine integration — `_engine_base.py` + `engine.py`
 
 `_engine_base._after_resolution_persisted(record, provider, result)` is an inert
-neutral seam (`return None`). The public engine overrides it: for a
-`FILE_MANIFEST` provider with a bound resource it opens the selection window,
-persists `initially_available`, and records an inline manifest if present.
+neutral seam (`return None`). The public engine overrides it — this is the
+**only** place a selection generation is created. It opens a generation for the
+`(request, provider-resource binding)` when the request is a root request routed
+to a `FILE_MANIFEST` provider (`_file_manifest_root`) **and** either the durable
+submission intent is `selection_mode == "interactive"` **or** the transfer
+already owns a selection generation
+(`repository.transfer_has_selection_generation`). The second clause keeps a
+transfer interactive across a re-resolution onto a new provider resource and
+across a database that predates `selection_mode`. It persists
+`initially_available` + `available_at` and records an inline manifest if
+present.
 
-During observation, a `FILE_MANIFEST` provider's `AVAILABLE` resource is gated by
-`repository.file_selection_gate(...)` before the executable manifest is fetched:
+**`selection_mode` gates generation creation only.** Once a durable generation
+exists for a `(request, binding)`, that generation — never the request's
+current/defaulted policy field — governs manifest recording, selection gating,
+Confirm/Close/timeout, and executable-manifest filtering until it is terminal
+(upgrade-boundary invariant). Every engine step past creation checks
+`repository.selection_generation_exists(request_id, binding_id)`: in
+`_observe_resource`, `record_file_manifest` / `file_selection_gate` /
+`commit_selected_manifest` are engaged iff a generation exists, so a
+pre-`selection_mode` database whose root request now deserializes as
+`selection_mode="all"` still has its durable PENDING hold, EXPLICIT subset, and
+PREPARING selection opportunity honored. A genuinely new `selection_mode=all`
+submission has no generation, so all three are skipped and it goes straight to
+the executable manifest as plain ALL — unchanged.
 
-* `WAIT_FOR_MANIFEST` / `WAIT_FOR_DECISION` → `poll_after` a deadline wake and
-  return; **no** `provider.manifest()` call, so the executor gets nothing.
+During observation, a `FILE_MANIFEST` provider's `AVAILABLE` resource **that
+owns a selection generation** is gated by `repository.file_selection_gate(...)`
+before the executable manifest is fetched:
+
+* `WAIT_FOR_MANIFEST` / `WAIT_FOR_DECISION` → the same transaction has already
+  persisted the next selection-derived `retry_at` (when the engine passed a
+  `poll_interval`); the engine just returns. **No** `provider.manifest()` call,
+  so the executor gets nothing.
 * `PROCEED` → `provider.manifest()` → validate →
   `repository.commit_selected_manifest(record, full_entries)` (which filters to
   the authorized subset) → `repository.manifest(record, authorized)` (ordinary
   idempotent child fan-out).
 
-No new scheduler loop: waits reuse `poll_after` + the ordinary
-`resolve_pending()` cadence, and `confirm`/`dismiss` on an active hold set the
-canonical `resolution_wakeup`.
+No new scheduler loop and no file-selection-specific worker: the gate wait reuses
+the ordinary `resolve_pending()` cadence, and `confirm`/`dismiss` on an active
+hold set the canonical `resolution_wakeup`. Provider resolve/observe/manifest
+never inspects `max_active_executions`, `live_executions`, or aria2 occupancy, so
+an interactive torrent added while every execution slot is full still resolves,
+records its manifest, opens its hold, and queues its offer; only executor
+dispatch waits for capacity.
+
+## Submission intent — `selection_mode`
+
+`selection_mode` is a neutral per-submission policy carried on the durable
+`TransferRequest` payload (alongside the existing `preferred_provider` routing
+hint), values `all` (default) and `interactive`, validated by
+`file_selection.normalize_selection_mode()`. It is **excluded from the dedupe
+fingerprint** (which keys on `TransferRequest.fingerprint`, the BitTorrent
+infohash), so the same torrent is the same logical source regardless of intent.
+`application.submit_magnet` / `submit_torrent` take `selection_mode=`;
+`POST /api/torrents/add-magnet` reads an optional body field and
+`POST /api/torrents/add-file` an optional multipart form field, both defaulting
+to `all`. The built-in browser (`app.js`) sends `interactive` on every
+magnet / bulk-magnet / torrent-file path; direct-link submission
+(`POST /api/links/add`) is unchanged and sends nothing.
+
+A pre-`selection_mode` `TransferRequest` payload deserializes with the default
+`selection_mode="all"`. This is safe: it is consulted only at generation
+creation (`_after_resolution_persisted`), and a transfer that already owns a
+generation is engaged regardless (`transfer_has_selection_generation`). An
+already-existing durable generation is authoritative — the new gate can never
+invalidate or bypass it (upgrade-boundary invariant;
+`test_file_selection_upgrade_boundary.py`).
 
 ## Application service + API
 
@@ -259,9 +370,10 @@ headers, tokens, request payloads, and executor state are never serialized.
 
 ### Browser event
 
-A newly auto-presentable multi-file offer inside the 60 s window inserts a
-durable `application_event` (`kind = file_selection_available`), claimed once so
-repeated provider polls do not duplicate it. `application/observability.py`
+The first actionable multi-file offer (multi-file manifest bound, decision
+pending, not dismissed, decision hold active) inserts a durable
+`application_event` (`kind = file_selection_available`), claimed once so repeated
+provider polls do not duplicate it. `application/observability.py`
 re-publishes it through the existing event bus as
 `("file_selection_available", {"transfer_id": ...})` — no provider identity,
 `event_bus.py` untouched. SSE is not authoritative state; the browser then
@@ -296,7 +408,9 @@ point. It owns no policy:
   endpoint;
 * auto-open only when authoritative state says
   `eligible && mutable && auto_offer && file_count > 1`; a single-file resource
-  and a manifest that arrives after the 60 s window never auto-open.
+  never auto-opens, and the browser never re-derives a presentation window of
+  its own — it obeys `auto_offer` (which the core reports true for exactly the
+  life of the decision hold).
 
 Browser loss (SSE disconnect, tab suspension, crash) is never treated as a user
 action; the durable deadline continues server-side and ALL proceeds at expiry.

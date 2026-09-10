@@ -552,6 +552,72 @@ async def test_confirm_does_not_release_a_coexisting_provider_backoff_retry_at(r
 
 
 @pytest.mark.asyncio
+async def test_atomic_gate_and_confirm_have_no_stale_wait_resurrection_window(repo):
+    """Correction §7-8 / §21 — the file-selection gate decision and the
+    scheduling of the wait it produces are one ``BEGIN IMMEDIATE`` transaction.
+    Racing the atomic gate against Confirm, in BOTH submission orders, converges
+    to exactly one outcome: decision=explicit AND retry_at not pushed into the
+    future by a stale WAIT. There is no third result."""
+    clock = Clock(1000.0)
+    for i in range(24):
+        seed, canonical = await _seed_gated(
+            repo, clock, f"{i:02d}" + "z" * 38, request_retry_at=1000.0, request_state="waiting")
+        keep = [canonical.entries[0].entry_id, canonical.entries[2].entry_id]
+
+        gate_coro = repo.file_selection_gate(
+            seed.request_id, seed.provider_resource_id, now=1050.0,
+            poll_interval=30, resource_available=True)
+        confirm_coro = repo.confirm_file_selection(
+            seed.transfer_id, canonical.manifest_id, keep, now=1050.0)
+        if i % 2:
+            gate_result, confirm_result = await asyncio.gather(gate_coro, confirm_coro)
+        else:
+            confirm_result, gate_result = await asyncio.gather(confirm_coro, gate_coro)
+
+        assert confirm_result.outcome == fs.SelectionOutcome.CONFIRMED
+        async with database.get_db() as db:
+            gen = await db.fetchone(
+                "SELECT decision FROM transfer_file_selections WHERE request_id=?", (seed.request_id,))
+            request = await db.fetchone(
+                "SELECT retry_at, state FROM transfer_requests WHERE id=?", (seed.request_id,))
+        assert gen["decision"] == "explicit"
+        assert gate_result in {fs.SelectionGate.PROCEED, fs.SelectionGate.WAIT_FOR_DECISION}
+        # Whichever committed first, the settled decision cannot be left behind a
+        # future selection-derived retry_at.
+        assert float(request["retry_at"]) <= 1050.0
+
+        # A follow-up gate pass on the settled generation proceeds and never
+        # recreates a wait.
+        assert await repo.file_selection_gate(
+            seed.request_id, seed.provider_resource_id, now=1051.0,
+            poll_interval=30, resource_available=True) == fs.SelectionGate.PROCEED
+        async with database.get_db() as db:
+            request = await db.fetchone(
+                "SELECT retry_at FROM transfer_requests WHERE id=?", (seed.request_id,))
+        assert float(request["retry_at"]) <= 1051.0
+
+
+@pytest.mark.asyncio
+async def test_atomic_gate_wait_never_overwrites_a_provider_backoff_retry_at(repo):
+    """Correction §9 / §22 — a request carrying a genuine provider backoff
+    (``error`` recorded, longer ``retry_at``) is not in ``state='waiting'`` as a
+    clean gate wait; the atomic gate scheduler leaves it entirely untouched."""
+    clock = Clock(1000.0)
+    backoff_blob = '{"domain":"provider","category":"rate_limited","stage":"reconciliation"}'
+    seed, canonical = await _seed_gated(
+        repo, clock, "bk" * 20, request_retry_at=1090.0, request_error=backoff_blob,
+        request_state="waiting")
+
+    gate = await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=1005.0,
+        poll_interval=30, resource_available=True)
+    assert gate == fs.SelectionGate.WAIT_FOR_DECISION
+    row = await _request_row(seed.request_id)
+    assert float(row["retry_at"]) == 1090.0                     # backoff cadence intact
+    assert row["error"] == backoff_blob                         # failure evidence intact
+
+
+@pytest.mark.asyncio
 async def test_conflicting_confirm_never_rewrites_retry_at(repo):
     clock = Clock(1000.0)
     seed, canonical = await _seed_gated(repo, clock, "x" * 40, request_retry_at=1030.0)

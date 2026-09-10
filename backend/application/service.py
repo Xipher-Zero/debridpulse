@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from services.event_bus import publish
 from services.maintenance_gate import ApplicationMaintenanceGate
+from transfers import file_selection
 from transfers.contracts import Manifest
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.models import ExecutionState, TransferRequest, TransferState
@@ -218,19 +219,27 @@ class ApplicationService:
             self.resolution_wakeup.set()
             return await self._publish(transfer.id)
 
-    async def submit_magnet(self, magnet, *, source="manual"):
+    async def submit_magnet(self, magnet, *, source="manual", selection_mode="all"):
+        selection_mode = file_selection.normalize_selection_mode(selection_mode)
         fingerprint = extract_hash(magnet)
         if not fingerprint or urlsplit(magnet).scheme != "magnet":
             raise ValueError("A valid BitTorrent magnet is required")
         name = parse_qs(urlsplit(magnet).query).get("dn", [fingerprint])[0]
-        return await self.submit((TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint),), name=name, source=source)
+        return await self.submit(
+            (TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint,
+                             selection_mode=selection_mode),),
+            name=name, source=source)
 
-    async def submit_torrent(self, data, filename, *, source="manual_file"):
+    async def submit_torrent(self, data, filename, *, source="manual_file", selection_mode="all"):
+        selection_mode = file_selection.normalize_selection_mode(selection_mode)
         fingerprint = extract_hash_from_torrent(data)
         if not fingerprint:
             raise ValueError("Invalid torrent metainfo")
         name = filename.rsplit(".", 1)[0]
-        return await self.submit((TransferRequest("torrent", data, name=filename, fingerprint=fingerprint),), name=name, source=source)
+        return await self.submit(
+            (TransferRequest("torrent", data, name=filename, fingerprint=fingerprint,
+                             selection_mode=selection_mode),),
+            name=name, source=source)
 
     async def submit_links(self, links):
         urls = normalize_direct_links(links)

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import AsyncGenerator, Literal
 from urllib.parse import urlparse
 
-from fastapi import Depends, APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field
 
@@ -618,8 +618,13 @@ async def add_magnet(body: dict, application: ApplicationService = Depends(get_a
     magnet = (body.get("magnet") or "").strip()
     if not magnet:
         raise HTTPException(400, "magnet is required")
+    # Optional neutral submission intent. Omitted -> ALL (correction section 6):
+    # a historical/headless caller sending the unchanged body shape never enters
+    # the interactive file-selection lifecycle.
     try:
-        row = await application.submit_magnet(magnet, source="manual")
+        row = await application.submit_magnet(
+            magnet, source="manual", selection_mode=body.get("selection_mode"),
+        )
         return public_payload(row)
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
@@ -629,11 +634,19 @@ async def add_magnet(body: dict, application: ApplicationService = Depends(get_a
 
 
 @router.post("/torrents/add-file")
-async def add_torrent_file(file: UploadFile = File(...), application: ApplicationService = Depends(get_application)):
+async def add_torrent_file(
+    file: UploadFile = File(...),
+    selection_mode: str | None = Form(default=None),
+    application: ApplicationService = Depends(get_application),
+):
     """Upload a .torrent metafile directly to AllDebrid.
 
     The local aria2 daemon never receives the torrent metafile.  AllDebrid
     processes it and ADC later dispatches only the unlocked HTTPS file URLs.
+
+    ``selection_mode`` is an optional multipart form field; omitted -> ALL. The
+    built-in browser sends ``interactive``; a historical multipart upload with
+    only ``file=<torrent>`` keeps the ALL default (correction section 6).
     """
     max_bytes = 16 * 1024 * 1024
     filename = Path(file.filename or "upload.torrent").name
@@ -656,6 +669,7 @@ async def add_torrent_file(file: UploadFile = File(...), application: Applicatio
             data,
             filename,
             source="manual_file",
+            selection_mode=selection_mode,
         )
         return public_payload(result)
     except ValueError as exc:

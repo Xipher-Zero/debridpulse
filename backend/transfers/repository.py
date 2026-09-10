@@ -570,6 +570,39 @@ class TransferRepository(_QualifiedTransferRepository):
             (request_id, provider_resource_id),
         )
 
+    async def selection_generation_exists(self, request_id: str, provider_resource_id: str) -> bool:
+        """Whether a durable selection generation already exists for this
+        (request, provider-resource binding).
+
+        ``selection_mode`` gates only whether a NEW generation is *created*. Once
+        a generation exists — including one persisted on a database that predates
+        ``selection_mode``, whose owning request now deserializes with the
+        default ``selection_mode="all"`` — that generation, not the request's
+        current policy field, governs manifest recording, selection gating,
+        Confirm/Close/timeout, and executable-manifest filtering. Every engine
+        step past generation creation checks existence here, never the policy.
+        """
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT 1 FROM transfer_file_selections WHERE request_id=? AND provider_resource_id=?",
+                (request_id, provider_resource_id),
+            )
+        return row is not None
+
+    async def transfer_has_selection_generation(self, transfer_id: int) -> bool:
+        """Whether the transfer owns any selection generation (any binding).
+
+        A transfer that already owns one was interactive; a re-resolution onto a
+        new provider resource stays interactive and opens a fresh generation for
+        the new binding (never inheriting the prior subset — specification
+        section 13), regardless of the request's current/defaulted
+        ``selection_mode``.
+        """
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT 1 FROM transfer_file_selections WHERE transfer_id=? LIMIT 1", (transfer_id,))
+        return row is not None
+
     @staticmethod
     async def _current_generation(db, transfer_id: int):
         """The transfer's current selection generation: the newest one.
@@ -598,11 +631,21 @@ class TransferRepository(_QualifiedTransferRepository):
         return None
 
     @staticmethod
-    def _selection_state(row, file_count: int) -> fs.SelectionWindowState:
+    def _selection_state(row, file_count: int, *, resource_available: bool | None = None) -> fs.SelectionWindowState:
+        available_at = row["available_at"]
+        if resource_available is None:
+            # Read-model / offer-list callers do not consult a live provider
+            # state; only ``evaluate_gate`` needs the fact and it is always
+            # passed one explicitly. The provenance flag is a safe default.
+            resource_available = bool(row["initially_available"])
         return fs.SelectionWindowState(
             decision=str(row["decision"]),
             initially_available=bool(row["initially_available"]),
-            manifest_wait_until=float(row["manifest_wait_until"]),
+            resource_available=bool(resource_available),
+            available_grace_until=(
+                float(available_at) + fs.POST_AVAILABLE_MANIFEST_GRACE_SECONDS
+                if available_at is not None else None
+            ),
             hold_until=row["hold_until"],
             manifest_id=row["manifest_id"],
             manifest_file_count=int(file_count),
@@ -629,10 +672,17 @@ class TransferRepository(_QualifiedTransferRepository):
 
         A different provider resource for the same durable request creates a new
         generation; it never overwrites the prior generation and never inherits
-        its explicit subset. The 60-second automatic manifest window is anchored
-        to ``now`` here and is never reset by a later call, an application
-        restart, or a re-resolution. The factual initial-availability
-        observation is captured once per generation.
+        its explicit subset.
+
+        No submission-relative or creation-relative countdown is anchored here.
+        A generation that is created while the resource is already AVAILABLE
+        records ``available_at`` = ``now`` so the bounded post-AVAILABLE
+        manifest-acquisition grace can start; a generation created while the
+        resource is PREPARING leaves ``available_at`` NULL until the first
+        AVAILABLE observation anchors it (see :meth:`file_selection_gate`). The
+        factual initial-availability observation is captured once per
+        generation. A later call, an application restart, or a re-resolution
+        never resets any of these fields (``INSERT OR IGNORE``).
         """
         selection_id = fs.selection_identity(request_id, provider_resource_id)
         async with get_db() as db:
@@ -647,13 +697,19 @@ class TransferRepository(_QualifiedTransferRepository):
             if not await db.fetchone("SELECT 1 FROM provider_resources WHERE id=?", (provider_resource_id,)):
                 await db.rollback()
                 return None
+            # ``manifest_wait_until`` mirrors the post-AVAILABLE grace deadline:
+            # ``0.0`` while the grace has not started, an absolute deadline once
+            # it has. It is retired as a submission-relative window and is never
+            # read by the gate; the gate reads ``available_at``.
             await db.execute(
                 """INSERT OR IGNORE INTO transfer_file_selections(
                         id, request_id, transfer_id, provider_resource_id, provider_id,
-                        initially_available, manifest_wait_until, created_at, updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?)""",
+                        initially_available, manifest_wait_until, available_at, created_at, updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (selection_id, request_id, transfer_id, provider_resource_id, str(provider_id),
-                 int(bool(initially_available)), fs.manifest_wait_deadline(now), now, now),
+                 int(bool(initially_available)),
+                 fs.manifest_grace_deadline(now) if initially_available else 0.0,
+                 now if initially_available else None, now, now),
             )
             row = await self._selection_generation(db, request_id, provider_resource_id)
             await db.commit()
@@ -700,28 +756,31 @@ class TransferRepository(_QualifiedTransferRepository):
                 )
             assignments = ["manifest_id=?", "updated_at=?"]
             params = [canonical.manifest_id, now]
-            # The 120-second decision hold begins in this same durable transaction
-            # whenever a populated multi-file selector becomes usable inside the
-            # 60-second auto-presentation window, whether the provider resource was
-            # initially AVAILABLE or initially PREPARING (specification sections
-            # 5, 6.2, 6.3). It is anchored once to this arrival and never
-            # restarted by a repeat observation, a duplicate manifest, a
-            # scheduler pass, a browser reconnect, or a restart. A manifest first
-            # observed after the window closed gets no automatic hold (section
-            # 6.9); manual Details selection stays available while mutable.
+            # The 120-second user-decision hold begins in this same durable
+            # transaction the moment the FIRST actionable multi-file manifest is
+            # bound — whether the provider resource is PREPARING or AVAILABLE,
+            # and regardless of how long provider preparation has taken
+            # (specification sections 4-5, 12, 13, 19). It is anchored once to
+            # this arrival and never restarted by a repeat observation, a
+            # duplicate manifest, a scheduler pass, a browser reconnect, or a
+            # restart. There is no submission-relative cutoff.
             hold_until = sel["hold_until"]
-            within_auto_window = now < float(sel["manifest_wait_until"])
-            if canonical.file_count > 1 and hold_until is None and within_auto_window:
+            if canonical.file_count > 1 and hold_until is None:
                 hold_until = fs.decision_hold_deadline(now)
                 assignments.append("hold_until=?")
                 params.append(hold_until)
+                # A usable manifest now exists: the post-AVAILABLE grace no
+                # longer applies to this generation.
+                assignments.append("manifest_wait_until=?")
+                params.append(0.0)
             # An offer is queued (and the durable browser event emitted, once)
-            # only when this manifest is genuinely auto-presentable now: multi-file,
-            # not previously dismissed, and inside the 60s window or an active
-            # cached hold. Repeated provider polls cannot re-queue it.
+            # only when this manifest is genuinely auto-presentable now:
+            # multi-file, not previously dismissed, with an active decision
+            # hold. Repeated provider polls cannot re-queue it.
             bound_state = fs.SelectionWindowState(
                 decision="pending", initially_available=bool(sel["initially_available"]),
-                manifest_wait_until=float(sel["manifest_wait_until"]), hold_until=hold_until,
+                resource_available=bool(sel["initially_available"]),
+                available_grace_until=None, hold_until=hold_until,
                 manifest_id=canonical.manifest_id, manifest_file_count=canonical.file_count,
                 manifest_committed_at=None, auto_offer_dismissed_at=sel["auto_offer_dismissed_at"],
             )
@@ -742,13 +801,39 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.commit()
         return canonical
 
-    async def file_selection_gate(self, request_id: str, provider_resource_id: str, *, now: float) -> str:
+    async def file_selection_gate(
+        self, request_id: str, provider_resource_id: str, *, now: float,
+        poll_interval: float | None = None, resource_available: bool | None = None,
+    ) -> str:
         """Neutral gate: may executable child fan-out proceed for this
         (request, provider resource)?
 
-        Atomically settles a still-``pending`` decision to durable ALL with a
-        neutral reason when a bounded window has elapsed or the manifest is
-        single-file. Returns one of :class:`fs.SelectionGate`.
+        Gate authority and the scheduling of a wait produced by that gate are
+        transactionally coupled (specification section 8). One ``BEGIN
+        IMMEDIATE`` on the ``transfer_file_selections`` row:
+
+        1. loads the exact selection generation;
+        2. anchors the post-AVAILABLE manifest-acquisition grace exactly once,
+           the first time the resource is observed AVAILABLE while no usable
+           manifest and no decision hold exist;
+        3. evaluates the pure neutral gate;
+        4. settles a still-``pending`` timeout/single-file decision to durable
+           ALL with a neutral reason;
+        5. only for a genuine still-pending selection WAIT, and only when a
+           ``poll_interval`` is supplied by the engine, persists the next
+           selection-derived request retry time — never over a provider backoff
+           (specification sections 9, 22), and never after the same
+           transaction has just observed a settled EXPLICIT/ALL.
+
+        A stale WAIT can therefore never recreate ``retry_at`` after Confirm /
+        Close / timeout has settled the decision: a concurrent settle either
+        commits first (this transaction then sees EXPLICIT/ALL and schedules
+        nothing) or blocks on this row's write lock until this transaction
+        commits and then releases the wait itself.
+
+        ``resource_available`` is the live provider fact; the engine passes
+        ``True`` from its AVAILABLE branch. When omitted it is read from
+        ``provider_resources``.
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -756,8 +841,33 @@ class TransferRepository(_QualifiedTransferRepository):
             if not row:
                 await db.rollback()
                 return str(fs.SelectionGate.PROCEED)
+            if resource_available is None:
+                res = await db.fetchone(
+                    "SELECT state FROM provider_resources WHERE id=?", (provider_resource_id,))
+                resource_available = str((res or {}).get("state") or "").strip().lower() == "available"
+
+            # (2) Anchor the 60s post-AVAILABLE manifest-acquisition grace once.
+            # It never runs while PREPARING, and never applies once a usable
+            # decision hold exists. Legacy pre-correction rows have
+            # ``available_at`` NULL, so their grace also starts fresh here and a
+            # stale submission-relative ``manifest_wait_until`` can never settle
+            # ALL for an uncached transfer (correction section 14).
+            if (resource_available and row["available_at"] is None
+                    and str(row["decision"]) == "pending"
+                    and row["manifest_committed_at"] is None
+                    and row["hold_until"] is None):
+                await db.execute(
+                    "UPDATE transfer_file_selections "
+                    "SET available_at=?, manifest_wait_until=?, updated_at=? "
+                    "WHERE id=? AND available_at IS NULL",
+                    (now, fs.manifest_grace_deadline(now), now, row["id"]),
+                )
+                row = await self._selection_generation(db, request_id, provider_resource_id)
+
             file_count = await self._manifest_file_count(db, row["manifest_id"])
-            evaluation = fs.evaluate_gate(self._selection_state(row, file_count), now)
+            evaluation = fs.evaluate_gate(
+                self._selection_state(row, file_count, resource_available=bool(resource_available)), now,
+            )
             if (evaluation.resolve_decision is not None and row["decision"] == "pending"
                     and row["manifest_committed_at"] is None):
                 await db.execute(
@@ -765,6 +875,21 @@ class TransferRepository(_QualifiedTransferRepository):
                        SET decision=?, decision_reason=?, decision_at=?, updated_at=?
                        WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
                     (str(evaluation.resolve_decision), str(evaluation.resolve_reason), now, now, row["id"]),
+                )
+            elif (evaluation.gate != fs.SelectionGate.PROCEED and poll_interval is not None
+                    and str(row["decision"]) == "pending" and row["manifest_committed_at"] is None):
+                # (5) A genuine still-pending selection wait. Only a request that
+                # is ``state='waiting' AND error IS NULL`` — the exclusive
+                # signature of the file-selection gate wait / a benign PREPARING
+                # re-poll (correction §9, §9a) — is rescheduled to the selection
+                # poll cadence. A coexisting provider backoff always records a
+                # non-null ``error`` and a longer ``retry_at``; it is left
+                # entirely untouched (§9, §22): never shortened to a selection
+                # cadence, never stripped of its failure evidence.
+                await db.execute(
+                    "UPDATE transfer_requests SET retry_at=? "
+                    "WHERE id=? AND state='waiting' AND error IS NULL",
+                    (float(now) + float(poll_interval), request_id),
                 )
             await db.commit()
         return str(evaluation.gate)
@@ -776,10 +901,10 @@ class TransferRepository(_QualifiedTransferRepository):
         §9a investigation — ``transfer_requests.retry_at`` is MULTI-PURPOSE. Two
         code paths set it forward on a request that ends up ``state='waiting'``:
 
-          * ``_repository_base.poll_after()`` — the file-selection gate wait
-            (``engine._observe_resource``: ``gate != PROCEED`` → ``poll_after(...,
-            waiting=True, clear_error=True)``) and the PREPARING re-poll cadence.
-            Neither records an ``error``.
+          * the interactive file-selection gate wait (scheduled atomically
+            inside :meth:`file_selection_gate` when the gate WAITs for a
+            still-pending decision) and the generic ``poll_after()`` PREPARING
+            re-poll cadence. Neither records an ``error``.
           * ``_repository_base.request_failure()`` (via
             ``_engine_base._request_failure(..., waiting=True)``) — a provider
             observation error / ABSENT / EXPIRED / reconciliation-exception
@@ -792,13 +917,14 @@ class TransferRepository(_QualifiedTransferRepository):
         state='materializing'``) but only for ``state='materializing'`` rows,
         never ``state='waiting'``.
 
-        The existing distinction the correction relies on is therefore
+        The distinction the correction relies on is therefore
         ``state='waiting' AND error IS NULL``: the file-selection gate wait, and
         only it (or a benign PREPARING re-poll), leaves the request without an
         error. A provider backoff on the same request keeps its longer,
-        legitimate ``retry_at`` because ``error IS NOT NULL``. ``clear_error`` on
-        the gate-wait ``poll_after`` keeps this predicate honest after a request
-        recovered from an earlier transient failure.
+        legitimate ``retry_at`` because ``error IS NOT NULL``. The atomic gate
+        transaction upholds this both ways: it releases only an
+        ``error IS NULL`` selection wait, and it reschedules only an
+        ``error IS NULL`` selection wait.
         """
         await db.execute(
             "UPDATE transfer_requests SET retry_at=? "
@@ -1080,7 +1206,9 @@ class TransferRepository(_QualifiedTransferRepository):
             ],
             "selected_entry_ids": selected,
             "auto_offer": fs.auto_offer_active(state, now),
-            "auto_offer_until": float(row["manifest_wait_until"]),
+            # The selector auto-presents for exactly the life of the active
+            # user-decision hold; there is no separate pre-hold window.
+            "auto_offer_until": row["hold_until"] if str(row["decision"]) == "pending" else None,
             # The 120s decision deadline is current control authority ONLY while
             # the decision is still pending. Once Confirm/Close/timeout settles it
             # the durable ``hold_until`` is retained as historical evidence but is
@@ -1117,6 +1245,6 @@ class TransferRepository(_QualifiedTransferRepository):
                     "manifest_id": row["manifest_id"],
                     "file_count": file_count,
                     "decision_deadline": row["hold_until"],
-                    "auto_offer_until": float(row["manifest_wait_until"]),
+                    "auto_offer_until": row["hold_until"],
                 })
         return offers

@@ -61,8 +61,10 @@ async def core(tmp_path, monkeypatch):
                            provider=provider, executor=executor, clock=clock)
 
 
-async def _engine_submit(core, *, payload="show"):
-    return await core.engine.submit((TransferRequest("parcel", payload, name="show"),), deduplicate=False)
+async def _engine_submit(core, *, payload="show", selection_mode="interactive"):
+    return await core.engine.submit(
+        (TransferRequest("parcel", payload, name="show", selection_mode=selection_mode),),
+        deduplicate=False)
 
 
 async def window(repo, clock, *, initially_available, tag="t"):
@@ -202,24 +204,26 @@ async def test_hold_deadline_survives_restart_without_resetting(repo):
     settled = await after.file_selection_presentation(seed.transfer_id, now=deadline + 1)
     assert settled["decision"] == "all"
 
-    # Re-opening the window with a much later clock must not move either deadline.
+    # Re-opening the window with a much later clock must not move either deadline
+    # or re-anchor availability.
     reopened = await after.begin_file_selection_window(
         seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
         initially_available=True, now=99999.0,
     )
-    assert reopened["manifest_wait_until"] == 1000.0 + fs.AUTO_MANIFEST_WINDOW_SECONDS
+    assert reopened["available_at"] == 1000.0
     assert reopened["hold_until"] == deadline
 
 
 @pytest.mark.asyncio
-async def test_manifest_window_is_not_reset_by_a_later_begin_call(repo):
+async def test_available_grace_anchor_is_not_reset_by_a_later_begin_call(repo):
     clock = Clock(2000.0)
     seed = await window(repo, clock, initially_available=True)
     again = await repo.begin_file_selection_window(
         seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
         initially_available=True, now=2500.0,
     )
-    assert again["manifest_wait_until"] == 2000.0 + fs.AUTO_MANIFEST_WINDOW_SECONDS
+    assert again["available_at"] == 2000.0
+    assert again["manifest_wait_until"] == 2000.0 + fs.POST_AVAILABLE_MANIFEST_GRACE_SECONDS
 
 
 # --------------------------------------------------------------------------- #
@@ -227,11 +231,12 @@ async def test_manifest_window_is_not_reset_by_a_later_begin_call(repo):
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_uncached_multi_file_manifest_in_window_receives_a_decision_hold(repo):
+async def test_uncached_multi_file_manifest_receives_a_decision_hold(repo):
     # An automatically actionable multi-file offer must always precede
     # irreversible ALL materialization (specification section 5). A PREPARING /
-    # uncached origin no longer disqualifies the 120s decision hold: it opens in
-    # the same transaction that queues the offer, and the gate WAITs.
+    # uncached origin does not disqualify the 120s decision hold: it opens in
+    # the same transaction that queues the offer, anchored to the manifest's
+    # arrival, and the gate WAITs.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
     clock.set(1010.0)
@@ -240,7 +245,7 @@ async def test_uncached_multi_file_manifest_in_window_receives_a_decision_hold(r
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
     assert view["decision_deadline"] == 1010.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
     assert view["initially_available"] is False          # provenance fact preserved
-    assert view["auto_offer"] is True                    # within the 60s window
+    assert view["auto_offer"] is True                    # active decision hold
     assert await repo.file_selection_gate(seed.request_id, seed.provider_resource_id, now=clock()) == fs.SelectionGate.WAIT_FOR_DECISION
     # The hold expires to default ALL as a decision timeout.
     clock.set(1010.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS)
@@ -250,19 +255,29 @@ async def test_uncached_multi_file_manifest_in_window_receives_a_decision_hold(r
 
 
 @pytest.mark.asyncio
-async def test_uncached_manifest_after_60s_never_auto_opens(repo):
-    # Section 21 H — a manifest first recorded after the 60s auto window gets no
-    # automatic offer and no automatic 120s hold; manual Details stays open.
+async def test_uncached_manifest_long_after_submission_still_auto_opens(repo):
+    # Correction §4/§12/§14b — the RETIRED submission-relative 60s cutoff. A
+    # multi-file manifest that first arrives 61s (or any time) after submission,
+    # while the provider is still preparing, MUST still anchor the 120s
+    # user-decision hold from its arrival and auto-present the selector. This
+    # assertion set fails on the pre-correction model.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
     clock.set(1061.0)
-    await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock(),
-    )
+    canonical = await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock())
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
-    assert view["auto_offer"] is False
-    assert view["decision_deadline"] is None
+    assert view["decision_deadline"] == 1061.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    assert view["auto_offer"] is True
     assert view["mutable"] is True
-    assert await repo.active_file_selection_offers(now=clock()) == []
+    offers = await repo.active_file_selection_offers(now=clock())
+    assert [o["manifest_id"] for o in offers] == [canonical.manifest_id]
+    # Still gated on the decision (resource has not yet reported AVAILABLE for a
+    # direct-repo seed either way — the hold governs).
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        resource_available=False) == fs.SelectionGate.WAIT_FOR_DECISION
 
 
 @pytest.mark.asyncio
@@ -294,13 +309,161 @@ async def test_preparing_origin_hold_survives_restart_without_resetting(repo):
         seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
         initially_available=False, now=99999.0)
     assert reopened["hold_until"] == deadline                   # unchanged
-    assert reopened["manifest_wait_until"] == 1000.0 + fs.AUTO_MANIFEST_WINDOW_SECONDS
+    # A PREPARING-origin generation with a live decision hold never anchors the
+    # post-AVAILABLE grace; it stays at its "not started" sentinel.
+    assert reopened["available_at"] is None
+    assert reopened["manifest_wait_until"] == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Correction §19 — uncached long preparation must not consume decision time
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_uncached_long_preparation_does_not_start_or_lose_the_decision_window(repo):
+    clock = Clock(1000.0)                                       # T = 0
+    seed = await window(repo, clock, initially_available=False)
+
+    # T+1 .. T+180: PREPARING, no manifest. No decision deadline, no auto-offer,
+    # and NO 60s submission-relative timeout converts it to ALL.
+    for offset in (1, 60, 61, 120, 180):
+        clock.set(1000.0 + offset)
+        gate = await repo.file_selection_gate(
+            seed.request_id, seed.provider_resource_id, now=clock(),
+            poll_interval=30, resource_available=False)
+        assert gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+        view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+        assert view["decision"] == "pending"
+        assert view["decision_deadline"] is None
+        assert view["auto_offer"] is False
+    row = await _selection_row(seed.transfer_id)
+    assert row["available_at"] is None                          # grace never started while PREPARING
+
+    # T+240: the first actionable multi-file manifest arrives (still PREPARING).
+    clock.set(1240.0)
+    canonical = await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(*[(f[0], f[1], f[2]) for f in FILES6]), now=clock())
+    assert canonical is not None
+    row = await _selection_row(seed.transfer_id)
+    assert row["hold_until"] == 1240.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    assert row["auto_offer_queued_at"] == 1240.0
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=1300.0,
+        poll_interval=30, resource_available=False) == fs.SelectionGate.WAIT_FOR_DECISION
+
+    # T+300: Confirm a subset while the provider is STILL preparing.
+    clock.set(1300.0)
+    keep = [canonical.entries[2].entry_id]
+    assert (await repo.confirm_file_selection(
+        seed.transfer_id, canonical.manifest_id, keep, now=clock())).outcome == fs.SelectionOutcome.CONFIRMED
+
+    # T+330: provider becomes AVAILABLE — no second window, no restarted timer,
+    # only the confirmed subset materializes.
+    clock.set(1330.0)
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=True) == fs.SelectionGate.PROCEED
+    authorized = await repo.commit_selected_manifest(seed.record, executable(*FILES6), now=clock())
+    assert [e.relative_path for e in authorized] == [canonical.entries[2].relative_path]
+
+
+# --------------------------------------------------------------------------- #
+# Correction §5 / §20 — the 60s grace only runs AFTER AVAILABLE, never PREPARING
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_post_available_grace_starts_only_at_first_available_observation(repo):
+    clock = Clock(1000.0)
+    seed = await window(repo, clock, initially_available=False)
+
+    # 100 seconds of PREPARING: the grace clock has not started.
+    for offset in (10, 50, 100):
+        clock.set(1000.0 + offset)
+        assert await repo.file_selection_gate(
+            seed.request_id, seed.provider_resource_id, now=clock(),
+            poll_interval=30, resource_available=False) == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert (await _selection_row(seed.transfer_id))["available_at"] is None
+
+    # T=1100: first AVAILABLE observation, still no usable manifest. The 60s
+    # grace is anchored HERE, not at submission or first PREPARING.
+    clock.set(1100.0)
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=True) == fs.SelectionGate.WAIT_FOR_MANIFEST
+    row = await _selection_row(seed.transfer_id)
+    assert row["available_at"] == 1100.0
+    assert row["manifest_wait_until"] == 1100.0 + fs.POST_AVAILABLE_MANIFEST_GRACE_SECONDS
+
+    # T=1130 (< grace end 1160): a usable manifest arrives -> 120s hold from now.
+    clock.set(1130.0)
+    canonical = await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock())
+    assert canonical is not None
+    row = await _selection_row(seed.transfer_id)
+    assert row["hold_until"] == 1130.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=True) == fs.SelectionGate.WAIT_FOR_DECISION
 
 
 @pytest.mark.asyncio
-async def test_preparing_origin_cold_load_recovers_active_offer_past_the_manifest_window(repo):
-    # Section 21 G — the 60s manifest-discovery cutoff must NOT suppress recovery
-    # of a still-active decision hold. Manifest at t=39; browser reads at t=70.
+async def test_post_available_grace_expires_to_all_when_no_manifest_arrives(repo):
+    clock = Clock(1000.0)
+    seed = await window(repo, clock, initially_available=False)
+
+    clock.set(1100.0)                                           # first AVAILABLE, grace -> 1160
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=True) == fs.SelectionGate.WAIT_FOR_MANIFEST
+
+    clock.set(1159.0)                                           # still inside the grace
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=True) == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert (await _selection_row(seed.transfer_id))["decision"] == "pending"
+
+    clock.set(1160.0)                                           # grace expired, no manifest
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=True) == fs.SelectionGate.PROCEED
+    view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+    assert view["decision"] == "all" and view["decision_reason"] == fs.DecisionReason.MANIFEST_TIMEOUT
+
+
+# --------------------------------------------------------------------------- #
+# Correction §23 — restart while PREPARING > 60s must not convert to ALL
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_restart_while_preparing_past_60s_stays_selection_eligible(repo):
+    clock = Clock(1000.0)
+    seed = await window(repo, clock, initially_available=False)
+
+    # 200 seconds of PREPARING, then the process restarts.
+    restarted = TransferRepository()
+    clock.set(1200.0)
+    gate = await restarted.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock(),
+        poll_interval=30, resource_available=False)
+    assert gate == fs.SelectionGate.WAIT_FOR_MANIFEST          # NOT settled to ALL
+    view = await restarted.file_selection_presentation(seed.transfer_id, now=clock())
+    assert view["decision"] == "pending" and view["mutable"] is True
+    assert view["decision_deadline"] is None
+
+    # A manifest that arrives after the restart still opens the full 120s hold.
+    canonical = await restarted.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock())
+    assert canonical is not None
+    assert (await _selection_row(seed.transfer_id))["hold_until"] == 1200.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_cold_load_recovers_active_offer(repo):
+    # A cold-loading / reconnecting browser recovers the open offer for the full
+    # life of the decision hold. Manifest at t=39; browser reads at t=70.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
     clock.set(1039.0)
@@ -309,7 +472,7 @@ async def test_preparing_origin_cold_load_recovers_active_offer_past_the_manifes
         file_manifest(("a", "s/a", 1), ("b", "s/b", 2), ("c", "s/c", 3)), now=clock())
     deadline = 1039.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS       # t = 1159
 
-    clock.set(1070.0)                                           # past manifest_wait_until (1060)
+    clock.set(1070.0)                                           # well inside the 120s hold
     offers = await repo.active_file_selection_offers(now=clock())
     assert [o["manifest_id"] for o in offers] == [canonical.manifest_id]
     assert offers[0]["decision_deadline"] == deadline
@@ -360,26 +523,24 @@ async def test_available_before_confirmation_settles_all_and_locks_selection(rep
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_late_manifest_dismiss_keeps_default_all_but_leaves_selection_mutable(repo):
-    # A manifest first observed after the 60s auto window gets no automatic hold
-    # (section 6.9). Close/X on it only hides the (non-)offer and leaves the
-    # decision pending + mutable for a later manual Details selection.
+async def test_manifest_long_after_submission_close_settles_all_and_releases(repo):
+    # Correction §3.3/§12/§14b — a multi-file manifest arriving long after
+    # submission opens a real decision hold, so Close/X on it settles ALL and
+    # releases immediately, exactly like any other live hold.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
     clock.set(1061.0)
-    canonical = await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock(),
-    )
-    result = await repo.dismiss_file_selection(seed.transfer_id, canonical.manifest_id, now=clock(),
-    )
-    assert result.outcome == fs.SelectionOutcome.DISMISSED
+    canonical = await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock())
+    result = await repo.dismiss_file_selection(seed.transfer_id, canonical.manifest_id, now=clock())
+    assert result.outcome == fs.SelectionOutcome.DISMISSED and result.decision == "all"
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
-    assert view["decision"] == "pending" and view["mutable"] is True
-    assert view["decision_deadline"] is None             # no automatic hold for a late manifest
-    assert view["auto_offer"] is False                   # dismissed: no repeat auto-open
-    # A later explicit confirmation is still accepted.
-    later = await repo.confirm_file_selection(seed.transfer_id, canonical.manifest_id, [canonical.entries[1].entry_id], now=clock(),
-    )
-    assert later.outcome == fs.SelectionOutcome.CONFIRMED
+    assert view["decision"] == "all" and view["decision_reason"] == fs.DecisionReason.CLOSED
+    assert view["decision_deadline"] is None
+    assert view["auto_offer"] is False
+    full = executable(("a", "s/a", 1), ("b", "s/b", 2))
+    assert await repo.commit_selected_manifest(seed.record, full, now=clock()) == full
 
 
 @pytest.mark.asyncio
@@ -573,7 +734,8 @@ async def test_engine_confirmed_subset_never_broadens_when_late_manifest_drops_a
 
 async def _preparing_then_available_with_manifest(core, *, manifest_at=1039.0):
     """Drive a transfer from PREPARING to an AVAILABLE observation that carries
-    the first complete multi-file manifest, inside the 60s auto window."""
+    the first complete multi-file manifest. ``manifest_at`` may be any time
+    after submission — provider preparation is open-ended."""
     from dataclasses import replace as _replace
 
     prepare = core.provider.parcel("A", state=ResourceState.PREPARING)
@@ -713,8 +875,8 @@ async def test_preparing_origin_repeated_observations_do_not_extend_the_deadline
 @pytest.mark.asyncio
 async def test_preparing_origin_confirm_before_available_persists_subset_only(core):
     # A confirm placed while the resource is still PREPARING (manifest already
-    # visible) survives to materialization; the hold is established because the
-    # manifest arrived inside the auto window.
+    # visible) survives to materialization; the hold is established the moment
+    # the first actionable multi-file manifest arrives.
     from dataclasses import replace as _replace
 
     prepare = core.provider.parcel("A", state=ResourceState.PREPARING)

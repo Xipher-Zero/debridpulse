@@ -39,10 +39,17 @@ tests/test_license_policy.py
 # Universal file-selection / manifest overlay (1.0.12): AllDebrid is only the
 # first provider to claim FILE_MANIFEST; the core, API, and executor boundary
 # stay provider-neutral. Added with the Gate B two-provider integration.
+# Extended by the Torrent/Magnet File-Selection Lifecycle Correction: the
+# three-dimension timing model, the atomic gate/scheduling transaction, eager
+# provider preparation independent of executor capacity, and the explicit
+# selection_mode submission intent.
 tests/test_file_selection_contract.py
 tests/test_file_selection_lifecycle.py
 tests/test_file_selection_persistence.py
 tests/test_file_selection_api.py
+tests/test_file_selection_executor_independence.py
+tests/test_file_selection_selection_mode.py
+tests/test_file_selection_upgrade_boundary.py
 # Deleted-transfer dedupe/generation retirement (1.0.12 corrective slice): Delete
 # permanently retires the active dedupe identity; re-submitting the same source is
 # a genuinely fresh transfer even while predecessor cleanup is still outstanding.

@@ -77,7 +77,9 @@ async def _submit_available_multifile(api, *, payload="showA", files=FILES6):
     api.provider.responses.append(
         api.provider.parcel(payload, state=ResourceState.AVAILABLE, files=files)
     )
-    transfer = await api.engine.submit((TransferRequest("parcel", "box", name="show"),), deduplicate=False)
+    transfer = await api.engine.submit(
+        (TransferRequest("parcel", "box", name="show", selection_mode="interactive"),),
+        deduplicate=False)
     await api.engine.resolve_pending()
     return transfer.id
 

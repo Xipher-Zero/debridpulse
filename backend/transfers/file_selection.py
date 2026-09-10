@@ -1,9 +1,30 @@
 """Provider-neutral file-selection manifest policy and normalization.
 
-This is the canonical owner of ALL-vs-explicit acquisition policy, the
-60-second automatic manifest-presentation window, the 120-second cached
-decision hold, neutral manifest/entry identity, early-manifest validation, and
-executable-manifest reconciliation.
+This is the canonical owner of ALL-vs-explicit acquisition policy, the three
+independent lifecycle timing dimensions (provider preparation, the 120-second
+user-decision hold measured from the first actionable multi-file manifest, and
+the bounded 60-second post-AVAILABLE manifest-acquisition grace), neutral
+manifest/entry identity, early-manifest validation, and executable-manifest
+reconciliation.
+
+Timing model (specification sections 4-5, Torrent/Magnet File-Selection
+Lifecycle Correction):
+
+* Provider preparation is eager and open-ended. A resource may remain PREPARING
+  for far longer than 60 seconds without losing the interactive selection
+  opportunity. No timer runs while the provider is preparing and no manifest is
+  available.
+* The 120-second hold is the maximum unanswered USER-DECISION time. It is
+  anchored exactly once, to the arrival of the first actionable multi-file
+  manifest, whether the provider resource is PREPARING or AVAILABLE at that
+  moment. It is never a provider-preparation timeout, a manifest-discovery
+  timeout from submission, or a minimum delay before execution.
+* The 60-second window is ONLY a bounded manifest-acquisition grace that starts
+  when an interactive FILE_MANIFEST-capable resource is first observed
+  executable/AVAILABLE while a usable manifest is still unobtainable. It never
+  runs while the provider is PREPARING. If a usable manifest arrives inside it,
+  the 120-second decision hold begins from that arrival; if it expires with no
+  usable manifest, the selection settles ALL.
 
 Invariants enforced here:
 
@@ -27,9 +48,39 @@ from transfers.filesystem import safe_name
 from transfers.models import FileManifest, SourceEntry
 
 
-# Two distinct, non-overlapping timing windows (specification section 4).
-AUTO_MANIFEST_WINDOW_SECONDS = 60.0
+# Three independent, non-overlapping timing dimensions (specification sections
+# 4-5). ``POST_AVAILABLE_MANIFEST_GRACE_SECONDS`` is the bounded grace that only
+# runs after an AVAILABLE resource still cannot supply a usable manifest — never
+# a submission-relative or resource-creation-relative window.
+POST_AVAILABLE_MANIFEST_GRACE_SECONDS = 60.0
 IMMEDIATE_DECISION_HOLD_SECONDS = 120.0
+
+
+# Neutral submission-intent policy (correction section 6). Interactive
+# file-selection is entered ONLY when the submitter explicitly opts in; it is
+# never inferred from an SSE connection, a browser session, a user agent, or a
+# ``source`` string. Historical/headless callers that send the unchanged
+# request shape therefore always default to ALL.
+SELECTION_MODE_ALL = "all"
+SELECTION_MODE_INTERACTIVE = "interactive"
+SELECTION_MODES = frozenset({SELECTION_MODE_ALL, SELECTION_MODE_INTERACTIVE})
+DEFAULT_SELECTION_MODE = SELECTION_MODE_ALL
+
+
+def normalize_selection_mode(value: str | None) -> str:
+    """Return a validated ``selection_mode``; ``None``/blank -> the ALL default.
+
+    Raises :class:`ValueError` for any other value so the API boundary rejects
+    it with ordinary request validation. ``selection_mode`` is a per-submission
+    policy only; it never participates in source dedupe/fingerprint identity.
+    """
+    text = str(value).strip().lower() if value is not None else ""
+    if not text:
+        return DEFAULT_SELECTION_MODE
+    if text not in SELECTION_MODES:
+        raise ValueError(f"Unsupported selection_mode: {value!r}")
+    return text
+
 
 # Bounded early-manifest payload limits (specification section 23).
 MAX_MANIFEST_ENTRIES = 20000
@@ -244,11 +295,15 @@ def canonicalize_manifest(provider_resource_id: str, manifest: FileManifest) -> 
 class SelectionWindowState:
     """Durable file-selection facts a neutral gate decision needs."""
     decision: str
-    initially_available: bool
-    manifest_wait_until: float          # absolute end of the 60s auto-offer window
-    hold_until: float | None            # absolute 120s cached decision deadline
-    manifest_id: str | None             # a validated selectable manifest is bound
-    manifest_file_count: int            # 0 when no manifest is bound
+    initially_available: bool            # provenance: resource was AVAILABLE at generation creation
+    resource_available: bool             # the provider resource is executable/AVAILABLE right now
+    available_grace_until: float | None  # absolute end of the 60s post-AVAILABLE manifest grace;
+    #                                      None means the grace has not started (still PREPARING,
+    #                                      or a usable manifest is already bound)
+    hold_until: float | None             # absolute 120s user-decision deadline, anchored once to the
+    #                                      first actionable multi-file manifest
+    manifest_id: str | None              # a validated selectable manifest is bound
+    manifest_file_count: int             # 0 when no manifest is bound
     manifest_committed_at: float | None
     auto_offer_dismissed_at: float | None
 
@@ -267,13 +322,20 @@ def evaluate_gate(state: SelectionWindowState, now: float) -> GateEvaluation:
     Provider-side acquisition is never governed here. Only local executable
     materialization is ever held.
 
-    An automatically actionable multi-file offer and immediate irreversible ALL
-    materialization must never coexist (specification section 5/7). Whenever a
-    populated multi-file manifest was observed inside the auto-presentation
-    window, ``record_file_manifest`` establishes a bounded decision hold in the
-    same durable transaction that queues the offer; this gate then honors that
-    hold as ``WAIT_FOR_DECISION`` regardless of whether the provider resource was
-    initially AVAILABLE or initially PREPARING.
+    Three independent dimensions (specification sections 4-5, 32):
+
+    * Provider preparation is eager. While the resource is not yet
+      executable/AVAILABLE and no usable manifest exists, this gate WAITs with
+      no countdown of any kind — the user's decision clock has not started.
+    * The 120-second user-decision hold, once ``record_file_manifest`` has
+      anchored it to the first actionable multi-file manifest, is honored here
+      as ``WAIT_FOR_DECISION`` regardless of whether the resource was PREPARING
+      or AVAILABLE when the manifest arrived. ``DECISION_TIMEOUT`` is emitted
+      only when that persisted hold actually expired while still pending.
+    * The 60-second post-AVAILABLE grace applies only when the resource is
+      AVAILABLE but no usable multi-file manifest is obtainable yet. It never
+      runs while PREPARING. ``MANIFEST_TIMEOUT`` is emitted only when that grace
+      expired.
     """
     if state.manifest_committed_at is not None:
         return GateEvaluation(SelectionGate.PROCEED)
@@ -290,46 +352,32 @@ def evaluate_gate(state: SelectionWindowState, now: float) -> GateEvaluation:
             SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.SINGLE_FILE,
         )
 
-    if has_multi:
-        if state.hold_until is not None:
-            # A real decision hold exists. ``DECISION_TIMEOUT`` is emitted only
-            # here — a persisted hold that actually expired while still pending.
-            if now < state.hold_until:
-                return GateEvaluation(SelectionGate.WAIT_FOR_DECISION)
-            return GateEvaluation(
-                SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DECISION_TIMEOUT,
-            )
-        if now < state.manifest_wait_until:
-            # Unreachable by construction: ``record_file_manifest`` establishes
-            # the decision hold in the same transaction that binds an in-window
-            # multi-file manifest. Never settle ALL while the auto window is
-            # still open — keep waiting for the hold to appear (self-healing).
-            return GateEvaluation(SelectionGate.WAIT_FOR_MANIFEST)
-        # A multi-file manifest observed only after the 60-second auto window
-        # closed: no auto-offer and no hold were ever created (section 6.9). The
-        # manifest opportunity genuinely expired.
-        if state.initially_available:
-            return GateEvaluation(
-                SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.MANIFEST_TIMEOUT,
-            )
+    if has_multi and state.hold_until is not None:
+        # The 120-second user-decision hold is authoritative. It is never
+        # extended, restarted, or capped by any provider-side window.
+        if now < state.hold_until:
+            return GateEvaluation(SelectionGate.WAIT_FOR_DECISION)
         return GateEvaluation(
-            SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DEFAULT_MATERIALIZATION,
+            SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DECISION_TIMEOUT,
         )
 
-    # No manifest is bound yet.
-    if state.initially_available:
-        if now < state.manifest_wait_until:
-            return GateEvaluation(SelectionGate.WAIT_FOR_MANIFEST)
-        # The 60-second manifest opportunity expired with nothing usable.
-        return GateEvaluation(
-            SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.MANIFEST_TIMEOUT,
-        )
+    # Either no manifest is bound yet, or (only for a pre-correction row) a
+    # multi-file manifest exists without its co-established hold. In both cases
+    # the user's decision clock has not started.
+    if not state.resource_available:
+        # Provider preparation is still in progress. No decision deadline and no
+        # manifest-grace countdown — provider work proceeds on its own cadence
+        # for as long as it needs (specification sections 4, 12, 19).
+        return GateEvaluation(SelectionGate.WAIT_FOR_MANIFEST)
 
-    # Uncached / preparing resource with no actionable auto-offer: provider-side
-    # work proceeds normally and, when the engine finally has an executable
-    # manifest with no explicit subset confirmed, default ALL settles here.
+    # The resource is executable/AVAILABLE but a usable multi-file manifest is
+    # not obtainable yet: the bounded post-AVAILABLE manifest-acquisition grace
+    # (specification section 5, 20). ``available_grace_until`` is None until the
+    # first AVAILABLE-without-manifest observation anchors it.
+    if state.available_grace_until is None or now < state.available_grace_until:
+        return GateEvaluation(SelectionGate.WAIT_FOR_MANIFEST)
     return GateEvaluation(
-        SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DEFAULT_MATERIALIZATION,
+        SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.MANIFEST_TIMEOUT,
     )
 
 
@@ -341,9 +389,11 @@ def selection_mutable(state: SelectionWindowState) -> bool:
 def auto_offer_active(state: SelectionWindowState, now: float) -> bool:
     """Whether a browser should automatically present the selector right now.
 
-    True inside the 60-second window for any eligible multi-file manifest, and
-    for the entire duration of an active cached decision hold so a cold-loading
-    or reconnecting browser still recovers the open offer.
+    True for the entire duration of an active user-decision hold — and only
+    then — so a cold-loading or reconnecting browser still recovers the open
+    offer for exactly as long as the decision can still be made. The hold is
+    established the moment the first actionable multi-file manifest arrives, so
+    there is no separate pre-hold presentation window.
     """
     if state.manifest_committed_at is not None or state.decision != SelectionDecision.PENDING:
         return False
@@ -351,13 +401,11 @@ def auto_offer_active(state: SelectionWindowState, now: float) -> bool:
         return False
     if state.auto_offer_dismissed_at is not None:
         return False
-    if state.hold_until is not None and now < state.hold_until:
-        return True
-    return now < state.manifest_wait_until
+    return state.hold_until is not None and now < state.hold_until
 
 
-def manifest_wait_deadline(now: float) -> float:
-    return float(now) + AUTO_MANIFEST_WINDOW_SECONDS
+def manifest_grace_deadline(now: float) -> float:
+    return float(now) + POST_AVAILABLE_MANIFEST_GRACE_SECONDS
 
 
 def decision_hold_deadline(now: float) -> float:

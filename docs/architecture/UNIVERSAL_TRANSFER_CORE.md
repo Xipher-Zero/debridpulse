@@ -352,31 +352,49 @@ Additive current-schema evolution — new columns and idempotent backfills for b
 A capable provider may declare `Capability.FILE_MANIFEST` and report a neutral
 `FileManifest` on `ProviderObservation` before the core commits that resource's
 executable manifest. The core — not the provider or executor — owns every
-selection decision: ALL-vs-explicit-subset policy, the 60-second automatic
-presentation window, the 120-second decision hold (established in the same
-durable transaction that queues any auto-presented multi-file offer, whether the
-resource's initial observation was `AVAILABLE` or `PREPARING`, so an actionable
-offer never coexists with immediate ALL materialization), durable
-per-provider-resource selection generations, stale manifest rejection,
-fail-closed executable-manifest reconciliation, and the
-final `SourceEntry` filtering before child fan-out. Default policy remains ALL;
-provider-side acquisition never waits on the browser. The Confirm-vs-
-materialization race is serialized by durable SQLite (`BEGIN IMMEDIATE` on the
-selection-generation row), never an in-memory lock. All timing derives from the
-injected core clock with persisted absolute deadlines that survive restart.
+selection decision. **Provider preparation, user file-selection authorization,
+and executor dispatch are three separate lifecycle dimensions**: provider
+preparation is eager and independent of executor capacity; user decision time
+begins only when there is an actionable multi-file manifest to decide on;
+executor capacity matters only when executable work is ready to dispatch.
+
+Core owns: ALL-vs-explicit-subset policy; the 120-second **user-decision hold**,
+anchored exactly once to the first actionable multi-file manifest (whether the
+resource is `PREPARING` or `AVAILABLE` at that moment, and however long provider
+preparation has taken — there is no submission-relative cutoff), so an actionable
+offer never coexists with immediate ALL materialization; the bounded 60-second
+**post-`AVAILABLE` manifest-acquisition grace** (only when an `AVAILABLE`
+resource still cannot supply a usable manifest — never while `PREPARING`);
+durable per-provider-resource selection generations; stale manifest rejection;
+fail-closed executable-manifest reconciliation; and the final `SourceEntry`
+filtering before child fan-out. Default policy remains ALL. `selection_mode`
+gates only whether a *new* selection generation is created (never inferred from
+browser presence); once a durable generation exists for a `(request, binding)`
+it is authoritative for the rest of that generation's life regardless of the
+request's current/defaulted `selection_mode` — a database that predates
+`selection_mode` keeps every existing PENDING hold, EXPLICIT subset, and
+PREPARING selection opportunity. The Confirm-vs-materialization race is
+serialized by durable SQLite (`BEGIN IMMEDIATE` on the selection-generation row),
+never an in-memory lock. All timing derives from the injected core clock with
+persisted absolute deadlines that survive restart without resetting or
+extending.
 
 The 120-second hold is a **maximum unanswered-decision window, not a minimum
-delay**: it applies only while `decision == "pending"`. Confirm (`→ explicit`)
-and an active-hold Close (`→ all/closed`) each settle the decision and, in the
-*same* `BEGIN IMMEDIATE` transaction, release the scheduler `retry_at` the
-file-selection gate scheduled on the owning request — so the next ordinary
-resolution cycle materialises immediately rather than after the decision deadline
-or the last provider poll. `retry_at` is multi-purpose (the gate wait, and also
-provider-failure backoff via `request_failure`); the release targets only the
-selection-induced component (`state='waiting' AND error IS NULL`), never a
-coexisting legitimate backoff. `decision_deadline` is exposed only while the
-decision is pending; the durable `hold_until` is retained as historical evidence.
-No new scheduler or lifecycle state is introduced.
+delay**: it applies only while `decision == "pending"`. Gate authority and the
+scheduling of the wait it produces are one `BEGIN IMMEDIATE` transaction
+(`repository.file_selection_gate`), so a stale `WAIT` can never recreate
+`retry_at` after Confirm/Close/timeout has settled the decision — a concurrent
+settle either commits first (the gate then sees `EXPLICIT`/`ALL` and schedules
+nothing) or blocks on the row lock and then releases the wait itself. Confirm
+(`→ explicit`) and an active-hold Close (`→ all/closed`) each settle the decision
+and, in the *same* transaction, release the selection `retry_at` the gate
+scheduled. `retry_at` is multi-purpose (the gate wait, and also provider-failure
+backoff via `request_failure`); both the release and the atomic gate reschedule
+target only the selection-induced component (`state='waiting' AND error IS
+NULL`), never a coexisting legitimate backoff. `decision_deadline` is exposed
+only while the decision is pending; the durable `hold_until` is retained as
+historical evidence. No new scheduler, lifecycle state, or file-selection worker
+is introduced.
 
 The executor still receives ordinary canonical candidates only and knows nothing
 about file selection. See [FILE_SELECTION_MANIFEST.md](FILE_SELECTION_MANIFEST.md).

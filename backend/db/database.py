@@ -517,7 +517,16 @@ TRANSFER_REPOSITORY_SCHEMA = (
         provider_id TEXT NOT NULL,
         manifest_id TEXT REFERENCES transfer_file_manifests(id),
         initially_available INTEGER NOT NULL DEFAULT 0,
+        -- Retired as a submission-relative window (Torrent/Magnet File-Selection
+        -- Lifecycle Correction §14). Now a mirror of the post-AVAILABLE manifest
+        -- grace deadline: 0.0 until the resource is first observed AVAILABLE
+        -- without a usable manifest, an absolute deadline thereafter. The gate
+        -- reads ``available_at``, never this column.
         manifest_wait_until REAL NOT NULL,
+        -- Core ``now`` at which this generation's resource was first observed
+        -- executable/AVAILABLE. NULL while still PREPARING. Anchors the bounded
+        -- 60s post-AVAILABLE manifest-acquisition grace; never a decision timer.
+        available_at REAL,
         auto_offer_queued_at REAL,
         auto_offer_dismissed_at REAL,
         decision TEXT NOT NULL DEFAULT 'pending' CHECK(decision IN ('pending','explicit','all')),
@@ -570,6 +579,12 @@ TRANSFER_REPOSITORY_COLUMNS = {
     },
     'resolution_attempts': {'result': 'TEXT'},
     'execution_attempts': {'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT'},
+    # Additive nullable column for databases created before the Torrent/Magnet
+    # File-Selection Lifecycle Correction. A metadata-only ALTER: every existing
+    # row is left NULL, which is exactly the correct "resource not yet observed
+    # AVAILABLE under the corrected engine" value — the next ordinary AVAILABLE
+    # observation anchors it. There is no data backfill (§14 / §14a).
+    'transfer_file_selections': {'available_at': 'REAL'},
     'download_files': {'request_id': 'TEXT', 'candidates': 'TEXT', 'selected_candidate': 'INTEGER NOT NULL DEFAULT 0', 'execution_attempt_id': 'TEXT', 'normalized_error': 'TEXT', 'retry_at': 'REAL NOT NULL DEFAULT 0', 'recovery_failures': 'INTEGER NOT NULL DEFAULT 0', 'recovery_refreshes': 'INTEGER NOT NULL DEFAULT 0'},
 }
 
@@ -587,7 +602,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'artifact_consolidations': {'contributing_artifact_id', 'source_transfer_id', 'source_request_id', 'canonical_artifact_id', 'created_at', 'updated_at'},
     'transfer_file_manifests': {'id', 'transfer_id', 'request_id', 'provider_resource_id', 'provider_id', 'manifest_digest', 'observed_at', 'created_at'},
     'transfer_file_manifest_entries': {'manifest_id', 'entry_id', 'ordinal', 'name', 'relative_path', 'expected_bytes'},
-    'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at'},
+    'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'available_at', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at'},
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
     'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'source_fingerprint'},
     'transfer_controls': {'value', 'key'},

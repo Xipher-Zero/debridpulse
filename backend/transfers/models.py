@@ -177,6 +177,11 @@ class TransferRequest:
     name: str = ""
     fingerprint: str = ""
     preferred_provider: str | None = None
+    # Neutral per-submission policy: "all" (default) or "interactive". Governs
+    # only whether the interactive file-selection lifecycle is entered; it is
+    # NOT part of source identity and is excluded from the dedupe fingerprint
+    # (which keys on ``fingerprint``, the BitTorrent infohash).
+    selection_mode: str = "all"
 
 
 @dataclass(frozen=True)

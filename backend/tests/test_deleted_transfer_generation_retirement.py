@@ -83,8 +83,10 @@ async def _build_core(tmp_path):
                            provider=provider, executor=executor, clock=clock, tmp_path=tmp_path)
 
 
-def _magnet(fingerprint: str = "btih-abc", payload: str = "box") -> TransferRequest:
-    return TransferRequest("parcel", payload, name="payload.bin", fingerprint=fingerprint)
+def _magnet(fingerprint: str = "btih-abc", payload: str = "box", *,
+            selection_mode: str = "all") -> TransferRequest:
+    return TransferRequest("parcel", payload, name="payload.bin", fingerprint=fingerprint,
+                           selection_mode=selection_mode)
 
 
 async def _torrents(where: str = "", params=()):
@@ -367,7 +369,7 @@ async def test_identical_file_tree_never_aliases_predecessor_manifest_or_selecti
 
     files = [("e1", "s/e1", 10), ("e2", "s/e2", 20), ("e3", "s/e3", 30)]
     core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE, files=files))
-    a = await core.engine.submit((_magnet("fp-tree"),), name="A")
+    a = await core.engine.submit((_magnet("fp-tree", selection_mode="interactive"),), name="A")
     await core.engine.resolve_pending()
     view_a = await core.repository.file_selection_presentation(a.id, now=core.clock())
     assert view_a is not None
@@ -378,7 +380,7 @@ async def test_identical_file_tree_never_aliases_predecessor_manifest_or_selecti
     await core.engine.delete(a.id, remote=False)
 
     core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE, files=files))
-    b = await core.engine.submit((_magnet("fp-tree"),), name="B")
+    b = await core.engine.submit((_magnet("fp-tree", selection_mode="interactive"),), name="B")
     await core.engine.resolve_pending()
     view_b = await core.repository.file_selection_presentation(b.id, now=core.clock())
     assert view_b is not None
@@ -617,7 +619,7 @@ async def test_predecessor_executor_cleanup_stays_scoped_to_the_old_transfer(cor
 async def test_readd_starts_a_fresh_file_selection_generation(core):
     files = [("e1", "s/e1", 10), ("e2", "s/e2", 20), ("e3", "s/e3", 30)]
     core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE, files=files))
-    a = await core.engine.submit((_magnet("fp-fs"),), name="A")
+    a = await core.engine.submit((_magnet("fp-fs", selection_mode="interactive"),), name="A")
     await core.engine.resolve_pending()
     view_a = await core.repository.file_selection_presentation(a.id, now=core.clock())
     await core.repository.confirm_file_selection(
@@ -627,7 +629,7 @@ async def test_readd_starts_a_fresh_file_selection_generation(core):
     await core.engine.delete(a.id, remote=False)
 
     core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE, files=files))
-    b = await core.engine.submit((_magnet("fp-fs"),), name="B")
+    b = await core.engine.submit((_magnet("fp-fs", selection_mode="interactive"),), name="B")
     assert b.id != a.id
     await core.engine.resolve_pending()
     view_b = await core.repository.file_selection_presentation(b.id, now=core.clock())
