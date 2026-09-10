@@ -363,6 +363,20 @@ final `SourceEntry` filtering before child fan-out. Default policy remains ALL;
 provider-side acquisition never waits on the browser. The Confirm-vs-
 materialization race is serialized by durable SQLite (`BEGIN IMMEDIATE` on the
 selection-generation row), never an in-memory lock. All timing derives from the
-injected core clock with persisted absolute deadlines that survive restart. The
-executor still receives ordinary canonical candidates only and knows nothing
+injected core clock with persisted absolute deadlines that survive restart.
+
+The 120-second hold is a **maximum unanswered-decision window, not a minimum
+delay**: it applies only while `decision == "pending"`. Confirm (`→ explicit`)
+and an active-hold Close (`→ all/closed`) each settle the decision and, in the
+*same* `BEGIN IMMEDIATE` transaction, release the scheduler `retry_at` the
+file-selection gate scheduled on the owning request — so the next ordinary
+resolution cycle materialises immediately rather than after the decision deadline
+or the last provider poll. `retry_at` is multi-purpose (the gate wait, and also
+provider-failure backoff via `request_failure`); the release targets only the
+selection-induced component (`state='waiting' AND error IS NULL`), never a
+coexisting legitimate backoff. `decision_deadline` is exposed only while the
+decision is pending; the durable `hold_until` is retained as historical evidence.
+No new scheduler or lifecycle state is introduced.
+
+The executor still receives ordinary canonical candidates only and knows nothing
 about file selection. See [FILE_SELECTION_MANIFEST.md](FILE_SELECTION_MANIFEST.md).

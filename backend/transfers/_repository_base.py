@@ -1244,9 +1244,20 @@ class TransferRepository:
         result = codec.load(row["result"], {}) if row else {}
         return tuple(codec.candidate(value) for value in result.get("candidates", []))
 
-    async def poll_after(self, request_id: str, timestamp: float, *, waiting=False):
+    async def poll_after(self, request_id: str, timestamp: float, *, waiting=False, clear_error=False):
+        # ``clear_error`` is set only by the file-selection gate wait: reaching it
+        # means the provider observation for this request just succeeded, so any
+        # error still recorded on the request is stale. Clearing it keeps
+        # ``error IS NULL`` a reliable "this future retry_at is a poll cadence,
+        # not a provider backoff" signal for confirm_file_selection /
+        # dismiss_file_selection (see the retry_at multi-purpose note there).
         async with get_db() as db:
-            await db.execute("UPDATE transfer_requests SET retry_at=?,state=CASE WHEN ? THEN 'waiting' ELSE state END WHERE id=?", (timestamp, waiting, request_id))
+            await db.execute(
+                "UPDATE transfer_requests SET retry_at=?,"
+                "state=CASE WHEN ? THEN 'waiting' ELSE state END,"
+                "error=CASE WHEN ? THEN NULL ELSE error END WHERE id=?",
+                (timestamp, waiting, clear_error, request_id),
+            )
             await db.commit()
 
     async def add_alternate(self, primary: Artifact, record: RequestRecord, candidates, size: int):

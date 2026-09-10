@@ -794,3 +794,245 @@ async def test_retry_after_child_creation_keeps_only_the_selected_children(core)
     assert after == ["S1/e1.mkv", "S1/e2.mkv"]           # no unselected child ever appears
     artifacts = await core.repository.artifacts(transfer.id)
     assert sorted(a.name for a in artifacts) == ["e1.mkv", "e2.mkv"]
+
+
+# --------------------------------------------------------------------------- #
+# Hold release / immediate materialization
+# (TASK_File_Selection_Hold_Release_Correction §16-17). A decision hold exists
+# only while the decision is pending: Confirm / Close resolves it and atomically
+# releases the scheduler retry_at the file-selection gate created — never a
+# coexisting provider backoff on the same request (§9a).
+# --------------------------------------------------------------------------- #
+
+from types import SimpleNamespace as _NS
+
+from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
+from transfers.models import ProviderObservation
+
+
+async def _hold_release_engine(tmp_path, *, db_name="hold-release.db", poll_interval=30,
+                               resolution_retry_delay=0, clock=None):
+    repository = TransferRepository()
+    registry = IntegrationRegistry()
+    provider = ParcelProvider(file_manifest=True)
+    executor = RecordingExecutor(repository.authorize_execution)
+    registry.register_provider(provider)
+    registry.register_executor(executor)
+    clock = clock or Clock(1000.0)
+    engine = TransferEngine(
+        repository, registry, download_root=str(tmp_path / "payloads"),
+        policy=TransferPolicy(adoption_stability_seconds=0, resource_poll_interval=poll_interval,
+                              retry_delay=0, resolution_retry_delay=resolution_retry_delay,
+                              max_active_executions=8, max_attempts=8),
+        clock=clock,
+    )
+    await engine.initialize()
+    return _NS(engine=engine, repository=repository, registry=registry,
+               provider=provider, executor=executor, clock=clock)
+
+
+@pytest_asyncio.fixture
+async def hold_core(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "hold-release.db")
+    await database.init_db()
+    return await _hold_release_engine(tmp_path)
+
+
+async def _root_request_row(transfer_id):
+    async with database.get_db() as db:
+        return await db.fetchone(
+            "SELECT * FROM transfer_requests WHERE transfer_id=? AND parent_id IS NULL "
+            "ORDER BY ordinal LIMIT 1", (transfer_id,))
+
+
+async def _cached_multi_gated(core):
+    """Submit an AVAILABLE multi-file torrent and resolve once: the engine records
+    the manifest, opens the 120s hold, and parks the request on the gate wait."""
+    core.provider.responses.append(
+        core.provider.parcel("A", state=ResourceState.AVAILABLE, files=FILES6))
+    transfer = await _engine_submit(core)
+    await core.engine.resolve_pending()
+    row = await _root_request_row(transfer.id)
+    assert row["state"] == "waiting" and float(row["retry_at"]) > core.clock()
+    assert ("manifest", "parcel-lab:A") not in core.provider.calls
+    view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
+    assert view["decision_deadline"] == 1000.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    return transfer, view
+
+
+@pytest.mark.asyncio
+async def test_confirm_releases_gate_wait_and_materialises_without_advancing_the_clock(hold_core):
+    """§16 primary reproducer — fails on 4469e8a, where Confirm settles EXPLICIT
+    but leaves request.retry_at = now + poll_interval so the next resolution
+    cycle returns without materialising until that timestamp."""
+    core = hold_core
+    transfer, view = await _cached_multi_gated(core)
+    keep = [view["entries"][1]["entry_id"], view["entries"][3]["entry_id"]]     # e2, e4
+
+    result = await core.repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], keep, now=core.clock())
+    assert result.outcome == fs.SelectionOutcome.CONFIRMED
+
+    row = await _root_request_row(transfer.id)
+    assert float(row["retry_at"]) <= core.clock()               # gate wait released, same txn
+    sel = await _selection_row(transfer.id)
+    assert sel["decision"] == "explicit" and sel["decision_reason"] == fs.DecisionReason.CONFIRMED
+    assert sel["decision_at"] == core.clock() and sel["manifest_committed_at"] is None
+
+    await core.engine.resolve_pending()                         # NO core.clock.advance()
+
+    assert ("manifest", "parcel-lab:A") in core.provider.calls
+    members = await _members(core, transfer.id)
+    assert sorted(r.entry.relative_path for r in members) == ["S1/e2.mkv", "S1/e4.mkv"]
+    sel = await _selection_row(transfer.id)
+    assert sel["manifest_committed_at"] is not None
+    assert (await core.repository.file_selection_presentation(
+        transfer.id, now=core.clock()))["decision_deadline"] is None
+
+
+@pytest.mark.parametrize("confirm_at", [1001.0, 1000.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS - 1])
+@pytest.mark.asyncio
+async def test_confirm_at_t1_and_near_deadline_proceed_immediately(tmp_path, monkeypatch, confirm_at):
+    """§17 B/C — Confirm one second in, and one second before the deadline, both
+    proceed at once; the final second is never waited."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"t-{confirm_at}.db")
+    await database.init_db()
+    core = await _hold_release_engine(tmp_path, clock=Clock(1000.0))
+    transfer, view = await _cached_multi_gated(core)
+    core.clock.set(confirm_at)
+    await core.repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], [view["entries"][0]["entry_id"]], now=core.clock())
+    assert float((await _root_request_row(transfer.id))["retry_at"]) <= core.clock()
+    await core.engine.resolve_pending()                         # clock still == confirm_at
+    members = await _members(core, transfer.id)
+    assert [r.entry.relative_path for r in members] == ["S1/e1.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_close_releases_gate_wait_and_all_materialises_immediately(hold_core):
+    """§17 E — Close/X settles default ALL and releases the gate wait; ALL
+    materialises without waiting for the old poll timestamp."""
+    core = hold_core
+    transfer, view = await _cached_multi_gated(core)
+
+    result = await core.repository.dismiss_file_selection(
+        transfer.id, view["manifest_id"], now=core.clock())
+    assert result.outcome == fs.SelectionOutcome.DISMISSED and result.decision == "all"
+
+    sel = await _selection_row(transfer.id)
+    assert sel["decision"] == "all" and sel["decision_reason"] == fs.DecisionReason.CLOSED
+    assert float((await _root_request_row(transfer.id))["retry_at"]) <= core.clock()
+
+    await core.engine.resolve_pending()                         # no clock advance
+    members = await _members(core, transfer.id)
+    assert sorted(r.entry.relative_path for r in members) == sorted(f[1] for f in FILES6)
+    view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
+    assert view["decision"] == "all" and view["decision_deadline"] is None
+
+
+@pytest.mark.asyncio
+async def test_unanswered_hold_still_waits_the_full_window(hold_core):
+    """§17 A/F — with no user action the request stays gated for the full 120s;
+    the default timeout is unchanged."""
+    core = hold_core
+    transfer, _ = await _cached_multi_gated(core)
+
+    for step in (30, 60, 90, 119):
+        core.clock.set(1000.0 + step)
+        await core.engine.resolve_pending()
+        assert await _members(core, transfer.id) == []
+        assert (await _root_request_row(transfer.id))["state"] == "waiting"
+
+    core.clock.set(1000.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS + 1)
+    await core.engine.resolve_pending()
+    sel = await _selection_row(transfer.id)
+    assert sel["decision"] == "all" and sel["decision_reason"] == fs.DecisionReason.DECISION_TIMEOUT
+    members = await _members(core, transfer.id)
+    assert sorted(r.entry.relative_path for r in members) == sorted(f[1] for f in FILES6)
+
+
+@pytest.mark.asyncio
+async def test_confirm_does_not_release_an_unrelated_provider_backoff(hold_core):
+    """§9a / §17 K — a provider observation error schedules a 90s backoff on the
+    same request while the file-selection hold is still active. Confirm releases
+    only the selection-induced wait; the longer, legitimate backoff is retained
+    because that path records an ``error`` and the gate-wait path never does."""
+    from dataclasses import replace as _replace
+    core = hold_core
+    transfer, view = await _cached_multi_gated(core)
+    base_resource = core.provider.resources["parcel-lab:A"].resource
+
+    assert (await _root_request_row(transfer.id))["error"] is None   # gate wait is clean
+
+    backoff = NormalizedError(
+        Domain.PROVIDER, Category.RATE_LIMITED, Stage.RECONCILIATION,
+        retryability=Retryability.BACKOFF, recovery=Recovery.RETRY, retry_after_seconds=90.0)
+    core.provider.resources["parcel-lab:A"] = ProviderObservation(
+        base_resource, ResourceState.UNAVAILABLE, error=backoff)
+    core.clock.set(1000.0 + 31)                                 # past the gate poll
+    await core.engine.resolve_pending()
+    row = await _root_request_row(transfer.id)
+    assert row["error"] is not None
+    backoff_deadline = float(row["retry_at"])
+    assert backoff_deadline >= core.clock() + 89
+
+    assert (await _selection_row(transfer.id))["decision"] == "pending"
+    result = await core.repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], [view["entries"][0]["entry_id"]], now=core.clock())
+    assert result.outcome == fs.SelectionOutcome.CONFIRMED
+
+    row = await _root_request_row(transfer.id)
+    assert float(row["retry_at"]) == backoff_deadline           # unrelated backoff untouched
+    assert row["error"] is not None
+
+    # It resumes after the legitimate backoff, not before it.
+    core.provider.resources["parcel-lab:A"] = _replace(
+        ProviderObservation(base_resource, ResourceState.AVAILABLE,
+                            file_manifest=file_manifest(*FILES6)))
+    core.clock.set(backoff_deadline + 1)
+    await core.engine.resolve_pending()
+    members = await _members(core, transfer.id)
+    assert [r.entry.relative_path for r in members] == ["S1/e1.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_restart_after_confirm_before_materialisation_resumes_immediately(tmp_path, monkeypatch):
+    """§17 I — a fresh engine/repository on the same DB after Confirm sees
+    decision=explicit and an already-released retry_at, and materialises the
+    confirmed subset on the first cycle."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "restart.db")
+    await database.init_db()
+    clock = Clock(1000.0)
+    core = await _hold_release_engine(tmp_path, clock=clock)
+    transfer, view = await _cached_multi_gated(core)
+    keep = [view["entries"][2]["entry_id"]]
+    await core.repository.confirm_file_selection(transfer.id, view["manifest_id"], keep, now=core.clock())
+
+    restarted = await _hold_release_engine(tmp_path, clock=clock)
+    restarted.provider.members["parcel-lab:A"] = executable(*FILES6)
+    restarted.provider.resources["parcel-lab:A"] = core.provider.parcel(
+        "A", state=ResourceState.AVAILABLE, files=FILES6).observation
+
+    assert float((await _root_request_row(transfer.id))["retry_at"]) <= clock()   # release survived
+    await restarted.engine.resolve_pending()                    # no clock advance
+    members = [r for r in await restarted.repository.requests(transfer.id) if r.parent_id]
+    assert [r.entry.relative_path for r in members] == ["S1/e3.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_loses_race_to_timeout_and_never_rewrites_retry_at(hold_core):
+    """§17 G — if the timeout/materialisation settled ALL first, a late Confirm
+    returns a conflict and must not rewrite scheduler state."""
+    core = hold_core
+    transfer, view = await _cached_multi_gated(core)
+
+    core.clock.set(1000.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS + 1)
+    await core.engine.resolve_pending()
+    sel = await _selection_row(transfer.id)
+    assert sel["decision"] == "all" and sel["manifest_committed_at"] is not None
+    row_before = dict(await _root_request_row(transfer.id))
+
+    late = await core.repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], [view["entries"][0]["entry_id"]], now=core.clock())
+    assert late.outcome == fs.SelectionOutcome.CONFLICT
+    assert dict(await _root_request_row(transfer.id)) == row_before   # no scheduler-state rewrite

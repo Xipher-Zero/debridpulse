@@ -69,12 +69,22 @@ or initially `PREPARING`: an automatically actionable offer never coexists with
 immediate ALL materialization. `initially_available` remains a persisted
 provenance fact but no longer gates the decision opportunity.
 
+The 120-second hold is a **maximum unanswered-decision window, not a minimum
+delay**. Confirm (`→ explicit`) and an active-hold Close (`→ all/closed`) settle
+the decision and, in the same `BEGIN IMMEDIATE` transaction, release the
+file-selection gate's scheduler `retry_at` on the owning request — the next
+resolution cycle materialises immediately, without waiting the remaining deadline
+or the last provider poll. `retry_at` is multi-purpose (gate wait + provider
+backoff via `request_failure`); only the selection-induced component
+(`state='waiting' AND error IS NULL`) is released, never a coexisting legitimate
+backoff. `decision_deadline` is exposed only while the decision is pending.
+
 | Current contract | Canonical regression owners |
 | --- | --- |
 | Neutral capability/identity, pure gate, reconciliation, no wall-clock in policy | `test_file_selection_contract.py`, `test_universal_contracts.py`, `test_universal_boundaries.py` |
-| Fake-provider-driven cached & PREPARING-origin lifecycle, 60s/120s windows, PREPARING→AVAILABLE decision-window reproducer, restart survival, executor-boundary proof | `test_file_selection_lifecycle.py` |
-| Additive schema, backup/wipe, FK integrity, per-resource generation across re-resolution, two-phase crash recovery, Confirm-vs-materialization concurrency | `test_file_selection_persistence.py` |
-| Dedicated API, `SelectionOutcome` transport codes, fixed public whitelist, A→B re-resolution regression, durable browser event | `test_file_selection_api.py` |
+| Fake-provider-driven cached & PREPARING-origin lifecycle, 60s/120s windows, PREPARING→AVAILABLE decision-window reproducer, **Confirm/Close release the gate wait without advancing the clock**, unanswered hold still waits the full window, provider-backoff isolation, restart survival, executor-boundary proof | `test_file_selection_lifecycle.py` |
+| Additive schema, backup/wipe, FK integrity, per-resource generation across re-resolution, two-phase crash recovery, Confirm-vs-materialization concurrency, **Confirm/Dismiss retry_at release + idempotent self-heal + multi-cause isolation** | `test_file_selection_persistence.py` |
+| Dedicated API, `SelectionOutcome` transport codes, fixed public whitelist, A→B re-resolution regression, durable browser event, **settled read model drops the active `decision_deadline`** | `test_file_selection_api.py` |
 | AllDebrid adapter capability, `ready`-flag initial availability, nested-tree → neutral `FileManifest` without links, file-list fallback | `test_alldebrid_provider_contract.py` |
 | One shared modal shell / coordinator, `ui-detail-candidates.js` no longer wraps the modal globals, one file-selection runtime + style owner | `test_ui_presentation_ownership_contract.py` |
 | Browser selector: auto-open rules, tri-state tree, countdown from server deadline, stale-409 refresh, Close/X parity, Cancel Transfer routing | `frontend/browser/file-selection.spec.js`, `frontend/browser/details-candidates.spec.js` |

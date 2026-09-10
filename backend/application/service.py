@@ -343,8 +343,11 @@ class ApplicationService:
                 transfer_id, manifest_id, entry_ids, now=self.engine.clock(),
             )
             if result.outcome == "confirmed":
-                # A confirmed subset releases any active cached hold; re-drive the
-                # ordinary resolution wakeup so materialization proceeds at once.
+                # The repository transaction settled the decision and, in the same
+                # BEGIN IMMEDIATE, released the file-selection gate's scheduler
+                # wait. Re-drive the ordinary resolution wakeup so the confirmed
+                # subset materialises on the next cycle rather than after the old
+                # decision deadline or provider-poll timestamp.
                 self.resolution_wakeup.set()
                 await self._publish(transfer_id)
             return result
@@ -356,6 +359,9 @@ class ApplicationService:
                 transfer_id, manifest_id, now=self.engine.clock(),
             )
             if result.outcome == "dismissed" and result.detail == "closed_hold":
+                # Close/X settled the decision to default ALL and the repository
+                # released the gate's scheduler wait in the same transaction;
+                # wake the resolution loop so ALL materialises immediately.
                 self.resolution_wakeup.set()
                 await self._publish(transfer_id)
             return result

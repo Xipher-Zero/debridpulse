@@ -430,3 +430,140 @@ async def test_commit_marker_then_crash_before_fanout_is_recoverable(repo):
         children = await db.fetchall(
             "SELECT id FROM transfer_requests WHERE parent_id=?", (seed.request_id,))
     assert len(children) == 2                                     # exactly the 2 authorized members
+
+
+# --------------------------------------------------------------------------- #
+# Hold release — the Confirm / Dismiss transaction atomically settles the
+# decision AND releases the file-selection gate's scheduler wait, but never a
+# coexisting provider backoff (TASK_File_Selection_Hold_Release_Correction
+# §9a, §16).
+# --------------------------------------------------------------------------- #
+
+async def _seed_gated(repo, clock, tag, *, request_retry_at, request_error=None,
+                      request_state="waiting"):
+    seed = await seed_window(transfer_hash=tag)
+    await repo.begin_file_selection_window(
+        seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
+        initially_available=True, now=clock(),
+    )
+    canonical = await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 10), ("b", "s/b", 20), ("c", "s/c", 30)), now=clock())
+    async with database.get_db() as db:
+        await db.execute(
+            "UPDATE transfer_requests SET state=?, retry_at=?, error=? WHERE id=?",
+            (request_state, request_retry_at, request_error, seed.request_id))
+        await db.commit()
+    return seed, canonical
+
+
+async def _request_row(request_id):
+    async with database.get_db() as db:
+        return await db.fetchone("SELECT * FROM transfer_requests WHERE id=?", (request_id,))
+
+
+@pytest.mark.asyncio
+async def test_confirm_transaction_settles_decision_and_releases_the_gate_wait(repo):
+    clock = Clock(1000.0)
+    seed, canonical = await _seed_gated(repo, clock, "c" * 40, request_retry_at=1030.0)
+
+    result = await repo.confirm_file_selection(
+        seed.transfer_id, canonical.manifest_id,
+        [canonical.entries[0].entry_id, canonical.entries[2].entry_id], now=1050.0)
+    assert result.outcome == fs.SelectionOutcome.CONFIRMED
+
+    request = await _request_row(seed.request_id)
+    async with database.get_db() as db:
+        gen = await db.fetchone(
+            "SELECT decision,decision_reason,decision_at,hold_until,manifest_committed_at "
+            "FROM transfer_file_selections WHERE request_id=?", (seed.request_id,))
+    assert gen["decision"] == "explicit" and gen["decision_reason"] == fs.DecisionReason.CONFIRMED
+    assert gen["decision_at"] == 1050.0 and gen["manifest_committed_at"] is None
+    assert gen["hold_until"] == 1000.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS   # durable history kept
+    assert float(request["retry_at"]) <= 1050.0 and request["state"] == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_dismiss_transaction_settles_all_and_releases_the_gate_wait(repo):
+    clock = Clock(1000.0)
+    seed, canonical = await _seed_gated(repo, clock, "d" * 40, request_retry_at=1030.0)
+
+    result = await repo.dismiss_file_selection(seed.transfer_id, canonical.manifest_id, now=1042.0)
+    assert result.outcome == fs.SelectionOutcome.DISMISSED and result.decision == "all"
+
+    async with database.get_db() as db:
+        gen = await db.fetchone(
+            "SELECT decision,decision_reason FROM transfer_file_selections WHERE request_id=?",
+            (seed.request_id,))
+    row = await _request_row(seed.request_id)
+    assert gen["decision"] == "all" and gen["decision_reason"] == fs.DecisionReason.CLOSED
+    assert float(row["retry_at"]) <= 1042.0
+
+
+@pytest.mark.asyncio
+async def test_idempotent_same_subset_confirm_self_heals_a_stale_future_retry_at(repo):
+    clock = Clock(1000.0)
+    seed, canonical = await _seed_gated(repo, clock, "i" * 40, request_retry_at=0.0)
+    keep = [canonical.entries[1].entry_id]
+    first = await repo.confirm_file_selection(seed.transfer_id, canonical.manifest_id, keep, now=1010.0)
+    assert first.outcome == fs.SelectionOutcome.CONFIRMED and first.detail == "confirmed"
+
+    # Simulate the exact stale-wait state being corrected: EXPLICIT persisted, but
+    # a future retry_at was left behind by an interrupted earlier run.
+    async with database.get_db() as db:
+        await db.execute(
+            "UPDATE transfer_requests SET state='waiting', retry_at=9999.0, error=NULL WHERE id=?",
+            (seed.request_id,))
+        await db.commit()
+
+    second = await repo.confirm_file_selection(seed.transfer_id, canonical.manifest_id, keep, now=1020.0)
+    assert second.outcome == fs.SelectionOutcome.CONFIRMED and second.detail == "idempotent"
+    row = await _request_row(seed.request_id)
+    assert float(row["retry_at"]) <= 1020.0                       # self-healed
+    async with database.get_db() as db:
+        entries = await db.fetchall(
+            "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (canonical.manifest_id and (
+                await db.fetchone("SELECT id FROM transfer_file_selections WHERE request_id=?", (seed.request_id,)))["id"],))
+    assert {r["entry_id"] for r in entries} == set(keep)          # never broadened
+
+
+@pytest.mark.asyncio
+async def test_confirm_does_not_release_a_coexisting_provider_backoff_retry_at(repo):
+    """§9a multi-cause isolation. A request carrying a genuine provider backoff
+    (``error`` recorded, ``retry_at`` far in the future) keeps that protection
+    when Confirm releases only the selection-induced wait — the gate-wait path
+    (``poll_after``) never records an ``error``; ``request_failure`` always does."""
+    clock = Clock(1000.0)
+    backoff_blob = '{"domain":"provider","category":"rate_limited","stage":"reconciliation"}'
+    seed, canonical = await _seed_gated(
+        repo, clock, "k" * 40, request_retry_at=1090.0, request_error=backoff_blob)
+
+    result = await repo.confirm_file_selection(
+        seed.transfer_id, canonical.manifest_id, [canonical.entries[0].entry_id], now=1005.0)
+    assert result.outcome == fs.SelectionOutcome.CONFIRMED
+
+    row = await _request_row(seed.request_id)
+    assert float(row["retry_at"]) == 1090.0                       # unrelated backoff untouched
+    assert row["error"] == backoff_blob
+    async with database.get_db() as db:
+        gen = await db.fetchone(
+            "SELECT decision FROM transfer_file_selections WHERE request_id=?", (seed.request_id,))
+    assert gen["decision"] == "explicit"                          # decision still settled
+
+
+@pytest.mark.asyncio
+async def test_conflicting_confirm_never_rewrites_retry_at(repo):
+    clock = Clock(1000.0)
+    seed, canonical = await _seed_gated(repo, clock, "x" * 40, request_retry_at=1030.0)
+    # A different subset is already confirmed.
+    await repo.confirm_file_selection(
+        seed.transfer_id, canonical.manifest_id, [canonical.entries[0].entry_id], now=1001.0)
+    async with database.get_db() as db:
+        await db.execute("UPDATE transfer_requests SET retry_at=1030.0 WHERE id=?", (seed.request_id,))
+        await db.commit()
+    before = dict(await _request_row(seed.request_id))
+
+    superseded = await repo.confirm_file_selection(
+        seed.transfer_id, canonical.manifest_id, [canonical.entries[1].entry_id], now=1002.0)
+    assert superseded.outcome == fs.SelectionOutcome.CONFLICT
+    assert dict(await _request_row(seed.request_id)) == before    # no rewrite by the loser

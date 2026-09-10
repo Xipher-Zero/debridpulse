@@ -172,6 +172,38 @@ test('Confirm posts manifest_id + selected entry_ids only, then closes with no p
   await expect(page.locator('.toast')).toContainText('2 files selected for download');
 });
 
+test('after Confirm the settled state never recreates a countdown or re-opens the selector', async ({page}) => {
+  // TASK_File_Selection_Hold_Release_Correction §16 — the corrected backend
+  // returns decision:"explicit"/auto_offer:false/decision_deadline:null for a
+  // settled selection. Given that authoritative response the browser must not
+  // reconstruct the 120s countdown or wait it out before reflecting the
+  // transfer, even if a stale SSE offer notification arrives afterwards.
+  const state = {view: selectionView({server_now: 1000.0, decision_deadline: 1120.0})};
+  await stub(page, state);
+  await boot(page);
+  await openViaEvent(page);
+  await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toBeVisible();
+
+  await page.locator('#modal-footer .dp-fs-confirm').click();
+  await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+  // stub() flipped state.view to the settled explicit read model.
+  expect(state.view.decision).toBe('explicit');
+  expect(state.view.decision_deadline).toBeNull();
+  expect(state.view.auto_offer).toBe(false);
+
+  // A late/duplicate SSE offer for the same transfer must be a no-op now.
+  await page.evaluate(() => document.dispatchEvent(
+    new CustomEvent('debridpulse:file-selection-available', {detail: {transfer_id: 7}})));
+  await page.waitForTimeout(400);
+  await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+  await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toHaveCount(0);
+
+  // Re-opening Details on the settled selection shows a passive summary, no timer.
+  await page.evaluate(() => window.DPFileSelection.pollOffers());
+  await page.waitForTimeout(200);
+  await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toHaveCount(0);
+});
+
 test('a stale 409 refreshes authoritative state and never shows success', async ({page}) => {
   const state = {view: selectionView(), confirmStatus: 409};
   await stub(page, state);

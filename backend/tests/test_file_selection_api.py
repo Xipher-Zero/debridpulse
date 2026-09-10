@@ -191,6 +191,52 @@ async def test_confirm_happy_path_then_only_subset_materializes(api):
 
 
 @pytest.mark.asyncio
+async def test_settled_read_model_drops_the_active_decision_deadline(api):
+    """§16/§18 — once the decision is no longer pending the public read model must
+    not present the historical hold as an active ``decision_deadline``. Checked
+    after Confirm and after active-hold Dismiss, before materialisation commits."""
+    transfer_id = await _submit_available_multifile(api)
+    pending = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    assert pending["decision"] == "pending"
+    assert pending["decision_deadline"] == 1000.0 + 120.0        # real deadline while pending
+    assert pending["auto_offer"] is True
+
+    await api.client.post(
+        f"/api/torrents/{transfer_id}/file-selection/confirm",
+        json={"manifest_id": pending["manifest_id"], "entry_ids": [pending["entries"][0]["entry_id"]]})
+    settled = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    assert settled["decision"] == "explicit"
+    assert settled["decision_deadline"] is None
+    assert settled["auto_offer"] is False
+
+    other = await _submit_available_multifile(api, payload="B", files=FILES6)
+    view_b = (await api.client.get(f"/api/torrents/{other}/file-selection")).json()
+    await api.client.post(
+        f"/api/torrents/{other}/file-selection/dismiss", json={"manifest_id": view_b["manifest_id"]})
+    closed = (await api.client.get(f"/api/torrents/{other}/file-selection")).json()
+    assert closed["decision"] == "all"
+    assert closed["decision_deadline"] is None
+    assert closed["auto_offer"] is False
+
+
+@pytest.mark.asyncio
+async def test_confirm_via_api_materialises_on_the_next_cycle_without_waiting(api):
+    """§16/§17 D end-to-end through the HTTP API + real engine: Confirm, then a
+    single resolution cycle with NO clock advance, materialises the subset."""
+    transfer_id = await _submit_available_multifile(api)
+    view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    keep = [view["entries"][1]["entry_id"], view["entries"][3]["entry_id"]]
+    ok = await api.client.post(
+        f"/api/torrents/{transfer_id}/file-selection/confirm",
+        json={"manifest_id": view["manifest_id"], "entry_ids": keep})
+    assert ok.status_code == 200
+
+    await api.engine.resolve_pending()                           # no api.clock.advance()
+    members = [r for r in await api.repository.requests(transfer_id) if r.parent_id is not None]
+    assert sorted(r.entry.relative_path for r in members) == ["Season 1/e02.mkv", "Season 1/e04.mkv"]
+
+
+@pytest.mark.asyncio
 async def test_confirm_422_on_empty_selection(api):
     transfer_id = await _submit_available_multifile(api)
     view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()

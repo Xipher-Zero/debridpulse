@@ -769,6 +769,43 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.commit()
         return str(evaluation.gate)
 
+    @staticmethod
+    async def _release_selection_poll_wait(db, request_id: str, now: float) -> None:
+        """Atomically end the scheduler wait that the file-selection gate created.
+
+        §9a investigation — ``transfer_requests.retry_at`` is MULTI-PURPOSE. Two
+        code paths set it forward on a request that ends up ``state='waiting'``:
+
+          * ``_repository_base.poll_after()`` — the file-selection gate wait
+            (``engine._observe_resource``: ``gate != PROCEED`` → ``poll_after(...,
+            waiting=True, clear_error=True)``) and the PREPARING re-poll cadence.
+            Neither records an ``error``.
+          * ``_repository_base.request_failure()`` (via
+            ``_engine_base._request_failure(..., waiting=True)``) — a provider
+            observation error / ABSENT / EXPIRED / reconciliation-exception
+            backoff, whose delay is ``policy.retry_resolution(error).retry_at``.
+            This path ALWAYS writes a non-null ``error`` blob and increments
+            ``attempts``.
+
+        A cross-transfer equivalence proof-retry also writes ``retry_at`` forward
+        (``cohorts.py``: ``UPDATE ... retry_at=? WHERE id=? AND
+        state='materializing'``) but only for ``state='materializing'`` rows,
+        never ``state='waiting'``.
+
+        The existing distinction the correction relies on is therefore
+        ``state='waiting' AND error IS NULL``: the file-selection gate wait, and
+        only it (or a benign PREPARING re-poll), leaves the request without an
+        error. A provider backoff on the same request keeps its longer,
+        legitimate ``retry_at`` because ``error IS NOT NULL``. ``clear_error`` on
+        the gate-wait ``poll_after`` keeps this predicate honest after a request
+        recovered from an earlier transient failure.
+        """
+        await db.execute(
+            "UPDATE transfer_requests SET retry_at=? "
+            "WHERE id=? AND state='waiting' AND error IS NULL AND retry_at > ?",
+            (now, request_id, now),
+        )
+
     async def confirm_file_selection(
         self, transfer_id: int, manifest_id: str, entry_ids, *, now: float,
     ) -> "fs.SelectionCommandResult":
@@ -825,14 +862,20 @@ class TransferRepository(_QualifiedTransferRepository):
                     "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (row["id"],))
             }
             if str(row["decision"]) == "explicit":
-                await db.rollback()
-                if existing == seen:
+                if existing != seen:
+                    await db.rollback()
                     return fs.SelectionCommandResult(
-                        str(fs.SelectionOutcome.CONFIRMED), "idempotent",
+                        str(fs.SelectionOutcome.CONFLICT), "selection_superseded",
                         decision="explicit", manifest_id=row["manifest_id"],
                     )
+                # Idempotent same-subset Confirm — self-heal a scheduler wait that
+                # a crash/restart left in place after an earlier run persisted
+                # EXPLICIT but before it released the file-selection gate wait
+                # (§12). Never broadens the selection; still first-writer safe.
+                await self._release_selection_poll_wait(db, str(row["request_id"]), now)
+                await db.commit()
                 return fs.SelectionCommandResult(
-                    str(fs.SelectionOutcome.CONFLICT), "selection_superseded",
+                    str(fs.SelectionOutcome.CONFIRMED), "idempotent",
                     decision="explicit", manifest_id=row["manifest_id"],
                 )
             for entry_id in requested:
@@ -849,6 +892,12 @@ class TransferRepository(_QualifiedTransferRepository):
             if cursor.rowcount != 1:
                 await db.rollback()
                 return fs.SelectionCommandResult(str(fs.SelectionOutcome.CONFLICT), "materialization_won")
+            # The decision is settled; the 120s hold is no longer active. Release
+            # the file-selection gate wait in the SAME transaction so the next
+            # resolution cycle materialises the confirmed subset immediately —
+            # without waiting out the old decision deadline or the last provider
+            # poll timestamp. Only the selection-induced wait is released (§9a).
+            await self._release_selection_poll_wait(db, str(row["request_id"]), now)
             await db.commit()
         return fs.SelectionCommandResult(
             str(fs.SelectionOutcome.CONFIRMED), "confirmed",
@@ -881,13 +930,19 @@ class TransferRepository(_QualifiedTransferRepository):
                 and row["hold_until"] is not None and str(row["decision"]) == "pending"
             )
             if active_hold:
-                await db.execute(
+                cursor = await db.execute(
                     """UPDATE transfer_file_selections
                        SET decision='all', decision_reason=?, decision_at=?,
                            auto_offer_dismissed_at=?, updated_at=?
                        WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
                     (str(fs.DecisionReason.CLOSED), now, now, now, row["id"]),
                 )
+                if cursor.rowcount == 1:
+                    # Close/X settled the decision to default ALL; the 120s hold
+                    # is over. Release the file-selection gate wait in the same
+                    # transaction so ALL materialisation proceeds immediately
+                    # (§10). Only the selection-induced wait is released (§9a).
+                    await self._release_selection_poll_wait(db, str(row["request_id"]), now)
             else:
                 await db.execute(
                     """UPDATE transfer_file_selections
@@ -1026,7 +1081,11 @@ class TransferRepository(_QualifiedTransferRepository):
             "selected_entry_ids": selected,
             "auto_offer": fs.auto_offer_active(state, now),
             "auto_offer_until": float(row["manifest_wait_until"]),
-            "decision_deadline": row["hold_until"],
+            # The 120s decision deadline is current control authority ONLY while
+            # the decision is still pending. Once Confirm/Close/timeout settles it
+            # the durable ``hold_until`` is retained as historical evidence but is
+            # never presented as an active deadline (§11).
+            "decision_deadline": row["hold_until"] if str(row["decision"]) == "pending" else None,
             "initially_available": bool(row["initially_available"]),
             "server_now": float(now),
         }

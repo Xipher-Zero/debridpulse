@@ -289,10 +289,13 @@ class TransferEngine(_RecoveryTransferEngine):
                         # Provider-side acquisition is done; only local executable
                         # materialization is held while the selector window / cached
                         # decision hold is still open. Re-uses the ordinary resolution
-                        # wakeup cadence; no new loop, no browser polling.
+                        # wakeup cadence; no new loop, no browser polling. The
+                        # observation just succeeded, so ``clear_error`` drops any
+                        # stale request error — this poll's retry_at is a gate
+                        # cadence, never a provider backoff.
                         await self.repository.poll_after(
                             record.id, self.clock() + self.policy.resource_poll_interval,
-                            waiting=True,
+                            waiting=True, clear_error=True,
                         )
                         return
                 entries = await provider.manifest(record.resource)

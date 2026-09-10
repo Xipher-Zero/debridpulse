@@ -115,6 +115,48 @@ cutoff. A browser that cold-loads or reconnects after the discovery cutoff but
 before `hold_until` still recovers the active offer through
 `GET /api/file-selections/offers`.
 
+## Hold release — the 120 s window is a maximum, never a minimum
+
+**The 120-second hold exists only while the decision is pending.** It is a
+maximum unanswered-decision window, not a mandatory delay after the user has
+decided. Confirm (`pending → explicit`) and an active-hold Close/X
+(`pending → all/closed`) each resolve the decision immediately and, **in the same
+`BEGIN IMMEDIATE` transaction**, release the scheduler retry delay the
+file-selection gate created — so the next ordinary resolution cycle materialises
+the confirmed subset (or ALL) without waiting out the remaining decision deadline
+or the last provider-poll timestamp. `application/service.py` then re-drives the
+existing `resolution_wakeup`; no new scheduler, no new lifecycle state, no
+frontend-owned release.
+
+`decision_deadline` in the public read model is `hold_until` **only while
+`decision == "pending"`** and `null` for any settled decision. The durable
+`hold_until` column is retained as historical evidence of the anchored deadline.
+
+### `retry_at` is multi-purpose — only the selection-induced wait is released
+
+`transfer_requests.retry_at` is set forward by two paths that both leave the
+request `state='waiting'`:
+
+* `_repository_base.poll_after()` — the file-selection gate wait
+  (`engine._observe_resource`: `gate != PROCEED` →
+  `poll_after(..., waiting=True, clear_error=True)`) and the PREPARING re-poll
+  cadence. Neither records an `error`.
+* `_repository_base.request_failure()` (via `_engine_base._request_failure(...,
+  waiting=True)`) — a provider observation error / `ABSENT` / `EXPIRED` /
+  reconciliation-exception backoff, whose delay is
+  `policy.retry_resolution(error).retry_at`. This path **always** writes a
+  non-null `error` and increments `attempts`.
+
+(A cross-transfer equivalence proof-retry also writes `retry_at` forward, but
+only for `state='materializing'` rows — never `state='waiting'`.)
+
+The release therefore targets `state='waiting' AND error IS NULL AND retry_at >
+now`. A genuine provider backoff coexisting with an active hold keeps its longer,
+legitimate `retry_at` because it recorded an `error`; the confirmed selection
+still materialises, just after that backoff. `clear_error=True` on the gate-wait
+`poll_after` keeps this predicate honest for a request that recovered from an
+earlier transient failure before reaching the gate.
+
 ## Persistence — `backend/db/database.py` (additive current schema)
 
 Four additive tables (no new migration number; `db/migrations/v112.py` is
