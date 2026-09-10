@@ -257,6 +257,39 @@ Durable activity events and notifications use the same messages. Browser failure
 labels map canonical categories during normal rendering; they do not refetch
 details or parse native messages to reconstruct failure meaning.
 
+A transfer's effective processing presentation has ONE owner,
+`transfers.presentation_repository.effective_presentation`. Both projections —
+the comprehensive Details projection (`TransferRepository.presentation`) and the
+bounded Downloads/Dashboard list read
+(`api.operational_downloads.list_operational_torrents`) — call it with the same
+logical inputs: the durable transfer status, the per-artifact child
+presentations (each already produced by the shared `recovery_presentation`), the
+pause / input-required signals, and the state of the *current* authoritative
+root provider-resource binding. The bounded list projects only the raw
+page-scoped facts it needs for those inputs (each artifact's status plus the
+fields of its latest durable recovery snapshot) as a JSON array per transfer,
+folded into the one bounded read — no per-row query, no comprehensive
+per-transfer presentation call, constant DB round-trips. Because the same owner
+sees the same facts, Dashboard, Downloads and Details cannot present a
+contradictory processing truth: every early-return state (`completed`, `paused`,
+`input_required`), every artifact-aggregated state (`downloading`, `recovering`,
+each `_WAIT_PRESENTATION` `waiting_for_*`, `requires_attention`) and the raw
+fallback surface identically.
+
+Within that owner, presentation may narrow a generic pre-provider-work status to
+a more specific processing truth without touching durable lifecycle state. When
+a transfer's current authoritative root provider-resource binding reports
+`PREPARING`, `transfers.presentation_repository.waiting_for_provider_override`
+presents `waiting_for_provider` / "Waiting for provider" — the same presentation
+status already used for provider-quiescence recovery, so no new contract or
+badge is introduced. It is resolved from the current transfer-scoped binding
+only, never a historical, tombstoned, or predecessor resource; it is applied
+last and only against a generic `pending`/`processing` aggregate, so it *refines*
+the generic presentation and never overwrites a more-specific one (`paused`,
+`input_required`, `waiting_for_storage`, `requires_attention`, failure/recovery,
+`completed`, …); and it clears as soon as that resource no longer reports
+`PREPARING`.
+
 ## Ownership, local files and post-processing
 
 Resources distinguish created, adopted and observed ownership. Automatic cleanup

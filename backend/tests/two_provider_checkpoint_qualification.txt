@@ -55,3 +55,11 @@ tests/test_file_selection_upgrade_boundary.py
 # a genuinely fresh transfer even while predecessor cleanup is still outstanding.
 # Provider- and executor-neutral.
 tests/test_deleted_transfer_generation_retirement.py
+# PREPARING current provider resource -> "Waiting for provider" presentation
+# (1.0.12 corrective slice): presentation-only override resolved from the current
+# transfer-scoped provider-resource binding. Details and the bounded Downloads /
+# Dashboard list projection compute effective presentation through ONE shared
+# owner (transfers.presentation_repository.effective_presentation), so every
+# state that outranks generic pending/processing surfaces identically on all
+# three surfaces. Provider-neutral.
+tests/test_transfer_preparing_presentation.py

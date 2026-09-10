@@ -12,6 +12,7 @@ variant. The default response remains the historical JSON list; the UI opts into
 metadata when it needs an explicit truncation signal.
 """
 import asyncio
+import json
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -24,7 +25,12 @@ from application.service import ApplicationService
 from db.database import get_db
 from transfers import codec
 from transfers.errors import Category, TransferError
-from transfers.presentation_repository import public_source_identity
+from transfers.presentation_repository import (
+    ARTIFACT_PRESENTATION_SNAPSHOT_KEYS,
+    effective_presentation,
+    public_source_identity,
+    recovery_presentation,
+)
 
 router = APIRouter()
 
@@ -89,6 +95,32 @@ def _bounded_source_identity(row) -> dict[str, str]:
                     break
 
     return public_source_identity(request_kind, candidate_source)
+
+
+def _bounded_child_presentations(raw_facts, *, paused, input_required):
+    """Project the page's per-artifact child presentations for the shared owner.
+
+    ``raw_facts`` is the JSON array the bounded projection built from raw durable
+    facts (each artifact's status plus its latest recovery-snapshot fields). Each
+    entry is passed straight through ``recovery_presentation`` — the same shared
+    per-artifact projector the comprehensive Details path uses — so
+    ``effective_presentation`` aggregates identical child truth on both surfaces.
+    """
+    try:
+        facts = json.loads(raw_facts) if raw_facts else []
+    except (TypeError, ValueError):
+        facts = []
+    if not isinstance(facts, list):
+        return []
+    presentations = []
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        context = {key: fact.get(key) for key in ARTIFACT_PRESENTATION_SNAPSHOT_KEYS}
+        presentations.append(recovery_presentation(
+            fact.get("status"), context, paused=paused, input_required=input_required,
+        ))
+    return presentations
 
 
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
@@ -345,6 +377,72 @@ async def list_operational_torrents(
             WHERE r.state = 'failed'
             GROUP BY r.transfer_id
         ),
+        -- Durable state of the CURRENT authoritative root provider-resource
+        -- binding only. The root request's own ``resource`` payload id is
+        -- matched to this transfer's binding row: transfer-scoped, so a
+        -- predecessor/tombstoned resource on another transfer is excluded, and
+        -- a historical binding of THIS transfer is excluded because the current
+        -- root request points only at the current resource. ``resource_key``
+        -- NULL is the pre-split historical form (primary key IS the canonical
+        -- id). Consumed only as a presentation override, never a status mutation.
+        current_root_resource AS (
+            SELECT rr.transfer_id, pr.state AS resource_state
+            FROM (
+                SELECT
+                    r.transfer_id,
+                    r.resource,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY r.transfer_id
+                        ORDER BY r.ordinal, r.id
+                    ) AS row_number
+                FROM transfer_requests r
+                JOIN page
+                  ON page.id = r.transfer_id
+                WHERE r.parent_id IS NULL AND r.resource IS NOT NULL
+            ) rr
+            JOIN provider_resources pr
+              ON pr.transfer_id = rr.transfer_id
+             AND (pr.resource_key = json_extract(rr.resource, '$.id')
+                  OR (pr.resource_key IS NULL
+                      AND pr.id = json_extract(rr.resource, '$.id')))
+            WHERE rr.row_number = 1
+        ),
+        -- Per-artifact presentation facts for the page, folded into the one
+        -- bounded read as a JSON array per transfer (one row per transfer, no
+        -- per-row query, no comprehensive presentation call). ONLY raw durable
+        -- facts are projected here — the artifact's own status plus the fields
+        -- of its latest durable recovery snapshot; no presentation or precedence
+        -- logic lives in SQL. In Python these feed the SHARED pure owner
+        -- transfers.presentation_repository.effective_presentation exactly as the
+        -- comprehensive Details projection feeds it, so the bounded list can
+        -- never derive a processing truth that disagrees with Details.
+        artifact_presentation_facts AS (
+            SELECT
+                f.torrent_id AS transfer_id,
+                json_group_array(json_object(
+                    'status', f.status,
+                    'quiescence_reason', json_extract(snap.detail, '$.quiescence_reason'),
+                    'decision_action', json_extract(snap.detail, '$.decision_action'),
+                    'last_applied_action', json_extract(snap.detail, '$.last_applied_action'),
+                    'decision_reason', json_extract(snap.detail, '$.decision_reason'),
+                    'last_applied_reason', json_extract(snap.detail, '$.last_applied_reason'),
+                    'wake_condition', json_extract(snap.detail, '$.wake_condition'),
+                    'recovery_claim_token', json_extract(snap.detail, '$.recovery_claim_token')
+                )) AS artifacts
+            FROM download_files f
+            JOIN page ON page.id = f.torrent_id
+            LEFT JOIN application_events snap
+              ON snap.id = (
+                SELECT ae.id FROM application_events ae
+                WHERE ae.kind = 'transfer_recovery:' || f.id
+                ORDER BY ae.id DESC LIMIT 1
+              )
+            GROUP BY f.torrent_id
+        ),
+        input_challenge AS (
+            SELECT DISTINCT c.transfer_id
+            FROM transfer_input_challenges c JOIN page ON page.id = c.transfer_id
+        ),
         -- Transfer-level multi-source summary derived only from canonical
         -- acquisition-candidate storage. Eligibility mirrors the detail
         -- candidate projection (physical, unblocked, non-standby artifacts).
@@ -402,6 +500,10 @@ async def list_operational_torrents(
                 WHEN t.status = 'completed' THEN 'unknown_legacy'
                 ELSE 'pending'
             END AS provider_provenance_status,
+            current_root_resource.resource_state AS _current_root_resource_state,
+            artifact_presentation_facts.artifacts AS _artifact_presentation_facts,
+            CASE WHEN input_challenge.transfer_id IS NOT NULL THEN 1 ELSE 0 END AS _has_input_challenge,
+            COALESCE(pause_intent.paused, 0) AS _paused_intent,
             root_request.payload AS _source_request_payload,
             delivered_source.candidate_source AS _delivered_candidate_source,
             active_source.candidate_source AS _active_candidate_source,
@@ -409,6 +511,14 @@ async def list_operational_torrents(
         FROM page
         JOIN torrents t
           ON t.id = page.id
+        LEFT JOIN current_root_resource
+          ON current_root_resource.transfer_id = t.id
+        LEFT JOIN artifact_presentation_facts
+          ON artifact_presentation_facts.transfer_id = t.id
+        LEFT JOIN input_challenge
+          ON input_challenge.transfer_id = t.id
+        LEFT JOIN transfer_pause_intents pause_intent
+          ON pause_intent.torrent_id = t.id
         LEFT JOIN latest_route
           ON latest_route.transfer_id = t.id
         LEFT JOIN delivery
@@ -436,6 +546,13 @@ async def list_operational_torrents(
     items = []
     for row in rows:
         projected = dict(row)
+        current_root_resource_state = projected.pop("_current_root_resource_state", None)
+        paused = bool(int(projected.pop("_paused_intent", 0) or 0))
+        input_required = bool(int(projected.pop("_has_input_challenge", 0) or 0))
+        file_presentations = _bounded_child_presentations(
+            projected.pop("_artifact_presentation_facts", None),
+            paused=paused, input_required=input_required,
+        )
         source_identity = _bounded_source_identity(projected)
         candidate_source_max = max(0, int(projected.get("candidate_source_max") or 0))
         for field in _SOURCE_PROJECTION_FIELDS:
@@ -446,5 +563,19 @@ async def list_operational_torrents(
         # than one equivalent canonical acquisition candidate only when this is
         # greater than 1. Always present as a plain non-negative integer.
         item["candidate_source_max"] = candidate_source_max
+        # Effective processing presentation via the ONE shared owner
+        # (transfers.presentation_repository.effective_presentation), fed the same
+        # logical inputs as the comprehensive Details projection: the durable
+        # transfer status, the per-artifact child presentations, the pause /
+        # input-required signals, and the state of the CURRENT authoritative root
+        # provider-resource binding. The durable ``status`` is never mutated;
+        # Dashboard, Downloads and Details cannot disagree for the same facts.
+        item.update(effective_presentation(
+            str(projected.get("status") or ""),
+            file_presentations,
+            paused=paused,
+            input_required=input_required,
+            current_resource_state=current_root_resource_state,
+        ))
         items.append(item)
     return {"items": items, "total": total}

@@ -29,6 +29,38 @@ _WAIT_PRESENTATION = {
     "storage_unavailable": ("waiting_for_storage", "Waiting for storage", "pending"),
     "executor_unavailable": ("waiting_for_executor", "Waiting for executor", "pending"),
 }
+
+# Canonical "the provider is preparing the current resource" presentation
+# override. This is presentation-only: the durable transfer lifecycle state is
+# never changed. It reuses the existing ``waiting_for_provider`` presentation
+# status/label already produced for provider-quiescence recovery, so no new
+# frontend contract or badge is introduced.
+_GENERIC_PENDING_PRESENTATION = frozenset({"pending", "processing"})
+_WAITING_FOR_PROVIDER = ("waiting_for_provider", "Waiting for provider", "pending")
+
+
+def waiting_for_provider_override(presentation_status, current_resource_state):
+    """Return the canonical Waiting-for-provider presentation triple, or ``None``.
+
+    Applies only when the transfer's CURRENT authoritative root provider-resource
+    binding reports ``PREPARING`` (``current_resource_state``) and the transfer
+    has not otherwise advanced past a generic pre-provider-work presentation
+    (``presentation_status`` in ``pending``/``processing``). A historical,
+    tombstoned, or predecessor resource can never reach this because the caller
+    resolves ``current_resource_state`` from the current root binding only.
+    """
+    if str(current_resource_state or "").strip().lower() != "preparing":
+        return None
+    if str(presentation_status or "").strip().lower() not in _GENERIC_PENDING_PRESENTATION:
+        return None
+    state, label, badge = _WAITING_FOR_PROVIDER
+    return {
+        "presentation_status": state,
+        "presentation_label": label,
+        "presentation_badge_status": badge,
+    }
+
+
 _RAW_PRESENTATION = {
     "completed": ("completed", "Done", "completed"),
     "paused": ("paused", "Paused", "paused"),
@@ -138,6 +170,23 @@ def recovery_presentation(status, context=None, *, paused=False, input_required=
     }
 
 
+# Raw latest-recovery-snapshot keys that ``recovery_presentation`` consults to
+# derive an artifact's effective child presentation. The bounded Downloads/
+# Dashboard projection selects exactly these as page-scoped facts so it can feed
+# the shared owner the same child truth the comprehensive Details projection
+# feeds it. Kept here so "which durable facts drive a child presentation" has one
+# definition next to the function that reads them.
+ARTIFACT_PRESENTATION_SNAPSHOT_KEYS = (
+    "quiescence_reason",
+    "decision_action",
+    "last_applied_action",
+    "decision_reason",
+    "last_applied_reason",
+    "wake_condition",
+    "recovery_claim_token",
+)
+
+
 def _aggregate_presentation(raw_status, file_presentations, *, paused=False, input_required=False):
     if str(raw_status or "").lower() == "completed":
         return recovery_presentation("completed")
@@ -162,6 +211,43 @@ def _aggregate_presentation(raw_status, file_presentations, *, paused=False, inp
     if attention and not any(item.get("presentation_status") in _AUTONOMOUS_PRESENTATION for item in active):
         return dict(attention)
     return recovery_presentation(raw_status)
+
+
+def effective_presentation(
+    raw_status,
+    file_presentations,
+    *,
+    paused=False,
+    input_required=False,
+    current_resource_state=None,
+):
+    """The one owner of a transfer's effective presentation for BOTH projections.
+
+    The comprehensive Details projection
+    (``TransferRepository.presentation``) and the bounded Downloads/Dashboard
+    list projection (``api.operational_downloads.list_operational_torrents``)
+    both call this with the same logical inputs — the durable transfer status,
+    the per-artifact child presentations (already produced by
+    ``recovery_presentation``), the pause / input-required signals, and the
+    state of the CURRENT authoritative root provider-resource binding — so the
+    three user-facing surfaces can never derive a contradictory processing
+    truth for the same durable facts.
+
+    The PREPARING -> "Waiting for provider" override is applied last, and only
+    against a generic ``pending``/``processing`` aggregate, so it refines the
+    generic pre-provider-work presentation without ever overwriting a
+    more-specific one (paused, input-required, a recovery-quiescence
+    ``waiting_for_*``, ``recovering``, ``requires_attention``, failure, ...).
+    """
+    aggregate = _aggregate_presentation(
+        raw_status, file_presentations, paused=paused, input_required=input_required,
+    )
+    override = waiting_for_provider_override(
+        aggregate.get("presentation_status"), current_resource_state,
+    )
+    if override:
+        aggregate = {**aggregate, **override}
+    return aggregate
 
 
 class TransferRepository(_CanonicalTransferRepository):
@@ -201,6 +287,28 @@ class TransferRepository(_CanonicalTransferRepository):
                 "SELECT paused FROM transfer_pause_intents WHERE torrent_id=?", (transfer_id,)
             )
             paused = bool(pause_row and pause_row.get("paused"))
+
+            # Durable state of the CURRENT authoritative root provider-resource
+            # binding only: the root request's own ``resource`` payload id is
+            # matched against this transfer's binding row (transfer-scoped, so a
+            # predecessor/tombstoned resource on another transfer is excluded;
+            # ``resource_key`` NULL is the pre-split historical form where the
+            # primary key is the canonical id). Never "any PREPARING resource".
+            current_resource_state = None
+            resource_row = await db.fetchone(
+                """SELECT pr.state AS resource_state
+                     FROM transfer_requests r
+                     JOIN provider_resources pr
+                       ON pr.transfer_id = r.transfer_id
+                      AND (pr.resource_key = json_extract(r.resource, '$.id')
+                           OR (pr.resource_key IS NULL
+                               AND pr.id = json_extract(r.resource, '$.id')))
+                    WHERE r.transfer_id = ? AND r.parent_id IS NULL AND r.resource IS NOT NULL
+                    ORDER BY r.ordinal, r.id LIMIT 1""",
+                (transfer_id,),
+            )
+            if resource_row:
+                current_resource_state = resource_row.get("resource_state")
             file_rows = await db.fetchall(
                 """SELECT id,torrent_id,status,size_bytes,blocked,mirror_state,
                           recovery_failures,recovery_refreshes
@@ -298,8 +406,10 @@ class TransferRepository(_CanonicalTransferRepository):
                 total_expected += expected_bytes
                 total_retained += projection["retained_bytes"]
 
-        result.update(_aggregate_presentation(
-            result.get("status"), file_presentations, paused=paused, input_required=challenge,
+        result.update(effective_presentation(
+            result.get("status"), file_presentations,
+            paused=paused, input_required=challenge,
+            current_resource_state=current_resource_state,
         ))
         result["retained_bytes"] = total_retained
         if str(result.get("status") or "").lower() == "completed":
