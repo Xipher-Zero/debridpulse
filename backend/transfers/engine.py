@@ -121,19 +121,39 @@ class TransferEngine(_RecoveryTransferEngine):
         if observation is None or observation.resource is None:
             return
         now = self.clock()
+        # File-selection state is keyed on the durable (transfer, resource)
+        # binding-generation id, never the transfer-independent canonical resource
+        # id, so an identical native resource on another transfer can never alias
+        # into this generation's manifest/selection rows.
+        binding_id = await self.repository.resource_binding_id(
+            record.transfer_id, observation.resource.id,
+        )
         await self.repository.begin_file_selection_window(
-            record.id, record.transfer_id, observation.resource.id, provider.descriptor.id,
+            record.id, record.transfer_id, binding_id, provider.descriptor.id,
             initially_available=(observation.state == ResourceState.AVAILABLE), now=now,
         )
         if observation.file_manifest is not None:
             await self.repository.record_file_manifest(
-                record.id, observation.resource.id, observation.file_manifest, now=now,
+                record.id, binding_id, observation.file_manifest, now=now,
             )
 
     async def _resolve(self, record):
         attempt = None
         provider = None
         try:
+            if record.parent_id is None and record.resource is None:
+                # Provider cleanup fence: a retired predecessor generation sharing
+                # this transfer's source fingerprint still has outstanding,
+                # not-yet-abandoned provider cleanup that could act on the shared
+                # native resource. Admit stays fresh, but hold the first
+                # provider-resource creation (provider.resolve) as ordinary
+                # waiting/retry state — no attempt consumed, no error — until no
+                # predecessor cleanup operation can execute.
+                if await self.repository.predecessor_cleanup_barrier(record.transfer_id):
+                    await self.repository.poll_after(
+                        record.id, self.clock() + self.policy.resource_poll_interval,
+                    )
+                    return
             if record.resource and record.parent_id is None:
                 previous_provider = self._bound_resource_provider(record)
                 if previous_provider is None:
@@ -171,7 +191,7 @@ class TransferEngine(_RecoveryTransferEngine):
                     and record.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}
                 ):
                     await self.repository.cleanup_intent(
-                        record.resource.id, CleanupAuthority.OWNED,
+                        record.transfer_id, record.resource.id, CleanupAuthority.OWNED,
                     )
                     await self._cleanup_pending()
                     if any(
@@ -242,9 +262,13 @@ class TransferEngine(_RecoveryTransferEngine):
                 record.parent_id is None
                 and Capability.FILE_MANIFEST in provider.descriptor.capabilities
             )
+            binding_id = (
+                await self.repository.resource_binding_id(record.transfer_id, record.resource.id)
+                if file_manifest_capable else None
+            )
             if file_manifest_capable and observation.file_manifest is not None:
                 await self.repository.record_file_manifest(
-                    record.id, record.resource.id, observation.file_manifest, now=self.clock(),
+                    record.id, binding_id, observation.file_manifest, now=self.clock(),
                 )
 
             if observation.error:
@@ -259,7 +283,7 @@ class TransferEngine(_RecoveryTransferEngine):
                     ))
                 if file_manifest_capable:
                     gate = await self.repository.file_selection_gate(
-                        record.id, record.resource.id, now=self.clock(),
+                        record.id, binding_id, now=self.clock(),
                     )
                     if gate != fs.SelectionGate.PROCEED:
                         # Provider-side acquisition is done; only local executable

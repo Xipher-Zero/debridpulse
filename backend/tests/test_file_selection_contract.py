@@ -228,12 +228,50 @@ def test_gate_cached_multi_file_holds_until_deadline_then_times_out():
     assert expired.resolve_reason == fs.DecisionReason.DECISION_TIMEOUT
 
 
-def test_gate_uncached_never_holds_locally():
-    result = fs.evaluate_gate(
-        state(initially_available=False, manifest_id="m", manifest_file_count=4, hold_until=None),
-        now=1005.0,
+def test_gate_preparing_origin_multi_file_honors_an_established_decision_hold():
+    # An automatically actionable multi-file offer must precede irreversible ALL
+    # materialization even when the provider resource was initially PREPARING
+    # (specification sections 5, 6.3).
+    holding = state(
+        initially_available=False, manifest_id="m", manifest_file_count=4, hold_until=1125.0,
     )
-    assert result.gate == fs.SelectionGate.PROCEED
+    assert fs.evaluate_gate(holding, now=1100.0).gate == fs.SelectionGate.WAIT_FOR_DECISION
+    expired = fs.evaluate_gate(holding, now=1125.0)
+    assert expired.gate == fs.SelectionGate.PROCEED
+    assert expired.resolve_decision == fs.SelectionDecision.ALL
+    assert expired.resolve_reason == fs.DecisionReason.DECISION_TIMEOUT
+
+
+def test_gate_timeout_reasons_are_deterministic_and_never_mislabelled():
+    # DECISION_TIMEOUT is emitted ONLY when a persisted hold actually expired.
+    cached_hold = state(manifest_id="m", manifest_file_count=4, hold_until=1125.0)
+    assert fs.evaluate_gate(cached_hold, now=1130.0).resolve_reason == fs.DecisionReason.DECISION_TIMEOUT
+
+    # A multi-file manifest with NO hold, recorded only after the 60s window
+    # closed: the manifest opportunity genuinely expired, so MANIFEST_TIMEOUT for
+    # a cached origin and DEFAULT_MATERIALIZATION for an uncached origin — never
+    # DECISION_TIMEOUT (no hold ever existed).
+    late_cached = fs.evaluate_gate(
+        state(initially_available=True, manifest_id="m", manifest_file_count=4,
+              hold_until=None), now=1065.0)
+    assert late_cached.resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
+    late_uncached = fs.evaluate_gate(
+        state(initially_available=False, manifest_id="m", manifest_file_count=4,
+              hold_until=None), now=1065.0)
+    assert late_uncached.resolve_reason == fs.DecisionReason.DEFAULT_MATERIALIZATION
+
+    # The impossible in-window multi-file / no-hold state never auto-settles ALL:
+    # record_file_manifest co-establishes the hold in the same transaction, so
+    # the gate keeps waiting rather than mislabelling a timeout.
+    in_window_no_hold = fs.evaluate_gate(
+        state(initially_available=True, manifest_id="m", manifest_file_count=4,
+              hold_until=None), now=1005.0)
+    assert in_window_no_hold.gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert in_window_no_hold.resolve_decision is None
+
+    # No manifest at all: MANIFEST_TIMEOUT only once the 60s opportunity expired.
+    assert fs.evaluate_gate(state(initially_available=True), now=1005.0).gate == fs.SelectionGate.WAIT_FOR_MANIFEST
+    assert fs.evaluate_gate(state(initially_available=True), now=1065.0).resolve_reason == fs.DecisionReason.MANIFEST_TIMEOUT
 
 
 def test_gate_respects_settled_and_committed_facts():

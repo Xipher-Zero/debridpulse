@@ -227,20 +227,32 @@ async def test_manifest_window_is_not_reset_by_a_later_begin_call(repo):
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_uncached_never_receives_a_decision_hold(repo):
+async def test_uncached_multi_file_manifest_in_window_receives_a_decision_hold(repo):
+    # An automatically actionable multi-file offer must always precede
+    # irreversible ALL materialization (specification section 5). A PREPARING /
+    # uncached origin no longer disqualifies the 120s decision hold: it opens in
+    # the same transaction that queues the offer, and the gate WAITs.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
     clock.set(1010.0)
     await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock(),
     )
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
-    assert view["decision_deadline"] is None
+    assert view["decision_deadline"] == 1010.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    assert view["initially_available"] is False          # provenance fact preserved
     assert view["auto_offer"] is True                    # within the 60s window
+    assert await repo.file_selection_gate(seed.request_id, seed.provider_resource_id, now=clock()) == fs.SelectionGate.WAIT_FOR_DECISION
+    # The hold expires to default ALL as a decision timeout.
+    clock.set(1010.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS)
     assert await repo.file_selection_gate(seed.request_id, seed.provider_resource_id, now=clock()) == fs.SelectionGate.PROCEED
+    settled = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+    assert settled["decision"] == "all" and settled["decision_reason"] == fs.DecisionReason.DECISION_TIMEOUT
 
 
 @pytest.mark.asyncio
 async def test_uncached_manifest_after_60s_never_auto_opens(repo):
+    # Section 21 H — a manifest first recorded after the 60s auto window gets no
+    # automatic offer and no automatic 120s hold; manual Details stays open.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
     clock.set(1061.0)
@@ -248,7 +260,64 @@ async def test_uncached_manifest_after_60s_never_auto_opens(repo):
     )
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
     assert view["auto_offer"] is False
+    assert view["decision_deadline"] is None
+    assert view["mutable"] is True
     assert await repo.active_file_selection_offers(now=clock()) == []
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_hold_survives_restart_without_resetting(repo):
+    # Section 21 E — the absolute decision deadline is durable; a restart neither
+    # extends it nor opens a fresh window.
+    clock = Clock(1000.0)
+    seed = await window(repo, clock, initially_available=False)
+    clock.set(1039.0)
+    await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 1), ("b", "s/b", 2), ("c", "s/c", 3)), now=clock())
+    deadline = 1039.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+
+    before = TransferRepository()
+    assert await before.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=deadline - 40) == fs.SelectionGate.WAIT_FOR_DECISION
+    assert (await before.file_selection_presentation(
+        seed.transfer_id, now=deadline - 40))["decision_deadline"] == deadline
+
+    after = TransferRepository()
+    assert await after.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=deadline + 1) == fs.SelectionGate.PROCEED
+    settled = await after.file_selection_presentation(seed.transfer_id, now=deadline + 1)
+    assert settled["decision"] == "all"
+    assert settled["decision_reason"] == fs.DecisionReason.DECISION_TIMEOUT
+
+    reopened = await after.begin_file_selection_window(
+        seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
+        initially_available=False, now=99999.0)
+    assert reopened["hold_until"] == deadline                   # unchanged
+    assert reopened["manifest_wait_until"] == 1000.0 + fs.AUTO_MANIFEST_WINDOW_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_cold_load_recovers_active_offer_past_the_manifest_window(repo):
+    # Section 21 G — the 60s manifest-discovery cutoff must NOT suppress recovery
+    # of a still-active decision hold. Manifest at t=39; browser reads at t=70.
+    clock = Clock(1000.0)
+    seed = await window(repo, clock, initially_available=False)
+    clock.set(1039.0)
+    canonical = await repo.record_file_manifest(
+        seed.request_id, seed.provider_resource_id,
+        file_manifest(("a", "s/a", 1), ("b", "s/b", 2), ("c", "s/c", 3)), now=clock())
+    deadline = 1039.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS       # t = 1159
+
+    clock.set(1070.0)                                           # past manifest_wait_until (1060)
+    offers = await repo.active_file_selection_offers(now=clock())
+    assert [o["manifest_id"] for o in offers] == [canonical.manifest_id]
+    assert offers[0]["decision_deadline"] == deadline
+    view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+    assert view["auto_offer"] is True and view["mutable"] is True
+    assert view["decision_deadline"] == deadline
+    assert await repo.file_selection_gate(
+        seed.request_id, seed.provider_resource_id, now=clock()) == fs.SelectionGate.WAIT_FOR_DECISION
 
 
 @pytest.mark.asyncio
@@ -291,10 +360,13 @@ async def test_available_before_confirmation_settles_all_and_locks_selection(rep
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_uncached_dismiss_keeps_default_all_but_leaves_selection_mutable(repo):
+async def test_late_manifest_dismiss_keeps_default_all_but_leaves_selection_mutable(repo):
+    # A manifest first observed after the 60s auto window gets no automatic hold
+    # (section 6.9). Close/X on it only hides the (non-)offer and leaves the
+    # decision pending + mutable for a later manual Details selection.
     clock = Clock(1000.0)
     seed = await window(repo, clock, initially_available=False)
-    clock.set(1010.0)
+    clock.set(1061.0)
     canonical = await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock(),
     )
     result = await repo.dismiss_file_selection(seed.transfer_id, canonical.manifest_id, now=clock(),
@@ -302,6 +374,7 @@ async def test_uncached_dismiss_keeps_default_all_but_leaves_selection_mutable(r
     assert result.outcome == fs.SelectionOutcome.DISMISSED
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
     assert view["decision"] == "pending" and view["mutable"] is True
+    assert view["decision_deadline"] is None             # no automatic hold for a late manifest
     assert view["auto_offer"] is False                   # dismissed: no repeat auto-open
     # A later explicit confirmation is still accepted.
     later = await repo.confirm_file_selection(seed.transfer_id, canonical.manifest_id, [canonical.entries[1].entry_id], now=clock(),
@@ -490,8 +563,17 @@ async def test_engine_confirmed_subset_never_broadens_when_late_manifest_drops_a
     assert await _members(core, transfer.id) == []              # no children, no broadening
 
 
-@pytest.mark.asyncio
-async def test_initial_preparing_then_later_available_never_applies_the_120s_cached_hold(core):
+# --------------------------------------------------------------------------- #
+# PREPARING-origin decision window (specification sections 4-9, regression
+# matrix section 21). The production reproducer: a torrent begins PREPARING and,
+# on one later observation, becomes AVAILABLE *and* exposes its first complete
+# multi-file manifest. An automatically actionable offer must never coexist with
+# immediate irreversible ALL materialization.
+# --------------------------------------------------------------------------- #
+
+async def _preparing_then_available_with_manifest(core, *, manifest_at=1039.0):
+    """Drive a transfer from PREPARING to an AVAILABLE observation that carries
+    the first complete multi-file manifest, inside the 60s auto window."""
     from dataclasses import replace as _replace
 
     prepare = core.provider.parcel("A", state=ResourceState.PREPARING)
@@ -503,39 +585,136 @@ async def test_initial_preparing_then_later_available_never_applies_the_120s_cac
     row = await _selection_row(transfer.id)
     assert row["initially_available"] == 0 and row["hold_until"] is None
 
-    # t=10: a complete multi-file manifest appears while still PREPARING.
-    core.clock.set(1010.0)
-    core.provider.resources["parcel-lab:A"] = _replace(
-        prepare.observation, file_manifest=file_manifest(*FILES6))
-    await core.engine.resolve_pending()
-    view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
-    assert view["auto_offer"] is True                           # within the 60s window
-    assert view["decision_deadline"] is None                    # NO cached hold
-    assert view["initially_available"] is False
-
-    # t=50: resource transitions to AVAILABLE. No 120s hold is retroactively added.
-    core.clock.set(1050.0)
+    core.clock.set(manifest_at)
     core.provider.resources["parcel-lab:A"] = _replace(
         prepare.observation, state=ResourceState.AVAILABLE, file_manifest=file_manifest(*FILES6))
+    await core.engine.resolve_pending()
+    return transfer
+
+
+@pytest.mark.asyncio
+async def test_preparing_then_available_with_manifest_gets_a_bounded_decision_window(core):
+    # Section 21 A — the exact real-world reproducer. This assertion set fails on
+    # the pre-correction implementation, which allowed default_materialization to
+    # commit ALL ~12ms after the offer was queued.
+    transfer = await _preparing_then_available_with_manifest(core, manifest_at=1039.0)
+
+    row = await _selection_row(transfer.id)
+    assert row["initially_available"] == 0                      # provenance fact preserved
+    assert row["hold_until"] == 1039.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    assert row["decision"] == "pending"
+    assert row["manifest_committed_at"] is None
+    assert row["auto_offer_queued_at"] == 1039.0
+
+    view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
+    assert view["auto_offer"] is True
+    assert view["decision_deadline"] == 1039.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
+    assert view["initially_available"] is False
+
+    gate = await core.repository.file_selection_gate(
+        row["request_id"], row["provider_resource_id"], now=core.clock())
+    assert gate == fs.SelectionGate.WAIT_FOR_DECISION
+
+    # No executable manifest was fetched, no child request created, no executor
+    # attempt started — even after further scheduler passes inside the hold.
+    for _ in range(4):
+        await core.engine.tick()
+        core.clock.advance(1)
+    assert ("manifest", "parcel-lab:A") not in core.provider.calls
+    assert await _members(core, transfer.id) == []
+    assert core.executor.started == []
+    row = await _selection_row(transfer.id)
+    assert row["decision"] == "pending" and row["manifest_committed_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_confirm_before_deadline_persists_subset_only(core):
+    # Section 21 B.
+    transfer = await _preparing_then_available_with_manifest(core, manifest_at=1039.0)
+    view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
+    keep = [view["entries"][2]["entry_id"]]                     # e3 only
+    core.clock.set(1090.0)
+    result = await core.repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], keep, now=core.clock())
+    assert result.outcome == fs.SelectionOutcome.CONFIRMED
+
     for _ in range(6):
         await core.engine.tick()
         core.clock.advance(1)
 
+    members = await _members(core, transfer.id)
+    assert [r.entry.relative_path for r in members] == ["S1/e3.mkv"]
+    artifacts = await core.repository.artifacts(transfer.id)
+    assert [a.name for a in artifacts] == ["e3.mkv"]
+    assert len(core.executor.started) == 1
     row = await _selection_row(transfer.id)
-    assert row["initially_available"] == 0
-    assert row["hold_until"] is None                            # never a cached hold
-    assert row["decision"] == "all"
-    # A usable early manifest was already present, so the settled fallback is the
-    # normal materialization path (§18), NOT the cached decision timeout and NOT
-    # the manifest-wait timeout (which only applies to an initially-AVAILABLE
-    # resource that never exposed a usable manifest inside its 60s window).
-    assert row["decision_reason"] == fs.DecisionReason.DEFAULT_MATERIALIZATION
+    assert row["decision"] == "explicit"
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_close_during_hold_releases_and_all_materializes(core):
+    # Section 21 C.
+    transfer = await _preparing_then_available_with_manifest(core, manifest_at=1039.0)
+    view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
+    core.clock.set(1080.0)
+    result = await core.repository.dismiss_file_selection(
+        transfer.id, view["manifest_id"], now=core.clock())
+    assert result.outcome == fs.SelectionOutcome.DISMISSED and result.decision == "all"
+
+    row = await _selection_row(transfer.id)
+    assert row["decision"] == "all" and row["decision_reason"] == fs.DecisionReason.CLOSED
+
+    for _ in range(6):
+        await core.engine.tick()
+        core.clock.advance(1)
     members = await _members(core, transfer.id)
     assert sorted(r.entry.relative_path for r in members) == sorted(f[1] for f in FILES6)
 
 
 @pytest.mark.asyncio
-async def test_initial_preparing_confirm_before_available_persists_subset_only(core):
+async def test_preparing_origin_hold_times_out_to_all(core):
+    # Section 21 D.
+    transfer = await _preparing_then_available_with_manifest(core, manifest_at=1039.0)
+    core.clock.set(1039.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS + 1)
+    for _ in range(6):
+        await core.engine.tick()
+        core.clock.advance(1)
+
+    row = await _selection_row(transfer.id)
+    assert row["decision"] == "all"
+    assert row["decision_reason"] == fs.DecisionReason.DECISION_TIMEOUT
+    members = await _members(core, transfer.id)
+    assert sorted(r.entry.relative_path for r in members) == sorted(f[1] for f in FILES6)
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_repeated_observations_do_not_extend_the_deadline(core):
+    # Section 21 F — one offer event, one deadline, no extension on re-poll.
+    from dataclasses import replace as _replace
+    transfer = await _preparing_then_available_with_manifest(core, manifest_at=1039.0)
+    original_deadline = (await _selection_row(transfer.id))["hold_until"]
+
+    for step in range(5):
+        core.clock.set(1039.0 + (step + 1) * 10)               # still inside the hold
+        core.provider.resources["parcel-lab:A"] = _replace(
+            core.provider.resources["parcel-lab:A"], file_manifest=file_manifest(*FILES6))
+        await core.engine.resolve_pending()
+
+    row = await _selection_row(transfer.id)
+    assert row["hold_until"] == original_deadline               # never reset / extended
+    assert row["auto_offer_queued_at"] == 1039.0
+    async with database.get_db() as db:
+        events = await db.fetchall(
+            "SELECT 1 FROM application_events WHERE transfer_id=? AND kind='file_selection_available'",
+            (transfer.id,))
+    assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_confirm_before_available_persists_subset_only(core):
+    # A confirm placed while the resource is still PREPARING (manifest already
+    # visible) survives to materialization; the hold is established because the
+    # manifest arrived inside the auto window.
     from dataclasses import replace as _replace
 
     prepare = core.provider.parcel("A", state=ResourceState.PREPARING)
@@ -549,6 +728,7 @@ async def test_initial_preparing_confirm_before_available_persists_subset_only(c
         prepare.observation, file_manifest=file_manifest(*FILES6))
     await core.engine.resolve_pending()
     view = await core.repository.file_selection_presentation(transfer.id, now=core.clock())
+    assert view["decision_deadline"] == 1010.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS
     keep = [view["entries"][2]["entry_id"]]                     # e3 only
     await core.repository.confirm_file_selection(transfer.id, view["manifest_id"], keep, now=core.clock())
 
@@ -562,7 +742,32 @@ async def test_initial_preparing_confirm_before_available_persists_subset_only(c
     members = await _members(core, transfer.id)
     assert [r.entry.relative_path for r in members] == ["S1/e3.mkv"]
     row = await _selection_row(transfer.id)
-    assert row["hold_until"] is None                            # confirmed during PREPARING; no cached hold
+    assert row["decision"] == "explicit"
+
+
+@pytest.mark.asyncio
+async def test_preparing_origin_single_file_manifest_never_holds(core):
+    # Section 21 I — a single-file resource gets no selector and no hold.
+    from dataclasses import replace as _replace
+    prepare = core.provider.parcel("A", state=ResourceState.PREPARING)
+    core.provider.members["parcel-lab:A"] = executable(("only.mkv", "only.mkv", 5))
+    core.provider.responses.append(prepare)
+    transfer = await _engine_submit(core)
+    await core.engine.resolve_pending()
+
+    core.clock.set(1030.0)
+    core.provider.resources["parcel-lab:A"] = _replace(
+        prepare.observation, state=ResourceState.AVAILABLE,
+        file_manifest=file_manifest(("only.mkv", "only.mkv", 5)))
+    for _ in range(4):
+        await core.engine.tick()
+        core.clock.advance(1)
+
+    row = await _selection_row(transfer.id)
+    assert row["hold_until"] is None
+    assert row["decision"] == "all" and row["decision_reason"] == fs.DecisionReason.SINGLE_FILE
+    members = await _members(core, transfer.id)
+    assert [r.entry.relative_path for r in members] == ["only.mkv"]
 
 
 @pytest.mark.asyncio

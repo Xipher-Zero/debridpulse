@@ -194,6 +194,26 @@ test('the 120s countdown renders from the server deadline and is presentation-on
   await expect(clock).toHaveText(/^(1:5\d|2:00)$/);   // ~120s remaining at open
 });
 
+test('a PREPARING-origin offer (initially_available false, active decision_deadline) opens identically to a cached one', async ({page}) => {
+  // Specification section 9: the browser must accept initially_available === false
+  // with a non-null decision_deadline as a fully valid actionable selector, and
+  // must never gate presentation on initially_available.
+  const state = {view: selectionView({initially_available: false, server_now: 1000.0, decision_deadline: 1120.0}),
+    offers: [{transfer_id: 7, manifest_id: MANIFEST_A, file_count: 4, decision_deadline: 1120.0, auto_offer_until: 1060.0}]};
+  await stub(page, state);
+  await boot(page);
+
+  // Cold-load recovery through the offers query opens the selector even though
+  // initially_available is false — presentation is gated only on the offer +
+  // an active decision_deadline, never on initially_available.
+  await page.evaluate(() => window.DPFileSelection.pollOffers());
+  await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
+  await expect(page.locator('#modal-title')).toHaveText('Select files');
+  await expect(page.locator('.dp-fs-tree .dp-fs-check--file')).toHaveCount(4);
+  await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toBeVisible();
+  await expect(page.locator('#modal-footer .dp-fs-clock')).toHaveText(/^(1:5\d|2:00)$/);
+});
+
 test('reaching zero refreshes authoritative state; an expired hold closes the selector', async ({page}) => {
   const state = {view: selectionView({server_now: 1119.0, decision_deadline: 1120.0})};
   await stub(page, state);

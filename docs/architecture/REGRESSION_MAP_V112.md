@@ -17,6 +17,7 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 | Current contract | Canonical regression owners |
 | --- | --- |
 | Universal identity/lifecycle, pause/cancel/delete, capacity, retry/recovery, verified possession | `test_application_runtime.py`, `test_universal_lifecycle.py`, `test_universal_boundaries.py`, `test_universal_parity.py`, `test_universal_hardening.py`, `test_transfer_integrity.py` |
+| Delete permanently retires the active dedupe identity; re-add is a fresh transfer with its own provider-resource *binding generation* (`RA ≠ RB` for identical native `R`, no manifest/selection aliasing); observation/inventory/duplicate lookups on a shared canonical resource resolve to the active binding (incl. the pre-split legacy form) and never cross-target or resurrect the retired one; idempotent additive `source_fingerprint` / `resource_key` backfills; provider cleanup fence blocks pending/claimed-in-flight/scheduled-retry and releases only on completion or terminal abandonment, with startup stale-claim reclaim | `test_deleted_transfer_generation_retirement.py` |
 | Canonical architecture/retired-owner absence | `test_canonical_runtime_architecture.py`, `test_two_provider_canonical_architecture.py` |
 | Provider-neutral applicability and `SPECIALIZED > GENERIC` initial routing | `test_provider_applicability.py`, `test_initial_provider_routing.py`, `test_item11_multi_provider_slice.py` |
 | AllDebrid native contract and dynamic host-state/LKG ownership | `test_alldebrid_provider_contract.py`, `test_alldebrid_pattern_applicability.py`, `test_alldebrid_host_runtime.py`, `test_alldebrid_host_runtime_acceptance.py` |
@@ -30,7 +31,7 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 
 ## Current focused qualification
 
-`backend/tests/two_provider_checkpoint_qualification.txt` is the permanent focused manifest for this checkpoint. It preserves every canonical test path from the qualified Item 11 manifest and adds the canonical runtime architecture, neutral input/auth architecture, current checkpoint documentation, and license-policy owners. The manifest composes production-path tests; it does not create a parallel mock implementation.
+`backend/tests/two_provider_checkpoint_qualification.txt` is the permanent focused manifest for this checkpoint. It preserves every canonical test path from the qualified Item 11 manifest and adds the canonical runtime architecture, neutral input/auth architecture, current checkpoint documentation, and license-policy owners. The manifest composes production-path tests; it does not create a parallel mock implementation. The 1.0.12 corrective slices deliberately extend it with the four `test_file_selection_*` modules and `test_deleted_transfer_generation_retirement.py`.
 
 The full pytest suite remains authoritative beyond the focused slice. Browser Runtime, static/compile, dependency/security, CodeQL, container runtime/security, OCI identity, SBOM/provenance, and immutable image publication remain separate required gates on the same exact checkpoint SHA.
 
@@ -62,10 +63,16 @@ Confirm-vs-materialization serialization, fail-closed executable reconciliation,
 and final `SourceEntry` filtering. The executor remains selection-blind. Items
 12–16 remain intentionally deferred and this overlay does not change that.
 
+The decision hold is established in the same durable transaction that queues any
+auto-presented multi-file offer, whether the resource was initially `AVAILABLE`
+or initially `PREPARING`: an automatically actionable offer never coexists with
+immediate ALL materialization. `initially_available` remains a persisted
+provenance fact but no longer gates the decision opportunity.
+
 | Current contract | Canonical regression owners |
 | --- | --- |
 | Neutral capability/identity, pure gate, reconciliation, no wall-clock in policy | `test_file_selection_contract.py`, `test_universal_contracts.py`, `test_universal_boundaries.py` |
-| Fake-provider-driven cached/uncached lifecycle, 60s/120s windows, restart survival, executor-boundary proof | `test_file_selection_lifecycle.py` |
+| Fake-provider-driven cached & PREPARING-origin lifecycle, 60s/120s windows, PREPARING→AVAILABLE decision-window reproducer, restart survival, executor-boundary proof | `test_file_selection_lifecycle.py` |
 | Additive schema, backup/wipe, FK integrity, per-resource generation across re-resolution, two-phase crash recovery, Confirm-vs-materialization concurrency | `test_file_selection_persistence.py` |
 | Dedicated API, `SelectionOutcome` transport codes, fixed public whitelist, A→B re-resolution regression, durable browser event | `test_file_selection_api.py` |
 | AllDebrid adapter capability, `ready`-flag initial availability, nested-tree → neutral `FileManifest` without links, file-list fallback | `test_alldebrid_provider_contract.py` |

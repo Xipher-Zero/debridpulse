@@ -700,11 +700,18 @@ class TransferRepository(_QualifiedTransferRepository):
                 )
             assignments = ["manifest_id=?", "updated_at=?"]
             params = [canonical.manifest_id, now]
-            # The 120-second decision hold begins only when a populated multi-file
-            # selector is usable, and only for an initially-available resource.
-            # It is anchored once and never restarted.
+            # The 120-second decision hold begins in this same durable transaction
+            # whenever a populated multi-file selector becomes usable inside the
+            # 60-second auto-presentation window, whether the provider resource was
+            # initially AVAILABLE or initially PREPARING (specification sections
+            # 5, 6.2, 6.3). It is anchored once to this arrival and never
+            # restarted by a repeat observation, a duplicate manifest, a
+            # scheduler pass, a browser reconnect, or a restart. A manifest first
+            # observed after the window closed gets no automatic hold (section
+            # 6.9); manual Details selection stays available while mutable.
             hold_until = sel["hold_until"]
-            if bool(sel["initially_available"]) and canonical.file_count > 1 and hold_until is None:
+            within_auto_window = now < float(sel["manifest_wait_until"])
+            if canonical.file_count > 1 and hold_until is None and within_auto_window:
                 hold_until = fs.decision_hold_deadline(now)
                 assignments.append("hold_until=?")
                 params.append(hold_until)
@@ -866,8 +873,11 @@ class TransferRepository(_QualifiedTransferRepository):
                     decision=str(row["decision"]), committed=True,
                 )
             file_count = await self._manifest_file_count(db, row["manifest_id"])
+            # Close/X on any live auto-presented multi-file hold settles ALL and
+            # releases immediately, whatever the resource's initial availability
+            # (specification section 6.5).
             active_hold = (
-                bool(row["initially_available"]) and file_count > 1
+                file_count > 1
                 and row["hold_until"] is not None and str(row["decision"]) == "pending"
             )
             if active_hold:
@@ -915,12 +925,16 @@ class TransferRepository(_QualifiedTransferRepository):
         gate PROCEED -> this call (idempotent) -> fan-out (INSERT OR IGNORE).
         """
         full_entries = tuple(full_entries)
-        resource_id = record.resource.id if record.resource is not None else None
+        canonical_resource_id = record.resource.id if record.resource is not None else None
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            binding_id = (
+                await self._resolve_binding(db, record.transfer_id, canonical_resource_id)
+                if canonical_resource_id else None
+            )
             row = (
-                await self._selection_generation(db, record.id, resource_id)
-                if resource_id else None
+                await self._selection_generation(db, record.id, binding_id)
+                if binding_id else None
             )
             if not row:
                 await db.rollback()

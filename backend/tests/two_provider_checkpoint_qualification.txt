@@ -43,3 +43,8 @@ tests/test_file_selection_contract.py
 tests/test_file_selection_lifecycle.py
 tests/test_file_selection_persistence.py
 tests/test_file_selection_api.py
+# Deleted-transfer dedupe/generation retirement (1.0.12 corrective slice): Delete
+# permanently retires the active dedupe identity; re-submitting the same source is
+# a genuinely fresh transfer even while predecessor cleanup is still outstanding.
+# Provider- and executor-neutral.
+tests/test_deleted_transfer_generation_retirement.py

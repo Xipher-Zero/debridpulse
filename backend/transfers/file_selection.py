@@ -265,8 +265,15 @@ def evaluate_gate(state: SelectionWindowState, now: float) -> GateEvaluation:
     """Pure neutral decision: may executable child fan-out proceed for a request?
 
     Provider-side acquisition is never governed here. Only local executable
-    materialization is ever held, and only for an initially-available,
-    file-manifest-capable resource inside the bounded windows.
+    materialization is ever held.
+
+    An automatically actionable multi-file offer and immediate irreversible ALL
+    materialization must never coexist (specification section 5/7). Whenever a
+    populated multi-file manifest was observed inside the auto-presentation
+    window, ``record_file_manifest`` establishes a bounded decision hold in the
+    same durable transaction that queues the offer; this gate then honors that
+    hold as ``WAIT_FOR_DECISION`` regardless of whether the provider resource was
+    initially AVAILABLE or initially PREPARING.
     """
     if state.manifest_committed_at is not None:
         return GateEvaluation(SelectionGate.PROCEED)
@@ -283,22 +290,44 @@ def evaluate_gate(state: SelectionWindowState, now: float) -> GateEvaluation:
             SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.SINGLE_FILE,
         )
 
-    if state.initially_available:
-        if has_multi:
-            if state.hold_until is not None and now < state.hold_until:
+    if has_multi:
+        if state.hold_until is not None:
+            # A real decision hold exists. ``DECISION_TIMEOUT`` is emitted only
+            # here — a persisted hold that actually expired while still pending.
+            if now < state.hold_until:
                 return GateEvaluation(SelectionGate.WAIT_FOR_DECISION)
             return GateEvaluation(
                 SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DECISION_TIMEOUT,
             )
         if now < state.manifest_wait_until:
+            # Unreachable by construction: ``record_file_manifest`` establishes
+            # the decision hold in the same transaction that binds an in-window
+            # multi-file manifest. Never settle ALL while the auto window is
+            # still open — keep waiting for the hold to appear (self-healing).
             return GateEvaluation(SelectionGate.WAIT_FOR_MANIFEST)
+        # A multi-file manifest observed only after the 60-second auto window
+        # closed: no auto-offer and no hold were ever created (section 6.9). The
+        # manifest opportunity genuinely expired.
+        if state.initially_available:
+            return GateEvaluation(
+                SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.MANIFEST_TIMEOUT,
+            )
+        return GateEvaluation(
+            SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DEFAULT_MATERIALIZATION,
+        )
+
+    # No manifest is bound yet.
+    if state.initially_available:
+        if now < state.manifest_wait_until:
+            return GateEvaluation(SelectionGate.WAIT_FOR_MANIFEST)
+        # The 60-second manifest opportunity expired with nothing usable.
         return GateEvaluation(
             SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.MANIFEST_TIMEOUT,
         )
 
-    # Uncached / preparing resources are never locally held for selection. When
-    # the engine finally has an executable manifest and no explicit subset was
-    # confirmed, default ALL settles here.
+    # Uncached / preparing resource with no actionable auto-offer: provider-side
+    # work proceeds normally and, when the engine finally has an executable
+    # manifest with no explicit subset confirmed, default ALL settles here.
     return GateEvaluation(
         SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.DEFAULT_MATERIALIZATION,
     )

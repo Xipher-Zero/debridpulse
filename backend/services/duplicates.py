@@ -239,14 +239,26 @@ async def find_hash_duplicate(infohash: str) -> Optional[DuplicateMatch]:
 async def find_resource_id_duplicate(resource_id: str) -> Optional[DuplicateMatch]:
     """
     Stage 2: check by resource identity (prevents re-uploading something already represented locally).
+
+    ``provider_resources.id`` is now the (transfer, resource) binding-generation
+    key, not the canonical resource identity, and several historical bindings can
+    share one ``resource_key``. Resolve the supplied identity against
+    ``resource_key`` (or a pre-split row whose primary key is that identity) and
+    always target the current, non-deleted binding — a retired predecessor is
+    never reported as a duplicate.
     """
     if not resource_id:
         return None
     try:
         async with get_db() as db:
             row = await db.fetchone(
-                "SELECT t.id,t.name,t.status,t.hash FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id WHERE r.id=? LIMIT 1",
-                (str(resource_id),),
+                "SELECT t.id,t.name,t.status,t.hash "
+                "FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id "
+                "WHERE (r.resource_key=? OR r.id=?) AND t.status != 'deleted' "
+                "ORDER BY CASE WHEN t.status IN "
+                "  ('uploading','processing','ready','queued','downloading','paused','completed') "
+                "  THEN 0 ELSE 1 END, t.id DESC LIMIT 1",
+                (str(resource_id), str(resource_id)),
             )
         if row and row["status"] in _ALL_NON_DELETED:
             return DuplicateMatch(

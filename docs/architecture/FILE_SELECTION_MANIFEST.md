@@ -10,7 +10,7 @@ owns every decision.
 PROVIDER                        UNIVERSAL CORE                     EXECUTOR
 declares FILE_MANIFEST     ->    owns ALL-vs-subset policy    ->   receives
 reports ProviderObservation     owns the 60s auto-offer window     ordinary
-reports a neutral FileManifest  owns the 120s cached hold          canonical
+reports a neutral FileManifest  owns the 120s decision hold        canonical
 continues acquisition alone     owns durable provenance            candidates
                                 owns stale-manifest rejection      only — knows
                                 owns executable reconciliation     nothing about
@@ -49,7 +49,8 @@ Canonical neutral policy/normalization owner. Contains no `alldebrid`,
 imports neither `time` nor `datetime`.
 
 * `AUTO_MANIFEST_WINDOW_SECONDS = 60.0` — automatic presentation window.
-* `IMMEDIATE_DECISION_HOLD_SECONDS = 120.0` — cached decision hold.
+* `IMMEDIATE_DECISION_HOLD_SECONDS = 120.0` — decision hold (any auto-presented
+  multi-file offer, cached or PREPARING-origin).
 * Manifest identity:
   * `manifest_digest = SHA-256` over the sorted canonical
     `(normalized_path\0size\n)` pairs — order-independent, so a provider
@@ -73,12 +74,46 @@ persisted as absolute values and survive restart without resetting.
 | Window | Length | Applies when | On expiry |
 | --- | --- | --- | --- |
 | Automatic manifest presentation | 60 s | a `FILE_MANIFEST`-capable provider resource is durably bound | no more auto-popup; Details entry stays available while mutable |
-| Cached / immediately-executable decision hold | 120 s | provider declares `FILE_MANIFEST` **and** the initial provider resource observation was `AVAILABLE` **and** a complete multi-file manifest is populated and usable | modal closes, draft discarded, default ALL wins, local materialization proceeds |
+| Decision hold | 120 s | provider declares `FILE_MANIFEST` **and** a complete multi-file manifest becomes populated and usable **while the 60 s auto-presentation window is still open** — whatever the resource's initial availability | modal closes, draft discarded, default ALL wins (`decision_reason = decision_timeout`), local materialization proceeds |
 
-A resource that was initially `PREPARING` never receives the 120 s cached hold,
-and never retroactively acquires one when it later becomes `AVAILABLE`
-(`decision_reason` for that path is `default_materialization`). Only local
-materialization / executor dispatch is ever held; provider-side work is not.
+**An automatically actionable multi-file offer and immediate irreversible ALL
+materialization must never coexist** (specification sections 5/7). Whenever core
+queues an auto-offer, the *same* durable transaction persists
+`hold_until = now + 120 s`, and `evaluate_gate` then returns
+`WAIT_FOR_DECISION` — regardless of whether the provider resource was initially
+`AVAILABLE` or initially `PREPARING`. The production reproducer (a torrent that
+begins `PREPARING` and, on one later observation, becomes `AVAILABLE` *and*
+exposes its first complete manifest) therefore gets a real bounded decision
+window instead of a millisecond race to `default_materialization`.
+
+`initially_available` is still persisted as an immutable provenance/diagnostic
+fact, but it no longer decides whether an auto-presented manifest receives a
+decision opportunity. It still governs one narrower thing: whether a resource
+with *no manifest yet* keeps `WAIT_FOR_MANIFEST` until the 60 s discovery window
+elapses (initially `AVAILABLE`) or lets provider-side work continue with default
+ALL settling later (initially `PREPARING`).
+
+A manifest first observed *after* the 60 s window has closed gets **no**
+automatic hold and **no** auto-popup; manual Details selection stays available
+while the selection is still mutable. It settles `decision_reason =
+manifest_timeout` for an initially-`AVAILABLE` origin (the 60 s manifest
+opportunity genuinely expired) and `decision_reason = default_materialization`
+for a `PREPARING` origin. Only local materialization / executor dispatch is ever
+held; provider-side acquisition and resolution are never blocked.
+
+The settle reason is deterministic: `decision_timeout` is emitted **only** when a
+persisted `hold_until` actually expired while still pending; `manifest_timeout`
+**only** when the 60 s manifest opportunity expired. `record_file_manifest`
+establishes the decision hold in the same durable transaction that binds an
+in-window multi-file manifest, so an in-window multi-file manifest can never lack
+a hold — if that state is somehow observed the gate keeps waiting rather than
+settling a mislabelled timeout.
+
+`decision_deadline` (the persisted `hold_until`) is the authoritative
+user-decision deadline and is **not** the same as the 60 s manifest-discovery
+cutoff. A browser that cold-loads or reconnects after the discovery cutoff but
+before `hold_until` still recovers the active offer through
+`GET /api/file-selections/offers`.
 
 ## Persistence — `backend/db/database.py` (additive current schema)
 

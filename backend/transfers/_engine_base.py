@@ -60,6 +60,12 @@ class TransferEngine:
 
     async def initialize(self):
         await self.repository.initialize()
+        # A provider-cleanup claim (cleanup_blocked=1) that a restart interrupted
+        # cannot have an operation still in flight; release it for the ordinary
+        # cadence so it is re-driven to completion or terminal abandonment. The
+        # deleted-transfer re-add fence depends on this so a crashed claim never
+        # permanently blocks a fresh transfer.
+        await self.repository.reclaim_stale_cleanup_claims()
         await self.canonical.initialize()
         await self.challenges.initialize()
 
@@ -404,7 +410,7 @@ class TransferEngine:
                 if not restartable:
                     raise TransferError(self._error(Category.UNMAPPED_PROVIDER_ERROR, Stage.RECONCILIATION, domain=Domain.PROVIDER))
                 if previous.state != ResourceState.ABSENT and record.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
-                    await self.repository.cleanup_intent(record.resource.id, CleanupAuthority.OWNED)
+                    await self.repository.cleanup_intent(record.transfer_id, record.resource.id, CleanupAuthority.OWNED)
                     await self._cleanup_pending()
                     if any(resource.id == record.resource.id and pending for resource, _state, pending in await self.repository.resources(record.transfer_id)):
                         raise TransferError(self._error(Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP))
@@ -994,7 +1000,7 @@ class TransferEngine:
         if not decision.automatic:
             return False
         if observation.state != ResourceState.ABSENT and parent.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
-            await self.repository.cleanup_intent(parent.resource.id, CleanupAuthority.OWNED)
+            await self.repository.cleanup_intent(parent.transfer_id, parent.resource.id, CleanupAuthority.OWNED)
             await self._cleanup_pending()
             if any(resource.id == parent.resource.id and pending for resource, _state, pending in await self.repository.resources(record.transfer_id)):
                 return False
@@ -1419,15 +1425,15 @@ class TransferEngine:
             if not explicit and resource.ownership not in {Ownership.CREATED, Ownership.ADOPTED}:
                 continue
             authority = CleanupAuthority.USER_REQUEST if explicit else CleanupAuthority.OWNED
-            await self.repository.cleanup_intent(resource.id, authority)
+            await self.repository.cleanup_intent(transfer_id, resource.id, authority)
         await self._cleanup_pending()
 
     async def _cleanup_pending(self):
-        for transfer_id, resource, authority, attempts in await self.repository.pending_cleanup(self.clock()):
+        for transfer_id, resource, authority, attempts, binding_id in await self.repository.pending_cleanup(self.clock()):
             provider = self.registry.providers.get(resource.provider_id)
             if not isinstance(provider, Cleanup):
                 continue
-            if not await self.repository.claim_cleanup(resource.id):
+            if not await self.repository.claim_cleanup(binding_id):
                 continue
             try:
                 outcome = await provider.cleanup(CleanupDirective(resource, CleanupAuthority(authority)))
@@ -1436,13 +1442,13 @@ class TransferEngine:
                     integration_id=provider.descriptor.id, domain=Domain.CLEANUP, stage=Stage.CLEANUP))
             await self.repository.outcome(transfer_id, outcome)
             if outcome.kind in {OutcomeKind.SUCCESS, OutcomeKind.SKIPPED}:
-                await self.repository.cleanup_intent(resource.id, None)
+                await self.repository.cleanup_intent(transfer_id, resource.id, None)
                 if outcome.kind == OutcomeKind.SUCCESS:
                     await self.repository.resource_observation(transfer_id, resource, ResourceState.ABSENT)
             else:
                 error = outcome.error or self._error(Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP)
                 decision = self.policy.retry(error, attempts + 1, self.clock())
-                await self.repository.cleanup_retry(resource.id, error, decision.retry_at)
+                await self.repository.cleanup_retry(binding_id, error, decision.retry_at)
 
     async def cleanup_pending(self):
         """Retry durable cleanup intents; this never invents cleanup authority."""

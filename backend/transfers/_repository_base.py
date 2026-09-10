@@ -245,8 +245,12 @@ class TransferRepository:
     def _transfer(row) -> Transfer | None:
         if not row:
             return None
+        raw_hash = str(row["hash"] or "")
+        # A retired (deleted) transfer's active dedupe key is a tombstone; present
+        # the original logical fingerprint instead.
+        display_hash = str(row.get("source_fingerprint") or "") if raw_hash.startswith("deleted:") else raw_hash
         return Transfer(int(row["id"]), str(row["name"] or ""), TransferState(row["status"]),
-                        str(row["hash"] or ""), str(row["source"] or ""), int(row["priority"] or 0),
+                        display_hash, str(row["source"] or ""), int(row["priority"] or 0),
                         bool(row.get("paused_intent")), float(row["progress"] or 0), codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0))
 
     async def get(self, transfer_id: int) -> Transfer | None:
@@ -258,7 +262,9 @@ class TransferRepository:
     async def presentation(self, transfer_id: int, *, details=False):
         """Explicit canonical read model; opaque integration context stays private."""
         async with get_db() as db:
-            row = await db.fetchone("""SELECT id,hash,name,status,size_bytes,progress,local_path,source,label,priority,
+            row = await db.fetchone("""SELECT id,
+                CASE WHEN hash LIKE 'deleted:%' THEN COALESCE(source_fingerprint,'') ELSE hash END AS hash,
+                name,status,size_bytes,progress,local_path,source,label,priority,
                 error_message,normalized_error,extraction_status,extraction_error,created_at,updated_at,completed_at
                 FROM torrents WHERE id=?""", (transfer_id,))
             if not row:
@@ -399,6 +405,82 @@ class TransferRepository:
                 ORDER BY t.priority DESC,t.id""")
         return tuple(self._transfer(row) for row in rows)
 
+    @staticmethod
+    def _tombstone_hash(transfer_id: int, source_fingerprint: str) -> str:
+        """Deterministic, per-transfer, non-recursive retired dedupe key."""
+        return f"deleted:{int(transfer_id)}:{source_fingerprint}"
+
+    @classmethod
+    async def _retire_active_fingerprint(cls, db, row) -> None:
+        """Within an open transaction: preserve the original logical fingerprint
+        and retire the active unique ``hash`` key to the tombstone form. Idempotent
+        and never recursively prefixed."""
+        transfer_id = int(row["id"])
+        current_hash = str(row["hash"] or "")
+        original = str(row["source_fingerprint"] or current_hash)
+        if current_hash.startswith("deleted:"):
+            if row["source_fingerprint"] is None:
+                await db.execute(
+                    "UPDATE torrents SET source_fingerprint=? WHERE id=? AND source_fingerprint IS NULL",
+                    (original, transfer_id),
+                )
+            return
+        await db.execute(
+            "UPDATE torrents SET source_fingerprint=COALESCE(source_fingerprint,?), hash=? WHERE id=?",
+            (original, cls._tombstone_hash(transfer_id, original), transfer_id),
+        )
+
+    async def predecessor_cleanup_barrier(self, transfer_id: int) -> bool:
+        """True while a retired (deleted) predecessor generation sharing this
+        transfer's ``source_fingerprint`` still owns a provider resource whose
+        cleanup responsibility is outstanding and has not been permanently
+        abandoned.
+
+        The fresh generation is admitted immediately but must not perform a
+        conflicting provider-resource creation/reuse until no cleanup operation
+        belonging to the predecessor can subsequently act on the shared native
+        resource. The predicate deliberately does not distinguish
+        pending / claimed-in-flight / scheduled-retry — every one of those blocks.
+        ``cleanup_abandoned`` (set only after the provider cleanup call returned
+        and policy gave up) releases the block, so a fresh transfer is never
+        deadlocked; a crashed claim is re-driven by startup reclaim, not left
+        permanently blocking.
+        """
+        async with get_db() as db:
+            row = await db.fetchone("SELECT source_fingerprint FROM torrents WHERE id=?", (transfer_id,))
+            fingerprint = row["source_fingerprint"] if row else None
+            if not fingerprint:
+                return False
+            blocker = await db.fetchone(
+                """SELECT 1 FROM provider_resources r
+                   JOIN torrents t ON t.id=r.transfer_id
+                   WHERE t.id != ? AND t.status='deleted' AND t.source_fingerprint=?
+                     AND r.cleanup_authority IS NOT NULL
+                     AND COALESCE(r.cleanup_abandoned, 0) = 0
+                     AND r.state != 'absent'
+                   LIMIT 1""",
+                (transfer_id, fingerprint),
+            )
+        return blocker is not None
+
+    async def reclaim_stale_cleanup_claims(self) -> None:
+        """Re-drive provider-cleanup claims that a restart interrupted.
+
+        ``claim_cleanup`` sets ``cleanup_blocked=1`` for the duration of a single
+        ``provider.cleanup()`` call. A process that dies during that call cannot
+        have an operation still in flight, so the claim is released for the
+        ordinary cleanup cadence to pick up again. A permanently abandoned
+        cleanup (``cleanup_abandoned=1``) is left as-is.
+        """
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute(
+                "UPDATE provider_resources SET cleanup_blocked=0, updated_at=CURRENT_TIMESTAMP "
+                "WHERE cleanup_blocked=1 AND COALESCE(cleanup_abandoned, 0) = 0 "
+                "AND cleanup_authority IS NOT NULL",
+            )
+            await db.commit()
+
     async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=0, deduplicate=True) -> tuple[Transfer, bool]:
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
@@ -410,12 +492,20 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("SELECT * FROM torrents WHERE hash=?", (fingerprint,))
+            if row and str(row["status"]) == "deleted":
+                # A user-deleted transfer must never remain the active dedupe /
+                # recovery identity. A legacy deleted row (or a tombstone race)
+                # still holding the active key is retired transactionally here so
+                # this submission is a genuinely fresh lifecycle, never a silent
+                # ``retry(..., reacquire=True)`` of the deleted transfer.
+                await self._retire_active_fingerprint(db, row)
+                row = None
             if row:
                 transfer_id, created = int(row["id"]), False
             else:
                 transfer_id = await db.execute_returning_id(
-                    """INSERT INTO torrents(hash,name,status,source,priority,download_client)
-                    VALUES(?,?,'pending',?,?,'')""", (fingerprint, name, source, priority))
+                    """INSERT INTO torrents(hash,name,status,source,priority,download_client,source_fingerprint)
+                    VALUES(?,?,'pending',?,?,'',?)""", (fingerprint, name, source, priority, fingerprint))
                 created = True
             existing = await db.fetchone("SELECT id FROM transfer_requests WHERE transfer_id=? LIMIT 1", (transfer_id,))
             if not existing:
@@ -606,15 +696,76 @@ class TransferRepository:
         return ResolutionAttempt(identity, request_id, provider_id, "started")
 
     @staticmethod
-    async def _resource(db, transfer_id: int, resource: ProviderResource, state: ResourceState):
-        existing = await db.fetchone("SELECT transfer_id,provider_id,payload FROM provider_resources WHERE id=?", (resource.id,))
+    def _resource_binding_id(transfer_id: int, resource_key: str) -> str:
+        """Durable (transfer, canonical-resource) binding-generation identity.
+
+        Derived only from the neutral canonical resource id (``ProviderResource.id``),
+        never a provider-native field. Distinct transfers that bind the *same*
+        canonical resource get distinct binding ids, so an identical native
+        resource and identical file tree can never alias one transfer's
+        manifest/selection generation into another's.
+        """
+        return uuid5(NAMESPACE_URL, f"transfer-provider-resource:{int(transfer_id)}:{resource_key}").hex
+
+    @classmethod
+    async def _resolve_binding(cls, db, transfer_id: int, resource_key: str) -> str | None:
+        """The persisted binding-generation id for (transfer, canonical resource).
+
+        Matches a new-model row by ``resource_key`` and a pre-split historical row
+        (whose primary key *is* the canonical id) by ``id``.
+        """
+        row = await db.fetchone(
+            "SELECT id FROM provider_resources WHERE transfer_id=? "
+            "AND (resource_key=? OR (resource_key IS NULL AND id=?))",
+            (transfer_id, resource_key, resource_key),
+        )
+        return row["id"] if row else None
+
+    async def resource_binding_id(self, transfer_id: int, resource_key: str) -> str:
+        """The binding-generation id core keys file-selection state on. Falls back
+        to the computed id when the binding is not yet persisted."""
+        async with get_db() as db:
+            existing = await self._resolve_binding(db, transfer_id, resource_key)
+        return existing or self._resource_binding_id(transfer_id, resource_key)
+
+    @classmethod
+    async def _resource(cls, db, transfer_id: int, resource: ProviderResource, state: ResourceState) -> str:
+        """Persist/refresh the (transfer, canonical-resource) binding row.
+
+        ``resource.id`` is the canonical, transfer-independent DP resource identity
+        and is stored as ``resource_key`` and inside the payload unchanged. The
+        row primary key is the binding-generation id. Returns that binding id.
+        """
+        resource_key = resource.id
+        binding_id = await cls._resolve_binding(db, transfer_id, resource_key)
+        if binding_id is None:
+            # First binding for this (transfer, canonical resource). Two *live*
+            # transfers may never share one native resource; a retired predecessor
+            # (deleted / cancelled / consolidated) sharing it is the ordinary
+            # delete/re-add generation case and is allowed to coexist.
+            other = await db.fetchone(
+                "SELECT r.transfer_id, t.status FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id "
+                "WHERE (r.resource_key=? OR (r.resource_key IS NULL AND r.id=?)) AND r.transfer_id != ?",
+                (resource_key, resource_key, transfer_id),
+            )
+            if other and str(other["status"]) not in {"deleted", "cancelled", "consolidated"}:
+                raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION))
+            binding_id = cls._resource_binding_id(transfer_id, resource_key)
+        existing = await db.fetchone(
+            "SELECT transfer_id, provider_id, payload FROM provider_resources WHERE id=?", (binding_id,),
+        )
         if existing and (existing["transfer_id"] != transfer_id or existing["provider_id"] != resource.provider_id):
             raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION))
         if existing:
             resource = replace(resource, ownership=codec.resource(codec.load(existing["payload"])).ownership)
-        await db.execute("""INSERT INTO provider_resources(id,transfer_id,provider_id,payload,state) VALUES(?,?,?,?,?)
-            ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,updated_at=CURRENT_TIMESTAMP""",
-            (resource.id, transfer_id, resource.provider_id, codec.dump(resource), state))
+        await db.execute(
+            """INSERT INTO provider_resources(id,transfer_id,provider_id,payload,state,resource_key) VALUES(?,?,?,?,?,?)
+               ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,
+                   resource_key=COALESCE(provider_resources.resource_key, excluded.resource_key),
+                   updated_at=CURRENT_TIMESTAMP""",
+            (binding_id, transfer_id, resource.provider_id, codec.dump(resource), state, resource_key),
+        )
+        return binding_id
 
     async def resolution(self, attempt: ResolutionAttempt, result: ResolutionResult) -> bool:
         # Defense in depth: route identity is selected by the universal core.
@@ -876,29 +1027,56 @@ class TransferRepository:
             rows = await db.fetchall("SELECT * FROM provider_resources WHERE transfer_id=?", (transfer_id,))
         return tuple((codec.resource(codec.load(row["payload"])), ResourceState(row["state"]), row["cleanup_authority"]) for row in rows)
 
-    async def cleanup_intent(self, resource_id: str, authority: str | None, *, error=None):
+    async def cleanup_intent(self, transfer_id: int, resource_key: str, authority: str | None, *, error=None):
+        """Set/clear cleanup responsibility for the (transfer, canonical resource)
+        binding. A fresh non-null intent also clears any prior terminal-abandon
+        marker so the fence and the cleanup cadence treat it as live again."""
         async with get_db() as db:
-            await db.execute("UPDATE provider_resources SET cleanup_authority=?,cleanup_error=? WHERE id=?",
-                             (authority, codec.dump(error) if error else None, resource_id))
+            await db.execute(
+                "UPDATE provider_resources SET cleanup_authority=?, cleanup_error=?, "
+                "cleanup_abandoned=CASE WHEN ? IS NOT NULL THEN 0 ELSE cleanup_abandoned END, "
+                "updated_at=CURRENT_TIMESTAMP "
+                "WHERE transfer_id=? AND (resource_key=? OR (resource_key IS NULL AND id=?))",
+                (authority, codec.dump(error) if error else None, authority,
+                 transfer_id, resource_key, resource_key),
+            )
             await db.commit()
 
     async def pending_cleanup(self, now):
         async with get_db() as db:
-            rows = await db.fetchall("""SELECT * FROM provider_resources WHERE cleanup_authority IS NOT NULL
-                AND cleanup_blocked=0 AND cleanup_retry_at<=?""", (now,))
-        return tuple((row["transfer_id"], codec.resource(codec.load(row["payload"])), row["cleanup_authority"], row["cleanup_attempts"]) for row in rows)
+            rows = await db.fetchall(
+                "SELECT * FROM provider_resources WHERE cleanup_authority IS NOT NULL "
+                "AND cleanup_blocked=0 AND COALESCE(cleanup_abandoned, 0) = 0 AND cleanup_retry_at<=?",
+                (now,),
+            )
+        return tuple(
+            (row["transfer_id"], codec.resource(codec.load(row["payload"])),
+             row["cleanup_authority"], row["cleanup_attempts"], row["id"])
+            for row in rows
+        )
 
-    async def claim_cleanup(self, resource_id: str):
+    async def claim_cleanup(self, binding_id: str):
         async with get_db() as db:
-            result = await db.execute("""UPDATE provider_resources SET cleanup_attempts=cleanup_attempts+1,cleanup_blocked=1
-                WHERE id=? AND cleanup_blocked=0""", (resource_id,))
+            result = await db.execute(
+                "UPDATE provider_resources SET cleanup_attempts=cleanup_attempts+1, cleanup_blocked=1 "
+                "WHERE id=? AND cleanup_blocked=0",
+                (binding_id,),
+            )
             await db.commit()
         return result.rowcount == 1
 
-    async def cleanup_retry(self, resource_id: str, error, retry_at):
+    async def cleanup_retry(self, binding_id: str, error, retry_at):
+        """Record the outcome of a completed provider cleanup call. ``retry_at is
+        None`` means policy has permanently given up: mark ``cleanup_abandoned``
+        so the fence releases and the cadence stops re-driving it. This runs only
+        after ``provider.cleanup()`` has returned, so no operation is in flight."""
+        terminal = retry_at is None
         async with get_db() as db:
-            await db.execute("""UPDATE provider_resources SET cleanup_error=?,cleanup_blocked=?,cleanup_retry_at=? WHERE id=?""",
-                             (codec.dump(error) if error else None, retry_at is None, retry_at or 0, resource_id))
+            await db.execute(
+                "UPDATE provider_resources SET cleanup_error=?, cleanup_blocked=?, "
+                "cleanup_retry_at=?, cleanup_abandoned=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (codec.dump(error) if error else None, int(terminal), retry_at or 0, int(terminal), binding_id),
+            )
             await db.commit()
 
     async def outcome(self, transfer_id: int, outcome, *, attempt_id=None):
@@ -985,11 +1163,32 @@ class TransferRepository:
             await db.commit()
 
     async def delete(self, transfer_id: int, *, remote: bool, now: float = 0) -> None:
-        """Atomically tombstone a transfer and retain responsibility for launched executions."""
+        """Atomically tombstone a transfer and retain responsibility for launched executions.
+
+        Delete also permanently retires the transfer's active dedupe identity: the
+        original logical fingerprint is preserved in ``source_fingerprint`` and the
+        unique ``hash`` key is replaced with a deterministic transfer-specific
+        tombstone. The historical row, its provider/resource/execution provenance,
+        outstanding cleanup responsibility, and any file-selection generations all
+        remain scoped to this transfer; re-submitting the same source afterwards
+        creates a genuinely fresh transfer (see ``admit``).
+        """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            await db.execute("""UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
-                updated_at=CURRENT_TIMESTAMP WHERE id=?""", (int(remote), transfer_id))
+            row = await db.fetchone("SELECT id,hash,source_fingerprint FROM torrents WHERE id=?", (transfer_id,))
+            if row:
+                current_hash = str(row["hash"] or "")
+                original = str(row["source_fingerprint"] or current_hash)
+                tombstone = current_hash if current_hash.startswith("deleted:") else self._tombstone_hash(transfer_id, original)
+                await db.execute(
+                    """UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
+                        source_fingerprint=COALESCE(source_fingerprint,?), hash=?,
+                        updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (int(remote), original, tombstone, transfer_id),
+                )
+            else:
+                await db.execute("""UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=?""", (int(remote), transfer_id))
             await db.execute(
                 """UPDATE execution_attempts SET cleanup_state='pending',
                     cleanup_attempts=CASE WHEN cleanup_state IN ('pending','blocked') THEN cleanup_attempts ELSE 0 END,

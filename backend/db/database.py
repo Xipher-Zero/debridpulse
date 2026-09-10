@@ -214,6 +214,94 @@ async def _ensure_column(db: aiosqlite.Connection, table: str, column: str, defi
         ) from exc
 
 
+async def _retire_and_backfill_source_fingerprints(db: aiosqlite.Connection) -> None:
+    """Idempotent additive-schema step for the deleted-transfer dedupe correction.
+
+    ``torrents.source_fingerprint`` records the original logical source identity.
+    After Delete, the active unique ``hash`` key is retired to a deterministic,
+    transfer-specific tombstone (``deleted:<id>:<source_fingerprint>``) so the same
+    source can be re-submitted as a genuinely fresh transfer without destroying
+    historical identity. This bootstrap step brings existing 1.0.12 databases to
+    that model:
+
+    * every non-deleted row keeps its active ``hash`` and gains
+      ``source_fingerprint = hash``;
+    * every already-deleted legacy row still holding an un-retired active key
+      preserves the original fingerprint and has its ``hash`` retired to the
+      tombstone form;
+    * a deleted row already tombstoned but missing ``source_fingerprint`` (a
+      partially-applied state) has it recovered from the tombstone.
+
+    Each statement is guarded so repeated initialization is a no-op and the
+    tombstone is never recursively prefixed. Restoring an untouched pre-migration
+    copy returns fully to the pre-migration state because the live database is the
+    only thing mutated and no row data is discarded (the original ``hash`` of a
+    retired row is preserved verbatim in ``source_fingerprint``).
+    """
+    try:
+        cur = await db.execute("PRAGMA table_info(torrents)")
+        columns = {row[1] for row in await cur.fetchall()}
+        if "source_fingerprint" not in columns:
+            return
+        await db.execute(
+            "UPDATE torrents SET source_fingerprint = hash "
+            "WHERE source_fingerprint IS NULL AND status != 'deleted'"
+        )
+        await db.execute(
+            "UPDATE torrents "
+            "SET source_fingerprint = hash, "
+            "    hash = 'deleted:' || id || ':' || hash "
+            "WHERE status = 'deleted' AND source_fingerprint IS NULL "
+            "  AND hash NOT LIKE 'deleted:%'"
+        )
+        await db.execute(
+            "UPDATE torrents "
+            "SET source_fingerprint = substr(hash, length('deleted:' || id || ':') + 1) "
+            "WHERE status = 'deleted' AND source_fingerprint IS NULL "
+            "  AND hash LIKE 'deleted:' || id || ':%'"
+        )
+        await db.commit()
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        logger.error("source_fingerprint backfill failed: %s", exc)
+        raise RuntimeError("source_fingerprint backfill failed") from exc
+
+
+async def _backfill_provider_resource_bindings(db: aiosqlite.Connection) -> None:
+    """Idempotent additive-schema step for the deleted-transfer generation model.
+
+    ``provider_resources.id`` is the durable (transfer, canonical-resource)
+    binding-generation identity; ``provider_resources.resource_key`` is the
+    canonical, transfer-independent DP resource identity (== ``ProviderResource.id``).
+    Existing rows predate the split: their primary key IS the canonical id, so
+    ``resource_key`` is backfilled from ``id`` and the historical primary key is
+    left untouched. New bindings are created with
+    ``id = UUIDv5("transfer-provider-resource:<transfer_id>:<resource_key>")`` and
+    coexist with any historical row for the same canonical resource on another
+    transfer. The unique index enforces one binding per (transfer, canonical
+    resource). Repeated initialization is a no-op.
+    """
+    try:
+        cur = await db.execute("PRAGMA table_info(provider_resources)")
+        columns = {row[1] for row in await cur.fetchall()}
+        if "resource_key" not in columns:
+            return
+        await db.execute(
+            "UPDATE provider_resources SET resource_key = id WHERE resource_key IS NULL"
+        )
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_resources_binding "
+            "ON provider_resources(transfer_id, resource_key)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_provider_resources_key "
+            "ON provider_resources(resource_key)"
+        )
+        await db.commit()
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        logger.error("provider_resources binding backfill failed: %s", exc)
+        raise RuntimeError("provider_resources binding backfill failed") from exc
+
+
 _SCHEMA_COLUMNS_TORRENTS = [
     ("provider_status", "TEXT"),
     ("provider_status_code", "INTEGER"),
@@ -460,6 +548,9 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
         'delete_remote': 'INTEGER NOT NULL DEFAULT 0',
         'collection_route_provider_id': 'TEXT',
+        # Original logical source fingerprint, retained as durable provenance even
+        # after Delete retires the active unique ``hash`` dedupe key.
+        'source_fingerprint': 'TEXT',
     },
     'transfer_requests': {
         'metadata': 'TEXT',
@@ -467,7 +558,16 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'equivalence_reason': 'TEXT',
         'equivalence_disposition': "TEXT NOT NULL DEFAULT ''",
     },
-    'provider_resources': {'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0'},
+    'provider_resources': {
+        'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
+        'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0',
+        # Canonical, transfer-independent DP resource identity (== ProviderResource.id).
+        # provider_resources.id is the (transfer, resource) binding-generation id.
+        'resource_key': 'TEXT',
+        # Set only after a provider cleanup call has returned and policy has given
+        # up permanently — distinct from the transient cleanup_blocked claim state.
+        'cleanup_abandoned': 'INTEGER NOT NULL DEFAULT 0',
+    },
     'resolution_attempts': {'result': 'TEXT'},
     'execution_attempts': {'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT'},
     'download_files': {'request_id': 'TEXT', 'candidates': 'TEXT', 'selected_candidate': 'INTEGER NOT NULL DEFAULT 0', 'execution_attempt_id': 'TEXT', 'normalized_error': 'TEXT', 'retry_at': 'REAL NOT NULL DEFAULT 0', 'recovery_failures': 'INTEGER NOT NULL DEFAULT 0', 'recovery_refreshes': 'INTEGER NOT NULL DEFAULT 0'},
@@ -479,7 +579,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'transfer_id', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
-    'provider_resources': {'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'state', 'transfer_id', 'updated_at'},
+    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
     'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
@@ -489,7 +589,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_file_manifest_entries': {'manifest_id', 'entry_id', 'ordinal', 'name', 'relative_path', 'expected_bytes'},
     'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at'},
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
-    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id'},
+    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'source_fingerprint'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
     'transfer_requests': {
@@ -644,6 +744,8 @@ async def _init_db_sqlite():
         for table, definitions in TRANSFER_REPOSITORY_COLUMNS.items():
             for column, definition in definitions.items():
                 await _ensure_column(db, table, column, definition)
+        await _retire_and_backfill_source_fingerprints(db)
+        await _backfill_provider_resource_bindings(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 

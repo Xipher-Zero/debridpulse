@@ -54,6 +54,76 @@ It exists before resolution, survives retries, and is independent of remote IDs.
 Manifests produce child request identities from their parent and relative path;
 resolved children retain their artifact IDs and allocated paths across refresh.
 
+Admission dedupes on the logical source fingerprint (`torrents.hash`, the active
+unique key). `torrents.source_fingerprint` durably records the original logical
+fingerprint. **Delete permanently retires the active dedupe identity**: in the
+same transaction that tombstones the transfer, `hash` is replaced with a
+deterministic, per-transfer, non-recursive tombstone
+(`deleted:<transfer_id>:<source_fingerprint>`) while `source_fingerprint` keeps
+the original value. A user-deleted transfer therefore never remains an automatic
+recovery/dedupe target — re-submitting the same source creates a genuinely fresh
+transfer (new transfer ID, root request, provider-resource generation, resolution
+attempts, and file-selection generation), never a `retry(..., reacquire=True)` of
+the deleted row. The historical row, its provider/resource/execution provenance,
+outstanding cleanup responsibility, and its file-selection generations all stay
+scoped to that historical transfer. An existing 1.0.12 database is brought to
+this model by idempotent additive backfills in `db/database.py`
+(`_retire_and_backfill_source_fingerprints`, `_backfill_provider_resource_bindings`);
+`db/migrations/v112.py` is untouched. Completed-transfer re-acquisition and all
+other non-deleted dedupe behavior are unchanged.
+
+### Provider-resource binding generations
+
+`ProviderResource.id` is the **canonical, transfer-independent** DP resource
+identity (`R`), derived by the adapter from the neutral resource identity, not a
+provider-native field, and never rewritten by core. The persisted binding row
+carries two identities: `provider_resources.resource_key = R`, and
+`provider_resources.id` = the **binding-generation id**
+`UUIDv5("transfer-provider-resource:<transfer_id>:<R>")`, with
+`UNIQUE(transfer_id, resource_key)`. Repository lookups resolve a binding by
+`(transfer_id, R)`; pre-split rows whose primary key *is* `R` (`resource_key`
+backfilled from `id`, historical primary key untouched) are matched by `id`.
+
+Because a provider may hand back the *same* native resource for a re-upload,
+`R` can repeat across transfers, but the binding-generation id cannot: transfer A
+and transfer B binding the same `R` get `RA ≠ RB`, coexisting rows. Manifest,
+entry and selection identities and `transfer_file_manifests/selections.provider_resource_id`
+all key on the binding-generation id, so an identical native resource and an
+identical file tree can never alias A's manifest/selection generation into B.
+Inventory and observation still match on the stable canonical `R`, and then
+resolve to the authoritative binding: `reconcile_inventory` maps `R` only through
+*active* transfers, and every repository write path (`resource_observation`,
+`cleanup_intent`, `pending_cleanup`, …) is transfer-scoped or resolves
+`(transfer_id, R)` to the binding id. A historical deleted binding sharing `R`
+is never chosen, updated, resurrected, or handed cleanup authority through the
+canonical id. Two *live* (non-retired) transfers may never share one native
+resource — that remains an `OWNERSHIP_CONFLICT` — but a retired predecessor
+(deleted/cancelled/consolidated) sharing it is the ordinary delete/re-add case
+and is allowed to coexist. `services/duplicates.py::find_resource_id_duplicate`
+(the advisory duplicate-preview API) resolves the supplied identity against
+`resource_key` and targets the current non-deleted binding.
+
+### Provider cleanup fence for a re-add
+
+A fresh re-add is admitted immediately even while the predecessor's provider
+cleanup is still outstanding. Before the fresh generation's first
+`provider.resolve()` (which could create/return the shared native resource), a
+**provider cleanup fence** holds it as ordinary waiting/retry state — never
+`Recovery failed`, never `INPUT_REQUIRED`, no new scheduler — while any provider
+resource of a retired same-fingerprint predecessor still has
+`cleanup_authority` set and is not `cleanup_abandoned`. That predicate blocks
+pending, claimed-in-flight *and* scheduled-retry cleanup alike; it never infers
+"finished" from the transient `cleanup_blocked` claim flag. `cleanup_abandoned`
+is set only *after* a `provider.cleanup()` call has returned and retry policy has
+permanently given up — so no operation is in flight at that moment — and it
+releases the fence, so a fresh transfer is never deadlocked. A cleanup claim that
+a restart interrupted (`cleanup_blocked=1`, not abandoned) cannot have an
+operation still running; `engine.initialize()` releases it for the ordinary
+cadence to re-drive to completion or terminal abandonment. Old executor cleanup
+likewise stays bound to the predecessor's execution attempts, and the fresh
+generation's provider-resource row is always its own — never re-homed from the
+predecessor.
+
 A provider returns a `ProviderResource` with a provider ID, core resource ID,
 ownership and opaque context. Only that provider interprets its native context.
 A `TransferCandidate` describes alternatives for one artifact: endpoints, expected
@@ -275,16 +345,20 @@ Logical cancellation authority is committed on the parent transfer before remote
 
 Current-schema startup and historical migration are distinct owners. Normal repository initialization ensures the current schema required by runtime code; it does not reconstruct historical migration state. Supported predecessor upgrades are prepared and applied by the explicit v1.0.12 migration owner, including historical provenance backfill, with backup-before-current-mutation semantics. Migration helpers may live beside runtime repositories, but production migration invocation remains in `db/migrations/v112.py`.
 
+Additive current-schema evolution — new columns and idempotent backfills for behavior that must work against an already-running 1.0.12 database — is owned by `db/database.py`, not `v112.py`. The deleted-transfer generation correction adds `torrents.source_fingerprint`, `provider_resources.resource_key`, and `provider_resources.cleanup_abandoned`. `_retire_and_backfill_source_fingerprints`: non-deleted rows gain `source_fingerprint = hash`, already-deleted legacy rows preserve the original fingerprint and have their `hash` retired to the tombstone form. `_backfill_provider_resource_bindings`: `resource_key = id` for existing rows (historical primary key untouched), plus the `UNIQUE(transfer_id, resource_key)` index. Repeated initialization is a no-op. Restoring an untouched pre-migration copy returns fully to the pre-migration state; the live production backup owned by `services/db_maintenance.py` is a separate mandatory deployment prerequisite taken immediately before the corrected image first starts against the real database.
+
 ## Universal file-selection / manifest overlay (v1.0.12)
 
 A capable provider may declare `Capability.FILE_MANIFEST` and report a neutral
 `FileManifest` on `ProviderObservation` before the core commits that resource's
 executable manifest. The core — not the provider or executor — owns every
 selection decision: ALL-vs-explicit-subset policy, the 60-second automatic
-presentation window, the 120-second cached decision hold (only for a resource
-whose initial observation was `AVAILABLE`, never retroactively for one that
-started `PREPARING`), durable per-provider-resource selection generations, stale
-manifest rejection, fail-closed executable-manifest reconciliation, and the
+presentation window, the 120-second decision hold (established in the same
+durable transaction that queues any auto-presented multi-file offer, whether the
+resource's initial observation was `AVAILABLE` or `PREPARING`, so an actionable
+offer never coexists with immediate ALL materialization), durable
+per-provider-resource selection generations, stale manifest rejection,
+fail-closed executable-manifest reconciliation, and the
 final `SourceEntry` filtering before child fan-out. Default policy remains ALL;
 provider-side acquisition never waits on the browser. The Confirm-vs-
 materialization race is serialized by durable SQLite (`BEGIN IMMEDIATE` on the

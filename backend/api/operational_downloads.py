@@ -198,7 +198,7 @@ async def list_operational_torrents(
         clauses.append(
             """(
                 LOWER(COALESCE(t.name, '')) LIKE ?
-                OR LOWER(COALESCE(t.hash, '')) LIKE ?
+                OR LOWER(COALESCE(t.source_fingerprint, t.hash, '')) LIKE ?
                 OR LOWER(COALESCE(t.source, '')) LIKE ?
                 OR LOWER(COALESCE(t.label, '')) LIKE ?
                 OR LOWER(COALESCE(t.error_message, '')) LIKE ?
@@ -376,7 +376,7 @@ async def list_operational_torrents(
         )
         SELECT
             t.id,
-            t.hash,
+            CASE WHEN t.hash LIKE 'deleted:%' THEN COALESCE(t.source_fingerprint, '') ELSE t.hash END AS hash,
             t.name,
             t.status,
             t.size_bytes,
