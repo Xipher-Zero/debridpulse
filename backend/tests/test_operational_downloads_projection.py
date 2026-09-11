@@ -39,7 +39,7 @@ class _FakeDb:
         return {"cnt": len(self.rows)}
 
 
-def _row(transfer_id: int, candidate_source_max: int = 0):
+def _row(transfer_id: int, common_candidate_count: int = 0):
     return {
         "id": transfer_id,
         "hash": f"hash-{transfer_id}",
@@ -59,7 +59,7 @@ def _row(transfer_id: int, candidate_source_max: int = 0):
         "extraction_status": "not_required",
         "extraction_error": None,
         "source_failure_count": 1,
-        "candidate_source_max": candidate_source_max,
+        "common_candidate_count": common_candidate_count,
         "current_provider_id": "alldebrid",
         "delivering_provider_id": "alldebrid",
         "provider_provenance_status": "recorded",
@@ -110,13 +110,13 @@ def test_downloads_collection_uses_bounded_projection_not_comprehensive_presenta
     assert "t.download_url" not in projection_sql
     assert "t.local_path" not in projection_sql
 
-    # The multi-source candidate summary is derived from canonical acquisition
-    # candidate storage inside the same bounded read, never from route/provider
-    # attempt counts.
-    assert "candidate_cardinality AS" in projection_sql
+    # The transfer-level common-source group summary is derived from canonical
+    # acquisition-candidate storage inside the same bounded read, never from
+    # route/provider attempt counts.
+    assert "group_common_sources AS" in projection_sql
     assert "canonical_candidate_bindings" in projection_sql
-    assert "COUNT(DISTINCT b.candidate_id)" in projection_sql
-    assert "AS candidate_source_max" in projection_sql
+    assert "AS common_candidate_count" in projection_sql
+    assert "candidate_source_max" not in projection_sql
 
     assert result["total"] == 25
     assert len(result["items"]) == 25
@@ -125,7 +125,7 @@ def test_downloads_collection_uses_bounded_projection_not_comprehensive_presenta
     assert first["delivering_provider_id"] == "alldebrid"
     assert first["provider_provenance_status"] == "recorded"
     assert first["source_failure_count"] == 1
-    assert first["candidate_source_max"] == 0
+    assert first["common_candidate_count"] == 0
     assert "magnet" not in first
     assert "download_url" not in first
 
@@ -198,67 +198,87 @@ def test_download_detail_explicitly_requests_comprehensive_presentation():
     assert result["id"] == 42
 
 
-# ── Multi-source candidate summary on the bounded list ────────────────────
+# ── Transfer-level common-source group summary on the bounded list ────────
 
 
-def test_bounded_list_rows_carry_candidate_source_max(monkeypatch):
+def test_bounded_list_rows_carry_common_candidate_count(monkeypatch):
     rows = [
-        _row(1, candidate_source_max=3),
-        _row(2, candidate_source_max=0),
-        _row(3, candidate_source_max=1),
+        _row(1, common_candidate_count=3),
+        _row(2, common_candidate_count=0),
+        _row(3, common_candidate_count=1),
     ]
     db, result = _run_list(monkeypatch, 3, rows=rows)
 
     # Still one bounded projection read plus one count read.
     assert [kind for kind, _query, _params in db.calls] == ["fetchall", "fetchone"]
-    values = [item["candidate_source_max"] for item in result["items"]]
-    assert values == [3, 0, 1]
+    assert [item["common_candidate_count"] for item in result["items"]] == [3, 0, 1]
+    # group_switch_available does not exist: it encoded the retired
+    # actionability-gated launcher rule. Launcher visibility is derived purely
+    # from common_candidate_count by the caller (0/1 -> hidden, 2+ -> shown).
+    assert all("group_switch_available" not in item for item in result["items"])
 
 
-def test_single_source_rows_do_not_advertise_multi_source(monkeypatch):
-    # 0 (no bindings) and 1 (exactly one canonical candidate) are both
-    # single-source: the summary is emitted but never greater than 1, so the
-    # passive chip never renders.
+def test_single_common_source_rows_do_not_advertise_a_group(monkeypatch):
+    # 0 and 1 common hosts both suppress the group launcher: there is no
+    # transfer-wide choice to make. This is a pure membership-count fact.
     for count in (0, 1):
-        _db, result = _run_list(monkeypatch, 1, rows=[_row(9, candidate_source_max=count)])
-        assert result["items"][0]["candidate_source_max"] == count
-        assert result["items"][0]["candidate_source_max"] <= 1
+        _db, result = _run_list(monkeypatch, 1, rows=[_row(9, common_candidate_count=count)])
+        assert result["items"][0]["common_candidate_count"] == count
 
 
-def test_candidate_source_max_is_normalized_to_non_negative_int(monkeypatch):
-    _db, result = _run_list(monkeypatch, 1, rows=[_row(4, candidate_source_max=None)])
-    assert result["items"][0]["candidate_source_max"] == 0
+def test_common_candidate_count_is_normalized_to_non_negative_int(monkeypatch):
+    _db, result = _run_list(monkeypatch, 1, rows=[_row(4, common_candidate_count=None)])
+    assert result["items"][0]["common_candidate_count"] == 0
 
 
-def test_candidate_summary_does_not_add_db_calls_or_scale_with_page_size(monkeypatch):
+def test_group_summary_does_not_add_db_calls_or_scale_with_page_size(monkeypatch):
     one_db, _one = _run_list(
-        monkeypatch, 1, rows=[_row(1, candidate_source_max=4)]
+        monkeypatch, 1, rows=[_row(1, common_candidate_count=4)]
     )
     many_db, many = _run_list(
-        monkeypatch, 40, rows=[_row(i, candidate_source_max=i % 5) for i in range(1, 41)]
+        monkeypatch, 40, rows=[_row(i, common_candidate_count=i % 5) for i in range(1, 41)]
     )
 
     assert len(one_db.calls) == 2
     assert len(many_db.calls) == 2
-    assert [item["candidate_source_max"] for item in many["items"]] == [
+    assert [item["common_candidate_count"] for item in many["items"]] == [
         i % 5 for i in range(1, 41)
     ]
 
 
-def test_projection_candidate_summary_is_derived_from_canonical_bindings(monkeypatch):
-    """The candidate CTE reads canonical_candidate_bindings, not route history."""
+def test_projection_group_summary_is_derived_from_canonical_bindings(monkeypatch):
+    """The group CTE reads canonical_candidate_bindings, not route history."""
     db, _result = _run_list(monkeypatch, 1, rows=[_row(1)])
     projection_sql = db.calls[0][1]
 
-    cte = projection_sql.split("candidate_cardinality AS", 1)[1]
+    cte = projection_sql.split("group_member_artifacts AS", 1)[1]
     assert "canonical_candidate_bindings" in cte
-    assert "COUNT(DISTINCT b.candidate_id)" in cte
-    assert "MAX(" in cte
-    # Eligibility mirrors the per-artifact detail projection.
+    assert "AS common_candidate_count" in cte
+    # Current-artifact identity mirrors the per-artifact detail projection —
+    # this is which download_files rows are the transfer's actual current
+    # files, not a switchability gate.
     assert "f.request_id IS NOT NULL" in cte
     assert "COALESCE(f.mirror_state, '') != 'standby'" in cte
-    # Candidate truth must not come from route/provider attempt counts.
-    assert "route_attempt_provenance" not in cte.split(")", 1)[0]
+    assert "route_attempt_provenance" not in cte.split("group_common_sources", 1)[0]
+
+    # Membership must NOT depend on switch-eligibility or artifact operational
+    # state: no artifact-status literal, no selected-candidate comparison, and
+    # no reference to download_files.status/selected_candidate/candidates
+    # appears anywhere in the group CTE chain (isolated from the unrelated
+    # 'pending' literal in the outer provider_provenance_status projection).
+    group_block = projection_sql.split("group_member_artifacts AS", 1)[1].split(
+        "\n        SELECT\n            t.id,", 1
+    )[0]
+    for switchable_state in (
+        "'pending'", "'processing'", "'ready'", "'queued'", "'downloading'",
+        "'paused'", "'refresh_pending'", "'error'",
+    ):
+        assert switchable_state not in group_block
+    assert "f.status" not in group_block
+    assert "f.selected_candidate" not in group_block
+    assert "f.candidates" not in group_block
+    assert "json_extract" not in group_block
+    assert "group_switch_available" not in projection_sql
 
 
 _SHA256 = "b1c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2299"
@@ -357,7 +377,7 @@ async def _tracking_db():
 
 
 @pytest.mark.asyncio
-async def test_list_candidate_source_max_reflects_canonical_bindings(projection_runtime):
+async def test_list_common_candidate_count_reflects_canonical_bindings(projection_runtime):
     engine, _repository = projection_runtime
     multi = await _submit(engine, "multi.bin", "rapidgator")
     await engine.resolve_pending()
@@ -369,8 +389,12 @@ async def test_list_candidate_source_max_reflects_canonical_bindings(projection_
     result, tracker = await _list_normal()
     by_id = {item["id"]: item for item in result["items"]}
 
-    assert by_id[multi.id]["candidate_source_max"] == 2
-    assert by_id[single.id]["candidate_source_max"] <= 1
+    # The sole artifact carries two canonical host candidates -> two common hosts.
+    assert by_id[multi.id]["common_candidate_count"] == 2
+    # A single unconsolidated source has no canonical alternate bindings — its
+    # real host set is unknown here, so the (single-artifact) intersection is
+    # empty and it never advertises a group.
+    assert by_id[single.id]["common_candidate_count"] == 0
 
     # Bounded: exactly the projection read and the collection-count read.
     assert [kind for kind, _q in tracker.calls] == ["fetchall", "fetchone"]

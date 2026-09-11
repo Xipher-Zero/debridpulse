@@ -161,6 +161,77 @@ async def test_selected_failed_and_delivering_candidate_come_from_execution_prov
 
 
 @pytest.mark.asyncio
+async def test_group_source_candidates_expose_canonical_host_without_touching_per_file_ui(details_runtime):
+    engine, repository, _provider, _executor = details_runtime
+    canonical = await submit(engine, "rapidgator")
+    await engine.resolve_pending()
+    await submit(engine, "1fichier")
+    await engine.resolve_pending()
+
+    file_row = file_projection(await repository.presentation(canonical.id, details=True))
+    # The ungated per-file group projection carries a normalized canonical host,
+    # the artifact-specific candidate id, and the existing per-file switch flags.
+    entries = file_row["source_candidates"]
+    assert {entry["source_host"] for entry in entries} == {"rapidgator.net", "1fichier.com"}
+    for entry in entries:
+        assert set(entry) == {"source_host", "candidate_id", "is_selected", "switch_eligible"}
+        serialized = repr(entry).lower()
+        assert "http://" not in serialized and "https://" not in serialized
+    selected = [entry for entry in entries if entry["is_selected"]]
+    assert len(selected) == 1 and selected[0]["switch_eligible"] is False
+    other = [entry for entry in entries if not entry["is_selected"]]
+    assert other and all(entry["switch_eligible"] for entry in other)
+    # The individual candidate disclosure contract is unchanged.
+    assert file_row["candidate_count"] == 2
+    assert [item["source_label"] for item in file_row["acquisition_candidates"]] == [
+        "rapidgator.net", "1fichier.com",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_single_candidate_artifact_carries_group_projection_but_no_multiplicity_records(details_runtime):
+    engine, repository, _provider, _executor = details_runtime
+    canonical = await submit(engine, "rapidgator")
+    await engine.resolve_pending()
+
+    file_row = file_projection(await repository.presentation(canonical.id, details=True))
+    assert file_row["candidate_count"] == 1
+    assert "acquisition_candidates" not in file_row
+    # A lone unconsolidated source has no canonical alternate bindings, so the
+    # group projection is present but empty — it can never seed a group host.
+    assert file_row["source_candidates"] == []
+
+
+@pytest.mark.asyncio
+async def test_group_projection_present_even_when_every_candidate_is_switch_ineligible(details_runtime):
+    """Membership data must be ungated: a current file whose every candidate
+    currently has switch_eligible == False must still expose ALL of its
+    canonical host candidates in ``source_candidates`` — never fewer, and
+    never none, just because none of them is currently actionable."""
+    engine, repository, _provider, _executor = details_runtime
+    canonical = await submit(engine, "rapidgator")
+    await engine.resolve_pending()
+    await submit(engine, "1fichier")
+    await engine.resolve_pending()
+
+    artifact = (await repository.artifacts(canonical.id))[0]
+    # Force the artifact into a non-switchable state without touching its
+    # candidate bindings — a real "completed while still consolidated" shape.
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status=? WHERE id=?", ("completed", artifact.id))
+        await db.commit()
+
+    file_row = file_projection(await repository.presentation(canonical.id, details=True))
+    entries = file_row["source_candidates"]
+    assert {entry["source_host"] for entry in entries} == {"rapidgator.net", "1fichier.com"}
+    assert len(entries) == 2
+    # Every candidate is currently switch-ineligible (the selected one because
+    # it is selected, the other because the artifact state forbids switching)
+    # yet both remain present — membership never depends on this flag.
+    assert all(entry["switch_eligible"] is False for entry in entries)
+
+
+@pytest.mark.asyncio
 async def test_public_projection_hides_raw_bindings_and_capabilities(details_runtime):
     engine, repository, _provider, _executor = details_runtime
     canonical = await submit(engine, "rapidgator")

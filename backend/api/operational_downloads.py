@@ -443,34 +443,68 @@ async def list_operational_torrents(
             SELECT DISTINCT c.transfer_id
             FROM transfer_input_challenges c JOIN page ON page.id = c.transfer_id
         ),
-        -- Transfer-level multi-source summary derived only from canonical
-        -- acquisition-candidate storage. Eligibility mirrors the detail
-        -- candidate projection (physical, unblocked, non-standby artifacts).
-        -- Details candidate cardinality is per artifact; artifacts of one
-        -- transfer may legitimately carry different candidate-set sizes, so the
-        -- truthful transfer-level summary is the largest per-artifact distinct
-        -- candidate count, never the sum. This stays inside the one bounded
-        -- projection read: no per-row query, no comprehensive presentation.
-        candidate_cardinality AS (
+        -- Transfer-level COMMON-SOURCE group MEMBERSHIP summary derived only
+        -- from canonical acquisition-candidate storage. Membership is the raw
+        -- whole-transfer canonical-host intersection: a host counts as common
+        -- when EVERY current authoritative artifact (physical, unblocked,
+        -- non-standby — the same current-artifact identity the detail candidate
+        -- projection already uses) carries ANY canonical host-scoped candidate
+        -- for that host. Membership is deliberately independent of
+        -- switch-eligibility, artifact operational state, or which candidate is
+        -- currently selected — those are GROUP-ACTIONABILITY facts, computed
+        -- lazily from Details when the chooser opens, never here.
+        -- ``common_candidate_count`` is the size of that raw intersection; the
+        -- group launcher shows only for 2 or more. Host normalization is kept
+        -- byte-identical to transfers.repository._group_source_host so this
+        -- bounded count and the Details-derived group set agree. Computed once
+        -- here: no per-row query, no comprehensive presentation, never a full
+        -- candidate/actionability matrix.
+        group_member_artifacts AS (
             SELECT
-                artifact.transfer_id,
-                MAX(artifact.candidate_sources) AS candidate_source_max
+                f.torrent_id AS transfer_id,
+                f.id AS artifact_id
+            FROM download_files f
+            JOIN page
+              ON page.id = f.torrent_id
+            WHERE f.request_id IS NOT NULL
+              AND COALESCE(f.blocked, 0) = 0
+              AND COALESCE(f.mirror_state, '') != 'standby'
+        ),
+        group_member_counts AS (
+            SELECT transfer_id, COUNT(*) AS artifact_total
+            FROM group_member_artifacts
+            GROUP BY transfer_id
+        ),
+        group_member_hosts AS (
+            SELECT DISTINCT
+                a.transfer_id,
+                a.artifact_id,
+                rtrim(
+                    CASE
+                        WHEN lower(trim(b.source_key)) LIKE 'www.%'
+                        THEN substr(lower(trim(b.source_key)), 5)
+                        ELSE lower(trim(b.source_key))
+                    END,
+                    '.'
+                ) AS host
+            FROM group_member_artifacts a
+            JOIN canonical_candidate_bindings b
+              ON b.canonical_artifact_id = a.artifact_id
+             AND lower(COALESCE(b.source_scope, '')) = 'host'
+             AND length(trim(COALESCE(b.source_key, ''))) > 0
+        ),
+        group_common_sources AS (
+            SELECT common.transfer_id, COUNT(*) AS common_candidate_count
             FROM (
-                SELECT
-                    f.torrent_id AS transfer_id,
-                    f.id AS artifact_id,
-                    COUNT(DISTINCT b.candidate_id) AS candidate_sources
-                FROM download_files f
-                JOIN page
-                  ON page.id = f.torrent_id
-                LEFT JOIN canonical_candidate_bindings b
-                  ON b.canonical_artifact_id = f.id
-                WHERE f.request_id IS NOT NULL
-                  AND COALESCE(f.blocked, 0) = 0
-                  AND COALESCE(f.mirror_state, '') != 'standby'
-                GROUP BY f.torrent_id, f.id
-            ) artifact
-            GROUP BY artifact.transfer_id
+                SELECT gmh.transfer_id, gmh.host
+                FROM group_member_hosts gmh
+                JOIN group_member_counts gmc
+                  ON gmc.transfer_id = gmh.transfer_id
+                WHERE length(gmh.host) BETWEEN 1 AND 253
+                GROUP BY gmh.transfer_id, gmh.host
+                HAVING COUNT(DISTINCT gmh.artifact_id) = MAX(gmc.artifact_total)
+            ) common
+            GROUP BY common.transfer_id
         )
         SELECT
             t.id,
@@ -488,7 +522,7 @@ async def list_operational_torrents(
             t.updated_at,
             t.completed_at,
             COALESCE(request_failures.failure_count, 0) AS source_failure_count,
-            COALESCE(candidate_cardinality.candidate_source_max, 0) AS candidate_source_max,
+            COALESCE(group_common_sources.common_candidate_count, 0) AS common_candidate_count,
             latest_route.provider_id AS current_provider_id,
             CASE
                 WHEN COALESCE(delivery.provider_count, 0) = 1
@@ -531,8 +565,8 @@ async def list_operational_torrents(
           ON root_request.transfer_id = t.id
         LEFT JOIN request_failures
           ON request_failures.transfer_id = t.id
-        LEFT JOIN candidate_cardinality
-          ON candidate_cardinality.transfer_id = t.id
+        LEFT JOIN group_common_sources
+          ON group_common_sources.transfer_id = t.id
         ORDER BY t.created_at DESC
     """
 
@@ -554,15 +588,20 @@ async def list_operational_torrents(
             paused=paused, input_required=input_required,
         )
         source_identity = _bounded_source_identity(projected)
-        candidate_source_max = max(0, int(projected.get("candidate_source_max") or 0))
+        common_candidate_count = max(0, int(projected.get("common_candidate_count") or 0))
         for field in _SOURCE_PROJECTION_FIELDS:
             projected.pop(field, None)
         item = _public_transfer_presentation(projected, application.definitions)
         item["current_source_identity"] = source_identity
-        # Passive multi-source indicator: the transfer genuinely exposes more
-        # than one equivalent canonical acquisition candidate only when this is
-        # greater than 1. Always present as a plain non-negative integer.
-        item["candidate_source_max"] = candidate_source_max
+        # Transfer-level common-source MEMBERSHIP summary. ``common_candidate_count``
+        # is the number of canonical hosts common to every current authoritative
+        # artifact of the transfer — the raw intersection, independent of
+        # switch-eligibility or artifact state. The group Candidates launcher
+        # appears only when this is 2 or more; whether any given common host is
+        # currently actionable is a separate fact derived lazily from Details
+        # when the chooser opens, never encoded in this bounded field. Feeds
+        # Downloads and Dashboard Recent Items identically.
+        item["common_candidate_count"] = common_candidate_count
         # Effective processing presentation via the ONE shared owner
         # (transfers.presentation_repository.effective_presentation), fed the same
         # logical inputs as the comprehensive Details projection: the durable

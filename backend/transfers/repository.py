@@ -38,6 +38,36 @@ def _safe_source_label(scope, key) -> str:
     return "Source"
 
 
+# The artifact lifecycle states in which the existing per-file manual switch is
+# offered. Kept in step with ``manual_repository._SWITCHABLE_STATES`` and
+# ``manual_failover._OPERATIONAL_STATES``; used here only to project a read-time
+# group-switch eligibility flag onto the candidate presentation. The
+# authoritative switch command re-validates every gate itself.
+_SWITCHABLE_ARTIFACT_STATES = frozenset({
+    "pending", "processing", "ready", "queued", "downloading", "paused",
+    "refresh_pending", "error",
+})
+
+
+def _group_source_host(scope, key) -> str | None:
+    """Normalized canonical host identity for transfer-level group intersection.
+
+    Kept byte-identical to the SQL host normalization in
+    ``api/operational_downloads.py`` so the Details-derived group set and the
+    bounded Downloads/Recent common-source count agree for the same transfer:
+    lower-case, drop a leading ``www.``, drop a trailing dot, reject empty or
+    over-long values. This is the established canonical lower-case host
+    semantics; it is redefined here rather than imported from
+    ``presentation_repository`` only to avoid an import cycle.
+    """
+    if str(scope or "").strip().lower() != "host":
+        return None
+    host = str(key or "").strip().lower().removeprefix("www.").rstrip(".")
+    if not host or len(host) > 253:
+        return None
+    return host
+
+
 class TransferRepository(_QualifiedTransferRepository):
     @staticmethod
     def _recovery_event_kind(artifact_id: int) -> str:
@@ -486,16 +516,17 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def _candidate_presentation(self, transfer_id: int) -> dict[int, dict]:
         async with get_db() as db:
-            files = await db.fetchall("""SELECT id,candidates,selected_candidate,execution_attempt_id FROM download_files WHERE torrent_id=? AND request_id IS NOT NULL AND COALESCE(blocked,0)=0 AND COALESCE(mirror_state,'')!='standby' ORDER BY id""", (transfer_id,))
+            files = await db.fetchall("""SELECT id,candidates,selected_candidate,execution_attempt_id,status FROM download_files WHERE torrent_id=? AND request_id IS NOT NULL AND COALESCE(blocked,0)=0 AND COALESCE(mirror_state,'')!='standby' ORDER BY id""", (transfer_id,))
             artifact_ids = [int(row["id"]) for row in files]
             if not artifact_ids:
                 return {}
             placeholders = ",".join("?" for _ in artifact_ids)
             bindings = await db.fetchall(f"""SELECT canonical_artifact_id,candidate_id,provider_id,source_scope,source_key,role,candidate_order FROM canonical_candidate_bindings WHERE canonical_artifact_id IN ({placeholders}) ORDER BY canonical_artifact_id,candidate_order,id""", tuple(artifact_ids))
             attempts = await db.fetchall(f"""SELECT p.artifact_id,p.candidate_id,p.outcome,p.delivered,p.ordinal,p.execution_attempt_id,e.state,e.authorized FROM execution_attempt_provenance p LEFT JOIN execution_attempts e ON e.id=p.execution_attempt_id WHERE p.artifact_id IN ({placeholders}) ORDER BY p.artifact_id,p.ordinal,p.execution_attempt_id""", tuple(artifact_ids))
-        selected_ids = {}; current_attempt_ids = {}; has_durable_candidate = {}
+        selected_ids = {}; current_attempt_ids = {}; has_durable_candidate = {}; artifact_states = {}
         for row in files:
             artifact_id = int(row["id"]); selected_id = None
+            artifact_states[artifact_id] = str(row.get("status") or "").strip().lower()
             try:
                 candidates = [codec.candidate(value) for value in codec.load(row.get("candidates"), [])]
                 has_durable_candidate[artifact_id] = bool(candidates)
@@ -508,7 +539,7 @@ class TransferRepository(_QualifiedTransferRepository):
         for row in attempts:
             candidate_id = str(row.get("candidate_id") or "").strip()
             if candidate_id: attempt_history.setdefault((int(row["artifact_id"]), candidate_id), []).append(dict(row))
-        by_artifact = {}; seen = {}
+        by_artifact = {}; group_by_artifact = {}; seen = {}
         for row in bindings:
             artifact_id = int(row["canonical_artifact_id"]); candidate_id = str(row["candidate_id"])
             if candidate_id in seen.setdefault(artifact_id, set()): continue
@@ -524,11 +555,27 @@ class TransferRepository(_QualifiedTransferRepository):
             elif active: dispositions.append("Active")
             elif selected: dispositions.append("Selected")
             by_artifact.setdefault(artifact_id, []).append({"candidate_id": candidate_id, "source_label": _safe_source_label(row.get("source_scope"), row.get("source_key")), "provider_id": str(row.get("provider_id") or "").strip() or None, "relationship": "Original" if row.get("role") == "canonical" else "Consolidated", "dispositions": dispositions, "is_selected": selected, "is_delivering": delivered})
+            # Ungated per-artifact canonical host projection for the transfer-level
+            # common-source group wrapper (never rendered by the per-file UI). Only
+            # host-scoped candidates carry a group identity; ``switch_eligible``
+            # mirrors the existing per-file semantics exactly.
+            group_host = _group_source_host(row.get("source_scope"), row.get("source_key"))
+            if group_host is not None:
+                group_by_artifact.setdefault(artifact_id, []).append({
+                    "source_host": group_host,
+                    "candidate_id": candidate_id,
+                    "is_selected": selected,
+                    "switch_eligible": (not selected) and artifact_states.get(artifact_id, "") in _SWITCHABLE_ARTIFACT_STATES,
+                })
         result = {}
         for artifact_id in artifact_ids:
             candidates = by_artifact.get(artifact_id, []); candidate_count = len(candidates)
             if candidate_count == 0 and has_durable_candidate.get(artifact_id, False): candidate_count = 1
-            result[artifact_id] = {"candidate_count": candidate_count, "acquisition_candidates": candidates if candidate_count > 1 else []}
+            result[artifact_id] = {
+                "candidate_count": candidate_count,
+                "acquisition_candidates": candidates if candidate_count > 1 else [],
+                "source_candidates": group_by_artifact.get(artifact_id, []),
+            }
         return result
 
     async def presentation(self, transfer_id: int, details: bool = False):
@@ -538,9 +585,14 @@ class TransferRepository(_QualifiedTransferRepository):
         candidate_projection = await self._candidate_presentation(transfer_id)
         for file_row in result.get("files", []):
             artifact_id = int(file_row.get("id") or 0)
-            projection = candidate_projection.get(artifact_id, {"candidate_count": 0, "acquisition_candidates": []})
-            file_row["candidate_count"] = projection["candidate_count"]
-            if projection["candidate_count"] > 1:
+            projection = candidate_projection.get(artifact_id)
+            file_row["candidate_count"] = projection["candidate_count"] if projection else 0
+            if projection is not None:
+                # Present on exactly the group-eligible artifacts (physical,
+                # unblocked, non-standby) — the set the common-source group
+                # intersects over. Never rendered by the per-file candidate UI.
+                file_row["source_candidates"] = projection["source_candidates"]
+            if projection and projection["candidate_count"] > 1:
                 file_row["acquisition_candidates"] = projection["acquisition_candidates"]
         return result
 

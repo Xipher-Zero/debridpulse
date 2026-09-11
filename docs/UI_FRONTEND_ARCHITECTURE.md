@@ -27,17 +27,19 @@ The bounded presentation owners are:
 
 There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrectionP4Repair` runtime contract in the boot graph.
 
+`ui-group-candidates.js` (`window.DPGroupCandidates`) is parser-loaded as an ordered `defer` script alongside `ui-detail-candidates.js` — it is not in the bounded-owner startup list because it must be ready for the first Downloads / Recent list render. It is the single owner of transfer-level **common-source group switching**, and keeps two facts strictly independent: **membership** — which source hosts exist as a canonical candidate on every current authoritative file of a transfer (`commonHosts`, independent of `switch_eligible`/artifact state/selection) — and **actionability** — which of those common hosts the group can currently converge to (`actionableHosts`). Membership drives the launcher count/visibility; actionability drives only whether a common host's row offers "Switch to this source". It also owns the shared chooser popover and switch orchestration over the existing exact per-file candidate endpoint, and owns no switching engine, candidate model, routing, recovery, provenance, or lifecycle. Downloads, Dashboard Recent Items, and the Details Files-section header all invoke the same `DPGroupCandidates.launcherMarkup()` / `DPGroupCandidates.open()`; none carries its own group semantics. The per-file candidate disclosure (`ui-detail-candidates.js`) and the individual rows are a separate owner and are untouched by it.
+
 ## Runtime ownership map
 
 | Surface | Structure/render owner | Behavior owner | Styling owner |
 | --- | --- | --- | --- |
 | Application shell/navigation | `index.html` + `app.js` | `app.js` | shell styles |
 | Provider status | shell target + `ui-provider-status.js` | `ui-provider-status.js` | `ui-shell-provider-status.css`, `ui-provider-summary.css` |
-| Dashboard | `index.html` + `app.js` | `app.js` plus `ui-dashboard-transfer-presentation.js` | `ui-dashboard.css`, `ui-dashboard-transfer-presentation.css` |
-| Downloads | `index.html` + `app.js` | `app.js` plus `ui-downloads-presentation.js` | `ui-downloads-page.css`, `ui-downloads-desktop.css`, `ui-downloads-presentation.css` |
+| Dashboard | `index.html` + `app.js` | `app.js` plus `ui-dashboard-transfer-presentation.js`, `ui-group-candidates.js` | `ui-dashboard.css`, `ui-dashboard-transfer-presentation.css` |
+| Downloads | `index.html` + `app.js` | `app.js` plus `ui-downloads-presentation.js`, `ui-group-candidates.js` | `ui-downloads-page.css`, `ui-downloads-desktop.css`, `ui-downloads-presentation.css` |
 | Processing/topbar projection | shell/app controls | `app.js`, `ui-topbar-concurrency.js`, `ui-processing-presentation.js` | owning shell/page styles |
 | Activity Log | `index.html` + runtime rows | `ui-activity-log-runtime.js` | `ui-activity-log-page.css`, `ui-activity-log-controls.css` |
-| Details -> Files | `app.js` | `app.js` plus `ui-detail-candidates.js` | `ui-transfer-contract.css`, `ui-detail-files.css`, `ui-detail-candidates.css` |
+| Details -> Files | `app.js` | `app.js` plus `ui-detail-candidates.js` (per-file), `ui-group-candidates.js` (transfer-level group launcher in the section header) | `ui-transfer-contract.css`, `ui-detail-files.css`, `ui-detail-candidates.css`, `ui-group-candidates.css` |
 | Statistics | generated page | `ui-statistics.js` | `ui-statistics-page.css` |
 | Settings | generated clean-room markup | `ui-settings-page.js` plus named subfeature owners | Settings styles plus `ui-settings-archive-passwords.css` |
 | Help | generated page | `ui-help-page.js` and legal-document helper | Help styles |
@@ -50,7 +52,7 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 
 `style.css` remains the accepted baseline dependency and `style-v11.css` retains its established URL. Multiple stylesheets are legitimate only when their responsibilities are intentionally different.
 
-`ui-detail-candidates.css` is the single bounded owner of candidate disclosure/panel styling and is loaded through the `style-v11.css` `@import` graph (not runtime-injected). The multi-source candidate chip has one shared visual contract: `.dp-candidate-chip` material and geometry live in `ui-transfer-contract.css` (which already owns the reusable transfer/provider row contract); surface files add only bounded layout differences — Details interactive hover/focus in `ui-detail-candidates.css`, constrained Downloads-row geometry in `ui-downloads-presentation.css`. The Dashboard/Downloads passive chip is a non-interactive `role="img"` element built by `DPDashboardTransferPresentation.candidateChipMarkup()`; the Details disclosure keeps its interactive `<button>` but shares that chip family. The Lucide `network` glyph geometry has exactly one owner, the `LUCIDE` set in `operator-title.js`, rendered through `window.DPIcons.svg('network', …)`.
+`ui-detail-candidates.css` is the single bounded owner of candidate disclosure/panel styling and is loaded through the `style-v11.css` `@import` graph (not runtime-injected). The multi-source candidate chip has one shared visual contract: `.dp-candidate-chip` material and geometry live in `ui-transfer-contract.css` (which already owns the reusable transfer/provider row contract); surface files add only bounded layout differences — Details interactive hover/focus in `ui-detail-candidates.css`, constrained Downloads-row geometry in `ui-downloads-presentation.css`. The Details per-file disclosure and the transfer-level group launcher (`DPGroupCandidates.launcherMarkup()`, reused verbatim by Downloads and Dashboard Recent Items) are both interactive `<button>` elements sharing that chip family; the group launcher's interactive treatment and the chooser popover rows — including the muted no-action row style for a common host that is not currently actionable — live in `ui-group-candidates.css` (imported once through the `style-v11.css` graph), never a second base definition of `.dp-candidate-chip`. The chooser reuses the canonical body-level `.dp-dropdown-menu` shell. The Lucide `network` glyph geometry has exactly one owner, the `LUCIDE` set in `operator-title.js`, rendered through `window.DPIcons.svg('network', …)`.
 
 ## Accessibility and cross-cutting runtime
 

@@ -1773,8 +1773,9 @@ async function showDetail(id) {
       </details>
       ${t.files&&t.files.length?`
         <div class="card dp-detail-section-card dp-detail-files-card">
-          <div class="card-header">
+          <div class="card-header dp-detail-files-header">
             <span class="card-title">Files (${t.files.length})</span>
+            <span class="dp-detail-files-group-slot" data-dp-group-candidates-mount data-dp-transfer-id="${t.id}"></span>
           </div>
           <div class="dp-detail-table-wrap">
             <table class="t-table">

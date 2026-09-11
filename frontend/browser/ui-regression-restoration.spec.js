@@ -217,50 +217,42 @@ test('Downloads Provider Inventory icon, provider badge, and source label share 
  expect(Math.abs(geometry[0].icon.left-geometry[2].icon.left)).toBeLessThanOrEqual(0.75);
 });
 
-test('Dashboard passive multi-source candidate chip renders only for multi-source transfers, in [source][provider][network N] order',async({page})=>{
+test('Dashboard common-source group launcher renders only for 2+ common hosts, in [source][provider][network N] order',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  const base={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 17:00:00',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'};
  const items=[
-  {...base,id:1,name:'Single source transfer',current_source_identity:{kind:'host',host:'rapidgator.net'},candidate_source_max:1},
-  {...base,id:2,name:'Multi source transfer',current_source_identity:{kind:'host',host:'rapidgator.net'},candidate_source_max:3},
+  {...base,id:1,name:'One common host',current_source_identity:{kind:'host',host:'rapidgator.net'},common_candidate_count:1},
+  {...base,id:2,name:'Two common hosts',current_source_identity:{kind:'host',host:'rapidgator.net'},common_candidate_count:3},
  ];
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
  await ready(page);
  await expect(page.locator('#dash-tbody tr[data-torrent-id]')).toHaveCount(2);
  await expect(page.locator('#dash-tbody tr[data-torrent-id="1"] .dp-candidate-chip')).toHaveCount(0);
- const chip=page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-candidate-chip');
- await expect(chip).toHaveCount(1);
+ const launcher=page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-group-candidate-launcher');
+ await expect(launcher).toHaveCount(1);
  const order=await page.locator('#dash-tbody tr[data-torrent-id="2"] .dp-transfer-provider-meta').evaluate(meta=>[...meta.children].map(node=>node.className.split(' ')[0]));
  expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
- await expect(chip.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
- await expect(chip.locator('.dp-candidate-chip-count')).toHaveText('3');
- await expect(chip).toHaveJSProperty('tagName','SPAN');
- await expect(chip).toHaveAttribute('role','img');
- await expect(chip).not.toHaveAttribute('tabindex');
- await expect(chip).not.toHaveAttribute('onclick');
- await expect(chip).toHaveAttribute('title',/3 equivalent sources available/);
- await expect(chip).toHaveAttribute('aria-label',/up to 3 equivalent sources available/i);
- const passive=await chip.evaluate(node=>{
-  const style=getComputedStyle(node);
-  const provider=getComputedStyle(node.parentElement.querySelector('.dp-provider-chip'));
-  return {shadow:style.boxShadow,chipColor:style.color,providerColor:provider.color};
- });
- expect(passive.shadow==='none'||passive.shadow==='').toBe(true);
- expect(passive.chipColor).not.toBe(passive.providerColor);
- // Light theme keeps the chip legible.
+ await expect(launcher.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
+ await expect(launcher.locator('.dp-candidate-chip-count')).toHaveText('3');
+ await expect(launcher).toContainText('Candidates');
+ await expect(launcher).toHaveJSProperty('tagName','BUTTON');
+ await expect(launcher).toHaveAttribute('aria-haspopup','dialog');
+ await expect(launcher).toHaveAttribute('aria-expanded','false');
+ await expect(launcher).toHaveAttribute('data-dp-transfer-id','2');
+ // Light theme keeps the launcher legible.
  await page.locator('#theme-toggle').click();
  expect(await page.evaluate(()=>document.body.classList.contains('light'))).toBe(true);
- await expect(chip).toBeVisible();
- const lightBorder=await chip.evaluate(node=>getComputedStyle(node).borderTopWidth);
+ await expect(launcher).toBeVisible();
+ const lightBorder=await launcher.evaluate(node=>getComputedStyle(node).borderTopWidth);
  expect(parseFloat(lightBorder)).toBeGreaterThan(0);
 });
 
-test('Downloads passive candidate chip joins the first line for multi-source transfers only, with the source label kept beneath',async({page})=>{
+test('Downloads common-source group launcher joins the first line for 2+ common hosts only, source label kept beneath',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  const common={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'recorded',source:'direct_link'};
  const items=[
-  {...common,id:81,name:'Single',hash:'direct:81',candidate_source_max:1},
-  {...common,id:82,name:'Multi',hash:'direct:82',candidate_source_max:4},
+  {...common,id:81,name:'One common',hash:'direct:81',common_candidate_count:1},
+  {...common,id:82,name:'Two common',hash:'direct:82',common_candidate_count:4},
  ];
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:2,page:1,page_size:2})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
@@ -270,11 +262,13 @@ test('Downloads passive candidate chip joins the first line for multi-source tra
  expect(multiCells).toBe(singleCells);
  await expect(page.locator('#t-tbody tr[data-torrent-id="81"] .dp-candidate-chip')).toHaveCount(0);
  const line=page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-provider-line');
- await expect(line.locator('.dp-candidate-chip')).toHaveCount(1);
+ const launcher=line.locator('.dp-group-candidate-launcher');
+ await expect(launcher).toHaveCount(1);
  const order=await line.evaluate(node=>[...node.children].map(child=>child.className.split(' ')[0]));
  expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
  await expect(page.locator('#t-tbody tr[data-torrent-id="82"] .dp-downloads-provider-block > .dp-transfer-source-label')).toHaveText('Direct link');
- await expect(line.locator('.dp-candidate-chip .dp-candidate-chip-count')).toHaveText('4');
+ await expect(launcher.locator('.dp-candidate-chip-count')).toHaveText('4');
+ await expect(launcher).toHaveJSProperty('tagName','BUTTON');
  const geometry=await page.locator('#t-tbody tr[data-torrent-id="82"]').evaluate(row=>{
   const cell=row.querySelector('.dp-downloads-provider-cell');
   const chip=row.querySelector('.dp-candidate-chip');

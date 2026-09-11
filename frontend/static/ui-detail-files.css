@@ -1,2 +1,10 @@
 /* Details -> Files status geometry owner. */
 body.dp-v11-structural .dp-detail-files-card tbody td:last-child .badge,body.dp-v11-structural #detail-files tbody td[data-role="file-status"] .badge,body.dp-v11-structural #detail-files-table tbody td[data-role="file-status"] .badge{width:136px!important;min-width:136px!important;max-width:136px!important;height:28px!important;min-height:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:0 10px!important;white-space:nowrap!important;box-sizing:border-box}
+
+/* Files section header: title on the left, the transfer-level common-source
+   group launcher (owned by ui-group-candidates.js) pinned to the right. The
+   individual file rows below are untouched. */
+body.dp-v11-structural .dp-detail-files-card>.card-header.dp-detail-files-header{flex-wrap:wrap;gap:8px 12px}
+.dp-detail-files-group-slot{margin-left:auto;display:inline-flex;align-items:center;min-height:22px}
+.dp-detail-files-group-slot:empty{display:none}
+@media(max-width:520px){.dp-detail-files-group-slot{margin-left:0}}

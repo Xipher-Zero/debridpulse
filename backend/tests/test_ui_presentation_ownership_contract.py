@@ -84,34 +84,57 @@ def test_network_glyph_has_one_canonical_lucide_geometry_owner() -> None:
             continue
         assert _NETWORK_GEOMETRY_FRAGMENT not in path.read_text(encoding="utf-8"), path.name
 
-    for owner in ("ui-detail-candidates.js", "ui-dashboard-transfer-presentation.js"):
+    for owner in ("ui-detail-candidates.js", "ui-group-candidates.js"):
         source = read(owner)
         assert "DPIcons.svg('network'" in source or 'DPIcons.svg("network"' in source
 
 
-def test_multi_source_candidate_chip_has_one_shared_base_visual_owner() -> None:
+def test_candidate_chip_family_has_one_shared_base_visual_owner() -> None:
     transfer = read("ui-transfer-contract.css")
-    # The shared passive/base chip material and geometry live with the reusable
+    # The shared chip material and geometry live with the reusable
     # transfer/provider row contract.
     assert ".dp-candidate-chip {" in transfer
     assert ".dp-candidate-chip .dp-candidate-chip-count {" in transfer
 
-    # Surface files own only bounded layout differences, never a second base
-    # definition of the chip material.
-    for surface in ("ui-dashboard-transfer-presentation.css", "ui-downloads-presentation.css"):
-        css = read(surface)
-        assert ".dp-candidate-chip {" not in css
-    details = read("ui-detail-candidates.css")
-    assert ".dp-candidate-chip {" not in details
+    # Surface / detail / group files own only bounded layout or interactive
+    # differences, never a second base definition of the chip material.
+    for surface in (
+        "ui-dashboard-transfer-presentation.css", "ui-downloads-presentation.css",
+        "ui-detail-candidates.css", "ui-group-candidates.css",
+    ):
+        assert ".dp-candidate-chip {" not in read(surface)
     # The obsolete circular count badge rule is gone, not left dormant.
-    assert ".dp-detail-candidate-count{" not in details
+    assert ".dp-detail-candidate-count{" not in read("ui-detail-candidates.css")
 
-    # One shared JS builder for the passive chip, reused by Downloads.
-    dashboard = read("ui-dashboard-transfer-presentation.js")
-    assert "candidateChipMarkup" in dashboard
-    assert "DPDashboardTransferPresentation" in dashboard and "candidateChipMarkup" in dashboard
-    downloads = read("ui-downloads-presentation.js")
-    assert "DPDashboardTransferPresentation?.candidateChipMarkup" in downloads
+
+def test_transfer_level_candidate_control_is_one_shared_group_owner() -> None:
+    # Downloads and Dashboard Recent both call the single shared group launcher
+    # owner; neither carries its own transfer-level candidate/group semantics.
+    group = read("ui-group-candidates.js")
+    assert "window.DPGroupCandidates = Object.freeze" in group
+    assert "function computeGroup" in group and "function launcherMarkup" in group
+
+    for surface in ("ui-downloads-presentation.js", "ui-dashboard-transfer-presentation.js"):
+        source = read(surface)
+        assert "DPGroupCandidates" in source and "launcherMarkup" in source
+        assert "candidateChipMarkup" not in source
+        assert "candidate_source_max" not in source
+
+    marker_owners = [
+        path.name for path in STATIC.glob("*.js")
+        if "window.DPGroupCandidates = Object.freeze" in path.read_text(encoding="utf-8")
+    ]
+    assert marker_owners == ["ui-group-candidates.js"]
+
+    provider = read("ui-provider-status.js")
+    index = read("index.html")
+    # The shared runtime is loaded once, as an ordered defer script (like the
+    # per-file candidate owner), not through the bounded presentation loader.
+    assert index.count("/ui-group-candidates.js?v=1") == 1
+    assert "ui-group-candidates.js" not in provider
+    style = read("style-v11.css")
+    assert style.count("/ui-group-candidates.css") == 1
+    assert "@import url('/ui-group-candidates.css?v=1');" in style
 
 
 def test_candidate_detail_css_is_in_the_canonical_graph_and_not_runtime_injected() -> None:

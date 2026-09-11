@@ -1,0 +1,168 @@
+/* DebridPulse v1.0.12 transfer-level common-source group chooser.
+ *
+ * The launcher is the shared .dp-candidate-chip material (ui-transfer-contract.css)
+ * in its interactive form — the same ghost-button treatment the Details per-file
+ * disclosure uses. The chooser reuses the canonical body-level dropdown shell
+ * (.dp-dropdown-menu) and mirrors the per-file candidate row language so a group
+ * source reads exactly like an individual one:  [host]  ACTIVE  /  Switch to this source.
+ */
+
+/* ── Interactive launcher chip ─────────────────────────────────────────── */
+.dp-group-candidate-launcher {
+  appearance: none;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  margin: -1px 0;
+  background: color-mix(in srgb, var(--dp-state-ready, var(--text3)) 5%, transparent);
+}
+.dp-group-candidate-launcher:hover,
+.dp-group-candidate-launcher[aria-expanded="true"] {
+  color: var(--dp-text-primary, var(--text));
+  background: color-mix(in srgb, var(--dp-state-ready, var(--text3)) 18%, transparent);
+  border-color: color-mix(in srgb, var(--dp-state-ready, var(--text3)) 58%, var(--dp-divider, var(--border)));
+}
+.dp-group-candidate-launcher:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Chooser popover ───────────────────────────────────────────────────── */
+.dp-group-candidate-menu {
+  min-width: 232px;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 8px;
+}
+.dp-group-candidate-menu:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.dp-group-candidate-title {
+  padding: 2px 6px 3px;
+  color: var(--dp-text-primary, var(--text));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.dp-group-candidate-note {
+  padding: 0 6px 7px;
+  color: var(--dp-text-muted, var(--text3));
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.dp-group-candidate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 11px;
+}
+.dp-group-candidate-row + .dp-group-candidate-row {
+  margin-top: 4px;
+}
+.dp-group-candidate-host {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--dp-text-primary, var(--text));
+}
+.dp-group-candidate-action {
+  min-width: 132px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+.dp-group-candidate-active,
+.dp-group-candidate-switch {
+  min-height: 26px;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.dp-group-candidate-active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dp-state-success);
+  background: var(--dp-state-success-bg);
+  border: 1px solid color-mix(in srgb, var(--dp-state-success) 38%, transparent);
+  box-shadow: var(--dp-glow-success);
+  cursor: default;
+}
+/* A common source that is not currently switchable for every file: still
+   listed (membership is independent of actionability), just with no action —
+   the same convention the per-file candidate list already uses for an
+   ineligible candidate. */
+.dp-group-candidate-unavailable {
+  color: var(--dp-text-muted, var(--text3));
+  font-size: 10px;
+  font-weight: 500;
+  font-style: italic;
+  white-space: nowrap;
+}
+.dp-group-candidate-switch {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  font-weight: 600;
+}
+.dp-group-candidate-switch:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), .08);
+}
+.dp-group-candidate-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.dp-group-candidate-switch:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+@media (max-width: 720px) {
+  .dp-group-candidate-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .dp-group-candidate-action {
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .dp-group-candidate-host {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .dp-group-candidate-switch {
+    min-height: 30px;
+  }
+  .dp-group-candidate-unavailable {
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-group-candidate-launcher {
+    transition: none;
+  }
+}
