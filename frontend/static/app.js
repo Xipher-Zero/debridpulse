@@ -145,6 +145,20 @@ async function api(method, path, body, timeoutMs, options) {
   }
 }
 
+// Shared row-navigation ownership boundary for Downloads and Dashboard Recent:
+// a click that originates from an interactive child control (a button, the
+// common-source group launcher, etc.) must perform only that control's own
+// action, never also trigger the row's own Details navigation. Fixes the
+// Dashboard Recent group-launcher click-ownership bug (DP 1.0.12) by giving
+// Recent the same interactive-descendant guard Downloads' row click already
+// used; do not stack additional stopPropagation() calls onto individual
+// controls instead of this one shared boundary.
+function dpIsInteractiveRowTarget(target) {
+  return !!(target && target.closest &&
+    target.closest('button,input,a,select,textarea,label,[role="button"],[data-dp-group-candidates-trigger]'));
+}
+window.dpIsInteractiveRowTarget = dpIsInteractiveRowTarget;
+
 // ── Toast ──────────────────────────────────────────────────────────────────
 function esc(s) {
   // Escape HTML special chars to prevent XSS when inserting user-controlled
@@ -1430,7 +1444,7 @@ async function loadTorrents() {
       return;
     }
     const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
-    tb.innerHTML = items.map(t => `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" tabindex="0" onclick="if(!event.target.closest('button,input,a,select,textarea,label,[role=button]'))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
+    tb.innerHTML = items.map(t => `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" tabindex="0" onclick="if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
       <td>
         <div class="t-name">${esc(t.name)||'(unnamed)'}</div>

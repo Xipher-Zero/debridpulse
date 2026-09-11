@@ -68,11 +68,18 @@
   //                      this source" — never membership, count, or launcher
   //                      visibility.
 
+  function isCompletedFile(file) {
+    return String(file && file.status || '').trim().toLowerCase() === 'completed';
+  }
+
   function computeGroup(files) {
     const participants = (Array.isArray(files) ? files : [])
       .filter(function (file) { return Array.isArray(file && file.source_candidates); });
     if (!participants.length) {
-      return {commonHosts: [], count: 0, activeHost: null, actionableHosts: [], targetsByHost: {}, participants: []};
+      return {
+        commonHosts: [], count: 0, activeHost: null, actionableHosts: [], targetsByHost: {},
+        participants: [], actionParticipants: [],
+      };
     }
 
     // Raw membership: every host present as ANY candidate for a file, no
@@ -104,23 +111,33 @@
       commonSet.has(firstSelected)
     ) ? firstSelected : null;
 
-    // Actionability: a common host the whole group can converge to right now
-    // — every file already selected on it, or switch_eligible for it.
-    const actionableHosts = commonHosts.filter(function (host) {
-      return participants.every(function (file) {
+    // Remaining-work action participants: membership files that still need
+    // acquisition. A completed file stays a MEMBERSHIP participant above (it
+    // still owns intersection/count/ACTIVE) but never gates or receives
+    // group-switch mutation — it already delivered its bytes from wherever it
+    // delivered them.
+    const actionParticipants = participants.filter(function (file) { return !isCompletedFile(file); });
+
+    // Actionability: a common host the REMAINING-WORK group can converge to
+    // right now — every unfinished file already selected on it, or
+    // switch_eligible for it. When there is no remaining work at all, no host
+    // is actionable: there is no acquisition left to move, never a vacuous
+    // truth over an empty set.
+    const actionableHosts = actionParticipants.length ? commonHosts.filter(function (host) {
+      return actionParticipants.every(function (file) {
         return file.source_candidates.some(function (entry) {
           return String(entry.source_host || '') === host && (entry.is_selected || entry.switch_eligible);
         });
       });
-    });
+    }) : [];
 
-    // Host -> per-file exact candidate_id map for every common host (used only
-    // once a host is chosen; membership already guarantees each participant
-    // has its own candidate for a common host).
+    // Host -> per-file exact candidate_id map, restricted to files that still
+    // need to move (only these are ever POSTed to; membership already
+    // guarantees each of them has its own candidate for a common host).
     const targetsByHost = {};
     commonHosts.forEach(function (host) {
       const map = {};
-      participants.forEach(function (file) {
+      actionParticipants.forEach(function (file) {
         const entry = file.source_candidates.find(function (item) {
           return String(item.source_host || '') === host;
         });
@@ -132,6 +149,7 @@
     return {
       commonHosts: commonHosts, count: commonHosts.length, activeHost: activeHost,
       actionableHosts: actionableHosts, targetsByHost: targetsByHost, participants: participants,
+      actionParticipants: actionParticipants,
     };
   }
 
@@ -141,11 +159,16 @@
 
   // ── Launcher chip ────────────────────────────────────────────────────────
 
-  function launcherMarkup(item) {
+  function launcherMarkup(item, variant) {
     const count = Number(item && item.common_candidate_count);
     if (!Number.isFinite(count) || count < 2) return '';
     const total = Math.round(count);
     const transferId = String(item.id == null ? '' : item.id);
+    const labeled = variant === 'labeled';
+    // Dense list surfaces (Dashboard Recent, Downloads) get glyph+count only;
+    // Details' Files header — the one place a bare number would be
+    // ambiguous among its other per-file candidate counts — gets the
+    // labeled form. Accessible wording is identical either way.
     return '<button type="button" class="dp-candidate-chip dp-group-candidate-launcher" ' +
       'data-dp-group-candidates-trigger data-dp-transfer-id="' + esc(transferId) + '" ' +
       'aria-haspopup="dialog" aria-expanded="false" ' +
@@ -153,7 +176,8 @@
       'aria-label="' + esc('Choose a common source for every file: ' + total + ' common sources') + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +
-      '<span>Candidates</span></button>';
+      (labeled ? ' <span>Candidates</span>' : '') +
+      '</button>';
   }
 
   // ── Detail Files-header mount ────────────────────────────────────────────
@@ -167,7 +191,7 @@
       mount.innerHTML = '';
       return;
     }
-    mount.innerHTML = launcherMarkup({id: transferId, common_candidate_count: group.count});
+    mount.innerHTML = launcherMarkup({id: transferId, common_candidate_count: group.count}, 'labeled');
   }
 
   function onDetailRendered(event) {
@@ -218,10 +242,34 @@
     }).join('');
   }
 
+  function progressMarkup(host, completed, total) {
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return '<div class="dp-group-candidate-title">Common sources</div>' +
+      '<div class="dp-group-candidate-progress">' +
+        '<div class="dp-group-candidate-progress-label">Switching to ' + esc(host) + '</div>' +
+        '<div class="dp-group-candidate-progress-count">' + completed + ' of ' + total +
+          ' file' + (total === 1 ? '' : 's') + '</div>' +
+        '<div class="dp-group-candidate-progress-bar" aria-hidden="true">' +
+          '<div class="dp-group-candidate-progress-fill" style="width:' + pct + '%"></div></div>' +
+      '</div>';
+  }
+
+  // A multi-file group switch runs several sequential POSTs; a disabled
+  // button alone does not tell the operator how far a several-second
+  // operation has gotten. The chooser stays open and visibly busy for its
+  // whole duration instead of just disabling its own controls.
+  function renderProgress(host, completed, total) {
+    if (!menuEl) return;
+    menuEl.setAttribute('aria-busy', 'true');
+    menuEl.innerHTML = progressMarkup(host, completed, total);
+    positionMenu();
+  }
+
   function renderMenu(group) {
     if (!menuEl) return;
     menuGroup = group;
     if (group.count < 2) { closeMenu(); return; }
+    menuEl.removeAttribute('aria-busy');
     const heading = 'dp-group-candidates-heading';
     menuEl.innerHTML =
       '<div class="dp-group-candidate-title" id="' + heading + '">Common sources</div>' +
@@ -271,6 +319,9 @@
   function onMenuKeydown(event) {
     if (event.key === 'Escape') {
       event.preventDefault();
+      // A running group switch is not cancellable; do not let Escape imply
+      // otherwise or silently abandon visual ownership of it mid-flight.
+      if (menuBusy) return;
       closeMenu({focusTrigger: true});
       return;
     }
@@ -293,7 +344,7 @@
   }
 
   function onDocumentPointerDown(event) {
-    if (!menuEl || menuEl.hidden) return;
+    if (!menuEl || menuEl.hidden || menuBusy) return;
     const target = event.target instanceof Node ? event.target : null;
     if (target && (menuEl.contains(target) || (menuOwnerTrigger && menuOwnerTrigger.contains(target)))) return;
     closeMenu();
@@ -424,8 +475,11 @@
     }
     const targets = group.targetsByHost[host];
 
+    // Only remaining-work files ever move. A completed file keeps its
+    // truthful historical/current source; an unfinished file already on the
+    // target needs nothing either — both are simply absent from ``moves``.
     const moves = [];
-    group.participants.forEach(function (file) {
+    group.actionParticipants.forEach(function (file) {
       const selected = file.source_candidates.find(function (entry) { return entry.is_selected; });
       const currentHost = selected ? String(selected.source_host || '') : null;
       const candidateId = targets[String(file.id)];
@@ -435,10 +489,12 @@
 
     let switched = 0;
     let failure = null;
+    renderProgress(host, 0, moves.length);
     for (const move of moves) {
       try {
         await switchOne(transferId, move.artifactId, move.candidateId);
         switched += 1;
+        renderProgress(host, switched, moves.length);
       } catch (error) {
         failure = error;
         break;
@@ -465,10 +521,13 @@
 
     const alreadyOn = moves.length === 0;
     if (failure) {
+      // Non-transactional: whatever already switched stays switched. The
+      // chooser above was already re-rendered from the authoritative
+      // refetch, so it never shows a fabricated ACTIVE state here.
       toast({
         title: 'Group did not fully converge on ' + host,
         body: switched + ' of ' + moves.length + ' file' + (moves.length === 1 ? '' : 's') +
-          ' switched before: ' + (failure.message || 'a file could not switch') + '.',
+          ' switched — convergence incomplete: ' + (failure.message || 'a file could not switch') + '.',
       }, 'error');
     } else if (alreadyOn) {
       toast('Every file is already on ' + host + '.', 'info');

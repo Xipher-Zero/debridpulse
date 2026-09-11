@@ -12,11 +12,20 @@ def read(name: str) -> str:
 
 
 def test_downloads_rows_use_row_level_details_and_retire_drag_semantics() -> None:
+    # DP 1.0.12 Post-Classifier-Fix UI Corrections: the row-navigation
+    # interactive-descendant guard moved from an inline literal selector into
+    # the shared ``dpIsInteractiveRowTarget`` helper so Dashboard Recent could
+    # reuse the exact same ownership boundary (fixing a Recent-only click-
+    # ownership bug where the common-source group launcher's click also fired
+    # row-level Details navigation). The guard's match set is unchanged and
+    # now additionally covers the group-candidates trigger explicitly.
     app = read("app.js")
     required = (
         "dp-downloads-detail-row", 'tabindex="0"',
         "event.key==='Enter'", "showDetail(${t.id})",
-        "event.target.closest('button,input,a,select,textarea,label,[role=button]')",
+        "if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})",
+        "function dpIsInteractiveRowTarget(target)",
+        "button,input,a,select,textarea,label,[role=\"button\"],[data-dp-group-candidates-trigger]",
     )
     missing = [fragment for fragment in required if fragment not in app]
     assert not missing, f"row detail contract is missing: {missing}"

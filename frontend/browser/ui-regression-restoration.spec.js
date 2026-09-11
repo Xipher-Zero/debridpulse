@@ -234,7 +234,12 @@ test('Dashboard common-source group launcher renders only for 2+ common hosts, i
  expect(order).toEqual(['dp-source-icon-slot','dp-provider-chip','dp-candidate-chip']);
  await expect(launcher.locator('svg[data-dp-lucide="network"]')).toHaveCount(1);
  await expect(launcher.locator('.dp-candidate-chip-count')).toHaveText('3');
- await expect(launcher).toContainText('Candidates');
+ // DP 1.0.12 Defect 1: the dense list launcher is glyph+count only now: the
+ // word "Candidates" moved to the Details Files-header labeled variant
+ // (see group-candidates.spec.js Case A/B). Descriptive text remains in the
+ // accessible name/title instead.
+ await expect(launcher).not.toContainText('Candidates');
+ await expect(launcher).toHaveAttribute('aria-label',/common sources/);
  await expect(launcher).toHaveJSProperty('tagName','BUTTON');
  await expect(launcher).toHaveAttribute('aria-haspopup','dialog');
  await expect(launcher).toHaveAttribute('aria-expanded','false');
