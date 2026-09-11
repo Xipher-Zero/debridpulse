@@ -540,7 +540,12 @@ async def test_resolution_retry_budget_and_zero_delay_drive_actual_attempts(core
 
 
 @pytest.mark.parametrize("left_size,right_size,expected", [
-    (0, 0, False),
+    # DP 1.0.12: both sizes unknown (0) is no longer a cheap pairing
+    # rejection -- unknown is "unknown, not proof of difference"; the pair
+    # must reach bounded content evidence instead (transfers/mirrors.py
+    # pairing_failure). This case now exercises pairability, not a reported
+    # -size boundary.
+    (0, 0, True),
     (1000, 1000, True),
     (1000, 1001, True),
     (1000, 1002, False),

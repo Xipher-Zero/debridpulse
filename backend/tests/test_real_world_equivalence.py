@@ -80,7 +80,11 @@ def test_known_sizes_use_bounded_reported_size_compatibility():
     assert comparable(left, same)
     assert comparable(left, near)
     assert not comparable(left, outside)
-    assert not comparable(left, unknown)
+    # DP 1.0.12: an unknown reported size (0) is "unknown, not proof of
+    # difference" -- it must reach bounded content evidence rather than being
+    # a cheap, permanent pairing rejection. Only two *known* incompatible
+    # reports (like `outside` above) are cheap negative evidence.
+    assert comparable(left, unknown)
 
 
 @pytest.mark.asyncio

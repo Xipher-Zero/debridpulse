@@ -144,6 +144,51 @@ async def test_api_pause_defers_intake_and_resume_one_preserves_siblings(runtime
 
 
 @pytest.mark.asyncio
+async def test_single_link_submission_response_shape_is_unchanged(runtime):
+    """DP 1.0.12 Section 12.1a: single-link submission (the pre-existing,
+    already-correct N=1 case) must keep its exact legacy response shape --
+    a top-level id/torrent_id naming the one admitted transfer -- alongside
+    the new `items` list."""
+    _application, _provider, _executor, client = runtime
+    response = await client.post("/api/links/add", json={"links": ["https://fake.example/solo"]})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["accepted"] == 1
+    assert body["items"] and len(body["items"]) == 1
+    assert body["id"] == body["torrent_id"] == body["items"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_batch_link_submission_admits_independent_transfers_and_exposes_items(runtime):
+    """DP 1.0.12 Sections 7 + 12.1 + 12.1a: one batch user action submitting N
+    independent URLs must durably admit N independent transfer lineages (not
+    one transfer with N sibling requests), and the response must expose them
+    as `items` rather than collapsing them behind one legacy id/torrent_id
+    (which would be inventing arbitrary multi-item semantics -- Section 7).
+    The only in-repo consumer of this response, the frontend Quick Add flow
+    (frontend/static/app.js addDashboardEntries), never reads id/torrent_id/
+    items from this endpoint at all (it only checks `_deferred`), so it
+    cannot misinterpret a multi-item response as one legacy transfer."""
+    application, _provider, _executor, client = runtime
+    links = [f"https://fake.example/mirror-{index}" for index in range(1, 4)]
+    response = await client.post("/api/links/add", json={"links": links})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is True
+    assert body["accepted"] == 3
+    assert "id" not in body and "torrent_id" not in body
+    items = body["items"]
+    assert len(items) == 3
+    item_ids = [item["id"] for item in items]
+    assert len(set(item_ids)) == 3  # three genuinely independent transfers.
+    for transfer_id in item_ids:
+        transfer = await application.repository.get(transfer_id)
+        assert transfer is not None
+        requests = await application.repository.requests(transfer_id)
+        assert len(requests) == 1  # each transfer owns exactly its own single source request.
+
+
+@pytest.mark.asyncio
 async def test_scheduler_uses_injected_application(runtime, monkeypatch):
     import core.scheduler as scheduler
     application, provider, _executor, _client = runtime

@@ -24,7 +24,7 @@ _TRANSIENT_REASONS = frozenset({
 })
 _CONTRADICTORY_REASONS = frozenset({"size_disagreement", "sample_mismatch", "integrity_mismatch"})
 _NONPAIRING_REASONS = frozenset({
-    "same_candidate", "non_independent_source", "logical_pairing_mismatch", "size_unknown",
+    "same_candidate", "non_independent_source", "logical_pairing_mismatch",
     "size_disagreement", "sample_mismatch", "integrity_mismatch",
 })
 _REPORTED_SIZE_RELATIVE_SCALE = 1000
@@ -149,13 +149,20 @@ def reported_sizes_compatible(left_size, right_size) -> bool:
 
 
 def _sample_size_compatible_with_reports(actual_size, left, right) -> bool:
+    """A discovered actual size must respect every *known* advance report.
+
+    An unknown reported size (0/absent) imposes no consistency requirement of
+    its own -- it is "unknown, not proof of difference" (DP 1.0.12 Section 9),
+    never a reason to treat otherwise-agreeing sampled content as mismatched.
+    """
     actual = _known_positive_size(actual_size)
     if actual is None:
         return False
-    return (
-        reported_sizes_compatible(actual, left.expected_bytes)
-        and reported_sizes_compatible(actual, right.expected_bytes)
-    )
+    for reported in (left.expected_bytes, right.expected_bytes):
+        known = _known_positive_size(reported)
+        if known is not None and not reported_sizes_compatible(actual, known):
+            return False
+    return True
 
 
 def pairing_failure(left, right) -> str:
@@ -166,9 +173,14 @@ def pairing_failure(left, right) -> str:
         return "non_independent_source"
     if not logical_key(left) or logical_key(left) != logical_key(right):
         return "logical_pairing_mismatch"
-    if _known_positive_size(left.expected_bytes) is None or _known_positive_size(right.expected_bytes) is None:
-        return "size_unknown"
-    if not reported_sizes_compatible(left.expected_bytes, right.expected_bytes):
+    left_size = _known_positive_size(left.expected_bytes)
+    right_size = _known_positive_size(right.expected_bytes)
+    # An unknown reported size (common for ordinary General HTTP candidates,
+    # which never populate expected_bytes) is unknown, not proof of
+    # difference -- it must not permanently block a pair from ever reaching
+    # bounded content evidence. Only two *known* positive reports that are
+    # themselves incompatible are cheap, structural negative evidence.
+    if left_size is not None and right_size is not None and not reported_sizes_compatible(left_size, right_size):
         return "size_disagreement"
     return ""
 
