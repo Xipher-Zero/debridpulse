@@ -239,7 +239,7 @@ test('Dashboard common-source group launcher renders only for 2+ common hosts, i
  // (see group-candidates.spec.js Case A/B). Descriptive text remains in the
  // accessible name/title instead.
  await expect(launcher).not.toContainText('Candidates');
- await expect(launcher).toHaveAttribute('aria-label',/common sources/);
+ await expect(launcher).toHaveAttribute('aria-label',/sources are common to every file/);
  await expect(launcher).toHaveJSProperty('tagName','BUTTON');
  await expect(launcher).toHaveAttribute('aria-haspopup','dialog');
  await expect(launcher).toHaveAttribute('aria-expanded','false');

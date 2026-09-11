@@ -24,6 +24,7 @@ from application.manual_candidate_failover import switch_candidate
 from application.service import ApplicationService
 from db.database import get_db
 from transfers import codec
+from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
 from transfers.presentation_repository import (
     ARTIFACT_PRESENTATION_SNAPSHOT_KEYS,
@@ -31,8 +32,58 @@ from transfers.presentation_repository import (
     public_source_identity,
     recovery_presentation,
 )
+from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
 
 router = APIRouter()
+
+# The bounded list's remaining-work signal (Section 10 of the DP 1.0.12
+# presentation task) reuses the SAME cheap artifact-state classification the
+# comprehensive Details presentation already uses for its own read-time
+# ``switch_eligible`` approximation (transfers/repository.py
+# ``_SWITCHABLE_ARTIFACT_STATES``, mirrored in manual_repository.py and
+# manual_failover.py) rather than a fourth hand-copied literal list. A
+# non-completed artifact whose status is NOT in this set (e.g. ``cancelled``,
+# ``input_required``) has no acquisition path a candidate switch could ever
+# help with, so it must not count as remaining work; a status of ``error`` IS
+# included, matching this codebase's own established distinction between a
+# recoverable failure (still switchable) and a terminal one. This is
+# deliberately NOT the full authoritative actionability check — live
+# provider health / route binding / candidate-expiry are out of bounded-SQL
+# scope by design (see the group_common_sources comment below) and are only
+# ever re-validated at actual switch time by manual_candidate_failover.py.
+_SWITCHABLE_STATES_SQL = ", ".join(
+    f"'{state}'" for state in sorted(_SWITCHABLE_ARTIFACT_STATES)
+)
+
+
+def _disabled_provider_ids(application) -> frozenset[str]:
+    """Durable, PAGE-GLOBAL provider-enablement facts, read once per request.
+
+    ``descriptor.enabled`` is computed once at composition time from
+    AppSettings (e.g. ``bool(api_key)``) and held on the provider object the
+    already-injected ``application.engine.registry`` carries for the whole
+    request — no extra DB round-trip, no per-row/live check. This is NOT the
+    full authoritative actionability gate: live route/candidate-expiry and
+    provider *health* (``registry._unhealthy``) have no durable stored
+    representation anywhere in this codebase today (confirmed: no production
+    caller ever populates either), so they cannot be bounded-SQL-joined
+    without either fabricating a stale guess or duplicating a live provider
+    call per row — manual_candidate_failover.py re-validates those at actual
+    switch time instead, and always has, even against the comprehensive
+    Details read. Provider *enablement*, in contrast, is exactly the kind of
+    durable fact that closes a real false-positive: a transfer whose only
+    common hosts route through a disabled/unconfigured provider has no
+    possible target, and the list must say so.
+    """
+    registry = getattr(getattr(application, "engine", None), "registry", None)
+    providers = getattr(registry, "providers", None)
+    if not providers:
+        return frozenset()
+    return frozenset(
+        provider_id
+        for provider_id, provider in providers.items()
+        if not getattr(getattr(provider, "descriptor", None), "enabled", True)
+    )
 
 
 _EVENT_TIMEFRAME_MODIFIERS = {
@@ -272,6 +323,18 @@ async def list_operational_torrents(
         ]
         return {"items": items, "total": total}
 
+    # Durable, page-global provider-enablement facts (see _disabled_provider_ids
+    # docstring) — computed once per request from the already-injected
+    # application, never per-row and never an extra DB round-trip.
+    disabled_provider_ids = _disabled_provider_ids(application)
+    disabled_provider_clause = (
+        "AND movement.provider_id NOT IN ({})".format(
+            ", ".join(f"'{pid}'" for pid in sorted(disabled_provider_ids))
+        )
+        if disabled_provider_ids
+        else ""
+    )
+
     # The normal Downloads collection is a bounded read model. It intentionally
     # does not reconstruct the comprehensive per-transfer presentation used by
     # the detail route. All list-only enrichment is computed in this one SQL read.
@@ -462,7 +525,11 @@ async def list_operational_torrents(
         group_member_artifacts AS (
             SELECT
                 f.torrent_id AS transfer_id,
-                f.id AS artifact_id
+                f.id AS artifact_id,
+                f.status AS status,
+                f.filename AS filename,
+                f.candidates AS candidates,
+                f.selected_candidate AS selected_candidate
             FROM download_files f
             JOIN page
               ON page.id = f.torrent_id
@@ -475,10 +542,58 @@ async def list_operational_torrents(
             FROM group_member_artifacts
             GROUP BY transfer_id
         ),
+        -- Per-artifact currently-SELECTED candidate id, decoded from the same
+        -- durable JSON array + index the comprehensive per-file presentation
+        -- reads (transfers.repository._candidate_presentation:
+        -- ``candidates[selected_candidate].id``). Pure function of already-
+        -- stored columns -- no live call, no extra table. Feeds ONLY the
+        -- movement check below; membership stays untouched by it.
+        group_member_selected_candidate AS (
+            SELECT
+                transfer_id,
+                artifact_id,
+                json_extract(candidates, '$[' || selected_candidate || '].id') AS selected_candidate_id
+            FROM group_member_artifacts
+        ),
+        -- Remaining-work membership count: current authoritative artifacts of
+        -- the transfer (same identity as group_member_artifacts above) whose
+        -- own artifact-lifecycle state is one a candidate switch could ever
+        -- apply to (see _SWITCHABLE_STATES_SQL above — reused from the exact
+        -- classification the comprehensive Details presentation already
+        -- uses). Independent of common-source MEMBERSHIP/count — this only
+        -- tells the list surfaces whether the group launcher should render
+        -- as an interactive action or a static history indicator (Section 10
+        -- of the DP 1.0.12 presentation pass); the PER-HOST actionability
+        -- verdict (which of the common hosts this remaining work can
+        -- actually converge to right now) is still resolved lazily from
+        -- Details when the chooser opens, never here.
+        group_remaining_counts AS (
+            SELECT transfer_id, COUNT(*) AS remaining_count
+            FROM group_member_artifacts
+            WHERE LOWER(TRIM(COALESCE(status, ''))) IN ({_SWITCHABLE_STATES_SQL})
+            GROUP BY transfer_id
+        ),
+        -- Current authoritative artifact filenames for the transfer, in the
+        -- same current-artifact scope as group_member_artifacts above (never
+        -- a divergent definition). Feeds the pure display-name normalizer in
+        -- Python — no filename parsing happens in SQL. Row order inside the
+        -- aggregate follows the artifact id, matching the same ordering
+        -- convention already used for artifact_presentation_facts below.
+        group_member_filenames AS (
+            SELECT transfer_id, json_group_array(filename) AS filenames
+            FROM (
+                SELECT transfer_id, filename
+                FROM group_member_artifacts
+                ORDER BY artifact_id
+            )
+            GROUP BY transfer_id
+        ),
         group_member_hosts AS (
             SELECT DISTINCT
                 a.transfer_id,
                 a.artifact_id,
+                b.provider_id AS provider_id,
+                b.candidate_id AS candidate_id,
                 rtrim(
                     CASE
                         WHEN lower(trim(b.source_key)) LIKE 'www.%'
@@ -493,18 +608,99 @@ async def list_operational_torrents(
              AND lower(COALESCE(b.source_scope, '')) = 'host'
              AND length(trim(COALESCE(b.source_key, ''))) > 0
         ),
+        group_true_common_hosts AS (
+            SELECT gmh.transfer_id, gmh.host
+            FROM group_member_hosts gmh
+            JOIN group_member_counts gmc
+              ON gmc.transfer_id = gmh.transfer_id
+            WHERE length(gmh.host) BETWEEN 1 AND 253
+            GROUP BY gmh.transfer_id, gmh.host
+            HAVING COUNT(DISTINCT gmh.artifact_id) = MAX(gmc.artifact_total)
+        ),
         group_common_sources AS (
             SELECT common.transfer_id, COUNT(*) AS common_candidate_count
-            FROM (
-                SELECT gmh.transfer_id, gmh.host
-                FROM group_member_hosts gmh
-                JOIN group_member_counts gmc
-                  ON gmc.transfer_id = gmh.transfer_id
-                WHERE length(gmh.host) BETWEEN 1 AND 253
-                GROUP BY gmh.transfer_id, gmh.host
-                HAVING COUNT(DISTINCT gmh.artifact_id) = MAX(gmc.artifact_total)
-            ) common
+            FROM group_true_common_hosts common
             GROUP BY common.transfer_id
+        ),
+        -- A common host requires MOVEMENT for the remaining-work set when at
+        -- least one remaining-work (switchable-lifecycle, non-completed)
+        -- artifact's binding for that host is NOT its currently-selected
+        -- candidate. This is the piece a bare "host is common + enabled"
+        -- check misses: the already-uniform ACTIVE source is trivially
+        -- common and trivially enabled but requires ZERO artifact movement,
+        -- so it cannot by itself make the transfer list-actionable (Section
+        -- 8/10 of the DP 1.0.12 presentation task) — offering it as the only
+        -- "interactive" choice would open a chooser that can never actually
+        -- switch anything. is_selected is decoded the same way the
+        -- comprehensive per-file presentation already does (candidate id at
+        -- the durable ``selected_candidate`` index) — pure stored data, no
+        -- live call, no extra table.
+        group_remaining_host_movement AS (
+            SELECT DISTINCT gmh.transfer_id, gmh.host, gmh.provider_id
+            FROM group_member_hosts gmh
+            JOIN group_member_artifacts gma
+              ON gma.transfer_id = gmh.transfer_id
+             AND gma.artifact_id = gmh.artifact_id
+             AND LOWER(TRIM(COALESCE(gma.status, ''))) IN ({_SWITCHABLE_STATES_SQL})
+            JOIN group_member_selected_candidate gmsc
+              ON gmsc.transfer_id = gmh.transfer_id
+             AND gmsc.artifact_id = gmh.artifact_id
+            WHERE gmh.candidate_id IS NOT gmsc.selected_candidate_id
+        ),
+        -- Universal-convergence VETO, matching the shipped chooser's own
+        -- participant scope exactly (ui-group-candidates.js computeGroup:
+        -- actionParticipants excludes ONLY completed files — nothing else).
+        -- A common host H is vetoed when some non-completed participant is
+        -- BOTH (a) not currently selected on H, AND (b) not in a switchable
+        -- lifecycle state — i.e. it can never move to H by a candidate
+        -- switch, exactly like the chooser's own actionableHosts check
+        -- (every actionParticipant must already be selected on H, or
+        -- switch_eligible for H — switch_eligible is false whenever the
+        -- artifact's own state disqualifies it, regardless of the target).
+        -- Membership already guarantees every participant has a binding for
+        -- every true common host, so a missing join row cannot silently
+        -- hide a veto.
+        group_host_vetoes AS (
+            SELECT DISTINCT gmh.transfer_id, gmh.host
+            FROM group_member_hosts gmh
+            JOIN group_member_artifacts gma
+              ON gma.transfer_id = gmh.transfer_id
+             AND gma.artifact_id = gmh.artifact_id
+             AND LOWER(TRIM(COALESCE(gma.status, ''))) != 'completed'
+             AND LOWER(TRIM(COALESCE(gma.status, ''))) NOT IN ({_SWITCHABLE_STATES_SQL})
+            JOIN group_member_selected_candidate gmsc
+              ON gmsc.transfer_id = gmh.transfer_id
+             AND gmsc.artifact_id = gmh.artifact_id
+            WHERE gmh.candidate_id IS NOT gmsc.selected_candidate_id
+        ),
+        -- Does this transfer have at least one TRUE common host (the exact
+        -- same set group_common_sources counts, unmodified) that (a)
+        -- requires at least one artifact movement for the remaining-work set
+        -- (excludes the already-uniform ACTIVE source), (b) is NOT vetoed by
+        -- a participant that can never converge there (the shipped chooser's
+        -- own universal-convergence rule, above), AND (c) is backed by a
+        -- currently-ENABLED provider (a durable, page-global fact — see
+        -- _disabled_provider_ids docstring; live provider health/candidate-
+        -- expiry have no durable stored representation anywhere in this
+        -- codebase and are only ever re-validated at actual switch time by
+        -- manual_candidate_failover.py, even against the comprehensive
+        -- Details read — the bounded list is a conservative AFFORDANCE
+        -- projection, never more permissive than the chooser, and the write
+        -- endpoint remains the final authority). Feeds ONLY
+        -- group_remaining_count below; group_common_sources/
+        -- common_candidate_count above is completely untouched by this —
+        -- membership/history stays independent of actionability, unchanged.
+        group_actionable_common_sources AS (
+            SELECT DISTINCT common.transfer_id
+            FROM group_true_common_hosts common
+            JOIN group_remaining_host_movement movement
+              ON movement.transfer_id = common.transfer_id
+             AND movement.host = common.host
+             {disabled_provider_clause}
+            LEFT JOIN group_host_vetoes veto
+              ON veto.transfer_id = common.transfer_id
+             AND veto.host = common.host
+            WHERE veto.transfer_id IS NULL
         )
         SELECT
             t.id,
@@ -523,6 +719,11 @@ async def list_operational_torrents(
             t.completed_at,
             COALESCE(request_failures.failure_count, 0) AS source_failure_count,
             COALESCE(group_common_sources.common_candidate_count, 0) AS common_candidate_count,
+            CASE
+                WHEN group_actionable_common_sources.transfer_id IS NULL THEN 0
+                ELSE COALESCE(group_remaining_counts.remaining_count, 0)
+            END AS group_remaining_count,
+            group_member_filenames.filenames AS _group_member_filenames,
             latest_route.provider_id AS current_provider_id,
             CASE
                 WHEN COALESCE(delivery.provider_count, 0) = 1
@@ -567,6 +768,12 @@ async def list_operational_torrents(
           ON request_failures.transfer_id = t.id
         LEFT JOIN group_common_sources
           ON group_common_sources.transfer_id = t.id
+        LEFT JOIN group_remaining_counts
+          ON group_remaining_counts.transfer_id = t.id
+        LEFT JOIN group_actionable_common_sources
+          ON group_actionable_common_sources.transfer_id = t.id
+        LEFT JOIN group_member_filenames
+          ON group_member_filenames.transfer_id = t.id
         ORDER BY t.created_at DESC
     """
 
@@ -589,6 +796,12 @@ async def list_operational_torrents(
         )
         source_identity = _bounded_source_identity(projected)
         common_candidate_count = max(0, int(projected.get("common_candidate_count") or 0))
+        group_remaining_count = max(0, int(projected.get("group_remaining_count") or 0))
+        raw_filenames = _decode_projection_value(projected.pop("_group_member_filenames", None), [])
+        artifact_filenames = raw_filenames if isinstance(raw_filenames, list) else []
+        display_name = normalized_transfer_display_name(
+            artifact_filenames, root_name=projected.get("name"),
+        )
         for field in _SOURCE_PROJECTION_FIELDS:
             projected.pop(field, None)
         item = _public_transfer_presentation(projected, application.definitions)
@@ -602,6 +815,15 @@ async def list_operational_torrents(
         # when the chooser opens, never encoded in this bounded field. Feeds
         # Downloads and Dashboard Recent Items identically.
         item["common_candidate_count"] = common_candidate_count
+        # Remaining-work membership count (Section 10): 0 means the list
+        # surfaces render the common-source indicator as static history
+        # instead of an interactive launcher. Independent of actionability.
+        item["group_remaining_count"] = group_remaining_count
+        # Canonical human-facing transfer title (Section 15-20): normalized
+        # artifact-derived name first, root/request ``name`` fallback only.
+        # Dashboard Recent and Downloads both render this SAME field — no
+        # per-surface normalization duplication.
+        item["display_name"] = display_name
         # Effective processing presentation via the ONE shared owner
         # (transfers.presentation_repository.effective_presentation), fed the same
         # logical inputs as the comprehensive Details projection: the durable

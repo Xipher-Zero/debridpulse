@@ -29,6 +29,15 @@
   outline-offset: 2px;
 }
 
+/* ── Static history indicator ──────────────────────────────────────────
+   Rendered instead of the launcher once no meaningful remaining acquisition
+   work exists (completed transfer, or terminal/non-actionable failure). Same
+   .dp-candidate-chip material, deliberately non-interactive: no hover/focus
+   affordance, no pointer cursor, never opens a chooser. */
+.dp-group-candidate-history {
+  cursor: default;
+}
+
 /* ── Chooser popover ───────────────────────────────────────────────────── */
 .dp-group-candidate-menu {
   min-width: 232px;

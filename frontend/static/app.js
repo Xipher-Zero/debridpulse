@@ -1447,7 +1447,7 @@ async function loadTorrents() {
     tb.innerHTML = items.map(t => `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" tabindex="0" onclick="if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
       <td>
-        <div class="t-name">${esc(t.name)||'(unnamed)'}</div>
+        <div class="t-name">${esc(t.display_name||t.name)||'(unnamed)'}</div>
         <div class="t-hash">${(t.hash||'').substring(0,16)}${t.hash?'…':''}</div>
       </td>
       <td class="sz dp-downloads-provider-cell">
