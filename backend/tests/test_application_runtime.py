@@ -16,7 +16,10 @@ from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
 from transfers.errors import TransferError, Category, Domain, NormalizedError, Retryability, Recovery, Stage
-from transfers.models import TransferRequest, ResolutionResult, ResourceState, TransferOutcome, OutcomeKind, IntegrationDescriptor
+from transfers.models import (
+    ArtifactFingerprint, IntegrationDescriptor, OutcomeKind, ResolutionResult, ResourceState,
+    TransferOutcome, TransferRequest, TransferState,
+)
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -159,16 +162,23 @@ async def test_single_link_submission_response_shape_is_unchanged(runtime):
 
 
 @pytest.mark.asyncio
-async def test_batch_link_submission_admits_independent_transfers_and_exposes_items(runtime):
-    """DP 1.0.12 Sections 7 + 12.1 + 12.1a: one batch user action submitting N
-    independent URLs must durably admit N independent transfer lineages (not
-    one transfer with N sibling requests), and the response must expose them
-    as `items` rather than collapsing them behind one legacy id/torrent_id
-    (which would be inventing arbitrary multi-item semantics -- Section 7).
-    The only in-repo consumer of this response, the frontend Quick Add flow
+async def test_batch_link_submission_admits_one_transfer_with_n_independent_requests(runtime):
+    """DP 1.0.12 corrective Sections 4 + 7 + 21 (Example A/B): one Quick Add
+    batch submitting N URLs is one user submission and must durably admit
+    exactly ONE transfer owning N independent root requests -- not N
+    top-level transfers later requiring cross-transfer collapse. Every
+    submitted URL still keeps its own durable request lineage (ordinal/id),
+    but submission scope (one batch -> one transfer) is not the same thing
+    as equivalence scope (which may still converge those N sibling requests
+    onto one canonical artifact -- see test_multi_mirror_general_http_convergence.py).
+
+    The response restores the established parent single-transfer contract
+    (id/torrent_id/items[0] all identify the one admitted transfer) rather
+    than the N-item shape the reverted topology invented. The only in-repo
+    consumer of this response, the frontend Quick Add flow
     (frontend/static/app.js addDashboardEntries), never reads id/torrent_id/
-    items from this endpoint at all (it only checks `_deferred`), so it
-    cannot misinterpret a multi-item response as one legacy transfer."""
+    items from this endpoint at all (it only checks `_deferred`), so the
+    restored shape cannot be misinterpreted by it either way."""
     application, _provider, _executor, client = runtime
     links = [f"https://fake.example/mirror-{index}" for index in range(1, 4)]
     response = await client.post("/api/links/add", json={"links": links})
@@ -176,16 +186,112 @@ async def test_batch_link_submission_admits_independent_transfers_and_exposes_it
     body = response.json()
     assert body["ok"] is True
     assert body["accepted"] == 3
-    assert "id" not in body and "torrent_id" not in body
+    # One transfer represents the whole batch: id/torrent_id/items[0] agree.
+    assert body["id"] == body["torrent_id"]
     items = body["items"]
-    assert len(items) == 3
-    item_ids = [item["id"] for item in items]
-    assert len(set(item_ids)) == 3  # three genuinely independent transfers.
-    for transfer_id in item_ids:
-        transfer = await application.repository.get(transfer_id)
-        assert transfer is not None
-        requests = await application.repository.requests(transfer_id)
-        assert len(requests) == 1  # each transfer owns exactly its own single source request.
+    assert len(items) == 1  # ONE transfer represents the whole batch, not N.
+    assert items[0]["id"] == body["id"]
+    transfer_id = body["id"]
+    transfer = await application.repository.get(transfer_id)
+    assert transfer is not None
+    requests = await application.repository.requests(transfer_id)
+    assert len(requests) == 3  # the one transfer owns all 3 independent root requests.
+    request_ids = {record.id for record in requests}
+    assert len(request_ids) == 3  # each request keeps its own durable identity.
+
+
+@pytest.mark.asyncio
+async def test_quick_add_ten_equivalent_urls_admit_one_transfer_and_converge_to_one_canonical(runtime, monkeypatch):
+    """DP 1.0.12 corrective Sections 4.1/4.2/4.3/9/21 Example A -- through the
+    REAL Quick Add seam (POST /api/links/add -> ApplicationService.submit_links()),
+    not engine.submit() directly.
+
+    Ten equivalent-content mirror URLs submitted as one Quick Add batch must:
+      * admit as ONE top-level transfer owning 10 durable root requests with
+        distinct ids -- no 10-transfer fan-out (4.1/4.2);
+      * then, once driven through the existing, UNMODIFIED engine (via
+        ApplicationService.resolve_pending(), the same seam the production
+        scheduler uses), converge onto Section A3's exact durable state, not
+        merely engine capability proven in isolation:
+          - 1 canonical primary artifact;
+          - 9 same-transfer standby/duplicate sibling contributions under it;
+          - 10 canonical candidate bindings;
+          - 10 candidate-origin/provenance records tied back to the 10
+            original requests;
+          - 0 same-transfer artifact_consolidations rows;
+          - the parent transfer NOT marked consolidated (Invariant 4/9).
+    """
+    application, _provider, executor, client = runtime
+
+    # All ten candidates must be provably the SAME logical artifact to a
+    # sampling-capable executor, exactly like ten real mirrors of one file --
+    # override the fake sampler to a fixed shared signature regardless of
+    # which mirror URL it was given (transfers/mirrors.py identity is proven
+    # by sampled content, never by URL/hostname).
+    async def shared_fingerprint(candidate):
+        return ArtifactFingerprint(candidate.expected_bytes, "shared-quick-add-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", shared_fingerprint)
+
+    links = [f"https://mirror{index}.example/ubuntu.iso" for index in range(1, 11)]
+    response = await client.post("/api/links/add", json={"links": links})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is True
+    assert body["accepted"] == 10
+    assert body["id"] == body["torrent_id"]  # one transfer represents the whole batch.
+    assert len(body["items"]) == 1
+
+    transfer_id = body["id"]
+    async with database.get_db() as db:
+        total_transfers = await db.fetchone("SELECT COUNT(*) AS n FROM torrents")
+    assert int(total_transfers["n"]) == 1  # Section 4.1: no 10-transfer fan-out -- exactly one transfer exists.
+
+    requests_before = await application.repository.requests(transfer_id)
+    assert len(requests_before) == 10  # Section 4.1/4.2: one transfer, 10 independent root requests.
+    request_ids = {record.id for record in requests_before}
+    assert len(request_ids) == 10  # each request keeps its own durable identity.
+
+    # Drive the EXISTING, unmodified engine to convergence through the same
+    # application-level seam production's scheduler uses.
+    for _ in range(8):
+        await application.resolve_pending()
+        artifacts = await application.repository.artifacts(transfer_id)
+        if len(artifacts) == 1 and len(artifacts[0].candidates) == 10:
+            break
+
+    artifacts = await application.repository.artifacts(transfer_id)
+    assert len(artifacts) == 1  # 1 canonical primary artifact (repository.artifacts() excludes standby rows).
+    canonical_artifact = artifacts[0]
+    assert len(canonical_artifact.candidates) == 10  # all 10 candidates bound onto the primary.
+
+    async with database.get_db() as db:
+        standby_rows = await db.fetchall(
+            "SELECT id,request_id FROM download_files WHERE torrent_id=? AND mirror_state='standby' AND mirror_group_id=?",
+            (transfer_id, canonical_artifact.id),
+        )
+    assert len(standby_rows) == 9  # 9 same-transfer standby/duplicate sibling contributions under the primary.
+
+    bindings = await application.engine.canonical.bindings(canonical_artifact.id)
+    assert len(bindings) == 10  # 10 canonical candidate bindings.
+    origin_request_ids = set()
+    total_origins = 0
+    for binding in bindings:
+        for origin in binding["origins"]:
+            total_origins += 1
+            origin_request_ids.add(str(origin["request_id"]))
+    assert total_origins == 10  # 10 candidate-origin/provenance records.
+    assert origin_request_ids == request_ids  # every origin ties back to one of the 10 original requests.
+
+    async with database.get_db() as db:
+        consolidations = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_transfer_id=?",
+            (transfer_id,),
+        )
+    assert int(consolidations["n"]) == 0  # Invariant 9: zero same-transfer artifact_consolidations rows.
+
+    final_transfer = await application.repository.get(transfer_id)
+    assert final_transfer.state != TransferState.CONSOLIDATED  # Invariant 4: sibling convergence != transfer consolidation.
 
 
 @pytest.mark.asyncio

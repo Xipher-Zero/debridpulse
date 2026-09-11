@@ -31,7 +31,7 @@ from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from fake_integrations import MemoryExecutor, ParcelProvider
 from providers.general_http.provider import GeneralHttpProvider
 from transfers.engine import TransferEngine
-from transfers.models import ArtifactFingerprint, SourceIdentity, TransferRequest, TransferState
+from transfers.models import ArtifactFingerprint, FingerprintKind, SourceIdentity, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
@@ -213,16 +213,27 @@ async def _build_runtime(tmp_path, monkeypatch) -> _Runtime:
     return _Runtime(repository, engine, proc, service, downloads, server)
 
 
-async def test_ten_identical_mirrors_converge_to_one_canonical_artifact(tmp_path, monkeypatch):
-    """Sections 12.1 + 12.3 + 12.8 (real runtime).
+async def test_ten_identical_mirrors_converge_within_one_transfer(tmp_path, monkeypatch):
+    """DP 1.0.12 corrective Sections 4.1/4.2/4.3/9/21 Example A (real
+    runtime, corrected topology).
 
     Ten independent HTTPS-style loopback mirrors of one identical payload,
-    submitted as ten separate engine.submit() calls (the corrected topology --
-    see application/service.py submit_links()), must:
-      * each durably admit as its OWN transfer lineage (12.1);
-      * converge, through the real GeneralHttpProvider + real bounded sampler,
-        to exactly one canonical artifact exposing 10 durable candidate
-        bindings, with the other 9 transfers durably consolidated (12.3);
+    submitted as ONE Quick-Add-shaped batch -- a single engine.submit() call
+    admitting ONE transfer with 10 sibling TransferRequests, exactly the
+    restored topology in application/service.py submit_links() -- must:
+      * remain ONE transfer owning 10 independent durable request lineages
+        throughout (4.1/4.2), never fanning out into 10 top-level transfers;
+      * converge, through the real GeneralHttpProvider + real bounded
+        sampler, to exactly one canonical artifact INSIDE that same
+        transfer, exposing 10 durable candidate bindings (4.3);
+      * never mark the parent transfer `consolidated` merely because its own
+        sibling requests converged (4.3, Invariant 4) -- `consolidated` is
+        reserved for genuine cross-transfer contribution (see
+        test_later_separate_transfer_cross_transfer_consolidates_into_canonical
+        below);
+      * record zero same-transfer `artifact_consolidations` rows (Invariant
+        9/Example A) -- that table exists for cross-transfer provenance only
+        (CanonicalOwnership.attach());
       * do so correctly even though all 10 materialize concurrently, racing
         through the same canonical-ownership machinery (12.8).
     """
@@ -234,107 +245,162 @@ async def test_ten_identical_mirrors_converge_to_one_canonical_artifact(tmp_path
             TransferRequest("http", runtime.server.url(index, path))
             for index in range(1, 11)
         )
-        transfers = await asyncio.gather(*(
-            runtime.engine.submit((request,), deduplicate=False) for request in requests
-        ))
-        transfer_ids = [transfer.id for transfer in transfers]
-        assert len(set(transfer_ids)) == 10  # Section 12.1: ten independent transfer lineages.
+        transfer = await runtime.engine.submit(requests, deduplicate=False)
 
-        # canonical.canonical_artifacts() is a transient, in-flight-only view
-        # used internally by _materialize's race resolution -- it stops
-        # listing an artifact once execution reaches a terminal status (see
-        # canonical.py: "f.status NOT IN ('completed',...)"), which the small
-        # fixture payload can reach almost immediately over loopback. Durable
-        # post-convergence truth is transfer state (CONSOLIDATED) plus the
-        # surviving winner's own non-standby artifact row, exactly what
-        # Section 26 asks this proof to inspect ("canonical durable state").
         async def converged():
-            states = {tid: (await runtime.repository.get(tid)).state for tid in transfer_ids}
-            consolidated = [tid for tid, state in states.items() if state == TransferState.CONSOLIDATED]
-            if len(consolidated) != 9:
+            artifacts = await runtime.repository.artifacts(transfer.id)
+            if len(artifacts) != 1:
                 return None
-            winners = [tid for tid in transfer_ids if tid not in consolidated]
-            if len(winners) != 1:
-                return None
-            winner_artifacts = await runtime.repository.artifacts(winners[0])
-            if len(winner_artifacts) != 1:
-                return None
-            return winner_artifacts[0]
+            bindings = await runtime.engine.canonical.bindings(artifacts[0].id)
+            return artifacts[0] if len(bindings) == 10 else None
 
-        canonical_artifact = await runtime.until(converged, label="10-mirror canonical convergence")
+        canonical_artifact = await runtime.until(converged, label="10-mirror intra-transfer convergence")
+
+        records = await runtime.repository.requests(transfer.id)
+        assert len(records) == 10  # Section 4.1/4.2: one transfer, 10 independent request lineages.
+        request_ids = {record.id for record in records}
+        assert len(request_ids) == 10  # every request keeps its own durable identity.
 
         bindings = await runtime.engine.canonical.bindings(canonical_artifact.id)
-        assert len(bindings) == 10  # Section 12.3: 10 durable candidate/source bindings.
-        all_origin_transfer_ids = set()
+        assert len(bindings) == 10  # Section 4.3/Example A: 10 durable candidate/source bindings.
+        all_origin_request_ids = set()
         for binding in bindings:
             for origin in binding["origins"]:
-                all_origin_transfer_ids.add(int(origin["contributing_transfer_id"]))
-        assert all_origin_transfer_ids == set(transfer_ids)  # every source represented via origin provenance.
+                all_origin_request_ids.add(str(origin["request_id"]))
+        assert all_origin_request_ids == request_ids  # every sibling represented via origin provenance.
 
         source_scopes = {(binding["source_identity"] or {}).get("key") for binding in bindings}
         assert source_scopes == {f"127.0.0.{index}" for index in range(1, 11)}
 
-        consolidation_targets = set()
-        for tid in transfer_ids:
-            info = await runtime.engine.canonical.consolidation(tid)
-            if info["state"] == "complete":
-                consolidation_targets.add(info["consolidated_into"])
-        assert consolidation_targets == {canonical_artifact.transfer_id}
-        assert len(consolidation_targets | {canonical_artifact.transfer_id}) == 1
+        async with database.get_db() as db:
+            row = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_transfer_id=?",
+                (transfer.id,),
+            )
+        assert int(row["n"]) == 0  # Invariant 9/Example A: no same-transfer artifact_consolidations rows.
 
-        winner_final = await runtime.repository.get(canonical_artifact.transfer_id)
-        assert winner_final.state != TransferState.CONSOLIDATED  # the canonical owner is not itself consolidated.
+        final_transfer = await runtime.repository.get(transfer.id)
+        assert final_transfer.state != TransferState.CONSOLIDATED  # Invariant 4: sibling convergence != transfer consolidation.
     finally:
         await runtime.close()
 
 
-async def test_same_filename_different_content_mirrors_do_not_converge(tmp_path, monkeypatch):
-    """Section 12.4: identical logical filename, genuinely different payloads,
-    must remain two independent, non-consolidated transfers even once
-    unknown-size pairing is no longer a structural rejection."""
+async def test_later_separate_transfer_cross_transfer_consolidates_into_canonical(tmp_path, monkeypatch):
+    """DP 1.0.12 corrective Sections 4.4/21 Example C (real runtime): a
+    LATER, genuinely separately admitted Quick Add -- its own distinct
+    engine.submit() call, modeling a second user submission -- that resolves
+    to a source proven equivalent to an already-established canonical
+    artifact must still attach/consolidate through the existing
+    cross-transfer CanonicalOwnership.attach() path. This is the one
+    legitimate use of cross-transfer consolidation (Section 4.4), distinct
+    from the intra-transfer sibling convergence proven above (Section 4.3) --
+    the two must not be confused (Section 4.5)."""
+    runtime = await _build_runtime(tmp_path, monkeypatch)
+    path = "/" + MIRROR_FILENAME
+    runtime.server.route(path, PAYLOAD, behavior="normal")
+    try:
+        first_requests = tuple(
+            TransferRequest("http", runtime.server.url(index, path))
+            for index in range(1, 4)
+        )
+        first_transfer = await runtime.engine.submit(first_requests, deduplicate=False)
+
+        async def first_converged():
+            artifacts = await runtime.repository.artifacts(first_transfer.id)
+            if len(artifacts) != 1:
+                return None
+            bindings = await runtime.engine.canonical.bindings(artifacts[0].id)
+            return artifacts[0] if len(bindings) == 3 else None
+
+        canonical_before = await runtime.until(first_converged, label="first batch intra-transfer convergence")
+        assert (await runtime.repository.get(first_transfer.id)).state != TransferState.CONSOLIDATED
+
+        # A genuinely separate LATER user submission -- its own engine.submit()
+        # call, its own transfer -- happens to resolve to an equivalent source.
+        later_request = TransferRequest("http", runtime.server.url(4, path))
+        later_transfer = await runtime.engine.submit((later_request,), deduplicate=False)
+
+        async def cross_transfer_consolidated():
+            info = await runtime.engine.canonical.consolidation(later_transfer.id)
+            return info if info["state"] == "complete" else None
+
+        info = await runtime.until(cross_transfer_consolidated, label="later transfer cross-transfer consolidation")
+        assert info["consolidated_into"] == first_transfer.id
+
+        async with database.get_db() as db:
+            row = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_transfer_id=?",
+                (later_transfer.id,),
+            )
+        assert int(row["n"]) == 1  # Section 4.4: cross-transfer provenance recorded for the later transfer.
+
+        winner_final = await runtime.repository.get(first_transfer.id)
+        assert winner_final.state != TransferState.CONSOLIDATED  # the canonical owner remains authoritative.
+        bindings_after = await runtime.engine.canonical.bindings(canonical_before.id)
+        assert len(bindings_after) == 4  # 3 intra-transfer siblings + 1 genuine cross-transfer contributor.
+
+        # Explicit candidate-origin/provenance assertion for the later
+        # transfer's own contribution (Section 4.4) -- not just the
+        # artifact_consolidations row and the binding-count growth above.
+        later_records = await runtime.repository.requests(later_transfer.id)
+        assert len(later_records) == 1
+        later_request_id = later_records[0].id
+        later_origins = [
+            origin for binding in bindings_after for origin in binding["origins"]
+            if int(origin["contributing_transfer_id"]) == later_transfer.id
+        ]
+        assert len(later_origins) == 1  # exactly one candidate-origin/provenance record for the later transfer.
+        assert str(later_origins[0]["request_id"]) == later_request_id  # tied back to its own durable request.
+    finally:
+        await runtime.close()
+
+
+async def test_same_filename_different_content_siblings_do_not_converge_within_one_transfer(tmp_path, monkeypatch):
+    """Section 4.3/12.4/21 (corrected topology): identical logical filename,
+    genuinely different payloads, submitted as SIBLING requests of the same
+    one-batch transfer, must remain two independent, non-consolidated
+    artifacts inside that one transfer -- proving intra-transfer negative
+    safety, not merely cross-transfer safety -- even once unknown-size
+    pairing is no longer a structural rejection."""
     runtime = await _build_runtime(tmp_path, monkeypatch)
     path = "/" + MIRROR_FILENAME
     payload_b = PAYLOAD[::-1]  # same length, genuinely different bytes.
     assert payload_b != PAYLOAD
+    # Two distinct server *behaviors* keyed off distinct paths would be
+    # simpler, but Section 12.4 specifically requires the SAME logical
+    # filename to still diverge on content, so both requests target the same
+    # fixture path while the two hosts serve different bytes for it. aiohttp
+    # routes per-app, so give each host its own server/app instance instead
+    # of trying to key one handler by client source address.
+    other = MirrorFixtureServer()
     try:
-        left_request = TransferRequest("http", runtime.server.url(1, path))
-        right_request = TransferRequest("http", runtime.server.url(2, path))
-        # Two distinct server *behaviors* keyed off distinct paths would be
-        # simpler, but Section 12.4 specifically requires the SAME logical
-        # filename to still diverge on content, so both requests target the
-        # same fixture path while the two hosts serve different bytes for it.
-        # aiohttp routes per-app, so give each host its own server/app instance
-        # instead of trying to key one handler by client source address.
-        other = MirrorFixtureServer()
+        runtime.server.route(path, PAYLOAD, behavior="normal")
         await other.start()
         other.route(path, payload_b, behavior="normal")
-        left = await runtime.engine.submit((left_request,), deduplicate=False)
+
+        left_request = TransferRequest("http", runtime.server.url(1, path))
         right_request = TransferRequest("http", other.url(2, path))
-        right = await runtime.engine.submit((right_request,), deduplicate=False)
+        transfer = await runtime.engine.submit((left_request, right_request), deduplicate=False)
 
         async def both_materialized():
-            left_artifacts = await runtime.repository.artifacts(left.id)
-            right_artifacts = await runtime.repository.artifacts(right.id)
-            return bool(left_artifacts and right_artifacts) or None
+            artifacts = await runtime.repository.artifacts(transfer.id)
+            return artifacts if len(artifacts) == 2 else None
 
-        await runtime.until(both_materialized, label="both mirrors materialize independently")
+        await runtime.until(both_materialized, label="both mismatched siblings materialize independently")
         for _ in range(10):
             await runtime.engine.tick()
             await asyncio.sleep(0.02)
 
-        left_final = await runtime.repository.get(left.id)
-        right_final = await runtime.repository.get(right.id)
-        assert left_final.state != TransferState.CONSOLIDATED
-        assert right_final.state != TransferState.CONSOLIDATED
-        # Each transfer must still own its own (non-standby) artifact row --
-        # a false consolidation would retire one side's row to
+        final_transfer = await runtime.repository.get(transfer.id)
+        assert final_transfer.state != TransferState.CONSOLIDATED
+        # Both siblings must still each own their own (non-standby) artifact
+        # row -- a false merge would retire one side's row to
         # mirror_state='standby', dropping it out of repository.artifacts().
-        assert len(await runtime.repository.artifacts(left.id)) == 1
-        assert len(await runtime.repository.artifacts(right.id)) == 1
-        assert (await runtime.engine.canonical.consolidation(left.id))["state"] == "none"
-        assert (await runtime.engine.canonical.consolidation(right.id))["state"] == "none"
-        await other.stop()
+        artifacts = await runtime.repository.artifacts(transfer.id)
+        assert len(artifacts) == 2
+        assert (await runtime.engine.canonical.consolidation(transfer.id))["state"] == "none"
     finally:
+        await other.stop()
         await runtime.close()
 
 
@@ -453,6 +519,115 @@ async def test_restart_preserves_canonical_owner_bindings_and_consolidated_statu
         info = await engine2.canonical.consolidation(tid)
         assert info["state"] == "complete"
         assert info["consolidated_into"] == winner_before
+
+
+async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_path, monkeypatch):
+    """DP 1.0.12 corrective Section 5/21 Example B (deterministic, fast,
+    process-free fixture modeling the live runtime capture that motivated
+    this correction): one Quick-Add-shaped batch of 10 sibling requests where
+    6 sources obtain full/strong proof for one canonical artifact (the
+    original acquisition plus 5 attached alternates) while 4 receive
+    transient proof inability (range_unsupported / dns_failure) that
+    exhausts the existing bounded retry budget
+    (transfers/cohorts.py:_PROOF_RETRY_BUDGET == 2) must:
+      * remain ONE transfer throughout -- never split into 6 or 10 top-level
+        transfers (Section 5, Invariant 1/2/9);
+      * converge the 6 provable siblings onto one canonical artifact;
+      * let the 4 transiently-unprovable siblings independently materialize
+        as their own artifacts, INSIDE that same transfer, once bounded
+        proof is exhausted -- transient inability is never treated as
+        contradictory evidence (Invariant 8);
+      * leave exact durable equivalence_reason/equivalence_disposition
+        explainable for every transient sibling after exhaustion.
+    """
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "mixed-six-four.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"mixed-mirror-{index}") for index in range(1, 11))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    range_unsupported_ids = {providers[6].descriptor.id, providers[7].descriptor.id}
+    dns_failure_ids = {providers[8].descriptor.id, providers[9].descriptor.id}
+
+    async def mixed_fingerprint(candidate):
+        source_key = candidate.provider_id
+        if source_key in range_unsupported_ids:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
+        if source_key in dns_failure_ids:
+            raise socket.gaierror("simulated DNS resolution failure")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", mixed_fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"mixed-mirror-{index}", name="ubuntu.iso",
+                         preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="ubuntu.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    proven_records = [by_payload[f"mixed-mirror-{index}"] for index in range(1, 7)]
+    transient_records = [by_payload[f"mixed-mirror-{index}"] for index in range(7, 11)]
+
+    # Establish the 6-source canonical group FIRST and deterministically --
+    # sequential (not gathered) _resolve() calls guarantee one of these six
+    # becomes the baseline before any transient sibling is ever compared
+    # against it (Section 12.1/12.2: deterministic, not race-dependent).
+    for record in proven_records:
+        await engine._resolve(record)
+
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    canonical_artifact = artifacts[0]
+    bindings = await engine.canonical.bindings(canonical_artifact.id)
+    assert len(bindings) == 6  # canonical acquisition + 5 attached alternates (Example B: "6 proven sources").
+
+    # Drive each transiently-unprovable sibling through the existing bounded
+    # retry budget (2 retries) to exhaustion, sequentially and deterministically.
+    for record in transient_records:
+        await engine._resolve(record)
+        for _ in range(2):
+            refreshed = next(
+                item for item in await engine.repository.requests(transfer.id) if item.id == record.id
+            )
+            assert refreshed.state == "materializing"  # still parked pending bounded proof retry.
+            now[0] = refreshed.retry_at + 0.01
+            await engine._process_request(refreshed)
+
+    final_records = {item.id: item for item in await engine.repository.requests(transfer.id)}
+    assert len(final_records) == 10  # Invariant 1/2: one transfer, 10 durable requests, throughout.
+
+    for record in transient_records:
+        assert final_records[record.id].state != "materializing"  # independently materialized after exhaustion.
+
+    async with database.get_db() as db:
+        for record in transient_records:
+            row = await db.fetchone(
+                "SELECT equivalence_disposition,equivalence_reason FROM transfer_requests WHERE id=?",
+                (record.id,),
+            )
+            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
+
+    artifacts_after = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_after) == 5  # 1 canonical (6 proven sources) + 4 independent (Example B topology).
+    non_canonical = [item for item in artifacts_after if item.id != canonical_artifact.id]
+    assert len(non_canonical) == 4
+    for artifact in non_canonical:
+        assert len(artifact.candidates) == 1  # each transient sibling kept its own single, unmerged candidate.
+
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_transfer_id=?",
+            (transfer.id,),
+        )
+    assert int(row["n"]) == 0  # Invariant 9: no same-transfer artifact_consolidations rows.
+
+    final_transfer = await engine.repository.get(transfer.id)
+    assert final_transfer.state != TransferState.CONSOLIDATED  # Invariant 4: sibling convergence != transfer consolidation.
 
 
 async def _converge_three_unknown_size_mirrors(tmp_path, monkeypatch):

@@ -1,18 +1,26 @@
-"""DP 1.0.12 Section 17 measurement: batch link-admission DB/query boundedness.
+"""DP 1.0.12 corrective Section A7 measurement: batch link-admission DB/query
+boundedness under the restored one-batch/one-transfer admission topology.
 
-``application/service.py submit_links()`` now calls ``self.submit((request,), ...)``
-once per URL instead of one ``self.submit(requests, ...)`` call for all URLs. This
-instruments the real ``db.database`` connection layer to measure, rather than
-assert from reading the code, that:
+``application/service.py submit_links()`` restores the parent architecture:
+ONE ``self.submit(requests, ...)`` call admits the entire N-URL batch as one
+transfer with N sibling requests, instead of looping ``self.submit((request,), ...)``
+once per URL (which produced N independent top-level transfers). This
+instruments the real ``db.database`` connection layer, plus the exact
+``TransferRepository.admit`` / ``TransferRepository.presentation`` seams
+``ApplicationService.submit()`` calls, to measure -- rather than assert from
+reading the code -- that:
 
-  * the marginal SQL-statement cost per additional URL is constant (linear
-    total cost, not N^2 / multiplicative);
-  * ``self.submit()``'s own ``_publish()`` call (``repository.presentation()``
-    plus two ``event_bus.publish()`` calls) is accounted for in that measured
-    cost, not waved away as "only durable admission";
+  * exactly ONE ``repository.admit()`` call and ONE ``_publish()``/
+    ``repository.presentation()`` cycle happen per Quick Add batch, regardless
+    of how many URLs it contains (Section A7: "no repeated per-URL top-level
+    submit()/presentation() cycle");
+  * the marginal SQL-statement cost per additional URL *within* that one
+    admission is bounded/constant (attributable to N request-row INSERTs
+    inside the one ``admit()`` transaction), not the N-transfer-fan-out shape
+    the reverted topology produced;
   * no resolution, materialization, or execution work happens synchronously
-    inside the batch-submission request handler -- the provider and executor
-    are never touched until the caller explicitly drives
+    inside the batch-submission request handler -- the fake provider/executor
+    are untouched until the caller explicitly drives
     ``resolve_pending()``/``reconcile_executions()``.
 """
 from __future__ import annotations
@@ -22,8 +30,8 @@ from dataclasses import dataclass, field
 import pytest
 
 import db.database as database
+import transfers.repository as repository_module
 from test_application_runtime import runtime  # noqa: F401  (shared fixture, established repo convention)
-from transfers.models import TransferRequest
 
 
 @dataclass
@@ -33,7 +41,6 @@ class _QueryCounter:
     fetchall: int = 0
     fetchone: int = 0
     execute_returning_id: int = 0
-    get_db_acquisitions: int = 0
     calls: list[str] = field(default_factory=list)
 
     @property
@@ -87,18 +94,62 @@ def query_counter(monkeypatch):
     return counter
 
 
-def _acquisitions():
-    return int(database.db_runtime_metrics()["sqlite_acquires"])
+@dataclass
+class _CallCounter:
+    admit: int = 0
+    presentation: int = 0
+
+
+@pytest.fixture
+def call_counter(monkeypatch):
+    counter = _CallCounter()
+    original_admit = repository_module.TransferRepository.admit
+    original_presentation = repository_module.TransferRepository.presentation
+
+    async def counted_admit(self, *args, **kwargs):
+        counter.admit += 1
+        return await original_admit(self, *args, **kwargs)
+
+    async def counted_presentation(self, *args, **kwargs):
+        counter.presentation += 1
+        return await original_presentation(self, *args, **kwargs)
+
+    monkeypatch.setattr(repository_module.TransferRepository, "admit", counted_admit)
+    monkeypatch.setattr(repository_module.TransferRepository, "presentation", counted_presentation)
+    return counter
 
 
 @pytest.mark.asyncio
-async def test_batch_link_admission_marginal_query_cost_is_constant(runtime, query_counter):
-    """Submit growing batches (1, 2, 4, 8 URLs) and measure the exact
-    SQL-statement delta per batch. If the corrected per-URL submit() loop
-    caused multiplicative/N^2 work, the marginal cost per additional URL
-    would grow with N; measurement below proves it does not."""
-    _application, _provider, _executor, client = runtime
-    batch_sizes = [1, 2, 4, 8]
+async def test_batch_link_admission_uses_exactly_one_admit_and_publish_cycle(runtime, call_counter):
+    """Section A7 / A2: one N-URL Quick Add performs one batched application
+    admission -- exactly one ``repository.admit()`` call and exactly one
+    ``_publish()``/``repository.presentation()`` cycle -- never N of either."""
+    _application, provider, executor, client = runtime
+    links = [f"https://fake.example/one-admit-{index}" for index in range(10)]
+
+    response = await client.post("/api/links/add", json={"links": links})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["accepted"] == 10
+    assert call_counter.admit == 1, "expected exactly one repository.admit() call for the whole N-URL batch"
+    assert call_counter.presentation == 1, "expected exactly one presentation()/publish cycle for the whole batch"
+
+    # Section 8/B4/17: no synchronous provider/executor work during submission.
+    assert provider.calls == []
+    assert executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_batch_link_admission_marginal_query_cost_is_bounded_per_request_row(runtime, query_counter):
+    """Submit growing single-batch sizes (1, 2, 4, 8, 16 URLs, each its own
+    Quick Add call) and measure the exact SQL-statement delta per batch. The
+    one-transfer/N-request-row admission model predicts total cost grows as
+    a small constant per-batch overhead plus one bounded increment per
+    additional request row (linear in N); a reintroduced N-transfer fan-out
+    would instead multiply the *entire* per-submission cost (admit + publish)
+    by N. The marginal rate below distinguishes the two shapes."""
+    _application, provider, executor, client = runtime
+    batch_sizes = [1, 2, 4, 8, 16]
     measurements = []
     cursor = 0
 
@@ -106,54 +157,50 @@ async def test_batch_link_admission_marginal_query_cost_is_constant(runtime, que
         links = [f"https://fake.example/query-bounded-{cursor + i}" for i in range(size)]
         cursor += size
         start_statements = query_counter.total_statements
-        start_acquisitions = _acquisitions()
 
         response = await client.post("/api/links/add", json={"links": links})
 
         assert response.status_code == 200, response.text
         assert response.json()["accepted"] == size
         statements = query_counter.total_statements - start_statements
-        acquisitions = _acquisitions() - start_acquisitions
-        measurements.append((size, statements, acquisitions))
+        measurements.append((size, statements))
 
-    # --- Report exact measured counts (surfaced in the pytest failure/log
-    # output and cited verbatim in the DP 1.0.12 checkpoint) ---
     report = "\n".join(
-        f"  N={size:>2}: {statements} SQL statements ({acquisitions} get_db() acquisitions), "
-        f"{statements / size:.2f} statements/URL"
-        for size, statements, acquisitions in measurements
+        f"  N={size:>2}: {statements} SQL statements, {statements / size:.2f} statements/URL"
+        for size, statements in measurements
     )
-    print(f"\nBatch link admission query cost:\n{report}")
+    print(f"\nBatch link admission query cost (one transfer per batch):\n{report}")
 
-    # Marginal cost per additional URL, computed from consecutive batches.
-    # A linear/bounded-per-item admission path yields an identical marginal
-    # rate regardless of N; a multiplicative/N^2 path would show the
-    # marginal rate growing with N.
+    # Marginal cost per additional request row, computed from consecutive
+    # batches. A bounded-per-row admission path (one INSERT per row inside
+    # the single admit() transaction) yields an identical marginal rate
+    # regardless of N; an N-transfer-fan-out path would instead show the
+    # *total* cost scaling by whole per-submission multiples of N, not by a
+    # small constant per extra row.
     marginal_rates = []
-    for (size_a, stmts_a, _), (size_b, stmts_b, _) in zip(measurements, measurements[1:]):
+    for (size_a, stmts_a), (size_b, stmts_b) in zip(measurements, measurements[1:]):
         marginal_rates.append((stmts_b - stmts_a) / (size_b - size_a))
     print(f"  marginal statements/URL between consecutive batches: {marginal_rates}")
 
     assert len(set(marginal_rates)) == 1, (
-        f"Marginal per-URL statement cost is not constant across batch sizes -- "
-        f"possible multiplicative/N^2 admission cost: {measurements}"
+        f"Marginal per-request-row statement cost is not constant across batch sizes -- "
+        f"possible reintroduced N-transfer-fan-out admission cost: {measurements}"
+    )
+    per_row = marginal_rates[0]
+    # One INSERT per request row inside the existing admit() loop is the
+    # expected bounded marginal cost; anything at or above the whole
+    # per-submission overhead measured for N=1 would indicate the batch is
+    # still being split into independent top-level submissions.
+    single_batch_overhead = measurements[0][1]
+    assert 0 < per_row < single_batch_overhead, (
+        f"expected a small bounded per-row marginal cost ({per_row}) well under the "
+        f"whole one-batch overhead ({single_batch_overhead}), not a repeated per-URL submission cost"
     )
 
-    # Each individual submit() call (admit() + _publish(), including its
-    # repository.presentation() query and its two event_bus.publish() SSE
-    # fan-outs) is itself several bounded statements, not "one" -- confirm
-    # that explicitly rather than assert a specific magic number, so this
-    # doesn't silently pass if the shape changes materially.
-    per_item = marginal_rates[0]
-    assert per_item > 1, "expected multiple bounded statements per URL (admit + presentation), not a single one"
-    assert per_item < 30, f"per-URL statement cost ({per_item}) looks unexpectedly large for bounded admission"
-
-    # Section 17: admission must not synchronously resolve/materialize/
-    # execute. The fake provider/executor must be untouched by pure
-    # submission -- only the caller's own explicit resolve_pending()/
-    # reconcile_executions() calls (never made in this test) may touch them.
-    assert _provider.calls == []
-    assert _executor.calls == []
+    # Section 8/B4/17: admission must not synchronously resolve/materialize/
+    # execute regardless of batch size.
+    assert provider.calls == []
+    assert executor.calls == []
 
 
 @pytest.mark.asyncio
@@ -162,14 +209,7 @@ async def test_single_submit_call_cost_includes_publish_presentation_and_events(
     cost between engine.submit() (repository.admit() + engine.submit()'s own
     extra repository.globally_paused()/repository.get() calls) and
     _publish() (repository.presentation() + two event_bus.publish() SSE
-    fan-outs), so the checkpoint's wording is measured rather than assumed --
-    the previous version of this test measured repository.admit() alone,
-    which undercounts engine.submit()'s real cost (it also calls
-    repository.globally_paused() and repository.get() -- see
-    transfers/_engine_base.py submit()) and did not reconcile against the
-    per-URL total measured in the batch test above; this version calls the
-    exact same two steps application.submit() itself calls, in order, so the
-    two pieces sum to that measured per-URL total exactly.
+    fan-outs), so the checkpoint's wording is measured rather than assumed.
 
     ``api.routes`` calls ``bind_publisher(_sse_broadcast)`` at module import
     time (routes.py line 1539), so importing ``api.routes`` -- which the
@@ -180,6 +220,8 @@ async def test_single_submit_call_cost_includes_publish_presentation_and_events(
     this test) -- zero DB I/O regardless of publisher wiring, confirmed by
     reading the function directly. So the measured _publish() cost below is
     genuinely all repository.presentation(), not SSE dispatch."""
+    from transfers.models import TransferRequest
+
     application, _provider, _executor, client = runtime
 
     engine_submit_before = query_counter.total_statements
@@ -202,8 +244,3 @@ async def test_single_submit_call_cost_includes_publish_presentation_and_events(
     )
     assert engine_submit_statements > 0
     assert publish_statements > 0  # _publish()/presentation() is real, measured cost, not zero.
-    # Matches the per-URL total measured independently in
-    # test_batch_link_admission_marginal_query_cost_is_constant (20
-    # statements/URL) -- same two steps, called through the same
-    # ApplicationService.submit() path, just attributed here.
-    assert total == 20

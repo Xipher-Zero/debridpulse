@@ -17,7 +17,7 @@ from transfers.contracts import Manifest
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.models import ExecutionState, TransferRequest, TransferState
 from transfers.requests import (
-    direct_link_filename, extract_hash,
+    direct_link_collection_name, direct_link_filename, extract_hash,
     extract_hash_from_torrent, normalize_direct_links,
 )
 from transfers.storage import StorageDomain
@@ -242,34 +242,24 @@ class ApplicationService:
             name=name, source=source)
 
     async def submit_links(self, links):
-        # DP 1.0.12: each independently supplied source URL is a candidate
-        # interchangeable with every other URL serving the same logical
-        # payload. Admitting all of them under one shared transfer (one
-        # transfer, N sibling TransferRequests) made cross-transfer canonical
-        # consolidation, per-source lifecycle/retry/deletion identity, and
-        # the existing "N-1 consolidated contributors" presentation
-        # unreachable for ordinary direct links -- that machinery is keyed on
-        # independent transfer lineages, not sibling requests within one
-        # transfer (see transfers/canonical.py CanonicalOwnership.attach()).
-        # One batch user action still produces one response, but each URL now
-        # gets its own durable transfer so it is eligible for ordinary
-        # cross-transfer convergence, exactly like separately submitted
-        # magnets/torrents already are.
+        # DP 1.0.12 corrective: one Quick Add batch is one user submission
+        # and admits as ONE durable transfer owning N independent root
+        # requests -- submission scope is not the same thing as equivalence
+        # scope. Each request still keeps its own durable lineage, route/
+        # resolution attempts, candidate/source identity and provenance,
+        # and sibling requests within this one transfer may still safely
+        # converge onto one canonical artifact/candidate set through the
+        # existing intra-transfer machinery (transfers/cohorts.py
+        # coordinate_collection(), transfers/canonical.py
+        # CanonicalOwnership.attach()) -- that machinery is keyed on request
+        # identity, not transfer identity, so it already treats same-transfer
+        # siblings and cross-transfer contributors uniformly. A later,
+        # genuinely separately admitted transfer proven equivalent still
+        # converges through the same cross-transfer path, unaffected by this.
         urls = normalize_direct_links(links)
         requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index)) for index, url in enumerate(urls, 1))
-        items = []
-        for request in requests:
-            items.append(await self.submit((request,), name=request.name, source="direct_link", deduplicate=False))
-        result = {"ok": True, "accepted": len(urls), "items": items}
-        if len(items) == 1:
-            # Single-link submission is unchanged in shape: exactly one
-            # transfer is admitted, so the legacy top-level id/torrent_id
-            # unambiguously name it. For N>1 there is no single transfer to
-            # name here (that would be inventing arbitrary semantics), so
-            # callers must read `items`.
-            result["id"] = items[0]["id"]
-            result["torrent_id"] = items[0]["id"]
-        return result
+        item = await self.submit(requests, name=direct_link_collection_name([], urls), source="direct_link", deduplicate=False)
+        return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 
 
     async def submit_input(self, transfer_id, *, challenge_id, method, values):
