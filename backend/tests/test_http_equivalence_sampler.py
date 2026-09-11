@@ -37,6 +37,10 @@ async def sampler_server(monkeypatch):
         if path == "/malformed":
             body = PAYLOAD[:4096]
             return web.Response(status=206, body=body, headers={"Content-Range": "bytes nonsense"})
+        if path == "/short-ignored":
+            # A server that ignores Range entirely and always answers 200 with
+            # a short body, regardless of the caller's declared expected size.
+            return web.Response(body=PAYLOAD[:50])
 
         if not requested.startswith("bytes="):
             return web.Response(body=PAYLOAD)
@@ -175,6 +179,48 @@ async def test_malformed_content_range_is_rejected(sampler_server):
         base + "/malformed", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert result[2] == FingerprintKind.UNAVAILABLE
     assert result[3] == "invalid_content_range"
+
+
+# --- Case 1 (DP 1.0.12 corrective task): a short, Range-ignoring 200 response
+# must never become a false FULL_CONTENT_SAMPLE certainty when the caller's
+# positive expected size makes that claim incredible. This is the exact
+# production shape observed for transfers 175/186: expected ~10 GiB, actual
+# sampled response 64 KiB, HTTP 200. Reproduced here at a deterministic small
+# scale (50-byte body against a 12,288-byte declared size).
+@pytest.mark.asyncio
+async def test_short_200_response_incompatible_with_expected_size_is_not_false_full_sample(sampler_server):
+    base, _ = sampler_server
+    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+        base + "/short-ignored", sample_bytes=4096, expected_bytes=12288)
+    assert kind != FingerprintKind.FULL_CONTENT_SAMPLE
+    assert kind == FingerprintKind.UNAVAILABLE
+    assert reason == "incomplete_representation"
+    assert total == 0
+    assert signature == "" and prefix == ""
+
+
+# --- Case 2 preservation: a short 200 response must still be trusted as a
+# genuine complete representation when the caller has no expected size, or
+# when the expected size is itself compatible with what was returned. The
+# guard must never become a second, hidden identity gate.
+@pytest.mark.asyncio
+async def test_short_200_response_with_unknown_expected_size_still_full_sample(sampler_server):
+    base, _ = sampler_server
+    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+        base + "/short-ignored", sample_bytes=4096, expected_bytes=0)
+    assert kind == FingerprintKind.FULL_CONTENT_SAMPLE
+    assert total == 50
+    assert signature and prefix
+
+
+@pytest.mark.asyncio
+async def test_short_200_response_compatible_with_expected_size_still_full_sample(sampler_server):
+    base, _ = sampler_server
+    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+        base + "/short-ignored", sample_bytes=4096, expected_bytes=60)
+    assert kind == FingerprintKind.FULL_CONTENT_SAMPLE
+    assert total == 50
+    assert signature and prefix
 
 
 @pytest.mark.parametrize("uri", [

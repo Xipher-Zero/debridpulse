@@ -136,6 +136,19 @@ def _unavailable(reason: str) -> tuple[int, str, FingerprintKind, str, str]:
     return _sample(0, "", FingerprintKind.UNAVAILABLE, reason)
 
 
+def _plausible_as_complete_representation(discovered_length: int, expected_bytes: int) -> bool:
+    """Negative certainty guard only -- never artifact-identity policy.
+
+    Decides whether a short, Range-ignoring 200 response can credibly be
+    treated as the complete representation of an object the caller reported
+    at a known positive size. A positive ``expected_bytes`` may only rule out
+    a claim of completeness here; it is never compared for exact equality and
+    never used to decide that two candidates are the same or different
+    artifact -- that remains Universal Core policy.
+    """
+    return expected_bytes <= 0 or discovered_length * 2 >= expected_bytes
+
+
 async def _read_exactly(response, count: int) -> bytes | None:
     """Read exactly one bounded sample; never consume past its declared region."""
     try:
@@ -242,6 +255,8 @@ async def sampled_public_artifact_fingerprint(
                         return _unavailable("sampler_unavailable")
                     prefix = _digest_prefix(length, first)
                     if length <= sample_bytes:
+                        if not _plausible_as_complete_representation(length, expected_bytes):
+                            return _unavailable("incomplete_representation")
                         return _sample(length, _digest_full(length, first), FingerprintKind.FULL_CONTENT_SAMPLE,
                                        redirect_reason, prefix)
                     return _sample(length, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,

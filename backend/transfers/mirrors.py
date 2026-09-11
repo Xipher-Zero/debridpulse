@@ -12,7 +12,16 @@ from transfers.models import FingerprintKind
 
 logger = logging.getLogger(__name__)
 _STRONG_INTEGRITY_ALGORITHMS = {"sha256", "sha512", "blake2", "blake2b", "blake2s"}
-_TRANSIENT_REASONS = frozenset({"timeout", "dns_failure", "sampler_unavailable"})
+_TRANSIENT_REASONS = frozenset({
+    "timeout", "dns_failure", "sampler_unavailable",
+    # Real provider capabilities sometimes answer a bounded Range probe with
+    # an ambiguous transport fact rather than trustworthy evidence (DP 1.0.12
+    # false-negative repair, Section 4D/Case 4). Neither means the artifacts
+    # differ; both must reuse the existing bounded proof-retry machinery
+    # instead of becoming a permanent independent-artifact decision on the
+    # first ambiguous observation.
+    "range_unsupported", "incomplete_representation",
+})
 _CONTRADICTORY_REASONS = frozenset({"size_disagreement", "sample_mismatch", "integrity_mismatch"})
 _NONPAIRING_REASONS = frozenset({
     "same_candidate", "non_independent_source", "logical_pairing_mismatch", "size_unknown",
