@@ -1385,3 +1385,145 @@ test('stale GROUP list launcher: fresh Details now converges as ARTIFACT -- no m
   await expect(page.locator('.dp-group-candidate-menu')).toBeHidden();
   expect(posted).toBe(false);
 });
+
+// ── DP 1.0.12 Manual Candidate-Switch Operation Boundary correction ───────
+//
+// Artifact-mode switching previously set menuBusy and re-rendered disabled
+// rows but never rendered the shared switching-progress state
+// (renderProgress/progressMarkup) group mode already used during its own
+// multi-file switch (see "a multi-file group switch shows visible
+// progress..." above). These tests prove artifact mode now reuses that SAME
+// owner for a one-item operation -- no second overlay/subsystem -- and never
+// fabricates transfer-lifecycle truth ahead of backend acceptance.
+
+test('ARTIFACT scope: switching shows the shared one-item switching-progress state before the POST resolves, then only success after acceptance', async ({ page }) => {
+  const items = [scopedItem(500, 'artifact', { count: 2, artifactId: 5001 })];
+  await page.route('**/api/torrents*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: items.length }) }));
+  await page.route(url => /\/api\/torrents\/\d+$/.test(url.pathname), route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(500, [
+      file(5001, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible: true })]),
+    ])) }));
+  const gate = { resolvers: [] };
+  await page.route(url => /\/api\/torrents\/500\/artifacts\/\d+\/candidate$/.test(url.pathname), async route => {
+    await new Promise(resolve => { gate.resolvers.push(resolve); });
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, filename: 'file-5001.rar', candidate_id: 'b1', source_host: 'mega.nz' }),
+    });
+  });
+  await ready(page);
+
+  await page.locator('#dash-tbody tr[data-torrent-id="500"] .dp-group-candidate-launcher').click();
+  await page.locator('.dp-group-candidate-menu .dp-group-candidate-switch').click();
+
+  const menu = page.locator('.dp-group-candidate-menu');
+  // The popover stays the ONE switching-progress owner: aria-busy, the
+  // shared progress markup, the safe target label, a one-item count, and no
+  // remaining candidate-action buttons to compete with the operation.
+  await expect(menu).toHaveAttribute('aria-busy', 'true');
+  await expect(menu).toContainText('Candidate sources');
+  await expect(menu).toContainText('Switching to mega.nz');
+  await expect(menu).toContainText('0 of 1 file');
+  await expect(menu.locator('.dp-group-candidate-switch')).toHaveCount(0);
+  // No optimistic lifecycle fabrication and no premature success toast while
+  // the POST is still pending.
+  await expect(menu).not.toContainText('ACTIVE');
+  await expect(page.locator('.toast')).toHaveCount(0);
+
+  await expect.poll(() => gate.resolvers.length).toBeGreaterThan(0);
+  gate.resolvers.shift()();
+
+  await expect(menu).toContainText('1 of 1 file');
+  await expect(page.locator('.toast', { hasText: 'switched' })).toContainText('mega.nz');
+  await expect(menu).not.toHaveAttribute('aria-busy', 'true');
+});
+
+test('ARTIFACT scope: a stale revalidation failure issues no POST, shows no switching overlay, and refreshes authoritative state', async ({ page }) => {
+  const items = [scopedItem(501, 'artifact', { count: 2, artifactId: 5011 })];
+  await page.route('**/api/torrents*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: items.length }) }));
+  let detailCalls = 0;
+  await page.route(url => /\/api\/torrents\/\d+$/.test(url.pathname), route => {
+    detailCalls += 1;
+    // The chooser's own opening fetch (call 1) reports the candidate
+    // eligible; the switch's action-time revalidation fetch (call 2)
+    // reports the same candidate as no longer switchable, exactly like a
+    // menu that went stale while open.
+    const eligible = detailCalls < 2;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(501, [
+      file(5011, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible })]),
+    ])) });
+  });
+  const posts = [];
+  await page.route(url => /\/api\/torrents\/501\/artifacts\/\d+\/candidate$/.test(url.pathname), route => {
+    posts.push(1);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+  await ready(page);
+
+  await page.locator('#dash-tbody tr[data-torrent-id="501"] .dp-group-candidate-launcher').click();
+  await page.locator('.dp-group-candidate-menu .dp-group-candidate-switch').click();
+
+  await expect(page.locator('.toast', { hasText: 'no longer switchable' })).toBeVisible();
+  expect(posts).toEqual([]);
+  const menu = page.locator('.dp-group-candidate-menu');
+  await expect(menu).not.toHaveAttribute('aria-busy', 'true');
+});
+
+test('ARTIFACT scope: a POST failure clears the switching overlay, refreshes, and reports the error without any success toast', async ({ page }) => {
+  const items = [scopedItem(502, 'artifact', { count: 2, artifactId: 5021 })];
+  await page.route('**/api/torrents*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: items.length }) }));
+  await page.route(url => /\/api\/torrents\/\d+$/.test(url.pathname), route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(502, [
+      file(5021, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible: true })]),
+    ])) }));
+  await page.route(url => /\/api\/torrents\/502\/artifacts\/\d+\/candidate$/.test(url.pathname), route =>
+    route.fulfill({
+      status: 409, contentType: 'application/json',
+      body: JSON.stringify({ detail: { category: 'resource_state_conflict', message: 'Candidate no longer eligible' } }),
+    }));
+  await ready(page);
+
+  await page.locator('#dash-tbody tr[data-torrent-id="502"] .dp-group-candidate-launcher').click();
+  await page.locator('.dp-group-candidate-menu .dp-group-candidate-switch').click();
+
+  const failureToast = page.locator('.toast', { hasText: 'Unable to switch' });
+  await expect(failureToast).toContainText('Candidate no longer eligible');
+  await expect(page.locator('.toast', { hasText: 'switched' })).toHaveCount(0);
+  await expect(page.locator('.dp-group-candidate-menu')).toBeHidden();
+});
+
+test('GROUP scope: the shared multi-file switching progress is unaffected by the artifact-mode progress correction', async ({ page }) => {
+  const holder = {
+    503: detail(503, [
+      file(5031, [sc('mega.nz', 'm1', { selected: true }), sc('rapidgator.net', 'r1', { eligible: true })]),
+      file(5032, [sc('mega.nz', 'm2', { selected: true }), sc('rapidgator.net', 'r2', { eligible: true })]),
+    ]),
+  };
+  await routeDetail(page, holder);
+  await page.route('**/api/torrents?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], total: 0 }) }));
+  const gate = { resolvers: [] };
+  await page.route(url => /\/api\/torrents\/503\/artifacts\/\d+\/candidate$/.test(url.pathname), async route => {
+    await new Promise(resolve => { gate.resolvers.push(resolve); });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+  await ready(page);
+  await page.evaluate(() => showDetail(503));
+  await page.locator('.dp-detail-files-group-slot .dp-group-candidate-launcher').click();
+  await page.locator('.dp-group-candidate-menu .dp-group-candidate-row', { hasText: 'rapidgator.net' }).locator('.dp-group-candidate-switch').click();
+
+  const menu = page.locator('.dp-group-candidate-menu');
+  // The group heading/wording is untouched by the artifact-mode title param.
+  await expect(menu).toContainText('Common sources');
+  await expect(menu).not.toContainText('Candidate sources');
+  await expect(menu).toContainText('Switching to rapidgator.net');
+  await expect(menu).toContainText('0 of 2 files');
+
+  await expect.poll(() => gate.resolvers.length).toBeGreaterThan(0);
+  gate.resolvers.shift()();
+  await expect(menu).toContainText('1 of 2 files');
+
+  await expect.poll(() => gate.resolvers.length).toBeGreaterThan(0);
+  gate.resolvers.shift()();
+  await expect(page.locator('.toast', { hasText: 'switched' })).toBeVisible();
+  await expect(menu).not.toHaveAttribute('aria-busy', 'true');
+});

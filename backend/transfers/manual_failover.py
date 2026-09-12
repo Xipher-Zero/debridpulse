@@ -461,7 +461,7 @@ async def manual_candidate_failover(
                     ),
                     error=None,
                 )
-                return {
+                result = {
                     "ok": True,
                     "transfer_id": current.transfer_id,
                     "artifact_id": current.id,
@@ -502,3 +502,32 @@ async def manual_candidate_failover(
                     error=error,
                 )
                 raise TransferError(error) from exc
+
+            # The candidate mutation and its durable success provenance are
+            # already committed at this point. The successful HTTP response
+            # must not report an accepted switch while the parent transfer
+            # still exposes stale pre-switch lifecycle truth that a later
+            # scheduler tick would immediately replace -- so canonically
+            # re-aggregate parent truth from the just-committed child state
+            # before returning. _aggregate() is the single canonical
+            # parent-lifecycle owner; it takes no engine locks itself
+            # (existing precedent already calls it from inside both
+            # _execution_cycle_lock and a _transfer_locks[...] lock -- see
+            # reconcile_executions and retry()) and has no dispatch or
+            # recovery-budget side effects of its own.
+            try:
+                await engine._aggregate(current.transfer_id)
+            except Exception as exc:
+                # The switch itself already succeeded and that provenance is
+                # truthful and durable. Do not record a contradictory
+                # "failure" event for the candidate switch -- surface this
+                # distinctly so the caller does not receive a success
+                # response while parent truth is knowingly stale.
+                error = unknown_failure(
+                    exc,
+                    integration_id=str(candidate.provider_id or ""),
+                    domain=Domain.RECONCILIATION,
+                    stage=Stage.RECONCILIATION,
+                )
+                raise TransferError(error) from exc
+            return result

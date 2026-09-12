@@ -18,6 +18,7 @@ from transfers.models import (
     SourceIdentity,
     TransferProgress,
     TransferRequest,
+    TransferState,
 )
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -396,3 +397,204 @@ async def test_case_d_rejected_switch_preserves_recovery_context(tmp_path, monke
     file_view = next(item for item in view["files"] if item["id"] == artifact.id)
     assert file_view["presentation_status"] == "requires_attention"
     assert file_view["attention_required"] is True
+
+
+# ── DP 1.0.12 Manual Candidate-Switch Operation Boundary correction ───────
+#
+# Live production reproduction (transfer_id=228, artifact_id=16347,
+# 2026-09-12 07:14 UTC): a successful manual candidate switch commits new
+# child truth (candidate selected, old writer retired, artifact queued) and
+# returns success BEFORE the parent transfer's own raw lifecycle state has
+# been canonically re-aggregated from that just-committed child truth. The
+# browser's immediate post-POST refresh could therefore transiently observe
+# an artifact already queued under a stale parent still carrying an older
+# failed/error-era raw state, and
+# transfers.presentation_repository._aggregate_presentation()'s final
+# fallback branch (a merely-queued child triggers none of the
+# downloading/recovering/waiting_for_*/requires_attention special cases) then
+# renders straight from that stale raw status. This is NOT the same
+# regression the Case A-D matrix above proves; those fixtures never actually
+# drove the PARENT's own raw transfer.state to a failed/error-era value
+# before switching, so they could not have caught this. The fix makes
+# manual_candidate_failover() call the existing canonical
+# ``engine._aggregate(transfer_id)`` after committing success provenance and
+# before returning.
+
+
+@pytest.mark.asyncio
+async def test_switch_reaggregates_stale_failed_parent_before_returning(tmp_path, monkeypatch):
+    """Section 10.1: a genuinely FAILED parent (produced by the real
+    canonical ``_aggregate()`` reacting to a real artifact error -- not a
+    hand-authored raw row) must already read back as re-aggregated
+    immediately after a successful switch, with NO scheduler tick,
+    ``reconcile_executions()``, or manual ``_aggregate()`` call in between.
+    Fails against the pre-correction implementation because
+    ``manual_candidate_failover`` never re-aggregated parent truth before
+    returning success, so the parent raw state remained ``error`` and
+    presentation still fell back to Failed/Requires-Attention."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+
+    assert await repository.transition_recovery(artifact.id, "error", retry_at=0)
+    await engine._aggregate(canonical.id)
+    pre = await repository.get(canonical.id)
+    assert pre.state == TransferState.FAILED, (
+        "fixture setup must reproduce a genuinely FAILED parent raw state "
+        "before the switch, matching the production pre-switch truth"
+    )
+
+    wanted = artifact.candidates[1]
+    result = await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert result["ok"] is True
+    assert result["candidate_id"] == str(wanted.id)
+
+    # No scheduler tick / reconcile_executions() / manual _aggregate() call
+    # between the switch returning and these assertions -- this is the exact
+    # externally-observable operation boundary the live reproduction caught.
+    switched = (await repository.artifacts(canonical.id))[0]
+    assert switched.selected == 1 and switched.execution is None and switched.state == "queued"
+
+    post = await repository.get(canonical.id)
+    assert post.state == TransferState.QUEUED, (
+        "parent raw transfer state must already be canonically re-aggregated "
+        f"immediately after a successful switch, not left at {post.state!r}"
+    )
+
+    fresh = await repository.presentation(canonical.id, details=True)
+    assert fresh["presentation_status"] not in ("failed", "requires_attention"), (
+        "immediate post-switch presentation must not fall back to the stale "
+        f"pre-switch parent truth, got {fresh['presentation_status']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_switch_on_one_artifact_leaves_multi_artifact_parent_transferring(tmp_path, monkeypatch):
+    """Section 10.2/11.2: a transfer with two artifacts -- one still actively
+    downloading, the other error/switchable with two canonical candidates --
+    must have its parent remain TRANSFERRING immediately after switching the
+    second artifact, never forced to QUEUED. This is a design-safety /
+    existing-proof test rather than a RED/GREEN pair: because the fix calls
+    the real canonical ``_aggregate()`` (whose own precedence already ranks
+    any downloading/verifying child above a merely-queued one), it cannot
+    regress this case by construction. What this test protects against is a
+    *different*, incorrect fix shape explicitly warned against in the task
+    (unconditionally writing ``TransferState.QUEUED`` for any accepted
+    switch), which would wrongly stomp an actively-downloading sibling
+    artifact's own transfer-level presentation."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    request_a = TransferRequest(
+        "parcel", "keep-going", name="file-a.bin", preferred_provider=first.descriptor.id,
+    )
+    request_b = TransferRequest(
+        "parcel", "needs-switch", name="file-b.bin", preferred_provider=first.descriptor.id,
+    )
+    canonical = await engine.submit((request_a, request_b), deduplicate=False)
+    await engine.resolve_pending()
+    # Add a second canonical candidate onto artifact B only, via the same
+    # cross-transfer consolidation mechanism attach_two() already relies on.
+    await engine.submit((TransferRequest(
+        "parcel", "needs-switch-mirror", name="file-b.bin", preferred_provider=second.descriptor.id,
+    ),), deduplicate=False)
+    await engine.resolve_pending()
+    await engine.reconcile_executions()
+
+    by_name = {item.name: item for item in await repository.artifacts(canonical.id)}
+    artifact_a, artifact_b = by_name["file-a.bin"], by_name["file-b.bin"]
+    assert len(artifact_b.candidates) == 2
+    assert artifact_a.execution is not None and artifact_a.state == "downloading"
+    assert artifact_b.execution is not None
+
+    # transition_recovery() only accepts an artifact whose current execution
+    # attempt is already terminal -- terminate it first, exactly as a real
+    # observed failure would, before forcing the recovery-error state.
+    await repository.execution(ExecutionObservation(
+        artifact_b.execution, ExecutionState.FAILED, TransferProgress(4, 0, 0),
+        (artifact_b.target,),
+    ))
+    assert await repository.transition_recovery(artifact_b.id, "error", retry_at=0)
+    b_before = next(item for item in await repository.artifacts(canonical.id) if item.id == artifact_b.id)
+    wanted_index = 1 if b_before.selected == 0 else 0
+    wanted = b_before.candidates[wanted_index]
+
+    result = await manual_candidate_failover(engine, canonical.id, artifact_b.id, str(wanted.id))
+    assert result["ok"] is True
+
+    refreshed = {item.id: item for item in await repository.artifacts(canonical.id)}
+    assert refreshed[artifact_a.id].state == "downloading"
+    assert refreshed[artifact_a.id].execution is not None
+    assert refreshed[artifact_b.id].state == "queued"
+    assert refreshed[artifact_b.id].selected == wanted_index
+
+    parent = await repository.get(canonical.id)
+    assert parent.state == TransferState.TRANSFERRING, (
+        "a still-downloading sibling artifact must keep the parent "
+        f"TRANSFERRING, not {parent.state!r} -- canonical _aggregate() "
+        "precedence, not a naive unconditional QUEUED write"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rejected_switch_never_triggers_parent_aggregate_or_changes_state(tmp_path, monkeypatch):
+    """Section 10.4: a rejected switch must not fabricate any parent
+    lifecycle change. Reuses the genuinely-FAILED-parent fixture from
+    ``test_switch_reaggregates_stale_failed_parent_before_returning`` but
+    targets a disabled provider so validation rejects the switch before the
+    success path (and therefore the new ``_aggregate()`` call, which is
+    structurally unreachable from any exception branch) is ever reached."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    assert await repository.transition_recovery(artifact.id, "error", retry_at=0)
+    await engine._aggregate(canonical.id)
+    pre = await repository.get(canonical.id)
+    assert pre.state == TransferState.FAILED
+
+    second.descriptor = replace(second.descriptor, enabled=False)
+    wanted = artifact.candidates[1]
+    with pytest.raises(TransferError) as rejected:
+        await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert rejected.value.error.category == Category.PROVIDER_UNAVAILABLE
+
+    current = (await repository.artifacts(canonical.id))[0]
+    assert current.selected == 0
+
+    post = await repository.get(canonical.id)
+    assert post.state == TransferState.FAILED, (
+        "a rejected switch must not touch parent lifecycle truth at all, "
+        f"got {post.state!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_aggregate_failure_after_committed_switch_does_not_fabricate_success(tmp_path, monkeypatch):
+    """Section 6.4: if the candidate mutation and its durable success
+    provenance are already committed but the canonical re-aggregation step
+    itself unexpectedly raises, the operator must not receive a success
+    response while parent truth is knowingly stale, the old writer must not
+    be fictitiously restored, and the already-durable success provenance
+    must remain -- a contradictory 'failure' event must not be appended for
+    a switch that genuinely succeeded."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    wanted = artifact.candidates[1]
+
+    async def boom(_transfer_id):
+        raise RuntimeError("simulated aggregation failure")
+
+    monkeypatch.setattr(engine, "_aggregate", boom)
+    with pytest.raises(TransferError) as failed:
+        await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert failed.value.error.category not in (Category.PROVIDER_UNAVAILABLE, Category.SOURCE_NOT_FOUND)
+
+    # The mutation itself is not rolled back -- the switch genuinely
+    # succeeded before aggregation failed.
+    switched = (await repository.artifacts(canonical.id))[0]
+    assert switched.selected == 1 and switched.execution is None and switched.state == "queued"
+
+    events = (await repository.presentation(canonical.id, details=True))["manual_candidate_failovers"]
+    successes = [item for item in events if item["outcome"] == "success"]
+    failures = [item for item in events if item["outcome"] == "failure"]
+    assert len(successes) == 1 and successes[0]["selected_candidate_id"] == str(wanted.id)
+    assert len(failures) == 0, (
+        "an aggregation failure after a genuinely successful switch must "
+        "not be recorded as a contradictory candidate-switch failure event"
+    )

@@ -451,9 +451,15 @@
     }).join('');
   }
 
-  function progressMarkup(host, completed, total) {
+  // ``title`` is the menu heading shown above the progress state (defaults
+  // to the group-mode heading); artifact mode passes its own "Candidate
+  // sources" heading so a one-file switch never claims to be switching
+  // "Common sources". This is the ONE shared switching-progress owner for
+  // both group and artifact modes (Section 8.1 of the DP 1.0.12 corrective
+  // task) -- do not fork a second implementation.
+  function progressMarkup(host, completed, total, title) {
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return '<div class="dp-group-candidate-title">Common sources</div>' +
+    return '<div class="dp-group-candidate-title">' + esc(title || 'Common sources') + '</div>' +
       '<div class="dp-group-candidate-progress">' +
         '<div class="dp-group-candidate-progress-label">Switching to ' + esc(host) + '</div>' +
         '<div class="dp-group-candidate-progress-count">' + completed + ' of ' + total +
@@ -469,10 +475,10 @@
   // whole duration instead of just disabling its own controls. Progress
   // NEVER establishes a new popover location: it replaces only the menu's
   // internal content and repositions relative to the SAME semantic anchor.
-  function renderProgress(host, completed, total) {
+  function renderProgress(host, completed, total, title) {
     if (!menuEl || !menuVisible) return;
     menuEl.setAttribute('aria-busy', 'true');
-    menuEl.innerHTML = progressMarkup(host, completed, total);
+    menuEl.innerHTML = progressMarkup(host, completed, total, title);
     positionMenu();
   }
 
@@ -910,8 +916,21 @@
       return;
     }
 
+    // Reuse the SAME shared switching-progress owner group mode already uses
+    // (Section 8.1): a one-item operation, not a second overlay/subsystem.
+    // The label is the already-projected safe source label artifact mode
+    // already renders (artifactRowMarkup) -- never a raw URL/candidate key.
+    const label = String((candidate && candidate.source_label) || 'source');
+    if (menuSession === session) renderProgress(label, 0, 1, 'Candidate sources');
+
     try {
       const result = await switchOne(transferId, artifactId, candidateId);
+      // The POST succeeding means the backend coherently committed the
+      // exact candidate switch -- it does not mean the replacement source
+      // has already transferred bytes, so this progress step still only
+      // reports the operator-requested mutation, never a fabricated
+      // ACTIVE/Downloading transfer-lifecycle state.
+      if (menuSession === session) renderProgress(label, 1, 1, 'Candidate sources');
       menuBusy = false;
       await refreshSurfaces();
       if (menuSession === session && menuVisible) {
