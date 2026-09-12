@@ -420,6 +420,19 @@ async def manual_candidate_failover(
                     retry_at=0,
                     error=None,
                     reset_budget=True,
+                    # An accepted manual switch supersedes whatever recovery
+                    # decision/quiescence context the pre-switch attempt left
+                    # behind (e.g. a stale wait_for_operator/operator_retry
+                    # combination) -- otherwise transfers.presentation_repository
+                    # .recovery_presentation's requires_attention branch, which
+                    # does not gate on raw artifact status at all, can keep
+                    # rendering Requires Attention even though the artifact is
+                    # now genuinely queued under the newly-accepted candidate.
+                    # clear_quiescence is the SAME canonical flag every other
+                    # "back to queued/normal" recovery transition already uses
+                    # (transfers/_engine_recovery.py); this was the one
+                    # "back to queued" transition that omitted it.
+                    clear_quiescence=True,
                 ):
                     raise _error(
                         Category.RESOURCE_STATE_CONFLICT,

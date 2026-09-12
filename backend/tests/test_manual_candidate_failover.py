@@ -31,13 +31,13 @@ class HostParcelProvider(EquivalentParcelProvider):
         )
 
 
-async def build_engine(tmp_path, monkeypatch):
+async def build_engine(tmp_path, monkeypatch, *, provider_ids=("provider-a", "provider-b")):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
     await database.init_db()
     repository = TransferRepository()
     registry = IntegrationRegistry()
-    first = HostParcelProvider("provider-a")
-    second = HostParcelProvider("provider-b")
+    first = HostParcelProvider(provider_ids[0])
+    second = HostParcelProvider(provider_ids[1])
     executor = MemoryExecutor(repository.authorize_execution)
     registry.register_provider(first)
     registry.register_provider(second)
@@ -68,8 +68,30 @@ async def attach_two(engine, repository, first, second):
     ),), deduplicate=False)
     await engine.resolve_pending()
     artifact = (await repository.artifacts(canonical.id))[0]
-    assert [item.provider_id for item in artifact.candidates] == ["provider-a", "provider-b"]
+    assert [item.provider_id for item in artifact.candidates] == [first.descriptor.id, second.descriptor.id]
     return canonical, source, artifact
+
+
+async def _simulate_stale_operator_attention(repository, artifact_id, *, reason="recovery_budget_exhausted"):
+    """Durably persist the exact combination
+    transfers._engine_recovery.py's ``_apply_recovery_decision`` WAIT_FOR_OPERATOR
+    branch produces: ``record_recovery_decision`` followed by ``_quiesce``'s
+    transition (raw state ``"error"`` -- ``_quiesce`` uses
+    ``"error" if reason == "recovery_exhausted" else "recovery_wait"``, and the
+    WAIT_FOR_OPERATOR branch defaults its own ``reason`` to
+    ``"recovery_exhausted"`` -- with ``quiescence_reason``/``wake_condition``
+    set). The artifact's raw status therefore lands on the same real
+    switchable state (``"error"``, a member of manual_failover.py's
+    ``_OPERATIONAL_STATES``) a genuinely exhausted recovery leaves it in, so
+    the fixture matches real production persistence rather than an invented
+    shape. Field combination mirrors
+    test_transfer_recovery_phase4.py::test_requires_attention_needs_persisted_operator_decision_reason_and_wake.
+    """
+    await repository.record_recovery_decision(artifact_id, "wait_for_operator", reason)
+    assert await repository.transition_recovery(
+        artifact_id, "error", retry_at=0,
+        quiescence_reason="recovery_exhausted", wake_condition="operator_retry",
+    )
 
 
 @pytest.mark.asyncio
@@ -215,3 +237,162 @@ async def test_duplicate_activation_and_stale_callback_cannot_restore_old_owner(
     successes = [item for item in (await repository.presentation(canonical.id, details=True))["manual_candidate_failovers"]
                  if item["outcome"] == "success"]
     assert len(successes) == 1
+
+
+# ── DP 1.0.12 Manual Source Switch Queued Presentation corrective task ────
+#
+# The accepted manual candidate-switch path already calls
+# ``engine.repository.transition_recovery(current.id, "queued", ...)`` at
+# manual_failover.py's success boundary. Stale recovery/quiescence context
+# from a pre-switch attempt (decision_action/decision_reason/quiescence_reason/
+# wake_condition persisted in the durable recovery snapshot) can outlive that
+# call, and transfers.presentation_repository.recovery_presentation's
+# "requires_attention" branch does not gate on the artifact's raw status at
+# all -- so a stale "wait_for_operator" + "operator_retry" combination can
+# still render Requires Attention even though the artifact is now genuinely
+# queued under the newly-accepted candidate. The fix reuses
+# transition_recovery's own existing ``clear_quiescence`` flag (already the
+# established pattern for every OTHER "back to queued/normal" recovery
+# transition in transfers/_engine_recovery.py) at this one call site.
+
+
+@pytest.mark.asyncio
+async def test_case_a_http_successful_switch_clears_stale_operator_state_and_presents_queued(tmp_path, monkeypatch):
+    """Matrix Case A: an HTTP(S)-like (host-scoped) artifact carrying stale
+    wait_for_operator/operator_retry recovery context is manually switched to
+    a valid alternate candidate. The switch must still select the correct
+    candidate, the raw lifecycle must still be queued, the stale operator
+    context must no longer be active, and a fresh presentation read must
+    resolve to Queued -- not Requires Attention -- with no provider-specific
+    override involved (HostParcelProvider is the same generic fake used by
+    every other test in this file; nothing in the production diff branches on
+    it)."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    await _simulate_stale_operator_attention(repository, artifact.id)
+
+    stale = await repository.presentation(canonical.id, details=True)
+    stale_file = next(item for item in stale["files"] if item["id"] == artifact.id)
+    assert stale_file["presentation_status"] == "requires_attention"
+    assert stale_file["attention_required"] is True
+    assert stale["presentation_status"] == "requires_attention"
+
+    wanted = artifact.candidates[1]
+    result = await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert result["candidate_id"] == str(wanted.id)
+    assert result["source_host"] == "provider-b.example"
+
+    switched = (await repository.artifacts(canonical.id))[0]
+    assert switched.selected == 1 and switched.execution is None and switched.state == "queued"
+
+    fresh_context = await repository.recovery_context(artifact.id)
+    assert fresh_context.get("wake_condition") is None
+    assert fresh_context.get("quiescence_reason") is None
+
+    fresh = await repository.presentation(canonical.id, details=True)
+    fresh_file = next(item for item in fresh["files"] if item["id"] == artifact.id)
+    assert fresh_file["presentation_status"] == "queued"
+    assert fresh_file["attention_required"] is False
+    # The transfer-level aggregate only elevates to a child's specific
+    # status for actionable states (downloading/recovering/waiting_for_*/
+    # requires_attention); a merely-queued lone child does not force the
+    # transfer's own top-level status label, which is unrelated pre-existing
+    # behavior this task does not touch. What matters here -- and what the
+    # regression this task corrects was about -- is that Requires Attention
+    # no longer survives at the aggregate level either.
+    assert fresh["presentation_status"] != "requires_attention"
+
+
+@pytest.mark.asyncio
+async def test_case_b_debrid_successful_switch_also_remains_generic_queued(tmp_path, monkeypatch):
+    """Matrix Case B: the identical semantic assertion as Case A, driven
+    through a differently-identified ("alldebrid"/"alldebrid-mirror")
+    provider pair using the same generic manual-candidate-switch machinery,
+    proving the correction is provider-neutral rather than coincidentally
+    tied to the "provider-a"/"provider-b" ids Case A and every pre-existing
+    test in this file already use."""
+    engine, repository, first, second, _executor = await build_engine(
+        tmp_path, monkeypatch, provider_ids=("alldebrid", "alldebrid-mirror"),
+    )
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    await _simulate_stale_operator_attention(repository, artifact.id)
+
+    stale = await repository.presentation(canonical.id, details=True)
+    assert stale["presentation_status"] == "requires_attention"
+
+    wanted = artifact.candidates[1]
+    result = await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert result["candidate_id"] == str(wanted.id)
+    assert result["provider_id"] == "alldebrid-mirror"
+
+    switched = (await repository.artifacts(canonical.id))[0]
+    assert switched.selected == 1 and switched.state == "queued"
+
+    fresh = await repository.presentation(canonical.id, details=True)
+    fresh_file = next(item for item in fresh["files"] if item["id"] == artifact.id)
+    assert fresh_file["presentation_status"] == "queued"
+    assert fresh_file["attention_required"] is False
+    # The transfer-level aggregate only elevates to a child's specific
+    # status for actionable states (downloading/recovering/waiting_for_*/
+    # requires_attention); a merely-queued lone child does not force the
+    # transfer's own top-level status label, which is unrelated pre-existing
+    # behavior this task does not touch. What matters here -- and what the
+    # regression this task corrects was about -- is that Requires Attention
+    # no longer survives at the aggregate level either.
+    assert fresh["presentation_status"] != "requires_attention"
+
+
+@pytest.mark.asyncio
+async def test_case_c_genuine_unresolved_operator_state_still_requires_attention(tmp_path, monkeypatch):
+    """Matrix Case C: without any superseding successful switch, an artifact
+    carrying the same genuine wait_for_operator/operator_retry recovery
+    context must keep presenting Requires Attention exactly as before. This
+    protects against the fix globally weakening recovery precedence -- the
+    correction only fires at the accepted manual-switch transition, never as
+    a general recovery-presentation change."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    await _simulate_stale_operator_attention(repository, artifact.id)
+
+    view = await repository.presentation(canonical.id, details=True)
+    file_view = next(item for item in view["files"] if item["id"] == artifact.id)
+    assert file_view["presentation_status"] == "requires_attention"
+    assert file_view["attention_required"] is True
+    assert view["presentation_status"] == "requires_attention"
+
+    # No switch was ever attempted or accepted; re-reading again must be stable.
+    still = await repository.presentation(canonical.id, details=True)
+    assert still["presentation_status"] == "requires_attention"
+
+
+@pytest.mark.asyncio
+async def test_case_d_rejected_switch_preserves_recovery_context(tmp_path, monkeypatch):
+    """Matrix Case D: a manual switch that is rejected by existing validation
+    (here, the destination provider is disabled -- the same rejection
+    ``test_disabled_selected_provider_is_rejected_without_substitution``
+    already covers) must NOT clear the artifact's legitimate stale recovery
+    context. The cleanup added by this task lives strictly inside the
+    successful-transition branch, after every existing validation gate has
+    already passed."""
+    engine, repository, first, second, _executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    await _simulate_stale_operator_attention(repository, artifact.id)
+    second.descriptor = replace(second.descriptor, enabled=False)
+
+    wanted = artifact.candidates[1]
+    with pytest.raises(TransferError) as rejected:
+        await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert rejected.value.error.category == Category.PROVIDER_UNAVAILABLE
+
+    current = (await repository.artifacts(canonical.id))[0]
+    assert current.selected == 0
+
+    context = await repository.recovery_context(artifact.id)
+    assert context.get("decision_action") == "wait_for_operator"
+    assert context.get("wake_condition") == "operator_retry"
+    assert context.get("quiescence_reason") == "recovery_exhausted"
+
+    view = await repository.presentation(canonical.id, details=True)
+    file_view = next(item for item in view["files"] if item["id"] == artifact.id)
+    assert file_view["presentation_status"] == "requires_attention"
+    assert file_view["attention_required"] is True
