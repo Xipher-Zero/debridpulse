@@ -2,14 +2,20 @@
 (function () {
   'use strict';
 
+  // ui-file-selection.js must load before ui-dashboard-transfer-presentation.js
+  // and ui-downloads-presentation.js (DP 1.0.12 Workstream B): both call
+  // window.DPFileSelection.chipMarkup() synchronously while building each
+  // row's markup, and this chain loads owners strictly in order -- loading
+  // it later would leave the very first Dashboard/Downloads paint missing
+  // the file-selection chip until an unrelated refresh happened to re-render.
   const PRESENTATION_OWNERS = Object.freeze([
     ['/ui-toast-contract.js?v=2', 'DPToastContract'],
     ['/ui-processing-presentation.js?v=1', 'DPProcessingPresentation'],
+    ['/ui-file-selection.js?v=1', 'DPFileSelection'],
     ['/ui-dashboard-transfer-presentation.js?v=3', 'DPDashboardTransferPresentation'],
     ['/ui-downloads-presentation.js?v=2', 'DPDownloadsPresentation'],
     ['/ui-activity-log-runtime.js?v=1', 'DPActivityLog'],
     ['/ui-settings-archive-passwords.js?v=1', 'DPArchivePasswords'],
-    ['/ui-file-selection.js?v=1', 'DPFileSelection'],
   ]);
 
   let generation = 0;

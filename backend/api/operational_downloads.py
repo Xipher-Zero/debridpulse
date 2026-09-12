@@ -174,6 +174,38 @@ def _bounded_child_presentations(raw_facts, *, paused, input_required):
     return presentations
 
 
+# DP 1.0.12 Workstream B (Section 10): the one canonical file-selection
+# affordance semantic, shared by Details, Dashboard Recent, and Downloads —
+# never three independent per-surface eligibility heuristics. Derived only
+# from durable transfers.file_selection facts (the same ones
+# transfers.repository.TransferRepository.file_selection_presentation exposes
+# through the fresh-click read endpoint): whether a selection generation
+# exists at all, whether it is still mutable (fs.selection_mutable ==
+# manifest_committed_at IS NULL), whether a manifest is bound, its file
+# count, and its decision. Never inferred from provider name, filename shape,
+# UI glyph, or an open connection.
+_FILE_SELECTION_EXPLICIT_DECISION = "explicit"
+
+
+def _file_selection_affordance(manifest_id, decision, committed_at, file_count: int) -> str:
+    if manifest_id is None and decision is None:
+        # No selection generation exists for this transfer at all.
+        return "none"
+    if committed_at is not None:
+        # Executable child materialization already committed -- locked.
+        return "none"
+    if manifest_id is None:
+        # A generation exists (torrent/magnet resolution in progress) but no
+        # usable manifest has arrived yet.
+        return "pending_manifest"
+    if file_count <= 1:
+        # Single-file torrent/magnet: no picker action (Section 6.9).
+        return "none"
+    if str(decision or "") == _FILE_SELECTION_EXPLICIT_DECISION:
+        return "change"
+    return "choose"
+
+
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
 async def activate_artifact_candidate(
     transfer_id: int,
@@ -470,6 +502,44 @@ async def list_operational_torrents(
                       AND pr.id = json_extract(rr.resource, '$.id')))
             WHERE rr.row_number = 1
         ),
+        -- Every current artifact on the page (unfiltered — unlike
+        -- group_member_artifacts below, this intentionally includes blocked/
+        -- standby/non-request-bound rows too, matching the original
+        -- artifact_presentation_facts scope byte-for-byte). Feeds ONLY the
+        -- recovery-snapshot join below; never a second definition of
+        -- current-artifact membership.
+        page_artifacts AS (
+            SELECT f.id AS artifact_id, f.torrent_id AS transfer_id, f.status AS status
+            FROM download_files f
+            JOIN page ON page.id = f.torrent_id
+        ),
+        -- Set-oriented latest recovery-event snapshot per page artifact (DP
+        -- 1.0.12 Workstream A performance correction). Replaces the previous
+        -- per-artifact CORRELATED SCALAR SUBQUERY against application_events
+        -- (proven via EXPLAIN QUERY PLAN to force one SCAN of the whole
+        -- table per artifact; live evidence up to ~20.9s for one 703-file
+        -- torrent) with a single JOIN restricted to this page's own
+        -- artifacts, ranked once with a window function.
+        -- idx_application_events_kind_id (db/database.py) turns the JOIN's
+        -- equality match into one index seek per artifact instead of a table
+        -- scan; still page-bounded — no work proportional to rows outside
+        -- the requested page.
+        page_recovery_events AS (
+            SELECT
+                pa.artifact_id,
+                ae.detail,
+                ROW_NUMBER() OVER (
+                    PARTITION BY pa.artifact_id ORDER BY ae.id DESC
+                ) AS row_number
+            FROM page_artifacts pa
+            JOIN application_events ae
+              ON ae.kind = 'transfer_recovery:' || pa.artifact_id
+        ),
+        latest_recovery_events AS (
+            SELECT artifact_id, detail
+            FROM page_recovery_events
+            WHERE row_number = 1
+        ),
         -- Per-artifact presentation facts for the page, folded into the one
         -- bounded read as a JSON array per transfer (one row per transfer, no
         -- per-row query, no comprehensive presentation call). ONLY raw durable
@@ -481,30 +551,58 @@ async def list_operational_torrents(
         -- never derive a processing truth that disagrees with Details.
         artifact_presentation_facts AS (
             SELECT
-                f.torrent_id AS transfer_id,
+                pa.transfer_id AS transfer_id,
                 json_group_array(json_object(
-                    'status', f.status,
-                    'quiescence_reason', json_extract(snap.detail, '$.quiescence_reason'),
-                    'decision_action', json_extract(snap.detail, '$.decision_action'),
-                    'last_applied_action', json_extract(snap.detail, '$.last_applied_action'),
-                    'decision_reason', json_extract(snap.detail, '$.decision_reason'),
-                    'last_applied_reason', json_extract(snap.detail, '$.last_applied_reason'),
-                    'wake_condition', json_extract(snap.detail, '$.wake_condition'),
-                    'recovery_claim_token', json_extract(snap.detail, '$.recovery_claim_token')
+                    'status', pa.status,
+                    'quiescence_reason', json_extract(lre.detail, '$.quiescence_reason'),
+                    'decision_action', json_extract(lre.detail, '$.decision_action'),
+                    'last_applied_action', json_extract(lre.detail, '$.last_applied_action'),
+                    'decision_reason', json_extract(lre.detail, '$.decision_reason'),
+                    'last_applied_reason', json_extract(lre.detail, '$.last_applied_reason'),
+                    'wake_condition', json_extract(lre.detail, '$.wake_condition'),
+                    'recovery_claim_token', json_extract(lre.detail, '$.recovery_claim_token')
                 )) AS artifacts
-            FROM download_files f
-            JOIN page ON page.id = f.torrent_id
-            LEFT JOIN application_events snap
-              ON snap.id = (
-                SELECT ae.id FROM application_events ae
-                WHERE ae.kind = 'transfer_recovery:' || f.id
-                ORDER BY ae.id DESC LIMIT 1
-              )
-            GROUP BY f.torrent_id
+            FROM page_artifacts pa
+            LEFT JOIN latest_recovery_events lre
+              ON lre.artifact_id = pa.artifact_id
+            GROUP BY pa.transfer_id
         ),
         input_challenge AS (
             SELECT DISTINCT c.transfer_id
             FROM transfer_input_challenges c JOIN page ON page.id = c.transfer_id
+        ),
+        -- DP 1.0.12 Workstream B: bounded file-selection affordance hint.
+        -- The transfer's CURRENT selection generation only (newest by
+        -- created_at/id — the exact same "newest wins" rule
+        -- transfers.repository.TransferRepository._current_generation uses,
+        -- never re-derived), joined once per page, never per-row. Only the
+        -- three durable facts the Section 10 classifier needs are projected;
+        -- no manifest/entry list crosses into this bounded read.
+        page_current_file_selection AS (
+            SELECT transfer_id, manifest_id, decision, manifest_committed_at
+            FROM (
+                SELECT
+                    s.transfer_id,
+                    s.manifest_id,
+                    s.decision,
+                    s.manifest_committed_at,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY s.transfer_id ORDER BY s.created_at DESC, s.id DESC
+                    ) AS row_number
+                FROM transfer_file_selections s
+                JOIN page ON page.id = s.transfer_id
+            )
+            WHERE row_number = 1
+        ),
+        -- Entry count of that current generation's bound manifest (0/absent
+        -- when no manifest is bound yet) — the same durable manifest-size
+        -- fact the fresh-click file-selection read model exposes, never a
+        -- filename-shape guess.
+        page_file_selection_manifest_counts AS (
+            SELECT e.manifest_id, COUNT(*) AS manifest_entry_count
+            FROM transfer_file_manifest_entries e
+            JOIN page_current_file_selection sel ON sel.manifest_id = e.manifest_id
+            GROUP BY e.manifest_id
         ),
         -- Transfer-level COMMON-SOURCE group MEMBERSHIP summary derived only
         -- from canonical acquisition-candidate storage. Membership is the raw
@@ -832,7 +930,11 @@ async def list_operational_torrents(
             COALESCE(movable_artifact_counts.movable_count, 0) AS _movable_artifact_count,
             single_movable_artifact.artifact_id AS _single_movable_artifact_id,
             single_movable_artifact.candidate_count AS _single_movable_artifact_candidate_count,
-            COALESCE(group_actionable_common_source_counts.actionable_count, 0) AS _actionable_common_target_count
+            COALESCE(group_actionable_common_source_counts.actionable_count, 0) AS _actionable_common_target_count,
+            page_current_file_selection.manifest_id AS _file_selection_manifest_id,
+            page_current_file_selection.decision AS _file_selection_decision,
+            page_current_file_selection.manifest_committed_at AS _file_selection_committed_at,
+            COALESCE(page_file_selection_manifest_counts.manifest_entry_count, 0) AS _file_selection_entry_count
         FROM page
         JOIN torrents t
           ON t.id = page.id
@@ -870,6 +972,10 @@ async def list_operational_torrents(
           ON single_movable_artifact.transfer_id = t.id
         LEFT JOIN group_actionable_common_source_counts
           ON group_actionable_common_source_counts.transfer_id = t.id
+        LEFT JOIN page_current_file_selection
+          ON page_current_file_selection.transfer_id = t.id
+        LEFT JOIN page_file_selection_manifest_counts
+          ON page_file_selection_manifest_counts.manifest_id = page_current_file_selection.manifest_id
         ORDER BY t.created_at DESC
     """
 
@@ -895,8 +1001,15 @@ async def list_operational_torrents(
         group_remaining_count = max(0, int(projected.get("group_remaining_count") or 0))
         raw_filenames = _decode_projection_value(projected.pop("_group_member_filenames", None), [])
         artifact_filenames = raw_filenames if isinstance(raw_filenames, list) else []
+        # A torrent/magnet submission's root name is its real canonical
+        # identity (durable submission-kind fact, from the same
+        # source_identity the icon already uses — never inferred from
+        # filename shape/count/provider). It must win over any single member
+        # artifact filename (Workstream C name-regression correction).
         display_name = normalized_transfer_display_name(
-            artifact_filenames, root_name=projected.get("name"),
+            artifact_filenames,
+            root_name=projected.get("name"),
+            root_is_canonical_identity=source_identity.get("kind") in {"magnet", "torrent_file"},
         )
         # Candidate-action scope classifier (DP 1.0.12 Contextual Candidate
         # Action Scope task, §4/§10): orthogonal to common_candidate_count/
@@ -913,6 +1026,10 @@ async def list_operational_torrents(
         actionable_common_target_count = int(
             projected.pop("_actionable_common_target_count", 0) or 0
         )
+        file_selection_manifest_id = projected.pop("_file_selection_manifest_id", None)
+        file_selection_decision = projected.pop("_file_selection_decision", None)
+        file_selection_committed_at = projected.pop("_file_selection_committed_at", None)
+        file_selection_entry_count = int(projected.pop("_file_selection_entry_count", 0) or 0)
         if movable_artifact_count == 1:
             candidate_action_scope = "artifact"
             candidate_action_count = int(single_movable_artifact_candidate_count or 0)
@@ -944,10 +1061,10 @@ async def list_operational_torrents(
         # surfaces render the common-source indicator as static history
         # instead of an interactive launcher. Independent of actionability.
         item["group_remaining_count"] = group_remaining_count
-        # Canonical human-facing transfer title (Section 15-20): normalized
-        # artifact-derived name first, root/request ``name`` fallback only.
-        # Dashboard Recent and Downloads both render this SAME field — no
-        # per-surface normalization duplication.
+        # Canonical human-facing transfer title (Section 15-20; narrowed by
+        # the DP 1.0.12 Workstream C name-regression correction). Dashboard
+        # Recent and Downloads both render this SAME field — no per-surface
+        # normalization duplication.
         item["display_name"] = display_name
         # Candidate-action scope/count/target (Section 3): the smallest
         # unambiguous candidate-switch operation scope the operator can act
@@ -957,6 +1074,16 @@ async def list_operational_torrents(
         item["candidate_action_scope"] = candidate_action_scope
         item["candidate_action_count"] = candidate_action_count
         item["candidate_action_artifact_id"] = candidate_action_artifact_id
+        # File-selection affordance hint (Section 10): an AFFORDANCE HINT
+        # only, never mutation authority -- the browser always performs one
+        # fresh authoritative GET .../file-selection read on click before
+        # opening any picker (Section 6.8).
+        item["file_selection_affordance"] = _file_selection_affordance(
+            file_selection_manifest_id,
+            file_selection_decision,
+            file_selection_committed_at,
+            file_selection_entry_count,
+        )
         # Effective processing presentation via the ONE shared owner
         # (transfers.presentation_repository.effective_presentation), fed the same
         # logical inputs as the comprehensive Details projection: the durable

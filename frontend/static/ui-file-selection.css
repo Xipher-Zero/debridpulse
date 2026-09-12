@@ -12,22 +12,54 @@ body.dp-v11-structural #modal:not([data-dp-modal-mode="file-selection"]) > #moda
   display: none;
 }
 
-/* ── Details manual entry point ─────────────────────────────────────────── */
-.dp-detail-actions:empty {
-  display: none;
-}
-.dp-detail-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--dp-space-2, 8px);
-  margin-bottom: 14px;
-}
+/* ── Details manual entry point (Files-section header, right side) ───────── */
 .dp-file-selection-summary {
   color: var(--dp-text-secondary);
   font-family: var(--dp-font-sans);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: .02em;
+}
+
+/* ── Compact glyph-only list chip (Dashboard Recent / Downloads, §6.3) ────
+ * Same green treatment as the existing torrent/magnet source glyph
+ * (.dp-source-boxes, ui-dashboard-transfer-presentation.css) -- #0fbd88. No
+ * visible text, no count; title/aria-label carry the Choose/Change label. */
+.dp-file-selection-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #0fbd88;
+  cursor: pointer;
+}
+.dp-file-selection-chip:hover,
+.dp-file-selection-chip:focus-visible {
+  background: color-mix(in srgb, #0fbd88 16%, transparent);
+}
+.dp-file-selection-chip svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Manifest-not-ready informational overlay (§6.5) ──────────────────────
+ * Plain text presentation inside the existing shared modal shell -- no
+ * tree, no footer/Confirm, no countdown. */
+.dp-fs-pending-manifest {
+  padding: 20px var(--dp-card-padding, 16px) 24px;
+}
+.dp-fs-pending-manifest p {
+  margin: 0;
+  color: var(--dp-text-secondary);
+  font-family: var(--dp-font-sans);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* ── Selector body ─────────────────────────────────────────────────────── */

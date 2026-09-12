@@ -112,7 +112,9 @@ test('disclosure is one ghost candidate button with the Network glyph and "N Can
 test('candidate disclosure survives the modal-coordinator ownership refactor', async ({page}) => {
   // ui-detail-candidates.js no longer wraps window.showDetail / window.closeModal;
   // it listens to app.js lifecycle events. Disclosure + close/reopen must be intact
-  // and the file-selection Details host must not interfere.
+  // and the file-selection Details host (DP 1.0.12 Workstream B: the Files-section
+  // header right-side mount, not the retired generic #dp-detail-actions) must not
+  // interfere.
   const holder = {detail: detail('a')};
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.route(url => url.pathname === '/api/torrents/990', route => route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(holder.detail)}));
@@ -128,7 +130,8 @@ test('candidate disclosure survives the modal-coordinator ownership refactor', a
 
   await page.evaluate(() => showDetail(990));
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
-  await expect(page.locator('#dp-detail-actions')).toHaveCount(1);
+  await expect(page.locator('#dp-detail-actions')).toHaveCount(0);
+  await expect(page.locator('[data-dp-file-selection-mount][data-dp-transfer-id="990"]')).toHaveCount(1);
 
   await page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure').click();
   await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toBeVisible();

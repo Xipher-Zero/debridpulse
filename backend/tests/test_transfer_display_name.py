@@ -110,6 +110,67 @@ def test_normalizer_is_pure_and_deterministic():
     assert first == second == "Example.Release + 2 files"
 
 
+# ── DP 1.0.12 Workstream C: torrent/magnet root-name regression correction ─
+# A torrent/magnet transfer's durable root/request name is its real identity
+# and must win over any single member artifact filename — the defect this
+# section closes (a 15-file torrent rendered as its 14th track's filename).
+
+
+def test_torrent_submission_root_name_wins_over_member_filenames():
+    filenames = [f"{index:02d}.mkv" for index in range(1, 16)]
+    result = normalized_transfer_display_name(
+        filenames, root_name="Example Torrent", root_is_canonical_identity=True,
+    )
+    assert result == "Example Torrent"
+
+
+def test_magnet_with_meaningful_dn_root_name_wins_over_member_filenames():
+    filenames = [f"track-{index:02d}.mp3" for index in range(1, 16)]
+    result = normalized_transfer_display_name(
+        filenames, root_name="Example Release", root_is_canonical_identity=True,
+    )
+    assert result == "Example Release"
+
+
+def test_regression_example_nsync_essentials_root_title_not_replaced_by_member_file():
+    root_name = "NSYNC - Essentials (2020) Mp3 320kbps [PMEDIA] ⭐"
+    filenames = ["14. I'll Never Stop (Radio Edit).mp3"] + [
+        f"{index:02d}. Track {index}.mp3" for index in range(1, 15)
+    ]
+    result = normalized_transfer_display_name(
+        filenames, root_name=root_name, root_is_canonical_identity=True,
+    )
+    assert result == root_name
+
+
+def test_torrent_root_name_wins_even_for_single_file_torrent():
+    result = normalized_transfer_display_name(
+        ["14. I'll Never Stop (Radio Edit).mp3"],
+        root_name="Example Torrent",
+        root_is_canonical_identity=True,
+    )
+    assert result == "Example Torrent"
+
+
+def test_torrent_with_blank_root_name_falls_back_to_artifact_normalization():
+    # root_is_canonical_identity is asserted, but the durable root name is
+    # itself blank/missing -- fall back to the existing artifact-derived
+    # logic rather than collapsing to "(unnamed)" when real filenames exist.
+    filenames = [f"Example.Release.part{index:02d}.rar" for index in range(1, 25)]
+    result = normalized_transfer_display_name(
+        filenames, root_name="   ", root_is_canonical_identity=True,
+    )
+    assert result == "Example.Release + 24 files"
+
+
+def test_direct_link_batch_keeps_artifact_normalization_when_not_canonical_root():
+    # root_is_canonical_identity defaults to False for generic/direct-link
+    # sources -- useful artifact normalization must be preserved unchanged.
+    filenames = [f"Example.Release.part{index:02d}.rar" for index in range(1, 25)]
+    result = normalized_transfer_display_name(filenames, root_name="1fichier.com - abcdef123456")
+    assert result == "Example.Release + 24 files"
+
+
 def test_normalizer_never_needs_source_host_or_candidate_identity_arguments():
     import inspect
 

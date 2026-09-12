@@ -46,7 +46,12 @@ async function stub(page, state) {
   await page.route(url => url.pathname === '/api/torrents/7', route =>
     route.fulfill({status: 200, contentType: 'application/json',
       body: JSON.stringify({id: 7, name: 'Some.Show.S01', files: [], events: [], route_attempts: [],
-        execution_attempts: [], executors: [], source_outcomes: []})}));
+        execution_attempts: [], executors: [], source_outcomes: [],
+        // Durable submission-kind fact (DP 1.0.12 Workstream B): the Files
+        // header (and its file-selection mount) renders even with files:[]
+        // for a torrent/magnet source, matching the real manifest-pending
+        // window (§6.5) where no artifact exists yet.
+        current_source_identity: {kind: 'magnet'}})}));
   await page.route(url => url.pathname === '/api/torrents/7/file-selection/confirm', route => {
     state.confirmBody = route.request().postDataJSON();
     if (state.confirmStatus === 409) {
@@ -322,26 +327,34 @@ test('the selector reuses the one shared #overlay / #modal shell', async ({page}
 
 // ── Details manual entry point (specification section 44) ───────────────────
 
-test('Details exposes "Select files" while mutable and pending, and opens the selector', async ({page}) => {
+function detailFileSelectionMount(page) {
+  return page.locator('[data-dp-file-selection-mount][data-dp-transfer-id="7"]');
+}
+
+test('Details Files header exposes "Choose Files" while mutable and pending, and opens the selector', async ({page}) => {
   const state = {view: selectionView({auto_offer: false})};
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => showDetail(7));
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
-  const entry = page.locator('#dp-detail-actions .dp-file-selection-entry');
-  await expect(entry).toHaveText('Select files');
+  // The action lives in the Files-section header, right side -- the same
+  // slot pattern the group-switch launcher uses -- never the old generic
+  // top-of-Details host.
+  await expect(page.locator('#dp-detail-actions')).toHaveCount(0);
+  const entry = detailFileSelectionMount(page).locator('.dp-file-selection-entry');
+  await expect(entry).toHaveText('Choose Files');
   await entry.click();
   await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
   await expect(page.locator('.dp-fs-tree .dp-fs-check--file')).toHaveCount(4);
 });
 
-test('Details exposes "Change file selection" once an explicit subset is confirmed', async ({page}) => {
+test('Details Files header exposes "Change Files" once an explicit subset is confirmed', async ({page}) => {
   const state = {view: selectionView({decision: 'explicit', auto_offer: false, decision_deadline: null,
     selected_entry_ids: ['e-s1e01', 'e-s1e02']})};
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => showDetail(7));
-  await expect(page.locator('#dp-detail-actions .dp-file-selection-entry')).toHaveText('Change file selection');
+  await expect(detailFileSelectionMount(page).locator('.dp-file-selection-entry')).toHaveText('Change Files');
 });
 
 test('a locked selection shows a passive summary and no mutation control', async ({page}) => {
@@ -350,8 +363,8 @@ test('a locked selection shows a passive summary and no mutation control', async
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => showDetail(7));
-  await expect(page.locator('#dp-detail-actions .dp-file-selection-summary')).toHaveText('2 of 4 files selected');
-  await expect(page.locator('#dp-detail-actions .dp-file-selection-entry')).toHaveCount(0);
+  await expect(detailFileSelectionMount(page).locator('.dp-file-selection-summary')).toHaveText('2 of 4 files selected');
+  await expect(detailFileSelectionMount(page).locator('.dp-file-selection-entry')).toHaveCount(0);
 });
 
 test('a non-eligible transfer shows no file-selection control in Details', async ({page}) => {
@@ -360,5 +373,5 @@ test('a non-eligible transfer shows no file-selection control in Details', async
   await boot(page);
   await page.evaluate(() => showDetail(7));
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
-  await expect(page.locator('#dp-detail-actions')).toBeEmpty();
+  await expect(detailFileSelectionMount(page)).toBeEmpty();
 });

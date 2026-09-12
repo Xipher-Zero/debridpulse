@@ -369,6 +369,215 @@ def test_display_name_does_not_expose_raw_root_source_bookkeeping(monkeypatch):
     assert item["name"] == "1fichier.com - abcdef123456 + 23 more"
 
 
+def test_torrent_root_name_wins_over_member_filenames_in_bounded_projection(monkeypatch):
+    """DP 1.0.12 Workstream C: a torrent's root name must survive the list projection."""
+    row = _row(
+        1,
+        filenames=["14. I'll Never Stop (Radio Edit).mp3"] + [f"{i:02d}. Track.mp3" for i in range(1, 15)],
+    )
+    row["name"] = "NSYNC - Essentials (2020) Mp3 320kbps [PMEDIA]"
+    row["_source_request_payload"] = json.dumps({"kind": "torrent_file", "payload": "<bencoded>"})
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    item = result["items"][0]
+    assert item["display_name"] == "NSYNC - Essentials (2020) Mp3 320kbps [PMEDIA]"
+    assert item["name"] == "NSYNC - Essentials (2020) Mp3 320kbps [PMEDIA]"
+
+
+def test_magnet_root_name_wins_over_member_filenames_in_bounded_projection(monkeypatch):
+    row = _row(1, filenames=["a.mkv", "b.mkv", "c.mkv"])
+    row["name"] = "Example Release"
+    row["_source_request_payload"] = json.dumps(
+        {"kind": "magnet", "payload": "magnet:?xt=urn:btih:secret"}
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["display_name"] == "Example Release"
+
+
+def test_link_kind_multi_file_batch_still_uses_artifact_normalization(monkeypatch):
+    # A non-torrent/magnet source kind must retain the existing, useful
+    # artifact-derived normalization -- narrowing applies only to torrent/
+    # magnet submissions.
+    row = _row(1, filenames=[f"Example.Release.part{i:02d}.rar" for i in range(1, 25)])
+    row["name"] = "1fichier.com - abcdef123456"
+    row["_source_request_payload"] = json.dumps(
+        {"kind": "https", "payload": "https://example.invalid/a"}
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["display_name"] == "Example.Release + 24 files"
+
+
+# ── DP 1.0.12 Workstream B: bounded file-selection affordance hint ─────────
+
+
+def test_file_selection_affordance_pure_classifier_covers_all_five_states():
+    classify = downloads._file_selection_affordance
+    # 5. genuinely not applicable: no selection generation row at all.
+    assert classify(None, None, None, 0) == "none"
+    # 1. applicable but manifest not ready yet.
+    assert classify(None, "pending", None, 0) == "pending_manifest"
+    # 5. single-file torrent/magnet: never actionable even if unlocked.
+    assert classify("manifest-1", "all", None, 1) == "none"
+    # 2. usable manifest, mutable, no explicit subset yet.
+    assert classify("manifest-1", "pending", None, 3) == "choose"
+    assert classify("manifest-1", "all", None, 3) == "choose"
+    # 3. usable manifest, mutable, explicit subset already exists.
+    assert classify("manifest-1", "explicit", None, 3) == "change"
+    # 4. locked/materialized -- no mutation action regardless of decision.
+    assert classify("manifest-1", "explicit", 123.0, 3) == "none"
+    assert classify("manifest-1", "all", 123.0, 3) == "none"
+
+
+def _row_with_file_selection(transfer_id, *, manifest_id, decision, committed_at, file_count):
+    row = _row(transfer_id)
+    row["_file_selection_manifest_id"] = manifest_id
+    row["_file_selection_decision"] = decision
+    row["_file_selection_committed_at"] = committed_at
+    row["_file_selection_entry_count"] = file_count
+    return row
+
+
+def test_bounded_list_exposes_choose_affordance_for_mutable_unset_manifest(monkeypatch):
+    row = _row_with_file_selection(
+        1, manifest_id="manifest-1", decision="pending", committed_at=None, file_count=5,
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "choose"
+
+
+def test_bounded_list_exposes_change_affordance_for_explicit_subset(monkeypatch):
+    row = _row_with_file_selection(
+        1, manifest_id="manifest-1", decision="explicit", committed_at=None, file_count=5,
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "change"
+
+
+def test_bounded_list_exposes_pending_manifest_affordance_before_manifest_arrives(monkeypatch):
+    row = _row_with_file_selection(
+        1, manifest_id=None, decision="pending", committed_at=None, file_count=0,
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "pending_manifest"
+
+
+def test_bounded_list_exposes_none_affordance_when_locked(monkeypatch):
+    row = _row_with_file_selection(
+        1, manifest_id="manifest-1", decision="explicit", committed_at=1234.0, file_count=5,
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "none"
+
+
+def test_bounded_list_exposes_none_affordance_for_single_file_torrent(monkeypatch):
+    row = _row_with_file_selection(
+        1, manifest_id="manifest-1", decision="all", committed_at=None, file_count=1,
+    )
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "none"
+
+
+def test_bounded_list_exposes_none_affordance_when_no_generation_exists(monkeypatch):
+    row = _row(1)  # no file-selection fields at all -- e.g. a direct-link transfer
+    _db, result = _run_list(monkeypatch, 1, rows=[row])
+    assert result["items"][0]["file_selection_affordance"] == "none"
+
+
+def test_file_selection_affordance_does_not_add_db_calls_or_scale_with_page_size(monkeypatch):
+    one_db, _one = _run_list(
+        monkeypatch, 1,
+        rows=[_row_with_file_selection(1, manifest_id="m", decision="pending", committed_at=None, file_count=3)],
+    )
+    many_db, many = _run_list(
+        monkeypatch, 40,
+        rows=[
+            _row_with_file_selection(i, manifest_id="m", decision="pending", committed_at=None, file_count=3)
+            for i in range(1, 41)
+        ],
+    )
+    assert len(one_db.calls) == 2
+    assert len(many_db.calls) == 2
+    assert all(item["file_selection_affordance"] == "choose" for item in many["items"])
+
+
+def test_projection_sql_joins_file_selections_bounded_by_page(monkeypatch):
+    """The file-selection CTE must join against ``page``, never scan the whole table."""
+    db, _result = _run_list(monkeypatch, 1, rows=[_row(1)])
+    projection_sql = db.calls[0][1]
+    assert "page_current_file_selection AS" in projection_sql
+    assert "FROM transfer_file_selections s" in projection_sql
+    selection_block = projection_sql.split("page_current_file_selection AS", 1)[1].split(
+        "page_file_selection_manifest_counts AS", 1
+    )[0]
+    assert "JOIN page ON page.id = s.transfer_id" in selection_block
+
+
+async def _seed_real_file_selection(db_path, *, decision, committed_at, entry_count):
+    import sqlite3 as _sqlite3
+
+    conn = _sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO torrents(id,hash,name,status,source) VALUES(?,?,?,?,?)",
+            (1, "hash-real-fs", "Real Torrent", "downloading", "magnet"),
+        )
+        conn.execute(
+            "INSERT INTO transfer_file_manifests(id,transfer_id,request_id,provider_resource_id,provider_id,"
+            "manifest_digest,observed_at) VALUES(?,?,?,?,?,?,?)",
+            ("manifest-1", 1, "req-1", "res-1", "alldebrid", "digest-1", 0.0),
+        )
+        for index in range(entry_count):
+            conn.execute(
+                "INSERT INTO transfer_file_manifest_entries(manifest_id,entry_id,ordinal,name,relative_path,expected_bytes) "
+                "VALUES(?,?,?,?,?,?)",
+                ("manifest-1", f"entry-{index}", index, f"file-{index}.mkv", f"file-{index}.mkv", 1024),
+            )
+        conn.execute(
+            "INSERT INTO transfer_file_selections(id,request_id,transfer_id,provider_resource_id,provider_id,"
+            "manifest_id,initially_available,manifest_wait_until,decision,manifest_committed_at,created_at,updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("sel-1", "req-1", 1, "res-1", "alldebrid", "manifest-1", 1, 0.0, decision, committed_at, 100.0, 100.0),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
+async def test_real_sql_bounded_list_derives_choose_affordance_from_actual_selection_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    await _seed_real_file_selection(tmp_path / "state.db", decision="pending", committed_at=None, entry_count=4)
+    application = SimpleNamespace(repository=_ExplodingRepository(), definitions=[])
+    result = await downloads.list_operational_torrents(
+        status=None, search=None, limit=25, offset=0, application=application,
+    )
+    assert result["items"][0]["file_selection_affordance"] == "choose"
+
+
+@pytest.mark.asyncio
+async def test_real_sql_bounded_list_derives_change_affordance_for_explicit_decision(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    await _seed_real_file_selection(tmp_path / "state.db", decision="explicit", committed_at=None, entry_count=4)
+    application = SimpleNamespace(repository=_ExplodingRepository(), definitions=[])
+    result = await downloads.list_operational_torrents(
+        status=None, search=None, limit=25, offset=0, application=application,
+    )
+    assert result["items"][0]["file_selection_affordance"] == "change"
+
+
+@pytest.mark.asyncio
+async def test_real_sql_bounded_list_derives_none_affordance_once_locked(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    await _seed_real_file_selection(tmp_path / "state.db", decision="explicit", committed_at=150.0, entry_count=4)
+    application = SimpleNamespace(repository=_ExplodingRepository(), definitions=[])
+    result = await downloads.list_operational_torrents(
+        status=None, search=None, limit=25, offset=0, application=application,
+    )
+    assert result["items"][0]["file_selection_affordance"] == "none"
+
+
 def test_display_name_and_remaining_count_do_not_add_db_calls_or_scale_with_page_size(monkeypatch):
     one_db, _one = _run_list(
         monkeypatch, 1, rows=[_row(1, filenames=["a.mkv", "b.mkv"], group_remaining_count=1)]

@@ -17,6 +17,7 @@
   'use strict';
 
   const OFFERS_URL = '/file-selections/offers';
+  const PENDING_MODE = 'file-selection-pending';
 
   // ── Ambient helpers from app.js (single owners) ──────────────────────────
   function api() { return window.api.apply(null, arguments); }
@@ -318,6 +319,24 @@
       Number(view.file_count || 0) > 1);
   }
 
+  // ── DP 1.0.12 Workstream B: one canonical affordance classifier ─────────
+  // Mirrors backend api/operational_downloads.py's _file_selection_affordance
+  // exactly (same durable facts: eligible/mutable/manifest_id/file_count/
+  // decision), applied to the FRESH view this module already fetches from
+  // GET .../file-selection. One semantic, shared by Details and both list
+  // chips -- never three independent per-surface heuristics (§6.4).
+  function classifyView(view) {
+    if (!view || !view.eligible) return 'none';
+    if (!view.mutable) return 'none';
+    if (view.manifest_id == null) return 'pending_manifest';
+    if (Number(view.file_count || 0) <= 1) return 'none';
+    return view.decision === 'explicit' ? 'change' : 'choose';
+  }
+
+  function affordanceLabel(affordance) {
+    return affordance === 'change' ? 'Change Files' : 'Choose Files';
+  }
+
   function initialDraftFromView(view) {
     draft.clear();
     const persisted = Array.isArray(view.selected_entry_ids) ? view.selected_entry_ids : [];
@@ -494,33 +513,89 @@
     }).catch(function () {});
   }
 
-  // ── Details manual entry point ──────────────────────────────────────────
+  // ── Manifest-not-ready informational overlay (§6.5) ─────────────────────
+  function openPendingManifestModal() {
+    if (selectorTransferId != null) return;   // a real selector is already open
+    if (modal().mode && modal().mode !== 'details') return;  // another modal owns the shell
+    if (modal().mode === 'details') {
+      document.dispatchEvent(new CustomEvent('debridpulse:detail-closed', {detail: {reason: 'file-selection'}}));
+    }
+    modal().open({
+      mode: PENDING_MODE,
+      title: 'File list not available yet',
+      closeLabel: 'Close',
+    });
+    const body = bodyEl();
+    if (body) {
+      body.innerHTML = '<div class="dp-fs-pending-manifest">' +
+        '<p>DebridPulse is still waiting for the file list for this torrent. ' +
+        'The transfer will continue preparing in the background. Try again shortly.</p>' +
+        '</div>';
+    }
+  }
+
+  // ── Fresh click authority (§6.8) — shared by Details and both list chips.
+  // The bounded list's file_selection_affordance is a HINT only; every click
+  // re-fetches authoritative state before deciding what to open. ──────────
+  function handleAffordanceClick(transferId, options) {
+    const opts = options || {};
+    fetchSelection(transferId).then(function (view) {
+      const affordance = classifyView(view);
+      if (affordance === 'pending_manifest') {
+        openPendingManifestModal();
+        return;
+      }
+      if (affordance === 'choose' || affordance === 'change') {
+        openSelector(transferId, view, {auto: false, transferName: opts.transferName});
+        return;
+      }
+      // No longer applicable/mutable: never open a stale picker (§6.8.4).
+      toast('File selection is no longer available for this transfer.', 'info');
+      if (detailTransferId === transferId) renderDetailEntry(transferId);
+      refreshTransferViews();
+    }).catch(function (error) {
+      toast(String(error && error.message || 'File selection is unavailable.'), 'error');
+    });
+  }
+
+  // ── Compact glyph-only list chip (Dashboard Recent / Downloads, §6.3) ────
+  function chipMarkup(item) {
+    const affordance = item && item.file_selection_affordance;
+    if (!affordance || affordance === 'none') return '';
+    const label = affordanceLabel(affordance);
+    const icon = window.DPIcons && typeof window.DPIcons.svg === 'function'
+      ? window.DPIcons.svg('folder') : '';
+    return '<button type="button" class="dp-file-selection-chip" data-dp-file-selection-chip ' +
+      'data-transfer-id="' + esc(String(item.id)) + '" title="' + esc(label) + '" ' +
+      'aria-label="' + esc(label) + '">' + icon + '</button>';
+  }
+
+  // ── Details manual entry point (Files-section header, right side) ───────
   function renderDetailEntry(transferId) {
-    const host = document.getElementById('dp-detail-actions');
+    const host = document.querySelector(
+      '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
     if (!host) return;
     fetchSelection(transferId).then(function (view) {
-      if (document.getElementById('dp-detail-actions') !== host) return;
+      const currentHost = document.querySelector(
+        '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
+      if (currentHost !== host) return;
       if (!view || !view.eligible) { host.innerHTML = ''; return; }
+      const affordance = classifyView(view);
+      if (affordance === 'choose' || affordance === 'change' || affordance === 'pending_manifest') {
+        const label = affordance === 'pending_manifest' ? 'Choose Files' : affordanceLabel(affordance);
+        host.innerHTML = '<button type="button" class="btn btn-ghost btn-sm dp-file-selection-entry" ' +
+          'title="' + esc(label) + '">' + esc(label) + '</button>';
+        host.querySelector('.dp-file-selection-entry').addEventListener('click', function () {
+          handleAffordanceClick(transferId);
+        });
+        return;
+      }
+      // Locked/not-applicable: a truthful passive summary only when an
+      // explicit subset was actually recorded (§6.9) -- otherwise no dead
+      // button, nothing rendered.
       const selectedCount = Array.isArray(view.selected_entry_ids)
         ? view.selected_entry_ids.length : 0;
-      if (view.mutable) {
-        const explicit = view.decision === 'explicit' || selectedCount > 0;
-        const label = explicit ? 'Change file selection' : 'Select files';
-        host.innerHTML = '<button type="button" class="btn btn-ghost btn-sm dp-file-selection-entry">' +
-          esc(label) + '</button>';
-        host.querySelector('.dp-file-selection-entry').addEventListener('click', function () {
-          fetchSelection(transferId).then(function (fresh) {
-            if (!fresh || !fresh.eligible || !fresh.mutable) {
-              toast('File selection is no longer available for this transfer.', 'info');
-              renderDetailEntry(transferId);
-              return;
-            }
-            openSelector(transferId, fresh, {auto: false});
-          }).catch(function (error) {
-            toast(String(error && error.message || 'File selection is unavailable.'), 'error');
-          });
-        });
-      } else if (view.decision === 'explicit' && selectedCount > 0) {
+      if (view.decision === 'explicit' && selectedCount > 0) {
         host.innerHTML = '<span class="dp-file-selection-summary">' + selectedCount + ' of ' +
           esc(String(view.file_count || selectedCount)) + ' files selected</span>';
       } else {
@@ -546,6 +621,19 @@
     document.addEventListener('debridpulse:detail-closed', function () {
       detailTransferId = null;
     });
+    // Dashboard Recent / Downloads glyph-only chip (§6.3, §6.7-6.8): one
+    // delegated listener, no per-row rebinding on every render pass. The
+    // chip is a real <button>, so the row's own dpIsInteractiveRowTarget
+    // guard already prevents this click from also opening Details (§6.10
+    // Case H) -- no stopPropagation() needed here.
+    document.addEventListener('click', function (event) {
+      const chip = event.target && event.target.closest
+        ? event.target.closest('[data-dp-file-selection-chip]') : null;
+      if (!chip) return;
+      const transferId = Number(chip.dataset.transferId);
+      if (!Number.isFinite(transferId)) return;
+      handleAffordanceClick(transferId);
+    });
     // Cold load (§40): recover an offer created before this tab connected.
     pollOffers();
   }
@@ -561,5 +649,7 @@
     pollOffers,
     renderDetailEntry,
     openSelector,
+    chipMarkup,
+    handleAffordanceClick,
   });
 })();

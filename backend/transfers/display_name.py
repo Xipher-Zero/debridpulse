@@ -62,17 +62,32 @@ def _collection_base(filename: str) -> str:
 def normalized_transfer_display_name(
     artifact_filenames: Sequence[str],
     root_name: Optional[str] = None,
+    *,
+    root_is_canonical_identity: bool = False,
 ) -> str:
     """Derive the canonical human-facing transfer title.
 
-    Preference order (Section 15 of the DP 1.0.12 presentation task):
-    1. a normalized artifact-derived name (single file, or a safe common
-       collection base across multiple related files);
+    Preference order (Section 15 of the DP 1.0.12 presentation task; narrowed
+    by the DP 1.0.12 Workstream C name-regression correction):
+    0. when the caller asserts ``root_is_canonical_identity`` (the transfer's
+       durable submission kind is a torrent/magnet — a canonical
+       source/request fact, never inferred from filename shape or count) and
+       a non-blank root/request ``name`` exists, that root name IS the
+       transfer's real identity and wins outright, regardless of how many
+       artifacts exist or what they are named. A torrent/magnet root title
+       must never be replaced by one arbitrary member filename.
+    1. otherwise, a normalized artifact-derived name (single file, or a safe
+       common collection base across multiple related files);
     2. a representative artifact filename plus the remaining file count, when
        no safe common base can be derived without over-normalizing;
     3. the root/request ``name`` fallback, only when no artifact filenames
        are available at all;
     4. a final generic "(unnamed)" fallback.
+
+    ``root_is_canonical_identity`` is the only caller-supplied policy input;
+    it must be derived from durable submission/source semantics (e.g. the
+    transfer's request kind), never from filename patterns, extensions, UI
+    glyphs, provider identity, or member count.
 
     Deterministic and conservative: never strips words merely because they
     differ, never derives a name from source host/provider/candidate/request
@@ -98,6 +113,11 @@ def normalized_transfer_display_name(
     if not names:
         fallback = str(root_name or "").strip()
         return fallback or _UNNAMED
+
+    if root_is_canonical_identity:
+        canonical_root = str(root_name or "").strip()
+        if canonical_root:
+            return canonical_root
 
     if len(names) == 1:
         return names[0]

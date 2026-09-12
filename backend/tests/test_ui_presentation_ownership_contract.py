@@ -242,15 +242,20 @@ def test_file_selection_has_one_bounded_runtime_and_style_owner() -> None:
 
 
 def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
+    # DP 1.0.12 Workstream B: ui-file-selection.js must load before
+    # ui-dashboard-transfer-presentation.js and ui-downloads-presentation.js,
+    # since both now call window.DPFileSelection.chipMarkup() synchronously
+    # while building each row's markup and this chain loads owners strictly
+    # in order (see ui-provider-status.js bootPresentationOwners()).
     provider = read("ui-provider-status.js")
     ordered = (
         "/ui-toast-contract.js?v=2",
         "/ui-processing-presentation.js?v=1",
+        "/ui-file-selection.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=3",
         "/ui-downloads-presentation.js?v=2",
         "/ui-activity-log-runtime.js?v=1",
         "/ui-settings-archive-passwords.js?v=1",
-        "/ui-file-selection.js?v=1",
     )
     positions = [provider.index(item) for item in ordered]
     assert positions == sorted(positions)
@@ -258,9 +263,20 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
 
 
 def test_details_exposes_a_stable_file_selection_action_host() -> None:
+    # DP 1.0.12 Workstream B: the action moved from the generic top-of-Details
+    # #dp-detail-actions host to the Files-section header right-side slot
+    # (data-dp-file-selection-mount) -- the same location pattern the
+    # group-switch launcher (data-dp-group-candidates-mount) already uses --
+    # and the canonical visible wording is the short "Choose Files" /
+    # "Change Files" pair, never the retired longer phrasing.
     app = read("app.js")
-    assert 'id="dp-detail-actions"' in app
+    assert "data-dp-file-selection-mount" in app
+    assert 'id="dp-detail-actions"' not in app
     runtime = read("ui-file-selection.js")
-    assert "dp-detail-actions" in runtime
-    assert "Select files" in runtime
-    assert "Change file selection" in runtime
+    assert "data-dp-file-selection-mount" in runtime
+    assert "Choose Files" in runtime
+    assert "Change Files" in runtime
+    # The retired longer Details-launcher wording must not resurface (the
+    # selector modal's own title bar, "Select files", is a separate, still-
+    # accurate string unrelated to the launcher label and is untouched).
+    assert "Change file selection" not in runtime

@@ -1755,8 +1755,15 @@ async function showDetail(id) {
     }
 
     const providerPresentation = transferProviderPresentation(t);
+    // The file-selection affordance (DP 1.0.12 Workstream B) can be valid
+    // before any artifact exists yet (manifest-pending window, §6.5), so the
+    // Files-section header must be able to render even when t.files is
+    // still empty -- gated on the durable torrent/magnet source-kind fact,
+    // never on filename shape or provider identity.
+    const dpMayHaveFileSelection = ['magnet', 'torrent_file'].includes(
+      String(t.current_source_identity && t.current_source_identity.kind || '').toLowerCase());
+    const dpShowFilesCard = Boolean((t.files && t.files.length) || dpMayHaveFileSelection);
     if (modalBody) modalBody.innerHTML = `
-      <div id="dp-detail-actions" class="dp-detail-actions"></div>
       <div class="detail-grid">
         <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
         <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
@@ -1785,12 +1792,16 @@ async function showDetail(id) {
           <div><span>Delivering Provider ID</span><strong>${esc(t.delivering_provider_id || '—')}</strong></div>
         </div>
       </details>
-      ${t.files&&t.files.length?`
+      ${dpShowFilesCard?`
         <div class="card dp-detail-section-card dp-detail-files-card">
           <div class="card-header dp-detail-files-header">
-            <span class="card-title">Files (${t.files.length})</span>
-            <span class="dp-detail-files-group-slot" data-dp-group-candidates-mount data-dp-transfer-id="${t.id}"></span>
+            <span class="card-title">Files${t.files&&t.files.length?` (${t.files.length})`:''}</span>
+            <span class="dp-detail-files-header-actions">
+              <span class="dp-detail-files-group-slot" data-dp-group-candidates-mount data-dp-transfer-id="${t.id}"></span>
+              <span class="dp-detail-files-selection-slot" data-dp-file-selection-mount data-dp-transfer-id="${t.id}"></span>
+            </span>
           </div>
+          ${t.files&&t.files.length?`
           <div class="dp-detail-table-wrap">
             <table class="t-table">
               <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
@@ -1805,6 +1816,7 @@ async function showDetail(id) {
               </tr>`).join('')}</tbody>
             </table>
           </div>
+          `:''}
         </div>
       `:''}
       ${t.source_outcomes && t.source_outcomes.length ? `

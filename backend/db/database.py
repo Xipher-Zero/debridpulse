@@ -782,6 +782,17 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_local_path ON download_files (local_path)",
             "CREATE INDEX IF NOT EXISTS idx_events_torrent_id ON events (torrent_id)",
             "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at)",
+            # DP 1.0.12 Workstream A performance correction: the operational
+            # Downloads projection's per-artifact latest recovery-snapshot
+            # lookup (api/operational_downloads.py, artifact_presentation_facts)
+            # matches on kind = 'transfer_recovery:' || <artifact id> and orders
+            # by id DESC. Without this index every artifact on the page forced
+            # a full SCAN of application_events (proven: EXPLAIN QUERY PLAN
+            # showed "CORRELATED SCALAR SUBQUERY" -> "SCAN ae"; live evidence
+            # up to ~20.9s for a single 703-file torrent). (kind, id DESC)
+            # lets SQLite satisfy the match + ORDER BY + LIMIT 1 with one
+            # index seek per artifact.
+            "CREATE INDEX IF NOT EXISTS idx_application_events_kind_id ON application_events (kind, id DESC)",
             RUNTIME_STATE_SCHEMA[1],
             INPUT_CHALLENGE_SCHEMA[1],
         ]:
