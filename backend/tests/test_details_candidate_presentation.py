@@ -189,6 +189,32 @@ async def test_group_source_candidates_expose_canonical_host_without_touching_pe
 
 
 @pytest.mark.asyncio
+async def test_generic_acquisition_candidates_carry_switch_eligible_matching_source_candidates(details_runtime):
+    """DP 1.0.12 Contextual Candidate Action Scope task, §6.1/§10.1: generic
+    (non-host-scoped-only) acquisition_candidates carry the same backend-owned
+    switch_eligible fact source_candidates already does -- false for the
+    selected candidate, true for a switchable-state non-selected one -- so
+    ui-detail-candidates.js can render per-candidate switch actions without a
+    JS lifecycle whitelist."""
+    engine, repository, _provider, _executor = details_runtime
+    canonical = await submit(engine, "rapidgator")
+    await engine.resolve_pending()
+    await submit(engine, "1fichier")
+    await engine.resolve_pending()
+
+    file_row = file_projection(await repository.presentation(canonical.id, details=True))
+    acquisition = {item["candidate_id"]: item for item in file_row["acquisition_candidates"]}
+    source = {item["candidate_id"]: item for item in file_row["source_candidates"]}
+    assert set(acquisition) == set(source)
+    for candidate_id, entry in acquisition.items():
+        assert entry["switch_eligible"] == source[candidate_id]["switch_eligible"]
+    selected = [item for item in acquisition.values() if item["is_selected"]]
+    assert len(selected) == 1 and selected[0]["switch_eligible"] is False
+    other = [item for item in acquisition.values() if not item["is_selected"]]
+    assert other and all(item["switch_eligible"] for item in other)
+
+
+@pytest.mark.asyncio
 async def test_single_candidate_artifact_carries_group_projection_but_no_multiplicity_records(details_runtime):
     engine, repository, _provider, _executor = details_runtime
     canonical = await submit(engine, "rapidgator")
@@ -246,9 +272,16 @@ async def test_public_projection_hides_raw_bindings_and_capabilities(details_run
     file_row = file_projection(public)
     assert file_row["candidate_count"] == 2
     for candidate in file_row["acquisition_candidates"]:
+        # DP 1.0.12 Contextual Candidate Action Scope task (§6.1/§10.1):
+        # generic acquisition-candidate presentation now also carries
+        # ``switch_eligible`` (the same backend-owned _SWITCHABLE_ARTIFACT_STATES
+        # rule the host-scoped ``source_candidates`` projection already uses),
+        # so the frontend can render per-candidate switch actions without
+        # recreating lifecycle policy in JS. Deliberate, documented shape
+        # change; no other field/behavior here is affected.
         assert set(candidate) == {
             "candidate_id", "source_label", "provider_id", "relationship",
-            "dispositions", "is_selected", "is_delivering",
+            "dispositions", "is_selected", "is_delivering", "switch_eligible",
         }
         serialized = repr(candidate).lower()
         assert "http://" not in serialized

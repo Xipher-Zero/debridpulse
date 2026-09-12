@@ -193,6 +193,93 @@ async def test_confirm_happy_path_then_only_subset_materializes(api):
 
 
 @pytest.mark.asyncio
+async def test_mutable_file_selection_and_materialized_artifacts_are_temporally_exclusive(api):
+    """DP 1.0.12 Case O architectural verification (Outcome A).
+
+    Proves the exact production invariant the Details Files-header arbitration
+    depends on: a torrent/magnet's per-file artifacts -- the only things
+    ``transfers.canonical.CanonicalOwnership.attach`` (the cross-transfer
+    candidate-consolidation write path) could ever target -- do not exist at
+    all while ``file_selection_presentation``'s ``mutable`` fact is true.
+
+    ``transfers.file_selection.selection_mutable`` is exactly
+    ``manifest_committed_at is None``. ``transfers.repository
+    .commit_selected_manifest`` sets ``manifest_committed_at`` (its own
+    docstring: "marks that core has authorized materialization for this
+    generation and frozen mutation") in a transaction that completes strictly
+    BEFORE ``transfers.engine``'s AVAILABLE/``selecting`` branch calls
+    ``repository.manifest(record, authorized)`` -- the ONLY call that fans out
+    the per-file child requests/artifacts a candidate could ever attach to.
+    There is therefore no window in which ``mutable`` is true and a
+    per-file artifact already exists: this test drives the real engine/API
+    through confirm -> materialize and checks both sides of that boundary
+    without mocking the invariant itself.
+    """
+    transfer_id = await _submit_available_multifile(api)
+
+    # Decision hold open: mutable, and genuinely nothing exists yet for any
+    # cross-transfer attach() to ever target.
+    pending_view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    assert pending_view["eligible"] is True
+    assert pending_view["mutable"] is True
+    assert pending_view["decision"] == "pending"
+    assert await api.repository.artifacts(transfer_id) == ()
+    assert [r for r in await api.repository.requests(transfer_id) if r.parent_id is not None] == []
+    # canonical_artifacts() is the EXACT candidate pool transfers._engine_base
+    # ._materialize's cross-transfer consolidation loop iterates over (for
+    # primary in await self.canonical.canonical_artifacts(): ... attach(...)).
+    # This transfer contributes zero rows to it -- a separate submission
+    # attempting to consolidate onto one of this torrent's files right now
+    # would have nothing to find, let alone attach().
+    canonical_ids = {a.transfer_id for a in await api.engine.canonical.canonical_artifacts()}
+    assert transfer_id not in canonical_ids
+
+    # Confirm an explicit subset. This durably settles ``decision`` but --
+    # confirm_file_selection never touches manifest_committed_at -- does NOT
+    # by itself authorize materialization: still mutable, still no artifacts.
+    keep = [pending_view["entries"][0]["entry_id"], pending_view["entries"][2]["entry_id"]]
+    confirmed = await api.client.post(
+        f"/api/torrents/{transfer_id}/file-selection/confirm",
+        json={"manifest_id": pending_view["manifest_id"], "entry_ids": keep},
+    )
+    assert confirmed.status_code == 200 and confirmed.json()["decision"] == "explicit"
+
+    post_confirm_view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    assert post_confirm_view["decision"] == "explicit"
+    assert post_confirm_view["mutable"] is True, (
+        "confirm() alone must not authorize materialization -- only "
+        "commit_selected_manifest (engine-driven) sets manifest_committed_at"
+    )
+    assert await api.repository.artifacts(transfer_id) == ()
+
+    # The following engine cycle is where commit_selected_manifest sets
+    # manifest_committed_at (freezing mutability) and fans out the per-file
+    # CHILD REQUESTS -- the artifacts themselves materialize only once each
+    # child request resolves its own candidate, a further cycle away. So the
+    # gap between "no longer mutable" and "artifact actually exists" is not
+    # even zero -- it is strictly positive, making coexistence impossible by
+    # an even wider margin than a single atomic step.
+    api.clock.advance(5)
+    await api.engine.resolve_pending()
+
+    after_first_cycle_view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    assert after_first_cycle_view["mutable"] is False
+    assert await api.repository.artifacts(transfer_id) == ()  # still nothing to attach() to
+    children = [r for r in await api.repository.requests(transfer_id) if r.parent_id is not None]
+    assert len(children) == 2  # child requests exist, not yet materialized into artifacts
+
+    await api.engine.resolve_pending()  # children resolve their own candidates -> materialize
+
+    materialized = await api.repository.artifacts(transfer_id)
+    assert len(materialized) == 2  # exactly the 2 confirmed entries
+
+    # Selection stays non-mutable now that artifacts exist -- the two facts
+    # are never simultaneously true at any observed point in this drive.
+    final_view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+    assert final_view["mutable"] is False
+
+
+@pytest.mark.asyncio
 async def test_settled_read_model_drops_the_active_decision_deadline(api):
     """§16/§18 — once the decision is no longer pending the public read model must
     not present the historical hold as an active ``decision_deadline``. Checked

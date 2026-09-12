@@ -44,6 +44,9 @@
   let lastValidRect = null;       // last known geometry; survives transient trigger loss
   let menuTransferId = null;
   let menuSurface = null;         // 'dashboard_recent' | 'downloads' | 'details'
+  let menuMode = 'group';         // 'group' | 'artifact' (DP 1.0.12 Contextual Candidate Action Scope task)
+  let menuArtifactId = null;      // artifact target when menuMode === 'artifact'
+  let menuArtifactFile = null;    // last-rendered fresh Details file row for the open artifact chooser
   let menuBusy = false;
   let menuVisible = false;
   let menuGroup = null;
@@ -199,30 +202,110 @@
     return computeGroup(transfer && Array.isArray(transfer.files) ? transfer.files : []);
   }
 
+  // ── Candidate-action scope (DP 1.0.12 Contextual Candidate Action Scope
+  // task) ── a THIRD, orthogonal read fact alongside group MEMBERSHIP/HISTORY
+  // (commonHosts/count, above) and per-host ACTIONABILITY (actionableHosts):
+  // the smallest unambiguous candidate-switch operation scope available right
+  // now — none | artifact | group. Never redefines membership; never picks an
+  // arbitrary artifact when more than one is movable.
+  //
+  // A "movable" file is the exact same operation-classification bar the
+  // backend bounded projection uses: a distinct, backend-authored
+  // ``switch_eligible`` candidate exists on the file's full canonical
+  // ``acquisition_candidates`` set (never a JS lifecycle-state whitelist, and
+  // never gated on ``source_scope === 'host'``).
+
+  function isMovableFile(file) {
+    return Array.isArray(file && file.acquisition_candidates) &&
+      file.acquisition_candidates.some(function (candidate) { return candidate && candidate.switch_eligible; });
+  }
+
+  // Fresh, click-time operation-context classification from an authoritative
+  // Details payload — the same precedence the backend classifier uses
+  // (exactly one movable artifact always wins over a group target):
+  //   movable.length === 1  -> artifact, targeting that exact file
+  //   movable.length > 1    -> group, IF at least one common host is both
+  //                            actionable and movement-producing (excludes the
+  //                            already-uniform ACTIVE host, which needs zero
+  //                            movement)
+  //   otherwise              -> none
+  function classifyFreshScope(transfer) {
+    const files = transfer && Array.isArray(transfer.files) ? transfer.files : [];
+    const movable = files.filter(isMovableFile);
+    if (movable.length === 1) {
+      const file = movable[0];
+      const count = Array.isArray(file.acquisition_candidates) ? file.acquisition_candidates.length : 0;
+      return {scope: 'artifact', artifactId: Number(file.id), count: count};
+    }
+    if (movable.length > 1) {
+      const group = groupFromTransfer(transfer);
+      const movementHosts = group.actionableHosts.filter(function (host) { return host !== group.activeHost; });
+      if (movementHosts.length > 0) {
+        return {scope: 'group', artifactId: null, count: movementHosts.length};
+      }
+    }
+    return {scope: 'none', artifactId: null, count: 0};
+  }
+
   // ── Launcher chip ────────────────────────────────────────────────────────
 
-  function launcherMarkup(item, variant, surface) {
+  function actionLauncherMarkup(transferId, variant, surface, mode, artifactId, count) {
+    const total = Math.max(0, Math.round(Number(count) || 0));
+    const labeled = variant === 'labeled';
+    const title = mode === 'artifact'
+      ? total + ' sources available for this file'
+      : total + ' sources can converge for remaining files';
+    const ariaLabel = mode === 'artifact'
+      ? 'Choose a source for this file; ' + total + ' sources are available.'
+      : 'Choose a source for remaining files; ' + total + ' sources can converge.';
+    return '<button type="button" class="dp-candidate-chip dp-group-candidate-launcher" ' +
+      TRIGGER_ATTR + ' data-dp-transfer-id="' + esc(String(transferId == null ? '' : transferId)) + '" ' +
+      (surface ? 'data-dp-surface="' + esc(surface) + '" ' : '') +
+      'data-dp-mode="' + esc(mode) + '" ' +
+      (mode === 'artifact' ? 'data-dp-artifact-id="' + esc(String(artifactId)) + '" ' : '') +
+      'aria-haspopup="dialog" aria-expanded="false" ' +
+      'title="' + esc(title) + '" ' +
+      'aria-label="' + esc(ariaLabel) + '">' +
+      glyph() +
+      '<span class="dp-candidate-chip-count">' + total + '</span>' +
+      (labeled ? ' <span>Candidates</span>' : '') +
+      '</button>';
+  }
+
+  function staticHistoryMarkup(item, variant) {
+    const count = Number(item && item.common_candidate_count);
+    if (!Number.isFinite(count) || count < 2) return '';
+    const total = Math.round(count);
+    const labeled = variant === 'labeled';
+    const historyTitle = total + ' sources common to every file';
+    // No meaningful current candidate-switch action: the common-source count
+    // remains useful HISTORY. Render a visually equivalent, non-interactive
+    // indicator — not a <button>, no aria-haspopup/aria-expanded, never opens
+    // a chooser. common_candidate_count itself is never overwritten.
+    return '<span class="dp-candidate-chip dp-group-candidate-history" ' +
+      'title="' + esc(historyTitle) + '" ' +
+      'aria-label="' + esc(total + ' sources were common to every file') + '">' +
+      glyph() +
+      '<span class="dp-candidate-chip-count">' + total + '</span>' +
+      (labeled ? ' <span>Candidates</span>' : '') +
+      '</span>';
+  }
+
+  // Preserved byte-for-byte for callers/fixtures that do not (yet) supply
+  // ``candidate_action_scope`` (e.g. a pre-existing browser-test fixture
+  // built before this task). Every real production row from
+  // api/operational_downloads.py now always supplies the new field.
+  function legacyLauncherMarkup(item, variant, surface) {
     const count = Number(item && item.common_candidate_count);
     if (!Number.isFinite(count) || count < 2) return '';
     const total = Math.round(count);
     const transferId = String(item.id == null ? '' : item.id);
     const labeled = variant === 'labeled';
     const remainingField = item && item.group_remaining_count;
-    // Unknown remaining-work signal (e.g. a caller that has not been wired
-    // for it yet) defaults to interactive rather than silently hiding a
-    // previously-working action; every real call site below always supplies it.
     const hasRemainingWork = remainingField == null || !Number.isFinite(Number(remainingField))
       ? true : Number(remainingField) > 0;
     const historyTitle = total + ' sources common to every file';
-    // Dense list surfaces (Dashboard Recent, Downloads) get glyph+count only;
-    // Details' Files header — the one place a bare number would be
-    // ambiguous among its other per-file candidate counts — gets the
-    // labeled form. Accessible wording is identical either way.
     if (!hasRemainingWork) {
-      // No meaningful remaining acquisition work: the common-source count
-      // remains useful HISTORY, but it is no longer an action. Render a
-      // visually equivalent, non-interactive indicator — not a <button>, no
-      // aria-haspopup/aria-expanded, and it never opens a chooser.
       return '<span class="dp-candidate-chip dp-group-candidate-history" ' +
         'title="' + esc(historyTitle) + '" ' +
         'aria-label="' + esc(total + ' sources were common to every file') + '">' +
@@ -243,27 +326,79 @@
       '</button>';
   }
 
+  // Consumed as-is by ui-downloads-presentation.js / ui-dashboard-transfer-
+  // presentation.js — the bounded list item is already plumbed through
+  // unchanged; this is the only place list-row candidate-action semantics
+  // are interpreted (DP 1.0.12 Contextual Candidate Action Scope task, §9).
+  function launcherMarkup(item, variant, surface) {
+    const scope = item && item.candidate_action_scope;
+    if (scope === 'artifact') {
+      return actionLauncherMarkup(item.id, variant, surface, 'artifact', item.candidate_action_artifact_id, item.candidate_action_count);
+    }
+    if (scope === 'group') {
+      return actionLauncherMarkup(item.id, variant, surface, 'group', null, item.candidate_action_count);
+    }
+    if (scope === 'none') {
+      return staticHistoryMarkup(item, variant);
+    }
+    return legacyLauncherMarkup(item, variant, surface);
+  }
+
   // ── Detail Files-header mount ────────────────────────────────────────────
+  //
+  // DP 1.0.12 Final Pre-Commit Verification (Case O): a prior round added
+  // File-Selection-applicability arbitration here, gated on the premise that
+  // File Selection and an actionable candidate could compete for this one
+  // slot. Verification against production (transfers/file_selection.py
+  // selection_mutable, transfers/repository.py commit_selected_manifest,
+  // transfers/engine.py's AVAILABLE/selecting branch, transfers/canonical.py
+  // attach()/canonical_artifacts()) proved STRUCTURAL_MUTUAL_EXCLUSION for
+  // the actual competing operation: File Selection's INTERACTIVE control
+  // (mutable=true) can never coexist with a materialized per-file artifact,
+  // because commit_selected_manifest sets manifest_committed_at (which is
+  // the entirety of selection_mutable's condition) strictly BEFORE the
+  // engine ever fans out the per-file child requests/artifacts that any
+  // candidate-action classification or cross-transfer canonical.py:attach()
+  // could ever target -- see backend/tests/test_file_selection_api.py
+  // test_mutable_file_selection_and_materialized_artifacts_are_temporally_exclusive.
+  // A settled, non-mutable File Selection summary (decision=explicit) CAN
+  // legitimately coexist with an actionable candidate for the same torrent
+  // (Section 1's product note), but that summary is passive/historical, not
+  // a competing operation -- the same passive-vs-action distinction this
+  // codebase already draws for common_candidate_count history badges. No
+  // arbitration is needed. This restores the pre-Case-O rendering, keeping
+  // the (unrelated, still-valid) one-movable-artifact ARTIFACT-mode addition.
 
   function renderMount(transfer) {
     const mount = document.querySelector('#modal-body ' + MOUNT_SELECTOR);
     if (!mount) return;
     const transferId = String((transfer && transfer.id) || mount.dataset.dpTransferId || '');
+    const files = transfer && Array.isArray(transfer.files) ? transfer.files : [];
+    const movable = files.filter(isMovableFile);
+    // Exactly one movable artifact always wins over a group target (matches
+    // the backend classifier precedence exactly) — purely additive: when
+    // movable.length is 0 or > 1, the EXISTING group gating below is
+    // completely unchanged.
+    if (movable.length === 1) {
+      const file = movable[0];
+      const count = Array.isArray(file.acquisition_candidates) ? file.acquisition_candidates.length : 0;
+      mount.innerHTML = actionLauncherMarkup(transferId, 'labeled', 'details', 'artifact', file.id, count);
+      onSurfaceRendered('details');
+      return;
+    }
     const group = groupFromTransfer(transfer);
     // The group launcher is an ACTION affordance, not a history viewer:
     // Details exposes it only when there is meaningful remaining acquisition
     // work that can still be switched. A completed transfer or a terminal
     // failed/non-actionable transfer gets no launcher at all here (Details
     // already has the per-file/candidate/provenance surfaces for historical
-    // inspection) — never a disabled/static chip in its place.
+    // inspection) — never a disabled/static chip in its place. This is the
+    // EXISTING (pre-task) gating, preserved exactly as shipped.
     if (group.count < 2 || !group.actionParticipants.length) {
       mount.innerHTML = '';
       return;
     }
-    mount.innerHTML = launcherMarkup(
-      {id: transferId, common_candidate_count: group.count, group_remaining_count: group.actionParticipants.length},
-      'labeled', 'details',
-    );
+    mount.innerHTML = actionLauncherMarkup(transferId, 'labeled', 'details', 'group', null, group.count);
     onSurfaceRendered('details');
   }
 
@@ -427,6 +562,35 @@
     if (menuTransferId == null || menuSurface !== surface) return;
     const resolved = resolveTrigger(menuTransferId, menuSurface);
     if (resolved) {
+      // Section 7 stale-launcher rule: a background LIST-surface refresh can
+      // reveal that the SAME (transferId, surface) launcher now represents a
+      // different operation scope/target (group -> artifact, artifact ->
+      // group/another artifact, either -> none) while a chooser for the OLD
+      // scope is open. Absent data-dp-mode (a pre-task/legacy fixture that
+      // never carried candidate_action_scope) defaults to 'group', matching
+      // menuMode's own default, so this never spuriously fires for a caller
+      // that has not been wired for the new fields. Exempts exactly the
+      // pre-existing Details Files-header GROUP entry point (surface ===
+      // 'details' && menuMode === 'group'): it already recomputes fresh at
+      // every render (renderMount) and its own long-shipped revalidation
+      // (renderMenu/chooseHost) must keep an open chooser visible through
+      // its OWN internal refresh cycles rather than being force-closed here
+      // (Section 4.1's "existing group-mode... may remain exactly as
+      // shipped" carve-out). The NEW Details ARTIFACT-mode chooser has no
+      // such legacy behavior to preserve and stays protected.
+      const resolvedMode = String(resolved.dataset.dpMode || 'group');
+      const resolvedArtifactId = resolved.dataset.dpArtifactId != null && resolved.dataset.dpArtifactId !== ''
+        ? Number(resolved.dataset.dpArtifactId) : null;
+      const legacyDetailsGroup = surface === 'details' && menuMode === 'group';
+      const scopeChanged = !legacyDetailsGroup && menuVisible && !menuBusy && (resolvedMode !== menuMode ||
+        (resolvedMode === 'artifact' && resolvedArtifactId !== menuArtifactId));
+      if (scopeChanged) {
+        // Never silently morph one semantic operation into another under the
+        // operator: close and let them act on the freshly rendered control.
+        closeMenu();
+        toast('Candidate options changed.', 'info');
+        return;
+      }
       anchorTrigger = resolved;
       lastValidRect = resolved.getBoundingClientRect();
       if (menuVisible) {
@@ -540,6 +704,9 @@
     if (!menuBusy) {
       menuTransferId = null;
       menuSurface = null;
+      menuMode = 'group';
+      menuArtifactId = null;
+      menuArtifactFile = null;
     }
     if (focusTrigger && liveTrigger && liveTrigger.isConnected) {
       liveTrigger.focus({preventScroll: true});
@@ -553,10 +720,20 @@
     return window.api('GET', '/torrents/' + transferId);
   }
 
-  async function open(transferId, surface, trigger) {
+  // ``strict`` (DP 1.0.12 Contextual Candidate Action Scope task, §7):
+  // list-surface launchers are a discovery HINT that can go stale relative
+  // to fresh Details, so those callers pass strict=true to abort (no
+  // mutation, no morph, a "Candidate options changed." toast, and a
+  // surface refresh) when the freshly classified scope no longer agrees.
+  // The pre-existing Details Files-header group entry point is called with
+  // strict=false (its long-shipped per-host revalidation, in renderMenu/
+  // chooseHost below, is left completely untouched — Section 4.1's explicit
+  // "existing group-mode... may remain exactly as shipped" carve-out).
+  async function open(transferId, surface, trigger, options) {
+    const strict = Boolean(options && options.strict);
     if (typeof window.api !== 'function' || transferId == null) return;
     if (menuBusy) return;  // a running switch stays visually owned throughout
-    if (menuTransferId === Number(transferId) && menuSurface === surface && menuVisible) {
+    if (menuTransferId === Number(transferId) && menuSurface === surface && menuMode === 'group' && menuVisible) {
       closeMenu({focusTrigger: true});
       return;
     }
@@ -564,6 +741,8 @@
     ensureMenu();
     menuTransferId = Number(transferId);
     menuSurface = surface || null;
+    menuMode = 'group';
+    menuArtifactId = null;
     anchorTrigger = trigger || resolveTrigger(menuTransferId, menuSurface);
     lastValidRect = anchorTrigger ? anchorTrigger.getBoundingClientRect() : null;
     menuBusy = false;
@@ -576,6 +755,15 @@
     try {
       const transfer = await fetchTransfer(menuTransferId);
       if (menuSession !== session) return;
+      if (strict) {
+        const fresh = classifyFreshScope(transfer);
+        if (fresh.scope !== 'group') {
+          closeMenu();
+          toast('Candidate options changed.', 'info');
+          await refreshSurfaces();
+          return;
+        }
+      }
       const group = groupFromTransfer(transfer);
       renderMenu(group);
       const first = actionableButtons()[0];
@@ -585,6 +773,166 @@
       if (menuSession !== session) return;
       closeMenu({focusTrigger: true});
       toast('Common sources are unavailable right now.', 'error');
+    }
+  }
+
+  // ── Artifact-mode chooser (DP 1.0.12 Contextual Candidate Action Scope
+  // task) ── the smallest unambiguous scope: exactly one movable artifact.
+  // Reuses the SAME popover/anchor/keyboard/focus machinery as group mode
+  // (Section 14.1: no second modal, no second switching subsystem) and the
+  // SAME existing per-artifact candidate-switch POST (switchOne, below).
+
+  function artifactRowMarkup(file) {
+    const candidates = Array.isArray(file && file.acquisition_candidates) ? file.acquisition_candidates : [];
+    // Every canonical candidate the generic Details presentation normally
+    // shows is rendered; only a backend-authored switch_eligible non-selected
+    // candidate receives a switch action — a candidate may be displayed
+    // without being switchable (Section 14.2).
+    return candidates.map(function (candidate) {
+      const active = Boolean(candidate && candidate.is_selected);
+      const action = active
+        ? '<span class="dp-group-candidate-active" aria-label="Active source">ACTIVE</span>'
+        : (candidate && candidate.switch_eligible)
+          ? '<button type="button" class="dp-group-candidate-switch" data-dp-candidate-id="' + esc(candidate.candidate_id) + '"' +
+            (menuBusy ? ' disabled aria-disabled="true"' : '') + '>' + SWITCH_ACTION + '</button>'
+          : '<span class="dp-group-candidate-unavailable">Not currently switchable</span>';
+      const label = String((candidate && candidate.source_label) || 'Source');
+      return '<div class="dp-group-candidate-row" role="group" aria-label="' + esc(label) + '">' +
+        '<span class="dp-group-candidate-host">' + esc(label) + '</span>' +
+        '<span class="dp-group-candidate-action">' + action + '</span></div>';
+    }).join('');
+  }
+
+  function renderArtifactMenu(file) {
+    if (!menuEl) return;
+    menuArtifactFile = file;
+    menuEl.hidden = false;
+    menuVisible = true;
+    menuEl.removeAttribute('aria-busy');
+    const heading = 'dp-group-candidates-heading';
+    menuEl.innerHTML =
+      '<div class="dp-group-candidate-title" id="' + heading + '">Candidate sources</div>' +
+      '<div class="dp-group-candidate-note">Switches the source for this file.</div>' +
+      artifactRowMarkup(file);
+    menuEl.setAttribute('aria-labelledby', heading);
+    positionMenu();
+    menuEl.querySelectorAll('.dp-group-candidate-switch').forEach(function (button) {
+      button.addEventListener('click', function () { chooseArtifactCandidate(button.dataset.dpCandidateId); });
+    });
+  }
+
+  // Always strict (Section 7): an artifact-mode launcher is either a list
+  // discovery hint or the Details Files-header's own fresh-computed target,
+  // and both must be reconfirmed against a fresh Details fetch before
+  // rendering any row, exactly like the stale-launcher rule requires.
+  async function openArtifact(transferId, artifactId, surface, trigger) {
+    if (typeof window.api !== 'function' || transferId == null || artifactId == null) return;
+    if (menuBusy) return;
+    if (menuTransferId === Number(transferId) && menuSurface === surface && menuMode === 'artifact' &&
+        menuArtifactId === Number(artifactId) && menuVisible) {
+      closeMenu({focusTrigger: true});
+      return;
+    }
+    closeMenu();
+    ensureMenu();
+    menuTransferId = Number(transferId);
+    menuSurface = surface || null;
+    menuMode = 'artifact';
+    menuArtifactId = Number(artifactId);
+    anchorTrigger = trigger || resolveTrigger(menuTransferId, menuSurface);
+    lastValidRect = anchorTrigger ? anchorTrigger.getBoundingClientRect() : null;
+    menuBusy = false;
+    menuVisible = true;
+    const session = menuSession;
+    if (anchorTrigger) anchorTrigger.setAttribute('aria-expanded', 'true');
+    menuEl.hidden = false;
+    menuEl.innerHTML = '<div class="dp-group-candidate-note">Loading sources…</div>';
+    positionMenu();
+    try {
+      const transfer = await fetchTransfer(menuTransferId);
+      if (menuSession !== session) return;
+      const fresh = classifyFreshScope(transfer);
+      if (fresh.scope !== 'artifact' || fresh.artifactId !== menuArtifactId) {
+        closeMenu();
+        toast('Candidate options changed.', 'info');
+        await refreshSurfaces();
+        return;
+      }
+      const file = (Array.isArray(transfer.files) ? transfer.files : [])
+        .find(function (item) { return Number(item.id) === menuArtifactId; });
+      if (!file) {
+        closeMenu();
+        toast('Candidate options changed.', 'info');
+        await refreshSurfaces();
+        return;
+      }
+      renderArtifactMenu(file);
+      const first = actionableButtons()[0];
+      if (first) first.focus({preventScroll: true});
+      else if (menuEl) menuEl.focus({preventScroll: true});
+    } catch (_) {
+      if (menuSession !== session) return;
+      closeMenu({focusTrigger: true});
+      toast('Candidate sources are unavailable right now.', 'error');
+    }
+  }
+
+  async function chooseArtifactCandidate(candidateId) {
+    if (!candidateId || menuBusy || menuTransferId == null || menuArtifactId == null) return;
+    const transferId = menuTransferId;
+    const artifactId = menuArtifactId;
+    const session = menuSession;
+    menuBusy = true;
+    if (menuArtifactFile) renderArtifactMenu(menuArtifactFile);  // disable rows while the switch runs
+
+    // Action-time revalidation against fresh Details, mirroring group mode's
+    // own chooseHost revalidation below: the chooser can go stale while open.
+    let transfer;
+    try {
+      transfer = await fetchTransfer(transferId);
+    } catch (_) {
+      menuBusy = false;
+      toast('Could not re-check the transfer. Nothing was changed.', 'error');
+      await refreshSurfaces();
+      if (menuSession === session) closeMenu();
+      return;
+    }
+    const file = (Array.isArray(transfer.files) ? transfer.files : [])
+      .find(function (item) { return Number(item.id) === artifactId; });
+    const candidate = file && Array.isArray(file.acquisition_candidates)
+      ? file.acquisition_candidates.find(function (item) { return String(item.candidate_id) === String(candidateId); })
+      : null;
+    if (!file || !candidate || !candidate.switch_eligible) {
+      menuBusy = false;
+      if (menuSession === session) { menuArtifactFile = file || null; renderArtifactMenu(file || {acquisition_candidates: []}); }
+      await refreshSurfaces();
+      toast('That source is no longer switchable for this file.', 'error');
+      return;
+    }
+
+    try {
+      const result = await switchOne(transferId, artifactId, candidateId);
+      menuBusy = false;
+      await refreshSurfaces();
+      if (menuSession === session && menuVisible) {
+        let freshFile = null;
+        try {
+          const freshTransfer = await fetchTransfer(transferId);
+          freshFile = (Array.isArray(freshTransfer.files) ? freshTransfer.files : [])
+            .find(function (item) { return Number(item.id) === artifactId; });
+        } catch (_) { /* keep going */ }
+        if (freshFile && isMovableFile(freshFile)) renderArtifactMenu(freshFile);
+        else closeMenu();
+      }
+      toast(String(result.filename || file.filename || 'artifact') + ' file source switched to ' + String(result.source_host || 'source'), 'success');
+    } catch (error) {
+      menuBusy = false;
+      await refreshSurfaces();
+      if (menuSession === session) closeMenu();
+      toast({
+        title: 'Unable to switch source for ' + String(file.filename || 'artifact'),
+        body: String((error && error.message) || 'The selected candidate could not be established.'),
+      }, 'error');
     }
   }
 
@@ -727,7 +1075,24 @@
     event.stopPropagation();
     const transferId = Number(target.dataset.dpTransferId);
     const surface = String(target.dataset.dpSurface || '');
-    if (Number.isFinite(transferId)) open(transferId, surface, target);
+    if (!Number.isFinite(transferId)) return;
+    const mode = target.dataset.dpMode;
+    if (mode === 'artifact') {
+      const artifactId = Number(target.dataset.dpArtifactId);
+      if (Number.isFinite(artifactId)) openArtifact(transferId, artifactId, surface, target);
+      return;
+    }
+    // A legacy launcher (no data-dp-mode at all -- a caller/fixture that
+    // never carried candidate_action_scope) and the pre-existing Details
+    // Files-header group entry point (mode === 'group' AND surface ===
+    // 'details') keep the EXACT pre-task behavior unchanged (Section 4.1's
+    // explicit "existing group-mode... may remain exactly as shipped"
+    // carve-out). Only a NEW-classified list-surface group launcher (mode
+    // === 'group' on a non-details surface) is a genuine discovery hint
+    // that can go stale and must be reconfirmed against fresh Details
+    // (Section 7) before a chooser opens.
+    const strict = mode === 'group' && surface !== 'details';
+    open(transferId, surface, target, {strict: strict});
   }
 
   function install() {

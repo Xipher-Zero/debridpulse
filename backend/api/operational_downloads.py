@@ -701,6 +701,92 @@ async def list_operational_torrents(
               ON veto.transfer_id = common.transfer_id
              AND veto.host = common.host
             WHERE veto.transfer_id IS NULL
+        ),
+        -- ── Candidate-action scope (DP 1.0.12 Contextual Candidate Action
+        -- Scope task, §3-4) ── a THIRD, orthogonal read fact alongside
+        -- membership (group_common_sources/common_candidate_count) and
+        -- remaining-work (group_remaining_counts/group_remaining_count):
+        -- the smallest unambiguous candidate-switch OPERATION SCOPE the
+        -- operator can act on right now (none|artifact|group). Never fed
+        -- back into membership/remaining-work and never derived from a
+        -- narrowed "movable subset" intersection.
+        --
+        -- Per-artifact canonical candidate IDENTITY count: protocol/provider-
+        -- neutral (no source_scope filter, unlike the host-scoped
+        -- group_member_hosts above), counting DISTINCT candidate ids so a
+        -- duplicate binding row can never inflate it. Feeds ONLY the
+        -- classifier below.
+        artifact_candidate_counts AS (
+            SELECT
+                b.canonical_artifact_id AS artifact_id,
+                COUNT(DISTINCT b.candidate_id) AS candidate_count
+            FROM canonical_candidate_bindings b
+            JOIN group_member_artifacts gma
+              ON gma.artifact_id = b.canonical_artifact_id
+            GROUP BY b.canonical_artifact_id
+        ),
+        -- MOVABLE artifacts: an operation-CLASSIFICATION SUBSET of
+        -- group_member_artifacts (current authoritative, non-blocked, non-
+        -- standby -- inherited, never redefined here). Additionally in a
+        -- switchable lifecycle state (the same _SWITCHABLE_STATES_SQL
+        -- classification group_remaining_counts already uses) and backed by
+        -- at least two distinct canonical candidate identities -- the same
+        -- bar generic Details acquisition_candidates.switch_eligible uses
+        -- (transfers/repository.py). This NEVER feeds group membership,
+        -- common_candidate_count, or which siblings exist -- it is consulted
+        -- ONLY by the classifier below.
+        movable_artifacts AS (
+            SELECT
+                gma.transfer_id AS transfer_id,
+                gma.artifact_id AS artifact_id,
+                acc.candidate_count AS candidate_count
+            FROM group_member_artifacts gma
+            JOIN artifact_candidate_counts acc
+              ON acc.artifact_id = gma.artifact_id
+            WHERE LOWER(TRIM(COALESCE(gma.status, ''))) IN ({_SWITCHABLE_STATES_SQL})
+              AND acc.candidate_count >= 2
+        ),
+        movable_artifact_counts AS (
+            SELECT transfer_id, COUNT(*) AS movable_count
+            FROM movable_artifacts
+            GROUP BY transfer_id
+        ),
+        -- Deterministic single-movable-artifact identity/count. Only ever
+        -- meaningful in Python when movable_artifact_counts.movable_count = 1
+        -- for that transfer (enforced in Python, not here): MIN/MAX over a
+        -- one-row group is then exact, never a guess.
+        single_movable_artifact AS (
+            SELECT
+                transfer_id,
+                MIN(artifact_id) AS artifact_id,
+                MAX(candidate_count) AS candidate_count
+            FROM movable_artifacts
+            GROUP BY transfer_id
+        ),
+        -- Strict common targets (group_true_common_hosts -- UNTOUCHED, the
+        -- exact same set group_common_sources counts) that are additionally
+        -- actionable AND movement-producing -- the identical predicate
+        -- group_actionable_common_sources already uses (reused, not re-
+        -- derived) -- kept at HOST granularity so they can be counted once
+        -- per normalized host instead of collapsed to one existence row per
+        -- transfer. group_actionable_common_sources itself is untouched;
+        -- this is a purely additive COUNT extension for the classifier.
+        group_actionable_common_source_hosts AS (
+            SELECT DISTINCT common.transfer_id, common.host
+            FROM group_true_common_hosts common
+            JOIN group_remaining_host_movement movement
+              ON movement.transfer_id = common.transfer_id
+             AND movement.host = common.host
+             {disabled_provider_clause}
+            LEFT JOIN group_host_vetoes veto
+              ON veto.transfer_id = common.transfer_id
+             AND veto.host = common.host
+            WHERE veto.transfer_id IS NULL
+        ),
+        group_actionable_common_source_counts AS (
+            SELECT transfer_id, COUNT(*) AS actionable_count
+            FROM group_actionable_common_source_hosts
+            GROUP BY transfer_id
         )
         SELECT
             t.id,
@@ -742,7 +828,11 @@ async def list_operational_torrents(
             root_request.payload AS _source_request_payload,
             delivered_source.candidate_source AS _delivered_candidate_source,
             active_source.candidate_source AS _active_candidate_source,
-            latest_route.candidate_summary AS _route_candidate_summary
+            latest_route.candidate_summary AS _route_candidate_summary,
+            COALESCE(movable_artifact_counts.movable_count, 0) AS _movable_artifact_count,
+            single_movable_artifact.artifact_id AS _single_movable_artifact_id,
+            single_movable_artifact.candidate_count AS _single_movable_artifact_candidate_count,
+            COALESCE(group_actionable_common_source_counts.actionable_count, 0) AS _actionable_common_target_count
         FROM page
         JOIN torrents t
           ON t.id = page.id
@@ -774,6 +864,12 @@ async def list_operational_torrents(
           ON group_actionable_common_sources.transfer_id = t.id
         LEFT JOIN group_member_filenames
           ON group_member_filenames.transfer_id = t.id
+        LEFT JOIN movable_artifact_counts
+          ON movable_artifact_counts.transfer_id = t.id
+        LEFT JOIN single_movable_artifact
+          ON single_movable_artifact.transfer_id = t.id
+        LEFT JOIN group_actionable_common_source_counts
+          ON group_actionable_common_source_counts.transfer_id = t.id
         ORDER BY t.created_at DESC
     """
 
@@ -802,6 +898,35 @@ async def list_operational_torrents(
         display_name = normalized_transfer_display_name(
             artifact_filenames, root_name=projected.get("name"),
         )
+        # Candidate-action scope classifier (DP 1.0.12 Contextual Candidate
+        # Action Scope task, §4/§10): orthogonal to common_candidate_count/
+        # group_remaining_count above -- a THIRD read fact, never a
+        # replacement. Precedence is intentional and must not be reordered:
+        # exactly one movable artifact always wins over a group target, even
+        # when a (necessarily disjoint, since STRICT_COMMON_TARGETS is never
+        # derived from the movable subset) group target also exists.
+        movable_artifact_count = int(projected.pop("_movable_artifact_count", 0) or 0)
+        single_movable_artifact_id = projected.pop("_single_movable_artifact_id", None)
+        single_movable_artifact_candidate_count = projected.pop(
+            "_single_movable_artifact_candidate_count", None
+        )
+        actionable_common_target_count = int(
+            projected.pop("_actionable_common_target_count", 0) or 0
+        )
+        if movable_artifact_count == 1:
+            candidate_action_scope = "artifact"
+            candidate_action_count = int(single_movable_artifact_candidate_count or 0)
+            candidate_action_artifact_id = (
+                int(single_movable_artifact_id) if single_movable_artifact_id is not None else None
+            )
+        elif movable_artifact_count > 1 and actionable_common_target_count > 0:
+            candidate_action_scope = "group"
+            candidate_action_count = actionable_common_target_count
+            candidate_action_artifact_id = None
+        else:
+            candidate_action_scope = "none"
+            candidate_action_count = 0
+            candidate_action_artifact_id = None
         for field in _SOURCE_PROJECTION_FIELDS:
             projected.pop(field, None)
         item = _public_transfer_presentation(projected, application.definitions)
@@ -824,6 +949,14 @@ async def list_operational_torrents(
         # Dashboard Recent and Downloads both render this SAME field — no
         # per-surface normalization duplication.
         item["display_name"] = display_name
+        # Candidate-action scope/count/target (Section 3): the smallest
+        # unambiguous candidate-switch operation scope the operator can act
+        # on right now. Orthogonal to common_candidate_count/
+        # group_remaining_count above -- never overwrites them, never derived
+        # from them, never derived from a narrowed "movable" membership set.
+        item["candidate_action_scope"] = candidate_action_scope
+        item["candidate_action_count"] = candidate_action_count
+        item["candidate_action_artifact_id"] = candidate_action_artifact_id
         # Effective processing presentation via the ONE shared owner
         # (transfers.presentation_repository.effective_presentation), fed the same
         # logical inputs as the comprehensive Details projection: the durable

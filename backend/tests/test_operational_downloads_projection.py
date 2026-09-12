@@ -1,4 +1,6 @@
 import asyncio
+import json
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from types import SimpleNamespace
@@ -11,6 +13,7 @@ import api.routes as legacy_routes
 import db.database as database
 import main as backend_main
 from fake_integrations import MemoryExecutor, ParcelProvider
+from test_group_common_sources import group_db
 from transfers.engine import TransferEngine
 from transfers.models import IntegrityMetadata, ResolutionResult, ResourceState, SourceIdentity, TransferRequest
 from transfers.policy import TransferPolicy
@@ -968,3 +971,318 @@ async def test_list_interactive_when_every_remaining_participant_can_converge_on
     by_id = {item["id"]: item for item in result["items"]}
     assert by_id[transfer.id]["common_candidate_count"] == 2
     assert by_id[transfer.id]["group_remaining_count"] == 2
+
+
+# ── Candidate-action scope (DP 1.0.12 Contextual Candidate Action Scope task) ──
+#
+# candidate_action_scope / candidate_action_count / candidate_action_artifact_id
+# are a THIRD, orthogonal read fact alongside common_candidate_count (strict
+# transfer-wide membership) and group_remaining_count (remaining-work
+# existence). These tests use direct durable-state fixtures (mirroring
+# test_group_common_sources._seed) against the real bounded SQL projection --
+# no live provider/executor/network work, per the task's explicit allowance
+# for "deterministic durable/read-model fixtures representing the qualified
+# canonical state" (matrix Case B).
+
+
+def _scope_host(letter: str) -> str:
+    return f"{letter}.example"
+
+
+def _hc(name: str, candidate_id: str, selected: bool):
+    """A host-scoped candidate tuple: (source_scope, source_key, candidate_id, is_selected)."""
+    return ("host", _scope_host(name), candidate_id, selected)
+
+
+async def _seed_scope(db, name, artifacts):
+    """Seed a transfer for candidate-action-scope tests and return
+    ``(transfer_id, [artifact_id, ...])`` in artifact order.
+
+    ``artifacts`` is ``[(status, [(source_scope, source_key, candidate_id,
+    is_selected), ...]), ...]``. Unlike ``test_group_common_sources._seed``,
+    ``source_scope`` is caller-controlled (not hardcoded to ``"host"``) so
+    Case K (non-host candidate types) can be constructed directly, proving
+    the artifact-mode classifier is provider/candidate-neutral.
+    """
+    transfer_id = await db.execute_returning_id(
+        "INSERT INTO torrents(hash, name, status) VALUES(?, ?, ?)",
+        (f"scope-{name}-{uuid.uuid4().hex[:8]}", name, "downloading"),
+    )
+    artifact_ids = []
+    for index, (status, candidates) in enumerate(artifacts):
+        request_id = f"req-{name}-{uuid.uuid4().hex[:8]}"
+        await db.execute(
+            "INSERT INTO transfer_requests(id, transfer_id, ordinal, payload) VALUES(?, ?, ?, ?)",
+            (request_id, transfer_id, index, "{}"),
+        )
+        durable = [
+            {"name": f"file-{index}.bin", "endpoints": [], "id": candidate_id}
+            for (_scope, _key, candidate_id, _selected) in candidates
+        ]
+        selected_index = next(
+            (pos for pos, (_s, _k, _c, is_selected) in enumerate(candidates) if is_selected),
+            0,
+        )
+        artifact_id = await db.execute_returning_id(
+            """INSERT INTO download_files
+                (torrent_id, filename, status, request_id, candidates, selected_candidate, blocked, mirror_state)
+                VALUES(?, ?, ?, ?, ?, ?, 0, '')""",
+            (transfer_id, f"file-{index}.bin", status, request_id,
+             json.dumps(durable), selected_index),
+        )
+        artifact_ids.append(artifact_id)
+        for order, (scope, key, candidate_id, _is_selected) in enumerate(candidates, start=1):
+            await db.execute(
+                """INSERT INTO canonical_candidate_bindings
+                    (canonical_artifact_id, candidate_id, provider_id, source_scope, source_key, role, candidate_order)
+                    VALUES(?, ?, ?, ?, ?, ?, ?)""",
+                (artifact_id, candidate_id, "provider-a", scope, key,
+                 "canonical" if order == 1 else "alternate", order),
+            )
+    await db.commit()
+    return transfer_id, artifact_ids
+
+
+async def _scope_list():
+    return await downloads.list_operational_torrents(
+        status=None, search=None, limit=25, offset=0,
+        application=SimpleNamespace(repository=_ExplodingRepository(), definitions=[]),
+    )
+
+
+def _sibling(index: int, status: str = "error"):
+    """A current, one-source, non-consolidated failed/unproven sibling artifact:
+    always a single distinct candidate of its own -- never merged into a
+    movable artifact's candidate set, regardless of its own lifecycle status."""
+    return (status, [("host", f"sibling{index}.example", f"s{index}", True)])
+
+
+@pytest.mark.asyncio
+async def test_case_a_one_movable_artifact_despite_failed_unproven_siblings(group_db):
+    """Matrix Case A: one canonical artifact with 7 proven candidates plus 4
+    current failed/unproven one-source siblings -> ARTIFACT scope targeting
+    exactly that artifact, with siblings left in strict group membership
+    (never excluded merely to make the action appear)."""
+    movable_candidates = [_hc(chr(ord("a") + i), f"c{i}", i == 0) for i in range(7)]
+    artifacts = [("downloading", movable_candidates)] + [_sibling(i) for i in range(4)]
+    async with group_db() as db:
+        transfer_id, artifact_ids = await _seed_scope(db, "case-a", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    # Strict membership is the EXISTING computation, untouched: each sibling's
+    # own distinct host is unrelated to the movable artifact's 7 hosts, so the
+    # whole-transfer intersection is empty. Proves siblings were not excluded.
+    assert item["common_candidate_count"] == 0
+    assert item["candidate_action_scope"] == "artifact"
+    assert item["candidate_action_count"] == 7
+    assert item["candidate_action_artifact_id"] == artifact_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_case_b_large_mirror_batch_25_of_50_proven(group_db):
+    """Matrix Case B: 50 submitted sources, 25 proven onto one canonical
+    artifact, 25 failed/unproven independent siblings -> ARTIFACT scope,
+    count 25. Deterministic durable fixture; no live resolution."""
+    movable_candidates = [_hc(f"m{i}", f"c{i}", i == 0) for i in range(25)]
+    artifacts = [("downloading", movable_candidates)] + [_sibling(i) for i in range(25)]
+    async with group_db() as db:
+        transfer_id, artifact_ids = await _seed_scope(db, "case-b", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["candidate_action_scope"] == "artifact"
+    assert item["candidate_action_count"] == 25
+    assert item["candidate_action_artifact_id"] == artifact_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_case_c_unrelated_multi_artifact_only_one_movable(group_db):
+    """Matrix Case C: 10 unrelated current artifacts, 9 with no alternative
+    candidate, one with 4 proven candidates -> ARTIFACT scope, count 4. The
+    transfer containing ten artifacts does not make the operation ambiguous."""
+    movable = ("downloading", [_hc(letter, f"c{letter}", letter == "a") for letter in "abcd"])
+    singles = [("downloading", [("host", f"solo{i}.example", f"o{i}", True)]) for i in range(9)]
+    async with group_db() as db:
+        transfer_id, artifact_ids = await _seed_scope(db, "case-c", [movable, *singles])
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["candidate_action_scope"] == "artifact"
+    assert item["candidate_action_count"] == 4
+    assert item["candidate_action_artifact_id"] == artifact_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_case_d_failed_error_artifact_with_alternatives(group_db):
+    """Matrix Case D: a single 'error' (recoverable-looking failure) artifact
+    with 3 proven candidates -> ARTIFACT scope, count 3. 'error' is the real
+    existing switchable-lifecycle state (_SWITCHABLE_ARTIFACT_STATES), not an
+    invented one."""
+    artifacts = [("error", [_hc(letter, f"c{letter}", letter == "a") for letter in "abc"])]
+    async with group_db() as db:
+        transfer_id, artifact_ids = await _seed_scope(db, "case-d", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["candidate_action_scope"] == "artifact"
+    assert item["candidate_action_count"] == 3
+    assert item["candidate_action_artifact_id"] == artifact_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_case_e_paused_artifact_with_alternatives(group_db):
+    """Matrix Case E: a single 'paused' artifact with 5 proven candidates ->
+    ARTIFACT scope. The badge/action must not disappear merely because the
+    artifact is paused."""
+    artifacts = [("paused", [_hc(letter, f"c{letter}", letter == "a") for letter in "abcde"])]
+    async with group_db() as db:
+        transfer_id, artifact_ids = await _seed_scope(db, "case-e", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["candidate_action_scope"] == "artifact"
+    assert item["candidate_action_count"] == 5
+    assert item["candidate_action_artifact_id"] == artifact_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_case_h_two_movable_artifacts_one_convergence_target_requires_movement(group_db):
+    """Matrix Case H / Example 3: A selected X (alt Z), B selected Y (alt Z);
+    the only common valid target Z requires movement for both -> GROUP scope,
+    count 1 (not the raw common count, and not >= 2 required)."""
+    artifacts = [
+        ("downloading", [_hc("x", "x1", True), _hc("z", "z1", False)]),
+        ("downloading", [_hc("y", "y1", True), _hc("z", "z2", False)]),
+    ]
+    async with group_db() as db:
+        transfer_id, _artifact_ids = await _seed_scope(db, "case-h", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["candidate_action_scope"] == "group"
+    assert item["candidate_action_count"] == 1
+    assert item["candidate_action_artifact_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_case_g_one_common_host_already_active_everywhere_is_not_an_action(group_db):
+    """Matrix Case G / Example 4: two movable artifacts each carry their own
+    private alternate plus a shared host Z that both are ALREADY selected on.
+    Z is the only common host and requires zero movement -> NONE, not GROUP.
+    Raw common count is not actionability."""
+    artifacts = [
+        ("downloading", [_hc("z", "z1", True), _hc("p", "p1", False)]),
+        ("downloading", [_hc("z", "z2", True), _hc("q", "q1", False)]),
+    ]
+    async with group_db() as db:
+        transfer_id, _artifact_ids = await _seed_scope(db, "case-g", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["common_candidate_count"] == 1
+    assert item["candidate_action_scope"] == "none"
+    assert item["candidate_action_count"] == 0
+    assert item["candidate_action_artifact_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_case_i_multiple_movable_artifacts_no_safe_group_convergence(group_db):
+    """Matrix Case I / Example 5: two movable artifacts share no common host
+    at all -> NONE. Never arbitrarily choose one artifact."""
+    artifacts = [
+        ("downloading", [_hc("x", "x1", True), _hc("z", "z1", False)]),
+        ("downloading", [_hc("y", "y1", True), _hc("w", "w1", False)]),
+    ]
+    async with group_db() as db:
+        transfer_id, _artifact_ids = await _seed_scope(db, "case-i", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["common_candidate_count"] == 0
+    assert item["candidate_action_scope"] == "none"
+    assert item["candidate_action_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_case_i1_movable_subset_must_not_become_group_membership(group_db):
+    """Matrix Case I.1 -- CRITICAL preservation regression / Example 5A: A and
+    B (movable) share Z; C is a strict current group member (single-candidate,
+    non-movable) that lacks Z entirely. Z must NOT be promoted to a group
+    target through movable-subset narrowing: it is not in the strict
+    whole-transfer intersection because C lacks it. A solution that makes this
+    case 'group' is architecturally wrong even if every other test is green."""
+    artifacts = [
+        ("downloading", [_hc("x", "x1", True), _hc("z", "z1", False)]),
+        ("downloading", [_hc("y", "y1", True), _hc("z", "z2", False)]),
+        ("completed", [_hc("w", "w1", True)]),
+    ]
+    async with group_db() as db:
+        transfer_id, _artifact_ids = await _seed_scope(db, "case-i1", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    # If C had been wrongly excluded from the intersection, Z would be common
+    # to the remaining {A,B} and common_candidate_count would read 1, not 0.
+    assert item["common_candidate_count"] == 0
+    assert item["candidate_action_scope"] == "none"
+    assert item["candidate_action_count"] == 0
+    assert item["candidate_action_artifact_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_case_j_historical_common_source_without_current_action(group_db):
+    """Matrix Case J: no artifact is currently movable (both completed) but
+    existing history/group rules still show a common-source intersection ->
+    historical common_candidate_count is preserved while scope is NONE."""
+    artifacts = [
+        ("completed", [_hc("a", "a1", True), _hc("b", "b1", False)]),
+        ("completed", [_hc("a", "a2", True), _hc("b", "b2", False)]),
+    ]
+    async with group_db() as db:
+        transfer_id, _artifact_ids = await _seed_scope(db, "case-j", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["common_candidate_count"] == 2
+    assert item["candidate_action_scope"] == "none"
+    assert item["candidate_action_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_case_k_non_host_artifact_candidates_still_classify_as_artifact_mode(group_db):
+    """Matrix Case K: canonical candidates whose source identity is not the
+    HTTP host abstraction (e.g. a future SFTP/SCP scope) must still be
+    recognized by artifact mode. Artifact mode must not depend on
+    source_scope == 'host'; common_candidate_count (host-scoped only) stays 0."""
+    artifacts = [
+        ("downloading", [
+            ("scp", "host-1.example:22", "k1", True),
+            ("scp", "host-2.example:22", "k2", False),
+        ]),
+    ]
+    async with group_db() as db:
+        transfer_id, artifact_ids = await _seed_scope(db, "case-k", artifacts)
+    item = next(row for row in (await _scope_list())["items"] if row["id"] == transfer_id)
+    assert item["common_candidate_count"] == 0
+    assert item["candidate_action_scope"] == "artifact"
+    assert item["candidate_action_count"] == 2
+    assert item["candidate_action_artifact_id"] == artifact_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_candidate_action_scope_stays_bounded_across_small_and_large_candidate_sets(group_db):
+    """Section 13/20.7 boundedness evidence: the candidate-action classifier
+    adds columns/CTEs to the SAME bounded read -- never a second query, and
+    never scales with artifact/candidate count. _ExplodingRepository (via
+    _scope_list's application) also proves no per-row comprehensive
+    presentation call occurs."""
+    async with group_db() as db:
+        small_id, _ = await _seed_scope(db, "bounded-small", [
+            ("downloading", [_hc("a", "a1", True), _hc("b", "b1", False)]),
+        ])
+    async with _tracking_db() as tracker_small:
+        result_small = await downloads.list_operational_torrents(
+            status=None, search=None, limit=0, offset=0,
+            application=SimpleNamespace(repository=_ExplodingRepository(), definitions=[]),
+        )
+    assert [kind for kind, _q in tracker_small.calls] == ["fetchall", "fetchone"]
+    small_item = next(row for row in result_small["items"] if row["id"] == small_id)
+    assert small_item["candidate_action_scope"] == "artifact"
+    assert small_item["candidate_action_count"] == 2
+
+    large_candidates = [_hc(f"m{i}", f"c{i}", i == 0) for i in range(25)]
+    large_artifacts = [("downloading", large_candidates)] + [_sibling(i) for i in range(25)]
+    async with group_db() as db:
+        large_id, _ = await _seed_scope(db, "bounded-large", large_artifacts)
+    async with _tracking_db() as tracker_large:
+        result_large = await downloads.list_operational_torrents(
+            status=None, search=None, limit=0, offset=0,
+            application=SimpleNamespace(repository=_ExplodingRepository(), definitions=[]),
+        )
+    # Exactly the projection read and the collection-count read -- identical
+    # call shape regardless of the 50-binding / 26-artifact transfer above.
+    assert [kind for kind, _q in tracker_large.calls] == ["fetchall", "fetchone"]
+    large_item = next(row for row in result_large["items"] if row["id"] == large_id)
+    assert large_item["candidate_action_scope"] == "artifact"
+    assert large_item["candidate_action_count"] == 25

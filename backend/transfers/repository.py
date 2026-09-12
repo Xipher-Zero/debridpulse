@@ -554,7 +554,18 @@ class TransferRepository(_QualifiedTransferRepository):
             elif failed: dispositions.append("Failed")
             elif active: dispositions.append("Active")
             elif selected: dispositions.append("Selected")
-            by_artifact.setdefault(artifact_id, []).append({"candidate_id": candidate_id, "source_label": _safe_source_label(row.get("source_scope"), row.get("source_key")), "provider_id": str(row.get("provider_id") or "").strip() or None, "relationship": "Original" if row.get("role") == "canonical" else "Consolidated", "dispositions": dispositions, "is_selected": selected, "is_delivering": delivered})
+            by_artifact.setdefault(artifact_id, []).append({"candidate_id": candidate_id, "source_label": _safe_source_label(row.get("source_scope"), row.get("source_key")), "provider_id": str(row.get("provider_id") or "").strip() or None, "relationship": "Original" if row.get("role") == "canonical" else "Consolidated", "dispositions": dispositions, "is_selected": selected, "is_delivering": delivered,
+                # Read-side, provider/candidate-neutral switch-presentation
+                # eligibility (DP 1.0.12 Contextual Candidate Action Scope
+                # task, §6.1/§10.1): the exact same backend-owned
+                # _SWITCHABLE_ARTIFACT_STATES rule the host-scoped
+                # ``source_candidates`` projection below already uses, so the
+                # generic per-file candidate UI (ui-detail-candidates.js) can
+                # consume it without recreating lifecycle policy in JS. False
+                # for the selected candidate. Never a live provider/executor
+                # check; the switch endpoint remains the sole mutation
+                # authority and re-validates everything itself.
+                "switch_eligible": (not selected) and artifact_states.get(artifact_id, "") in _SWITCHABLE_ARTIFACT_STATES})
             # Ungated per-artifact canonical host projection for the transfer-level
             # common-source group wrapper (never rendered by the per-file UI). Only
             # host-scoped candidates carry a group identity; ``switch_eligible``
