@@ -1209,8 +1209,9 @@ test('Details Files-header renders ARTIFACT mode for the one movable artifact am
 //
 // DP 1.0.12 Final Pre-Commit Verification proved STRUCTURAL_MUTUAL_EXCLUSION
 // for the actual competing operation: File Selection's INTERACTIVE control
-// (mutable=true, e.g. the "Select files" button) can never coexist with a
-// materialized per-file artifact, because transfers.repository
+// (mutable=true, e.g. the "Choose Files"/"Change Files" button, renamed and
+// relocated to the Files-header mount by DP 1.0.12 Workstream B) can never
+// coexist with a materialized per-file artifact, because transfers.repository
 // .commit_selected_manifest sets manifest_committed_at (all
 // transfers.file_selection.selection_mutable checks) strictly BEFORE
 // transfers.engine ever fans out the per-file child requests/artifacts any
@@ -1246,15 +1247,21 @@ test('Files-header: an INTERACTIVE (mutable) File Selection control has no candi
   // per-file artifacts do not exist yet (proven backend-side), so Details has
   // no files to iterate at all -- this fixture reflects that faithfully
   // rather than fabricating an impossible already-materialized+mutable state.
-  const holder = { [transferId]: detail(transferId, []) };
+  // current_source_identity.kind is the durable submission-kind fact (DP
+  // 1.0.12 Workstream B) that keeps the Files-section header -- and its
+  // file-selection mount -- rendering during this manifest-pending window
+  // even with files:[].
+  const holder = {
+    [transferId]: Object.assign(detail(transferId, []), { current_source_identity: { kind: 'magnet' } }),
+  };
   await routeDetail(page, holder);
   await page.route('**/api/torrents?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], total: 0 }) }));
   await ready(page);
   await page.evaluate((id) => showDetail(id), transferId);
 
-  const fileSelectionEntry = page.locator('#dp-detail-actions .dp-file-selection-entry');
+  const fileSelectionEntry = page.locator(`[data-dp-file-selection-mount][data-dp-transfer-id="${transferId}"] .dp-file-selection-entry`);
   await expect(fileSelectionEntry).toBeVisible();
-  await expect(fileSelectionEntry).toHaveText('Select files');
+  await expect(fileSelectionEntry).toHaveText('Choose Files');
   await expect(page.locator('.dp-detail-files-group-slot .dp-group-candidate-launcher')).toHaveCount(0);
 });
 
@@ -1275,7 +1282,7 @@ test('Files-header: a general multi-source candidate artifact with no File Selec
   await ready(page);
   await page.evaluate((id) => showDetail(id), transferId);
 
-  await expect(page.locator('#dp-detail-actions .dp-file-selection-entry')).toHaveCount(0);
+  await expect(page.locator(`[data-dp-file-selection-mount][data-dp-transfer-id="${transferId}"] .dp-file-selection-entry`)).toHaveCount(0);
   const candidatesLauncher = page.locator('.dp-detail-files-group-slot .dp-group-candidate-launcher');
   await expect(candidatesLauncher).toBeVisible();
   await expect(candidatesLauncher.locator('.dp-candidate-chip-count')).toHaveText('3');
@@ -1311,7 +1318,7 @@ test('Files-header: a SETTLED (non-mutable) File Selection summary legitimately 
   await ready(page);
   await page.evaluate((id) => showDetail(id), transferId);
 
-  await expect(page.locator('#dp-detail-actions .dp-file-selection-summary')).toHaveText('2 of 4 files selected');
+  await expect(page.locator(`[data-dp-file-selection-mount][data-dp-transfer-id="${transferId}"] .dp-file-selection-summary`)).toHaveText('2 of 4 files selected');
   const candidatesLauncher = page.locator('.dp-detail-files-group-slot .dp-group-candidate-launcher');
   await expect(candidatesLauncher).toBeVisible();
   await expect(candidatesLauncher.locator('.dp-candidate-chip-count')).toHaveText('2');
