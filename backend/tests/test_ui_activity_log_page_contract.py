@@ -19,7 +19,7 @@ def test_activity_log_keeps_approved_content_with_direct_structural_owners() -> 
     view = index[index.index('id="view-events"'):index.index('<!-- Statistics -->')]
     assert "dp-activity-card" in view
     assert "document.svg" in view
-    assert "Activity Log" in view
+    assert "For the Record" in view
     assert "Everything DebridPulse thought was worth mentioning." in view
     assert "Refresh activity log" in view
     assert 'data-dp-lucide="refresh"' in view

@@ -125,7 +125,7 @@ def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
     )
     missing = [fragment for fragment in required_app if fragment not in app]
     assert not missing, f"Downloads direct app owner is missing: {missing}"
-    for fragment in ("card-download.svg?v=11", "Download Queue", "Search downloads…", "Refresh downloads", "dp-downloads-table-wrap"):
+    for fragment in ("card-download.svg?v=11", "On the Books", "Search downloads…", "Refresh downloads", "dp-downloads-table-wrap"):
         assert fragment in index
     assert "card-document-stack.svg" not in index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]
     assert "green-download-button.svg" not in index

@@ -77,11 +77,19 @@ def test_canonical_dashboard_keeps_transfer_semantics_and_progress_emphasis() ->
             "content: '×'",
             "height: 6px !important",
             "font-size: 15px !important",
-            ":has(.badge-partial) .prog-fill",
-            ":not(:has(.badge-partial)) .prog-fill",
+            "tr:has(.badge-partial) .prog-fill",
         ),
         "Dashboard transfer semantic contract",
     )
+    # DP 1.0.12 UI Finishing (Correction 9 anti-layering audit): the higher-
+    # specificity `tr[data-status="downloading"]:not(:has(.badge-partial))
+    # .prog-fill` / `:has(.badge-partial) .prog-fill` pair used to live here,
+    # silently overriding the general ordinary-progress-glow declaration for
+    # exactly the downloading-status case. Removed as a superseded duplicate,
+    # not folded into a second override -- see the general
+    # #dash-tbody/#t-tbody .prog-fill glow declaration instead, which is now
+    # the sole effective owner for every status.
+    assert ':not(:has(.badge-partial)) .prog-fill' not in dashboard_css()
 
 
 def test_canonical_dashboard_keeps_action_color_grammar_and_primary_add_depth() -> None:
@@ -147,7 +155,9 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
             "#8950d4",
             "#6551c3",
             "height: 7px !important",
-            "0 0 13px rgba(48,211,130,.34)",
+            # DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow
+            # reduced by a relative 15% (.34 * 0.85 = .289).
+            "0 0 13px rgba(48,211,130,.289)",
             "font-size: 16px !important",
             "font-weight: 800 !important",
             ".dash-activity-table-wrap",

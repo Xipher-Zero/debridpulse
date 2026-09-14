@@ -113,18 +113,31 @@ def test_transfer_track_and_fill_share_active_weight() -> None:
 
 
 def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
+    """DP 1.0.12 UI Finishing (Correction 3): the Added/Action column-width
+    override that used to be RE-declared a second time after the
+    "Consolidated from ui-dashboard-final.css" marker (a later "final
+    geometry correction" layered on the same media query/selector/
+    specificity as the block above it, differing only by source order) was
+    consolidated into the one canonical nth-child(5)/(6) block instead.
+    Column 6 (Action) is now pinned to the shared action-track custom
+    property rather than an independent percentage, so its center can agree
+    with Recover All's and Add's; column 5 (Added) absorbs the remainder via
+    calc() so every column's width still sums to exactly 100% at any
+    viewport width.
+    """
     css = DASHBOARD.read_text(encoding="utf-8")
     marker = "/* Consolidated from ui-dashboard-final.css. */"
     assert marker in css
     final_calibration = css.split(marker, 1)[1]
 
-    for column in (1, 2, 3, 4):
+    for column in (1, 2, 3, 4, 5, 6):
         assert f".t-table th:nth-child({column})" not in final_calibration
         assert f".t-table td:nth-child({column})" not in final_calibration
 
-    assert ".t-table th:nth-child(5)" in final_calibration
-    assert ".t-table td:nth-child(5)" in final_calibration
-    assert "width: 8% !important" in final_calibration
-    assert ".t-table th:nth-child(6)" in final_calibration
-    assert ".t-table td:nth-child(6)" in final_calibration
-    assert "width: 9% !important" in final_calibration
+    canonical_calibration = css.split(marker, 1)[0]
+    assert ".t-table th:nth-child(5)" in canonical_calibration
+    assert ".t-table td:nth-child(5)" in canonical_calibration
+    assert "width: calc(17% - var(--dp-dashboard-action-track)) !important" in canonical_calibration
+    assert ".t-table th:nth-child(6)" in canonical_calibration
+    assert ".t-table td:nth-child(6)" in canonical_calibration
+    assert "width: var(--dp-dashboard-action-track) !important" in canonical_calibration

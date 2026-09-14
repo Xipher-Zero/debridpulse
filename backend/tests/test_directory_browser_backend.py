@@ -138,6 +138,85 @@ def test_directory_browser_root_parent_is_null(tmp_path):
     assert result.parent is None
 
 
+class _ExplodingCapacity:
+    """Proves backup-purpose browsing never calls the Download Storage validator."""
+
+    def validate_download_path(self, *_args, **_kwargs):
+        raise AssertionError("backup-purpose browse must not call validate_download_path")
+
+
+def test_backup_purpose_never_invokes_download_storage_validation(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    result = directory_routes._browse_directory(
+        backup_dir.resolve(), _ExplodingCapacity(), purpose="backup"
+    )
+    assert result.current.path == str(backup_dir.resolve())
+    assert result.current.selectable is True
+    assert result.current.writable is True
+    assert result.current.capacity.total_bytes is None
+    assert result.current.capacity.free_bytes is None
+
+
+def test_backup_purpose_read_only_directory_is_not_selectable(tmp_path):
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    os.chmod(backup_dir, 0o500)
+    try:
+        result = directory_routes._browse_directory(
+            backup_dir.resolve(), _ExplodingCapacity(), purpose="backup"
+        )
+        assert result.current.selectable is False
+        assert result.current.writable is False
+        assert result.current.reason == StorageReason.READ_ONLY.value
+    finally:
+        os.chmod(backup_dir, 0o700)
+
+
+def test_backup_purpose_http_default_browses_configured_backup_folder(tmp_path, monkeypatch):
+    capacity, _app_dir, _download_dir = _capacity(tmp_path)
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    monkeypatch.setattr(
+        directory_routes,
+        "get_settings",
+        lambda: SimpleNamespace(
+            download_folder="/does/not/matter",
+            backup_folder=str(backup_dir),
+        ),
+    )
+
+    app = FastAPI()
+    app.state.application = SimpleNamespace(capacity=_ExplodingCapacity())
+    app.include_router(directory_routes.router, prefix="/api")
+
+    response = TestClient(app).get("/api/settings/directories", params={"purpose": "backup"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["current"]["path"] == str(backup_dir.resolve())
+    assert payload["current"]["selectable"] is True
+
+
+def test_default_purpose_omitted_is_unchanged_download_behavior(tmp_path, monkeypatch):
+    capacity, _app_dir, download_dir = _capacity(tmp_path)
+    monkeypatch.setattr(
+        directory_routes,
+        "get_settings",
+        lambda: SimpleNamespace(download_folder=str(download_dir), backup_folder="/unused"),
+    )
+    response = TestClient(_api_app(capacity)).get("/api/settings/directories")
+    assert response.status_code == 200
+    assert response.json()["current"]["path"] == str(download_dir.resolve())
+
+
+def test_backup_purpose_nonexistent_path_is_404_not_silently_created(tmp_path):
+    capacity, _app_dir, _download_dir = _capacity(tmp_path)
+    missing = tmp_path / "not-yet-created-backups"
+    with pytest.raises(HTTPException) as excinfo:
+        directory_routes._browse_directory(missing, capacity, purpose="backup")
+    assert excinfo.value.status_code == 404
+
+
 def test_directory_browser_rejects_relative_path_without_using_cwd():
     with pytest.raises(HTTPException) as caught:
         directory_routes._resolve_requested_directory("relative/child")

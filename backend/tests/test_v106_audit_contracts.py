@@ -184,7 +184,7 @@ def test_dashboard_recent_activity_uses_viewport_slack():
     # The Recent Items fetch lives in the canonical presentation owner; the
     # viewport-limit helper it consults stays in app.js.
     owner = (static / "ui-dashboard-transfer-presentation.js").read_text()
-    assert "`/torrents?limit=${recentLimit}`" in owner
+    assert "`/torrents?limit=${recentLimit}&order=activity`" in owner
 
 
 def test_dead_indexer_css_is_physically_removed():

@@ -53,7 +53,10 @@ def test_bounded_runtime_owners_are_present() -> None:
     assert "window.DPActivityLog" in activity and "EVENT_LIMIT=500" in activity and "include_meta" in activity
     archive = read("ui-settings-archive-passwords.js")
     assert "window.DPArchivePasswords" in archive
-    assert all(token in archive for token in ("Show all passwords", "Hide all passwords", "Escape", "Enter", "Backspace", "clipboardData"))
+    assert all(token in archive for token in ("Show all passwords", "Hide all passwords", "Escape", "Enter", "clipboardData"))
+    # Correction 7 (DP 1.0.12 UI Finishing): empty Backspace no longer has
+    # any special-cased keydown handling at all -- it is a true no-op.
+    assert "Backspace" not in archive
 
 
 def test_canonical_css_graph_uses_named_component_owners() -> None:

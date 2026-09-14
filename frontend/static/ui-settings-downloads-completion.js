@@ -66,6 +66,34 @@
     browser_unavailable: 'The server filesystem browser is currently unavailable.',
   });
 
+  // Generic Settings directory-field/browse configuration (Correction 5, DP
+  // 1.0.12 UI Finishing). One shared picker implementation
+  // (ensureDirectoryFieldBrowse / openDirectoryPicker below) drives both
+  // fields; only these narrow per-field facts differ. Backup purpose is
+  // directory navigation only -- see backend api.settings_validation_routes
+  // GET /settings/directories?purpose=backup -- it never calls Download
+  // Storage validation, so its selectable wording deliberately does not
+  // reuse "Selectable as Download Storage".
+  const DOWNLOAD_DIRECTORY_PICKER = Object.freeze({
+    purpose: 'download',
+    fieldSelector: '[data-setting="download_folder"]',
+    browseAction: 'browse-download-folder',
+    browseAriaLabel: 'Browse server directories for Built-in Download Folder',
+    dialogTitle: 'Choose Download Folder',
+    selectableLabel: 'Selectable as Download Storage',
+    fallbackNoticeText: 'The current Download Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.',
+  });
+
+  const BACKUP_DIRECTORY_PICKER = Object.freeze({
+    purpose: 'backup',
+    fieldSelector: '[data-setting="backup_folder"]',
+    browseAction: 'browse-backup-folder',
+    browseAriaLabel: 'Browse server directories for Backup Folder',
+    dialogTitle: 'Choose Backup Folder',
+    selectableLabel: 'Selectable as Backup Folder',
+    fallbackNoticeText: 'The current Backup Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.',
+  });
+
   const root = () => document.getElementById('view-settings');
 
   function ensureDirectoryBrowserStyles() {
@@ -176,33 +204,48 @@
     return `${scaled.toFixed(1)} ${units[unit]}`;
   }
 
-  function ensureDownloadFolderBrowse(panel) {
-    const fieldInput = panel?.querySelector('[data-setting="download_folder"]');
+  // Generic Settings directory-field browse control mount (Correction 5).
+  // ensureDownloadFolderBrowse()/ensureBackupFolderBrowse() are thin
+  // wrappers around this one implementation -- there is exactly one modal
+  // runtime and one navigation implementation, shared by both fields.
+  function ensureDirectoryFieldBrowse(panel, config) {
+    const fieldInput = panel?.querySelector(config.fieldSelector);
     const field = fieldInput?.closest('.dp-settings-field');
     if (!fieldInput || !field) return;
-    field.classList.add('dp-settings-download-folder-field');
+    field.classList.add('dp-settings-directory-field');
 
-    let control = directChild(field, '.dp-settings-download-folder-control');
+    let control = directChild(field, '.dp-settings-directory-field-control');
     if (!control) {
       control = document.createElement('div');
-      control.className = 'dp-settings-download-folder-control';
+      control.className = 'dp-settings-directory-field-control';
       field.insertBefore(control, fieldInput);
       control.appendChild(fieldInput);
     }
 
-    if (control.querySelector('[data-action="browse-download-folder"]')) return;
+    if (control.querySelector(`[data-action="${config.browseAction}"]`)) return;
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'btn btn-ghost btn-sm dp-settings-download-folder-browse';
-    button.dataset.action = 'browse-download-folder';
+    button.className = 'btn btn-ghost btn-sm dp-settings-directory-field-browse';
+    button.dataset.action = config.browseAction;
     button.textContent = 'Browse';
-    button.setAttribute('aria-label', 'Browse server directories for Built-in Download Folder');
-    button.addEventListener('click', () => browseDownloadFolder(button));
+    button.setAttribute('aria-label', config.browseAriaLabel);
+    button.addEventListener('click', () => openDirectoryPicker(config, button));
     control.appendChild(button);
   }
 
-  function browseDownloadFolder(origin) {
-    const field = root()?.querySelector('[data-setting="download_folder"]');
+  function ensureDownloadFolderBrowse(panel) {
+    ensureDirectoryFieldBrowse(panel, DOWNLOAD_DIRECTORY_PICKER);
+  }
+
+  function ensureBackupFolderBrowse(panel) {
+    ensureDirectoryFieldBrowse(panel, BACKUP_DIRECTORY_PICKER);
+  }
+
+  // Generic Settings directory picker (Correction 5). browseDownloadFolder()
+  // and browseBackupFolder() are thin compatibility wrappers around this one
+  // modal lifecycle / navigation implementation -- never a cloned picker.
+  function openDirectoryPicker(config, _origin) {
+    const field = root()?.querySelector(config.fieldSelector);
     const modalApi = window.DPSettingsModal;
     if (!field || typeof api !== 'function' || !modalApi || typeof modalApi.confirm !== 'function') return;
 
@@ -212,7 +255,7 @@
     let controller = null;
 
     const confirmation = modalApi.confirm({
-      title: 'Choose Download Folder',
+      title: config.dialogTitle,
       message: '',
       confirmLabel: 'Use This Folder',
       tone: 'warning',
@@ -295,7 +338,7 @@
       const selectable = current.selectable === true;
       currentState.dataset.selectable = selectable ? 'true' : 'false';
       currentState.textContent = selectable
-        ? 'Selectable as Download Storage'
+        ? config.selectableLabel
         : `Not selectable — ${directoryReasonLabel(current.reason)}`;
 
       const total = directorySize(current.capacity?.total_bytes);
@@ -353,7 +396,9 @@
       errorBox.textContent = '';
       setLoading(true);
 
-      const query = path == null ? '' : `?${new URLSearchParams({path: String(path)}).toString()}`;
+      const queryParams = {purpose: config.purpose};
+      if (path != null) queryParams.path = String(path);
+      const query = `?${new URLSearchParams(queryParams).toString()}`;
       try {
         const payload = await api('GET', `/settings/directories${query}`, undefined, 10000, {signal: controller.signal});
         if (requestGeneration !== generation || !overlay.isConnected) return;
@@ -363,7 +408,7 @@
         if (requestGeneration !== generation || error?.name === 'AbortError' || !overlay.isConnected) return;
         if (fallbackOnFailure) {
           notice.hidden = false;
-          notice.textContent = 'The current Download Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.';
+          notice.textContent = config.fallbackNoticeText;
           void loadDirectory(null);
           return;
         }
@@ -393,6 +438,14 @@
 
     if (originalValue.length) void loadDirectory(originalValue, {fallbackOnFailure: true});
     else void loadDirectory(null);
+  }
+
+  function browseDownloadFolder(origin) {
+    openDirectoryPicker(DOWNLOAD_DIRECTORY_PICKER, origin);
+  }
+
+  function browseBackupFolder(origin) {
+    openDirectoryPicker(BACKUP_DIRECTORY_PICKER, origin);
   }
 
   function applyDownloads(view) {
@@ -518,11 +571,18 @@
     arrangeExtractionControls(panel, card);
   }
 
+  function applyMaintenance(view) {
+    const panel = view.querySelector('[data-panel="maintenance"]');
+    if (!panel) return;
+    ensureBackupFolderBrowse(panel);
+  }
+
   function apply() {
     const view = root();
     if (!view) return;
     applyDownloads(view);
     applyExtraction(view);
+    applyMaintenance(view);
     expandConfiguredSecretMasks(view);
   }
   let scheduled = false;

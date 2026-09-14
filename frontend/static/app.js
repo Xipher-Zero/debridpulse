@@ -776,12 +776,12 @@ const DASHBOARD_METRIC_HISTORY_KEY = 'debridpulse.dashboard.metric-history.v2';
 const DASHBOARD_METRIC_HISTORY_LIMIT = 30;
 const DASHBOARD_METRIC_SAMPLE_INTERVAL_MS = 15000;
 const DASHBOARD_HERO_METRICS = {
-  's-total':      {key: 'total',      label: 'Total downloads'},
-  's-completed':  {key: 'completed',  label: 'Completed'},
-  's-active':     {key: 'active',     label: 'Active now'},
-  's-processing': {key: 'processing', label: 'Processing'},
-  's-error':      {key: 'errors',     label: 'Errors'},
-  's-size':       {key: 'downloaded', label: 'Total downloaded'}
+  's-total':      {key: 'total',      label: 'Total downloads',  kind: 'cumulative',    hint: 'recent downloads added per sample interval'},
+  's-completed':  {key: 'completed',  label: 'Completed',        kind: 'cumulative',    hint: 'recent completions per sample interval'},
+  's-active':     {key: 'active',     label: 'Active now',       kind: 'instantaneous', hint: 'recent sampled active-transfer count'},
+  's-processing': {key: 'processing', label: 'Processing',       kind: 'instantaneous', hint: 'recent sampled processing count'},
+  's-error':      {key: 'errors',     label: 'Errors',           kind: 'instantaneous', hint: 'recent sampled error count'},
+  's-size':       {key: 'downloaded', label: 'Total downloaded', kind: 'cumulative',    hint: 'bytes completed per sample interval'}
 };
 
 function dashboardMetricNumber(value) {
@@ -809,6 +809,14 @@ function writeDashboardMetricHistory(samples) {
   } catch (_) {
     // Storage can be unavailable in hardened/private browser contexts.
   }
+}
+
+function dashboardCumulativeDeltas(values) {
+  return values.map((value, index) => {
+    if (index === 0) return 0;
+    const previous = values[index - 1];
+    return value >= previous ? value - previous : 0;
+  });
 }
 
 function dashboardSparkCoordinates(values) {
@@ -912,7 +920,10 @@ function renderDashboardMetricHistory(samples) {
     const svg = card?.querySelector('.dp-card-spark');
     if (!card || !svg) return;
 
-    const values = samples.map(sample => dashboardMetricNumber(sample[metric.key]));
+    const rawValues = samples.map(sample => dashboardMetricNumber(sample[metric.key]));
+    const values = metric.kind === 'cumulative'
+      ? dashboardCumulativeDeltas(rawValues)
+      : rawValues;
     const line = svg.querySelector('.dp-card-spark-line');
     const fill = svg.querySelector('.dp-card-spark-fill');
     const point = svg.querySelector('.dp-card-spark-point');
@@ -921,7 +932,7 @@ function renderDashboardMetricHistory(samples) {
     const coordinates = dashboardSparkCoordinates(values);
     const path = dashboardMonotoneSparkPath(coordinates);
     card.dataset.dpMetric = metric.key;
-    card.title = `${metric.label} — sparkline shows recent live samples of this exact card metric.`;
+    card.title = `${metric.label} — ${metric.hint}.`;
 
     if (path) {
       line.setAttribute('d', path);
@@ -1402,7 +1413,7 @@ function updateDownloadsTrackedCopy(total) {
   const title = document.getElementById('torrent-card-title');
   const subtitle = title?.querySelector('.dp-downloads-subtitle');
   if (subtitle) subtitle.textContent = copy;
-  if (title) title.setAttribute('aria-label', 'Download Queue. ' + copy);
+  if (title) title.setAttribute('aria-label', 'On the Books. ' + copy);
 }
 
 function downloadEmptyMessage() {

@@ -271,6 +271,123 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   await expect(field).toHaveValue('/download/Alpha');
 });
 
+function backupField(page) {
+  return page.locator('[data-setting="backup_folder"]');
+}
+
+function backupBrowseButton(page) {
+  return page.locator('button[data-action="browse-backup-folder"]');
+}
+
+async function openMaintenanceSettings(page) {
+  await page.goto('/');
+  await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+  await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
+  const maintenance = page.locator('.dp-settings-tabs .stab[data-tab="maintenance"]');
+  await maintenance.click();
+  await expect(maintenance).toHaveAttribute('aria-selected', 'true');
+  await expect(backupField(page)).toBeVisible();
+}
+
+async function installBackupDirectoryFixture(page) {
+  const requests = [];
+  const responses = {
+    '/backups': {
+      current: {
+        name: 'backups', path: '/backups', accessible: true, writable: true,
+        selectable: true, reason: 'none', capacity: { total_bytes: null, free_bytes: null },
+      },
+      parent: '/', children: [{ name: 'old', path: '/backups/old', accessible: true, writable: null, selectable: null, reason: 'not_validated' }],
+    },
+  };
+  await page.route('**/api/settings/directories*', async route => {
+    const url = new URL(route.request().url());
+    const purpose = url.searchParams.get('purpose');
+    const path = url.searchParams.has('path') ? url.searchParams.get('path') : null;
+    requests.push({ purpose, path });
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(responses[path || '/backups']),
+    });
+  });
+  return requests;
+}
+
+test('Backup Folder shares the same modal/runtime and endpoint, with backup purpose and semantics, and Save persists the same field', async ({ page }) => {
+  const requests = await installBackupDirectoryFixture(page);
+  let putCount = 0;
+  let lastPut = null;
+  await page.route('**/api/settings', async route => {
+    const request = route.request();
+    if (request.method() !== 'PUT') { await route.continue(); return; }
+    putCount += 1;
+    lastPut = request.postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(lastPut) });
+  });
+
+  await openMaintenanceSettings(page);
+  const field = backupField(page);
+  const browse = backupBrowseButton(page);
+  await field.fill('/backups');
+  await browse.click();
+
+  // Same modal/runtime as Download Folder -- the exact same dialog class.
+  const dialog = directoryDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-directory-current-path]')).toHaveText('/backups');
+  await expect(dialog.locator('[data-directory-current-state]')).toHaveText('Selectable as Backup Folder');
+
+  // Every request for this field carries purpose=backup, never plain/download.
+  expect(requests.every(r => r.purpose === 'backup')).toBe(true);
+
+  await dialog.locator('[data-directory-confirm]').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(field).toHaveValue('/backups');
+  expect(putCount).toBe(0); // Confirm never calls Save itself.
+
+  const save = page.locator('button[data-action="save"]');
+  await save.click();
+  await expect.poll(() => putCount).toBe(1);
+  expect(lastPut.backup_folder).toBe('/backups');
+
+  // Cancel changes nothing.
+  await field.fill('/manually-typed-path');
+  await browse.click();
+  await expect(directoryDialog(page)).toBeVisible();
+  await page.locator('[data-confirm-cancel]').click();
+  await expect(directoryDialog(page)).toHaveCount(0);
+  await expect(field).toHaveValue('/manually-typed-path');
+
+  // Manual text editing still works after using the browser.
+  await field.fill('/typed-again');
+  await expect(field).toHaveValue('/typed-again');
+
+  // Vertically centered with the field, and the field yields width to the button.
+  const geometry = await page.evaluate(() => {
+    const input = document.querySelector('[data-setting="backup_folder"]');
+    const button = document.querySelector('[data-action="browse-backup-folder"]');
+    const ir = input.getBoundingClientRect();
+    const br = button.getBoundingClientRect();
+    return { inputCenter: ir.top + ir.height / 2, buttonCenter: br.top + br.height / 2, inputWidth: ir.width, buttonWidth: br.width };
+  });
+  expect(Math.abs(geometry.inputCenter - geometry.buttonCenter)).toBeLessThan(2);
+  expect(geometry.buttonWidth).toBeGreaterThan(60); // normal button padding preserved, not crushed
+});
+
+test('Backup Folder browsing never invokes Download Storage validation semantics', async ({ page }) => {
+  const requests = await installBackupDirectoryFixture(page);
+  await openMaintenanceSettings(page);
+  await backupField(page).fill('/backups');
+  await backupBrowseButton(page).click();
+  await expect(directoryDialog(page)).toBeVisible();
+  // Download Storage's own wording/reason set (e.g. "Selectable as Download
+  // Storage", capacity-based reasons) never appears for the backup purpose.
+  await expect(directoryDialog(page).locator('[data-directory-current-state]')).toHaveText('Selectable as Backup Folder');
+  await expect(directoryDialog(page).locator('[data-directory-current-state]')).not.toHaveText('Selectable as Download Storage');
+  expect(requests.every(r => r.purpose === 'backup')).toBe(true);
+  expect(requests.some(r => r.purpose === 'download' || r.purpose === null)).toBe(false);
+});
+
 test('directory modal traps/restores focus and remains usable in dark, light, and narrow layouts', async ({ page }) => {
   await installDirectoryFixture(page);
   await openDownloadsSettings(page);

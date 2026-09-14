@@ -1,26 +1,28 @@
-/* DebridPulse v1.0.12 Settings Download Folder browser.
+/* DebridPulse v1.0.12 Settings directory-field browser.
  *
  * This stylesheet extends the established Settings confirmation-dialog shell.
- * It owns only Download Folder browse geometry and state presentation.
+ * It owns the shared Settings directory-field/control/browse layout (used by
+ * both Built-in Download Folder and Backup Folder -- see Correction 5, DP
+ * 1.0.12 UI Finishing) and the browse-modal geometry/state presentation.
  */
 
-body.dp-v11-structural #view-settings .dp-settings-download-folder-field {
+body.dp-v11-structural #view-settings .dp-settings-directory-field {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-folder-control {
+body.dp-v11-structural #view-settings .dp-settings-directory-field-control {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-folder-control > .input {
+body.dp-v11-structural #view-settings .dp-settings-directory-field-control > .input {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-folder-browse {
+body.dp-v11-structural #view-settings .dp-settings-directory-field-browse {
   flex: 0 0 auto;
   min-height: 38px;
   margin: 0;
@@ -264,7 +266,7 @@ body.dp-v11-structural #view-settings .dp-settings-download-folder-browse {
     white-space: normal;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-folder-control {
+  body.dp-v11-structural #view-settings .dp-settings-directory-field-control {
     align-items: stretch;
   }
 }

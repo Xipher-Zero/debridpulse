@@ -31,8 +31,15 @@ def test_archive_password_editor_uses_click_reveal_and_line_editing() -> None:
     assert "Hold to reveal all archive passwords" not in archive
     assert "dp-settings-password-eye--ghost" in archive
     assert "window.DPArchivePasswords" in archive
-    for token in ("Escape", "Enter", "Backspace", "clipboardData"):
+    for token in ("Escape", "Enter", "clipboardData"):
         assert token in archive
+    # DP 1.0.12 UI Finishing (Correction 7): empty Backspace used to delete
+    # the row and jump focus to the previous one as a navigation side
+    # effect. That special-cased keydown branch was removed entirely (not
+    # replaced by a second interceptor), so a bare "Backspace" no longer
+    # needs to appear in this file at all -- plain Backspace-on-empty is
+    # now a true no-op, exactly as browsers already do for empty inputs.
+    assert "Backspace" not in archive
     compact = css.replace(" ", "")
     assert "max-height:none!important" in compact
     assert "overflow:visible!important" in compact

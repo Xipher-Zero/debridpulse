@@ -107,6 +107,27 @@
 }
 
 
+/* ── Shared Dashboard action axis (Correction 3) ─────────────────────────
+   One canonical track width for the three right-side Dashboard action
+   controls -- Recover All, Quick Add's Add button, and each Recent Activity
+   row's Pause/Resume button -- so their centers align on a single vertical
+   line. Sized from Recover All's own natural rendered width (the widest of
+   the three: measured 114px at the "btn btn-warn btn-sm" dimensions above),
+   plus a couple of px of breathing room -- never from a screenshot pixel
+   measurement. Each consumer wraps its (unresized) button in this track and
+   centers it; the track itself is always right-anchored flush with its
+   row's own existing right inset, so identical track width + identical
+   right anchor = identical center, without any transform/position hack. */
+#view-dashboard {
+  --dp-dashboard-action-track: 116px;
+}
+#view-dashboard .dp-dashboard-action-track {
+  display: flex;
+  justify-content: center;
+  width: var(--dp-dashboard-action-track);
+  flex: 0 0 auto;
+}
+
 /* ── Quick Add ─────────────────────────────────────────────────────────── */
 #view-dashboard .dp-dashboard-quick-add {
   flex: 0 0 auto;
@@ -209,6 +230,25 @@
   min-width: 720px !important;
   border-collapse: collapse;
   font-size: var(--dp-type-table-body-size);
+}
+/* Below the 1440px breakpoint the table keeps auto layout (no forced
+   nth-child track), so the Action column still needs its own shrink-to-fit
+   hint -- the same behavior the removed inline width:1% used to provide. */
+#view-dashboard .dp-dashboard-action-column {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+#view-dashboard .dp-dashboard-activity .t-table td:last-child {
+  text-align: center;
+}
+/* .actions is a shared global class (also used on the Downloads page); this
+   override is scoped to the Dashboard Recent Activity table only, so the
+   Downloads page's own row actions are untouched. inline-flex lets the
+   parent td's text-align: center actually center this variable-width,
+   intrinsically-sized control instead of stretching it. */
+#view-dashboard .dp-dashboard-activity .t-table td:last-child .actions {
+  display: inline-flex;
 }
 #view-dashboard .t-table thead th {
   height: var(--dp-table-head-height);
@@ -535,12 +575,13 @@ body.dp-v11-structural #view-dashboard .progress-track {
   border-radius: 99px;
   background: rgba(112, 125, 177, .13);
 }
-body.dp-v11-structural #view-dashboard .prog-fill,
-body.dp-v11-structural #view-dashboard .progress-fill {
-  border-radius: inherit;
-  background: #31d57b;
-  box-shadow: 0 0 7px rgba(49, 213, 123, .22);
-}
+/* DP 1.0.12 UI Finishing, Correction 9 anti-layering audit: the
+   #view-dashboard-scoped .prog-fill/.progress-fill block that used to live
+   here was removed. .progress-fill does not exist anywhere in current
+   markup, and every real .prog-fill element lives inside #dash-tbody/
+   #t-tbody (app.js's shared progress() renderer), which the ordinary
+   progress-glow owner below always shadows via !important -- this block was
+   already fully superseded dead weight, not a second live glow owner. */
 
 body.light.dp-v11-structural #view-dashboard .dash-hero-stat,
 body.light.dp-v11-structural #view-dashboard .dp-dashboard-quick-add,
@@ -932,16 +973,17 @@ body.dp-v11-structural #t-tbody .prog-fill {
   height: 6px !important;
   border-radius: 999px !important;
 }
-body.dp-v11-structural #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-fill,
-body.dp-v11-structural #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-fill {
-  background: linear-gradient(90deg, #28c879, #43dc91) !important;
-  box-shadow: 0 0 5px rgba(48, 211, 130, .68), 0 0 11px rgba(48, 211, 130, .28) !important;
-}
-body.dp-v11-structural #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-fill,
-body.dp-v11-structural #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-fill {
-  background: linear-gradient(90deg, #e7ab29, #f2c84d) !important;
-  box-shadow: 0 0 5px rgba(242, 189, 63, .66), 0 0 11px rgba(242, 189, 63, .27) !important;
-}
+/* DP 1.0.12 UI Finishing (Correction 9): the two data-status="downloading"-
+   scoped background/box-shadow blocks that used to live here were removed.
+   They were higher-specificity duplicates of the SAME background gradients
+   the general #dash-tbody/#t-tbody .prog-fill and tr:has(.badge-partial)
+   .prog-fill rules below already set, differing only in glow alpha -- an
+   accidental byproduct of an earlier pass that scoped the glow by
+   data-status without removing the prior unscoped rule, so a downloading
+   row's real ordinary glow silently diverged from every other active
+   status's glow purely by CSS specificity, never by design. Consolidated so
+   there is exactly one effective ordinary/partial progress-glow owner for
+   Dashboard + Downloads, applying uniformly regardless of transfer status. */
 
 /* Percentage is a primary live-transfer datum, not subordinate metadata. */
 body.dp-v11-structural #dash-tbody tr[data-status="downloading"] .prog-pct,
@@ -1340,16 +1382,23 @@ body.dp-v11-structural #dash-tbody .prog-fill,
 body.dp-v11-structural #t-tbody .prog-fill {
   height: 7px !important;
   background: linear-gradient(90deg, #28c879, #43dc91) !important;
+  /* DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow reduced by
+     a relative 15% (alpha * 0.85) from the prior .78/.34 -- blur radii,
+     color, and dimensions unchanged. This is the sole effective ordinary
+     progress-glow declaration for Dashboard + Downloads (see the removed
+     data-status-scoped duplicates above). */
   box-shadow:
-    0 0 6px rgba(48,211,130,.78),
-    0 0 13px rgba(48,211,130,.34) !important;
+    0 0 6px rgba(48,211,130,.663),
+    0 0 13px rgba(48,211,130,.289) !important;
 }
 body.dp-v11-structural #dash-tbody tr:has(.badge-partial) .prog-fill,
 body.dp-v11-structural #t-tbody tr:has(.badge-partial) .prog-fill {
   background: linear-gradient(90deg, #e7ab29, #f2c84d) !important;
+  /* Correction 9: same relative 15% reduction (alpha * 0.85) applied to the
+     partial-progress amber glow, from the prior .76/.32. */
   box-shadow:
-    0 0 6px rgba(242,189,63,.76),
-    0 0 13px rgba(242,189,63,.32) !important;
+    0 0 6px rgba(242,189,63,.646),
+    0 0 13px rgba(242,189,63,.272) !important;
 }
 body.dp-v11-structural #dash-tbody .prog-pct,
 body.dp-v11-structural #t-tbody .prog-pct {
@@ -1625,6 +1674,16 @@ body.dp-v11-structural #t-tbody .prog {
    its content needed. Reclaim that slack for Progress while keeping Name and
    the trailing metadata/action columns balanced. */
 @media (min-width: 1440px) {
+  /* Correction 3: the table's own content area otherwise runs flush to the
+     card's inner edge, ~17px further right than the Quick Add header/body
+     rows' own right inset (their existing padding: 0 17px / 13px 16px
+     15px). Matching that same inset here is what makes the fixed-width
+     action track's right edge -- and therefore its center -- agree with
+     Recover All's and Add's, instead of the whole track sitting ~17px
+     further right than the other two. */
+  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
+    padding-right: 17px;
+  }
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table {
     table-layout: fixed !important;
   }
@@ -1644,13 +1703,26 @@ body.dp-v11-structural #t-tbody .prog {
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
     width: 9% !important;
   }
+  /* Correction 3: Added absorbs whatever the fixed action track (below)
+     does not use, expressed as a calc() complement of the OTHER four
+     columns' percentages (40 + 13 + 21 + 9 = 83%) rather than its own
+     independent percentage. Combined with the Action column's fixed px
+     width, every column's declared width now sums to exactly 100% of the
+     table's width algebraically, at any viewport width -- not just at one
+     coincidental width -- so the action track never gets rescaled by the
+     browser's fixed-table-layout column-width reconciliation the way a
+     plain "8%" alongside a fixed px column previously could. */
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
-    width: 12% !important;
+    width: calc(17% - var(--dp-dashboard-action-track)) !important;
   }
+  /* The Action column is pinned to the same shared action track as Recover
+     All and Add (not a percentage), and its content is centered in it --
+     see the shared-axis block near the top of this file. */
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
-    width: 5% !important;
+    width: var(--dp-dashboard-action-track) !important;
+    text-align: center;
   }
 }
 
@@ -1799,16 +1871,10 @@ body.dp-v11-structural #view-dashboard textarea.input.direct-link-input:focus {
   box-shadow: var(--dp-focus-ring) !important;
 }
 
-/* Recent Activity alone had its trailing Action column pushed against the
-   right edge by the wide-table calibration. Reclaim only unused Added-column
-   width: the first four columns and the Added start position remain untouched. */
-@media (min-width: 1440px) {
-  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
-  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
-    width: 8% !important;
-  }
-  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
-  body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
-    width: 9% !important;
-  }
-}
+/* DP 1.0.12 UI Finishing (Correction 3): the Added/Action column-width
+   override that used to be re-declared here (a later "final geometry
+   correction" layered on top of the block above at the same media query,
+   same selector, same specificity -- differing only by source order) is
+   consolidated into the single canonical block above instead of appended
+   again. Do not re-add a second nth-child(5)/(6) override for this media
+   query; adjust the one above. */

@@ -335,7 +335,7 @@ def test_downloads_static_and_dynamic_owners_are_the_accepted_integrated_composi
     page_css = read(STATIC / "ui-downloads-page.css")
     operator = read(STATIC / "operator-title.js")
     view = html[html.index('id="view-torrents"'):html.index('<!-- Events -->')]
-    assert 'Download Queue' in view
+    assert 'On the Books' in view
     assert 'data-dp-filter-contract="desktop-v24"' in view
     assert 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in view
     assert view.index('id="torrent-search"') < view.index('id="bulk-bar"') < view.index('class="dp-downloads-table-wrap"')

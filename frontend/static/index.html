@@ -109,7 +109,7 @@
             <label for="aria2-cap-custom-mbps">Custom cap (MB/s)</label>
             <div>
               <input id="aria2-cap-custom-mbps" type="number" min="0" step="0.1" inputmode="decimal" placeholder="MB/s" onkeydown="if(event.key==='Enter')applyAria2TopbarCustomSpeedCap()">
-              <button type="button" class="btn btn-primary btn-sm" onclick="applyAria2TopbarCustomSpeedCap()">Apply</button>
+              <button type="button" class="btn btn-primary btn-sm" onclick="applyAria2TopbarCustomSpeedCap()">Set Custom</button>
             </div>
             <small>Enter 0 for unlimited.</small>
           </div>
@@ -117,7 +117,7 @@
       </div>
     </div>
     <div class="sidebar-theme-control topbar-theme-control">
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg></button>
+      <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
     </div>
   </div>
   <div id="content" class="dashboard-active">
@@ -247,13 +247,13 @@
           </div>
           <div class="dp-card-header-actions">
             <button class="btn btn-ghost btn-sm" id="btn-import-existing" data-default-label="Import" onclick="importExisting(this)" title="Import all AllDebrid magnets not yet in the local database"><svg class="lucide dp-utility-icon" data-dp-lucide="upload" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg><span>Import</span></button>
-            <button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Reset stuck or errored torrents — re-dispatches from AllDebrid"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button>
+            <span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Reset stuck or errored torrents — re-dispatches from AllDebrid"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span>
           </div>
         </div>
         <div style="padding:12px 16px">
           <div class="direct-link-entry">
             <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="https://example-hoster.com/file/…&#10;magnet:?xt=urn:btih:…" oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
-            <button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit direct links and magnets through AllDebrid; when empty, choose a .torrent file">Add</button>
+            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit direct links and magnets through AllDebrid; when empty, choose a .torrent file">Add</button></span>
           </div>
         </div>
       </div>
@@ -275,7 +275,7 @@
               <th>Progress</th>
               <th class="sz">Size</th>
               <th class="sz">Added</th>
-              <th style="width:1%;white-space:nowrap">Action</th>
+              <th class="dp-dashboard-action-column">Action</th>
             </tr>
           </thead>
           <tbody id="dash-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
@@ -289,7 +289,7 @@
     <div class="view" id="view-torrents">
       <div class="card">
         <div class="card-header">
-          <span class="card-title dp-downloads-card-title" id="torrent-card-title" aria-label="Download Queue. 0 downloads tracked. Most of them followed instructions."><img class="dp-icon dp-icon--lg dp-downloads-title-icon" src="/icons/dp/card-download.svg?v=11" alt="" aria-hidden="true"><span class="dp-downloads-heading-copy"><span class="dp-downloads-heading">Download Queue</span><span class="dp-downloads-subtitle">0 downloads tracked. Most of them followed instructions.</span></span></span>
+          <span class="card-title dp-downloads-card-title" id="torrent-card-title" aria-label="On the Books. 0 downloads tracked. Most of them followed instructions."><img class="dp-icon dp-icon--lg dp-downloads-title-icon" src="/icons/dp/card-download.svg?v=11" alt="" aria-hidden="true"><span class="dp-downloads-heading-copy"><span class="dp-downloads-heading">On the Books</span><span class="dp-downloads-subtitle">0 downloads tracked. Most of them followed instructions.</span></span></span>
           <div class="filter-tabs" data-dp-filter-contract="desktop-v24" role="tablist" aria-label="Download status filter">
             <div class="ftab active" data-dp-status="" role="tab" aria-selected="true" onclick="setFilter(this,'')">All</div>
             <div class="ftab" data-dp-status="downloading" role="tab" aria-selected="false" onclick="setFilter(this,'downloading')">Downloading</div>
@@ -338,7 +338,7 @@
     <div class="view" id="view-events">
       <div class="card dp-activity-card">
         <div class="card-header">
-          <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading">Activity Log</span><span class="dp-activity-subtitle">Everything DebridPulse thought was worth mentioning.</span></span></span>
+          <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading">For the Record</span><span class="dp-activity-subtitle">Everything DebridPulse thought was worth mentioning.</span></span></span>
           <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="loadEvents()" aria-label="Refresh activity log" title="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
         </div>
         <div class="dp-activity-search-band">

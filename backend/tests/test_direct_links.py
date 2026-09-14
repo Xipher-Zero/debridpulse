@@ -184,7 +184,7 @@ class DashboardContractTests(unittest.TestCase):
         owner = (
             repo_root / "frontend/static/ui-dashboard-transfer-presentation.js"
         ).read_text()
-        self.assertIn("api('GET',`/torrents?limit=${recentLimit}`)", owner)
+        self.assertIn("api('GET',`/torrents?limit=${recentLimit}&order=activity`)", owner)
         self.assertIn("#content.dashboard-active { overflow-y: hidden; }", css)
         self.assertIn("#view-dashboard.active {", css)
         self.assertIn("#dash-activity-card {", css)

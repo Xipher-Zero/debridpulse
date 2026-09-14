@@ -274,22 +274,87 @@ def _child_directory_entry(entry) -> DirectoryBrowserEntry | None:
     )
 
 
-def _browse_directory(path: Path, capacity) -> DirectoryBrowseResponse:
-    """Build one non-recursive directory listing using WS1 as selectability owner."""
-    if capacity is None or not hasattr(capacity, "validate_download_path"):
-        raise _directory_error(503, "browser_unavailable", "Download Storage validation is unavailable")
+def _backup_directory_probe(path: Path) -> tuple[Path, bool]:
+    """Plain existence/accessibility/writability probe for Backup Folder browsing.
 
-    snapshot = capacity.validate_download_path(path, apply_if_active=False)
-    if snapshot.exists is False:
+    Backup Folder does NOT share Download Storage's minimum-space/health-state
+    validation contract (`capacity.validate_download_path`) -- that validator
+    answers "is this safe to actively download into right now" (free space,
+    FULL/READ_ONLY/UNAVAILABLE state), which has no bearing on a backup
+    destination. `backend/services/backup.py::run_backup()` already creates
+    the configured folder on demand (`mkdir(parents=True, exist_ok=True)`)
+    and tolerates it not existing yet (`list_backups()`), so this probe only
+    ever answers "does this directory exist, and can DebridPulse write into
+    it" -- never a capacity/space judgment, and never a second validator for
+    the Save path (Save persists the typed/selected string exactly as today).
+    """
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError):
         raise _directory_error(404, "path_unavailable", "Directory path does not exist")
-    if snapshot.is_directory is False:
+    if not resolved.is_dir():
         raise _directory_error(400, "not_directory", "Requested path is not a directory")
-    if snapshot.accessible is False:
-        if snapshot.reason == StorageReason.INACCESSIBLE:
-            raise _directory_error(403, "path_inaccessible", "Directory path is not accessible")
-        raise _directory_error(503, "path_unavailable", "Directory path is temporarily unavailable")
+    try:
+        accessible = os.access(resolved, os.R_OK | os.X_OK)
+    except OSError:
+        accessible = False
+    if not accessible:
+        raise _directory_error(403, "path_inaccessible", "Directory path is not accessible")
+    try:
+        writable = os.access(resolved, os.W_OK)
+    except OSError:
+        writable = False
+    return resolved, writable
 
-    current_path = Path(snapshot.resolved_path)
+
+def _browse_directory(path: Path, capacity, *, purpose: str = "download") -> DirectoryBrowseResponse:
+    """Build one non-recursive directory listing.
+
+    ``purpose`` is a narrow discriminator on the ONE existing bounded
+    directory-browse endpoint (never a second endpoint): "download" (default,
+    existing callers unchanged) uses the canonical Download Storage validator
+    as the selectability owner; "backup" uses the plain existence/writability
+    probe above instead, since Backup Folder selection is directory
+    navigation only, not a Download Storage health judgment.
+    """
+    if purpose == "backup":
+        current_path, current_writable = _backup_directory_probe(path)
+        selectable = bool(current_writable)
+        current_reason = StorageReason.NONE.value if current_writable else StorageReason.READ_ONLY.value
+        current_capacity = DirectoryCapacity(total_bytes=None, free_bytes=None)
+    else:
+        if capacity is None or not hasattr(capacity, "validate_download_path"):
+            raise _directory_error(503, "browser_unavailable", "Download Storage validation is unavailable")
+
+        snapshot = capacity.validate_download_path(path, apply_if_active=False)
+        if snapshot.exists is False:
+            raise _directory_error(404, "path_unavailable", "Directory path does not exist")
+        if snapshot.is_directory is False:
+            raise _directory_error(400, "not_directory", "Requested path is not a directory")
+        if snapshot.accessible is False:
+            if snapshot.reason == StorageReason.INACCESSIBLE:
+                raise _directory_error(403, "path_inaccessible", "Directory path is not accessible")
+            raise _directory_error(503, "path_unavailable", "Directory path is temporarily unavailable")
+
+        current_path = Path(snapshot.resolved_path)
+        current_state = StorageState(snapshot.state)
+        selectable = bool(
+            snapshot.is_directory is True
+            and snapshot.accessible is True
+            and snapshot.writable is True
+            and current_state not in {
+                StorageState.FULL,
+                StorageState.READ_ONLY,
+                StorageState.UNAVAILABLE,
+            }
+        )
+        current_reason = snapshot.reason.value
+        current_capacity = DirectoryCapacity(
+            total_bytes=snapshot.total_bytes,
+            free_bytes=snapshot.free_bytes,
+        )
+        current_writable = snapshot.writable
+
     try:
         with os.scandir(current_path) as entries:
             rows = []
@@ -307,30 +372,16 @@ def _browse_directory(path: Path, capacity) -> DirectoryBrowseResponse:
         raise _directory_error(503, "path_unavailable", "Directory path is temporarily unavailable") from exc
 
     rows.sort(key=lambda item: (item.name.casefold(), item.name))
-    current_state = StorageState(snapshot.state)
-    selectable = bool(
-        snapshot.is_directory is True
-        and snapshot.accessible is True
-        and snapshot.writable is True
-        and current_state not in {
-            StorageState.FULL,
-            StorageState.READ_ONLY,
-            StorageState.UNAVAILABLE,
-        }
-    )
     parent_path = current_path.parent
     parent = None if parent_path == current_path else str(parent_path)
     current = DirectoryBrowserCurrent(
         name=_directory_display_name(current_path),
         path=str(current_path),
         accessible=True,
-        writable=snapshot.writable,
+        writable=current_writable,
         selectable=selectable,
-        reason=snapshot.reason.value,
-        capacity=DirectoryCapacity(
-            total_bytes=snapshot.total_bytes,
-            free_bytes=snapshot.free_bytes,
-        ),
+        reason=current_reason,
+        capacity=current_capacity,
     )
     return DirectoryBrowseResponse(current=current, parent=parent, children=rows)
 
@@ -410,15 +461,25 @@ async def get_extraction_passwords():
 def browse_directories(
     response: Response,
     path: str | None = Query(default=None, min_length=1, max_length=4096),
+    purpose: Literal["download", "backup"] = Query(default="download"),
     application: ApplicationService = Depends(get_application),
 ):
-    """Browse one container-visible directory without exposing files or mutations."""
+    """Browse one container-visible directory without exposing files or mutations.
+
+    ``purpose`` narrows only which setting's default path this browse starts
+    from (when ``path`` is omitted) and which selectability rule applies --
+    see ``_browse_directory``. Default behavior (``purpose`` omitted) is
+    unchanged for existing Download Folder callers.
+    """
+    default_configured_path = (
+        get_settings().backup_folder if purpose == "backup" else get_settings().download_folder
+    )
     requested = (
         _resolve_requested_directory(path)
         if path is not None
-        else _default_directory_path(get_settings().download_folder)
+        else _default_directory_path(default_configured_path)
     )
-    result = _browse_directory(requested, application.capacity)
+    result = _browse_directory(requested, application.capacity, purpose=purpose)
     response.headers["Cache-Control"] = "no-store"
     return result
 

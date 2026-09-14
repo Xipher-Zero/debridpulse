@@ -31,6 +31,30 @@ test('Activity Log keeps search, Time Window dropdown, Severity label, and Sever
  expect(geometry.severityLabel.right).toBeLessThanOrEqual(geometry.severityShell.left+1);
 });
 
+test('Activity Log search keeps focus across debounced refreshes and other controls still initialize exactly once',async({page})=>{
+ await page.setViewportSize({width:1600,height:900});
+ let requestCount=0;
+ await page.route('**/api/events*',route=>{requestCount+=1;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],truncated:false,limit:500})});});
+ await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
+ await page.waitForFunction(()=>document.querySelector('#ev-timeframe')?._dpDropdownShell&&document.querySelector('#ev-level')?._dpDropdownShell);
+ const search=page.locator('#ev-search');
+ await search.click();
+ await page.keyboard.type('a');
+ await page.waitForTimeout(400);
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('ev-search');
+ await page.keyboard.type('bc',{delay:150});
+ await page.waitForTimeout(400);
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('ev-search');
+ await expect(search).toHaveValue('abc');
+ await expect.poll(()=>requestCount).toBeGreaterThanOrEqual(3);
+ // Severity/timeframe/reset controls initialize exactly once (one dropdown
+ // shell each) and remain interactive after the repeated debounced refreshes.
+ const shellCount=await page.evaluate(()=>document.querySelectorAll('#view-events .dp-dropdown-shell').length);
+ expect(shellCount).toBe(2);
+ await page.selectOption('#ev-level','error');
+ await expect.poll(()=>requestCount).toBeGreaterThanOrEqual(4);
+});
+
 test('Archive Passwords hydrate stored values and Show all/Hide all keep identical geometry',async({page})=>{
  await page.route('**/api/settings/extraction-passwords',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords:'alpha\nbeta'})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
@@ -46,6 +70,79 @@ test('Archive Passwords hydrate stored values and Show all/Hide all keep identic
  expect(show.whiteSpace).toBe('nowrap');expect(show.buttonWhiteSpace).toBe('nowrap');expect(show.labelHeight).toBeLessThan(20);
  expect(hide.whiteSpace).toBe('nowrap');expect(hide.buttonWhiteSpace).toBe('nowrap');expect(hide.labelHeight).toBeLessThan(20);
  expect({width:show.width,height:show.height,fontFamily:show.fontFamily,fontSize:show.fontSize,fontWeight:show.fontWeight,lineHeight:show.lineHeight}).toEqual({width:hide.width,height:hide.height,fontFamily:hide.fontFamily,fontSize:hide.fontSize,fontWeight:hide.fontWeight,lineHeight:hide.lineHeight});
+});
+
+test('Archive Passwords empty Backspace does not delete the row or navigate to the previous one',async({page})=>{
+ await page.route('**/api/settings/extraction-passwords',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords:'alpha\nbeta'})}));
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
+ const tab=page.locator('#view-settings [data-tab="extraction"]');if(await tab.count())await tab.click();
+ const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
+ await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
+ const editor=page.locator('.dp-settings-extraction-password-editor');
+ const rows=editor.locator('.dp-settings-password-line');await expect(rows).toHaveCount(3);
+ // Row 2 (index 1, "beta") is already non-empty text -- normal Backspace on
+ // real text must still edit it normally.
+ await rows.nth(1).click();await rows.nth(1).press('End');await rows.nth(1).press('Backspace');
+ await expect(rows.nth(1)).toHaveValue('bet');
+ await expect(rows).toHaveCount(3);
+ await expect.poll(()=>source.inputValue()).toBe('alpha\nbet');
+ // Row 3 (index 2) is the trailing empty row. Backspace there used to delete
+ // the row and jump focus back to row 2 -- it must now be a no-op.
+ await rows.nth(2).click();
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.dataset?.passwordIndex)).toBe('2');
+ await rows.nth(2).press('Backspace');
+ await expect(rows).toHaveCount(3);
+ await expect.poll(()=>page.evaluate(()=>document.activeElement?.dataset?.passwordIndex)).toBe('2');
+ expect(await source.inputValue()).toBe('alpha\nbet');
+});
+
+test('Theme toggle glyph shows the target theme, not the current one, on load and after toggling',async({page})=>{
+ await ready(page);
+ const initial=await page.evaluate(()=>({title:document.getElementById('theme-toggle').title,ariaLabel:document.getElementById('theme-toggle').getAttribute('aria-label'),hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
+ expect(initial.isLight).toBe(false);
+ expect(initial.title).toBe('Switch to light mode');
+ expect(initial.ariaLabel).toBe('Switch to light mode');
+ expect(initial.hasCircle).toBe(true); // sun glyph while dark
+ await page.click('#theme-toggle');
+ const afterLight=await page.evaluate(()=>({title:document.getElementById('theme-toggle').title,ariaLabel:document.getElementById('theme-toggle').getAttribute('aria-label'),hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
+ expect(afterLight.isLight).toBe(true);
+ expect(afterLight.title).toBe('Switch to dark mode');
+ expect(afterLight.ariaLabel).toBe('Switch to dark mode');
+ expect(afterLight.hasCircle).toBe(false); // moon glyph while light
+ await page.click('#theme-toggle');
+ const backToDark=await page.evaluate(()=>({title:document.getElementById('theme-toggle').title,hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
+ expect(backToDark.isLight).toBe(false);
+ expect(backToDark.title).toBe('Switch to light mode');
+ expect(backToDark.hasCircle).toBe(true);
+});
+
+test('Downloads and Activity Log master-card titles change without touching sidebar, page header, or Statistics',async({page})=>{
+ await ready(page);
+ await page.locator('#sidebar .nav-item[data-view="torrents"]').click();
+ await expect(page.locator('.dp-downloads-heading')).toHaveText('On the Books');
+ await expect(page.locator('#torrent-card-title')).toHaveAttribute('aria-label',/^On the Books\. /);
+ await expect(page.locator('#sidebar .nav-item[data-view="torrents"] .nav-label')).toHaveText('Downloads');
+ await expect(page.locator('#page-title')).toHaveText('Downloads');
+ await page.locator('#sidebar .nav-item[data-view="events"]').click();
+ await expect(page.locator('.dp-activity-heading')).toHaveText('For the Record');
+ await expect(page.locator('#sidebar .nav-item[data-view="events"] .nav-label')).toHaveText('Activity Log');
+ await expect(page.locator('#page-title')).toHaveText('Activity Log');
+ await page.locator('#sidebar .nav-item[data-view="stats"]').click();
+ await expect(page.locator('.dp-stats-heading')).toHaveText('By the Numbers');
+});
+
+test('Dashboard hero sparklines graph cumulative deltas for cumulative metrics and raw samples for instantaneous metrics',async({page})=>{
+ await ready(page);
+ const result=await page.evaluate(()=>{
+  const cumulative=dashboardCumulativeDeltas([10,10,12,15]);
+  const reset=dashboardCumulativeDeltas([15,17,3,5]);
+  const kinds=Object.fromEntries(Object.values(DASHBOARD_HERO_METRICS).map(m=>[m.key,m.kind]));
+  return {cumulative,reset,kinds};
+ });
+ expect(result.cumulative).toEqual([0,0,2,3]);
+ expect(result.reset).toEqual([0,2,0,2]);
+ expect(result.reset).not.toContain(-14);
+ expect(result.kinds).toEqual({total:'cumulative',completed:'cumulative',active:'instantaneous',processing:'instantaneous',errors:'instantaneous',downloaded:'cumulative'});
 });
 
 test('Archive Passwords persist edits across Apply, rerender, navigation, and fresh reload',async({page})=>{
@@ -195,6 +292,65 @@ test('Dashboard Recent Items renders host artwork on cold load without navigatio
  });
  expect(state.registered).toBe('function');
  expect(state.delta).toBe(1);
+});
+
+test('Dashboard Recent Activity requests priority ordering and reports a truthful, non-recency subtitle',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ const capturedUrls=[];
+ const items=Array.from({length:3},(_,i)=>({
+  id:i+1,name:`Item ${i+1}`,status:'downloading',progress:10,size_bytes:1024,created_at:'2026-09-08 17:00:00',
+  current_source_identity:{kind:'link'},current_provider_id:'alldebrid',provider_provenance_status:'known'
+ }));
+ await page.route('**/api/torrents*',route=>{capturedUrls.push(route.request().url());return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})});});
+ await page.goto('/');
+ await expect(page.locator('#dash-activity-count')).toHaveText('3 recent activity items');
+ const activityRequest=capturedUrls.find(u=>new URL(u).searchParams.get('order')==='activity');
+ expect(activityRequest).toBeTruthy();
+ expect(await page.locator('#dash-activity-count').textContent()).not.toContain('most recent');
+});
+
+test('Dashboard shares one action centerline across Recover All, Add, and the row action button',async({page})=>{
+ for(const width of [1440,1920]){
+  await page.setViewportSize({width,height:900});
+  await ready(page);
+  await page.evaluate(()=>{document.getElementById('dash-tbody').innerHTML='<tr data-torrent-id="1" data-status="downloading"><td>Name</td><td>Status</td><td>Progress</td><td>1MB</td><td>today</td><td><div class="actions"><button class="btn btn-blue btn-sm">Pause</button></div></td></tr>';});
+  const centers=await page.evaluate(()=>{
+   const centerOf=el=>{const r=el.getBoundingClientRect();return (r.left+r.right)/2;};
+   return {
+    recover:centerOf(document.getElementById('btn-recover-all')),
+    add:centerOf(document.getElementById('btn-add-transfer')),
+    action:centerOf(document.querySelector('#dash-tbody .actions .btn')),
+   };
+  });
+  expect(Math.abs(centers.recover-centers.add)).toBeLessThan(3);
+  expect(Math.abs(centers.recover-centers.action)).toBeLessThan(3);
+ }
+});
+
+test('Download speed custom cap reads Set Custom and still applies on Enter and click',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ const bodies=[];
+ await page.route('**/api/aria2/global-options',route=>{bodies.push(route.request().postDataJSON());return route.fulfill({status:200,contentType:'application/json',body:'{}'});});
+ await ready(page);
+ await page.evaluate(()=>{document.getElementById('aria2-cap-menu').hidden=false;});
+ const button=page.locator('.aria2-cap-custom button');
+ await expect(button).toHaveText('Set Custom');
+ const input=page.locator('#aria2-cap-custom-mbps');
+ await input.fill('7');
+ await input.press('Enter');
+ await expect.poll(()=>bodies.length).toBe(1);
+ expect(bodies[0].max_download_speed).toBe(Math.round(7*1048576));
+ // A successful apply closes the menu (existing behavior) -- reopen it.
+ await page.evaluate(()=>{document.getElementById('aria2-cap-menu').hidden=false;});
+ await input.fill('12');
+ await button.click();
+ await expect.poll(()=>bodies.length).toBe(2);
+ expect(bodies[1].max_download_speed).toBe(Math.round(12*1048576));
+ // Presets still apply immediately.
+ await page.evaluate(()=>{document.getElementById('aria2-cap-menu').hidden=false;});
+ await page.locator('.aria2-cap-options button', {hasText:'1 MB/s'}).click();
+ await expect.poll(()=>bodies.length).toBe(3);
+ expect(bodies[2].max_download_speed).toBe(1048576);
 });
 
 test('Downloads Provider Inventory icon, provider badge, and source label share canonical alignment',async({page})=>{

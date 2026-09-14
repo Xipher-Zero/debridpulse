@@ -500,6 +500,9 @@
   function renderThemeGlyph(isLight) {
     const button = document.getElementById('theme-toggle');
     if (!button) return;
-    button.innerHTML = lucideSvg(isLight ? 'sun' : 'moon');
+    // Target-action semantics, not current-theme semantics: the glyph shows
+    // what clicking the button WOULD switch to. Dark now -> show sun (click
+    // switches to light); light now -> show moon (click switches to dark).
+    button.innerHTML = lucideSvg(isLight ? 'moon' : 'sun');
   }
 })();
