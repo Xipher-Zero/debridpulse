@@ -120,6 +120,11 @@
    right anchor = identical center, without any transform/position hack. */
 #view-dashboard {
   --dp-dashboard-action-track: 116px;
+  /* The accepted right inset that keeps the action track's right edge (and
+     therefore its center) flush with Quick Add's own right inset -- see the
+     wide Recent Activity column-geometry block below, which is now the sole
+     consumer and owns where that inset is actually applied. */
+  --dp-dashboard-action-inset: 17px;
 }
 #view-dashboard .dp-dashboard-action-track {
   display: flex;
@@ -1674,34 +1679,58 @@ body.dp-v11-structural #t-tbody .prog {
    its content needed. Reclaim that slack for Progress while keeping Name and
    the trailing metadata/action columns balanced. */
 @media (min-width: 1440px) {
-  /* Correction 3: the table's own content area otherwise runs flush to the
-     card's inner edge, ~17px further right than the Quick Add header/body
-     rows' own right inset (their existing padding: 0 17px / 13px 16px
-     15px). Matching that same inset here is what makes the fixed-width
-     action track's right edge -- and therefore its center -- agree with
-     Recover All's and Add's, instead of the whole track sitting ~17px
-     further right than the other two. */
+  /* Correction 3 (DP 1.0.12 UI Finishing, row-extent follow-up): the table
+     wrapper previously carried a padding-right equal to the accepted
+     Quick-Add-matching inset (--dp-dashboard-action-inset), so the
+     width:100% table -- and therefore its header/row/hover painting --
+     stopped that same amount short of the card's real right content edge,
+     leaving a dead strip. The wrapper now owns the full available width
+     again; the inset is instead folded into the Action column's own
+     geometry below (width + right padding), which is where an axis-aligning
+     inset that must not move any other column belongs.
+
+     Making the wrapper a size query container (inline-size) is required by
+     the fix below, not decorative: table fixed-layout column sizing only
+     resolves a th/td `width` that is a plain <percentage> or a plain
+     <length> -- a calc() that mixes the two (e.g. calc(40% - 6.8px), which
+     is what preserving the pre-existing column boundaries against a wider
+     table algebraically requires) is left unresolved by the column-sizing
+     pass and silently falls back to auto, letting the browser divide the
+     leftover space evenly across those columns instead. `cqw` resolves to a
+     definite absolute length against this same container before that pass
+     runs, so calc(Ncqw - Xpx) is (length - length) -- a single homogeneous
+     type the column-sizing pass does understand -- while still tracking
+     1cqw = 1% of this wrapper's content width, exactly as the replaced `%`
+     did. The wrapper's own width is already fixed by its flex-item cross
+     axis, not by its content, so containment changes nothing about its own
+     size. */
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
-    padding-right: 17px;
+    container-type: inline-size;
   }
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table {
     table-layout: fixed !important;
   }
+  /* Columns 1-4 and Added (5) are re-expressed against the now-wider table
+     (W = old table width T + the inset I) so their absolute pixel widths --
+     and every column boundary through Action's left edge -- stay exactly
+     where they were: each Npct of T equals (Ncqw of W) - (Npct of I), and
+     Npct of I is a flat px figure since I is a constant 17px, not a
+     percentage. */
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
-    width: 40% !important;
+    width: calc(40cqw - 6.80px) !important;
   }
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
-    width: 13% !important;
+    width: calc(13cqw - 2.21px) !important;
   }
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(3),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(3) {
-    width: 21% !important;
+    width: calc(21cqw - 3.57px) !important;
   }
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(4),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
-    width: 9% !important;
+    width: calc(9cqw - 1.53px) !important;
   }
   /* Correction 3: Added absorbs whatever the fixed action track (below)
      does not use, expressed as a calc() complement of the OTHER four
@@ -1711,17 +1740,23 @@ body.dp-v11-structural #t-tbody .prog {
      table's width algebraically, at any viewport width -- not just at one
      coincidental width -- so the action track never gets rescaled by the
      browser's fixed-table-layout column-width reconciliation the way a
-     plain "8%" alongside a fixed px column previously could. */
+     plain "8%" alongside a fixed px column previously could. The trailing
+     "- 2.89px" is 17% of the recovered inset, keeping Added's absolute
+     width identical to what it was against the narrower table. */
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
-    width: calc(17% - var(--dp-dashboard-action-track)) !important;
+    width: calc(17cqw - var(--dp-dashboard-action-track) - 2.89px) !important;
   }
-  /* The Action column is pinned to the same shared action track as Recover
-     All and Add (not a percentage), and its content is centered in it --
-     see the shared-axis block near the top of this file. */
+  /* The Action column keeps the same shared action track as Recover All and
+     Add, but now also carries the recovered inset -- entirely as extra
+     right padding, not extra width around the centered content -- so the
+     cell/row/table painting reaches the card's real right edge while the
+     centered content (the Pause/Resume button) keeps the exact left/width
+     footprint, and therefore center, it had before. */
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table th:nth-child(6),
   body.dp-v11-structural #view-dashboard .dp-dashboard-activity .t-table td:nth-child(6) {
-    width: var(--dp-dashboard-action-track) !important;
+    width: calc(var(--dp-dashboard-action-track) + var(--dp-dashboard-action-inset)) !important;
+    padding-right: calc(14px + var(--dp-dashboard-action-inset)) !important;
     text-align: center;
   }
 }

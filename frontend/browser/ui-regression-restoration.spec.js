@@ -309,21 +309,86 @@ test('Dashboard Recent Activity requests priority ordering and reports a truthfu
  expect(await page.locator('#dash-activity-count').textContent()).not.toContain('most recent');
 });
 
+const DASH_WIDE_WIDTHS=[1440,1600,1920,2200];
+const DASH_ROW_HTML='<tr data-torrent-id="1" data-status="downloading"><td>Name</td><td>Status</td><td>Progress</td><td>1MB</td><td>today</td><td><div class="actions"><button class="btn btn-blue btn-sm">Pause</button></div></td></tr>';
+
 test('Dashboard shares one action centerline across Recover All, Add, and the row action button',async({page})=>{
- for(const width of [1440,1920]){
+ for(const theme of ['dark','light']){
+  for(const width of DASH_WIDE_WIDTHS){
+   await page.setViewportSize({width,height:900});
+   await ready(page);
+   if(theme==='light')await page.evaluate(()=>document.body.classList.add('light'));
+   await page.evaluate(html=>{document.getElementById('dash-tbody').innerHTML=html;},DASH_ROW_HTML);
+   const centers=await page.evaluate(()=>{
+    const centerOf=el=>{const r=el.getBoundingClientRect();return (r.left+r.right)/2;};
+    return {
+     recover:centerOf(document.getElementById('btn-recover-all')),
+     add:centerOf(document.getElementById('btn-add-transfer')),
+     action:centerOf(document.querySelector('#dash-tbody .actions .btn')),
+    };
+   });
+   expect(Math.abs(centers.recover-centers.add)).toBeLessThanOrEqual(1);
+   expect(Math.abs(centers.recover-centers.action)).toBeLessThanOrEqual(1);
+  }
+ }
+});
+
+test('Dashboard Recent Activity table/rows reach the card\'s full right content edge without moving any column',async({page})=>{
+ for(const theme of ['dark','light']){
+  for(const width of DASH_WIDE_WIDTHS){
+   await page.setViewportSize({width,height:900});
+   await ready(page);
+   if(theme==='light')await page.evaluate(()=>document.body.classList.add('light'));
+   await page.evaluate(html=>{document.getElementById('dash-tbody').innerHTML=html;},DASH_ROW_HTML);
+   const geometry=await page.evaluate(()=>{
+    const rect=el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right};};
+    const wrap=document.querySelector('.dash-activity-table-wrap');
+    const table=document.querySelector('.dp-dashboard-activity .t-table');
+    const theadRow=document.querySelector('.dp-dashboard-activity .t-table thead tr');
+    const tbodyRow=document.querySelector('#dash-tbody tr');
+    const nameCell=tbodyRow.children[0];
+    const actionCell=tbodyRow.children[5];
+    const track=parseFloat(getComputedStyle(document.getElementById('view-dashboard')).getPropertyValue('--dp-dashboard-action-track'));
+    const inset=parseFloat(getComputedStyle(document.getElementById('view-dashboard')).getPropertyValue('--dp-dashboard-action-inset'));
+    return {
+     wrap:rect(wrap),table:rect(table),theadRow:rect(theadRow),tbodyRow:rect(tbodyRow),
+     nameCell:rect(nameCell),actionCell:rect(actionCell),track,inset,
+    };
+   });
+   // The dead strip this test guards against: table/row painting must reach
+   // the wrapper's own right content edge, not stop `inset` short of it.
+   expect(Math.abs(geometry.table.right-geometry.wrap.right)).toBeLessThanOrEqual(1);
+   expect(Math.abs(geometry.theadRow.right-geometry.wrap.right)).toBeLessThanOrEqual(1);
+   expect(Math.abs(geometry.tbodyRow.right-geometry.wrap.right)).toBeLessThanOrEqual(1);
+   // Name still starts flush with the wrapper's own left edge (unmoved).
+   expect(Math.abs(geometry.nameCell.left-geometry.wrap.left)).toBeLessThanOrEqual(1);
+   // The Action cell -- not a compensating layer -- is the one column
+   // whose own right edge legitimately extends into the recovered inset,
+   // and its width equals the shared track plus that inset, relationally.
+   expect(Math.abs(geometry.actionCell.right-geometry.wrap.right)).toBeLessThanOrEqual(1);
+   expect(Math.abs((geometry.actionCell.right-geometry.actionCell.left)-(geometry.track+geometry.inset))).toBeLessThanOrEqual(1);
+  }
+ }
+});
+
+test('Below the 1440px Dashboard breakpoint, Recent Activity keeps auto column layout and no wrapper inset',async({page})=>{
+ for(const width of [1439,1200]){
   await page.setViewportSize({width,height:900});
   await ready(page);
-  await page.evaluate(()=>{document.getElementById('dash-tbody').innerHTML='<tr data-torrent-id="1" data-status="downloading"><td>Name</td><td>Status</td><td>Progress</td><td>1MB</td><td>today</td><td><div class="actions"><button class="btn btn-blue btn-sm">Pause</button></div></td></tr>';});
-  const centers=await page.evaluate(()=>{
-   const centerOf=el=>{const r=el.getBoundingClientRect();return (r.left+r.right)/2;};
+  await page.evaluate(html=>{document.getElementById('dash-tbody').innerHTML=html;},DASH_ROW_HTML);
+  const info=await page.evaluate(()=>{
+   const table=document.querySelector('.dp-dashboard-activity .t-table');
+   const wrap=document.querySelector('.dash-activity-table-wrap');
    return {
-    recover:centerOf(document.getElementById('btn-recover-all')),
-    add:centerOf(document.getElementById('btn-add-transfer')),
-    action:centerOf(document.querySelector('#dash-tbody .actions .btn')),
+    tableLayout:getComputedStyle(table).tableLayout,
+    wrapPaddingRight:getComputedStyle(wrap).paddingRight,
+    wrapRight:wrap.getBoundingClientRect().right,
+    tableRight:table.getBoundingClientRect().right,
    };
   });
-  expect(Math.abs(centers.recover-centers.add)).toBeLessThan(3);
-  expect(Math.abs(centers.recover-centers.action)).toBeLessThan(3);
+  expect(info.tableLayout).toBe('auto');
+  expect(parseFloat(info.wrapPaddingRight)).toBe(0);
+  expect(Math.abs(info.tableRight-info.wrapRight)).toBeLessThanOrEqual(1);
  }
 });
 
