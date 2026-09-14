@@ -141,7 +141,15 @@ jobs:
       - name: Install dependencies + audit tools
         run: |
           cd backend
-          pip install -r requirements.txt -r requirements-qa.txt
+          # DP 1.0.12 leveling remediation (DEP-001): requirements.txt is now
+          # hash-pinned, which makes pip auto-enable --require-hashes mode for
+          # the WHOLE install the moment any file in it carries a hash.
+          # requirements-qa.txt is deliberately not hash-pinned (dev/CI-only
+          # tooling, never shipped in the runtime image -- see
+          # docs/SUPPLY_CHAIN_POLICY.md section 5), so it must be installed in
+          # a separate invocation rather than mixed into the same command.
+          pip install -r requirements.txt
+          pip install -r requirements-qa.txt
 
       - name: pip-audit (known CVEs in dependencies)
         run: |

@@ -120,6 +120,20 @@ which is out of scope for this remediation. If a specific package needs an
 explicit floor (a CVE fix not yet in the pinned base's repository snapshot),
 address it as its own scoped change, not as an DEP-001-wide requirement.
 
+**Observed in practice:** the first exact-SHA `Container Security` run after
+removing the blanket `apt-get upgrade` (this remediation) found the pinned
+base digest already carried fixable HIGH/CRITICAL CVEs in base-layer packages
+this Dockerfile never explicitly installs (`gzip`, `libpcre2-8-0`,
+`libsqlite3-0`, `perl-base`) — re-querying the registry confirmed no newer
+manifest-list digest existed yet for the pinned tag. The gate is working as
+designed (§1: "every built image is qualified as itself"); the correct
+response is exactly the scoped floor described above: a deliberate, NAMED
+`apt-get install --only-upgrade <exact packages>` line for only the packages
+Trivy flagged, not a reversion to blanket upgrade and not a version pin
+(Debian's repository remains a moving target regardless — §2). Drop that
+line once a base-digest refresh (§3) already carries the fix, rather than
+accumulating named-package upgrades indefinitely.
+
 ## 5. Python dependency lock and hash refresh procedure
 
 `backend/requirements.txt` is generated from `backend/requirements.in` with
