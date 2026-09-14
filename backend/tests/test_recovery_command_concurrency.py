@@ -17,7 +17,7 @@ The Phase-4 additions below (``test_manual_activation_vs_resume_is_generation_sa
 production ``convergence_engine.TransferEngine``/``recovery_repository
 .TransferRepository`` stack under real concurrent ``asyncio.gather`` execution
 against ``resume()``/``retry()``/``pause()`` -- the production overrides in
-``transfers._convergence_phase3_base.TransferEngine`` route ``resume``/``retry``
+``transfers.convergence_engine.TransferEngine`` route ``resume``/``retry``
 through the SAME exclusive ``claim_recovery`` system as candidate activation
 (``recover_artifact(trigger=RecoveryTrigger.RESUME/USER_RETRY)``), and ``pause``
 through the SAME per-execution-attempt ``_convergence_lock`` candidate
@@ -281,7 +281,7 @@ async def test_candidate_activation_provenance_links_to_replacement_execution(tm
 async def test_manual_activation_vs_resume_is_generation_safe(tmp_path, monkeypatch):
     """Section 25/33: a concurrent operator RESUME must never restore the old
     candidate/writer, clear a newer manual switch, or authorize two writers.
-    Production ``resume()`` (transfers._convergence_phase3_base.TransferEngine)
+    Production ``resume()`` (transfers.convergence_engine.TransferEngine)
     routes through ``recover_artifact(trigger=RecoveryTrigger.RESUME)`` -- the
     SAME exclusive claim system candidate activation uses -- so whichever
     acquires the claim first fully owns the mutation; the loser is a clean

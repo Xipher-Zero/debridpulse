@@ -1,8 +1,8 @@
 """One canonical candidate-activation operation (DP 1.0.12 recovery leveling,
 Section 10).
 
-Both automatic Phase-3 recovery
-(``transfers._convergence_phase3_base.TransferEngine._apply_recovery_decision``'s
+Both automatic recovery
+(``transfers.convergence_engine.TransferEngine._apply_recovery_decision``'s
 ``TRY_ALTERNATE_CANDIDATE`` branch) and operator-requested candidate switch
 (``transfers.convergence_engine.TransferEngine.activate_candidate_command``)
 call ``activate_candidate`` below. It owns:
@@ -118,7 +118,7 @@ async def activate_candidate(
     HELD ``transfers.recovery_execution.RecoveryClaim``, when it has one. This
     function never acquires or finishes a claim itself -- that stays the
     caller's responsibility, exactly as before. Automatic recovery
-    (``_convergence_phase3_base.TransferEngine._apply_recovery_decision``,
+    (``transfers.convergence_engine.TransferEngine._apply_recovery_decision``,
     already running inside the claim ``recover_artifact`` acquired for its
     real trigger -- AUTO_RETRY, EXECUTOR_RECOVERY, PROVIDER_RECOVERY,
     STARTUP_RECONCILE, ...) passes that SAME claim through here so this

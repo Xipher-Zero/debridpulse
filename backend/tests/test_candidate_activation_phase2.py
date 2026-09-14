@@ -236,7 +236,7 @@ async def test_manual_and_automatic_activation_use_same_core_transition(tmp_path
     )
     after_auto = await repository.recovery_context(exhausted_to_c.id)
     # The automatic TRY_ALTERNATE_CANDIDATE switch (transfers.candidate_activation
-    # .activate_candidate, via _convergence_phase3_base.py) must land on the
+    # .activate_candidate, via convergence_engine.py) must land on the
     # exact same durable bookkeeping shape as the manual switch above.
     assert after_auto["candidate_switches"] == after_manual["candidate_switches"] + 1
     assert after_auto["consecutive_no_progress_failures"] == 0

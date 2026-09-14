@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from weakref import WeakValueDictionary
 
-from transfers import _engine_base
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.candidate_activation import activate_candidate
@@ -20,7 +20,7 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.filesystem import retire_partial
+from transfers.filesystem import retire_partial, stable_payload
 from transfers.mirrors import reported_sizes_compatible
 from transfers.models import (
     Artifact, ExecutionObservation, ExecutionState, OutcomeKind, ResolutionResult,
@@ -29,24 +29,25 @@ from transfers.models import (
 from transfers.policy import RecoveryAction, RecoveryContext
 
 
-stable_payload = _engine_base.stable_payload
-
-
-async def _stable_payload_proxy(*args, **kwargs):
-    return await stable_payload(*args, **kwargs)
-
-
-_engine_base.stable_payload = _stable_payload_proxy
-
-
 class TransferEngine(_QualifiedTransferEngine):
     """Qualified lifecycle plus progress-aware universal recovery behavior."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # DP 1.0.12 leveling remediation (ARCH-002): weak-value maps, mirroring
+        # _engine_base.TransferEngine's own _transfer_locks/
+        # _execution_convergence_locks. A caller holding/awaiting a lock keeps
+        # the strong local reference that keeps its entry alive; once every
+        # holder/waiter for a key is gone, the entry can be collected instead
+        # of retaining one asyncio.Lock per transfer/cohort id for the life of
+        # a long-running process. Never delete-on-release: that can race with
+        # a concurrent waiter and hand out two lock objects for the same
+        # active key.
+        self._collection_affinity_locks = WeakValueDictionary()
+        self._cohort_locks = WeakValueDictionary()
+
     def _collection_affinity_lock(self, transfer_id: int) -> asyncio.Lock:
-        locks = getattr(self, "_collection_affinity_locks", None)
-        if locks is None:
-            locks = self._collection_affinity_locks = {}
-        return locks.setdefault(transfer_id, asyncio.Lock())
+        return self._collection_affinity_locks.setdefault(transfer_id, asyncio.Lock())
 
     async def _ensure_collection_affinity(self, transfer_id: int) -> bool:
         transfer = await self.repository.get(transfer_id)
@@ -173,10 +174,7 @@ class TransferEngine(_QualifiedTransferEngine):
         return result
 
     async def _materialize(self, record, candidates):
-        locks = getattr(self, "_cohort_locks", None)
-        if locks is None:
-            locks = self._cohort_locks = {}
-        lock = locks.setdefault(record.transfer_id, asyncio.Lock())
+        lock = self._cohort_locks.setdefault(record.transfer_id, asyncio.Lock())
         async with lock:
             if await coordinate_collection(self, record, candidates):
                 return

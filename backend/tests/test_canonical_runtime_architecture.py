@@ -28,6 +28,73 @@ def test_superseded_owners_are_physically_absent_and_never_imported():
                 assert not any(alias.name in {"services." + name for name in RETIRED} for alias in node.names), path
 
 
+# DP 1.0.12 leveling remediation (ARCH-001): the eight historical
+# `_convergence_phase3_*` / `_recovery_repository_*` inheritance layers are
+# gone. Production is a single engine class (transfers.convergence_engine
+# .TransferEngine) and a single repository class (transfers.recovery_repository
+# .TransferRepository), neither depending on override order for correctness.
+RETIRED_TRANSFER_MODULES = {
+    "_convergence_phase3_base", "_convergence_phase3_public_base",
+    "_convergence_phase3_retry_base", "_convergence_phase3_truth_base",
+    "_convergence_phase3_dispatch_base",
+    "_recovery_repository_claim_base", "_recovery_repository_audit",
+    "_recovery_repository_phase3",
+}
+
+
+def test_retired_recovery_leveling_layers_are_physically_absent_and_never_imported():
+    for name in RETIRED_TRANSFER_MODULES:
+        assert not (ROOT / "transfers" / f"{name}.py").exists()
+    qualified = {"transfers." + name for name in RETIRED_TRANSFER_MODULES}
+    for path in ROOT.rglob("*.py"):
+        if "tests" in path.parts:
+            continue
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert node.module not in qualified, path
+            elif isinstance(node, ast.Import):
+                assert not any(alias.name in qualified for alias in node.names), path
+
+
+def test_production_engine_and_repository_mro_is_shallow_and_exact():
+    from transfers.convergence_engine import TransferEngine
+    from transfers.recovery_repository import TransferRepository
+
+    engine_mro = [f"{cls.__module__}.{cls.__name__}" for cls in TransferEngine.__mro__]
+    assert engine_mro == [
+        "transfers.convergence_engine.TransferEngine",
+        "transfers.engine.TransferEngine",
+        "transfers._engine_recovery.TransferEngine",
+        "transfers._engine_base.TransferEngine",
+        "builtins.object",
+    ]
+
+    repository_mro = [f"{cls.__module__}.{cls.__name__}" for cls in TransferRepository.__mro__]
+    assert repository_mro == [
+        "transfers.recovery_repository.TransferRepository",
+        "transfers.manual_repository.TransferRepository",
+        "transfers.presentation_repository.TransferRepository",
+        "transfers.repository.TransferRepository",
+        "transfers._repository_base.TransferRepository",
+        "builtins.object",
+    ]
+
+
+def test_engine_recovery_no_longer_mutates_another_module_stable_payload():
+    """ARCH-001: the transitional cross-module monkeypatch seam
+    (_engine_recovery <-> _engine_base <-> engine, each reassigning the
+    other's ``stable_payload``/``retire_partial`` module attribute at import
+    time) is gone. Every owner now calls transfers.filesystem's real
+    function through a normal, unmutated import."""
+    for name in ("_engine_recovery.py", "_engine_base.py", "engine.py"):
+        source = (ROOT / "transfers" / name).read_text()
+        assert "_stable_payload_proxy" not in source
+        assert "_retire_partial_proxy" not in source
+        assert ".stable_payload = " not in source
+        assert ".retire_partial = " not in source
+
+
 def test_application_commands_initialize_without_concrete_integrations():
     code = '''
 import builtins

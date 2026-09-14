@@ -1,4 +1,4 @@
-"""Canonical Phase-3 trigger/authority values used by every recovery entry point."""
+"""Canonical recovery trigger/authority values used by every recovery entry point."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,12 +12,12 @@ class RecoveryTrigger(StrEnum):
     STARTUP_RECONCILE = "startup_reconcile"
     PROVIDER_RECOVERY = "provider_recovery"
     EXECUTOR_RECOVERY = "executor_recovery"
-    # DP 1.0.12 recovery leveling, Section 10/11: the first-class trigger an
-    # operator-requested candidate switch claims recovery under, so it is
-    # fenced by the SAME exclusive claim/generation system as every other
-    # trigger (transfers._recovery_repository_claim_base.claim_recovery is
-    # exclusive across all trigger types) instead of being an out-of-band
-    # mutation the recovery system knows nothing about.
+    # The first-class trigger an operator-requested candidate switch claims
+    # recovery under, so it is fenced by the SAME exclusive claim/generation
+    # system as every other trigger (transfers.recovery_repository
+    # .TransferRepository.claim_recovery is exclusive across all trigger
+    # types) instead of being an out-of-band mutation the recovery system
+    # knows nothing about.
     USER_CANDIDATE_SWITCH = "user_candidate_switch"
 
 

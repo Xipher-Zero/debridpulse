@@ -12,13 +12,22 @@ def _normalized_name(name: str) -> str:
 
 
 def _locked_packages(path: Path) -> dict[str, str]:
+    """Parse a pip-compile lock file's ``name==version`` lines.
+
+    DP 1.0.12 leveling remediation (DEP-001): the runtime lock
+    (``backend/requirements.txt``) is now hash-pinned, so a package line ends
+    with a ``\\`` continuation into its ``--hash=sha256:...`` lines instead of
+    ending the line outright -- strip that trailing continuation the same
+    way an environment marker (``;``) is already stripped."""
     packages: dict[str, str] = {}
     for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith(("#", "--")):
             continue
         name, version = line.split("==", 1)
-        packages[_normalized_name(name)] = version.split(";", 1)[0].strip()
+        version = version.split(";", 1)[0].strip()
+        version = version.removesuffix("\\").strip()
+        packages[_normalized_name(name)] = version
     return packages
 
 
@@ -146,7 +155,10 @@ def test_container_runtime_declares_trixie_and_rar_codec_notices():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text()
     dependency_licenses = (REPO_ROOT / "docs/DEPENDENCY_LICENSES.md").read_text()
 
-    assert dockerfile.startswith("FROM python:3.12.14-slim-trixie\n")
+    # DP 1.0.12 leveling remediation (DEP-001): the base image is now pinned
+    # by verified manifest digest (docs/SUPPLY_CHAIN_POLICY.md), so the tag
+    # is followed by "@sha256:..." rather than ending the line outright.
+    assert re.match(r"^FROM python:3\.12\.14-slim-trixie@sha256:[0-9a-f]{64}\n", dockerfile)
     assert "Components: main non-free" in dockerfile
     assert "    7zip" in dockerfile
     assert "    7zip-rar" in dockerfile

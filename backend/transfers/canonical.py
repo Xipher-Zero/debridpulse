@@ -14,10 +14,9 @@ from dataclasses import dataclass, replace
 
 from db.database import get_db
 from transfers import codec
+from transfers._repository_base import _retire_transfer_auxiliary_state_in_db
 from transfers.models import Artifact, RequestRecord, TransferCandidate
-
-
-_TERMINAL_TRANSFERS = {"completed", "consolidated", "deleted", "cancelled", "error"}
+from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
 
 @dataclass(frozen=True)
@@ -203,6 +202,10 @@ class CanonicalOwnership:
                 updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (transfer_id,),
         )
+        # FUNC-001: this path settles the parent into CONSOLIDATED without
+        # going through TransferRepository._write_lifecycle_transition, so it
+        # must invoke the same transaction-local auxiliary-state retirement.
+        await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
         await db.execute(
             "INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer consolidated into canonical artifacts')",
             (transfer_id,),
@@ -313,8 +316,16 @@ class CanonicalOwnership:
                     FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id WHERE r.id=?""",
                 (record.id,),
             )
+            # DP 1.0.12 leveling remediation: this record's own parent transfer
+            # has already settled into a side-state-retiring/generation-done
+            # status (transfers.policy.SIDE_STATE_RETIRING_TRANSFER_STATES --
+            # membership is identical to the historical local literal this
+            # replaces, including FAILED/"error": a failed transfer's
+            # materializing residue cannot still be a live consolidation-
+            # ordering contender either, even though FAILED itself remains
+            # operator-reopenable). Nothing left to race for.
             if (not current or current["state"] != "materializing"
-                    or current["transfer_status"] in _TERMINAL_TRANSFERS):
+                    or current["transfer_status"] in SIDE_STATE_RETIRING_TRANSFER_STATES):
                 return ()
             current_order = (int(current["transfer_id"]), int(current["ordinal"] or 0), int(current["admission_rowid"]))
             rows = await db.fetchall(

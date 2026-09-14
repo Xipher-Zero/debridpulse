@@ -472,7 +472,7 @@ async def test_capacity_wait_excludes_current_input_challenge(tmp_path, monkeypa
 async def test_capacity_wait_excludes_expired_candidate(tmp_path, monkeypatch):
     """queued + capacity full + candidate expired => NOT waiting_for_slot.
     The production Phase-3 dispatch layer
-    (transfers._convergence_phase3_base.TransferEngine._dispatch) routes an
+    (transfers.convergence_engine.TransferEngine._dispatch) routes an
     expired candidate through recovery (AUTO_RETRY) before ever reaching the
     base engine's capacity gate."""
     repository, registry, (provider,), executor, engine, now_box = await build_production_runtime(

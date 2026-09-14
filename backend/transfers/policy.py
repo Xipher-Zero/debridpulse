@@ -15,7 +15,18 @@ from transfers.errors import Category, Domain, NormalizedError, Permanence, Reco
 from transfers.models import TransferState
 
 
-_TERMINAL = {TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.DELETED, TransferState.CANCELLED}
+# DP 1.0.12 leveling remediation (FUNC-001): the single canonical owner of
+# "which parent lifecycle states are a dead end" versus "which parent
+# lifecycle states retire an old pause intent / INPUT_REQUIRED challenge
+# because their generation has settled". These are deliberately distinct:
+# FAILED is reopenable (transition_allowed permits an operator to leave it),
+# so it belongs only in the second, broader set. Repository, input-challenge,
+# and engine/recovery code must consume these instead of maintaining an
+# independent literal terminal-state set.
+TERMINAL_TRANSFER_STATES = frozenset({
+    TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.DELETED, TransferState.CANCELLED,
+})
+SIDE_STATE_RETIRING_TRANSFER_STATES = TERMINAL_TRANSFER_STATES | frozenset({TransferState.FAILED})
 _EXECUTION_ALTERNATE_CATEGORIES = frozenset({
     Category.READ_TIMEOUT, Category.SOURCE_NOT_FOUND, Category.TRANSFER_STALLED,
     Category.CONNECTION_FAILED, Category.REMOTE_READ_FAILED, Category.DNS_FAILURE,

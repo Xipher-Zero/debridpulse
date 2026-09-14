@@ -470,13 +470,12 @@ INPUT_CHALLENGE_SCHEMA = (
         updated_at REAL NOT NULL
     )""",
     "CREATE INDEX IF NOT EXISTS idx_transfer_input_challenge_id ON transfer_input_challenges(challenge_id)",
-    # DP 1.0.12 UI Finishing (Correction 2 recovery net -- see
-    # api.operational_downloads._recovery_net_candidate_ids): this table has
-    # no structural cap (not every terminal lifecycle transition clears it --
-    # a pre-existing, out-of-scope engine gap), so the recovery net must not
-    # rely on scanning it in full. This index lets it SEEK straight to the
-    # most-recently-touched rows and stop at a fixed cap, genuinely bounded
-    # by that cap rather than by total table size.
+    # Retained schema object; no in-scope reader as of the DP 1.0.12 leveling
+    # remediation (FUNC-001 removed the bounded "recovery net" read-model
+    # compensation that used to SEEK this table by recency -- see
+    # transfers._repository_base._retire_transfer_auxiliary_state_in_db for
+    # the corrected owner: a settled transfer's row is now retired
+    # transactionally at settlement instead of compensated for at read time).
     "CREATE INDEX IF NOT EXISTS idx_transfer_input_challenges_updated ON transfer_input_challenges(updated_at)",
 )
 
@@ -928,14 +927,13 @@ async def _init_db_sqlite():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # DP 1.0.12 UI Finishing (Correction 2 recovery net -- see
-        # api.operational_downloads._recovery_net_candidate_ids): this table
-        # has no structural cap (not every terminal lifecycle transition
-        # clears it -- a pre-existing, out-of-scope engine gap), so the
-        # recovery net must not rely on scanning it in full. This composite
-        # index lets it SEEK straight to paused=1 rows ordered by recency and
-        # stop at a fixed cap, genuinely bounded by that cap rather than by
-        # total table size.
+        # Retained schema object; no in-scope reader as of the DP 1.0.12
+        # leveling remediation (FUNC-001 removed the bounded "recovery net"
+        # read-model compensation that used to SEEK this table by recency --
+        # see transfers._repository_base._retire_transfer_auxiliary_state_in_db
+        # for the corrected owner: a settled transfer's row is now retired
+        # transactionally at settlement instead of compensated for at read
+        # time).
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_transfer_pause_intents_paused_updated "
             "ON transfer_pause_intents (paused, updated_at)"

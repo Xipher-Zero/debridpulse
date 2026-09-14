@@ -19,3 +19,7 @@ tests/test_ui_runtime_architecture_contract.py
 # Post-audit documentation and secondary applicability boundary
 tests/test_post_audit_architecture_documentation.py
 tests/test_applicability_explicit_contract.py
+# DP 1.0.12 leveling remediation: FUNC-001 / ARCH-001 / ARCH-002 / DEP-001
+tests/test_leveling_architecture.py
+tests/test_canonical_runtime_architecture.py
+tests/test_supply_chain_contract.py

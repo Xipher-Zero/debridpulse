@@ -4,18 +4,20 @@ Integrations supply facts through contracts. This owner admits requests, creates
 durable attempts, applies retry policy, confirms possession, and orchestrates
 cleanup and post-processing. It imports no concrete provider or executor.
 
-Concurrency / mutation-fencing model (DP 1.0.12 recovery leveling, Section 24)
+Concurrency / mutation-fencing model (DP 1.0.12 leveling remediation)
 -------------------------------------------------------------------------------
 Four mechanisms exist. No transfer mutation command needs a fifth. This is an
 audited claim, not an aspiration -- the table below names, for the actual
 PRODUCTION stack (``transfers.convergence_engine.TransferEngine`` /
 ``transfers.recovery_repository.TransferRepository``), exactly which
 mechanism(s) protect each command, verified by reading every override in the
-``_convergence_phase3_*`` chain (none of ``pause``/``resume``/``resume_all``/
+leveled production engine MRO (``convergence_engine.TransferEngine`` ->
+``engine.TransferEngine`` -> ``_engine_recovery.TransferEngine`` ->
+``_engine_base.TransferEngine``; none of ``pause``/``resume``/``resume_all``/
 ``cancel``/``delete``/``select_artifact``/``submit``/``activate_candidate_command``
-are further overridden below ``_convergence_phase3_base.TransferEngine``
-except where the table says so). A claim here that is not also proven by a
-named regression test is not a claim this module makes.
+are further overridden below ``convergence_engine.TransferEngine`` except
+where the table says so). A claim here that is not also proven by a named
+regression test is not a claim this module makes.
 
 1. **Per-transfer asyncio lock** (``self._transfer_locks``, this class): used
    by ONLY ``retry()`` (both this base class and the production override,
@@ -1038,7 +1040,7 @@ class TransferEngine:
         not candidate-index-based). A candidate-bearing, local-source failure
         MUST be handled by a subclass -- ``transfers._engine_recovery
         .TransferEngine._recover_artifact`` and
-        ``transfers._convergence_phase3_base.TransferEngine._recover_artifact``
+        ``transfers.convergence_engine.TransferEngine._recover_artifact``
         both fully override this method for that case (they never call
         ``super()._recover_artifact`` when ``artifact.candidates`` is
         non-empty and ``error.origin`` is not ``REMOTE_SOURCE``), routing

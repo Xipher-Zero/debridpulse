@@ -1,4 +1,4 @@
-FROM python:3.12.14-slim-trixie
+FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
 WORKDIR /app
 
@@ -19,17 +19,19 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
 # docker filter configuration.
 #
-# Upgrade the base layer before installing application packages. A pinned Python
-# slim tag can retain Debian packages that already have security fixes available;
-# the runtime vulnerability gate must evaluate the current patched Trixie package
-# set rather than the package snapshot baked into that base layer.
+# DP 1.0.12 leveling remediation (DEP-001): the base image is now pinned by
+# verified multiarch manifest digest (see docs/SUPPLY_CHAIN_POLICY.md), so the
+# base filesystem candidate is fixed at build time -- a blanket `apt-get
+# upgrade` is deliberately NOT run here. Security freshness for the apt layer
+# comes from deliberate base/package-pin refresh followed by full
+# requalification of the resulting new image digest, not from silently
+# floating package versions inside an otherwise-pinned build.
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
       'path-include=/usr/share/doc/7zip-rar/unRarLicense.txt' \
       > /etc/dpkg/dpkg.cfg.d/zz-debridpulse-license-notices && \
     sed -ri 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources && \
     apt-get update && \
-    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     aria2 \
     curl \
@@ -39,9 +41,13 @@ RUN printf '%s\n' \
     7zip-rar && \
     rm -rf /var/lib/apt/lists/*
 
-# Python deps
+# Python deps. DP 1.0.12 leveling remediation (DEP-001): requirements.txt is
+# hash-pinned (pip-compile --generate-hashes); --require-hashes makes pip
+# refuse to install anything whose downloaded artifact does not match one of
+# the recorded hashes for every package in the closure, including transitive
+# dependencies.
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 
 # App
 COPY backend/ /app/

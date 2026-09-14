@@ -103,19 +103,31 @@ def test_production_composition_uses_phase3_owners():
 
 
 def test_phase3_trigger_adapters_have_one_recovery_entry_and_no_partial_retirement():
+    """DP 1.0.12 leveling remediation (ARCH-001): the five historical
+    ``_convergence_phase3_*`` inheritance layers are gone -- production is a
+    single class, ``transfers.convergence_engine.TransferEngine``. Every
+    RecoveryTrigger still reaches the ONE canonical ``recover_artifact``
+    mechanism, defined exactly once, and no destructive filesystem retirement
+    is inlined here (that stays owned by ``transfers._engine_recovery
+    .TransferEngine._terminal_recovery`` / ``transfers.candidate_activation
+    .activate_candidate``)."""
     transfers = Path(__file__).parents[1] / "transfers"
-    public = (transfers / "convergence_engine.py").read_text(encoding="utf-8")
-    coordinator = (transfers / "_convergence_phase3_public_base.py").read_text(encoding="utf-8")
-    adapters = (transfers / "_convergence_phase3_base.py").read_text(encoding="utf-8")
-    combined = public + coordinator + adapters
-    assert "retire_partial" not in combined
-    assert "async def recover_artifact" in coordinator
+    source = (transfers / "convergence_engine.py").read_text(encoding="utf-8")
+    assert "retire_partial" not in source
+    assert source.count("async def recover_artifact") == 1
     for trigger in RecoveryTrigger:
-        assert f"RecoveryTrigger.{trigger.name}" in combined
+        assert f"RecoveryTrigger.{trigger.name}" in source
     for owner in ("retry", "resume", "reconcile_executions", "_wake_quiescent_recoveries"):
-        assert f"async def {owner}" in combined
-    assert "recover_artifact(" in public
-    assert "recover_artifact(" in adapters
+        assert source.count(f"async def {owner}(") == 1
+    assert "recover_artifact(" in source
+    for deleted in (
+        "_convergence_phase3_base.py",
+        "_convergence_phase3_public_base.py",
+        "_convergence_phase3_retry_base.py",
+        "_convergence_phase3_truth_base.py",
+        "_convergence_phase3_dispatch_base.py",
+    ):
+        assert not (transfers / deleted).exists()
 
 
 @pytest.mark.asyncio

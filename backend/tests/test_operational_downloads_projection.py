@@ -1506,3 +1506,17 @@ async def test_candidate_action_scope_stays_bounded_across_small_and_large_candi
     large_item = next(row for row in result_large["items"] if row["id"] == large_id)
     assert large_item["candidate_action_scope"] == "artifact"
     assert large_item["candidate_action_count"] == 25
+
+
+def test_recovery_net_compensation_no_longer_exists():
+    """DP 1.0.12 leveling remediation (FUNC-001): the bounded operational
+    list used to merge in a compensating "recovery net" query because a
+    settled raw ``torrents.status`` was not guaranteed to have its
+    ``transfer_pause_intents``/``transfer_input_challenges`` row retired.
+    That engine-ownership defect is now fixed at the source
+    (``transfers._repository_base._retire_transfer_auxiliary_state_in_db``,
+    invoked transactionally by every path that can settle a parent), so this
+    module must own no read-model compensation for it -- a settled raw status
+    can be trusted directly again."""
+    assert not hasattr(downloads, "_recovery_net_candidate_ids")
+    assert not hasattr(downloads, "_RECOVERY_NET_SCAN_CAP")

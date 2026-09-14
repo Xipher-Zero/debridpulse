@@ -17,9 +17,7 @@ from transfers.models import (
     InputMethodDescriptor, InputOrigin, InputReason, InputRequirement,
     ResolutionAttempt, new_identity,
 )
-
-
-_TERMINAL_FOR_INPUT = {"completed", "deleted", "cancelled"}
+from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
 
 class InputSubmissionRejected(ValueError):
@@ -210,7 +208,7 @@ class InputChallengeStore:
                 FROM transfer_input_challenges c JOIN torrents t ON t.id=c.transfer_id WHERE c.transfer_id=?""", (transfer_id,))
             if not row:
                 return None
-            stale = row["transfer_status"] in _TERMINAL_FOR_INPUT
+            stale = row["transfer_status"] in SIDE_STATE_RETIRING_TRANSFER_STATES
             if row["origin"] == InputOrigin.PROVIDER.value:
                 stale = stale or row["resolution_state"] != "input_required" or row["request_state"] != "input_required"
             else:
@@ -233,7 +231,7 @@ class InputChallengeStore:
             row = await db.fetchone("""SELECT r.transfer_id,r.attempts,t.status,a.provider_id FROM transfer_requests r
                 JOIN torrents t ON t.id=r.transfer_id JOIN resolution_attempts a ON a.id=? AND a.request_id=r.id
                 WHERE r.id=?""", (attempt.id, attempt.request_id))
-            if not row or row["status"] in _TERMINAL_FOR_INPUT or row["provider_id"] != integration_id:
+            if not row or row["status"] in SIDE_STATE_RETIRING_TRANSFER_STATES or row["provider_id"] != integration_id:
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
             identity, generation = await self._next(db, row["transfer_id"])
             challenge = InputChallenge(identity, row["transfer_id"], generation, requirement.reason, InputOrigin.PROVIDER,
@@ -261,7 +259,7 @@ class InputChallengeStore:
                 JOIN torrents t ON t.id=f.torrent_id WHERE f.id=?""", (artifact.id,))
             prestart = bool(row and row["artifact_state"] == "queued" and row["execution_attempt_id"] is None)
             challenged_execution = bool(row and row["artifact_state"] == "error" and row["execution_attempt_id"] == operation_id)
-            if not row or row["status"] in _TERMINAL_FOR_INPUT or not (prestart or challenged_execution):
+            if not row or row["status"] in SIDE_STATE_RETIRING_TRANSFER_STATES or not (prestart or challenged_execution):
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
             identity, generation = await self._next(db, artifact.transfer_id)
             challenge = InputChallenge(identity, artifact.transfer_id, generation, requirement.reason, InputOrigin.EXECUTOR,

@@ -191,7 +191,12 @@ async def test_successful_execution_establishes_size_when_provider_size_is_unkno
 
 @pytest.mark.asyncio
 async def test_payload_disappearing_after_member_verification_blocks_final_completion(core, monkeypatch):
-    import transfers.engine as module
+    # DP 1.0.12 leveling remediation (ARCH-001): the true owner of the
+    # stable_payload() call site exercised here is transfers._engine_base
+    # (a direct import from transfers.filesystem, never proxied through
+    # another module now that the transitional cross-module monkeypatch
+    # seam is gone).
+    import transfers._engine_base as module
     result = core.provider.parcel(state=ResourceState.AVAILABLE)
     resource = result.observation.resource
     core.provider.members[resource.id] = tuple(SourceEntry(f"{name}.bin", 4, f"{name}.bin", TransferRequest("parcel-member", name)) for name in ("first", "second"))

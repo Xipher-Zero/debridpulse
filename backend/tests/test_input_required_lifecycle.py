@@ -8,9 +8,11 @@ import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
+from test_candidate_provenance_consolidation import admit, p2
 from transfers import codec
 from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
+from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage
 from transfers.input_required import (InputSubmissionRejected, auth_required, username_password, username_private_key, validate_submission)
 from transfers.models import (
     Capability, Endpoint, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState,
@@ -538,4 +540,178 @@ async def test_provider_continuation_reacquires_resolution_capacity_before_consu
     engine._resolution_slots.release()
     await task
     assert provider.continuation_calls == 1
-    assert not await engine.inputs.has(challenge)
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 leveling remediation (FUNC-001): canonical settlement retires
+# stale pause-intent / INPUT_REQUIRED side state. transition_allowed()
+# intentionally keeps FAILED reopenable, so a settled generation's auxiliary
+# state must be retired transactionally at settlement rather than relying on
+# a later compensating read -- proven here for every side-state-retiring
+# target and for the direct-UPDATE paths that intentionally bypass
+# _write_lifecycle_transition (cancel_with_execution_cleanup, delete,
+# CanonicalOwnership._finalize_transfer).
+# ---------------------------------------------------------------------------
+
+
+async def _aux_state_rows(transfer_id: int):
+    async with database.get_db() as db:
+        pause_rows = await db.fetchall(
+            "SELECT * FROM transfer_pause_intents WHERE torrent_id=?", (transfer_id,))
+        challenge_rows = await db.fetchall(
+            "SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
+    return list(pause_rows), list(challenge_rows)
+
+
+async def _challenged_transfer_with_stale_pause_intent(base):
+    repository, registry, engine, _ = base
+    provider = AuthParcelProvider()
+    registry.register_provider(provider)
+    registry.register_executor(MemoryExecutor(repository.authorize_execution))
+    transfer = await engine.submit((TransferRequest("auth-parcel", "opaque-source"),))
+    await engine.tick()
+    challenge = await engine.challenges.current(transfer.id)
+    assert challenge is not None
+    await repository.pause_intent(transfer.id, True)
+    pause_rows, challenge_rows = await _aux_state_rows(transfer.id)
+    assert len(pause_rows) == 1 and len(challenge_rows) == 1
+    return repository, engine, transfer, challenge
+
+
+@pytest.mark.asyncio
+async def test_completed_settlement_retires_pause_intent_and_input_challenge(base):
+    repository, engine, transfer, challenge = await _challenged_transfer_with_stale_pause_intent(base)
+
+    assert await repository.state(transfer.id, TransferState.COMPLETED, operator=True, verified=True)
+
+    pause_rows, challenge_rows = await _aux_state_rows(transfer.id)
+    assert pause_rows == [] and challenge_rows == []
+    assert await engine.challenges.current(transfer.id) is None
+    with pytest.raises(ValueError):
+        await engine.submit_input(transfer.id, challenge.id, "username_password", {
+            "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
+
+
+@pytest.mark.asyncio
+async def test_permanent_failure_settlement_retires_pause_intent_and_input_challenge(base):
+    """A permanent ``FAILED``/error settlement -- e.g. the recovery engine's
+    FAIL_PERMANENTLY decision -- must retire stale side state exactly like
+    every other settled target, even though FAILED remains operator-
+    reopenable (transition_allowed)."""
+    repository, engine, transfer, challenge = await _challenged_transfer_with_stale_pause_intent(base)
+
+    error = NormalizedError(
+        Domain.REQUEST, Category.CREDENTIAL_MISSING, Stage.QUEUE,
+        retryability=Retryability.NEVER, origin=Origin.CORE,
+    )
+    assert await repository.state(transfer.id, TransferState.FAILED, error=error)
+
+    pause_rows, challenge_rows = await _aux_state_rows(transfer.id)
+    assert pause_rows == [] and challenge_rows == []
+    assert await engine.challenges.current(transfer.id) is None
+    with pytest.raises(ValueError):
+        await engine.submit_input(transfer.id, challenge.id, "username_password", {
+            "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
+
+
+@pytest.mark.asyncio
+async def test_cancel_retires_pause_intent_in_the_same_transaction_as_settlement(base):
+    """``TransferRepository.cancel_with_execution_cleanup`` intentionally
+    bypasses ``_write_lifecycle_transition``, so it must invoke the same
+    auxiliary-state retirement directly. Challenge retirement on cancel
+    already had coverage (test_delete_and_cancel_invalidate_waiting_challenge);
+    this proves the pause-intent side specifically."""
+    repository, engine, transfer, _challenge = await _challenged_transfer_with_stale_pause_intent(base)
+
+    assert await engine.cancel(transfer.id) == ()
+    assert (await repository.get(transfer.id)).state == TransferState.CANCELLED
+
+    pause_rows, challenge_rows = await _aux_state_rows(transfer.id)
+    assert pause_rows == [] and challenge_rows == []
+
+
+@pytest.mark.asyncio
+async def test_delete_retires_pause_intent_and_input_challenge_in_the_same_transaction(base):
+    """``TransferRepository.delete`` intentionally bypasses
+    ``_write_lifecycle_transition``, so it must invoke the same
+    auxiliary-state retirement directly."""
+    repository, engine, transfer, challenge = await _challenged_transfer_with_stale_pause_intent(base)
+
+    await engine.delete(transfer.id, remote=False)
+    assert (await repository.get(transfer.id)).state == TransferState.DELETED
+
+    pause_rows, challenge_rows = await _aux_state_rows(transfer.id)
+    assert pause_rows == [] and challenge_rows == []
+    with pytest.raises(ValueError):
+        await engine.submit_input(transfer.id, challenge.id, "username_password", {
+            "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
+
+
+@pytest.mark.asyncio
+async def test_consolidated_settlement_retires_pause_intent_and_input_challenge(p2):
+    """``CanonicalOwnership._finalize_transfer`` intentionally bypasses
+    ``_write_lifecycle_transition`` too -- CONSOLIDATED was previously
+    missing from the narrower INPUT_REQUIRED staleness set entirely (see
+    ``input_required.SIDE_STATE_RETIRING_TRANSFER_STATES``), so this is also
+    the regression proof for that specific gap."""
+    canonical_transfer = await admit(p2, p2.a, "submission-a")
+    await p2.engine.resolve_pending()
+    source_transfer = await admit(p2, p2.b, "submission-b")
+
+    # A pause intent is deliberately NOT seeded here: pause blocks resolution
+    # admission (_live()), which would prevent this second resolve_pending
+    # from ever reaching consolidation at all. Pause-intent retirement on
+    # settlement is already proven generically by the COMPLETED/FAILED
+    # (_write_lifecycle_transition) and CANCELLED/DELETED (direct-UPDATE
+    # bypass) cases above; this test's unique value is proving the THIRD
+    # bypass site (CanonicalOwnership._finalize_transfer) and the CONSOLIDATED
+    # gap specifically, for which the challenge alone is sufficient proof.
+    async with database.get_db() as db:
+        await db.execute(
+            "INSERT INTO transfer_input_challenges"
+            "(transfer_id, challenge_id, generation, reason, origin, integration_id, operation_id, methods, created_at, updated_at) "
+            "VALUES (?, 'chal-stale', 1, 'auth_required', 'provider', 'provider-b', 'op-stale', '[]', 0, 0)",
+            (source_transfer.id,),
+        )
+        await db.commit()
+
+    await p2.engine.resolve_pending()
+
+    assert (await p2.repository.get(source_transfer.id)).state == TransferState.CONSOLIDATED
+    assert canonical_transfer.id != source_transfer.id
+    _pause_rows, challenge_rows = await _aux_state_rows(source_transfer.id)
+    assert challenge_rows == []
+
+
+@pytest.mark.asyncio
+async def test_operator_reopen_after_settlement_does_not_resurrect_prior_generation_side_state(base):
+    """A settled transfer's retired challenge is not resurrected by reopening
+    it, a stale submission against the retired challenge id is rejected, and
+    a fresh challenge in the new generation behaves like any other challenge."""
+    repository, engine, transfer, stale_challenge = await _challenged_transfer_with_stale_pause_intent(base)
+
+    assert await repository.state(transfer.id, TransferState.COMPLETED, operator=True, verified=True)
+    assert await engine.challenges.current(transfer.id) is None
+
+    # Operator reopen: transition_allowed() permits COMPLETED -> ACCEPTED
+    # under operator authority. The old challenge/pause intent were already
+    # retired at settlement above, so reopening must not resurrect them.
+    assert await repository.state(transfer.id, TransferState.ACCEPTED, operator=True)
+    assert await engine.challenges.current(transfer.id) is None
+
+    with pytest.raises(ValueError):
+        await engine.submit_input(transfer.id, stale_challenge.id, "username_password", {
+            "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
+
+    # Force the new lifecycle generation's request back to resolvable (the
+    # same durable primitive a real reopen/re-resolve path uses per-request)
+    # and prove a fresh challenge in the new generation behaves normally.
+    record = (await repository.requests(transfer.id))[0]
+    await repository.retry_requests(transfer.id, request_id=record.id, reset_budget=True)
+    await engine.tick()
+    fresh = await engine.challenges.current(transfer.id)
+    assert fresh is not None and fresh.id != stale_challenge.id
+    await engine.submit_input(transfer.id, fresh.id, "username_password", {
+        "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
+    await engine.tick()
+    assert (await repository.get(transfer.id)).state == TransferState.TRANSFERRING

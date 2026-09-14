@@ -1,12 +1,20 @@
 """Corrective qualification for direct-link collection route affinity and terminal cleanup."""
 from __future__ import annotations
 
+import asyncio
+import gc
+import weakref
 from dataclasses import replace
 
 import pytest
 
 import db.database as database
-import transfers.engine as engine_module
+# DP 1.0.12 leveling remediation (ARCH-001): the true owner of the
+# retire_partial() call site exercised below is transfers._engine_recovery
+# (._terminal_recovery, a direct import from transfers.filesystem, never
+# proxied through another module now that the transitional cross-module
+# monkeypatch seam is gone).
+import transfers._engine_recovery as engine_module
 from executors.aria2.translation import native_failure
 from fake_integrations import MemoryExecutor
 from transfers.applicability import (
@@ -541,3 +549,93 @@ async def test_terminal_cleanup_does_not_run_when_writer_revocation_is_rejected(
 
     assert not await engine._terminal_recovery(artifact, remote)
     assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 leveling remediation (ARCH-002): bounded keyed-lock lifetime.
+#
+# transfers._engine_recovery.TransferEngine._collection_affinity_locks /
+# _cohort_locks are WeakValueDictionary maps (mirroring transfers._engine_base
+# .TransferEngine's own _transfer_locks / _execution_convergence_locks): a
+# caller holding/awaiting a lock keeps the strong local reference that keeps
+# its map entry alive; once every holder/waiter for a key is gone, the entry
+# can be collected instead of retaining one asyncio.Lock per transfer/cohort
+# id for the life of a long-running process. This is the best exact owner for
+# this proof (not test_workspace4_cohort_exit_gate.py, which is a cohort
+# *behavior* test, not an engine-lock-lifetime one): both locks live on the
+# same engine class exercised throughout this file, and it already imports
+# transfers._engine_recovery for the retire_partial seam above.
+# ---------------------------------------------------------------------------
+
+
+async def test_collection_affinity_lock_is_shared_by_identity_while_held(tmp_path, monkeypatch):
+    _repository, _registry, _executor, engine = await build_core(tmp_path, monkeypatch, "arch002-collection.db")
+
+    lock_a = engine._collection_affinity_lock(101)
+    lock_b = engine._collection_affinity_lock(101)
+    assert lock_a is lock_b
+
+    ref = weakref.ref(lock_a)
+    del lock_a, lock_b
+    gc.collect()
+    assert ref() is None
+    assert 101 not in dict(engine._collection_affinity_locks)
+
+
+async def test_collection_affinity_locks_do_not_retain_quiescent_keys_under_load(tmp_path, monkeypatch):
+    _repository, _registry, _executor, engine = await build_core(tmp_path, monkeypatch, "arch002-collection-load.db")
+
+    for transfer_id in range(5000):
+        lock = engine._collection_affinity_lock(transfer_id)
+        del lock  # no strong reference retained beyond this call
+    gc.collect()
+    assert len(engine._collection_affinity_locks) == 0
+
+
+async def test_collection_affinity_lock_serializes_a_concurrent_waiter_on_the_same_object(tmp_path, monkeypatch):
+    """A waiter requesting the same key while the lock is held must resolve
+    to the SAME object and therefore actually block -- a replacement lock
+    (the exact race this WeakValueDictionary design avoids) would let the
+    waiter proceed immediately instead of serializing behind the holder."""
+    _repository, _registry, _executor, engine = await build_core(tmp_path, monkeypatch, "arch002-collection-wait.db")
+    order = []
+
+    async def holder():
+        lock = engine._collection_affinity_lock(303)
+        async with lock:
+            order.append("holder-acquired")
+            await asyncio.sleep(0.01)
+            order.append("holder-released")
+
+    async def waiter():
+        await asyncio.sleep(0)
+        lock = engine._collection_affinity_lock(303)
+        async with lock:
+            order.append("waiter-acquired")
+
+    await asyncio.gather(holder(), waiter())
+    assert order == ["holder-acquired", "holder-released", "waiter-acquired"]
+
+
+async def test_cohort_lock_is_shared_by_identity_while_held(tmp_path, monkeypatch):
+    _repository, _registry, _executor, engine = await build_core(tmp_path, monkeypatch, "arch002-cohort.db")
+
+    lock_a = engine._cohort_locks.setdefault(202, asyncio.Lock())
+    lock_b = engine._cohort_locks.setdefault(202, asyncio.Lock())
+    assert lock_a is lock_b
+
+    ref = weakref.ref(lock_a)
+    del lock_a, lock_b
+    gc.collect()
+    assert ref() is None
+    assert 202 not in dict(engine._cohort_locks)
+
+
+async def test_cohort_locks_do_not_retain_quiescent_keys_under_load(tmp_path, monkeypatch):
+    _repository, _registry, _executor, engine = await build_core(tmp_path, monkeypatch, "arch002-cohort-load.db")
+
+    for transfer_id in range(5000):
+        lock = engine._cohort_locks.setdefault(transfer_id, asyncio.Lock())
+        del lock
+    gc.collect()
+    assert len(engine._cohort_locks) == 0

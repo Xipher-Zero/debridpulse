@@ -21,14 +21,28 @@ from transfers.models import (
     ResourceState, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
 )
-from transfers.policy import transition_allowed
+from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANSFER_STATES, transition_allowed
 
 
 # DP 1.0.12 recovery leveling, Section 21/22: parent lifecycle terminal states
-# where aggregation has nothing left to decide.
-_AGGREGATE_TERMINAL_STATES = frozenset({
-    TransferState.DELETED, TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.CANCELLED,
-})
+# where aggregation has nothing left to decide. The canonical definition now
+# lives in transfers.policy (FUNC-001) so this module owns no independent
+# literal.
+_AGGREGATE_TERMINAL_STATES = TERMINAL_TRANSFER_STATES
+
+
+async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
+    """Transaction-local: retire a settled transfer's old pause intent and
+    INPUT_REQUIRED challenge (FUNC-001). Called from inside every write path
+    that can settle a parent into ``policy.SIDE_STATE_RETIRING_TRANSFER_STATES``
+    -- ``_write_lifecycle_transition`` and the direct status-update paths that
+    intentionally bypass it (``delete``, ``cancel_with_execution_cleanup``,
+    ``transfers.canonical.CanonicalOwnership._finalize_transfer``) -- so a
+    settled transfer can never present stale actionable side state from a
+    prior lifecycle generation. Always safe to call (no-op when nothing is
+    stored); never a second, independent cleanup path."""
+    await db.execute("DELETE FROM transfer_pause_intents WHERE torrent_id=?", (transfer_id,))
+    await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
 
 
 @dataclass(frozen=True)
@@ -763,6 +777,8 @@ class TransferRepository:
             completed_at=CASE WHEN ?='completed' THEN COALESCE(completed_at,CURRENT_TIMESTAMP)
                 WHEN ? IN ('pending','queued') THEN NULL ELSE completed_at END WHERE id=?""",
             (target, progress, codec.dump(error) if error else None, error.message if error else None, target, target, transfer_id))
+        if target in SIDE_STATE_RETIRING_TRANSFER_STATES:
+            await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
         if current_status != target or current_normalized_error != (codec.dump(error) if error else None):
             message = f"Transfer {target}" + (f": {error.message}" if error else "")
             await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if error else "info", message))
@@ -804,6 +820,10 @@ class TransferRepository:
                     updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (transfer_id,),
             )
+            # FUNC-001: this path settles the parent into CANCELLED without
+            # going through _write_lifecycle_transition, so it must invoke the
+            # same transaction-local auxiliary-state retirement directly.
+            await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
             await db.execute(
                 "INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer cancelled')",
                 (transfer_id,),
@@ -1504,6 +1524,10 @@ class TransferRepository:
             else:
                 await db.execute("""UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
                     updated_at=CURRENT_TIMESTAMP WHERE id=?""", (int(remote), transfer_id))
+            # FUNC-001: this path settles the parent into DELETED without
+            # going through _write_lifecycle_transition, so it must invoke the
+            # same transaction-local auxiliary-state retirement directly.
+            await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
             await db.execute(
                 """UPDATE execution_attempts SET cleanup_state='pending',
                     cleanup_attempts=CASE WHEN cleanup_state IN ('pending','blocked') THEN cleanup_attempts ELSE 0 END,

@@ -224,10 +224,10 @@ async def test_activity_mode_sql_statement_count_and_candidate_bound_stay_fixed_
     assert len(small_result["items"]) <= 10
     assert len(big_result["items"]) <= 10
     # Fixed statement shape regardless of table size: one SEEK per known live
-    # raw status (9) + 2 recovery-net queries + one SEEK per settled raw
-    # status only if room remains (7) + 1 main projection fetchall +
-    # 1 total-count fetchone = 20 fixed statements, independent of table size.
-    expected = ["fetchall"] * (len(downloads._ACTIVITY_LIVE_RAW_STATUSES) + 2 + len(downloads._SETTLED_RAW_STATUSES) + 1) + ["fetchone"]
+    # raw status (9) + one SEEK per settled raw status only if room remains
+    # (7) + 1 main projection fetchall + 1 total-count fetchone = 18 fixed
+    # statements, independent of table size.
+    expected = ["fetchall"] * (len(downloads._ACTIVITY_LIVE_RAW_STATUSES) + len(downloads._SETTLED_RAW_STATUSES) + 1) + ["fetchone"]
     assert small_calls == expected
     assert big_calls == small_calls
     assert big_result["total"] == small_result["total"] + len(big_rows)
@@ -289,16 +289,12 @@ async def test_candidate_acquisition_time_does_not_grow_with_history_size(activi
     property this test exists to prove about the NEW candidate-acquisition
     mechanism specifically.
 
-    This exact test caught a real bug during this correction: the first
-    working version of the "recovery net" (see _recovery_net_candidate_ids)
-    used a plain ``JOIN`` from ``transfer_pause_intents``/
-    ``transfer_input_challenges`` to ``torrents``. SQLite's planner silently
-    reordered it to drive from ``torrents`` and sort every settled-status row
-    in a temp b-tree before applying LIMIT -- work proportional to total
-    history size, exactly the pathology this correction exists to eliminate,
-    invisible from the two per-status SEEK queries' own EXPLAIN QUERY PLAN
-    output. Forcing the join order with ``CROSS JOIN`` fixed it; this test
-    is the regression guard for that fix specifically.
+    Historical note: an earlier "recovery net" compensation query once lived
+    here to cover a settled raw status that could still carry a stale
+    ``transfer_pause_intents``/``transfer_input_challenges`` row. DP 1.0.12
+    leveling remediation (FUNC-001) fixed that gap at the source -- a settled
+    transfer can no longer carry either row -- so the compensation query was
+    removed entirely rather than kept as dead read-model scaffolding.
     """
     import time
 
@@ -337,184 +333,6 @@ async def test_candidate_acquisition_time_does_not_grow_with_history_size(activi
 
 
 @pytest.mark.asyncio
-async def test_recovery_net_queries_seek_and_cap_the_auxiliary_table_itself(activity_db, monkeypatch):
-    """Section 4 boundedness proof, property 2: EXPLAIN QUERY PLAN for the
-    recovery-net queries (see _recovery_net_candidate_ids) must show an
-    indexed SEEK into the auxiliary table itself (transfer_pause_intents /
-    transfer_input_challenges), bounded by _RECOVERY_NET_SCAN_CAP, and must
-    never fall back to scanning that table in full -- "decoupled from
-    torrents" is not the same claim as "bounded regardless of history": if
-    the auxiliary table itself has no cap (a pre-existing engine gap -- see
-    _recovery_net_candidate_ids), a plan that scans it in full is still
-    unbounded, just against a different table. The auxiliary-table growth
-    case is exercised end-to-end (not just via EXPLAIN QUERY PLAN text) in
-    test_recovery_net_query_time_does_not_grow_with_auxiliary_table_size
-    below.
-    """
-    rows = [(1, "downloading", "2026-01-01T00:00:00")]
-    rows += [(100 + i, "completed", f"2026-02-{i + 1:02d}T00:00:00") for i in range(500)]
-    _seed(activity_db, rows)
-
-    captured = _capture_fetchall_sql(monkeypatch)
-    await downloads.list_operational_torrents(
-        status=None, search=None, limit=10, offset=0, order="activity", application=_application(),
-    )
-
-    live_count = len(downloads._ACTIVITY_LIVE_RAW_STATUSES)
-    recovery_net_queries = captured[live_count:live_count + 2]
-    assert len(recovery_net_queries) == 2
-
-    conn = sqlite3.connect(activity_db)
-    try:
-        for sql, params in recovery_net_queries:
-            assert "CROSS JOIN torrents" in sql
-            assert str(downloads._RECOVERY_NET_SCAN_CAP) not in sql  # passed as a bound param, not inlined
-            assert params[0] == downloads._RECOVERY_NET_SCAN_CAP
-            plan = conn.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
-            detail_by_step = [str(row[-1]) for row in plan]
-            plan_text = "\n".join(detail_by_step)
-            # The auxiliary table access step must be index-qualified -- either
-            # "SEARCH ... USING" (pause_intents seeks on the paused=1
-            # equality) or "SCAN ... USING COVERING INDEX" (input_challenges
-            # has no equality predicate, only the ORDER BY, so SQLite reports
-            # an ordered index walk as SCAN rather than SEARCH -- still
-            # index-driven and LIMIT-bounded, never an unqualified full scan).
-            # The join must not flip back to walking torrents either.
-            aux_steps = [
-                detail for detail in detail_by_step
-                if detail.startswith("SCAN transfer_pause_intents")
-                or detail.startswith("SCAN transfer_input_challenges")
-                or detail.startswith("SEARCH transfer_pause_intents")
-                or detail.startswith("SEARCH transfer_input_challenges")
-            ]
-            assert len(aux_steps) == 1, f"expected exactly one auxiliary-table access step, got: {aux_steps}"
-            assert "INDEX" in aux_steps[0], f"auxiliary-table access is not index-qualified: {aux_steps[0]}"
-            assert "SCAN torrents" not in plan_text
-    finally:
-        conn.close()
-
-
-@pytest.mark.asyncio
-async def test_recovery_net_query_time_does_not_grow_with_auxiliary_table_size(activity_db):
-    """Section 4 boundedness proof, property 2, adversarial distribution --
-    the exact scenario required: a small number of relevant lingering pause/
-    challenge rows, then a large and growing number of IRRELEVANT historical
-    rows in the auxiliary table itself (not in torrents), an identical
-    requested Dashboard limit, and a direct timing measurement of
-    _activity_cohort_candidate_ids. This is the case
-    test_candidate_acquisition_time_does_not_grow_with_history_size above
-    does NOT cover: that test grows torrents while the auxiliary tables stay
-    empty. This one grows the auxiliary tables while torrents stays small,
-    isolating the recovery net's own boundedness specifically.
-    """
-    import time
-
-    async def _time_with_auxiliary_table_size(irrelevant_row_count: int) -> float:
-        db_path = activity_db.parent / f"aux-adversarial-{irrelevant_row_count}.db"
-        database.DB_PATH = db_path
-        await database.init_db()
-        conn = sqlite3.connect(db_path)
-        # One ordinary live transfer, and one settled-raw-status transfer that
-        # is the SOLE relevant lingering-pause-intent case, touched recently.
-        conn.execute(
-            "INSERT INTO torrents(id,hash,name,status,source,progress,created_at,completed_at) "
-            "VALUES(1,'live-hash','T1','downloading','magnet',0.0,'2020-01-01T00:00:00',NULL)"
-        )
-        conn.execute(
-            "INSERT INTO torrents(id,hash,name,status,source,progress,created_at,completed_at) "
-            "VALUES(2,'relevant-hash','T2','error','magnet',0.0,'2026-06-01T00:00:00',NULL)"
-        )
-        conn.execute(
-            "INSERT INTO transfer_pause_intents(torrent_id,paused,updated_at) VALUES(2,1,'2026-06-01T00:00:00')"
-        )
-        # A large, growing number of IRRELEVANT historical pause-intent rows,
-        # all touched long ago so they never compete with the cap's
-        # newest-first order -- exactly the shape a genuine leak of the
-        # confirmed pre-existing engine gap would produce over time.
-        conn.executemany(
-            "INSERT INTO transfer_pause_intents(torrent_id,paused,updated_at) VALUES(?,?,?)",
-            [(10_000 + i, 1, f"2000-01-01T00:00:{i % 60:02d}") for i in range(irrelevant_row_count)],
-        )
-        conn.commit()
-        conn.close()
-
-        start = time.perf_counter()
-        for _ in range(10):
-            ids = await downloads._activity_cohort_candidate_ids(
-                ["t.status NOT IN ('deleted', 'consolidated')"], [], 5
-            )
-        elapsed = (time.perf_counter() - start) / 10
-        assert 2 in ids, f"relevant lingering-pause transfer missing at n={irrelevant_row_count}: {ids}"
-        return elapsed
-
-    small_time = await _time_with_auxiliary_table_size(2_000)
-    large_time = await _time_with_auxiliary_table_size(300_000)
-
-    assert large_time < small_time * 5 + 0.05, (
-        f"recovery-net query time grew with auxiliary table size: "
-        f"{small_time * 1000:.3f}ms at 2k irrelevant rows vs "
-        f"{large_time * 1000:.3f}ms at 300k irrelevant rows"
-    )
-
-
-@pytest.mark.asyncio
-async def test_recovery_net_query_time_does_not_grow_with_input_challenge_table_size(activity_db):
-    """Same adversarial-growth proof as
-    test_recovery_net_query_time_does_not_grow_with_auxiliary_table_size,
-    for transfer_input_challenges specifically -- it has no equality
-    predicate to seek on (unlike transfer_pause_intents' paused=1), only the
-    ORDER BY + LIMIT cap, so it needed its own INDEXED BY forcing and its own
-    growth proof rather than assuming symmetry with the pause-intent case.
-    """
-    import time
-
-    async def _time_with_challenge_table_size(irrelevant_row_count: int) -> float:
-        db_path = activity_db.parent / f"aux-challenge-adversarial-{irrelevant_row_count}.db"
-        database.DB_PATH = db_path
-        await database.init_db()
-        conn = sqlite3.connect(db_path)
-        conn.execute(
-            "INSERT INTO torrents(id,hash,name,status,source,progress,created_at,completed_at) "
-            "VALUES(1,'live-hash','T1','downloading','magnet',0.0,'2020-01-01T00:00:00',NULL)"
-        )
-        conn.execute(
-            "INSERT INTO torrents(id,hash,name,status,source,progress,created_at,completed_at) "
-            "VALUES(2,'relevant-hash','T2','lost','magnet',0.0,'2026-06-01T00:00:00',NULL)"
-        )
-        conn.execute(
-            "INSERT INTO transfer_input_challenges"
-            "(transfer_id, challenge_id, generation, reason, origin, integration_id, operation_id, methods, created_at, updated_at) "
-            "VALUES (2, 'chal-relevant', 1, 'auth', 'provider', 'alldebrid', 'op-relevant', '[]', 0, 1780000000)"
-        )
-        conn.executemany(
-            "INSERT INTO transfer_input_challenges"
-            "(transfer_id, challenge_id, generation, reason, origin, integration_id, operation_id, methods, created_at, updated_at) "
-            "VALUES (?, ?, 1, 'auth', 'provider', 'alldebrid', 'op-irrelevant', '[]', 0, 0)",
-            [(10_000 + i, f"chal-irrelevant-{i}") for i in range(irrelevant_row_count)],
-        )
-        conn.commit()
-        conn.close()
-
-        start = time.perf_counter()
-        for _ in range(10):
-            ids = await downloads._activity_cohort_candidate_ids(
-                ["t.status NOT IN ('deleted', 'consolidated')"], [], 5
-            )
-        elapsed = (time.perf_counter() - start) / 10
-        assert 2 in ids, f"relevant lingering-challenge transfer missing at n={irrelevant_row_count}: {ids}"
-        return elapsed
-
-    small_time = await _time_with_challenge_table_size(2_000)
-    large_time = await _time_with_challenge_table_size(300_000)
-
-    assert large_time < small_time * 5 + 0.05, (
-        f"recovery-net query time grew with input-challenge table size: "
-        f"{small_time * 1000:.3f}ms at 2k irrelevant rows vs "
-        f"{large_time * 1000:.3f}ms at 300k irrelevant rows"
-    )
-
-
-@pytest.mark.asyncio
 async def test_unknown_presentation_status_never_outranks_known_live_work(activity_db):
     """Correctness requirement: a presentation_status this ordering has never
     seen before must never outrank a KNOWN live/actionable item -- it also
@@ -535,71 +353,3 @@ async def test_unknown_presentation_status_never_outranks_known_live_work(activi
     assert tiers[0] < tiers[1] < tiers[2]
 
 
-@pytest.mark.asyncio
-async def test_settled_raw_status_transfer_with_lingering_pause_intent_is_still_projected_as_live(activity_db):
-    """Correctness requirement: raw-status candidate ACQUISITION partitions
-    on torrents.status alone, but effective_presentation can diverge from
-    raw status via transfer_pause_intents / transfer_input_challenges, which
-    are not guaranteed to be cleared on every terminal lifecycle transition
-    (confirmed pre-existing engine behavior, out of scope to fix here -- see
-    _recovery_net_candidate_ids). Without the recovery net, a transfer whose
-    raw status is "error" but which still carries paused=1 would be fetched
-    into the SETTLED query only -- and if the live cohort alone already
-    fills the page, the settled query never even runs, silently excluding an
-    actually-live transfer from the page entirely.
-    """
-    import sqlite3 as _sqlite3
-
-    # Ten genuinely live rows fill the page on their own.
-    rows = [(i, "downloading", f"2026-06-{i:02d}T00:00:00") for i in range(1, 11)]
-    # One more transfer: raw status is a settled value, but it still carries
-    # a lingering pause intent -- the exact gap this net closes. Give it the
-    # newest timestamp so it would be first if it is correctly surfaced.
-    rows.append((99, "error", "2026-07-01T00:00:00"))
-    _seed(activity_db, rows)
-    conn = _sqlite3.connect(activity_db)
-    conn.execute("INSERT INTO transfer_pause_intents(torrent_id, paused) VALUES (99, 1)")
-    conn.commit()
-    conn.close()
-
-    result = await downloads.list_operational_torrents(
-        status=None, search=None, limit=10, offset=0, order="activity", application=_application(),
-    )
-    ids = [item["id"] for item in result["items"]]
-    assert 99 in ids, "settled-raw-status transfer with a lingering pause intent must still be projected"
-    projected = next(item for item in result["items"] if item["id"] == 99)
-    assert projected["presentation_status"] == "paused"
-    # It must be sorted as live/actionable (tier 0), not settled history.
-    assert ids.index(99) < len(ids)
-    for other in ids:
-        if other == 99:
-            continue
-        other_item = next(item for item in result["items"] if item["id"] == other)
-        if other_item["presentation_status"] == "failed":
-            assert ids.index(99) < ids.index(other)
-
-
-@pytest.mark.asyncio
-async def test_settled_raw_status_transfer_with_lingering_input_challenge_is_still_projected_as_live(activity_db):
-    """Same gap as the pause-intent case above, for transfer_input_challenges."""
-    import sqlite3 as _sqlite3
-
-    rows = [(i, "downloading", f"2026-06-{i:02d}T00:00:00") for i in range(1, 11)]
-    rows.append((99, "lost", "2026-07-01T00:00:00"))
-    _seed(activity_db, rows)
-    conn = _sqlite3.connect(activity_db)
-    conn.execute(
-        "INSERT INTO transfer_input_challenges"
-        "(transfer_id, challenge_id, generation, reason, origin, integration_id, operation_id, methods, created_at, updated_at) "
-        "VALUES (99, 'chal-99', 1, 'auth', 'provider', 'alldebrid', 'op-99', '[]', 0, 0)"
-    )
-    conn.commit()
-    conn.close()
-
-    result = await downloads.list_operational_torrents(
-        status=None, search=None, limit=10, offset=0, order="activity", application=_application(),
-    )
-    ids = [item["id"] for item in result["items"]]
-    assert 99 in ids, "settled-raw-status transfer with a lingering input challenge must still be projected"
-    projected = next(item for item in result["items"] if item["id"] == 99)
-    assert projected["presentation_status"] == "input_required"

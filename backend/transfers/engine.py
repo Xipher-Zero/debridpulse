@@ -8,7 +8,7 @@ to factual provider/executor failures before lifecycle policy consumes them.
 """
 from __future__ import annotations
 
-from transfers import _engine_base, _engine_recovery, file_selection as fs
+from transfers import _engine_base, file_selection as fs
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.contracts import Manifest, ResourceLookup
@@ -19,23 +19,7 @@ from transfers.models import (
     Capability, CleanupAuthority, ExecutionState, Ownership, ResolutionResult, ResourceState,
     TransferState,
 )
-
-
-# Preserve the public monkeypatch seams that the qualified recovery engine exposed.
-stable_payload = _engine_recovery.stable_payload
-retire_partial = _engine_recovery.retire_partial
-
-
-async def _stable_payload_proxy(*args, **kwargs):
-    return await stable_payload(*args, **kwargs)
-
-
-def _retire_partial_proxy(*args, **kwargs):
-    return retire_partial(*args, **kwargs)
-
-
-_engine_recovery.stable_payload = _stable_payload_proxy
-_engine_recovery.retire_partial = _retire_partial_proxy
+from transfers.policy import TERMINAL_TRANSFER_STATES
 
 
 class TransferEngine(_RecoveryTransferEngine):
@@ -55,13 +39,14 @@ class TransferEngine(_RecoveryTransferEngine):
         """Repair durable paused truth after crash/restart convergence windows."""
         result = await super()._aggregate(transfer_id)
         transfer = await self.repository.get(transfer_id)
-        terminal = {
-            TransferState.DELETED,
-            TransferState.COMPLETED,
-            TransferState.CONSOLIDATED,
-            TransferState.CANCELLED,
-        }
-        if transfer is None or transfer.state in terminal:
+        # DP 1.0.12 leveling remediation: this is a genuine dead-end check
+        # (transfers.policy.TERMINAL_TRANSFER_STATES), not the broader
+        # side-state-retiring family -- a FAILED/"error" transfer is
+        # intentionally NOT excluded here. transition_allowed() permits
+        # FAILED -> PAUSED unconditionally, and this repair path exists
+        # precisely to let a paused-but-quiescent transfer (FAILED included)
+        # converge its raw status to PAUSED after a crash/restart window.
+        if transfer is None or transfer.state in TERMINAL_TRANSFER_STATES:
             return result
 
         paused = transfer.paused or await self.repository.globally_paused()

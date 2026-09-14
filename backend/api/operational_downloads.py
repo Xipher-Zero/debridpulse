@@ -407,91 +407,6 @@ async def _bounded_status_candidates(db, base_where: str, params: list, statuses
     return rows
 
 
-_RECOVERY_NET_SCAN_CAP = 200
-
-
-async def _recovery_net_candidate_ids(db, base_where: str, params: list, limit: int) -> list:
-    """Bounded net for the one confirmed way the raw-status acquisition split
-    above can miss a genuinely live/actionable transfer.
-
-    ``transfers.presentation_repository._aggregate_presentation`` reads
-    ``paused``/``input_required`` from ``transfer_pause_intents`` /
-    ``transfer_input_challenges`` independently of ``torrents.status``, and
-    (pre-existing engine behavior, confirmed during this correction, entirely
-    unrelated to this task) neither table is guaranteed to be cleared on
-    every terminal lifecycle transition -- only the manual cancel/delete
-    paths clear them; a ``fail_permanently``/error/lost transition or
-    consolidation can leave a stale row behind. A transfer whose raw
-    ``torrents.status`` has therefore reached a settled value while still
-    carrying one of these rows resolves to effective presentation "paused" /
-    "input_required" (live/actionable), not its raw settled status -- see
-    test_settled_raw_status_transfer_with_lingering_pause_intent_is_still_
-    projected_as_live in test_dashboard_recent_activity_priority.py.
-
-    These two auxiliary tables have NO structural cap of their own -- the
-    same engine gap that motivates this net at all means a transfer can
-    leave a row behind forever, so table size can grow with total
-    operational history, not just with currently-relevant rows. A first
-    version of this function joined FROM the raw table (``transfer_pause_
-    intents`` / ``transfer_input_challenges``) directly; that is bounded by
-    those tables' size, not by ``limit`` -- decoupled from ``torrents``, but
-    not genuinely bounded. Each query here instead first SEEKs, via
-    ``idx_transfer_pause_intents_paused_updated`` /
-    ``idx_transfer_input_challenges_updated``, to only the
-    ``_RECOVERY_NET_SCAN_CAP`` most-recently-touched rows of the auxiliary
-    table -- a fixed, structural cap enforced by an indexed ORDER BY + LIMIT
-    on the auxiliary table itself, before ever joining to ``torrents`` --
-    and only then CROSS JOINs that already-bounded candidate set to
-    ``torrents``. Cost is therefore bounded by ``_RECOVERY_NET_SCAN_CAP``,
-    a fixed constant, regardless of how large either table grows -- proven
-    via EXPLAIN QUERY PLAN and by growing the auxiliary tables themselves
-    (not just ``torrents``) in test_dashboard_recent_activity_priority.py.
-    """
-    # CROSS JOIN (not a plain JOIN) is load-bearing here, not stylistic: SQLite
-    # is free to reorder a plain JOIN's tables, and measurement during this
-    # correction proved it chose to drive from `torrents` and sort every
-    # settled-status row before LIMIT could be applied -- exactly the
-    # pathology this correction exists to eliminate. CROSS JOIN pins the
-    # written table order, forcing the already-capped auxiliary-table subquery
-    # to drive the join and an indexed primary-key probe into torrents per row.
-    settled_placeholders = ", ".join("?" for _ in _SETTLED_RAW_STATUSES)
-    # INDEXED BY on each auxiliary-table subquery is load-bearing, not
-    # decoration: measurement proved the challenge subquery (no equality
-    # predicate to seek on, only an ORDER BY) is exactly the same trap as the
-    # original torrents query -- SQLite's cost estimator chose a full SCAN +
-    # temp-b-tree sort of transfer_input_challenges instead of walking
-    # idx_transfer_input_challenges_updated in order, silently defeating the
-    # LIMIT cap this subquery exists to enforce. Pinning the index forces the
-    # ordered-walk-then-stop-at-LIMIT shape deterministically, for both
-    # auxiliary tables, regardless of their current size or content.
-    pause_sql = f"""SELECT t.id, t.created_at
-        FROM (
-            SELECT torrent_id, updated_at FROM transfer_pause_intents
-            INDEXED BY idx_transfer_pause_intents_paused_updated
-            WHERE paused = 1
-            ORDER BY updated_at DESC LIMIT ?
-        ) p
-        CROSS JOIN torrents t ON t.id = p.torrent_id
-        WHERE {base_where} AND t.status IN ({settled_placeholders})
-        ORDER BY t.created_at DESC LIMIT ?"""
-    challenge_sql = f"""SELECT t.id, t.created_at
-        FROM (
-            SELECT transfer_id, updated_at FROM transfer_input_challenges
-            INDEXED BY idx_transfer_input_challenges_updated
-            ORDER BY updated_at DESC LIMIT ?
-        ) c
-        CROSS JOIN torrents t ON t.id = c.transfer_id
-        WHERE {base_where} AND t.status IN ({settled_placeholders})
-        ORDER BY t.created_at DESC LIMIT ?"""
-    pause_rows = await db.fetchall(
-        pause_sql, [_RECOVERY_NET_SCAN_CAP, *params, *_SETTLED_RAW_STATUSES, limit]
-    )
-    challenge_rows = await db.fetchall(
-        challenge_sql, [_RECOVERY_NET_SCAN_CAP, *params, *_SETTLED_RAW_STATUSES, limit]
-    )
-    return [(row["id"], row["created_at"]) for row in (*pause_rows, *challenge_rows)]
-
-
 def _newest_first_unique_ids(pairs: list, limit: int) -> list:
     """Merge ``(id, created_at)`` pairs from multiple bounded sources,
     de-duplicate (a transfer can legitimately appear in more than one
@@ -516,20 +431,27 @@ async def _activity_cohort_candidate_ids(where_clauses: list, params: list, limi
 
     1. One SEEK per known live raw status (``_bounded_status_candidates``
        against ``_ACTIVITY_LIVE_RAW_STATUSES``).
-    2. The recovery net (``_recovery_net_candidate_ids``) -- always run,
-       small and independently bounded -- folded into the live set since a
-       hit there is live/actionable in truth regardless of its raw status.
-    3. Only if steps 1-2 together did not already reach ``limit``: one SEEK
-       per settled raw status (``_bounded_status_candidates`` against
+    2. Only if step 1 did not already reach ``limit``: one SEEK per settled
+       raw status (``_bounded_status_candidates`` against
        ``_SETTLED_RAW_STATUSES``), to fill the remaining room with recent
        settled/history rows.
+
+    DP 1.0.12 leveling remediation (FUNC-001): candidate ACQUISITION used to
+    also run a bounded "recovery net" query against ``transfer_pause_intents``
+    / ``transfer_input_challenges`` because a settled raw ``torrents.status``
+    was not guaranteed to have its pause intent / INPUT_REQUIRED challenge
+    retired. That engine-ownership defect is now fixed at the source --
+    ``transfers._repository_base.TransferRepository._write_lifecycle_transition``
+    (and every direct status-update path that settles a parent) transactionally
+    retires both tables -- so a settled raw status can no longer carry either
+    row and this bounded list can trust raw ``torrents.status`` again without
+    read-model compensation.
     """
     base_where = " AND ".join(where_clauses)
     async with get_db() as db:
         live_pairs = await _bounded_status_candidates(
             db, base_where, params, _ACTIVITY_LIVE_RAW_STATUSES, limit
         )
-        live_pairs += await _recovery_net_candidate_ids(db, base_where, params, limit)
         live_ids = _newest_first_unique_ids(live_pairs, limit)
 
         remaining = limit - len(live_ids)
