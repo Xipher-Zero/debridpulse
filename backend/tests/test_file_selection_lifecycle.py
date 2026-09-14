@@ -86,7 +86,12 @@ async def test_no_window_means_full_list_and_proceed(repo):
     seed = await seed_window(transfer_hash="n" * 40)
     entries = executable(("a", "a", 1), ("b", "b", 2))
     assert await repo.file_selection_gate(seed.request_id, seed.provider_resource_id, now=1000.0) == fs.SelectionGate.PROCEED
-    assert await repo.commit_selected_manifest(seed.record, entries, now=1000.0) == entries
+    result = await repo.commit_selected_manifest(seed.record, entries, now=1000.0)
+    assert result == entries
+    # No selection generation ever existed for this resource, so this call
+    # never crossed the durable manifest-commit boundary -- never a "first
+    # commitment" to report (Section 11).
+    assert result.first_commitment is False
 
 
 # --------------------------------------------------------------------------- #
@@ -513,9 +518,13 @@ async def test_available_before_confirmation_settles_all_and_locks_selection(rep
     await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(("a", "s/a", 1), ("b", "s/b", 2)), now=clock(),
     )
     full = executable(("a", "s/a", 1), ("b", "s/b", 2))
-    assert await repo.commit_selected_manifest(seed.record, full, now=clock()) == full
+    first = await repo.commit_selected_manifest(seed.record, full, now=clock())
+    assert first == full
+    assert first.first_commitment is True    # default-ALL settlement is still a real first commitment
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
     assert view["decision"] == "all" and view["mutable"] is False
+    replay = await repo.commit_selected_manifest(seed.record, full, now=clock())
+    assert replay == full and replay.first_commitment is False
 
 
 # --------------------------------------------------------------------------- #
@@ -722,6 +731,39 @@ async def test_engine_confirmed_subset_never_broadens_when_late_manifest_drops_a
     row = await _selection_row(transfer.id)
     assert row["manifest_committed_at"] is None                 # request contained, not committed
     assert await _members(core, transfer.id) == []              # no children, no broadening
+
+
+# --------------------------------------------------------------------------- #
+# TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+# Section 10/14.2 -- resolve_pending() must surface the exact transfer id(s)
+# whose canonical selected-manifest commitment changed THIS cycle, so the
+# application layer can target the existing semantic _publish() instead of
+# discovering the change indirectly (or not at all).
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_resolve_pending_reports_exactly_the_transfer_crossing_first_manifest_commitment(core):
+    core.provider.responses.append(
+        core.provider.parcel("A", state=ResourceState.AVAILABLE, files=FILES6))
+    transfer = await _engine_submit(core)
+    held = await core.engine.resolve_pending()
+    assert transfer.id not in held      # still inside the decision hold -- no commitment yet
+
+    core.provider.responses.append(
+        core.provider.parcel("B", state=ResourceState.AVAILABLE, files=[("x.mkv", "x.mkv", 5)]))
+    unrelated = await _engine_submit(core, payload="B", selection_mode="all")
+    also_held = await core.engine.resolve_pending()
+    assert transfer.id not in also_held
+    assert unrelated.id not in also_held   # a non-selecting ("all") transfer never crosses this boundary
+
+    core.clock.set(1000.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS + 1)
+    settled = await core.engine.resolve_pending()
+    assert settled == {transfer.id}        # exactly the one transfer that crossed the boundary this cycle
+    row = await _selection_row(transfer.id)
+    assert row["manifest_committed_at"] is not None
+
+    replay = await core.engine.resolve_pending()
+    assert transfer.id not in replay       # settled/resolved -- re-driving must not re-report it
 
 
 # --------------------------------------------------------------------------- #

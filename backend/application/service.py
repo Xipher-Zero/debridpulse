@@ -412,8 +412,16 @@ class ApplicationService:
             # The universal execution gate owns storage-consuming dispatch, so
             # readiness may bind truthful provider provenance while dispatch is
             # contained and the same durable request can execute after recovery.
-            await self.engine.resolve_pending()
+            affected_ids = await self.engine.resolve_pending()
             self.execution_wakeup.set()
+            # A selected-manifest commitment (e.g. the file-selection Choose
+            # File affordance becoming permanently unavailable) is a semantic
+            # transition the browser cannot infer from progress polling alone.
+            # Reuse the existing targeted semantic publisher for exactly the
+            # transfers the engine reports crossed that boundary this cycle --
+            # never every active transfer, never a repository-layer publish.
+            for transfer_id in affected_ids or ():
+                await self._publish(transfer_id)
 
     async def reconcile_executions(self):
         async with self.application_operation():

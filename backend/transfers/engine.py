@@ -263,10 +263,11 @@ class TransferEngine(_RecoveryTransferEngine):
 
     async def _observe_resource(self, record):
         provider = None
+        first_commitment = False
         try:
             provider = self._bound_resource_provider(record)
             if provider is None:
-                return
+                return first_commitment
             if not isinstance(provider, ResourceLookup):
                 raise TransferError(self._error(
                     Category.UNSUPPORTED_CAPABILITY,
@@ -279,7 +280,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 record.transfer_id, observation.resource, observation.state,
             )
             if not await self._live(record.transfer_id, admission=True):
-                return
+                return first_commitment
             file_manifest_capable = self._file_manifest_root(record, provider)
             binding_id = (
                 await self.repository.resource_binding_id(record.transfer_id, record.resource.id)
@@ -327,7 +328,7 @@ class TransferEngine(_RecoveryTransferEngine):
                         resource_available=True,
                     )
                     if gate != fs.SelectionGate.PROCEED:
-                        return
+                        return first_commitment
                 entries = await provider.manifest(record.resource)
                 entries = tuple({
                     _engine_base.codec.dump(entry): entry for entry in entries
@@ -354,9 +355,13 @@ class TransferEngine(_RecoveryTransferEngine):
                 # subset (ALL / confirmed EXPLICIT) and durably records the
                 # materialization-commit fact before child fan-out. A confirmed
                 # subset that can no longer be proven fails closed here.
-                authorized = await self.repository.commit_selected_manifest(
-                    record, entries, now=self.clock(),
-                ) if selecting else entries
+                if selecting:
+                    authorized = await self.repository.commit_selected_manifest(
+                        record, entries, now=self.clock(),
+                    )
+                    first_commitment = bool(getattr(authorized, "first_commitment", False))
+                else:
+                    authorized = entries
                 await self.repository.manifest(record, authorized)
             elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
                 error = self._error(
@@ -379,6 +384,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 await self.repository.poll_after(
                     record.id, self.clock() + self.policy.resource_poll_interval,
                 )
+            return first_commitment
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc,

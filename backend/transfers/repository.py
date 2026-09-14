@@ -241,6 +241,26 @@ def _group_source_host(scope, key) -> str | None:
     return host
 
 
+class ManifestCommitResult(tuple):
+    """The authorized ``tuple[SourceEntry, ...]`` returned by
+    ``TransferRepository.commit_selected_manifest``, additionally carrying
+    ``.first_commitment`` -- whether THIS call is the one that moved
+    ``manifest_committed_at`` from NULL for this selection generation, derived
+    directly from truth already read inside that same transaction (no new
+    durable state, no second read).
+
+    A ``tuple`` subclass so every existing caller that treats the result as a
+    plain ``tuple[SourceEntry, ...]`` (iteration, ``len()``, equality against a
+    bare tuple) keeps working unchanged; only the one caller that needs the
+    transition fact reads the extra attribute.
+    """
+
+    def __new__(cls, entries, *, first_commitment: bool):
+        instance = super().__new__(cls, entries)
+        instance.first_commitment = first_commitment
+        return instance
+
+
 class TransferRepository(_QualifiedTransferRepository):
     @staticmethod
     def _recovery_event_kind(artifact_id: int) -> str:
@@ -1628,6 +1648,12 @@ class TransferRepository(_QualifiedTransferRepository):
         (``repository.manifest``) is a following idempotent transaction; a crash
         between the two is recovered by the engine re-driving observation ->
         gate PROCEED -> this call (idempotent) -> fan-out (INSERT OR IGNORE).
+
+        The returned value is a plain tuple by iteration/equality/``len()``, but
+        also carries ``.first_commitment`` -- whether THIS call is the one that
+        moved ``manifest_committed_at`` from NULL, derived from truth already
+        read inside this same transaction. Callers that only need the entries
+        (nearly everyone) never need to know this attribute exists.
         """
         full_entries = tuple(full_entries)
         canonical_resource_id = record.resource.id if record.resource is not None else None
@@ -1643,7 +1669,7 @@ class TransferRepository(_QualifiedTransferRepository):
             )
             if not row:
                 await db.rollback()
-                return full_entries
+                return ManifestCommitResult(full_entries, first_commitment=False)
             already = row["manifest_committed_at"] is not None
             if str(row["decision"]) in ("pending", "all"):
                 authorized = full_entries
@@ -1687,7 +1713,7 @@ class TransferRepository(_QualifiedTransferRepository):
                         (now, now, row["id"]),
                     )
             await db.commit()
-        return authorized
+        return ManifestCommitResult(authorized, first_commitment=not already)
 
     async def file_selection_presentation(self, transfer_id: int, *, now: float):
         """Safe core-only read model for one transfer's file selection.

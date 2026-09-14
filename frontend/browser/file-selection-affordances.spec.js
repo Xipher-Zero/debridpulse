@@ -59,6 +59,21 @@ async function installListFixture(page, row) {
   });
 }
 
+// A list fixture whose row is read fresh from `state.row` on every request, so
+// a test can simulate the backend authoritative row changing mid-scenario
+// (Case J) without re-installing the route.
+async function installMutableListFixture(page, state) {
+  await page.route('**/api/torrents**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname !== '/api/torrents' || request.method() !== 'GET') return route.fallback();
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({items: [state.row], total: 1}),
+    });
+  });
+}
+
 async function installSelectionFixture(page, transferId, state) {
   await page.route(url => url.pathname === `/api/torrents/${transferId}/file-selection`, route =>
     route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(state.view)}));
@@ -69,6 +84,44 @@ async function installDetailFixture(page, transferId, row) {
     route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({
       files: [], events: [], route_attempts: [], execution_attempts: [], executors: [], source_outcomes: [],
     }, row))}));
+}
+
+// A detail fixture whose row is read fresh from `state.row` on every request
+// (Case J's paired mutable-detail counterpart to installMutableListFixture).
+async function installMutableDetailFixture(page, transferId, state) {
+  await page.route(url => url.pathname === `/api/torrents/${transferId}`, route =>
+    route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({
+      files: [], events: [], route_attempts: [], execution_attempts: [], executors: [], source_outcomes: [],
+    }, state.row))}));
+}
+
+// Fake EventSource so a test can emit a real `torrent_updated` SSE message
+// through the actual app.js wiring (same harness as consolidation-events.spec.js).
+async function installEventSourceFixture(page) {
+  await page.addInitScript(() => {
+    class FakeEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__dpFakeEventSource = this;
+      }
+      addEventListener(type, handler) {
+        const handlers = this.listeners.get(type) || [];
+        handlers.push(handler);
+        this.listeners.set(type, handlers);
+      }
+      close() {}
+      emit(type, payload) {
+        for (const handler of this.listeners.get(type) || []) {
+          handler({data: JSON.stringify(payload)});
+        }
+      }
+    }
+    FakeEventSource.CONNECTING = 0;
+    FakeEventSource.OPEN = 1;
+    FakeEventSource.CLOSED = 2;
+    window.EventSource = FakeEventSource;
+  });
 }
 
 function pendingView() {
@@ -120,6 +173,8 @@ test('Case A: Dashboard and Downloads render a glyph-only "Choose Files" chip', 
   await expect(dashChip).toHaveAttribute('title', 'Choose Files');
   await expect(dashChip).toHaveAttribute('aria-label', 'Choose Files');
   await expect(dashChip).toHaveText('');   // no visible text
+  await expect(dashChip).toHaveClass(/\bdp-file-selection-chip\b/);   // shared green class owns presentation
+  await expect(dashChip.locator('svg')).toHaveCount(1);   // folder glyph, not a legacy text/emoji chooser
   await expect(dashChip.locator('.dp-candidate-chip-count')).toHaveCount(0);   // no count
 
   await page.locator('.nav-item[data-view="torrents"]').click();
@@ -306,4 +361,94 @@ test('Case I (converse): a generic candidate-capable row never gains a file-sele
   await boot(page);
 
   await expect(dashboardChip(page, 777)).toHaveCount(0);
+});
+
+// ── Case J: stale projection auto-clears on the backend's semantic transition ──
+// TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+// Section 7/14.1 -- the stale "Choose File" affordance must disappear from the
+// list/card projection AND an already-open Details panel the moment the
+// backend's manifest-commit boundary is crossed and the semantic
+// `torrent_updated` transport delivers it, with NO click required. The
+// previous behavior only repaired the projection as a side effect of the
+// user clicking the now-invalid control (the exact unavailable toast + a
+// forced refresh) -- that click must remain available ONLY as race/fallback
+// defense, never as the primary repair path.
+test('Case J: a semantic torrent_updated clears stale Choose File on list/card and open Details without a click', async ({page}) => {
+  const state = {row: baseRow({file_selection_affordance: 'choose'})};
+  const selection = {view: chooseView()};
+  await isolateExternalFonts(page);
+  await installEventSourceFixture(page);
+  await installMutableListFixture(page, state);
+  await installSelectionFixture(page, 501, selection);
+  await installMutableDetailFixture(page, 501, state);
+  await boot(page);
+
+  // Mutable: list/card chooser visible, Details chooser visible.
+  await expect(dashboardChip(page, 501)).toHaveCount(1);
+  await page.evaluate(() => showDetail(501));
+  const detailEntry = page.locator('[data-dp-file-selection-mount][data-dp-transfer-id="501"] .dp-file-selection-entry');
+  await expect(detailEntry).toHaveCount(1);
+
+  // Authoritative state becomes committed/immutable server-side (no click).
+  state.row = baseRow({file_selection_affordance: 'none'});
+  selection.view = lockedView();
+
+  // The existing full-semantic torrent_updated SSE transport delivers the
+  // transition -- the same transport an unrelated status/name change already
+  // uses, never a file-selection-specific channel.
+  await page.evaluate(() => window.__dpFakeEventSource.emit('torrent_updated', {id: 501, status: 'downloading'}));
+
+  await expect(dashboardChip(page, 501)).toHaveCount(0);          // list/card repaired without a click
+  await expect(detailEntry).toHaveCount(0);                        // open Details repaired without a click
+  await expect(page.locator('.toast')).toHaveCount(0);             // no stale-click toast fired -- nobody clicked
+});
+
+test('Case J (progress-only): a progress-only torrent_updated never forces an open-Details file-selection re-read', async ({page}) => {
+  const state = {row: baseRow({file_selection_affordance: 'choose'})};
+  const selection = {view: chooseView()};
+  let selectionFetches = 0;
+  await isolateExternalFonts(page);
+  await installEventSourceFixture(page);
+  await installMutableListFixture(page, state);
+  await page.route(url => url.pathname === '/api/torrents/501/file-selection', route => {
+    selectionFetches += 1;
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(selection.view)});
+  });
+  await installMutableDetailFixture(page, 501, state);
+  await boot(page);
+
+  await page.evaluate(() => showDetail(501));
+  await expect(page.locator('[data-dp-file-selection-mount][data-dp-transfer-id="501"] .dp-file-selection-entry')).toHaveCount(1);
+  const before = selectionFetches;
+
+  // A lightweight progress-only batch patch for this same transfer must not
+  // trigger a file-selection re-read (Section 12.1 / 14.3).
+  await page.evaluate(() => window.__dpFakeEventSource.emit('torrent_updated', {
+    progress_only: true, items: [{id: 501, progress: 42, status: 'downloading', status_changed: false}],
+  }));
+  await page.waitForTimeout(50);
+
+  expect(selectionFetches).toBe(before);
+});
+
+// ── Case K: obsolete torrent-list Now control is removed ───────────────────
+// TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+// Section 13/14.4 -- the obsolete "Now" / download-priority row action is
+// removed at the canonical row-renderer source (no CSS-hide, no disabled
+// ghost, no replacement), while every other row action is preserved.
+test('Case K: the Downloads row no longer renders a Now control; other row actions remain', async ({page}) => {
+  const readyRow = baseRow({id: 601, status: 'ready', file_selection_affordance: 'none'});
+  await isolateExternalFonts(page);
+  await installListFixture(page, readyRow);
+  await boot(page);
+
+  await page.locator('.nav-item[data-view="torrents"]').click();
+  await expect(page.locator('#view-torrents')).toHaveClass(/active/);
+
+  const row = page.locator('#t-tbody tr[data-torrent-id="601"]');
+  await expect(row.locator('[data-default-label="Now"]')).toHaveCount(0);
+  await expect(row).not.toContainText('Now');
+  await expect(row.locator('[data-default-label="Remove"]')).toHaveCount(1);   // other actions unchanged
+
+  expect(await page.evaluate(() => typeof window.downloadNow)).toBe('undefined');   // orphaned handler removed
 });

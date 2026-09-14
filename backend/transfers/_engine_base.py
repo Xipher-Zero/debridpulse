@@ -237,10 +237,17 @@ class TransferEngine:
             await self.process_postprocessors()
 
     async def resolve_pending(self):
-        """Provider cadence can run independently of fast execution observation."""
+        """Provider cadence can run independently of fast execution observation.
+
+        Returns the exact set of transfer ids whose canonical selected-manifest
+        commitment changed THIS cycle (empty when none did), so a caller can
+        target the existing semantic publication at exactly those transfers
+        instead of discovering the change indirectly or publishing everything.
+        """
         async with self._resolution_cycle_lock:
             await self._cleanup_pending()
             transfers = await self.repository.active()
+            changed: set[int] = set()
             async def resolve_transfer(transfer):
                 lock = self._transfer_locks.setdefault(transfer.id, asyncio.Lock())
                 async with lock:
@@ -249,21 +256,25 @@ class TransferEngine:
                     challenge = await self.challenges.current(transfer.id)
                     if challenge:
                         if challenge.origin == InputOrigin.PROVIDER:
-                            await self._continue_provider_input(challenge)
+                            if await self._continue_provider_input(challenge):
+                                changed.add(transfer.id)
                         return
                     records = await self.repository.requests(transfer.id)
-                    await asyncio.gather(*(self._process_request(record) for record in records))
+                    results = await asyncio.gather(*(self._process_request(record) for record in records))
+                    if any(results):
+                        changed.add(transfer.id)
             await asyncio.gather(*(resolve_transfer(transfer) for transfer in transfers))
+            return frozenset(changed)
 
     async def _process_request(self, record: RequestRecord):
         if record.retry_at > self.clock() or not await self._live(record.transfer_id, admission=True):
             return
         try:
             if record.state == "pending":
-                await self._resolve(record)
+                return await self._resolve(record)
             elif record.state == "waiting":
                 async with self._resolution_slots:
-                    await self._observe_resource(record)
+                    return await self._observe_resource(record)
             elif record.state == "materializing":
                 candidates = await self.repository.resolved_candidates(record.id)
                 if candidates:
@@ -532,7 +543,7 @@ class TransferEngine:
                 if attempt is None:
                     return
                 result = await provider.resolve(record.request)
-            await self._apply_resolution(record, attempt, provider, result)
+            return await self._apply_resolution(record, attempt, provider, result)
         except ApplicabilityUnresolved:
             return
         except Exception as exc:
@@ -574,7 +585,7 @@ class TransferEngine:
             if result.observation.name and record.parent_id is None:
                 await self.repository.rename(record.transfer_id, safe_name(result.observation.name))
             if result.observation.state == ResourceState.AVAILABLE:
-                await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
+                return await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
         else:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
 
@@ -620,7 +631,7 @@ class TransferEngine:
                     return
                 result = await provider.resolve_with_input(record.request, submitted)
             attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id, "input_required")
-            await self._apply_resolution(record, attempt, provider, result, challenge=challenge)
+            return await self._apply_resolution(record, attempt, provider, result, challenge=challenge)
         except Exception as exc:
             secrets = submitted.secret_values() if submitted else ()
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(

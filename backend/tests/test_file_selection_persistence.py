@@ -404,6 +404,12 @@ async def test_commit_marker_then_crash_before_fanout_is_recoverable(repo):
     # commit_selected_manifest sets manifest_committed_at (authorization commit).
     authorized = await repo.commit_selected_manifest(seed.record, full, now=clock())
     assert [e.relative_path for e in authorized] == ["s/a", "s/c"]
+    # TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+    # Section 11: the engine needs to distinguish the transfer's FIRST canonical
+    # manifest commitment from an idempotent replay using ONLY truth already
+    # known inside this same transaction -- exposed here as `.first_commitment`
+    # on the returned entries (still a plain tuple by value/iteration/equality).
+    assert authorized.first_commitment is True
     async with database.get_db() as db:
         row = await db.fetchone(
             "SELECT manifest_committed_at FROM transfer_file_selections WHERE request_id=?", (seed.request_id,))
@@ -417,6 +423,7 @@ async def test_commit_marker_then_crash_before_fanout_is_recoverable(repo):
         seed.request_id, seed.provider_resource_id, now=clock()) == fs.SelectionGate.PROCEED
     replay = await recovered.commit_selected_manifest(seed.record, full, now=clock() + 500)
     assert [e.relative_path for e in replay] == ["s/a", "s/c"]     # same authorized subset
+    assert replay.first_commitment is False   # idempotent replay must never re-report a first commitment
     async with database.get_db() as db:
         row = await db.fetchone(
             "SELECT manifest_committed_at FROM transfer_file_selections WHERE request_id=?", (seed.request_id,))

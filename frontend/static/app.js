@@ -1461,7 +1461,6 @@ async function loadTorrents() {
       <td class="sz">${fmtDate(t.created_at)}</td>
       <td onclick="event.stopPropagation()">
         <div class="actions">
-          ${t.status==='ready' || t.status==='pending' ? `<button class="btn btn-primary btn-sm" data-default-label="Now" onclick="event.stopPropagation();downloadNow(${t.id},this)" title="Move to front of queue">${icon('download')}<span>Now</span></button>` : ''}
           ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)">Pause</button>` : ''}
           ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)">Resume</button>` : ''}
           ${t.status==='error'?`<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)">Retry</button>`:''}
@@ -3120,6 +3119,20 @@ async function triggerStatsSnapshot(button) {
               }
 
               loadStats().catch(()=>{});
+
+              // One minimal generic local signal that THIS transfer's semantic
+              // presentation changed (never file-selection-specific, never
+              // emitted for a progress-only patch) so a bounded owner with an
+              // already-open, transfer-scoped surface (e.g. Details'
+              // file-selection mount) can re-read authoritative state without
+              // requiring the user to click a now-invalid control first.
+              const semanticTransferId =
+                Number(payload?.id ?? payload?.torrent_id);
+
+              if (Number.isFinite(semanticTransferId)) {
+                document.dispatchEvent(new CustomEvent('debridpulse:transfer-updated',
+                  {detail: {transferId: semanticTransferId}}));
+              }
             } else if (!progressStatsTimer) {
               progressStatsTimer = setTimeout(
                 ()=>{
@@ -3241,29 +3254,6 @@ async function cleanupAlldebridOrphans() {
   } catch(e) { toast(sanitizeErrorMsg(e.message), 'error'); }
   finally {
     if (btn) { btn.disabled = false; btn.textContent = '🧹 Clean AD Orphans'; }
-  }
-}
-
-// ── Download Now / Priority Queue ────────────────────────────────────────────
-
-async function downloadNow(torrentId, button) {
-  // Set priority very high so this torrent is dispatched next
-  setButtonPending(button, true, 'Queuing…');
-
-  try {
-    await api(
-      'PATCH',
-      '/torrents/' + torrentId + '/priority',
-      {priority: 100},
-      10000
-    );
-
-    toast('Moved to front of queue', 'success');
-    loadTorrents();
-  } catch(e) {
-    toast(sanitizeErrorMsg(e.message), 'error');
-  } finally {
-    setButtonPending(button, false);
   }
 }
 

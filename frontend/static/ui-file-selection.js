@@ -621,6 +621,18 @@
     document.addEventListener('debridpulse:detail-closed', function () {
       detailTransferId = null;
     });
+    // Semantic invalidation (§7/§12 -- stale Choose File must clear itself):
+    // the backend crossed the durable manifest-commit boundary and the
+    // existing torrent_updated semantic transport delivered it. Re-read
+    // authoritative state for the open Details entry -- never synthesize
+    // mutability client-side, never just remove the DOM node.
+    document.addEventListener('debridpulse:transfer-updated', function (event) {
+      const payload = event && event.detail || {};
+      const transferId = Number(payload.transferId);
+      if (Number.isFinite(transferId) && detailTransferId === transferId) {
+        renderDetailEntry(transferId);
+      }
+    });
     // Dashboard Recent / Downloads glyph-only chip (§6.3, §6.7-6.8): one
     // delegated listener, no per-row rebinding on every render pass. The
     // chip is a real <button>, so the row's own dpIsInteractiveRowTarget

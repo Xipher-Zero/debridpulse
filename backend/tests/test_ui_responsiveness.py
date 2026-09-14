@@ -27,7 +27,6 @@ def test_async_controls_acknowledge_clicks_immediately():
         "Resuming…",
         "Retrying…",
         "Deleting…",
-        "Queuing…",
     ):
         assert label in js
 

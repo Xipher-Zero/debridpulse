@@ -117,3 +117,63 @@ async def test_unchanged_active_state_emits_no_browser_churn(monkeypatch):
 
     assert repository.presentation_calls == 0
     assert published == []
+
+
+# --------------------------------------------------------------------------- #
+# TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+# Section 10.3/14.2 -- ApplicationService.resolve_pending() must reuse the
+# existing semantic _publish() for exactly the transfer ids the engine
+# reports as having crossed the canonical manifest-commit boundary this
+# cycle: never all active transfers, never a publish-all fallback, and the
+# existing execution-wakeup behavior must be preserved regardless.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_resolve_pending_publishes_targeted_semantic_updates_for_exactly_the_affected_transfers(monkeypatch):
+    class _ResolvingEngine:
+        def __init__(self, repository):
+            self.repository = repository
+            self.resolve_calls = 0
+
+        async def resolve_pending(self):
+            self.resolve_calls += 1
+            return frozenset({5, 9})
+
+    repository = _Repository([], [])
+    application = ApplicationService(_ResolvingEngine(repository))
+    published = []
+
+    async def capture(transfer_id):
+        published.append(transfer_id)
+
+    monkeypatch.setattr(application, "_publish", capture)
+
+    assert not application.execution_wakeup.is_set()
+    await application.resolve_pending()
+
+    assert application.engine.resolve_calls == 1
+    assert sorted(published) == [5, 9]              # exactly the affected transfers, no others
+    assert application.execution_wakeup.is_set()    # existing execution wake behavior preserved
+
+
+@pytest.mark.asyncio
+async def test_resolve_pending_publishes_nothing_when_no_transfer_crossed_the_boundary(monkeypatch):
+    class _IdleEngine:
+        def __init__(self, repository):
+            self.repository = repository
+
+        async def resolve_pending(self):
+            return frozenset()
+
+    repository = _Repository([], [])
+    application = ApplicationService(_IdleEngine(repository))
+    published = []
+
+    async def capture(transfer_id):
+        published.append(transfer_id)
+
+    monkeypatch.setattr(application, "_publish", capture)
+    await application.resolve_pending()
+
+    assert published == []                          # no publish-all fallback, no event churn
+    assert application.execution_wakeup.is_set()
