@@ -66,6 +66,7 @@ def _sql_strftime(fmt: str, field: str) -> str:
 def _sql_date(field: str) -> str:
     return f"DATE({field}, 'localtime')"
 
+from application import dispatch_admission
 from application.dependencies import get_application
 from transfers import codec
 from application.service import ApplicationService
@@ -761,7 +762,11 @@ async def block_file(torrent_id: int, file_id: int, blocked: bool = True, applic
 
 @router.get("/torrents/{torrent_id}")
 async def get_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
-    item = await application.repository.presentation(torrent_id, details=True)
+    engine = getattr(application, "engine", None)
+    item = await application.repository.presentation(
+        torrent_id, details=True,
+        capacity_only_blocked_ids=dispatch_admission.capacity_only_blocked_ids(engine),
+    )
     if item is None:
         raise HTTPException(404, "Transfer not found")
     return _public_transfer_presentation(item, application.definitions)

@@ -7,7 +7,8 @@ is persisted only as opaque context on a resource or execution attempt.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 from db.database import get_db, validate_transfer_repository_schema
@@ -16,11 +17,62 @@ from transfers.errors import Category, Domain, NormalizedError, Stage, TransferE
 from transfers.input_required import public_challenge
 from transfers.models import (
     Artifact, ExecutionAttempt, ExecutionHandle, ExecutionObservation, ExecutionState,
-    ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
-    ResourceState, SourceEntry, Transfer, TransferCandidate, TransferRequest,
+    OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
+    ResourceState, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
 )
 from transfers.policy import transition_allowed
+
+
+# DP 1.0.12 recovery leveling, Section 21/22: parent lifecycle terminal states
+# where aggregation has nothing left to decide.
+_AGGREGATE_TERMINAL_STATES = frozenset({
+    TransferState.DELETED, TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.CANCELLED,
+})
+
+
+@dataclass(frozen=True)
+class AggregateLifecycleOutcome:
+    """Result of one atomic ``TransferRepository.aggregate_lifecycle`` call.
+
+    ``artifacts`` is exactly the canonical-membership snapshot the decision
+    used -- the caller must reuse it (never re-read a second, independently
+    timed set) for any follow-up step such as completion verification.
+    ``should_complete`` is True only when every canonical artifact is
+    already "completed" and nothing is still resolving; the caller runs the
+    separate, non-transactional, executor-touching completion sequence in
+    that case (verifying payloads, cancelling stray writers, queuing
+    post-processing) since that work cannot happen inside a single bounded
+    SQLite transaction.
+    """
+    should_complete: bool
+    artifacts: tuple
+
+
+def canonical_artifact_membership_sql(alias: str = "f") -> str:
+    """The one definition of a canonical actionable ``download_files`` row.
+
+    Lifecycle aggregation (``artifacts()`` below), transfer-level presentation
+    voting, recovery eligibility, and current candidate-group operational
+    status must all filter on exactly this predicate so they can never
+    silently diverge onto different child sets again (DP 1.0.12 recovery
+    leveling, Section 7). A blocked, standby, or non-request-bound row may
+    still be read and shown historically; it must never vote here.
+    """
+    return (
+        f"{alias}.request_id IS NOT NULL AND COALESCE({alias}.blocked,0)=0 "
+        f"AND COALESCE({alias}.mirror_state,'')!='standby'"
+    )
+
+
+def is_canonical_artifact_row(row) -> bool:
+    """Python-side twin of ``canonical_artifact_membership_sql`` for a row
+    (or dict) already carrying ``request_id``/``blocked``/``mirror_state``."""
+    return (
+        row["request_id"] is not None
+        and not bool(row["blocked"])
+        and str(row["mirror_state"] or "") != "standby"
+    )
 
 
 class TransferRepository:
@@ -269,7 +321,7 @@ class TransferRepository:
                 FROM torrents WHERE id=?""", (transfer_id,))
             if not row:
                 return None
-            files = await db.fetchall("""SELECT f.id,f.torrent_id,f.filename,f.size_bytes,f.local_path,f.status,f.download_client,
+            files = await db.fetchall("""SELECT f.id,f.torrent_id,f.request_id,f.filename,f.size_bytes,f.local_path,f.status,f.download_client,
                 f.blocked,f.block_reason,f.retry_count,f.mirror_group_id,f.mirror_state,f.updated_at,f.normalized_error,
                 e.progress AS execution_progress FROM download_files f
                 LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id WHERE f.torrent_id=? ORDER BY f.id""", (transfer_id,))
@@ -335,6 +387,11 @@ class TransferRepository:
             result["files"] = []
             for row in files:
                 item = normalized(dict(row))
+                # Historical/inactive rows (blocked, standby, or not bound to a
+                # live request) remain visible here for provenance, but must
+                # never be mistaken for current operational truth by a caller
+                # that doesn't separately re-check membership (Section 7).
+                item["is_canonical"] = is_canonical_artifact_row(item)
                 progress = TransferProgress(**codec.load(item.pop("execution_progress", None), {}))
                 item["download_speed"] = progress.bytes_per_second if item["status"] == "downloading" else 0
                 item["progress"] = 100 if item["status"] == "completed" else min(100, progress.completed_bytes / item["size_bytes"] * 100) if item["size_bytes"] else 0
@@ -383,10 +440,180 @@ class TransferRepository:
             result["events"] = [dict(item) for item in events]
         return result
 
-    async def aggregate_metadata(self, transfer_id, *, total_bytes, local_path):
+    async def aggregate_lifecycle(self, transfer_id: int, *, input_required: bool) -> AggregateLifecycleOutcome | None:
+        """DP 1.0.12 recovery leveling, Sections 21-22: one atomic read-decide-
+        write for ordinary parent-lifecycle aggregation.
+
+        Every fact this decision depends on -- transfer status/pause intent,
+        canonical artifacts (Section 7's membership predicate), requests,
+        execution progress, and the global-pause flag -- is read from ONE
+        ``BEGIN IMMEDIATE`` transaction, and the resulting status/progress
+        write (when one applies) happens inside that SAME transaction. A
+        concurrent aggregation call for the same transfer, or any other
+        mutation that touches this transfer's row, serializes behind this one
+        (SQLite's immediate write lock, backed by this codebase's existing
+        ``busy_timeout``) rather than racing it -- so this can neither read a
+        torn cross-connection snapshot (previously: four independent
+        ``get_db()`` calls, each its own connection) nor overwrite a newer
+        mutation with a decision computed from facts that were already stale
+        by the time the old code's separate final write ran.
+
+        ``input_required`` is the caller's own in-memory input-challenge fact
+        (``transfers.input_required.InputChallengeStore``, not database
+        state); when true this mirrors the historical short-circuit exactly:
+        no metadata/progress recompute, no branch evaluation below, only the
+        INPUT_REQUIRED transition when not already there.
+
+        Returns ``None`` when the transfer no longer exists or is already
+        terminal (nothing to aggregate).
+        """
         async with get_db() as db:
-            await db.execute("UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status NOT IN ('deleted','consolidated')", (total_bytes, local_path, transfer_id))
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
+                   LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE t.id=?""",
+                (transfer_id,),
+            )
+            transfer = self._transfer(row)
+            if transfer is None or transfer.state in _AGGREGATE_TERMINAL_STATES:
+                await db.rollback()
+                return None
+
+            async def _transition(target, *, progress=None, error=None, verified=False):
+                if not transition_allowed(transfer.state, target, verified=verified):
+                    return
+                await self._write_lifecycle_transition(
+                    db, transfer_id, row["status"], row["progress"], row["normalized_error"],
+                    target, progress=progress, error=error,
+                )
+
+            if input_required:
+                if transfer.state != TransferState.INPUT_REQUIRED:
+                    await _transition(TransferState.INPUT_REQUIRED)
+                await db.commit()
+                return AggregateLifecycleOutcome(False, ())
+
+            request_rows = await db.fetchall(
+                "SELECT * FROM transfer_requests WHERE transfer_id=? ORDER BY parent_id,ordinal", (transfer_id,),
+            )
+            requests = tuple(
+                RequestRecord(r["id"], transfer_id, codec.request(codec.load(r["payload"])), r["state"],
+                              r["parent_id"], codec.resource(codec.load(r["resource"])), r["attempts"],
+                              r["retry_at"], codec.error(r["error"]), codec.entry(codec.load(r["metadata"])))
+                for r in request_rows
+            )
+            artifact_rows = await db.fetchall(
+                f"""SELECT f.*,e.handle FROM download_files f
+                    LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                    WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')} ORDER BY f.id""",
+                (transfer_id,),
+            )
+            artifacts = tuple(
+                Artifact(a["id"], transfer_id, a["request_id"], a["filename"], a["local_path"], a["size_bytes"] or 0,
+                         a["status"], tuple(codec.candidate(item) for item in codec.load(a["candidates"], [])),
+                         a["selected_candidate"], codec.handle(codec.load(a["handle"])), a["retry_count"] or 0,
+                         a["retry_at"], codec.error(a["normalized_error"]))
+                for a in artifact_rows
+            )
+            execution_rows = await db.fetchall("SELECT * FROM execution_attempts WHERE transfer_id=?", (transfer_id,))
+            attempts_by_id = {e["id"]: self._execution_attempt(e) for e in execution_rows}
+
+            pending = any(item.state in {"pending", "waiting", "waiting_parent", "resolving", "materializing"} for item in requests)
+            total = sum(item.expected_bytes for item in artifacts)
+            local_path = str(Path(artifacts[0].target).parent) if artifacts else ""
+            await db.execute(
+                "UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status NOT IN ('deleted','consolidated')",
+                (total, local_path, transfer_id),
+            )
+            completed = sum(
+                item.expected_bytes if item.state == "completed" else
+                (min(item.expected_bytes, attempts_by_id[item.execution.attempt_id].progress.completed_bytes)
+                 if item.execution else 0)
+                for item in artifacts
+            )
+            progress = min(100.0, completed / total * 100) if total else 0.0
+
+            should_complete = False
+            if not (transfer.paused or await self._globally_paused(db)):
+                if artifacts and all(item.state == "completed" for item in artifacts) and not pending:
+                    should_complete = True
+                elif any(item.state in {"downloading", "verifying"} for item in artifacts):
+                    await _transition(TransferState.TRANSFERRING, progress=progress)
+                elif any(item.state == "unknown" for item in artifacts):
+                    await _transition(TransferState.QUEUED, progress=progress)
+                elif any(item.state in {"queued", "paused", "refresh_pending"} for item in artifacts):
+                    await _transition(TransferState.QUEUED, progress=progress)
+                elif pending:
+                    await _transition(TransferState.RESOLVING, progress=progress)
+                elif any(item.state == "error" for item in artifacts) or any(item.state == "failed" for item in requests):
+                    error = next((item.error for item in (*artifacts, *requests) if item.error), None)
+                    await _transition(TransferState.FAILED, progress=progress, error=error)
+                elif artifacts and all(item.state == "cancelled" for item in artifacts):
+                    await _transition(TransferState.CANCELLED, progress=progress)
+                elif not artifacts:
+                    blocked_row = await db.fetchone(
+                        "SELECT COUNT(*) AS n FROM download_files WHERE torrent_id=? AND blocked=1", (transfer_id,),
+                    )
+                    if int((blocked_row or {}).get("n") or 0) and transition_allowed(transfer.state, TransferState.COMPLETED, verified=True):
+                        await self._write_lifecycle_transition(
+                            db, transfer_id, row["status"], row["progress"], row["normalized_error"],
+                            TransferState.COMPLETED, progress=0,
+                        )
+                        skip_outcome = TransferOutcome(OutcomeKind.SKIPPED, detail="No selected artifacts")
+                        await db.execute(
+                            "INSERT INTO transfer_outcomes(transfer_id,attempt_id,kind,payload) VALUES(?,?,?,?)",
+                            (transfer_id, None, skip_outcome.kind, codec.dump(skip_outcome)),
+                        )
+                        await db.execute(
+                            "INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)",
+                            (transfer_id, "info", str(skip_outcome.kind)),
+                        )
             await db.commit()
+        return AggregateLifecycleOutcome(should_complete, artifacts)
+
+    @staticmethod
+    async def _globally_paused(db) -> bool:
+        row = await db.fetchone("SELECT value FROM transfer_controls WHERE key='paused'")
+        return bool(row and row["value"] == "1")
+
+    async def force_queued_for_autonomous_wait(self, transfer_id: int, wait_states: frozenset[str]) -> bool:
+        """DP 1.0.12 recovery leveling, Sections 21-22: the recovery-aware
+        engine's extra "an artifact is autonomously waiting, so the transfer
+        must not be left showing whatever ``aggregate_lifecycle`` computed (or
+        left unchanged) a moment ago" rule, applied as its own atomic
+        read-then-write rather than the previous separate, independently
+        timed ``get()``/``artifacts()``/``state()`` calls. ``wait_states`` is
+        supplied by the caller (e.g. ``{"recovery_wait"}``) so this base
+        repository never has to know what a recovery-specific artifact state
+        means; an empty set is always a no-op.
+        """
+        if not wait_states:
+            return False
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
+                   LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE t.id=?""",
+                (transfer_id,),
+            )
+            transfer = self._transfer(row)
+            if transfer is None or transfer.state in _AGGREGATE_TERMINAL_STATES or transfer.paused:
+                await db.rollback()
+                return False
+            placeholders = ",".join("?" for _ in wait_states)
+            hit = await db.fetchone(
+                f"""SELECT 1 FROM download_files f WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')}
+                    AND f.status IN ({placeholders}) LIMIT 1""",
+                (transfer_id, *wait_states),
+            )
+            if not hit or not transition_allowed(transfer.state, TransferState.QUEUED):
+                await db.rollback()
+                return False
+            await self._write_lifecycle_transition(
+                db, transfer_id, row["status"], row["progress"], row["normalized_error"], TransferState.QUEUED,
+            )
+            await db.commit()
+        return True
 
     async def update_metadata(self, transfer_id, *, label=None, priority=None):
         async with get_db() as db:
@@ -518,6 +745,29 @@ class TransferRepository:
             await db.commit()
         return await self.get(transfer_id), created
 
+    @staticmethod
+    async def _write_lifecycle_transition(
+        db, transfer_id: int, current_status: str, current_progress, current_normalized_error,
+        target: TransferState, *, progress=None, error=None,
+    ) -> None:
+        """Shared UPDATE+event-log body for a transfer status transition
+        already validated by the caller (``transition_allowed``/
+        ``expected_epoch``/no-op checks all happen before this is called).
+        Shared by ``state()`` and ``aggregate_lifecycle()`` /
+        ``force_queued_for_autonomous_wait()`` so the two paths can never
+        silently diverge on what "the same transition" durably records."""
+        if current_status == target and (progress is None or current_progress == progress) and current_normalized_error == (codec.dump(error) if error else None):
+            return
+        await db.execute("""UPDATE torrents SET status=?, progress=COALESCE(?,progress), normalized_error=?,
+            error_message=?, updated_at=CURRENT_TIMESTAMP,
+            completed_at=CASE WHEN ?='completed' THEN COALESCE(completed_at,CURRENT_TIMESTAMP)
+                WHEN ? IN ('pending','queued') THEN NULL ELSE completed_at END WHERE id=?""",
+            (target, progress, codec.dump(error) if error else None, error.message if error else None, target, target, transfer_id))
+        if current_status != target or current_normalized_error != (codec.dump(error) if error else None):
+            message = f"Transfer {target}" + (f": {error.message}" if error else "")
+            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if error else "info", message))
+            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
+
     async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None, verified=False) -> bool:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -526,17 +776,9 @@ class TransferRepository:
                 return False
             if expected_epoch is not None and row["lifecycle_epoch"] != expected_epoch:
                 return False
-            if row["status"] == target and (progress is None or row["progress"] == progress) and row["normalized_error"] == (codec.dump(error) if error else None):
-                return True
-            await db.execute("""UPDATE torrents SET status=?, progress=COALESCE(?,progress), normalized_error=?,
-                error_message=?, updated_at=CURRENT_TIMESTAMP,
-                completed_at=CASE WHEN ?='completed' THEN COALESCE(completed_at,CURRENT_TIMESTAMP)
-                    WHEN ? IN ('pending','queued') THEN NULL ELSE completed_at END WHERE id=?""",
-                (target, progress, codec.dump(error) if error else None, error.message if error else None, target, target, transfer_id))
-            if row["status"] != target or row["normalized_error"] != (codec.dump(error) if error else None):
-                message = f"Transfer {target}" + (f": {error.message}" if error else "")
-                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if error else "info", message))
-                await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
+            await self._write_lifecycle_transition(
+                db, transfer_id, row["status"], row["progress"], row["normalized_error"], target, progress=progress, error=error,
+            )
             await db.commit()
         return True
 
@@ -580,7 +822,8 @@ class TransferRepository:
                 (now, transfer_id, transfer_id),
             )
             await db.execute(
-                """UPDATE download_files SET status='cancelled',normalized_error=NULL,updated_at=CURRENT_TIMESTAMP
+                """UPDATE download_files SET status='cancelled',normalized_error=NULL,
+                    continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
                     WHERE torrent_id=? AND status!='completed'""",
                 (transfer_id,),
             )
@@ -865,10 +1108,9 @@ class TransferRepository:
 
     async def artifacts(self, transfer_id: int) -> tuple[Artifact, ...]:
         async with get_db() as db:
-            rows = await db.fetchall("""SELECT f.*,e.handle FROM download_files f
+            rows = await db.fetchall(f"""SELECT f.*,e.handle FROM download_files f
                 LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
-                WHERE f.torrent_id=? AND f.request_id IS NOT NULL AND COALESCE(f.blocked,0)=0
-                AND COALESCE(f.mirror_state,'')!='standby' ORDER BY f.id""", (transfer_id,))
+                WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')} ORDER BY f.id""", (transfer_id,))
         return tuple(Artifact(row["id"], transfer_id, row["request_id"], row["filename"], row["local_path"], row["size_bytes"] or 0,
                               row["status"], tuple(codec.candidate(item) for item in codec.load(row["candidates"], [])),
                               row["selected_candidate"], codec.handle(codec.load(row["handle"])), row["retry_count"] or 0,
@@ -909,8 +1151,32 @@ class TransferRepository:
                  candidate.provider_id if candidate and candidate.provider_id else None, str(candidate.id) if candidate else None,
                  codec.dump(self._safe_candidate_source(candidate)) if candidate else None))
             await db.execute("""UPDATE download_files SET execution_attempt_id=?,download_client=?,retry_count=retry_count+1,
-                status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,
+                continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (handle.attempt_id, handle.executor_id, int(from_input_required), artifact.id))
+            # DP 1.0.12 recovery leveling, Section 29: durably link this new
+            # execution back to the candidate-activation record that selected
+            # it, if any -- a committed activation cannot know the replacement
+            # execution's id at commit time (it doesn't exist yet), so the
+            # audit link is completed here instead, the first time this
+            # artifact actually dispatches afterward. Scans backward for the
+            # most recent still-unlinked "activated" record for this artifact;
+            # bounded, since only a just-activated, not-yet-dispatched
+            # artifact ever has one pending.
+            activation_rows = await db.fetchall(
+                "SELECT id,detail FROM application_events WHERE transfer_id=? AND kind='candidate_activation' ORDER BY id DESC LIMIT 50",
+                (artifact.transfer_id,),
+            )
+            for activation_row in activation_rows:
+                detail = codec.load(activation_row["detail"], {})
+                if (detail.get("artifact_id") == artifact.id and detail.get("outcome") == "activated"
+                        and detail.get("new_execution_id") is None):
+                    detail["new_execution_id"] = handle.attempt_id
+                    await db.execute(
+                        "UPDATE application_events SET detail=? WHERE id=?",
+                        (codec.dump(detail), activation_row["id"]),
+                    )
+                    break
             await db.commit()
         return True
 
@@ -984,9 +1250,16 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             current = await db.fetchone("SELECT execution_attempt_id FROM download_files WHERE id=?", (artifact_id,))
+            # Section 13: artifact_state() is never used to hold a continuation
+            # reservation across a writer-replacement handoff -- only
+            # transition_recovery()'s explicit continuation_reservation_until
+            # sets one -- so every artifact_state() write releases it
+            # unconditionally (cancellation, deletion, terminal failure, and
+            # plain completion all funnel through here).
             cursor = await db.execute("""UPDATE download_files SET status=?,normalized_error=?,retry_at=?,
                 execution_attempt_id=CASE WHEN ? THEN NULL ELSE execution_attempt_id END,
-                selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),updated_at=CURRENT_TIMESTAMP
+                selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),
+                continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND torrent_id IN (SELECT id FROM torrents
                     WHERE status NOT IN ('deleted','consolidated') AND (status!='cancelled' OR ?='cancelled'))""",
                 (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id, state))
@@ -1021,6 +1294,48 @@ class TransferRepository:
                 JOIN download_files f ON f.execution_attempt_id=e.id JOIN torrents t ON t.id=e.transfer_id
                 WHERE t.status NOT IN ('deleted','completed','consolidated','cancelled') AND e.authorized=1""")
         return tuple(self._execution_attempt(row) for row in rows)
+
+    _OCCUPYING_EXECUTION_STATES = ("prepared", "queued", "transferring", "unknown")
+
+    async def occupied_execution_slots(self, now: float, *, exclude_artifact_id: int | None = None) -> int:
+        """DP 1.0.12 recovery leveling, Section 13: the ONE canonical execution-
+        admission occupancy count -- genuinely live authorized writers plus any
+        durable, unexpired continuation reservation (an artifact whose old
+        writer was already retired but whose replacement has not yet
+        dispatched). Every capacity gate in the engine must call this instead
+        of counting live executions alone, or a reserved-but-not-yet-live slot
+        could be stolen by unrelated queued work during the short
+        writer-replacement handoff. ``exclude_artifact_id`` lets an artifact
+        about to consume its own reservation check admission without
+        self-blocking on it.
+        """
+        placeholders = ",".join("?" for _ in self._OCCUPYING_EXECUTION_STATES)
+        async with get_db() as db:
+            live_row = await db.fetchone(
+                f"""SELECT COUNT(*) AS n FROM execution_attempts e
+                    JOIN download_files f ON f.execution_attempt_id=e.id JOIN torrents t ON t.id=e.transfer_id
+                    WHERE t.status NOT IN ('deleted','completed','consolidated','cancelled') AND e.authorized=1
+                    AND e.state IN ({placeholders}) AND (? IS NULL OR f.id!=?)""",
+                (*self._OCCUPYING_EXECUTION_STATES, exclude_artifact_id, exclude_artifact_id),
+            )
+            reserved_row = await db.fetchone(
+                """SELECT COUNT(*) AS n FROM download_files f JOIN torrents t ON t.id=f.torrent_id
+                    WHERE f.execution_attempt_id IS NULL AND f.continuation_reservation_expires_at IS NOT NULL
+                    AND f.continuation_reservation_expires_at>? AND t.status NOT IN ('deleted','completed','consolidated','cancelled')
+                    AND (? IS NULL OR f.id!=?)""",
+                (now, exclude_artifact_id, exclude_artifact_id),
+            )
+        return int((live_row or {}).get("n") or 0) + int((reserved_row or {}).get("n") or 0)
+
+    async def continuation_reservation(self, artifact_id: int) -> float | None:
+        """Current raw reservation expiry for one artifact, or None. Test/
+        provenance introspection only -- admission gates use
+        ``occupied_execution_slots`` instead."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT continuation_reservation_expires_at FROM download_files WHERE id=?", (artifact_id,),
+            )
+        return float(row["continuation_reservation_expires_at"]) if row and row.get("continuation_reservation_expires_at") is not None else None
 
     async def resources(self, transfer_id: int):
         async with get_db() as db:
@@ -1201,6 +1516,18 @@ class TransferRepository:
                     AND state IN ('prepared','queued','transferring','paused','unknown')""",
                 (now, now, transfer_id),
             )
+            # DP 1.0.12 recovery leveling, Section 13: DELETED is not a true
+            # dead end -- transfers.policy.transition_allowed permits an
+            # operator to resurrect a deleted transfer back to ACCEPTED. Relying
+            # solely on occupied_execution_slots()'s torrents.status join filter
+            # would let a reservation that predates the delete silently
+            # reappear and consume capacity the moment that resurrection
+            # happens, well before its TTL would have expired on its own.
+            # Durably clear it here instead of only excluding it structurally.
+            await db.execute(
+                "UPDATE download_files SET continuation_reservation_expires_at=NULL WHERE torrent_id=?",
+                (transfer_id,),
+            )
             await db.commit()
 
     async def delete_remote_requested(self, transfer_id: int) -> bool:
@@ -1299,8 +1626,3 @@ class TransferRepository:
             await db.execute("UPDATE transfer_requests SET state=? WHERE id=?",
                              (("resolved" if ready else "pending") if selected else "skipped", row["request_id"]))
             await db.commit()
-
-    async def blocked_artifact_count(self, transfer_id: int):
-        async with get_db() as db:
-            row = await db.fetchone("SELECT COUNT(*) AS n FROM download_files WHERE torrent_id=? AND blocked=1", (transfer_id,))
-        return int(row["n"])

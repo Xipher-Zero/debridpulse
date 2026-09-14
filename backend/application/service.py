@@ -10,6 +10,7 @@ import errno
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlsplit
 
+from application import dispatch_admission
 from services.event_bus import publish
 from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers import file_selection
@@ -196,7 +197,10 @@ class ApplicationService:
         return transfer
 
     async def _publish(self, transfer_id):
-        item = await self.repository.presentation(transfer_id)
+        item = await self.repository.presentation(
+            transfer_id,
+            capacity_only_blocked_ids=dispatch_admission.capacity_only_blocked_ids(self.engine),
+        )
         if item:
             await publish("torrent_updated", item)
         await publish("stats_changed", {})

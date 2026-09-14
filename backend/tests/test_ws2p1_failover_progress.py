@@ -249,8 +249,13 @@ async def test_recovery_hierarchy_retries_refreshes_then_fails_over_forward_only
     assert artifact.state == "queued"
     assert artifact.execution is None
     assert artifact.candidates[artifact.selected].provider_id == "provider-b"
-    assert not Path(artifact.target).exists()
-    assert not Path(artifact.target + ".memory-progress").exists()
+    # DP 1.0.12 recovery leveling, Section 28: provider-a and provider-b both
+    # resolve through the same shared ``executor`` against the same local
+    # target here, so the unified partial/resume policy
+    # (transfers.candidate_activation.activate_candidate) correctly REUSES
+    # the partial file across the switch instead of discarding it.
+    assert Path(artifact.target).exists()
+    assert Path(artifact.target + ".memory-progress").exists()
 
     restarted_repository = TransferRepository()
     restarted = TransferEngine(

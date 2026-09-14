@@ -13,6 +13,7 @@ from dataclasses import replace
 from transfers import _engine_base
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
+from transfers.candidate_activation import activate_candidate
 from transfers.cohorts import coordinate_collection
 from transfers.contracts import CandidateRefresh
 from transfers.errors import (
@@ -23,7 +24,7 @@ from transfers.filesystem import retire_partial
 from transfers.mirrors import reported_sizes_compatible
 from transfers.models import (
     Artifact, ExecutionObservation, ExecutionState, OutcomeKind, ResolutionResult,
-    ResourceState, TransferOutcome, TransferState,
+    ResourceState, TransferOutcome,
 )
 from transfers.policy import RecoveryAction, RecoveryContext
 
@@ -155,14 +156,20 @@ class TransferEngine(_QualifiedTransferEngine):
         await self._wake_quiescent_recoveries()
         return await super().reconcile_executions()
 
+    _AUTONOMOUS_WAIT_ARTIFACT_STATES = frozenset({"recovery_wait"})
+
     async def _aggregate(self, transfer_id: int):
         result = await super()._aggregate(transfer_id)
-        transfer = await self.repository.get(transfer_id)
-        if transfer and transfer.state not in {TransferState.DELETED, TransferState.COMPLETED,
-                                                TransferState.CONSOLIDATED, TransferState.CANCELLED}:
-            artifacts = await self.repository.artifacts(transfer_id)
-            if any(item.state == "recovery_wait" for item in artifacts) and not transfer.paused:
-                await self.repository.state(transfer_id, TransferState.QUEUED)
+        # DP 1.0.12 recovery leveling, Sections 21-22: this extra rule -- a
+        # canonical artifact left autonomously waiting on recovery must not
+        # leave the transfer showing whatever the base decision above just
+        # computed (or left unchanged) -- is now its own atomic read-then-
+        # write (transfers._repository_base.TransferRepository
+        # .force_queued_for_autonomous_wait) instead of the previous separate,
+        # independently timed get()/artifacts()/state() calls.
+        await self.repository.force_queued_for_autonomous_wait(
+            transfer_id, self._AUTONOMOUS_WAIT_ARTIFACT_STATES,
+        )
         return result
 
     async def _materialize(self, record, candidates):
@@ -182,8 +189,24 @@ class TransferEngine(_QualifiedTransferEngine):
                 await self.canonical.origin_for(artifact, candidate)
 
     async def _next_alternate_index(self, artifact: Artifact) -> int | None:
-        for index in range(artifact.selected + 1, len(artifact.candidates)):
-            candidate = artifact.candidates[index]
+        """First eligible, not-yet-attempted candidate in index order (DP 1.0.12
+        recovery leveling, Section 12).
+
+        Traversal is no longer defined by ``selected + 1`` -- the currently
+        selected index says nothing about which candidates were already tried
+        (an operator may have jumped directly to a high index). The durable
+        ``candidate_attempt_history`` (transfers.repository.TransferRepository
+        .record_candidate_attempt) is the actual attempt record; a lower-index
+        candidate that was never activated remains eligible regardless of how
+        far the selection has moved past it.
+        """
+        attempted = frozenset(
+            str(item) for item in
+            (await self.repository.recovery_context(artifact.id)).get("candidate_attempt_history") or ()
+        )
+        for index, candidate in enumerate(artifact.candidates):
+            if index == artifact.selected or str(candidate.id) in attempted:
+                continue
             if not self._candidate_provider_enabled(candidate):
                 continue
             if not self.registry.eligible_executors(candidate):
@@ -235,27 +258,18 @@ class TransferEngine(_QualifiedTransferEngine):
 
     async def _activate_alternate(self, artifact: Artifact, index: int, *, retry_at: float,
                                   error: NormalizedError) -> bool:
-        if index <= artifact.selected or index >= len(artifact.candidates):
-            return False
-        replacement = artifact.candidates[index]
-        if (artifact.expected_bytes > 0 and replacement.expected_bytes > 0
-                and not reported_sizes_compatible(artifact.expected_bytes, replacement.expected_bytes)):
-            return False
-        sidecars = self._candidate_sidecars(artifact)
-        if not await self.repository.transition_recovery(
-            artifact.id, "error", error=error, retry_at=0, clear_quiescence=True,
-        ):
-            return False
-        retire_partial(self.root, artifact.target, sidecars)
-        current = await self._current_artifact(artifact.transfer_id, artifact.id)
-        if current is None:
-            return False
-        accepted_size = current.expected_bytes if current.expected_bytes > 0 else replacement.expected_bytes
-        return await self.repository.transition_recovery(
-            artifact.id, "queued", retry_at=retry_at, selected=index,
-            expected_bytes=max(0, accepted_size), candidate_switched=True,
-            clear_quiescence=True,
-        )
+        """Thin delegate to the ONE canonical candidate-activation operation
+        (DP 1.0.12 recovery leveling, Section 10). This lower, pre-Phase-3
+        ``transfers.engine.TransferEngine`` stack has no recovery-claim system
+        of its own (``claim=None``; ``transfers.candidate_activation
+        .activate_candidate`` falls back to a generic automatic authority for
+        provenance here), but it must not maintain a second, independent
+        mutation algorithm alongside the production one -- validation, writer
+        retirement, partial/resume policy, the durable commit, and
+        attempt-history bookkeeping all live in exactly one place now.
+        """
+        result = await activate_candidate(self, artifact, index, retry_at=retry_at, error=error)
+        return result.committed
 
     async def _recovery_context(self, artifact: Artifact, *, can_refresh: bool,
                                 has_alternate: bool) -> RecoveryContext:

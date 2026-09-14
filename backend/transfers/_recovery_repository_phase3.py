@@ -1,14 +1,14 @@
 """Durable Phase-3 recovery ownership layered over qualified persistence.
 
-The existing ``application_events`` recovery snapshot remains the one durable
-history.  This layer extends that snapshot with a per-artifact lease/fence and
-structured execution-application provenance; it does not create a second
-recovery policy or history store.
+Current recovery state lives in the canonical ``artifact_recovery_state``
+row (``transfers.repository.TransferRepository._recovery_snapshot``/
+``_save_recovery_snapshot``). This layer extends that current-state model
+with a per-artifact lease/fence and structured execution-application
+provenance; it does not create a second recovery policy or state store.
 """
 from __future__ import annotations
 
 from db.database import get_db
-from transfers import codec
 from transfers.errors import NormalizedError
 from transfers.manual_repository import TransferRepository as _QualifiedTransferRepository
 from transfers.models import new_identity
@@ -16,6 +16,18 @@ from transfers.policy import failure_signature
 from transfers.recovery_execution import RecoveryClaim, RecoveryTrigger
 
 
+# DP 1.0.12 recovery leveling, Section 14/15 (post-review correction): only
+# CURRENT, policy-relevant fields belong here -- every one of these is read
+# somewhere to gate a fencing/single-flight/traversal decision, or
+# (last_applied_action/last_applied_reason) consumed live by the bounded
+# Downloads/Dashboard projection. Historical-only fields (last_applied_trigger,
+# last_application_outcome, last_execution_attempt/identity,
+# last_reconstruction_reason, last_execution_retirement_reason, durable_target,
+# candidate_generation, last_candidate_id, last_budget_before/after) are NOT
+# defaulted here -- they live solely in the sparse recovery_audit trail and
+# are reconstructed on demand by
+# transfers.repository.TransferRepository._historical_audit_facts /
+# recovery_context(), never carried in this policy-facing snapshot dict.
 _PHASE3_DEFAULTS = {
     "recovery_generation": 0,
     "recovery_claim_token": None,
@@ -24,19 +36,8 @@ _PHASE3_DEFAULTS = {
     "recovery_decision_id": None,
     "recovery_claim_id": None,
     "last_failure_identity": None,
-    "last_budget_before": None,
-    "last_budget_after": None,
-    "last_applied_trigger": None,
     "last_applied_action": None,
     "last_applied_reason": None,
-    "last_application_outcome": None,
-    "last_execution_attempt": None,
-    "last_execution_identity": None,
-    "last_reconstruction_reason": None,
-    "last_execution_retirement_reason": None,
-    "durable_target": None,
-    "candidate_generation": 0,
-    "last_candidate_id": None,
     "last_refresh_decision_id": None,
     "refresh_inflight_decision_id": None,
     "refresh_inflight_attempt_id": None,
@@ -49,22 +50,17 @@ class TransferRepository(_QualifiedTransferRepository):
 
     @classmethod
     async def _recovery_snapshot(cls, db, artifact_id: int, *, row=None) -> dict:
+        """DP 1.0.12 recovery leveling, Section 14/20: the base classmethod
+        already reads the single ``artifact_recovery_state`` row once and
+        imports every key it finds (not only its own template's keys), so
+        this layer no longer re-queries the same row a second time -- it
+        only needs to seed defaults for keys the base template doesn't
+        already know about.
+        """
         snapshot = await super()._recovery_snapshot(db, artifact_id, row=row)
-        event = await db.fetchone(
-            "SELECT detail FROM application_events WHERE kind=? ORDER BY id DESC LIMIT 1",
-            (cls._recovery_event_kind(artifact_id),),
-        )
-        stored = {}
-        if event and event.get("detail"):
-            try:
-                value = codec.load(event["detail"], {})
-            except (TypeError, ValueError):
-                value = {}
-            if isinstance(value, dict):
-                stored = value
         snapshot["version"] = max(3, int(snapshot.get("version") or 0))
         for key, default in _PHASE3_DEFAULTS.items():
-            snapshot[key] = stored.get(key, snapshot.get(key, default))
+            snapshot.setdefault(key, default)
         return snapshot
 
     async def claim_recovery(
@@ -105,10 +101,20 @@ class TransferRepository(_QualifiedTransferRepository):
                 "recovery_claim_trigger": trigger.value,
                 "recovery_claim_until": float(now) + max(1.0, float(lease_seconds)),
                 "recovery_claim_id": decision_id,
-                "durable_target": str(row.get("local_path") or snapshot.get("durable_target") or ""),
             })
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), artifact_id, snapshot,
+            )
+            # This class's own claim_recovery is superseded, in the full
+            # production chain, by _recovery_repository_claim_base's version
+            # (which is exclusive across every trigger, including
+            # USER_RETRY); this override remains reachable only if something
+            # composes this class directly. durable_target is historical
+            # (Section 15) -- sparse-audit-only, never current state.
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "claim",
+                trigger=trigger.value, generation=generation, decision_id=decision_id,
+                durable_target=str(row.get("local_path") or ""),
             )
             await db.commit()
         return RecoveryClaim(
@@ -172,28 +178,47 @@ class TransferRepository(_QualifiedTransferRepository):
                 "recovery_claim_trigger": None,
                 "recovery_claim_until": 0.0,
                 "recovery_claim_id": None,
-                "last_applied_trigger": claim.trigger.value,
                 "last_applied_action": action,
                 "last_applied_reason": reason,
-                "last_application_outcome": outcome,
-                "last_execution_attempt": execution_attempt,
-                "last_execution_identity": execution_identity,
-                "last_reconstruction_reason": reconstruction_reason,
-                "last_execution_retirement_reason": retirement_reason,
-                "durable_target": str(row.get("local_path") or snapshot.get("durable_target") or ""),
             })
-            if candidate_changed:
-                snapshot["candidate_generation"] = int(snapshot.get("candidate_generation") or 0) + 1
-            if candidate_id is not None:
-                snapshot["last_candidate_id"] = str(candidate_id)
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), claim.artifact_id, snapshot,
+            )
+            # Superseded, in the full production chain, by
+            # recovery_repository.TransferRepository's own finish_recovery_claim
+            # (see that module for the live docstring). Everything below is
+            # historical (Section 15): sparse-audit-only, never current state.
+            audit_fields: dict = {
+                "last_applied_trigger": claim.trigger.value, "action": action, "reason": reason,
+                "last_application_outcome": outcome,
+                "last_execution_attempt": execution_attempt, "last_execution_identity": execution_identity,
+                "durable_target": str(row.get("local_path") or ""),
+            }
+            if reconstruction_reason is not None:
+                audit_fields["last_reconstruction_reason"] = str(reconstruction_reason)
+            if retirement_reason is not None:
+                audit_fields["last_execution_retirement_reason"] = str(retirement_reason)
+            if candidate_changed:
+                audit_fields["candidate_changed"] = True
+            if candidate_id is not None:
+                audit_fields["last_candidate_id"] = str(candidate_id)
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), claim.artifact_id, "finish_claim", **audit_fields,
             )
             await db.commit()
         return True
 
     async def set_pause_and_fence(self, transfer_id: int, paused: bool) -> None:
-        """Atomically publish Pause/Resume intent and fence every older recovery owner."""
+        """Atomically publish Pause/Resume intent and fence every older recovery owner.
+
+        DP 1.0.12 recovery leveling, Section 13: pausing releases any
+        continuation reservation this transfer's artifacts are holding.
+        Dispatch is not legally permitted while paused, so a reservation
+        surviving a pause would consume real capacity for up to its full
+        bound (``max(300, max_retry_delay)`` seconds) for no reachable
+        purpose; an artifact resumed later re-earns admission the ordinary
+        way rather than resurrecting a stale hold.
+        """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             await db.execute(
@@ -201,6 +226,10 @@ class TransferRepository(_QualifiedTransferRepository):
                    ON CONFLICT(torrent_id) DO UPDATE
                    SET paused=excluded.paused,updated_at=CURRENT_TIMESTAMP""",
                 (transfer_id, int(paused)),
+            )
+            await db.execute(
+                "UPDATE download_files SET continuation_reservation_expires_at=NULL WHERE torrent_id=?",
+                (transfer_id,),
             )
             rows = await db.fetchall(
                 """SELECT id,torrent_id,recovery_failures,recovery_refreshes,local_path
@@ -217,11 +246,14 @@ class TransferRepository(_QualifiedTransferRepository):
                     "recovery_claim_trigger": None,
                     "recovery_claim_until": 0.0,
                     "recovery_claim_id": None,
-                    "last_application_outcome": "paused" if paused else "resume_requested",
-                    "durable_target": str(row.get("local_path") or snapshot.get("durable_target") or ""),
                 })
                 await self._save_recovery_snapshot(
                     db, int(row["torrent_id"]), artifact_id, snapshot,
+                )
+                await self._append_recovery_audit(
+                    db, int(row["torrent_id"]), artifact_id, "pause_fence", paused=bool(paused),
+                    last_application_outcome="paused" if paused else "resume_requested",
+                    durable_target=str(row.get("local_path") or ""),
                 )
             await db.commit()
 
@@ -286,6 +318,9 @@ class TransferRepository(_QualifiedTransferRepository):
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), claim.artifact_id, snapshot,
             )
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), claim.artifact_id, "quiescence_exit",
+            )
             await db.commit()
         return True
 
@@ -331,16 +366,16 @@ class TransferRepository(_QualifiedTransferRepository):
             )
             snapshot["failure_signature"] = signature
             snapshot["last_failure_identity"] = identity
-            snapshot["last_budget_before"] = {
-                "failures": failures_before,
-                "refreshes": refreshes,
-            }
-            snapshot["last_budget_after"] = {
-                "failures": failures,
-                "refreshes": refreshes,
-            }
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), artifact_id, snapshot,
+            )
+            # last_budget_before/after are historical (Section 15):
+            # sparse-audit-only, never current state.
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "source_failure",
+                failures=failures,
+                last_budget_before={"failures": failures_before, "refreshes": refreshes},
+                last_budget_after={"failures": failures, "refreshes": refreshes},
             )
             await db.commit()
         return failures, refreshes, True
@@ -421,16 +456,16 @@ class TransferRepository(_QualifiedTransferRepository):
                 int(snapshot.get("candidate_refreshes") or 0), refreshes + 1,
             )
             snapshot["last_refresh_decision_id"] = str(decision_id)
-            snapshot["last_budget_before"] = {
-                "failures": int(row.get("recovery_failures") or 0),
-                "refreshes": refreshes,
-            }
-            snapshot["last_budget_after"] = {
-                "failures": int(row.get("recovery_failures") or 0),
-                "refreshes": refreshes + 1,
-            }
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), claim.artifact_id, snapshot,
+            )
+            # last_budget_before/after are historical (Section 15):
+            # sparse-audit-only, never current state.
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), claim.artifact_id, "refresh_reserved",
+                decision_id=str(decision_id),
+                last_budget_before={"failures": int(row.get("recovery_failures") or 0), "refreshes": refreshes},
+                last_budget_after={"failures": int(row.get("recovery_failures") or 0), "refreshes": refreshes + 1},
             )
             await db.commit()
         return True
@@ -489,6 +524,10 @@ class TransferRepository(_QualifiedTransferRepository):
             snapshot["refresh_inflight_attempt_id"] = identity
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), claim.artifact_id, snapshot,
+            )
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), claim.artifact_id, "refresh_begin",
+                decision_id=str(decision_id), attempt_id=identity,
             )
             await db.commit()
         return {

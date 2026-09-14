@@ -133,9 +133,15 @@ async def test_phase1_database_counters_seed_context_without_fabricated_history(
             "UPDATE download_files SET recovery_failures=2,recovery_refreshes=1 WHERE id=?",
             (artifact.id,),
         )
+        # DP 1.0.12 recovery leveling, Section 14: current recovery state is
+        # now the single artifact_recovery_state row, not the latest
+        # application_events snapshot of the legacy
+        # repository._recovery_event_kind(artifact.id) kind. Deleting that
+        # row (rather than the retired legacy event kind) is what now
+        # simulates "no recovery-state row exists yet" for this artifact.
         await db.execute(
-            "DELETE FROM application_events WHERE kind=?",
-            (repository._recovery_event_kind(artifact.id),),
+            "DELETE FROM artifact_recovery_state WHERE artifact_id=?",
+            (artifact.id,),
         )
         await db.commit()
 

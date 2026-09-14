@@ -4,6 +4,7 @@ import ast
 import inspect
 
 from services.network_safety import sampled_public_artifact_fingerprint
+from transfers.candidate_activation import activate_candidate
 from transfers.engine import TransferEngine
 from transfers.mirrors import reported_sizes_compatible
 
@@ -19,12 +20,20 @@ def test_reported_size_policy_accepts_bounded_jitter_and_rejects_outside() -> No
 
 
 def test_failover_and_refresh_delegate_reported_size_compatibility() -> None:
+    """DP 1.0.12 recovery leveling, Section 10: automatic failover's size
+    check now lives in exactly one place -- the canonical
+    transfers.candidate_activation.activate_candidate operation --
+    ``TransferEngine._activate_alternate`` is a thin delegate to it, not a
+    second implementation, so the policy is asserted on the real owner."""
     alternate_source = inspect.getsource(TransferEngine._activate_alternate)
+    activation_source = inspect.getsource(activate_candidate)
     refresh_source = inspect.getsource(TransferEngine._refresh)
 
-    assert "reported_sizes_compatible(" in alternate_source
+    assert "activate_candidate(" in alternate_source
+    assert "reported_sizes_compatible(" not in alternate_source
+    assert "reported_sizes_compatible(" in activation_source
     assert "reported_sizes_compatible(" in refresh_source
-    assert "artifact.expected_bytes != replacement.expected_bytes" not in alternate_source
+    assert "artifact.expected_bytes != replacement.expected_bytes" not in activation_source
     assert "artifact.expected_bytes != replacement_size" not in refresh_source
 
 

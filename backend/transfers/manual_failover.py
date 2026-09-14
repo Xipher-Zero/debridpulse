@@ -1,9 +1,22 @@
-"""Provider-neutral operator-triggered failover to one exact canonical candidate."""
+"""Provider-neutral operator-triggered failover to one exact canonical candidate.
+
+The actual activation mutation (writer retirement, partial-file/resume policy,
+and the durable commit) is owned entirely by
+``transfers.candidate_activation.activate_candidate`` -- the SAME operation
+automatic Phase-3 recovery's ``TRY_ALTERNATE_CANDIDATE`` decision uses (DP
+1.0.12 recovery leveling, Section 10). This module owns only what is
+genuinely specific to an operator naming an exact candidate: resolving the
+requested candidate id, the pre-activation expiry-refresh step, claim
+acquisition/fencing (Section 11, via
+``transfers.convergence_engine.TransferEngine.activate_candidate_command``),
+UI-facing transition provenance, and the truthful post-commit acknowledgement
+contract (Section 26).
+"""
 from __future__ import annotations
 
-import asyncio
 from dataclasses import replace
 
+from transfers.candidate_activation import resolve_candidate_index
 from transfers.contracts import CandidateRefresh
 from transfers.errors import (
     Category,
@@ -16,25 +29,27 @@ from transfers.errors import (
     TransferError,
     unknown_failure,
 )
-from transfers.filesystem import retire_partial
-from transfers.mirrors import reported_sizes_compatible
-from transfers.models import (
-    ExecutionState,
-    OutcomeKind,
-    ResolutionResult,
-    ResourceState,
-)
+from transfers.models import ResolutionResult, ResourceState
 
 
-_OPERATIONAL_STATES = frozenset({
+# Canonical candidate-switch lifecycle-eligibility owner (DP 1.0.12 recovery
+# leveling, Section 31 corrective pass). This is the ONE set of artifact
+# lifecycle states in which a candidate switch is ever permitted -- both the
+# command's own precondition below and every presentation projection
+# (``transfers.repository._SWITCHABLE_ARTIFACT_STATES``,
+# ``transfers.manual_repository._SWITCHABLE_STATES``, and
+# ``api.operational_downloads._SWITCHABLE_STATES_SQL``, which is derived from
+# ``transfers.repository._SWITCHABLE_ARTIFACT_STATES``) import THIS frozenset
+# rather than defining their own. There is no second literal anywhere in the
+# codebase; a presentation projection that merely re-declared an equal-valued
+# set would still be a second authority free to drift the next time this set
+# changes -- delegation, not coincidental equality, is what keeps them
+# actually in step. See
+# ``tests/test_manual_candidate_failover.py::
+# test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner``.
+SWITCH_ELIGIBLE_LIFECYCLE_STATES = frozenset({
     "pending", "processing", "ready", "queued", "downloading", "paused",
     "refresh_pending", "error",
-})
-_POST_RETIREMENT_STATES = _OPERATIONAL_STATES | frozenset({"cancelled", "lost"})
-_TERMINAL_EXECUTION_STATES = frozenset({
-    ExecutionState.CANCELLED,
-    ExecutionState.FAILED,
-    ExecutionState.ABSENT,
 })
 
 
@@ -67,20 +82,6 @@ def _index_for(artifact, candidate_id: str) -> int | None:
     )
 
 
-def _source_matches(left, right) -> bool:
-    """Match refresh descendants only by provider plus normalized source identity."""
-    if left is None or right is None:
-        return False
-    left_source = getattr(left, "source_identity", None)
-    right_source = getattr(right, "source_identity", None)
-    return bool(
-        left_source is not None
-        and right_source is not None
-        and str(left.provider_id or "") == str(right.provider_id or "")
-        and left_source == right_source
-    )
-
-
 async def _bound_provider(engine, artifact, candidate):
     """Resolve the candidate's persisted route owner without reopening competition."""
     origin = await engine.canonical.origin_for(artifact, candidate)
@@ -109,11 +110,11 @@ async def _refresh_exact(engine, artifact, index: int):
 
     attempt = None
     try:
-        bound = replace(candidate, refresh_request=origin.request.request)
         attempt = await engine.repository.begin_refresh(
             origin.request,
             provider.descriptor.id,
         )
+        bound = replace(candidate, refresh_request=origin.request.request)
         result = engine._authoritative_provider_result(
             provider.descriptor.id,
             await provider.refresh(bound),
@@ -171,19 +172,9 @@ async def _refresh_exact(engine, artifact, index: int):
     # an already-canonical equivalent source. Preserve affinity to the requested
     # source rather than falling back to an unrelated candidate at the old index.
     for replacement in result.candidates:
-        exact = _index_for(current, str(replacement.id))
-        if exact is not None:
-            return current, exact
-        equivalent = next(
-            (
-                current_index
-                for current_index, item in enumerate(current.candidates)
-                if _source_matches(item, replacement)
-            ),
-            None,
-        )
-        if equivalent is not None:
-            return current, equivalent
+        resolved = resolve_candidate_index(current, replacement)
+        if resolved is not None:
+            return current, resolved
 
     raise _error(Category.OWNERSHIP_CONFLICT, Stage.CANDIDATE_PREPARATION)
 
@@ -214,6 +205,29 @@ async def _record_failure(
     )
 
 
+# Section 26: an activation reason that reached a durable commit must never be
+# reported back to the caller as a plain failure -- only these reasons can
+# ever precede a commit attempt at all; every one of them means nothing was
+# written.
+_NOT_COMMITTED_ERROR = {
+    "invalid_target": lambda: _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION),
+    "size_mismatch": lambda: _error(Category.SIZE_MISMATCH, Stage.CANDIDATE_PREPARATION, domain=Domain.INTEGRITY),
+    "candidate_route_unbound": lambda: _error(Category.OWNERSHIP_CONFLICT, Stage.CANDIDATE_PREPARATION),
+    "candidate_provider_unavailable": lambda: _error(
+        Category.PROVIDER_UNAVAILABLE, Stage.CANDIDATE_PREPARATION, domain=Domain.PROVIDER,
+        retryability=Retryability.BACKOFF,
+    ),
+    "old_executor_unavailable": lambda: _error(Category.EXECUTOR_UNAVAILABLE, Stage.RECONCILIATION, domain=Domain.EXECUTOR),
+    "execution_changed_concurrently": lambda: _error(Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION),
+    "writer_already_succeeded": lambda: _error(Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION),
+    "writer_retirement_uncertain": lambda: _error(Category.RECONCILIATION_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION),
+    "artifact_disappeared": lambda: _error(Category.RESOURCE_NOT_FOUND, Stage.RECONCILIATION, domain=Domain.REQUEST),
+    "candidate_no_longer_present": lambda: _error(Category.OWNERSHIP_CONFLICT, Stage.RECONCILIATION),
+    "commit_conflict": lambda: _error(Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION),
+    "not_found": lambda: _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST),
+}
+
+
 async def manual_candidate_failover(
     engine,
     transfer_id: int,
@@ -229,305 +243,115 @@ async def manual_candidate_failover(
             domain=Domain.REQUEST,
         )
 
-    # The execution-cycle lock excludes scheduler reconciliation while the
-    # transfer lock excludes retry/cancel and a second manual switch.
-    async with engine._execution_cycle_lock:
-        lock = engine._transfer_locks.setdefault(int(transfer_id), asyncio.Lock())
-        async with lock:
-            artifact = None
-            candidate = None
-            old_candidate = None
-            try:
-                transfer = await engine.repository.get(int(transfer_id))
-                if transfer is None:
-                    raise _error(
-                        Category.RESOURCE_NOT_FOUND,
-                        Stage.CANDIDATE_PREPARATION,
-                        domain=Domain.REQUEST,
-                    )
-                artifact = await engine._current_artifact(
-                    int(transfer_id),
-                    int(artifact_id),
-                )
-                if artifact is None:
-                    raise _error(
-                        Category.RESOURCE_NOT_FOUND,
-                        Stage.CANDIDATE_PREPARATION,
-                        domain=Domain.REQUEST,
-                    )
+    transfer = await engine.repository.get(int(transfer_id))
+    if transfer is None:
+        raise _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
+    artifact = await engine._current_artifact(int(transfer_id), int(artifact_id))
+    if artifact is None:
+        raise _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
 
-                index = _index_for(artifact, wanted)
-                if index is None:
-                    raise _error(
-                        Category.SOURCE_NOT_FOUND,
-                        Stage.CANDIDATE_PREPARATION,
-                        domain=Domain.REQUEST,
-                    )
-                if (
-                    artifact.state not in _OPERATIONAL_STATES
-                    or len(artifact.candidates) < 2
-                ):
-                    raise _error(
-                        Category.RESOURCE_STATE_CONFLICT,
-                        Stage.CANDIDATE_PREPARATION,
-                    )
-                if index == artifact.selected:
-                    raise _error(
-                        Category.RESOURCE_STATE_CONFLICT,
-                        Stage.CANDIDATE_PREPARATION,
-                    )
+    old_candidate = None
+    candidate = None
+    claim_result = None
+    try:
+        index = _index_for(artifact, wanted)
+        if index is None:
+            raise _error(Category.SOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
+        if artifact.state not in SWITCH_ELIGIBLE_LIFECYCLE_STATES or len(artifact.candidates) < 2:
+            raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
+        if index == artifact.selected:
+            raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
 
-                old_candidate = artifact.candidates[artifact.selected]
-                candidate = artifact.candidates[index]
-                if (
-                    candidate.expires_at is not None
-                    and candidate.expires_at <= engine.clock()
-                ):
-                    artifact, index = await _refresh_exact(engine, artifact, index)
-                    candidate = artifact.candidates[index]
+        old_candidate = artifact.candidates[artifact.selected]
+        candidate = artifact.candidates[index]
+        if candidate.expires_at is not None and candidate.expires_at <= engine.clock():
+            artifact, index = await _refresh_exact(engine, artifact, index)
+            candidate = artifact.candidates[index]
 
-                # Bound-route validation is the existing provider-neutral
-                # enablement/health/capability gate. It never reselects a provider.
-                await _bound_provider(engine, artifact, candidate)
-                new_executor = engine.registry.executor_for(candidate)
-                if (
-                    artifact.expected_bytes > 0
-                    and candidate.expected_bytes > 0
-                    and not reported_sizes_compatible(
-                        artifact.expected_bytes,
-                        candidate.expected_bytes,
-                    )
-                ):
-                    raise _error(
-                        Category.SIZE_MISMATCH,
-                        Stage.CANDIDATE_PREPARATION,
-                        domain=Domain.INTEGRITY,
-                    )
+        claim_result = await engine.activate_candidate_command(int(transfer_id), int(artifact_id), index)
+        if claim_result is None:
+            # A concurrent AUTO_RETRY/USER_RETRY/RESUME/scheduler recovery
+            # currently owns this artifact's claim (Section 11). Nothing was
+            # attempted; this is an ordinary, retryable "busy" failure, not a
+            # committed-then-reported-as-failed outcome.
+            raise _error(
+                Category.RESOURCE_STATE_CONFLICT,
+                Stage.RECONCILIATION,
+                retryability=Retryability.IMMEDIATE,
+            )
+        if not claim_result.committed:
+            build_error = _NOT_COMMITTED_ERROR.get(claim_result.reason)
+            raise (build_error() if build_error else _error(Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
+    except TransferError as exc:
+        await _record_failure(
+            engine, transfer_id=transfer_id, artifact=artifact, requested_candidate_id=wanted,
+            selected_candidate=(claim_result.new_candidate if claim_result else None) or candidate,
+            previous_candidate=(claim_result.old_candidate if claim_result else None) or old_candidate,
+            error=exc.error,
+        )
+        raise
 
-                old_executor = None
-                old_sidecars = ()
-                had_execution = artifact.execution is not None
-                if artifact.execution is not None:
-                    old_executor = engine.registry.executors.get(
-                        artifact.execution.executor_id
-                    )
-                    if old_executor is None:
-                        raise _error(
-                            Category.EXECUTOR_UNAVAILABLE,
-                            Stage.RECONCILIATION,
-                            domain=Domain.EXECUTOR,
-                        )
-                    old_sidecars = old_executor.resumable_paths(artifact.target)
-                    async with engine._convergence_lock(
-                        artifact.execution.attempt_id
-                    ):
-                        current = await engine._current_artifact(
-                            transfer_id,
-                            artifact_id,
-                        )
-                        if (
-                            current is None
-                            or current.execution != artifact.execution
-                        ):
-                            raise _error(
-                                Category.RESOURCE_STATE_CONFLICT,
-                                Stage.RECONCILIATION,
-                            )
-                        observed = await old_executor.observe(artifact.execution)
-                        if observed.state == ExecutionState.SUCCEEDED:
-                            await engine.repository.execution(observed)
-                            raise _error(
-                                Category.RESOURCE_STATE_CONFLICT,
-                                Stage.RECONCILIATION,
-                            )
-                        if observed.state not in _TERMINAL_EXECUTION_STATES:
-                            outcome = await old_executor.cancel(artifact.execution)
-                            if (
-                                outcome.error is not None
-                                or outcome.kind
-                                not in {OutcomeKind.CANCELLED, OutcomeKind.SUCCESS}
-                            ):
-                                if outcome.error is not None:
-                                    raise TransferError(outcome.error)
-                                raise _error(
-                                    Category.RECONCILIATION_FAILED,
-                                    Stage.RECONCILIATION,
-                                    domain=Domain.RECONCILIATION,
-                                )
-                            observed = await old_executor.observe(artifact.execution)
-                            # Some executors, including external aria2 daemons,
-                            # may forget a force-removed job immediately. Once this
-                            # exact command has successfully cancelled a live writer,
-                            # post-cancel absence is evidence of retirement, not an
-                            # orphaned/failed source. Pre-existing ABSENT/FAILED
-                            # observations are left untouched and remain truthful.
-                            if observed.state == ExecutionState.ABSENT:
-                                observed = replace(
-                                    observed,
-                                    state=ExecutionState.CANCELLED,
-                                    error=None,
-                                )
-                        await engine.repository.execution(observed)
-                        if observed.state not in _TERMINAL_EXECUTION_STATES:
-                            raise _error(
-                                Category.RECONCILIATION_FAILED,
-                                Stage.RECONCILIATION,
-                                domain=Domain.RECONCILIATION,
-                            )
+    # ACTIVATION_COMMITTED (Section 26): from here on, the switch itself is
+    # durably true. Every remaining step -- refetching current state for
+    # presentation, writing durable success provenance, and re-aggregating
+    # the parent -- is a best-effort reconciliation concern. None of them may
+    # retroactively turn this into a reported failure: that would fabricate
+    # rollback of an already-retired writer and invite an unsafe duplicate
+    # retry of a switch that genuinely succeeded.
+    activated_candidate = claim_result.new_candidate
+    source = activated_candidate.source_identity
+    host = (
+        str(source.key).lower().removeprefix("www.").rstrip(".")
+        if source is not None and str(source.scope) == "host"
+        else "source"
+    )
+    result = {
+        "ok": True,
+        "transfer_id": int(transfer_id),
+        "artifact_id": int(artifact_id),
+        "filename": artifact.name,
+        "candidate_id": str(activated_candidate.id),
+        "source_host": host,
+        "provider_id": activated_candidate.provider_id,
+    }
+    # The canonical activation provenance write (transfers.candidate_activation
+    # .activate_candidate's own record_candidate_activation call) already
+    # happened before this function ever saw claim_result -- Section 26
+    # applies to it the identical way; claim_result.provenance_recorded is
+    # its own truthful "did that succeed" flag, surfaced here rather than
+    # silently dropped.
+    reconciliation_pending = not claim_result.provenance_recorded
 
-                # Reuse partial state only when the same executor owns the same
-                # resumable sidecar contract. Otherwise integrity wins.
-                new_sidecars = new_executor.resumable_paths(artifact.target)
-                if old_executor is not None and (
-                    old_executor.descriptor.id != new_executor.descriptor.id
-                    or tuple(old_sidecars) != tuple(new_sidecars)
-                ):
-                    retire_partial(engine.root, artifact.target, old_sidecars)
+    try:
+        current = await engine._current_artifact(int(transfer_id), int(artifact_id))
+        if current is not None:
+            result["filename"] = current.name
+    except Exception:
+        reconciliation_pending = True
 
-                current = await engine._current_artifact(transfer_id, artifact_id)
-                if current is None or current.state not in _POST_RETIREMENT_STATES:
-                    raise _error(
-                        Category.RESOURCE_STATE_CONFLICT,
-                        Stage.RECONCILIATION,
-                    )
-                index = _index_for(current, str(candidate.id))
-                if index is None:
-                    # A refresh may have coalesced by source identity.
-                    index = next(
-                        (
-                            current_index
-                            for current_index, item in enumerate(current.candidates)
-                            if _source_matches(item, candidate)
-                        ),
-                        None,
-                    )
-                if index is None:
-                    raise _error(
-                        Category.OWNERSHIP_CONFLICT,
-                        Stage.RECONCILIATION,
-                    )
-                candidate = current.candidates[index]
-                accepted_size = (
-                    current.expected_bytes
-                    if current.expected_bytes > 0
-                    else candidate.expected_bytes
-                )
-                if not await engine.repository.transition_recovery(
-                    current.id,
-                    "queued",
-                    selected=index,
-                    expected_bytes=max(0, accepted_size),
-                    retry_at=0,
-                    error=None,
-                    reset_budget=True,
-                    # An accepted manual switch supersedes whatever recovery
-                    # decision/quiescence context the pre-switch attempt left
-                    # behind (e.g. a stale wait_for_operator/operator_retry
-                    # combination) -- otherwise transfers.presentation_repository
-                    # .recovery_presentation's requires_attention branch, which
-                    # does not gate on raw artifact status at all, can keep
-                    # rendering Requires Attention even though the artifact is
-                    # now genuinely queued under the newly-accepted candidate.
-                    # clear_quiescence is the SAME canonical flag every other
-                    # "back to queued/normal" recovery transition already uses
-                    # (transfers/_engine_recovery.py); this was the one
-                    # "back to queued" transition that omitted it.
-                    clear_quiescence=True,
-                ):
-                    raise _error(
-                        Category.RESOURCE_STATE_CONFLICT,
-                        Stage.RECONCILIATION,
-                    )
+    try:
+        await engine.repository.record_manual_candidate_failover(
+            transfer_id=int(transfer_id),
+            artifact_id=int(artifact_id),
+            filename=result["filename"],
+            requested_candidate_id=wanted,
+            previous_candidate=claim_result.old_candidate,
+            selected_candidate=activated_candidate,
+            source_host=host,
+            outcome="success",
+            execution_transition=(
+                "retired_and_redispatch" if claim_result.retirement != "not_needed" else "queued_for_selected_candidate"
+            ),
+            error=None,
+        )
+    except Exception:
+        reconciliation_pending = True
 
-                source = candidate.source_identity
-                host = (
-                    str(source.key).lower().removeprefix("www.").rstrip(".")
-                    if source is not None and str(source.scope) == "host"
-                    else "source"
-                )
-                await engine.repository.record_manual_candidate_failover(
-                    transfer_id=current.transfer_id,
-                    artifact_id=current.id,
-                    filename=current.name,
-                    requested_candidate_id=wanted,
-                    previous_candidate=old_candidate,
-                    selected_candidate=candidate,
-                    source_host=host,
-                    outcome="success",
-                    execution_transition=(
-                        "retired_and_redispatch"
-                        if had_execution
-                        else "queued_for_selected_candidate"
-                    ),
-                    error=None,
-                )
-                result = {
-                    "ok": True,
-                    "transfer_id": current.transfer_id,
-                    "artifact_id": current.id,
-                    "filename": current.name,
-                    "candidate_id": str(candidate.id),
-                    "source_host": host,
-                    "provider_id": candidate.provider_id,
-                }
-            except TransferError as exc:
-                await _record_failure(
-                    engine,
-                    transfer_id=transfer_id,
-                    artifact=artifact,
-                    requested_candidate_id=wanted,
-                    selected_candidate=candidate,
-                    previous_candidate=old_candidate,
-                    error=exc.error,
-                )
-                raise
-            except Exception as exc:
-                error = unknown_failure(
-                    exc,
-                    integration_id=(
-                        str(getattr(candidate, "provider_id", "") or "")
-                        if candidate is not None
-                        else ""
-                    ),
-                    domain=Domain.RECONCILIATION,
-                    stage=Stage.RECONCILIATION,
-                )
-                await _record_failure(
-                    engine,
-                    transfer_id=transfer_id,
-                    artifact=artifact,
-                    requested_candidate_id=wanted,
-                    selected_candidate=candidate,
-                    previous_candidate=old_candidate,
-                    error=error,
-                )
-                raise TransferError(error) from exc
+    try:
+        await engine._aggregate(int(transfer_id))
+    except Exception:
+        reconciliation_pending = True
 
-            # The candidate mutation and its durable success provenance are
-            # already committed at this point. The successful HTTP response
-            # must not report an accepted switch while the parent transfer
-            # still exposes stale pre-switch lifecycle truth that a later
-            # scheduler tick would immediately replace -- so canonically
-            # re-aggregate parent truth from the just-committed child state
-            # before returning. _aggregate() is the single canonical
-            # parent-lifecycle owner; it takes no engine locks itself
-            # (existing precedent already calls it from inside both
-            # _execution_cycle_lock and a _transfer_locks[...] lock -- see
-            # reconcile_executions and retry()) and has no dispatch or
-            # recovery-budget side effects of its own.
-            try:
-                await engine._aggregate(current.transfer_id)
-            except Exception as exc:
-                # The switch itself already succeeded and that provenance is
-                # truthful and durable. Do not record a contradictory
-                # "failure" event for the candidate switch -- surface this
-                # distinctly so the caller does not receive a success
-                # response while parent truth is knowingly stale.
-                error = unknown_failure(
-                    exc,
-                    integration_id=str(candidate.provider_id or ""),
-                    domain=Domain.RECONCILIATION,
-                    stage=Stage.RECONCILIATION,
-                )
-                raise TransferError(error) from exc
-            return result
+    if reconciliation_pending:
+        result["reconciliation_pending"] = True
+    return result

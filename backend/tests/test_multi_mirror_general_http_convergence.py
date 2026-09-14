@@ -30,7 +30,7 @@ from executors.aria2.client import Aria2Service
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from fake_integrations import MemoryExecutor, ParcelProvider
 from providers.general_http.provider import GeneralHttpProvider
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.models import ArtifactFingerprint, FingerprintKind, SourceIdentity, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository

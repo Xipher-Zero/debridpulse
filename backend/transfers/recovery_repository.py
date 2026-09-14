@@ -4,6 +4,7 @@ from __future__ import annotations
 from db.database import get_db
 from transfers._recovery_repository_claim_base import TransferRepository as _ClaimQualifiedRepository
 from transfers.recovery_execution import RecoveryClaim
+from transfers.repository import RecoveryResetAuthority, apply_recovery_reset
 
 
 class TransferRepository(_ClaimQualifiedRepository):
@@ -26,25 +27,29 @@ class TransferRepository(_ClaimQualifiedRepository):
                    WHERE id=?""",
                 (artifact_id,),
             )
+            apply_recovery_reset(snapshot, RecoveryResetAuthority.OPERATOR_RETRY)
             snapshot.update({
-                "consecutive_no_progress_failures": 0,
-                "failures_since_meaningful_progress": 0,
-                "failure_signature": None,
-                "same_signature_failures": 0,
-                "candidate_refreshes": 0,
-                "candidate_switches": 0,
-                "decision_action": None,
-                "decision_reason": None,
-                "quiescence_reason": None,
-                "wake_condition": None,
                 "blocked_retry_at": 0.0,
                 "recovery_decision_id": None,
                 "last_failure_identity": None,
-                "last_budget_before": None,
-                "last_budget_after": None,
+                # Section 12: a full budget reset (the live USER_RETRY
+                # mechanism, TriggerAuthority.reset_exhaustion) is the one
+                # explicit "start over" boundary that restores every
+                # candidate's eligibility, including ones already tried.
+                "candidate_attempt_history": [],
             })
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), artifact_id, snapshot,
+            )
+            # last_budget_before/after are historical (Section 15):
+            # sparse-audit-only, never current state in any shape.
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "operator_retry",
+                last_budget_before={
+                    "failures": int(row.get("recovery_failures") or 0),
+                    "refreshes": int(row.get("recovery_refreshes") or 0),
+                },
+                last_budget_after={"failures": 0, "refreshes": 0},
             )
             await db.commit()
 
@@ -85,28 +90,42 @@ class TransferRepository(_ClaimQualifiedRepository):
                 "recovery_claim_trigger": None,
                 "recovery_claim_until": 0.0,
                 "recovery_claim_id": None,
-                "last_applied_trigger": claim.trigger.value,
+                # last_applied_action/reason are surfaced by the bounded
+                # Downloads/Dashboard projection (api/operational_downloads.py,
+                # artifact_presentation_facts) as live explanatory text, so
+                # they stay real current-state columns even though nothing in
+                # the backend policy engine branches on them (Section 15
+                # explicitly permits presentation to read audit-shaped facts;
+                # keeping them here avoids re-deriving "latest applied
+                # action" from a kind-specific audit-event join for a live
+                # list page).
                 "last_applied_action": action,
                 "last_applied_reason": reason,
+            })
+            await self._save_recovery_snapshot(
+                db, int(row["torrent_id"]), claim.artifact_id, snapshot,
+            )
+            # Everything else here is historical/audit trivia never read
+            # back for a policy decision (Section 15): recorded SOLELY in
+            # the sparse audit trail, never duplicated into current state.
+            audit_fields: dict = {
+                "action": action, "reason": reason, "outcome": outcome,
+                "last_applied_trigger": claim.trigger.value,
                 "last_application_outcome": outcome,
                 "last_execution_attempt": execution_attempt,
                 "last_execution_identity": execution_identity,
-                "durable_target": str(
-                    row.get("local_path") or snapshot.get("durable_target") or ""
-                ),
-            })
+                "durable_target": str(row.get("local_path") or ""),
+            }
             if reconstruction_reason is not None:
-                snapshot["last_reconstruction_reason"] = str(reconstruction_reason)
+                audit_fields["last_reconstruction_reason"] = str(reconstruction_reason)
             if retirement_reason is not None:
-                snapshot["last_execution_retirement_reason"] = str(retirement_reason)
+                audit_fields["last_execution_retirement_reason"] = str(retirement_reason)
             if candidate_changed:
-                snapshot["candidate_generation"] = int(
-                    snapshot.get("candidate_generation") or 0
-                ) + 1
+                audit_fields["candidate_changed"] = True
             if candidate_id is not None:
-                snapshot["last_candidate_id"] = str(candidate_id)
-            await self._save_recovery_snapshot(
-                db, int(row["torrent_id"]), claim.artifact_id, snapshot,
+                audit_fields["last_candidate_id"] = str(candidate_id)
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), claim.artifact_id, "finish_claim", **audit_fields,
             )
             await db.commit()
         return True

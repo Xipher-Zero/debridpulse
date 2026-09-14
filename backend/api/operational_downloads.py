@@ -19,11 +19,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from api.routes import _public_transfer_presentation
 from api.serializers import public_payload
+from application import dispatch_admission as live_admission
 from application.dependencies import get_application
 from application.manual_candidate_failover import switch_candidate
 from application.service import ApplicationService
 from db.database import get_db
 from transfers import codec
+from transfers._repository_base import canonical_artifact_membership_sql
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
 from transfers.presentation_repository import (
@@ -39,9 +41,11 @@ router = APIRouter()
 # The bounded list's remaining-work signal (Section 10 of the DP 1.0.12
 # presentation task) reuses the SAME cheap artifact-state classification the
 # comprehensive Details presentation already uses for its own read-time
-# ``switch_eligible`` approximation (transfers/repository.py
-# ``_SWITCHABLE_ARTIFACT_STATES``, mirrored in manual_repository.py and
-# manual_failover.py) rather than a fourth hand-copied literal list. A
+# ``switch_eligible`` approximation -- ``transfers.repository
+# ._SWITCHABLE_ARTIFACT_STATES``, itself a re-export of the ONE canonical
+# owner ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES``
+# (DP 1.0.12 recovery leveling, Section 31) -- rather than a fourth
+# hand-copied literal list. A
 # non-completed artifact whose status is NOT in this set (e.g. ``cancelled``,
 # ``input_required``) has no acquisition path a candidate switch could ever
 # help with, so it must not count as remaining work; a status of ``error`` IS
@@ -54,6 +58,12 @@ router = APIRouter()
 _SWITCHABLE_STATES_SQL = ", ".join(
     f"'{state}'" for state in sorted(_SWITCHABLE_ARTIFACT_STATES)
 )
+
+# The one canonical actionable-artifact filter (DP 1.0.12 recovery leveling,
+# Section 7), shared with transfers._repository_base.TransferRepository.artifacts()
+# so lifecycle aggregation and this bounded list's presentation-vote facts can
+# never again silently diverge onto different child sets.
+_CANONICAL_ARTIFACT_SQL = canonical_artifact_membership_sql("f")
 
 
 def _disabled_provider_ids(application) -> frozenset[str]:
@@ -74,16 +84,13 @@ def _disabled_provider_ids(application) -> frozenset[str]:
     durable fact that closes a real false-positive: a transfer whose only
     common hosts route through a disabled/unconfigured provider has no
     possible target, and the list must say so.
+
+    Delegates to ``application.dispatch_admission.disabled_provider_ids`` --
+    the same durable snapshot the Section 9 capacity-wait admission
+    assessment below reuses -- so there is exactly one owner of "which
+    provider ids are currently disabled."
     """
-    registry = getattr(getattr(application, "engine", None), "registry", None)
-    providers = getattr(registry, "providers", None)
-    if not providers:
-        return frozenset()
-    return frozenset(
-        provider_id
-        for provider_id, provider in providers.items()
-        if not getattr(getattr(provider, "descriptor", None), "enabled", True)
-    )
+    return live_admission.disabled_provider_ids(getattr(application, "engine", None))
 
 
 _EVENT_TIMEFRAME_MODIFIERS = {
@@ -148,14 +155,19 @@ def _bounded_source_identity(row) -> dict[str, str]:
     return public_source_identity(request_kind, candidate_source)
 
 
-def _bounded_child_presentations(raw_facts, *, paused, input_required):
+def _bounded_child_presentations(raw_facts, *, paused, input_required, capacity_only_blocked_ids):
     """Project the page's per-artifact child presentations for the shared owner.
 
-    ``raw_facts`` is the JSON array the bounded projection built from raw durable
-    facts (each artifact's status plus its latest recovery-snapshot fields). Each
-    entry is passed straight through ``recovery_presentation`` — the same shared
-    per-artifact projector the comprehensive Details path uses — so
-    ``effective_presentation`` aggregates identical child truth on both surfaces.
+    ``raw_facts`` is the JSON array the bounded projection built from raw
+    durable facts (each artifact's id, status, plus its latest recovery-
+    snapshot fields) already restricted to canonical artifact membership
+    (Section 7). Each entry is passed through the same
+    ``recovery_presentation`` projector the comprehensive Details path uses,
+    with the Section 9 capacity-wait fact reduced to a single set-membership
+    check against ``capacity_only_blocked_ids`` -- the execution-admission
+    owner's own positive record (``transfers.convergence_engine
+    .TransferEngine.capacity_only_blocked_ids``) -- so this can never derive a
+    capacity-wait classification the real dispatch path didn't itself assert.
     """
     try:
         facts = json.loads(raw_facts) if raw_facts else []
@@ -168,8 +180,10 @@ def _bounded_child_presentations(raw_facts, *, paused, input_required):
         if not isinstance(fact, dict):
             continue
         context = {key: fact.get(key) for key in ARTIFACT_PRESENTATION_SNAPSHOT_KEYS}
+        artifact_id = fact.get("artifact_id")
         presentations.append(recovery_presentation(
             fact.get("status"), context, paused=paused, input_required=input_required,
+            capacity_only_blocked=artifact_id in capacity_only_blocked_ids,
         ))
     return presentations
 
@@ -502,69 +516,65 @@ async def list_operational_torrents(
                       AND pr.id = json_extract(rr.resource, '$.id')))
             WHERE rr.row_number = 1
         ),
-        -- Every current artifact on the page (unfiltered — unlike
-        -- group_member_artifacts below, this intentionally includes blocked/
-        -- standby/non-request-bound rows too, matching the original
-        -- artifact_presentation_facts scope byte-for-byte). Feeds ONLY the
-        -- recovery-snapshot join below; never a second definition of
-        -- current-artifact membership.
+        -- Every current CANONICAL artifact on the page: the exact same
+        -- membership predicate transfers._repository_base.TransferRepository
+        -- .artifacts() uses for lifecycle aggregation (DP 1.0.12 recovery
+        -- leveling, Section 7 -- this CTE previously included blocked/
+        -- standby/non-request-bound rows too, which let a non-actionable
+        -- child vote in this bounded list's aggregate presentation truth
+        -- even though lifecycle aggregation already excluded it; that drift
+        -- is exactly what Section 7 requires eliminating). Feeds ONLY the
+        -- recovery-snapshot join below and the presentation-vote facts; never
+        -- a second definition of current-artifact membership, and never used
+        -- for Details' historical/provenance file listing, which still shows
+        -- every row.
         page_artifacts AS (
             SELECT f.id AS artifact_id, f.torrent_id AS transfer_id, f.status AS status
             FROM download_files f
             JOIN page ON page.id = f.torrent_id
-        ),
-        -- Set-oriented latest recovery-event snapshot per page artifact (DP
-        -- 1.0.12 Workstream A performance correction). Replaces the previous
-        -- per-artifact CORRELATED SCALAR SUBQUERY against application_events
-        -- (proven via EXPLAIN QUERY PLAN to force one SCAN of the whole
-        -- table per artifact; live evidence up to ~20.9s for one 703-file
-        -- torrent) with a single JOIN restricted to this page's own
-        -- artifacts, ranked once with a window function.
-        -- idx_application_events_kind_id (db/database.py) turns the JOIN's
-        -- equality match into one index seek per artifact instead of a table
-        -- scan; still page-bounded — no work proportional to rows outside
-        -- the requested page.
-        page_recovery_events AS (
-            SELECT
-                pa.artifact_id,
-                ae.detail,
-                ROW_NUMBER() OVER (
-                    PARTITION BY pa.artifact_id ORDER BY ae.id DESC
-                ) AS row_number
-            FROM page_artifacts pa
-            JOIN application_events ae
-              ON ae.kind = 'transfer_recovery:' || pa.artifact_id
-        ),
-        latest_recovery_events AS (
-            SELECT artifact_id, detail
-            FROM page_recovery_events
-            WHERE row_number = 1
+            WHERE {_CANONICAL_ARTIFACT_SQL}
         ),
         -- Per-artifact presentation facts for the page, folded into the one
         -- bounded read as a JSON array per transfer (one row per transfer, no
         -- per-row query, no comprehensive presentation call). ONLY raw durable
-        -- facts are projected here — the artifact's own status plus the fields
-        -- of its latest durable recovery snapshot; no presentation or precedence
-        -- logic lives in SQL. In Python these feed the SHARED pure owner
-        -- transfers.presentation_repository.effective_presentation exactly as the
-        -- comprehensive Details projection feeds it, so the bounded list can
-        -- never derive a processing truth that disagrees with Details.
+        -- facts are projected here — the artifact's own id/status plus the
+        -- fields of its current durable recovery state; no presentation or
+        -- precedence logic lives in SQL. Section 9's capacity-wait fact is
+        -- NOT projected here at all -- it is a live, execution-admission-owned
+        -- fact (transfers.convergence_engine.TransferEngine
+        -- .capacity_only_blocked_ids), looked up by artifact_id in Python,
+        -- never reconstructed from durable columns. In Python these feed the
+        -- SHARED pure owner transfers.presentation_repository
+        -- .effective_presentation exactly as the comprehensive Details
+        -- projection feeds it, so the bounded list can never derive a
+        -- processing truth that disagrees with Details.
+        --
+        -- DP 1.0.12 recovery leveling, Section 14/20: this is a plain JOIN
+        -- against artifact_recovery_state's primary key -- one current row
+        -- per artifact -- rather than the pre-leveling window-function
+        -- reduction over an unbounded, ever-growing application_events
+        -- history (that shape existed only because "current" state used to
+        -- be reconstructed by picking the latest of many snapshot events per
+        -- artifact; current state is now a single row, so there is nothing
+        -- left to rank/partition). Still page-bounded via page_artifacts —
+        -- no work proportional to rows outside the requested page.
         artifact_presentation_facts AS (
             SELECT
                 pa.transfer_id AS transfer_id,
                 json_group_array(json_object(
+                    'artifact_id', pa.artifact_id,
                     'status', pa.status,
-                    'quiescence_reason', json_extract(lre.detail, '$.quiescence_reason'),
-                    'decision_action', json_extract(lre.detail, '$.decision_action'),
-                    'last_applied_action', json_extract(lre.detail, '$.last_applied_action'),
-                    'decision_reason', json_extract(lre.detail, '$.decision_reason'),
-                    'last_applied_reason', json_extract(lre.detail, '$.last_applied_reason'),
-                    'wake_condition', json_extract(lre.detail, '$.wake_condition'),
-                    'recovery_claim_token', json_extract(lre.detail, '$.recovery_claim_token')
+                    'quiescence_reason', ars.quiescence_reason,
+                    'decision_action', ars.decision_action,
+                    'last_applied_action', ars.last_applied_action,
+                    'decision_reason', ars.decision_reason,
+                    'last_applied_reason', ars.last_applied_reason,
+                    'wake_condition', ars.wake_condition,
+                    'recovery_claim_token', ars.recovery_claim_token
                 )) AS artifacts
             FROM page_artifacts pa
-            LEFT JOIN latest_recovery_events lre
-              ON lre.artifact_id = pa.artifact_id
+            LEFT JOIN artifact_recovery_state ars
+              ON ars.artifact_id = pa.artifact_id
             GROUP BY pa.transfer_id
         ),
         input_challenge AS (
@@ -631,9 +641,7 @@ async def list_operational_torrents(
             FROM download_files f
             JOIN page
               ON page.id = f.torrent_id
-            WHERE f.request_id IS NOT NULL
-              AND COALESCE(f.blocked, 0) = 0
-              AND COALESCE(f.mirror_state, '') != 'standby'
+            WHERE {_CANONICAL_ARTIFACT_SQL}
         ),
         group_member_counts AS (
             SELECT transfer_id, COUNT(*) AS artifact_total
@@ -986,6 +994,14 @@ async def list_operational_torrents(
         )
         total = total_row["cnt"] if total_row else 0
 
+    # Section 9: read once for the whole page, never per row. This is a
+    # plain passthrough to the execution-admission owner's own positive
+    # record (transfers.convergence_engine.TransferEngine
+    # .capacity_only_blocked_ids) -- the same live fact the comprehensive
+    # Details path reads via api.routes.get_torrent -- never a
+    # presentation-side reconstruction from durable columns.
+    capacity_only_blocked_ids = live_admission.capacity_only_blocked_ids(getattr(application, "engine", None))
+
     items = []
     for row in rows:
         projected = dict(row)
@@ -995,6 +1011,7 @@ async def list_operational_torrents(
         file_presentations = _bounded_child_presentations(
             projected.pop("_artifact_presentation_facts", None),
             paused=paused, input_required=input_required,
+            capacity_only_blocked_ids=capacity_only_blocked_ids,
         )
         source_identity = _bounded_source_identity(projected)
         common_candidate_count = max(0, int(projected.get("common_candidate_count") or 0))

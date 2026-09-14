@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 
+from transfers.candidate_activation import activate_candidate
 from transfers.contracts import CandidateRefresh, PauseResume
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
 from transfers.errors import (
@@ -326,36 +327,48 @@ class TransferEngine(_QualifiedTransferEngine):
             )
 
         if decision.action == RecoveryAction.TRY_ALTERNATE_CANDIDATE:
-            if next_index is None or next_index <= current.selected or next_index >= len(current.candidates):
+            # DP 1.0.12 recovery leveling, Section 12: next_index is no longer
+            # guaranteed to be > current.selected -- _next_alternate_index now
+            # searches by attempt history, not "selected + 1", so a lower
+            # index the operator never tried is a legitimate target. Only
+            # bounds and "not the artifact's own current selection" (which
+            # activate_candidate itself also refuses) remain invalid here.
+            if next_index is None or next_index == current.selected or next_index >= len(current.candidates):
                 return await self._park_existing_execution(
                     claim,
                     current,
                     reason="recovery_exhausted",
                     wake="operator_retry",
                 )
-            replacement = current.candidates[next_index]
-            if (
-                current.expected_bytes > 0
-                and replacement.expected_bytes > 0
-                and not reported_sizes_compatible(current.expected_bytes, replacement.expected_bytes)
-            ):
-                return await self._park_existing_execution(
-                    claim,
-                    current,
-                    reason="recovery_exhausted",
-                    wake="operator_retry",
-                )
-            accepted_size = current.expected_bytes if current.expected_bytes > 0 else replacement.expected_bytes
-            return await self.repository.transition_recovery(
-                current.id,
-                "queued",
-                error=error,
-                retry_at=decision.retry_at or self.clock(),
-                selected=next_index,
-                expected_bytes=max(0, accepted_size),
-                candidate_switched=True,
-                clear_quiescence=True,
+            # One canonical candidate-activation operation (DP 1.0.12 recovery
+            # leveling, Section 10): the SAME mutation an operator-requested
+            # switch uses (transfers.convergence_engine.TransferEngine
+            # .activate_candidate_command), including the partial-file/resume
+            # policy (Section 28) this inline branch previously skipped.
+            # ``current``'s own execution here is already confirmed terminal
+            # by _reconcile_current before this decision is ever reached, so
+            # retirement is a no-op confirmation, not a fresh cancel.
+            #
+            # Section 11: this call is already running inside ``claim`` --
+            # the real recovery claim (AUTO_RETRY, EXECUTOR_RECOVERY,
+            # PROVIDER_RECOVERY, STARTUP_RECONCILE, USER_RETRY, or RESUME)
+            # ``recover_artifact`` acquired for its own genuine trigger. Pass
+            # that SAME claim through so this activation is attributed to its
+            # real recovery authority in provenance, instead of a second,
+            # nested claim or a borrowed USER_CANDIDATE_SWITCH identity that
+            # would misrepresent an automatic decision as an operator one.
+            result = await activate_candidate(
+                self, current, next_index,
+                retry_at=decision.retry_at or self.clock(), error=error, claim=claim,
             )
+            if not result.committed:
+                return await self._park_existing_execution(
+                    claim,
+                    current,
+                    reason="recovery_exhausted",
+                    wake="operator_retry",
+                )
+            return True
 
         retry_at = decision.retry_at if decision.retry_at is not None else self.clock()
         if retry_at > self.clock():

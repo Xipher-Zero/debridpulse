@@ -47,10 +47,16 @@ class TransferRepository(_AuditedRecoveryRepository):
                 "recovery_claim_trigger": trigger.value,
                 "recovery_claim_until": float(now) + max(1.0, float(lease_seconds)),
                 "recovery_claim_id": decision_id,
-                "durable_target": str(row.get("local_path") or snapshot.get("durable_target") or ""),
             })
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), artifact_id, snapshot,
+            )
+            # durable_target is historical (Section 15): sparse-audit-only,
+            # never current state in any shape.
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "claim",
+                trigger=trigger.value, generation=generation, decision_id=decision_id,
+                durable_target=str(row.get("local_path") or ""),
             )
             await db.commit()
         return RecoveryClaim(

@@ -5,17 +5,17 @@ import json
 
 from db.database import get_db
 from transfers import codec
+from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
 from transfers.presentation_repository import (
     TransferRepository as _PresentationRepository,
     _candidate_source,
     public_source_identity,
 )
 
-
-_SWITCHABLE_STATES = frozenset({
-    "pending", "processing", "ready", "queued", "downloading", "paused",
-    "refresh_pending", "error",
-})
+# ``_SWITCHABLE_STATES`` above is a re-export of the ONE canonical owner,
+# ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES`` (Section 31)
+# -- not an independent literal -- so this projection's ``switch_eligible``
+# flag can never silently diverge from the command's own precondition.
 
 
 def _safe_source(candidate) -> dict:
@@ -87,8 +87,8 @@ class TransferRepository(_PresentationRepository):
             )
             await db.commit()
 
-    async def presentation(self, transfer_id: int, details: bool = False):
-        result = await super().presentation(transfer_id, details=details)
+    async def presentation(self, transfer_id: int, details: bool = False, **admission_facts):
+        result = await super().presentation(transfer_id, details=details, **admission_facts)
         if not result:
             return result
 

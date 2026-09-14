@@ -7,6 +7,7 @@ removed in v1.0.5 because they added failure states without product benefit.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -302,6 +303,118 @@ async def _backfill_provider_resource_bindings(db: aiosqlite.Connection) -> None
         raise RuntimeError("provider_resources binding backfill failed") from exc
 
 
+async def _migrate_recovery_state_from_events(db: aiosqlite.Connection) -> None:
+    """Idempotent additive backfill for DP 1.0.12 recovery leveling, Section 19.
+
+    Before this leveling pass, "current" recovery state was reconstructed at
+    read time from the latest ``application_events`` row of kind
+    ``transfer_recovery:<artifact_id>`` (see the historical
+    ``transfers.repository.TransferRepository._recovery_snapshot``). This
+    step performs that exact reconstruction ONE TIME per artifact and writes
+    the result forward into the new canonical ``artifact_recovery_state``
+    current-state row, using the same "known column facts win" rule the old
+    read path used for ``recovery_failures``/``recovery_refreshes``.
+
+    * Only artifacts that do not already have an ``artifact_recovery_state``
+      row are considered, so this is a no-op once an artifact has been
+      migrated or has otherwise acquired current state the ordinary way.
+    * An artifact with no historical snapshot event is left with no row at
+      all -- exactly matching the pre-leveling behavior where an absent event
+      seeded an all-defaults snapshot rather than fabricating history.
+    * No ``application_events`` row is ever modified or deleted by this step;
+      the historical snapshot events remain, byte-identical, as durable
+      audit trivia. A database restored from a backup taken before this
+      migration ran is therefore read identically by the pre-leveling
+      reconstruction logic, whether or not this migration ever executed
+      against the live copy in between.
+    * Safe to run repeatedly and safe against a partially-upgraded database
+      (some artifacts already migrated, others not).
+    """
+    try:
+        cur = await db.execute("PRAGMA table_info(artifact_recovery_state)")
+        if not await cur.fetchall():
+            return
+        candidates = await (await db.execute(
+            """SELECT f.id AS artifact_id, f.torrent_id AS transfer_id,
+                      f.recovery_failures, f.recovery_refreshes
+               FROM download_files f
+               WHERE NOT EXISTS(
+                   SELECT 1 FROM artifact_recovery_state s WHERE s.artifact_id = f.id
+               )"""
+        )).fetchall()
+        for row in candidates:
+            artifact_id = int(row["artifact_id"])
+            transfer_id = int(row["transfer_id"])
+            event_cur = await db.execute(
+                "SELECT detail FROM application_events WHERE kind=? ORDER BY id DESC LIMIT 1",
+                (f"transfer_recovery:{artifact_id}",),
+            )
+            event = await event_cur.fetchone()
+            if not event or not event["detail"]:
+                continue
+            try:
+                stored = json.loads(event["detail"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(stored, dict):
+                continue
+            failures = max(
+                int(stored.get("consecutive_no_progress_failures") or 0),
+                int(row["recovery_failures"] or 0),
+            )
+            refreshes = max(
+                int(stored.get("candidate_refreshes") or 0),
+                int(row["recovery_refreshes"] or 0),
+            )
+            history = stored.get("candidate_attempt_history")
+            history_json = json.dumps(history if isinstance(history, list) else [])
+            # DP 1.0.12 recovery leveling, Section 14/15 (post-review
+            # correction): the canonical current-state table holds ONLY
+            # current/actionable facts -- no historical pocket of any shape.
+            # A legacy snapshot's historical facts (last_applied_trigger,
+            # failure_classification, durable_target, etc.) are NOT migrated
+            # forward into the new sparse audit-log shape; they remain
+            # exactly where they already were, unmodified, in the preserved
+            # legacy application_events row this reads from. The new sparse
+            # recovery_audit trail starts accumulating fresh entries only
+            # from this point forward.
+            await db.execute(
+                """INSERT INTO artifact_recovery_state(
+                    artifact_id, transfer_id, version, recovery_epoch, progress_anchor,
+                    consecutive_no_progress_failures, failures_since_meaningful_progress,
+                    failure_signature, same_signature_failures, candidate_refreshes,
+                    candidate_switches, decision_action, decision_reason, quiescence_reason,
+                    wake_condition, candidate_attempt_history, recovery_generation,
+                    recovery_claim_token, recovery_claim_trigger, recovery_claim_until,
+                    recovery_claim_id, recovery_decision_id, last_failure_identity,
+                    last_refresh_decision_id, refresh_inflight_decision_id,
+                    refresh_inflight_attempt_id, blocked_retry_at, last_applied_action,
+                    last_applied_reason
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(artifact_id) DO NOTHING""",
+                (
+                    artifact_id, transfer_id, max(3, int(stored.get("version") or 0)),
+                    int(stored.get("recovery_epoch") or 0), stored.get("progress_anchor"),
+                    failures, int(stored.get("failures_since_meaningful_progress") or 0),
+                    stored.get("failure_signature"), int(stored.get("same_signature_failures") or 0),
+                    refreshes, int(stored.get("candidate_switches") or 0),
+                    stored.get("decision_action"), stored.get("decision_reason"),
+                    stored.get("quiescence_reason"), stored.get("wake_condition"), history_json,
+                    int(stored.get("recovery_generation") or 0), stored.get("recovery_claim_token"),
+                    stored.get("recovery_claim_trigger"), float(stored.get("recovery_claim_until") or 0),
+                    stored.get("recovery_claim_id"), stored.get("recovery_decision_id"),
+                    stored.get("last_failure_identity"), stored.get("last_refresh_decision_id"),
+                    stored.get("refresh_inflight_decision_id"), stored.get("refresh_inflight_attempt_id"),
+                    float(stored.get("blocked_retry_at") or 0), stored.get("last_applied_action"),
+                    stored.get("last_applied_reason"),
+                ),
+            )
+        await db.commit()
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        logger.error("recovery-state migration from application_events failed: %s", exc)
+        raise RuntimeError("recovery-state migration from application_events failed") from exc
+
+
 _SCHEMA_COLUMNS_TORRENTS = [
     ("provider_status", "TEXT"),
     ("provider_status_code", "INTEGER"),
@@ -459,6 +572,60 @@ TRANSFER_REPOSITORY_SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_candidate_origins_transfer ON canonical_candidate_origins(contributing_transfer_id,binding_id)",
     "CREATE INDEX IF NOT EXISTS idx_artifact_consolidations_source ON artifact_consolidations(source_transfer_id,source_request_id)",
     "CREATE INDEX IF NOT EXISTS idx_artifact_consolidations_canonical ON artifact_consolidations(canonical_artifact_id)",
+    # DP 1.0.12 recovery leveling, Section 14: the canonical CURRENT recovery
+    # state store -- exactly one row per artifact, updated in place. Replaces
+    # the prior model of reconstructing "current" state by scanning the
+    # latest application_events row of kind 'transfer_recovery:<artifact_id>'
+    # (an unbounded, append-only history that grew one full-snapshot row per
+    # meaningful mutation, including every progress tick that advanced
+    # completed bytes).
+    #
+    # Every column below is read somewhere to gate a fencing/traversal/dedup
+    # decision, or (last_applied_action/last_applied_reason) consumed live by
+    # the bounded Downloads/Dashboard projection -- verified by repository-
+    # wide search before this leveling pass. Section 15: this table holds NO
+    # historical/audit-only facts in ANY shape -- not as further flat
+    # columns, and not as a JSON "latest value" pocket either, since a
+    # mutable latest-value copy is itself a second, overwritable home for
+    # data that must live solely in the append-only record. Facts that are
+    # never read back for a policy decision are recorded ONLY as sparse
+    # application_events rows of kind 'recovery_audit'
+    # (transfers.repository.TransferRepository._append_recovery_audit) and
+    # reconstructed at read time, on demand, by
+    # transfers.repository.TransferRepository.recovery_context() scanning
+    # that sparse trail -- never persisted back here.
+    """CREATE TABLE IF NOT EXISTS artifact_recovery_state (
+        artifact_id INTEGER PRIMARY KEY REFERENCES download_files(id),
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        version INTEGER NOT NULL DEFAULT 3,
+        recovery_epoch INTEGER NOT NULL DEFAULT 0,
+        progress_anchor INTEGER,
+        consecutive_no_progress_failures INTEGER NOT NULL DEFAULT 0,
+        failures_since_meaningful_progress INTEGER NOT NULL DEFAULT 0,
+        failure_signature TEXT,
+        same_signature_failures INTEGER NOT NULL DEFAULT 0,
+        candidate_refreshes INTEGER NOT NULL DEFAULT 0,
+        candidate_switches INTEGER NOT NULL DEFAULT 0,
+        decision_action TEXT,
+        decision_reason TEXT,
+        quiescence_reason TEXT,
+        wake_condition TEXT,
+        candidate_attempt_history TEXT NOT NULL DEFAULT '[]',
+        recovery_generation INTEGER NOT NULL DEFAULT 0,
+        recovery_claim_token TEXT,
+        recovery_claim_trigger TEXT,
+        recovery_claim_until REAL NOT NULL DEFAULT 0,
+        recovery_claim_id TEXT,
+        recovery_decision_id TEXT,
+        last_failure_identity TEXT,
+        last_refresh_decision_id TEXT,
+        refresh_inflight_decision_id TEXT,
+        refresh_inflight_attempt_id TEXT,
+        blocked_retry_at REAL NOT NULL DEFAULT 0,
+        last_applied_action TEXT,
+        last_applied_reason TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
+    "CREATE INDEX IF NOT EXISTS idx_artifact_recovery_state_transfer ON artifact_recovery_state(transfer_id)",
     """CREATE TRIGGER IF NOT EXISTS trg_execution_provenance_candidate_route
         AFTER INSERT ON execution_attempt_provenance
         WHEN NEW.route_attempt_id IS NULL AND NEW.candidate_id IS NOT NULL
@@ -585,12 +752,26 @@ TRANSFER_REPOSITORY_COLUMNS = {
     # AVAILABLE under the corrected engine" value — the next ordinary AVAILABLE
     # observation anchors it. There is no data backfill (§14 / §14a).
     'transfer_file_selections': {'available_at': 'REAL'},
-    'download_files': {'request_id': 'TEXT', 'candidates': 'TEXT', 'selected_candidate': 'INTEGER NOT NULL DEFAULT 0', 'execution_attempt_id': 'TEXT', 'normalized_error': 'TEXT', 'retry_at': 'REAL NOT NULL DEFAULT 0', 'recovery_failures': 'INTEGER NOT NULL DEFAULT 0', 'recovery_refreshes': 'INTEGER NOT NULL DEFAULT 0'},
+    'download_files': {
+        'request_id': 'TEXT', 'candidates': 'TEXT', 'selected_candidate': 'INTEGER NOT NULL DEFAULT 0',
+        'execution_attempt_id': 'TEXT', 'normalized_error': 'TEXT', 'retry_at': 'REAL NOT NULL DEFAULT 0',
+        'recovery_failures': 'INTEGER NOT NULL DEFAULT 0', 'recovery_refreshes': 'INTEGER NOT NULL DEFAULT 0',
+        # DP 1.0.12 recovery leveling, Section 13: a durable, bounded (TTL-expiring)
+        # continuation-admission reservation. Set only by
+        # transfers.candidate_activation.activate_candidate's commit, when the
+        # writer it just retired was genuinely occupying a live execution slot,
+        # so unrelated queued work cannot steal that slot during the short
+        # writer-replacement handoff. NULL is "no reservation held". Expiry is
+        # absolute (engine clock time), not a duration, so a restarted process
+        # reconstructs correctness by comparing against current time alone --
+        # no separate restart-reconciliation step is needed.
+        'continuation_reservation_expires_at': 'REAL',
+    },
 }
 
 _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
-    'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes'},
+    'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'transfer_id', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
@@ -610,6 +791,16 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_requests': {
         'attempts', 'error', 'id', 'metadata', 'ordinal', 'parent_id', 'payload', 'resource', 'retry_at', 'state',
         'transfer_id', 'equivalence_retry_count', 'equivalence_reason', 'equivalence_disposition',
+    },
+    'artifact_recovery_state': {
+        'artifact_id', 'transfer_id', 'version', 'recovery_epoch', 'progress_anchor',
+        'consecutive_no_progress_failures', 'failures_since_meaningful_progress', 'failure_signature',
+        'same_signature_failures', 'candidate_refreshes', 'candidate_switches', 'decision_action',
+        'decision_reason', 'quiescence_reason', 'wake_condition', 'candidate_attempt_history',
+        'recovery_generation', 'recovery_claim_token', 'recovery_claim_trigger', 'recovery_claim_until',
+        'recovery_claim_id', 'recovery_decision_id', 'last_failure_identity', 'last_refresh_decision_id',
+        'refresh_inflight_decision_id', 'refresh_inflight_attempt_id', 'blocked_retry_at',
+        'last_applied_action', 'last_applied_reason', 'updated_at',
     },
 }
 
@@ -761,6 +952,7 @@ async def _init_db_sqlite():
                 await _ensure_column(db, table, column, definition)
         await _retire_and_backfill_source_fingerprints(db)
         await _backfill_provider_resource_bindings(db)
+        await _migrate_recovery_state_from_events(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 
@@ -782,16 +974,22 @@ async def _init_db_sqlite():
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_local_path ON download_files (local_path)",
             "CREATE INDEX IF NOT EXISTS idx_events_torrent_id ON events (torrent_id)",
             "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at)",
-            # DP 1.0.12 Workstream A performance correction: the operational
-            # Downloads projection's per-artifact latest recovery-snapshot
-            # lookup (api/operational_downloads.py, artifact_presentation_facts)
-            # matches on kind = 'transfer_recovery:' || <artifact id> and orders
-            # by id DESC. Without this index every artifact on the page forced
-            # a full SCAN of application_events (proven: EXPLAIN QUERY PLAN
-            # showed "CORRELATED SCALAR SUBQUERY" -> "SCAN ae"; live evidence
-            # up to ~20.9s for a single 703-file torrent). (kind, id DESC)
-            # lets SQLite satisfy the match + ORDER BY + LIMIT 1 with one
-            # index seek per artifact.
+            # DP 1.0.12 Workstream A performance correction (originally): the
+            # operational Downloads projection's per-artifact latest
+            # recovery-snapshot lookup used to match ``kind = 'transfer_
+            # recovery:' || <artifact id>`` ordered by id DESC against an
+            # unbounded, ever-growing application_events history, and this
+            # index made that a seek instead of a full table SCAN (live
+            # evidence up to ~20.9s for a single 703-file torrent).
+            # DP 1.0.12 recovery leveling, Section 14, replaced that whole
+            # per-progress-tick-appended history with the single-row-per-
+            # artifact ``artifact_recovery_state`` table, so
+            # ``artifact_presentation_facts`` no longer queries
+            # ``application_events`` at all. This index remains useful for
+            # ``kind``-scoped lookups against the now-sparse audit rows this
+            # leveling pass writes instead (``recovery_audit``,
+            # ``candidate_activation``) and for the one-time legacy-snapshot
+            # migration reader (``_migrate_recovery_state_from_events``).
             "CREATE INDEX IF NOT EXISTS idx_application_events_kind_id ON application_events (kind, id DESC)",
             RUNTIME_STATE_SCHEMA[1],
             INPUT_CHALLENGE_SCHEMA[1],

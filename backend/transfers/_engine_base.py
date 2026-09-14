@@ -3,6 +3,88 @@
 Integrations supply facts through contracts. This owner admits requests, creates
 durable attempts, applies retry policy, confirms possession, and orchestrates
 cleanup and post-processing. It imports no concrete provider or executor.
+
+Concurrency / mutation-fencing model (DP 1.0.12 recovery leveling, Section 24)
+-------------------------------------------------------------------------------
+Four mechanisms exist. No transfer mutation command needs a fifth. This is an
+audited claim, not an aspiration -- the table below names, for the actual
+PRODUCTION stack (``transfers.convergence_engine.TransferEngine`` /
+``transfers.recovery_repository.TransferRepository``), exactly which
+mechanism(s) protect each command, verified by reading every override in the
+``_convergence_phase3_*`` chain (none of ``pause``/``resume``/``resume_all``/
+``cancel``/``delete``/``select_artifact``/``submit``/``activate_candidate_command``
+are further overridden below ``_convergence_phase3_base.TransferEngine``
+except where the table says so). A claim here that is not also proven by a
+named regression test is not a claim this module makes.
+
+1. **Per-transfer asyncio lock** (``self._transfer_locks``, this class): used
+   by ONLY ``retry()`` (both this base class and the production override,
+   which delegates its own ``reacquire=True`` path back to this one) and
+   ``cancel()`` (this base class; production has no override). It is NOT
+   used by ``pause``, ``resume``, ``resume_all``, ``delete``,
+   ``select_artifact``, ``submit`` itself (only its ``retry``-reacquire
+   path), or ``activate_candidate_command`` -- those commands are safe
+   through mechanisms 2-4 below instead, not through this lock. Do not
+   assume this lock protects a command not named in this paragraph.
+2. **Per-execution-attempt convergence lock** (``self._convergence_lock``,
+   this class): serializes every native pause/resume/observe/cancel call
+   against ONE execution handle, across every caller that might touch it --
+   ordinary scheduler observation (``_converge_execution``, entered whenever
+   ``isinstance(executor, PauseResume)``, true for every current executor),
+   ``pause``/``resume``/``resume_all`` (via ``_converge_execution`` per
+   artifact), and candidate activation's own old-writer retirement dance
+   (``transfers.candidate_activation.activate_candidate``). Proven for
+   "manual switch vs pause" and "manual switch vs ordinary scheduler
+   execution observation" by
+   ``tests/test_recovery_command_concurrency.py::test_manual_activation_vs_pause_is_deterministic``
+   and ``::test_manual_activation_vs_scheduler_execution_observation_is_deterministic``.
+3. **Exclusive recovery claim** (``transfers.recovery_execution
+   .RecoveryClaim`` / ``TransferRepository.claim_recovery``, DB-backed):
+   exclusive across every ``RecoveryTrigger`` INCLUDING
+   ``USER_CANDIDATE_SWITCH`` -- a concurrent AUTO_RETRY, USER_RETRY, RESUME,
+   or operator candidate switch for the same artifact can never interleave.
+   Production ``resume``/``resume_all``/``retry`` route each artifact
+   through this SAME claim system via ``recover_artifact(trigger=...)``, and
+   so does every automatic failure path (``_recover_artifact`` ->
+   ``recover_artifact(trigger=AUTO_RETRY)``) -- never a second, unclaimed
+   mutation path. Proven for "manual switch vs RESUME/USER_RETRY/AUTO_RETRY"
+   by
+   ``test_manual_activation_vs_resume_is_generation_safe``,
+   ``test_manual_activation_vs_retry_is_generation_safe``, and
+   ``test_manual_activation_vs_auto_retry_is_generation_safe``.
+4. **DB-transaction atomicity, including epoch-CAS** (every mutating
+   repository method: ``BEGIN IMMEDIATE`` plus a fresh read immediately
+   before the write): the ONLY layer protecting a command with no claim or
+   per-attempt lock of its own -- ``delete()`` (bumps ``torrents
+   .lifecycle_epoch``; nothing else does), ``select_artifact``/``retry``/
+   ``cancel_with_execution_cleanup`` (each re-check ``expected_epoch=
+   transfer.epoch`` before writing, so a DELETE that lands first is always
+   detected rather than silently raced past), candidate activation's own
+   commit (``transition_recovery`` refuses to apply once the transfer row
+   already reads ``deleted``/``completed``/``consolidated``/``cancelled``),
+   and parent-lifecycle aggregation (Sections 21-22,
+   ``TransferRepository.aggregate_lifecycle`` /
+   ``force_queued_for_autonomous_wait``, which runs on its own schedule and
+   therefore cannot reasonably hold a claim or a per-transfer lock for its
+   whole read-decide-write). Proven for "manual switch vs DELETE" by
+   ``test_manual_activation_vs_delete_never_reauthorizes_or_corrupts``:
+   whichever of the switch's ``transition_recovery`` commit or ``delete``'s
+   own cleanup UPDATE reaches SQLite's write lock first is respected, and
+   the other reads fresh (never stale) state before it writes, so it either
+   cleanly no-ops (activation sees an already-deleted transfer) or still
+   correctly retires whatever writer is currently authorized (delete's
+   cleanup query re-reads ``authorized=1`` at commit time, never a
+   pre-race id).
+
+Ordering: (1) and (2) are acquired, when needed, OUTSIDE (3) -- a caller
+already holding a recovery claim never needs (1)/(2) for the same artifact,
+since (3) already excludes every other recovery-triggered mutation, though
+(2) still applies underneath it for the specific execution-handle dance
+(candidate activation's writer retirement acquires (2) while already holding
+its (3) claim). (4) always applies last/innermost regardless of which of
+(1)-(3), if any, guard the caller -- it is what makes even an unclaimed,
+unlocked mutation (``delete``, ordinary progress persistence, plain
+aggregation) safe against every other writer.
 """
 from __future__ import annotations
 
@@ -21,13 +103,13 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.filesystem import destination, payload_matches, retire_partial, safe_name, stable_payload, validate_target
+from transfers.filesystem import destination, payload_matches, safe_name, stable_payload, validate_target
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
     OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
-    TransferCandidate, TransferProgress, TransferState, new_identity,
+    TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
@@ -57,6 +139,18 @@ class TransferEngine:
         self._transfer_locks = WeakValueDictionary()
         self._execution_convergence_locks = WeakValueDictionary()
         self.dispatch_permitted = True
+        # Positive, execution-layer-owned evidence (DP 1.0.12 recovery
+        # leveling, Section 9) that the REAL _dispatch() reached the capacity
+        # admission gate for this artifact -- having already passed target
+        # validation, candidate expiry, existing-payload, executor.prepare()
+        # (no InputRequirement), and storage/pause admission via actual code
+        # execution, not a presentation-side reconstruction of those gates --
+        # and was rejected there. Reset once per reconcile_executions() cycle
+        # (see reconcile_executions below) and populated only at the one real
+        # capacity check in _dispatch() below; never persisted, never another
+        # recovery lifecycle. Presentation only ever reads this set; it never
+        # decides independently that capacity is the blocker.
+        self._capacity_only_blocked: set[int] = set()
 
     async def initialize(self):
         await self.repository.initialize()
@@ -183,9 +277,20 @@ class TransferEngine:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.RECONCILIATION)
             await self._request_failure(record, error)
 
+    def capacity_only_blocked_ids(self) -> frozenset[int]:
+        """Artifact ids the REAL dispatch path most recently confirmed are
+        blocked ONLY by execution capacity (Section 9). Reset every
+        reconcile cycle, so this reflects at most one scheduler tick of
+        staleness -- an artifact not dispatch-attempted this cycle (paused,
+        an input challenge, retry not yet elapsed, or simply not yet
+        reached) is correctly absent rather than optimistically carried
+        forward."""
+        return frozenset(self._capacity_only_blocked)
+
     async def reconcile_executions(self):
         """Reconcile cleanup obligations, then active execution attempts."""
         async with self._execution_cycle_lock:
+            self._capacity_only_blocked = set()
             await self._cleanup_executions_pending()
             transfers = await self.repository.active()
             artifacts_by_transfer = {transfer.id: await self.repository.artifacts(transfer.id) for transfer in transfers}
@@ -316,8 +421,9 @@ class TransferEngine:
                                     or transfer is None or transfer.paused or await self.repository.globally_paused()
                                     or not self.dispatch_permitted):
                                 continue
-                            live = await self.repository.live_executions()
-                            occupied = sum(item.state in {"prepared", "queued", "transferring", "unknown"} for item in live)
+                            occupied = await self.repository.occupied_execution_slots(
+                                self.clock(), exclude_artifact_id=artifact.id,
+                            )
                             if occupied >= max(1, self.policy.max_active_executions):
                                 if persist_passive:
                                     await self.repository.execution(observed)
@@ -711,9 +817,20 @@ class TransferEngine:
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(artifact.transfer_id, admission=True):
                     return
-                attempts = await self.repository.live_executions()
-                occupied = sum(attempt.state in {"prepared", "queued", "transferring", "unknown"} for attempt in attempts)
+                # Section 13: exclude this artifact's own (if any) continuation
+                # reservation from the count -- it is the artifact entitled to
+                # consume it, not an unrelated competitor for it.
+                occupied = await self.repository.occupied_execution_slots(
+                    self.clock(), exclude_artifact_id=artifact.id,
+                )
                 if occupied >= max(1, self.policy.max_active_executions):
+                    # Positive evidence (Section 9): target validated, not an
+                    # already-stable completed payload, candidate not
+                    # expired, executor.prepare() succeeded with no
+                    # InputRequirement, storage/pause admission already
+                    # confirmed above -- capacity is the ONLY remaining
+                    # reason this artifact did not dispatch this attempt.
+                    self._capacity_only_blocked.add(artifact.id)
                     return
                 if not await self.repository.prepare_execution(artifact, handle):
                     return
@@ -749,8 +866,9 @@ class TransferEngine:
                 async with self._dispatch_lock:
                     if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
                         return
-                    attempts = await self.repository.live_executions()
-                    occupied = sum(item.state in {"prepared", "queued", "transferring", "unknown"} for item in attempts)
+                    occupied = await self.repository.occupied_execution_slots(
+                        self.clock(), exclude_artifact_id=artifact.id,
+                    )
                     if occupied >= max(1, self.policy.max_active_executions):
                         return
                     submitted = await self.inputs.take(challenge)
@@ -778,8 +896,9 @@ class TransferEngine:
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
                     return
-                attempts = await self.repository.live_executions()
-                occupied = sum(item.state in {"prepared", "queued", "transferring", "unknown"} for item in attempts)
+                occupied = await self.repository.occupied_execution_slots(
+                    self.clock(), exclude_artifact_id=artifact.id,
+                )
                 if occupied >= max(1, self.policy.max_active_executions):
                     return
                 submitted = await self.inputs.take(challenge)
@@ -900,6 +1019,38 @@ class TransferEngine:
         await self.repository.artifact_state(artifact.id, "error", error=error)
 
     async def _recover_artifact(self, artifact: Artifact, error: NormalizedError):
+        """Base-class recovery hook.
+
+        Only the two branches every real engine class shares are handled
+        here: an artifact with no candidates at all (nothing to switch
+        between), and a remote-source failure (``_recover_source_artifact``,
+        not candidate-index-based). A candidate-bearing, local-source failure
+        MUST be handled by a subclass -- ``transfers._engine_recovery
+        .TransferEngine._recover_artifact`` and
+        ``transfers._convergence_phase3_base.TransferEngine._recover_artifact``
+        both fully override this method for that case (they never call
+        ``super()._recover_artifact`` when ``artifact.candidates`` is
+        non-empty and ``error.origin`` is not ``REMOTE_SOURCE``), routing
+        through the ONE canonical candidate-activation operation
+        (``transfers.candidate_activation.activate_candidate``, DP 1.0.12
+        recovery leveling, Section 10) instead.
+
+        DP 1.0.12 recovery leveling, Section 44 code-review correction: this
+        method previously also handled that third case itself, using
+        ``artifact.selected + 1`` as the next-candidate index -- a second,
+        unreachable-in-every-real-subclass copy of exactly the
+        traversal-as-history anti-pattern this leveling pass exists to
+        remove (``transfers.repository.py`` "Cleared" comment;
+        ``transfers._engine_recovery.py`` "Traversal is no longer defined by
+        `selected + 1`" comment; ``test_candidate_activation_phase2
+        .py::test_manual_high_index_switch_does_not_hide_unattempted_lower_candidates``).
+        No engine class in this codebase has ever instantiated
+        ``_engine_base.TransferEngine`` directly, so that branch was provably
+        dead, but a stale copy of the forbidden pattern sitting in a base
+        class both real stacks inherit from is exactly the kind of
+        second-truth Section 48 warns against leaving unexplained. Raising
+        here makes the abstract contract explicit instead.
+        """
         if not artifact.candidates:
             decision = self.policy.retry(error, artifact.retries, self.clock(), can_refresh=True)
             if decision.automatic:
@@ -911,27 +1062,12 @@ class TransferEngine:
         if error.origin == Origin.REMOTE_SOURCE:
             await self._recover_source_artifact(artifact, error)
             return
-        candidate = artifact.candidates[artifact.selected]
-        provider = self.registry.providers.get(candidate.provider_id)
-        decision = self.policy.retry(error, artifact.retries, self.clock(),
-            can_refresh=isinstance(provider, CandidateRefresh), has_alternate=artifact.selected + 1 < len(artifact.candidates))
-        await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error),
-                                      attempt_id=artifact.execution.attempt_id if artifact.execution else None)
-        if not decision.automatic:
-            await self.repository.artifact_state(artifact.id, "error", error=error)
-            return
-        if decision.action == Recovery.RECONCILE:
-            return
-        if decision.action == Recovery.TRY_ALTERNATE_CANDIDATE:
-            sidecars = self.registry.executors[artifact.execution.executor_id].resumable_paths(artifact.target) if artifact.execution else ()
-            retire_partial(self.root, artifact.target, sidecars)
-            await self.repository.artifact_state(artifact.id, "queued", retry_at=decision.retry_at, release=True,
-                selected=artifact.selected + 1, expected_bytes=artifact.candidates[artifact.selected + 1].expected_bytes)
-        elif decision.action == Recovery.RERESOLVE:
-            if not await self._schedule_refresh(artifact, error):
-                return
-        else:
-            await self.repository.artifact_state(artifact.id, "queued", error=error, retry_at=decision.retry_at, release=True)
+        raise NotImplementedError(
+            "candidate-bearing, local-source recovery must be handled by a "
+            "subclass via the canonical candidate-activation operation "
+            "(transfers.candidate_activation.activate_candidate), not by "
+            "_engine_base.TransferEngine"
+        )
 
     async def _refresh(self, artifact: Artifact):
         candidate = artifact.candidates[artifact.selected]
@@ -1008,44 +1144,21 @@ class TransferEngine:
         return True
 
     async def _aggregate(self, transfer_id: int):
-        if not await self._live(transfer_id):
-            return
-        transfer = await self.repository.get(transfer_id)
+        """DP 1.0.12 recovery leveling, Sections 21-22: the decision and the
+        write are one atomic ``TransferRepository.aggregate_lifecycle`` call
+        (transfers/_repository_base.py) rather than several independently
+        timed reads followed by a separate write -- see that method's
+        docstring for why this is required, not merely tidier. This engine
+        method now only supplies the one in-memory (non-database) fact the
+        repository cannot see for itself, and runs the completion sequence
+        (executor I/O; cannot happen inside that same bounded transaction)
+        using the EXACT artifact snapshot the decision was made from."""
         challenge = await self.challenges.current(transfer_id)
-        if challenge:
-            if transfer.state != TransferState.INPUT_REQUIRED:
-                await self.repository.state(transfer_id, TransferState.INPUT_REQUIRED)
+        outcome = await self.repository.aggregate_lifecycle(transfer_id, input_required=bool(challenge))
+        if outcome is None:
             return
-        requests = await self.repository.requests(transfer_id)
-        artifacts = await self.repository.artifacts(transfer_id)
-        pending = any(item.state in {"pending", "waiting", "waiting_parent", "resolving", "materializing"} for item in requests)
-        attempts = {item.handle.attempt_id: item for item in await self.repository.executions(transfer_id)}
-        total = sum(item.expected_bytes for item in artifacts)
-        await self.repository.aggregate_metadata(transfer_id, total_bytes=total,
-            local_path=str(Path(artifacts[0].target).parent) if artifacts else "")
-        completed = sum(item.expected_bytes if item.state == "completed" else min(item.expected_bytes,
-            attempts[item.execution.attempt_id].progress.completed_bytes) if item.execution else 0 for item in artifacts)
-        progress = min(100.0, completed / total * 100) if total else 0.0
-        if transfer.paused or await self.repository.globally_paused():
-            return
-        if artifacts and all(item.state == "completed" for item in artifacts) and not pending:
-            await self._complete(transfer_id, artifacts)
-        elif any(item.state in {"downloading", "verifying"} for item in artifacts):
-            await self.repository.state(transfer_id, TransferState.TRANSFERRING, progress=progress)
-        elif any(item.state == "unknown" for item in artifacts):
-            await self.repository.state(transfer_id, TransferState.QUEUED, progress=progress)
-        elif any(item.state in {"queued", "paused", "refresh_pending"} for item in artifacts):
-            await self.repository.state(transfer_id, TransferState.QUEUED, progress=progress)
-        elif pending:
-            await self.repository.state(transfer_id, TransferState.RESOLVING, progress=progress)
-        elif any(item.state == "error" for item in artifacts) or any(item.state == "failed" for item in requests):
-            error = next((item.error for item in (*artifacts, *requests) if item.error), None)
-            await self.repository.state(transfer_id, TransferState.FAILED, progress=progress, error=error)
-        elif artifacts and all(item.state == "cancelled" for item in artifacts):
-            await self.repository.state(transfer_id, TransferState.CANCELLED, progress=progress)
-        elif not artifacts and await self.repository.blocked_artifact_count(transfer_id):
-            if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=0, verified=True):
-                await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.SKIPPED, detail="No selected artifacts"))
+        if outcome.should_complete:
+            await self._complete(transfer_id, outcome.artifacts)
 
     async def _complete(self, transfer_id: int, artifacts):
         if (await self.repository.get(transfer_id)).state == TransferState.POST_PROCESSING:

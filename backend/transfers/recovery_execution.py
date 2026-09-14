@@ -12,6 +12,13 @@ class RecoveryTrigger(StrEnum):
     STARTUP_RECONCILE = "startup_reconcile"
     PROVIDER_RECOVERY = "provider_recovery"
     EXECUTOR_RECOVERY = "executor_recovery"
+    # DP 1.0.12 recovery leveling, Section 10/11: the first-class trigger an
+    # operator-requested candidate switch claims recovery under, so it is
+    # fenced by the SAME exclusive claim/generation system as every other
+    # trigger (transfers._recovery_repository_claim_base.claim_recovery is
+    # exclusive across all trigger types) instead of being an out-of-band
+    # mutation the recovery system knows nothing about.
+    USER_CANDIDATE_SWITCH = "user_candidate_switch"
 
 
 @dataclass(frozen=True)
@@ -28,6 +35,11 @@ _AUTHORITY = {
     RecoveryTrigger.STARTUP_RECONCILE: TriggerAuthority(),
     RecoveryTrigger.PROVIDER_RECOVERY: TriggerAuthority(),
     RecoveryTrigger.EXECUTOR_RECOVERY: TriggerAuthority(),
+    # Same reset authority as USER_RETRY: an operator naming a new candidate
+    # is at least as strong a signal of intent to make fresh progress as a
+    # plain retry, and transition_recovery(candidate_switched=True) has
+    # always reset the bounded no-progress streaks on a successful switch.
+    RecoveryTrigger.USER_CANDIDATE_SWITCH: TriggerAuthority(reset_exhaustion=True, reset_bounded_streaks=True),
 }
 
 

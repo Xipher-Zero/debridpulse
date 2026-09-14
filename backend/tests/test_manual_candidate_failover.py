@@ -8,10 +8,10 @@ import pytest
 import db.database as database
 from fake_integrations import MemoryExecutor
 from test_ws2p1_failover_progress import EquivalentParcelProvider
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, TransferError
-from transfers.manual_failover import manual_candidate_failover
-from transfers.manual_repository import TransferRepository
+from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES, manual_candidate_failover
+from transfers.recovery_repository import TransferRepository
 from transfers.models import (
     ExecutionObservation,
     ExecutionState,
@@ -83,7 +83,8 @@ async def _simulate_stale_operator_attention(repository, artifact_id, *, reason=
     ``"recovery_exhausted"`` -- with ``quiescence_reason``/``wake_condition``
     set). The artifact's raw status therefore lands on the same real
     switchable state (``"error"``, a member of manual_failover.py's
-    ``_OPERATIONAL_STATES``) a genuinely exhausted recovery leaves it in, so
+    ``SWITCH_ELIGIBLE_LIFECYCLE_STATES``) a genuinely exhausted recovery
+    leaves it in, so
     the fixture matches real production persistence rather than an invented
     shape. Field combination mirrors
     test_transfer_recovery_phase4.py::test_requires_attention_needs_persisted_operator_decision_reason_and_wake.
@@ -581,9 +582,8 @@ async def test_aggregate_failure_after_committed_switch_does_not_fabricate_succe
         raise RuntimeError("simulated aggregation failure")
 
     monkeypatch.setattr(engine, "_aggregate", boom)
-    with pytest.raises(TransferError) as failed:
-        await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
-    assert failed.value.error.category not in (Category.PROVIDER_UNAVAILABLE, Category.SOURCE_NOT_FOUND)
+    result = await manual_candidate_failover(engine, canonical.id, artifact.id, str(wanted.id))
+    assert result["ok"] is True and result["reconciliation_pending"] is True
 
     # The mutation itself is not rolled back -- the switch genuinely
     # succeeded before aggregation failed.
@@ -597,4 +597,33 @@ async def test_aggregate_failure_after_committed_switch_does_not_fabricate_succe
     assert len(failures) == 0, (
         "an aggregation failure after a genuinely successful switch must "
         "not be recorded as a contradictory candidate-switch failure event"
+    )
+
+
+def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
+    """Section 31 (DP 1.0.12 recovery leveling, Phase 5 corrective pass):
+    presentation must not carry its own independent policy for which
+    lifecycle states permit a candidate switch -- that would be a second
+    authority alongside the actual command gate,
+    ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES`` (enforced
+    by ``manual_candidate_failover`` above).
+
+    An earlier version of this test only asserted the three sets were
+    ``==``. That would still pass if ``transfers.repository
+    ._SWITCHABLE_ARTIFACT_STATES`` or ``transfers.manual_repository
+    ._SWITCHABLE_STATES`` were independently-declared literals that
+    happened, today, to hold the same values -- three separate owners that
+    coincidentally agree, each one free to drift the next time someone edits
+    only one of them. Asserting ``is`` (object identity) instead proves each
+    consumer actually IMPORTS and re-exports the one canonical frozenset
+    rather than declaring its own copy -- true delegation, the leveling
+    requirement, not merely a currently-true equality."""
+    from transfers.manual_repository import _SWITCHABLE_STATES
+    from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
+    from api.operational_downloads import _SWITCHABLE_STATES_SQL
+
+    assert _SWITCHABLE_ARTIFACT_STATES is SWITCH_ELIGIBLE_LIFECYCLE_STATES
+    assert _SWITCHABLE_STATES is SWITCH_ELIGIBLE_LIFECYCLE_STATES
+    assert _SWITCHABLE_STATES_SQL == ", ".join(
+        f"'{state}'" for state in sorted(SWITCH_ELIGIBLE_LIFECYCLE_STATES)
     )

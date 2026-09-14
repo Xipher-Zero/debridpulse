@@ -11,6 +11,7 @@ import re
 
 from db.database import get_db
 from transfers import codec
+from transfers._repository_base import is_canonical_artifact_row
 from transfers.models import TransferProgress
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
 
@@ -18,10 +19,46 @@ from transfers.repository import TransferRepository as _CanonicalTransferReposit
 _TORRENT_REQUEST_KINDS = frozenset({"torrent", "torrent_file", "file"})
 _HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _OPERATOR_WAKES = frozenset({"operator_retry"})
-_AUTONOMOUS_PRESENTATION = frozenset({
-    "downloading", "recovering", "waiting_for_retry", "waiting_for_provider",
-    "waiting_for_storage", "waiting_for_executor",
-})
+
+# "Can this child make future progress without an operator action?" (DP 1.0.12
+# recovery leveling, Section 8) is defined as an EXCLUSION over the small,
+# closed family of states that inherently need an operator (or represent no
+# further work at all) -- not a hand-maintained inclusion list of every state
+# considered autonomous "so far". A new wait/processing presentation status
+# introduced later is correctly autonomous by default without touching this
+# set; only a new operator-gated or terminal status needs to be added here.
+# ``requires_attention``/``input_required`` are exactly the states this
+# codebase reserves for "needs an explicit operator action"; ``paused`` needs
+# an operator resume; ``failed`` is a permanent (fail_permanently) outcome
+# with no further automatic retry -- an operator must retry or switch
+# candidate. See ``is_autonomous_presentation`` below, the single semantic
+# authority _aggregate_presentation consults.
+_OPERATOR_GATED_PRESENTATION = frozenset({"requires_attention", "input_required", "paused", "failed"})
+_TERMINAL_PRESENTATION = frozenset({"completed", "cancelled", "deleted", "consolidated"})
+
+
+def is_autonomous_presentation(child) -> bool:
+    """Whether a child's presentation represents work still capable of
+    progressing without an operator action.
+
+    ``child`` is a presentation dict as produced by ``recovery_presentation``
+    (or anything exposing the same ``presentation_status``/
+    ``attention_required`` keys). ``attention_required`` is checked directly
+    -- the same semantic property ``recovery_presentation`` already computes
+    for "needs an explicit operator decision" -- rather than re-deriving it
+    from a status-string comparison.
+    """
+    if isinstance(child, dict):
+        if child.get("attention_required"):
+            return False
+        status = child.get("presentation_status")
+    else:
+        status = child
+    status = str(status or "").strip().lower()
+    return status not in _OPERATOR_GATED_PRESENTATION and status not in _TERMINAL_PRESENTATION
+
+
+_CAPACITY_WAIT_PRESENTATION = ("waiting_for_slot", "Waiting for execution slot", "queued")
 _WAIT_PRESENTATION = {
     "retry_backoff": ("waiting_for_retry", "Waiting for retry", "queued"),
     "provider_disabled": ("waiting_for_provider", "Waiting for provider", "pending"),
@@ -126,8 +163,25 @@ def _progress(value) -> TransferProgress:
         return TransferProgress()
 
 
-def recovery_presentation(status, context=None, *, paused=False, input_required=False):
-    """Map persisted lifecycle/recovery truth to one thin presentation contract."""
+def recovery_presentation(status, context=None, *, paused=False, input_required=False,
+                           capacity_only_blocked=False):
+    """Map persisted lifecycle/recovery truth to one thin presentation contract.
+
+    ``capacity_only_blocked`` is a single fact supplied by the caller, sourced
+    from ``transfers.convergence_engine.TransferEngine.capacity_only_blocked_ids``
+    (DP 1.0.12 recovery leveling, Section 9) -- the set of artifact ids the
+    REAL ``_dispatch()`` most recently reached the capacity admission gate for
+    and rejected there, having already passed target validation, candidate
+    expiry, existing-payload, ``executor.prepare()`` (no InputRequirement),
+    and storage/pause admission via actual code execution. This function does
+    NOT re-derive or re-check any of those gates itself -- it only reads the
+    one boolean the execution-admission owner already decided, refining a
+    genuinely plain ``queued`` row (no quiescence recorded) into the distinct
+    ``waiting_for_slot`` presentation. Reset every reconcile cycle, so a
+    caller that queries a stale/no-longer-true fact simply sees plain
+    ``queued`` for at most one scheduler tick -- understating, never
+    overstating, capacity as the cause.
+    """
     raw = str(status or "").strip().lower()
     context = context if isinstance(context, dict) else {}
     action = str(context.get("decision_action") or context.get("last_applied_action") or "").strip().lower()
@@ -155,6 +209,8 @@ def recovery_presentation(status, context=None, *, paused=False, input_required=
             state, label, badge = "recovering", "Recovering", "processing"
         elif action == "fail_permanently" and raw in {"error", "failed", "lost"}:
             state, label, badge = "failed", "Failed", "error"
+        elif raw == "queued" and not quiescence and capacity_only_blocked:
+            state, label, badge = _CAPACITY_WAIT_PRESENTATION
         else:
             state, label, badge = _RAW_PRESENTATION.get(raw, (raw or "unknown", (raw or "Unknown").replace("_", " ").title(), raw or "unknown"))
 
@@ -208,7 +264,7 @@ def _aggregate_presentation(raw_status, file_presentations, *, paused=False, inp
     # Operator attention is aggregate truth only after no child remains capable
     # of autonomous useful work.
     attention = next((item for item in active if item.get("presentation_status") == "requires_attention"), None)
-    if attention and not any(item.get("presentation_status") in _AUTONOMOUS_PRESENTATION for item in active):
+    if attention and not any(is_autonomous_presentation(item) for item in active):
         return dict(attention)
     return recovery_presentation(raw_status)
 
@@ -253,7 +309,19 @@ def effective_presentation(
 class TransferRepository(_CanonicalTransferRepository):
     """Canonical production repository plus safe recovery/source presentation."""
 
-    async def presentation(self, transfer_id: int, details: bool = False):
+    async def presentation(self, transfer_id: int, details: bool = False, *,
+                            capacity_only_blocked_ids=frozenset()):
+        """``capacity_only_blocked_ids`` (Section 9) is the live set from
+        ``transfers.convergence_engine.TransferEngine.capacity_only_blocked_ids``
+        -- the REAL dispatch path's own positive record of which artifact ids
+        it most recently confirmed are blocked only by execution capacity.
+        This repository never holds a live engine reference, so a caller
+        that cannot supply it (``application.observability``, an internal
+        ``super()`` call, or a repository-only test) simply gets the
+        conservative empty-set default: capacity wait is never claimed
+        without the execution-admission owner's say-so, which only narrows
+        the classification, never widens it.
+        """
         result = await super().presentation(transfer_id, details=details)
         if not result:
             return result
@@ -310,7 +378,7 @@ class TransferRepository(_CanonicalTransferRepository):
             if resource_row:
                 current_resource_state = resource_row.get("resource_state")
             file_rows = await db.fetchall(
-                """SELECT id,torrent_id,status,size_bytes,blocked,mirror_state,
+                """SELECT id,torrent_id,request_id,status,size_bytes,blocked,mirror_state,
                           recovery_failures,recovery_refreshes
                     FROM download_files WHERE torrent_id=? ORDER BY id""", (transfer_id,)
             )
@@ -390,24 +458,36 @@ class TransferRepository(_CanonicalTransferRepository):
         challenge = bool(result.get("input_required"))
         file_presentations = []
         file_projection = {}
+        voting_presentations = []
         total_expected = 0
         total_retained = 0
         for row in file_rows:
             artifact_id = int(row["id"])
+            # Section 9: the only fact consulted for capacity-wait is whether
+            # the REAL dispatch path put this exact artifact id in
+            # capacity_only_blocked_ids -- no re-derivation of candidate,
+            # provider, executor, or storage state here.
             projection = recovery_presentation(
                 row.get("status"), contexts.get(artifact_id), paused=paused, input_required=challenge,
+                capacity_only_blocked=artifact_id in capacity_only_blocked_ids,
             )
             retained_bytes = max(0, retained.get(artifact_id, 0))
             expected_bytes = max(0, int(row.get("size_bytes") or 0))
             projection["retained_bytes"] = min(retained_bytes, expected_bytes) if expected_bytes else retained_bytes
             file_projection[artifact_id] = projection
             file_presentations.append(projection)
+            # Only a canonical actionable artifact may vote in the transfer's
+            # aggregate presentation truth (Section 7); a blocked, standby, or
+            # non-request-bound row is still projected above for Details but
+            # is excluded here.
+            if is_canonical_artifact_row(row):
+                voting_presentations.append(projection)
             if not bool(row.get("blocked")) and str(row.get("mirror_state") or "") != "standby":
                 total_expected += expected_bytes
                 total_retained += projection["retained_bytes"]
 
         result.update(effective_presentation(
-            result.get("status"), file_presentations,
+            result.get("status"), voting_presentations,
             paused=paused, input_required=challenge,
             current_resource_state=current_resource_state,
         ))

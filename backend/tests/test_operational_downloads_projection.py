@@ -206,7 +206,14 @@ def test_download_detail_explicitly_requests_comprehensive_presentation():
 
     result = asyncio.run(legacy_routes.get_torrent(42, application=application))
 
-    assert repository.calls == [(42, {"details": True})]
+    # DP 1.0.12 Section 9: Details also forwards capacity_only_blocked_ids --
+    # the execution-admission owner's own positive record
+    # (transfers.convergence_engine.TransferEngine.capacity_only_blocked_ids);
+    # with no engine attached here it degrades to the conservative empty set.
+    assert repository.calls == [(42, {
+        "details": True,
+        "capacity_only_blocked_ids": frozenset(),
+    })]
     assert result["id"] == 42
 
 
@@ -268,9 +275,13 @@ def test_projection_group_summary_is_derived_from_canonical_bindings(monkeypatch
     assert "AS common_candidate_count" in cte
     # Current-artifact identity mirrors the per-artifact detail projection —
     # this is which download_files rows are the transfer's actual current
-    # files, not a switchability gate.
+    # files, not a switchability gate. Sourced from the one canonical
+    # membership predicate (transfers._repository_base
+    # .canonical_artifact_membership_sql, DP 1.0.12 recovery leveling Section 7)
+    # rather than a hand-copied literal, so this and transfers._repository_base
+    # .TransferRepository.artifacts() can never again silently diverge.
     assert "f.request_id IS NOT NULL" in cte
-    assert "COALESCE(f.mirror_state, '') != 'standby'" in cte
+    assert "COALESCE(f.mirror_state,'')!='standby'" in cte
     assert "route_attempt_provenance" not in cte.split("group_common_sources", 1)[0]
 
     group_block = projection_sql.split("group_member_artifacts AS", 1)[1].split(

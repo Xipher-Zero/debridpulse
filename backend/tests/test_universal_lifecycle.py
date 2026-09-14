@@ -443,7 +443,14 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(cor
     switched = (await core.repository.artifacts(transfer.id))[0]
     assert switched.id == artifact.id and switched.target == artifact.target
     assert switched.selected == 1 and switched.execution is None
-    assert not target.exists() and not sidecar.exists()
+    # DP 1.0.12 recovery leveling, Section 28: automatic and operator
+    # candidate activation now share ONE partial/resume policy
+    # (transfers.candidate_activation.activate_candidate) -- partial bytes
+    # are retired only when the old and new candidates do NOT share the same
+    # executor and resumable-sidecar contract. Both mirrors here resolve
+    # through the same core.executor against the same local target, so the
+    # partial file is correctly REUSED, not discarded.
+    assert target.exists() and sidecar.exists()
 
     await core.engine.tick()
     retried = (await core.repository.artifacts(transfer.id))[0]

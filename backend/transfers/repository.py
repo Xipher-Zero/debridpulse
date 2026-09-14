@@ -3,18 +3,193 @@
 The qualified base remains the owner of ordinary transfer/request persistence.
 This public owner contains the atomic recovery extensions, progress-aware epoch
 accounting, candidate provenance presentation, and execution-discovered size
-acceptance. Recovery snapshots use the existing durable ``application_events``
-table and are marked claimed so they are state history, not work-queue events.
+acceptance. Current recovery state lives in the single-row-per-artifact
+``artifact_recovery_state`` table (DP 1.0.12 recovery leveling, Section 14);
+sparse, semantically-meaningful transitions are additionally recorded as
+durable ``application_events`` audit rows (Section 18), separate from that
+current-state row (Section 15).
+
+Recovery epoch / generation / candidate-attempt semantic model (Section 16)
+----------------------------------------------------------------------------
+Three independent counters answer three different questions. Each has
+exactly one owner and none is derived from either of the others:
+
+``recovery_epoch`` (``execution()``'s ``MEANINGFUL_PROGRESS`` reset profile,
+the ONLY writer): "how many times has this artifact crossed the meaningful-
+progress byte threshold." Advances only on genuine forward progress -- a
+plain retry or candidate switch does NOT advance it. Crossing it rezeroes
+every no-progress-budget counter (``apply_recovery_reset``) but does NOT
+itself clear ``candidate_attempt_history`` -- only an explicit
+``OPERATOR_RETRY`` full reset does that (see the RESET/PRESERVED/ARCHIVED/
+ADVANCED matrix on ``apply_recovery_reset`` below).
+
+``recovery_generation`` (``claim_recovery()`` and ``set_pause_and_fence()``,
+the ONLY writers): the exclusive-claim fencing generation. Advances once per
+successfully acquired recovery claim (any trigger) and once per pause/resume
+fence-everything event. Every claim-scoped mutation (``record_phase3_decision``,
+``record_recovery_quiescence``, ``reserve_recovery_refresh``,
+``finish_recovery_claim``, ...) requires its ``RecoveryClaim.generation`` to
+still match the persisted value -- this is what a stale/superseded claim
+cannot forge, which is what prevents it from mutating a newer generation's
+state (Section 25's adversarial concurrency guarantee).
+
+``candidate_generation`` (historical/explainability only, Section 15): NOT a
+persisted running counter in current state at all -- reconstructed on
+demand by ``_historical_audit_facts`` as a COUNT of ``finish_claim`` audit
+transitions carrying ``candidate_changed=True`` for this artifact. Answers
+"how many times has this artifact's candidate actually changed," for
+explainability only; nothing branches on it, and it costs nothing in
+``artifact_recovery_state`` because it is never stored there.
+
+``candidate_attempt_history`` (Section 12, current state, own field --
+unrelated to the three counters above): the list of candidate ids actually
+attempted in the artifact's current recovery episode. Only ever grows
+(``record_candidate_attempt``) or is wholly cleared by an explicit
+``OPERATOR_RETRY`` full reset -- never inferred from ``recovery_epoch`` or
+``recovery_generation`` moving.
 """
 from __future__ import annotations
+
+from enum import StrEnum
 
 from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
 from transfers.models import ExecutionState, TransferProgress
 from transfers.policy import failure_signature, meaningful_progress_threshold
+
+
+class RecoveryResetAuthority(StrEnum):
+    """DP 1.0.12 recovery leveling, Section 17: the one canonical recovery
+    reset / new-attempt transition. Every caller that begins a new recovery
+    attempt/epoch names its authority here instead of hand-writing its own
+    ad-hoc snapshot-dict reset (the pattern Section 17 forbids -- e.g. the
+    pre-leveling ``manual_failover.py`` manually assigning snapshot fields).
+    Each authority intentionally resets a DIFFERENT, named set of facts --
+    they are deliberately not identical; see ``apply_recovery_reset``.
+    """
+    MEANINGFUL_PROGRESS = "meaningful_progress"
+    SOURCE_RESET = "source_reset"
+    OPERATOR_RETRY = "operator_retry"
+    CANDIDATE_ACTIVATION_BUDGET = "candidate_activation_budget"
+    CANDIDATE_SWITCHED = "candidate_switched"
+
+
+def apply_recovery_reset(snapshot: dict, authority: "RecoveryResetAuthority | str") -> None:
+    """Mutate ``snapshot`` in place per the named authority's canonical reset
+    profile (Section 17): the one canonical recovery reset / new-attempt
+    transition. Every caller that begins a new recovery attempt/epoch names
+    its authority; this function is the single place each authority's
+    RESET / PRESERVED / ARCHIVED / ADVANCED facts are defined, replacing the
+    pre-leveling pattern of ad-hoc snapshot-dict edits scattered across
+    calling code (e.g. the old ``manual_failover.py`` manually assigning
+    snapshot fields inline).
+
+    RESET / PRESERVED / ARCHIVED / ADVANCED matrix
+    ------------------------------------------------
+    Columns are the five authorities; a cell shows what happens to that row's
+    fact under that authority. "reset" = zeroed/cleared here. "preserved" =
+    left untouched by this function (the caller may still separately set it).
+    "archived" = never touched here; captured only as a sparse audit fact by
+    the caller (Section 15/18), never part of this reset. "advanced" = the
+    ADVANCED fact incremented/updated here.
+
+    ============================== ================ ============ ============== ========================== ==================
+    fact                            MEANINGFUL_       SOURCE_      OPERATOR_       CANDIDATE_ACTIVATION_      CANDIDATE_
+                                     PROGRESS          RESET        RETRY           BUDGET                     SWITCHED
+    ============================== ================ ============ ============== ========================== ==================
+    consecutive_no_progress_fail.   reset             reset        reset          reset                      reset
+    failure_signature               reset             reset        reset          reset                      reset
+    same_signature_failures         reset             reset        reset          reset                      reset
+    candidate_refreshes             reset             reset        reset          reset                      reset
+    failures_since_meaningful_prog. reset             reset        reset          reset                      preserved
+    candidate_switches              reset (=0)        preserved    reset (=0)     preserved                  advanced (+1)
+    decision_action/reason          reset             reset        reset          preserved                  preserved
+    quiescence_reason/wake_cond.    reset             preserved    reset          preserved                  preserved
+    recovery_epoch                  advanced (+1)     preserved    preserved      preserved                  preserved
+    ============================== ================ ============ ============== ========================== ==================
+
+    Every cell above is a direct transcription of the pre-leveling per-caller
+    inline behavior (``execution()``'s threshold-crossed branch,
+    ``reset_source_recovery``, ``reset_retry_budget``,
+    ``transition_recovery(reset_budget=True)``, and
+    ``transition_recovery(candidate_switched=True)`` respectively), verified
+    field-by-field before this refactor -- the authorities are deliberately
+    NOT homogenized to a single shared profile; each preserves its own
+    pre-existing, independently-tuned behavior. Historical/audit-only facts
+    (Section 15) are never touched by this function under any authority --
+    they are ARCHIVED separately, as sparse audit facts, by the calling
+    method itself.
+    """
+    authority = RecoveryResetAuthority(authority)
+    common = {
+        "consecutive_no_progress_failures": 0,
+        "failure_signature": None,
+        "same_signature_failures": 0,
+        "candidate_refreshes": 0,
+    }
+    if authority is RecoveryResetAuthority.MEANINGFUL_PROGRESS:
+        snapshot.update(common)
+        snapshot.update({
+            "recovery_epoch": int(snapshot.get("recovery_epoch") or 0) + 1,
+            "failures_since_meaningful_progress": 0,
+            "candidate_switches": 0,
+            "decision_action": None,
+            "decision_reason": None,
+            "quiescence_reason": None,
+            "wake_condition": None,
+        })
+    elif authority is RecoveryResetAuthority.SOURCE_RESET:
+        snapshot.update(common)
+        snapshot.update({
+            "failures_since_meaningful_progress": 0,
+            "decision_action": None,
+            "decision_reason": None,
+        })
+    elif authority is RecoveryResetAuthority.OPERATOR_RETRY:
+        snapshot.update(common)
+        snapshot.update({
+            "failures_since_meaningful_progress": 0,
+            "candidate_switches": 0,
+            "decision_action": None,
+            "decision_reason": None,
+            "quiescence_reason": None,
+            "wake_condition": None,
+        })
+    elif authority is RecoveryResetAuthority.CANDIDATE_ACTIVATION_BUDGET:
+        snapshot.update(common)
+        snapshot["failures_since_meaningful_progress"] = 0
+    elif authority is RecoveryResetAuthority.CANDIDATE_SWITCHED:
+        snapshot.update(common)
+        snapshot["candidate_switches"] = int(snapshot.get("candidate_switches") or 0) + 1
+    else:  # pragma: no cover - RecoveryResetAuthority(...) already rejects this
+        raise ValueError(authority)
+
+
+# DP 1.0.12 recovery leveling, Section 15: facts that are recorded for
+# durable explainability but are never read back to make a policy decision
+# anywhere in the codebase (verified by repository-wide search before this
+# leveling pass -- see the Phase 3 evidence report). These live SOLELY in
+# the sparse append-only ``recovery_audit`` trail (application_events) --
+# never in artifact_recovery_state, in any shape, current-state-adjacent or
+# otherwise. ``_historical_audit_facts`` reconstructs them on demand by
+# scanning that trail; ``recovery_context()`` merges the result in for its
+# own (non-policy) callers so existing readers (tests, future Details/audit
+# UI) see an unchanged flat shape. ``_recovery_snapshot()`` itself -- read
+# directly by every fencing/traversal/reset policy decision -- never sees
+# these keys at all.
+_HISTORICAL_SNAPSHOT_KEYS = frozenset({
+    "last_applied_trigger", "last_application_outcome", "last_execution_attempt",
+    "last_execution_identity", "last_reconstruction_reason", "last_execution_retirement_reason",
+    "durable_target", "candidate_generation", "last_candidate_id", "decision_recovery_epoch",
+    "failure_classification", "classification_confidence", "classification_evidence",
+    "bytes_at_failure", "bytes_since_prior_failure", "last_refresh_reason",
+    "last_candidate_switch_reason", "last_terminalization_reason", "partial_state_preserved",
+    "target_change_reason", "last_budget_before", "last_budget_after",
+})
 
 
 _TERMINAL_EXECUTION_STATES = frozenset({"failed", "absent", "cancelled", "succeeded"})
@@ -38,15 +213,13 @@ def _safe_source_label(scope, key) -> str:
     return "Source"
 
 
-# The artifact lifecycle states in which the existing per-file manual switch is
-# offered. Kept in step with ``manual_repository._SWITCHABLE_STATES`` and
-# ``manual_failover._OPERATIONAL_STATES``; used here only to project a read-time
-# group-switch eligibility flag onto the candidate presentation. The
-# authoritative switch command re-validates every gate itself.
-_SWITCHABLE_ARTIFACT_STATES = frozenset({
-    "pending", "processing", "ready", "queued", "downloading", "paused",
-    "refresh_pending", "error",
-})
+# Re-exported (not redefined -- Section 31) from the ONE canonical owner,
+# ``transfers.manual_failover.SWITCH_ELIGIBLE_LIFECYCLE_STATES``, so this
+# module's read-time group-switch eligibility projection can never drift from
+# the actual command gate. The authoritative switch command still
+# re-validates every other gate (live route/candidate-expiry, provider
+# health) itself; this frozenset only ever answers the lifecycle-state
+# question, identically everywhere it is asked.
 
 
 def _group_source_host(scope, key) -> str | None:
@@ -71,10 +244,28 @@ def _group_source_host(scope, key) -> str | None:
 class TransferRepository(_QualifiedTransferRepository):
     @staticmethod
     def _recovery_event_kind(artifact_id: int) -> str:
+        """The legacy pre-leveling snapshot-event kind (Section 19).
+
+        No longer written. Retained only so the one-time migration reader
+        (``db.database._migrate_recovery_state_from_events``) and historical
+        ``application_events`` rows predating DP 1.0.12 recovery leveling
+        remain identifiable/queryable.
+        """
         return f"transfer_recovery:{int(artifact_id)}"
 
     @classmethod
     async def _recovery_snapshot(cls, db, artifact_id: int, *, row=None) -> dict:
+        """Read the ONE canonical current-state row for this artifact (Section 14).
+
+        Before DP 1.0.12 recovery leveling, "current" state was reconstructed
+        by scanning the latest ``application_events`` row of kind
+        ``transfer_recovery:<artifact_id>`` -- an unbounded, append-only
+        history that grew a full-snapshot row on every meaningful mutation,
+        including ordinary progress-byte advancement at roughly scheduler
+        cadence. It now reads ``artifact_recovery_state``, which holds
+        exactly one row per artifact, updated in place by
+        ``_save_recovery_snapshot`` below.
+        """
         if row is None:
             row = await db.fetchone(
                 "SELECT torrent_id,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",
@@ -96,22 +287,43 @@ class TransferRepository(_QualifiedTransferRepository):
             "decision_reason": None,
             "quiescence_reason": None,
             "wake_condition": None,
+            # DP 1.0.12 recovery leveling, Section 12: candidates this artifact
+            # has actually been activated onto (as either the original
+            # selection or a later switch), separate from ``selected_candidate``
+            # (a plain array index that says nothing about traversal history).
+            # Current, actionable state -- not historical audit trivia -- since
+            # it directly gates which candidates transfers._engine_recovery
+            # .TransferEngine._next_alternate_index treats as still eligible.
+            "candidate_attempt_history": [],
         }
-        event = await db.fetchone(
-            "SELECT detail FROM application_events WHERE kind=? ORDER BY id DESC LIMIT 1",
-            (cls._recovery_event_kind(artifact_id),),
+        state_row = await db.fetchone(
+            "SELECT * FROM artifact_recovery_state WHERE artifact_id=?", (artifact_id,),
         )
-        if event and event.get("detail"):
-            try:
-                stored = codec.load(event["detail"], {})
-            except (TypeError, ValueError):
-                stored = {}
-            if isinstance(stored, dict):
-                for key in snapshot:
-                    if key in stored:
-                        snapshot[key] = stored[key]
-        # Existing Phase-1 counters are known facts. If no Phase-2 snapshot
-        # exists they seed only counters, never a fabricated signature/progress.
+        if state_row:
+            stored = dict(state_row)
+            history = stored.get("candidate_attempt_history")
+            if isinstance(history, str):
+                try:
+                    history = codec.load(history, [])
+                except (TypeError, ValueError):
+                    history = []
+            stored["candidate_attempt_history"] = history if isinstance(history, list) else []
+            # Import EVERY stored key, not only this layer's own template keys
+            # -- the phase3/audit layers below rely on this single read
+            # already carrying their own fields (via ``setdefault``) instead
+            # of each re-querying the same row again (Section 20: this was
+            # three redundant reads/decodes of the same row before leveling).
+            # This row holds ONLY current/policy-relevant facts (Section 14) --
+            # no historical pocket in any shape. Historical facts are never
+            # merged in here; ``recovery_context()`` below merges them in
+            # separately, read-only, from the sparse audit trail, for its own
+            # (non-policy) callers.
+            snapshot.update({
+                key: value for key, value in stored.items()
+                if key not in {"artifact_id", "transfer_id", "updated_at"}
+            })
+        # Existing Phase-1 counters are known facts. If no current-state row
+        # exists yet they seed only counters, never a fabricated signature/progress.
         snapshot["consecutive_no_progress_failures"] = max(
             int(snapshot.get("consecutive_no_progress_failures") or 0),
             int(row.get("recovery_failures") or 0),
@@ -124,13 +336,119 @@ class TransferRepository(_QualifiedTransferRepository):
 
     @classmethod
     async def _save_recovery_snapshot(cls, db, transfer_id: int, artifact_id: int, snapshot: dict) -> None:
+        """Upsert the ONE canonical current-state row for this artifact (Section 14).
+
+        This never appends -- an artifact has exactly one row, updated in
+        place, so ordinary progress advancement (the highest-frequency
+        caller, via ``execution()`` below) costs one bounded write instead of
+        unbounded history growth. Semantically meaningful transitions
+        additionally get a small, separate, sparse audit record via
+        ``_append_recovery_audit`` (Section 18) -- this method alone is not
+        the audit trail.
+        """
+        history = snapshot.get("candidate_attempt_history")
+        columns = (
+            "recovery_epoch", "progress_anchor", "consecutive_no_progress_failures",
+            "failures_since_meaningful_progress", "failure_signature", "same_signature_failures",
+            "candidate_refreshes", "candidate_switches", "decision_action", "decision_reason",
+            "quiescence_reason", "wake_condition", "recovery_generation", "recovery_claim_token",
+            "recovery_claim_trigger", "recovery_claim_until", "recovery_claim_id", "recovery_decision_id",
+            "last_failure_identity", "last_refresh_decision_id", "refresh_inflight_decision_id",
+            "refresh_inflight_attempt_id", "blocked_retry_at", "last_applied_action", "last_applied_reason",
+        )
+        values = {name: snapshot.get(name) for name in columns}
+        values["version"] = max(3, int(snapshot.get("version") or 0))
+        # DP 1.0.12 recovery leveling: phase3-layer fields (recovery_generation,
+        # recovery_claim_until, blocked_retry_at) are NOT NULL-with-default
+        # columns, but the lower/legacy transfers.repository.TransferRepository
+        # stack (no phase3 layer applied) never populates them in its snapshot
+        # dict at all -- an explicit SQL NULL would bypass the column DEFAULT
+        # and violate the constraint, so coalesce here rather than assume every
+        # caller's snapshot dict was built by the full production layer chain.
+        for numeric_column in ("recovery_generation",):
+            values[numeric_column] = int(values[numeric_column] or 0)
+        for float_column in ("recovery_claim_until", "blocked_retry_at"):
+            values[float_column] = float(values[float_column] or 0.0)
+        values["candidate_attempt_history"] = codec.dump(history if isinstance(history, list) else [])
+        insert_cols = ["artifact_id", "transfer_id", "version", "candidate_attempt_history", *columns]
+        placeholders = ",".join("?" for _ in insert_cols)
+        update_assignments = ",".join(
+            f"{name}=excluded.{name}" for name in ["transfer_id", "version", "candidate_attempt_history", *columns]
+        )
+        params = [artifact_id, transfer_id, values["version"], values["candidate_attempt_history"]]
+        params.extend(values[name] for name in columns)
         await db.execute(
-            "INSERT INTO application_events(transfer_id,kind,detail,claimed) VALUES(?,?,?,1)",
-            (transfer_id, cls._recovery_event_kind(artifact_id), codec.dump(snapshot)),
+            f"""INSERT INTO artifact_recovery_state({','.join(insert_cols)}) VALUES({placeholders})
+                ON CONFLICT(artifact_id) DO UPDATE SET {update_assignments},updated_at=CURRENT_TIMESTAMP""",
+            tuple(params),
         )
 
+    @staticmethod
+    async def _append_recovery_audit(db, transfer_id: int, artifact_id: int, transition: str, **fields) -> None:
+        """Sparse, semantically-meaningful recovery audit trail (Section 18).
+
+        Distinct from the current-state row above: this only grows for
+        discrete transitions named by ``transition`` (claim, decision,
+        candidate activation, refresh, execution retirement, quiescence
+        entry/exit, generation/epoch advancement, terminal recovery, operator
+        retry, operator source switch) -- never for ordinary byte-progress
+        advancement, which updates only the current-state row. One shared
+        ``kind`` ("recovery_audit") keeps every transition orderable/
+        queryable together; ``transition`` inside ``detail`` distinguishes
+        the kind of event.
+        """
+        detail = {"artifact_id": int(artifact_id), "transition": str(transition), **fields}
+        await db.execute(
+            "INSERT INTO application_events(transfer_id,kind,detail,claimed) VALUES(?,?,?,1)",
+            (int(transfer_id), "recovery_audit", codec.dump(detail)),
+        )
+
+    @classmethod
+    async def _historical_audit_facts(cls, db, artifact_id: int, transfer_id: int) -> dict:
+        """Reconstruct historical/explainability facts read-only, ON DEMAND,
+        from the sparse ``recovery_audit`` trail (Section 15): these facts
+        live SOLELY in the append-only audit log -- never persisted back as
+        a mutable "current" copy of any shape, current-state-adjacent or
+        otherwise. Cheap to scan because the trail is genuinely sparse
+        (bounded by real transitions, never by poll frequency, per Section
+        18/20). Newest-row-wins per field, except ``candidate_generation``,
+        which is a count of ``finish_claim`` transitions that actually
+        changed the candidate -- reconstructed fresh each call rather than
+        maintained as a persisted running counter.
+        """
+        result: dict = {key: None for key in _HISTORICAL_SNAPSHOT_KEYS}
+        remaining = set(_HISTORICAL_SNAPSHOT_KEYS) - {"candidate_generation"}
+        candidate_generation = 0
+        rows = await db.fetchall(
+            "SELECT detail FROM application_events WHERE transfer_id=? AND kind='recovery_audit' ORDER BY id DESC",
+            (transfer_id,),
+        )
+        for row in rows:
+            try:
+                detail = codec.load(row["detail"], {})
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(detail, dict) or int(detail.get("artifact_id") or -1) != int(artifact_id):
+                continue
+            if detail.get("transition") == "finish_claim" and detail.get("candidate_changed"):
+                candidate_generation += 1
+            if not remaining:
+                continue
+            for key in list(remaining):
+                if key in detail:
+                    result[key] = detail[key]
+                    remaining.discard(key)
+        result["candidate_generation"] = candidate_generation
+        return result
+
     async def recovery_context(self, artifact_id: int) -> dict:
-        """Return durable recovery/accounting facts without inventing legacy history."""
+        """Return durable recovery/accounting facts without inventing legacy
+        history. Historical/explainability facts (Section 15) are merged in
+        here, live, from the sparse audit trail -- this is the one place
+        that reconstruction happens; ``_recovery_snapshot()`` itself (read
+        directly by every fencing/traversal/reset policy decision elsewhere
+        in this file and its layered subclasses) never sees them.
+        """
         async with get_db() as db:
             row = await db.fetchone(
                 "SELECT torrent_id,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",
@@ -139,10 +457,12 @@ class TransferRepository(_QualifiedTransferRepository):
             if not row:
                 raise KeyError(artifact_id)
             snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
+            historical = await self._historical_audit_facts(db, artifact_id, int(row["torrent_id"]))
             attempts = await db.fetchone(
                 "SELECT COUNT(*) AS n FROM execution_attempt_provenance WHERE artifact_id=?",
                 (artifact_id,),
             )
+        snapshot.update(historical)
         snapshot["execution_attempts"] = int((attempts or {}).get("n") or 0)
         return snapshot
 
@@ -161,6 +481,102 @@ class TransferRepository(_QualifiedTransferRepository):
             snapshot["decision_action"] = str(action)
             snapshot["decision_reason"] = str(reason)
             await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "decision", action=str(action), reason=str(reason),
+            )
+            await db.commit()
+
+    async def record_candidate_attempt(self, artifact_id: int, *candidate_ids: str) -> None:
+        """Durably mark one or more candidate ids as attempted in the current
+        recovery episode (DP 1.0.12 recovery leveling, Section 12).
+
+        Idempotent set-union, never a duplicate/blind append.
+        transfers._engine_recovery.TransferEngine._next_alternate_index reads
+        this instead of assuming ``selected + 1`` means "never tried". Cleared
+        only by an explicit full reset (recovery_repository.TransferRepository
+        .reset_retry_budget, the live USER_RETRY mechanism) -- an operator
+        candidate switch only ever adds to it.
+        """
+        wanted = {str(item) for item in candidate_ids if item is not None}
+        if not wanted:
+            return
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                "SELECT torrent_id,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",
+                (artifact_id,),
+            )
+            if not row:
+                await db.rollback()
+                raise KeyError(artifact_id)
+            snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
+            history = snapshot.get("candidate_attempt_history")
+            existing = list(history) if isinstance(history, list) else []
+            merged = existing + [item for item in sorted(wanted) if item not in existing]
+            if merged != existing:
+                snapshot["candidate_attempt_history"] = merged
+                await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+                added = [item for item in merged if item not in existing]
+                await self._append_recovery_audit(
+                    db, int(row["torrent_id"]), artifact_id, "candidate_attempt",
+                    added=added, history=merged,
+                )
+            await db.commit()
+
+    @staticmethod
+    def build_candidate_activation_detail(
+        *, transfer_id: int, artifact_id: int, old_candidate, new_candidate,
+        authority: str, recovery_generation: int | None, old_execution_id: str | None,
+        partial_decision: str, admission_decision: str, outcome: str,
+    ) -> dict:
+        """The one candidate-activation provenance shape (DP 1.0.12 recovery
+        leveling, Section 29), shared by both write paths: the atomic
+        in-transaction write ``transition_recovery(activation_provenance=...)``
+        performs for a COMMITTED activation, and the standalone
+        ``record_candidate_activation`` below for a REJECTED one (nothing was
+        durably committed in that case, so there is no commit transaction to
+        piggyback on)."""
+        return {
+            "transfer_id": int(transfer_id),
+            "artifact_id": int(artifact_id),
+            "authority": str(authority),
+            "recovery_generation": recovery_generation,
+            "old_candidate_id": str(old_candidate.id) if old_candidate is not None else None,
+            "old_provider_id": str(old_candidate.provider_id or "") if old_candidate is not None else None,
+            "new_candidate_id": str(new_candidate.id) if new_candidate is not None else None,
+            "new_provider_id": str(new_candidate.provider_id or "") if new_candidate is not None else None,
+            "old_execution_id": old_execution_id,
+            # Not knowable at commit time -- the replacement execution does
+            # not exist yet. transfers._repository_base.TransferRepository
+            # .prepare_execution links it in-place the first time this
+            # artifact actually dispatches afterward (Section 29).
+            "new_execution_id": None,
+            "partial_decision": str(partial_decision),
+            "admission_decision": str(admission_decision),
+            "outcome": str(outcome),
+        }
+
+    async def record_candidate_activation(
+        self, *, transfer_id: int, artifact_id: int, old_candidate, new_candidate,
+        authority: str, recovery_generation: int | None, old_execution_id: str | None,
+        partial_decision: str, admission_decision: str, outcome: str,
+    ) -> None:
+        """Standalone provenance write for a REJECTED activation (DP 1.0.12
+        recovery leveling, Section 29) -- nothing was durably committed, so
+        there is no commit transaction to atomically piggyback the record on,
+        unlike the committed path (see ``transition_recovery``'s
+        ``activation_provenance`` parameter, used instead for that case)."""
+        detail = self.build_candidate_activation_detail(
+            transfer_id=transfer_id, artifact_id=artifact_id, old_candidate=old_candidate,
+            new_candidate=new_candidate, authority=authority, recovery_generation=recovery_generation,
+            old_execution_id=old_execution_id, partial_decision=partial_decision,
+            admission_decision=admission_decision, outcome=outcome,
+        )
+        async with get_db() as db:
+            await db.execute(
+                "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
+                (int(transfer_id), "candidate_activation", codec.dump(detail)),
+            )
             await db.commit()
 
     async def record_source_failure(self, artifact_id: int, error=None) -> tuple[int, int]:
@@ -197,6 +613,10 @@ class TransferRepository(_QualifiedTransferRepository):
             await self._save_recovery_snapshot(
                 db, int(row["torrent_id"]), artifact_id, snapshot,
             )
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "source_failure",
+                failures=failures, same_signature_failures=snapshot.get("same_signature_failures"),
+            )
             await db.commit()
         return failures, int(row.get("recovery_refreshes") or 0)
 
@@ -224,6 +644,10 @@ class TransferRepository(_QualifiedTransferRepository):
                 return False
             snapshot["candidate_refreshes"] = int(snapshot.get("candidate_refreshes") or 0) + 1
             await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "refresh",
+                candidate_refreshes=snapshot["candidate_refreshes"],
+            )
             await db.commit()
         return True
 
@@ -243,16 +667,9 @@ class TransferRepository(_QualifiedTransferRepository):
                 "UPDATE download_files SET recovery_failures=0,recovery_refreshes=0 WHERE id=?",
                 (artifact_id,),
             )
-            snapshot.update({
-                "consecutive_no_progress_failures": 0,
-                "failures_since_meaningful_progress": 0,
-                "failure_signature": None,
-                "same_signature_failures": 0,
-                "candidate_refreshes": 0,
-                "decision_action": None,
-                "decision_reason": None,
-            })
+            apply_recovery_reset(snapshot, RecoveryResetAuthority.SOURCE_RESET)
             await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+            await self._append_recovery_audit(db, int(row["torrent_id"]), artifact_id, "source_reset")
             await db.commit()
 
     async def reset_retry_budget(self, artifact_id):
@@ -271,19 +688,9 @@ class TransferRepository(_QualifiedTransferRepository):
                 "UPDATE download_files SET retry_count=0,recovery_failures=0,recovery_refreshes=0 WHERE id=?",
                 (artifact_id,),
             )
-            snapshot.update({
-                "consecutive_no_progress_failures": 0,
-                "failures_since_meaningful_progress": 0,
-                "failure_signature": None,
-                "same_signature_failures": 0,
-                "candidate_refreshes": 0,
-                "candidate_switches": 0,
-                "decision_action": None,
-                "decision_reason": None,
-                "quiescence_reason": None,
-                "wake_condition": None,
-            })
+            apply_recovery_reset(snapshot, RecoveryResetAuthority.OPERATOR_RETRY)
             await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+            await self._append_recovery_audit(db, int(row["torrent_id"]), artifact_id, "operator_retry")
             await db.commit()
 
     async def execution_idle_seconds(self, observation, now):
@@ -390,27 +797,38 @@ class TransferRepository(_QualifiedTransferRepository):
             if completed > int(previous.completed_bytes or 0):
                 anchor = int(snapshot.get("progress_anchor") or 0)
                 threshold = meaningful_progress_threshold(int(artifact.get("size_bytes") or 0))
-                if completed - anchor >= threshold:
+                meaningful = completed - anchor >= threshold
+                if meaningful:
                     await db.execute(
                         "UPDATE download_files SET recovery_failures=0,recovery_refreshes=0 WHERE id=?",
                         (artifact["id"],),
                     )
-                    snapshot.update({
-                        "recovery_epoch": int(snapshot.get("recovery_epoch") or 0) + 1,
-                        "progress_anchor": completed,
-                        "consecutive_no_progress_failures": 0,
-                        "failures_since_meaningful_progress": 0,
-                        "failure_signature": None,
-                        "same_signature_failures": 0,
-                        "candidate_refreshes": 0,
-                        "candidate_switches": 0,
-                        "decision_action": None,
-                        "decision_reason": None,
-                        "quiescence_reason": None,
-                        "wake_condition": None,
-                    })
-            if not initialized or completed > int(previous.completed_bytes or 0):
+                    apply_recovery_reset(snapshot, RecoveryResetAuthority.MEANINGFUL_PROGRESS)
+                    snapshot["progress_anchor"] = completed
+            else:
+                meaningful = False
+            # DP 1.0.12 recovery leveling, Section 14/18/20 (post-review
+            # correction): recovery-state is written ONLY for (a) the one-
+            # time-per-artifact initialization that durably anchors
+            # progress_anchor (needed so a later observation, even after a
+            # process restart, can still tell whether meaningful progress
+            # has occurred since), or (b) an actual meaningful-progress
+            # epoch advance. Ordinary byte advancement that does not cross
+            # the threshold causes ZERO writes to artifact_recovery_state --
+            # not merely a bounded/upserted write, none at all (Section 18's
+            # named regression,
+            # test_progress_observations_do_not_append_full_recovery_snapshot_each_tick).
+            # Byte progress itself is still durably persisted every call, in
+            # execution_attempts below -- that is its correct, always-was-
+            # correct home (Section 18: "ordinary byte progress belongs in
+            # execution progress state, not a full recovery-history snapshot").
+            if not initialized or meaningful:
                 await self._save_recovery_snapshot(db, int(artifact["torrent_id"]), int(artifact["id"]), snapshot)
+            if meaningful:
+                await self._append_recovery_audit(
+                    db, int(artifact["torrent_id"]), int(artifact["id"]), "meaningful_progress",
+                    recovery_epoch=snapshot.get("recovery_epoch"), progress_anchor=snapshot.get("progress_anchor"),
+                )
 
             error = codec.dump(observation.error) if observation.error else None
             revoked = observation.error is not None and observation.error.category == Category.OWNERSHIP_CONFLICT
@@ -466,8 +884,27 @@ class TransferRepository(_QualifiedTransferRepository):
                                   quiescence_reason: str | None = None,
                                   wake_condition: str | None = None,
                                   clear_quiescence: bool = False,
-                                  candidate_switched: bool = False) -> bool:
-        """Atomically revoke terminal writer authority and persist recovery state."""
+                                  candidate_switched: bool = False,
+                                  continuation_reservation_until: float | None = None,
+                                  activation_provenance: dict | None = None) -> bool:
+        """Atomically revoke terminal writer authority and persist recovery state.
+
+        DP 1.0.12 recovery leveling, Section 13: ``continuation_reservation_until``
+        is the ONLY way to durably hold a continuation-admission reservation
+        (transfers.candidate_activation.activate_candidate's commit, when the
+        writer it just retired was genuinely occupying a live slot). Every
+        other caller implicitly releases any reservation this artifact might
+        still be holding, by leaving the parameter at its default -- a
+        candidate switch is the sole transition allowed to carry one forward.
+
+        Section 26/29: ``activation_provenance``, when given, is written as
+        the durable ``candidate_activation`` audit record in this SAME
+        transaction as the candidate-selection commit itself -- not a
+        separate post-commit INSERT. This makes "the switch committed but its
+        provenance was lost" structurally impossible for a committed
+        activation: either both persist together, or (on any failure) neither
+        does and ``committed`` is correctly ``False``.
+        """
         if expected_bytes is not None and expected_bytes < 0:
             return False
         async with get_db() as db:
@@ -487,21 +924,21 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback(); return False
 
             snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
-            assignments = ["status=?", "normalized_error=?", "retry_at=?", "execution_attempt_id=NULL", "updated_at=CURRENT_TIMESTAMP"]
-            params = [state, codec.dump(error) if error else None, retry_at]
+            assignments = [
+                "status=?", "normalized_error=?", "retry_at=?", "execution_attempt_id=NULL",
+                "continuation_reservation_expires_at=?", "updated_at=CURRENT_TIMESTAMP",
+            ]
+            params = [state, codec.dump(error) if error else None, retry_at, continuation_reservation_until]
             if selected is not None:
                 assignments.append("selected_candidate=?"); params.append(selected)
             if expected_bytes is not None:
                 assignments.append("size_bytes=?"); params.append(expected_bytes)
             if reset_budget:
                 assignments.extend(["retry_count=0", "recovery_failures=0", "recovery_refreshes=0"])
-                snapshot.update({"consecutive_no_progress_failures": 0, "failures_since_meaningful_progress": 0,
-                                 "failure_signature": None, "same_signature_failures": 0, "candidate_refreshes": 0})
+                apply_recovery_reset(snapshot, RecoveryResetAuthority.CANDIDATE_ACTIVATION_BUDGET)
             if candidate_switched:
                 assignments.extend(["recovery_failures=0", "recovery_refreshes=0"])
-                snapshot.update({"consecutive_no_progress_failures": 0, "failure_signature": None,
-                                 "same_signature_failures": 0, "candidate_refreshes": 0,
-                                 "candidate_switches": int(snapshot.get("candidate_switches") or 0) + 1})
+                apply_recovery_reset(snapshot, RecoveryResetAuthority.CANDIDATE_SWITCHED)
             if clear_quiescence:
                 snapshot["quiescence_reason"] = None; snapshot["wake_condition"] = None
             if quiescence_reason is not None:
@@ -511,6 +948,25 @@ class TransferRepository(_QualifiedTransferRepository):
             cursor = await db.execute(f"UPDATE download_files SET {','.join(assignments)} WHERE id=?", tuple(params))
             if cursor.rowcount:
                 await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
+                if activation_provenance is not None:
+                    await db.execute(
+                        "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
+                        (int(row["torrent_id"]), "candidate_activation", codec.dump(activation_provenance)),
+                    )
+                elif candidate_switched:
+                    # Defensive fallback (Section 18/29): the canonical committed
+                    # path (transfers.candidate_activation.activate_candidate)
+                    # always supplies activation_provenance, whose atomic INSERT
+                    # above is already the meaningful audit record for this
+                    # transition. A non-canonical caller that sets
+                    # candidate_switched without activation_provenance still
+                    # gets a minimal sparse audit row rather than none at all.
+                    await self._append_recovery_audit(
+                        db, int(row["torrent_id"]), artifact_id, "candidate_switched",
+                        candidate_switches=snapshot.get("candidate_switches"), selected=selected,
+                    )
+                if reset_budget:
+                    await self._append_recovery_audit(db, int(row["torrent_id"]), artifact_id, "operator_retry")
             await db.commit()
         return cursor.rowcount == 1
 
@@ -589,7 +1045,12 @@ class TransferRepository(_QualifiedTransferRepository):
             }
         return result
 
-    async def presentation(self, transfer_id: int, details: bool = False):
+    async def presentation(self, transfer_id: int, details: bool = False, **_admission_facts):
+        """``**_admission_facts`` (Section 9 live admission facts) are accepted
+        and ignored here -- this repository layer predates and does not
+        itself use them; only transfers.presentation_repository does. Callers
+        (application.service, api.routes) do not need to know which concrete
+        repository is wired in before supplying them."""
         result = await super().presentation(transfer_id, details=details)
         if not result or not details:
             return result

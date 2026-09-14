@@ -1,7 +1,7 @@
 """Real-SQLite regression coverage for the DP 1.0.12 Workstream A performance
-correction.
+correction, updated for DP 1.0.12 recovery leveling Section 14/20.
 
-Proven defect (live evidence, `ghcr.io/xipher-zero/debridpulse:sha-836f792`):
+Original proven defect (live evidence, `ghcr.io/xipher-zero/debridpulse:sha-836f792`):
 the operational Downloads bounded projection's per-artifact latest recovery-
 snapshot lookup (``api/operational_downloads.py``,
 ``artifact_presentation_facts``) was a CORRELATED SCALAR SUBQUERY against
@@ -11,10 +11,21 @@ per artifact on the page. Live timing: transfer 83 (~703 files) alone cost
 default ``limit=25`` page reached ``time_total=15.077338s`` -- past the
 browser's 8s default timeout.
 
+Recovery leveling Section 14 subsequently replaced the underlying storage
+model that made this pathology possible in the first place: "current"
+recovery state is no longer the latest of an unbounded, ever-growing
+per-artifact ``application_events`` history -- it is exactly one row per
+artifact in ``artifact_recovery_state``, updated in place. The projection's
+join is therefore now a plain primary-key lookup with no window function at
+all. This file's fixture and shape assertions were updated to match; the
+``application_events`` "noise" volume is retained to prove an unrelated,
+large, ever-growing event stream still cannot slow this query down, since it
+no longer touches that table for this purpose at all.
+
 This file exercises the real bootstrap schema (``db.database.init_db``) and
 real SQLite execution -- never a mocked/fake connection -- against a seeded
 fixture shaped like the production workload: several hundred-file completed
-torrents with realistic accumulated ``application_events`` recovery history.
+torrents with realistic recovery state and unrelated event-stream volume.
 """
 from __future__ import annotations
 
@@ -32,15 +43,16 @@ import api.operational_downloads as downloads
 import db.database as database
 from test_operational_downloads_projection import _ExplodingRepository, _tracking_db
 
-# Old pathological form this fix removes: a scalar subquery correlated to the
-# outer artifact row, ordered/limited to fake a "latest" pick per row.
+# Old pathological forms this fix removed (Workstream A, then recovery
+# leveling Section 14 removed the window-function replacement too, since
+# there is now nothing left to rank/partition -- current state is one row).
 _PATHOLOGICAL_CORRELATED_FORM = "ORDER BY ae.id DESC LIMIT 1"
+_PATHOLOGICAL_WINDOW_FORM = "ROW_NUMBER() OVER"
 
 _BIG_TRANSFER_ID = 9001
 _BIG_ARTIFACT_COUNT = 700
 _MID_TRANSFER_ID = 9002
 _MID_ARTIFACT_COUNT = 220
-_RECOVERY_EVENTS_PER_ARTIFACT = 6
 _NOISE_EVENT_COUNT = 6000
 _SMALL_TRANSFER_COUNT = 20
 
@@ -94,32 +106,33 @@ def _seed_realistic_workload(db_path: Path) -> None:
             )
             mid_artifact_ids.append(cur.lastrowid)
 
-        # Realistic per-artifact recovery history: several snapshots per
-        # artifact, matching the "multiple recovery snapshots per artifact"
-        # requirement, so the latest-per-artifact reduction is non-trivial.
-        detail = json.dumps({
-            "quiescence_reason": "provider_busy",
-            "decision_action": "retry",
-            "decision_reason": "route_unhealthy",
-        })
+        # Realistic per-artifact CURRENT recovery state (DP 1.0.12 recovery
+        # leveling, Section 14): exactly one artifact_recovery_state row per
+        # artifact, never N accumulated snapshot events -- that per-artifact
+        # multiplication is precisely what this leveling pass eliminated.
         recovery_rows = [
-            (transfer_id, f"transfer_recovery:{artifact_id}", detail)
+            (
+                artifact_id, transfer_id, "provider_busy", "retry", "route_unhealthy",
+            )
             for transfer_id, artifact_ids in (
                 (_BIG_TRANSFER_ID, big_artifact_ids),
                 (_MID_TRANSFER_ID, mid_artifact_ids),
             )
             for artifact_id in artifact_ids
-            for _ in range(_RECOVERY_EVENTS_PER_ARTIFACT)
         ]
         conn.executemany(
-            "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
+            """INSERT INTO artifact_recovery_state(
+                   artifact_id, transfer_id, quiescence_reason, decision_action, decision_reason
+               ) VALUES(?,?,?,?,?)""",
             recovery_rows,
         )
 
         # Unrelated event-stream noise accumulated by the rest of the
-        # deployment's history -- this is what makes an unindexed per-row
-        # scan of application_events expensive; a bounded/indexed lookup
-        # must stay cheap regardless of this volume.
+        # deployment's history (candidate-activation/recovery-audit rows and
+        # ordinary application events) -- proves this volume, however large,
+        # cannot slow the bounded projection down, since it no longer reads
+        # application_events for this purpose at all.
+        detail = json.dumps({"note": "unrelated event-stream noise"})
         noise_rows = [
             (
                 (_BIG_TRANSFER_ID, _MID_TRANSFER_ID, 1, 2, 3)[i % 5],
@@ -208,19 +221,34 @@ async def test_query_no_longer_contains_pathological_per_artifact_correlated_for
 
     sql = captured_sql["sql"]
     assert _PATHOLOGICAL_CORRELATED_FORM not in sql
-    # The set-oriented replacement shape is present: a page-bounded artifact
-    # set joined once to application_events and reduced with a window
-    # function, never re-executed per outer row.
-    assert "page_recovery_events" in sql
-    assert "ROW_NUMBER() OVER" in sql
-    assert "PARTITION BY pa.artifact_id" in sql
+    # The old recovery-lookup-specific window-function replacement (ranking
+    # application_events rows PARTITION BY pa.artifact_id) is gone -- a
+    # DIFFERENT, unrelated ROW_NUMBER()/PARTITION BY still legitimately
+    # exists elsewhere in this same query (route_attempt_provenance's own
+    # latest-attempt reduction), so this asserts the *recovery* shape
+    # specifically rather than banning every window function in the file.
+    assert "PARTITION BY pa.artifact_id" not in sql
+    # DP 1.0.12 recovery leveling, Section 14/20: the replacement shape is a
+    # plain page-bounded LEFT JOIN against the single-row-per-artifact
+    # current-state table -- no ranking/window function needed at all,
+    # because there is nothing left to pick "latest" from. (The query's own
+    # explanatory SQL comments mention "application_events" by name when
+    # describing this history, so check for an actual table reference, not
+    # a bare substring match.)
+    assert "JOIN application_events" not in sql
+    assert "FROM application_events" not in sql
+    assert "LEFT JOIN artifact_recovery_state" in sql
+    assert "ars.artifact_id = pa.artifact_id" in sql
 
     return sql, captured_sql["params"]
 
 
 @pytest.mark.asyncio
 async def test_explain_query_plan_proves_indexed_set_oriented_path(real_sql_downloads_fixture):
-    """Assertion 5 (Section 11): EXPLAIN QUERY PLAN shows the index seek, not a table scan."""
+    """Assertion 5 (Section 11, re-verified for Section 14/20): EXPLAIN QUERY
+    PLAN shows a primary-key search on the current-state table, not a scan,
+    and the query touches ``application_events`` -- and its now-unrelated
+    noise volume -- not at all."""
     application = SimpleNamespace(repository=_ExplodingRepository(), definitions=[])
     captured_sql = {}
     real_get_db = database.get_db
@@ -248,14 +276,13 @@ async def test_explain_query_plan_proves_indexed_set_oriented_path(real_sql_down
 
     conn = sqlite3.connect(real_sql_downloads_fixture)
     try:
-        indexes = {row[1] for row in conn.execute("PRAGMA index_list('application_events')")}
-        assert "idx_application_events_kind_id" in indexes
-
         plan = conn.execute(
             "EXPLAIN QUERY PLAN " + captured_sql["sql"], captured_sql["params"]
         ).fetchall()
         plan_text = "\n".join(str(row) for row in plan)
-        assert "idx_application_events_kind_id" in plan_text
+        assert "ars" in plan_text
+        assert "SCAN ars" not in plan_text
+        assert "application_events" not in plan_text
         assert "CORRELATED SCALAR SUBQUERY" not in plan_text
     finally:
         conn.close()
@@ -301,9 +328,9 @@ async def test_filename_aggregation_remains_cheap_relative_to_recovery_lookup(re
             WITH pa AS (
                 SELECT id AS artifact_id FROM download_files WHERE torrent_id = ?
             )
-            SELECT pa.artifact_id, ae.id
+            SELECT pa.artifact_id, ars.recovery_generation
             FROM pa
-            JOIN application_events ae ON ae.kind = 'transfer_recovery:' || pa.artifact_id
+            LEFT JOIN artifact_recovery_state ars ON ars.artifact_id = pa.artifact_id
             """,
             (_BIG_TRANSFER_ID,),
         ).fetchall()

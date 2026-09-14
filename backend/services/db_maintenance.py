@@ -45,6 +45,7 @@ TABLES = [
     "transfer_outcomes",
     "postprocess_attempts",
     "application_events",
+    "artifact_recovery_state",
     "integration_runtime_state",
     "transfer_input_challenges",
     "schema_migrations",
@@ -72,6 +73,7 @@ _TABLE_ORDER = {
     "transfer_outcomes": "id",
     "postprocess_attempts": "transfer_id,processor_id",
     "application_events": "id",
+    "artifact_recovery_state": "artifact_id",
     "integration_runtime_state": "integration_id,state_key",
     "transfer_input_challenges": "transfer_id",
     "schema_migrations": "version",
@@ -257,7 +259,7 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         await db.execute("DELETE FROM transfer_file_manifest_entries")
         await db.execute("DELETE FROM transfer_file_manifests")
         for table in (
-            "application_events", "postprocess_attempts", "transfer_outcomes",
+            "application_events", "artifact_recovery_state", "postprocess_attempts", "transfer_outcomes",
             "execution_attempt_provenance", "route_attempt_provenance",
             "execution_attempts", "resolution_attempts", "provider_resources",
         ):

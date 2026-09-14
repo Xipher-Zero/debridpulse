@@ -5,6 +5,7 @@ import asyncio
 
 from transfers._convergence_phase3_dispatch_base import TransferEngine as _DispatchQualifiedEngine
 from transfers._convergence_phase3_public_base import _Step
+from transfers.candidate_activation import ActivationResult, activate_candidate
 from transfers.errors import NormalizedError
 from transfers.models import Artifact, ExecutionObservation, ExecutionState
 from transfers.policy import RecoveryAction
@@ -167,6 +168,53 @@ class TransferEngine(_DispatchQualifiedEngine):
             decision_id=decision_id,
             next_index=next_index,
         )
+
+    async def activate_candidate_command(
+        self, transfer_id: int, artifact_id: int, target_index: int,
+    ) -> ActivationResult | None:
+        """Operator-requested candidate activation entry point (DP 1.0.12
+        recovery leveling, Sections 10/11): the manual counterpart to
+        ``recover_artifact``, fenced by the SAME exclusive claim system
+        (``claim_recovery`` is exclusive across every trigger, this one
+        included) so a concurrent AUTO_RETRY/USER_RETRY/RESUME/scheduler
+        recovery observation can never interleave with this mutation, and a
+        stale claim from either side can never overwrite the other's
+        outcome. Returns ``None`` only when the claim itself could not be
+        acquired (a concurrent recovery trigger currently owns the artifact);
+        every other outcome -- including a validation failure -- is a real
+        ``ActivationResult`` with ``committed=False``, never an exception.
+
+        The mutation itself (transfers.candidate_activation.activate_candidate)
+        is the SAME one the automatic TRY_ALTERNATE_CANDIDATE decision uses
+        (transfers._convergence_phase3_base.TransferEngine
+        ._apply_recovery_decision); this method supplies claim acquisition
+        and completion, not a second implementation of the switch itself.
+        """
+        claim = await self.repository.claim_recovery(
+            artifact_id, RecoveryTrigger.USER_CANDIDATE_SWITCH, self.clock(),
+            lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
+        )
+        if claim is None:
+            return None
+        result = None
+        try:
+            artifact = await self._current_artifact(transfer_id, artifact_id)
+            if artifact is None:
+                result = ActivationResult(False, "not_found", transfer_id=transfer_id, artifact_id=artifact_id)
+                return result
+            result = await activate_candidate(self, artifact, target_index, retry_at=0, claim=claim)
+            return result
+        finally:
+            outcome = result.reason if result is not None else "application_error"
+            await self._finish_claim(
+                claim,
+                action="user_candidate_switch",
+                reason=outcome,
+                outcome="activated" if (result is not None and result.committed) else "not_applied",
+                artifact=await self._current_artifact(transfer_id, artifact_id),
+                candidate_changed=bool(result is not None and result.committed),
+                retirement_reason=result.retirement if result is not None else None,
+            )
 
     async def _dispatch(self, artifact: Artifact):
         """Route pre-execution readiness failures through canonical recovery."""
