@@ -380,6 +380,91 @@ Current-schema startup and historical migration are distinct owners. Normal repo
 
 Additive current-schema evolution — new columns and idempotent backfills for behavior that must work against an already-running 1.0.12 database — is owned by `db/database.py`, not `v112.py`. The deleted-transfer generation correction adds `torrents.source_fingerprint`, `provider_resources.resource_key`, and `provider_resources.cleanup_abandoned`. `_retire_and_backfill_source_fingerprints`: non-deleted rows gain `source_fingerprint = hash`, already-deleted legacy rows preserve the original fingerprint and have their `hash` retired to the tombstone form. `_backfill_provider_resource_bindings`: `resource_key = id` for existing rows (historical primary key untouched), plus the `UNIQUE(transfer_id, resource_key)` index. Repeated initialization is a no-op. Restoring an untouched pre-migration copy returns fully to the pre-migration state; the live production backup owned by `services/db_maintenance.py` is a separate mandatory deployment prerequisite taken immediately before the corrected image first starts against the real database.
 
+## Canonical equivalence / lifecycle correction (v1.0.12)
+
+Production transfer `263` (five equivalent Ubuntu ISO mirrors, two of which
+transiently could not prove identity) exposed two coupled defects, corrected
+together so a future protocol/provider cannot reintroduce either half alone.
+
+**Proof-attempt budget is not identity truth.** `transfers/mirrors.py`
+classifies equivalence-proof outcomes into `EvidenceKind` (a proof-strength
+taxonomy: `unavailable` / `prefix_content_sample` / `full_content_sample` /
+`resolver_attested` / `strong_integrity`) and `EvidenceFailureClass`
+(`transient` / `contradictory` / `structural`, derived from the *reason* an
+`UNAVAILABLE` proof failed). Transient reasons like `dns_failure`, `timeout`,
+`sampler_unavailable`, `range_unsupported`, `incomplete_representation` never
+establish independent payload identity, only that identity is currently
+unresolved. `transfers/cohorts.py` (the equivalence-disposition owner) keeps
+that evidence classification and the *decision state*
+(`transfer_requests.equivalence_disposition`) strictly separate:
+`EvidenceKind`/`EvidenceFailureClass` answer
+"how strong is this proof," while `equivalence_disposition` answers "what has
+this request's identity durably been decided to be." The disposition owner
+consumes the evidence classification (via `EquivalenceEvidence.retryable`/
+`.failure_class`) without duplicating it — evidence taxonomy and disposition
+state are separate concerns held by separate modules.
+
+`equivalence_disposition` values and what each authorizes:
+
+| Disposition | Meaning | Authorizes a writer? |
+| --- | --- | --- |
+| `pending` | A bounded automatic proof retry is scheduled | No — held |
+| `exhausted` | Automatic proof attempts stopped; identity still unresolved | No — held (never re-interpreted as independence) |
+| `recovered` | Later evidence proved equivalence; attached | N/A — attached, not materialized |
+| `released` | An earlier cohort-wide release (a genuinely independent/failed sibling disproved the weak-evidence collection hypothesis) | Yes |
+| `independent` | Affirmatively structural/non-pairing evidence | Yes |
+| `contradictory` | Affirmatively proven distinct (size/sample/integrity mismatch) | Yes |
+
+Only the last three — each an *affirmative* decision, never mere absence of
+proof — authorize `transfers._engine_recovery.TransferEngine._materialize`
+to allocate an ordinary independent writer. A held (`exhausted`) request
+remains in durable `MATERIALIZING` state; `coordinate_collection()` exits
+immediately for it without repeating proof sampling (no automatic-proof hot
+loop), while still being re-evaluated cheaply on every scheduler tick so a
+later wake (new durable evidence, an explicit operator retry, or another
+canonical event) can move it forward. The weak-evidence, multi-sibling
+corroboration path (`PREFIX_CONTENT_SAMPLE`-only matches within one
+submission cohort) never releases the whole cohort to independence merely
+because one member's proof retries exhausted — only a genuinely
+independent/contradictory sibling does that.
+
+**Same-transfer canonical membership is durable through candidate binding/
+origin provenance, not `artifact_consolidations`.** Same-transfer
+convergence intentionally never writes an `artifact_consolidations` row
+(that table is cross-transfer provenance only — see Roadmap Item 9 above).
+`transfers/canonical.py`'s `CanonicalOwnership.durable_owner_for_request()`
+is the one owner of "what canonical artifact, if any, does this request's
+own candidate provenance durably attach to" — it derives the answer from
+`canonical_candidate_origins.request_id` → `canonical_candidate_bindings` →
+`canonical_artifact_id` (populated by `attach()` for both same- and
+cross-transfer contributors), unioned with `artifact_consolidations` as an
+*additional* valid cross-transfer mapping source. `transfers/cohorts.py`'s
+own cohort coordination and `transfers/_repository_base.py`'s lifecycle
+voting (below) both call this one helper rather than duplicating the SQL.
+
+**Parent lifecycle reflects logical delivery obligations, not raw historical
+row count.** `transfers/_repository_base.py`'s `canonical_artifact_membership_
+sql()` predicate (Section 7's existing membership definition — blocked/
+standby/non-request-bound rows never vote) is joined by a second, narrower
+exclusion scoped to `aggregate_lifecycle()`'s FAILED/completion decision
+only: a canonical-membership artifact in `error` state whose own request is
+durably mapped (via the helper above) to a *different*, already-`completed`
+canonical artifact does not cast a FAILED vote, and does not block the
+parent from reaching `COMPLETED`. It remains fully visible in `presentation()`
+for provenance and history — nothing is deleted or hidden — and a
+genuinely independent failed artifact (no durable mapping to anything) still
+votes exactly as before. This is why a superseded/historical equivalent
+child can no longer poison a parent whose logical payload already delivered
+through its canonical sibling — the exact production-`263` symptom
+(`progress=100%, status=error` after the real canonical artifact had already
+completed).
+
+Regression coverage: `backend/tests/test_equivalence_retry_remediation.py`,
+`test_multi_mirror_general_http_convergence.py` (`test_five_mirror_
+production_263_regression` is the direct five-mirror analogue of transfer
+`263`), `test_workspace4_cohort_exit_gate.py`, and
+`test_operational_artifact_membership.py`.
+
 ## Universal file-selection / manifest overlay (v1.0.12)
 
 A capable provider may declare `Capability.FILE_MANIFEST` and report a neutral

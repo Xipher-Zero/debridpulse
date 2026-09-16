@@ -49,10 +49,13 @@ async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
 class AggregateLifecycleOutcome:
     """Result of one atomic ``TransferRepository.aggregate_lifecycle`` call.
 
-    ``artifacts`` is exactly the canonical-membership snapshot the decision
-    used -- the caller must reuse it (never re-read a second, independently
-    timed set) for any follow-up step such as completion verification.
-    ``should_complete`` is True only when every canonical artifact is
+    ``artifacts`` is exactly the voting canonical-membership snapshot the
+    decision used -- canonical-membership rows (Section 7) minus any failed
+    row whose own logical delivery obligation a different, already-completed
+    canonical artifact durably satisfies (DP 1.0.12 Root Cause B, Section 5)
+    -- the caller must reuse it (never re-read a second, independently timed
+    set) for any follow-up step such as completion verification.
+    ``should_complete`` is True only when every VOTING canonical artifact is
     already "completed" and nothing is still resolving; the caller runs the
     separate, non-transactional, executor-touching completion sequence in
     that case (verifying payloads, cancelling stray writers, queuing
@@ -87,6 +90,74 @@ def is_canonical_artifact_row(row) -> bool:
         and not bool(row["blocked"])
         and str(row["mirror_state"] or "") != "standby"
     )
+
+
+async def _durable_canonical_targets_for_request(db, request_id) -> set[int]:
+    """DP 1.0.12 canonical equivalence/lifecycle correction, Section 6: every
+    canonical artifact id, if any, that ``request_id``'s own candidate
+    provenance is durably bound to.
+
+    Same-transfer canonical convergence intentionally never writes an
+    ``artifact_consolidations`` row (that table is cross-transfer provenance
+    only), so ``canonical_candidate_origins``/``canonical_candidate_bindings``
+    -- populated for both same- and cross-transfer contributors by
+    ``transfers.canonical.CanonicalOwnership.attach()`` -- is the durable
+    source of same-transfer membership; ``artifact_consolidations`` remains
+    an additional valid cross-transfer mapping source. Never inferred from
+    URL/filename/hostname text or current provider state. This is the ONE
+    owner of this lookup; ``transfers.canonical.CanonicalOwnership
+    .durable_owner_for_request`` and this module's own lifecycle-voting
+    check both call it rather than duplicating the SQL."""
+    if not request_id:
+        return set()
+    rows = await db.fetchall(
+        """SELECT DISTINCT b.canonical_artifact_id AS canonical_artifact_id
+            FROM canonical_candidate_origins o
+            JOIN canonical_candidate_bindings b ON b.id=o.binding_id
+            WHERE o.request_id=?
+            UNION
+            SELECT canonical_artifact_id FROM artifact_consolidations WHERE source_request_id=?""",
+        (request_id, request_id),
+    )
+    return {int(row["canonical_artifact_id"]) for row in rows}
+
+
+async def _satisfied_elsewhere(db, artifact) -> bool:
+    """DP 1.0.12 Root Cause B (Section 5): True when ``artifact`` is a failed
+    representation of a logical delivery obligation that a DIFFERENT,
+    already-completed canonical artifact durably satisfies.
+
+    This governs only whether the row may cast an operational FAILED vote --
+    it remains fully visible in presentation/details for provenance, and its
+    own state/history is never mutated here (Section 5: "without deleting
+    history"). A row with no durable canonical mapping -- a genuinely
+    independent artifact -- always still votes (Section 5.2)."""
+    targets = await _durable_canonical_targets_for_request(db, artifact.request_id)
+    targets.discard(int(artifact.id))
+    if not targets:
+        return False
+    placeholders = ",".join("?" * len(targets))
+    row = await db.fetchone(
+        f"SELECT 1 AS ok FROM download_files WHERE id IN ({placeholders}) AND status='completed' LIMIT 1",
+        tuple(targets),
+    )
+    return row is not None
+
+
+async def _voting_artifacts(db, artifacts):
+    """DP 1.0.12 Root Cause B (Section 5): the canonical-membership artifacts
+    that may actually cast a lifecycle vote (completion/FAILED) for the
+    parent transfer -- ``artifacts`` minus a failed row whose own logical
+    delivery obligation a different, completed canonical artifact already
+    satisfies. A genuinely independent failed artifact -- with no durable
+    canonical mapping -- still votes (Section 5.2); this is not a blanket
+    "completed wins" rule."""
+    result = []
+    for item in artifacts:
+        if item.state == "error" and await _satisfied_elsewhere(db, item):
+            continue
+        result.append(item)
+    return tuple(result)
 
 
 class TransferRepository:
@@ -531,6 +602,11 @@ class TransferRepository:
             )
             execution_rows = await db.fetchall("SELECT * FROM execution_attempts WHERE transfer_id=?", (transfer_id,))
             attempts_by_id = {e["id"]: self._execution_attempt(e) for e in execution_rows}
+            # DP 1.0.12 Root Cause B (Section 5): a failed artifact whose own
+            # logical delivery obligation a different, already-completed
+            # canonical artifact durably satisfies must not vote toward
+            # FAILED, or block completion, merely because it is present.
+            voting_artifacts = await _voting_artifacts(db, artifacts)
 
             pending = any(item.state in {"pending", "waiting", "waiting_parent", "resolving", "materializing"} for item in requests)
             total = sum(item.expected_bytes for item in artifacts)
@@ -549,7 +625,7 @@ class TransferRepository:
 
             should_complete = False
             if not (transfer.paused or await self._globally_paused(db)):
-                if artifacts and all(item.state == "completed" for item in artifacts) and not pending:
+                if artifacts and not pending and all(item.state == "completed" for item in voting_artifacts):
                     should_complete = True
                 elif any(item.state in {"downloading", "verifying"} for item in artifacts):
                     await _transition(TransferState.TRANSFERRING, progress=progress)
@@ -559,8 +635,8 @@ class TransferRepository:
                     await _transition(TransferState.QUEUED, progress=progress)
                 elif pending:
                     await _transition(TransferState.RESOLVING, progress=progress)
-                elif any(item.state == "error" for item in artifacts) or any(item.state == "failed" for item in requests):
-                    error = next((item.error for item in (*artifacts, *requests) if item.error), None)
+                elif any(item.state == "error" for item in voting_artifacts) or any(item.state == "failed" for item in requests):
+                    error = next((item.error for item in (*voting_artifacts, *requests) if item.error), None)
                     await _transition(TransferState.FAILED, progress=progress, error=error)
                 elif artifacts and all(item.state == "cancelled" for item in artifacts):
                     await _transition(TransferState.CANCELLED, progress=progress)
@@ -583,7 +659,12 @@ class TransferRepository:
                             (transfer_id, "info", str(skip_outcome.kind)),
                         )
             await db.commit()
-        return AggregateLifecycleOutcome(should_complete, artifacts)
+        # DP 1.0.12 Root Cause B: the caller's completion-verification sweep
+        # (_engine_base.TransferEngine._complete) must never be handed a
+        # satisfied-elsewhere failed row to verify -- its own target is not
+        # expected to be a valid payload, and the logical obligation it
+        # represents was already verified when the OTHER canonical completed.
+        return AggregateLifecycleOutcome(should_complete, voting_artifacts)
 
     @staticmethod
     async def _globally_paused(db) -> bool:

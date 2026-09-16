@@ -19,7 +19,7 @@ import db.database as database
 from fake_integrations import MemoryExecutor
 from transfers.models import (
     Capability, InputField, InputFieldDescriptor, InputMethod, InputMethodDescriptor,
-    InputReason, InputRequirement, IntegrationDescriptor, TransferRequest,
+    InputReason, InputRequirement, IntegrationDescriptor, TransferRequest, TransferState,
 )
 from transfers.presentation_repository import is_autonomous_presentation
 
@@ -636,4 +636,150 @@ async def test_capacity_only_blocked_self_corrects_when_a_gate_closes_on_the_nex
     assert artifact.id not in engine.capacity_only_blocked_ids(), (
         "once the provider is disabled, the NEXT cycle's real dispatch attempt "
         "never reaches the capacity gate, and the stale record must not survive"
+    )
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 canonical equivalence/lifecycle correction, Root Cause B
+# (Section 5): a durably-satisfied failed representation must not cast a
+# lifecycle vote, but a genuinely independent failed artifact still must.
+# ---------------------------------------------------------------------------
+
+async def _real_resolution_attempt_id(request_id):
+    """The satisfied artifact's own real, already-persisted successful
+    resolution attempt -- ``canonical_candidate_origins.resolution_attempt_id``
+    has a real FK to ``resolution_attempts``, so a fixture must reuse a
+    genuine id rather than inventing one, exactly like production's own
+    ``transfers.canonical.CanonicalOwnership._origin_attempt``."""
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            """SELECT resolution_attempt_id FROM route_attempt_provenance
+                WHERE request_id=? ORDER BY ordinal DESC LIMIT 1""",
+            (request_id,),
+        )
+    assert row is not None
+    return row["resolution_attempt_id"]
+
+
+async def _mark_durably_satisfied(canonical_artifact, satisfied_artifact, transfer_id):
+    """Durably bind ``satisfied_artifact``'s own request to ``canonical_artifact``
+    via the real canonical candidate binding/origin tables (DP 1.0.12 Section 6)
+    -- the exact durable mapping ``transfers.canonical.CanonicalOwnership
+    .durable_owner_for_request`` and ``transfers._repository_base
+    ._voting_artifacts`` consult -- WITHOUT touching ``satisfied_artifact``'s
+    own ``mirror_state``/``status``/candidates. This models a row that
+    independently materialized (never went through ``attach()``) but was
+    LATER proven equivalent to an established canonical artifact (Section
+    8.2), the one case where a failed, non-standby, canonical-membership row
+    is durably satisfied elsewhere."""
+    attempt_id = await _real_resolution_attempt_id(satisfied_artifact.request_id)
+    candidate_id = f"satisfied-{satisfied_artifact.id}"
+    async with database.get_db() as db:
+        binding_id = await db.execute_returning_id(
+            """INSERT INTO canonical_candidate_bindings(
+                canonical_artifact_id,candidate_id,provider_id,role,candidate_order)
+                VALUES(?,?,?,?,?)""",
+            (canonical_artifact.id, candidate_id, "test-provider", "alternate", 500),
+        )
+        await db.execute(
+            """INSERT INTO canonical_candidate_origins(
+                binding_id,contributing_artifact_id,contributing_transfer_id,request_id,
+                resolution_attempt_id,discovered_candidate_id)
+                VALUES(?,?,?,?,?,?)""",
+            (binding_id, satisfied_artifact.id, transfer_id, satisfied_artifact.request_id,
+             attempt_id, candidate_id),
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_satisfied_equivalent_failed_child_cannot_poison_completed_parent(tmp_path, monkeypatch):
+    """DP 1.0.12 Root Cause B (Section 5, regression 11.7 part 1): construct
+    the exact production-263 shape at the lifecycle-voting layer -- canonical
+    artifact A completes, sibling B is left in 'error', and B's own request is
+    durably satisfied (via canonical candidate binding/origin provenance) by
+    A. The parent must NOT transition to FAILED because of B; B must remain
+    visible in details/provenance; B must not vote operationally."""
+    repository, registry, (provider,), executor, engine, now_box = await build_production_runtime(
+        tmp_path, monkeypatch, db_name="satisfied_child_completed_parent.db", max_active_executions=2,
+    )
+    transfer, artifacts = await _two_artifact_transfer(engine, repository, provider)
+    completing, historical = artifacts["a.bin"], artifacts["b.bin"]
+
+    await engine.reconcile_executions()
+    active = next(item for item in await repository.artifacts(transfer.id) if item.id == completing.id)
+    assert active.execution is not None
+    executor.finish(active.execution)
+    await engine.reconcile_executions()
+
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='error' WHERE id=?", (historical.id,))
+        await db.commit()
+    await _mark_durably_satisfied(completing, historical, transfer.id)
+
+    outcome = await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert outcome is not None
+    assert {item.id for item in outcome.artifacts} == {completing.id}, (
+        "the satisfied, failed sibling must not appear in the voting snapshot "
+        "the completion-verification sweep will act on"
+    )
+    assert outcome.should_complete is True
+
+    # Drive the full engine completion sequence (aggregate_lifecycle() alone
+    # only signals should_complete; _aggregate() runs the follow-up
+    # executor-touching completion sweep against exactly that voting
+    # snapshot, matching production wiring).
+    await engine._aggregate(transfer.id)
+
+    transfer_after = await repository.get(transfer.id)
+    assert transfer_after.state != TransferState.FAILED, (
+        "a failed historical representation of an already-satisfied logical "
+        "delivery obligation must not poison the parent"
+    )
+    assert transfer_after.state == TransferState.COMPLETED
+
+    details = await repository.presentation(transfer.id, details=True)
+    files_by_id = {item["id"]: item for item in details["files"]}
+    assert historical.id in files_by_id  # still visible for provenance...
+    assert files_by_id[historical.id]["status"] == "error"
+    assert details["presentation_status"] == "completed"  # ...but does not vote.
+
+
+@pytest.mark.asyncio
+async def test_genuinely_independent_failed_child_still_fails_parent(tmp_path, monkeypatch):
+    """DP 1.0.12 Root Cause B (Section 5.2, regression 11.7 part 2): the
+    negative-space twin of the test above -- a failed sibling with NO durable
+    canonical mapping is a genuinely independent logical delivery obligation
+    and must still be able to fail the parent. Proves the correction is based
+    on canonical/equivalence membership, not a blanket "completed wins" rule."""
+    repository, registry, (provider,), executor, engine, now_box = await build_production_runtime(
+        tmp_path, monkeypatch, db_name="independent_child_fails_parent.db", max_active_executions=2,
+    )
+    transfer, artifacts = await _two_artifact_transfer(engine, repository, provider)
+    completing, independent = artifacts["a.bin"], artifacts["b.bin"]
+
+    await engine.reconcile_executions()
+    active = next(item for item in await repository.artifacts(transfer.id) if item.id == completing.id)
+    assert active.execution is not None
+    executor.finish(active.execution)
+    await engine.reconcile_executions()
+
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='error' WHERE id=?", (independent.id,))
+        await db.commit()
+    # Deliberately NO durable canonical binding/origin for `independent` --
+    # it really is a distinct logical payload (e.g. a different file in a
+    # multi-file transfer), not a superseded duplicate.
+
+    outcome = await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert outcome is not None
+    assert {item.id for item in outcome.artifacts} == {completing.id, independent.id}, (
+        "a genuinely independent failed artifact still votes"
+    )
+    assert outcome.should_complete is False
+
+    transfer_after = await repository.get(transfer.id)
+    assert transfer_after.state == TransferState.FAILED, (
+        "genuine independence must still be able to fail the parent -- this "
+        "is not a blanket completed-wins rule"
     )

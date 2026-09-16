@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 
 from db.database import get_db
 from transfers import codec
-from transfers._repository_base import _retire_transfer_auxiliary_state_in_db
+from transfers._repository_base import _durable_canonical_targets_for_request, _retire_transfer_auxiliary_state_in_db
 from transfers.models import Artifact, RequestRecord, TransferCandidate
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
@@ -307,6 +307,24 @@ class CanonicalOwnership:
                     ORDER BY f.torrent_id,f.id"""
             )
         return tuple(self._artifact(row) for row in rows)
+
+    async def durable_owner_for_request(self, request_id: str) -> int | None:
+        """DP 1.0.12 Section 6: the one canonical artifact id, if any, that
+        ``request_id``'s own candidate provenance durably attaches to.
+
+        Same-transfer canonical convergence intentionally never writes an
+        ``artifact_consolidations`` row (that table is cross-transfer
+        provenance only), so a same-transfer sibling's durable membership
+        would otherwise be invisible to cohort coordination once it becomes
+        ``resolved``. This recognizes both same-transfer candidate origin/
+        binding provenance and cross-transfer ``artifact_consolidations``.
+        Returns ``None`` when there is no durable mapping, or when the
+        mapping is ambiguous (more than one distinct target -- never guessed
+        around)."""
+        await self.initialize()
+        async with get_db() as db:
+            targets = await _durable_canonical_targets_for_request(db, request_id)
+        return next(iter(targets)) if len(targets) == 1 else None
 
     async def lower_materializing(self, record: RequestRecord):
         await self.initialize()

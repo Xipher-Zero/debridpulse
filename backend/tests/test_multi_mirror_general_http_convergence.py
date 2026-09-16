@@ -522,23 +522,29 @@ async def test_restart_preserves_canonical_owner_bindings_and_consolidated_statu
 
 
 async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_path, monkeypatch):
-    """DP 1.0.12 corrective Section 5/21 Example B (deterministic, fast,
-    process-free fixture modeling the live runtime capture that motivated
-    this correction): one Quick-Add-shaped batch of 10 sibling requests where
-    6 sources obtain full/strong proof for one canonical artifact (the
-    original acquisition plus 5 attached alternates) while 4 receive
-    transient proof inability (range_unsupported / dns_failure) that
-    exhausts the existing bounded retry budget
-    (transfers/cohorts.py:_PROOF_RETRY_BUDGET == 2) must:
+    """DP 1.0.12 canonical equivalence/lifecycle correction (Section 4/5,
+    Root Cause A), superseding this test's original "Example B" contract.
+
+    One Quick-Add-shaped batch of 10 sibling requests where 6 sources obtain
+    full/strong proof for one canonical artifact (the original acquisition
+    plus 5 attached alternates) while 4 receive transient proof inability
+    (range_unsupported / dns_failure) that exhausts the existing bounded
+    retry budget (transfers/cohorts.py:_PROOF_RETRY_BUDGET == 2) must:
       * remain ONE transfer throughout -- never split into 6 or 10 top-level
         transfers (Section 5, Invariant 1/2/9);
       * converge the 6 provable siblings onto one canonical artifact;
-      * let the 4 transiently-unprovable siblings independently materialize
-        as their own artifacts, INSIDE that same transfer, once bounded
-        proof is exhausted -- transient inability is never treated as
-        contradictory evidence (Invariant 8);
+      * leave the 4 transiently-unprovable siblings HELD, unresolved, and
+        durably MATERIALIZING once bounded proof is exhausted -- transient
+        inability is never treated as contradictory evidence (Invariant 8)
+        AND, per the canonical equivalence/lifecycle correction, retry-budget
+        exhaustion is never treated as permission to materialize an
+        independent physical artifact either (this is the exact production
+        defect transfer 263 exposed: two transiently-unprovable Ubuntu
+        mirrors were wrongly allowed to materialize as numbered duplicate
+        artifacts once their bounded proof retries were exhausted);
       * leave exact durable equivalence_reason/equivalence_disposition
-        explainable for every transient sibling after exhaustion.
+        explainable for every transient sibling after exhaustion, and never
+        allocate them a competing executor writer.
     """
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "mixed-six-four.sqlite3")
     await database.init_db()
@@ -601,23 +607,44 @@ async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_pa
     assert len(final_records) == 10  # Invariant 1/2: one transfer, 10 durable requests, throughout.
 
     for record in transient_records:
-        assert final_records[record.id].state != "materializing"  # independently materialized after exhaustion.
+        # Corrected contract: automatic proof retries stopped, but identity
+        # remains unresolved -- the request stays durably MATERIALIZING
+        # (held), never independently materialized.
+        assert final_records[record.id].state == "materializing"
 
     async with database.get_db() as db:
         for record in transient_records:
             row = await db.fetchone(
-                "SELECT equivalence_disposition,equivalence_reason FROM transfer_requests WHERE id=?",
+                "SELECT equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
                 (record.id,),
             )
             assert row["equivalence_disposition"] == "exhausted"
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
+            assert float(row["retry_at"] or 0) == 0
 
     artifacts_after = await engine.repository.artifacts(transfer.id)
-    assert len(artifacts_after) == 5  # 1 canonical (6 proven sources) + 4 independent (Example B topology).
-    non_canonical = [item for item in artifacts_after if item.id != canonical_artifact.id]
-    assert len(non_canonical) == 4
-    for artifact in non_canonical:
-        assert len(artifact.candidates) == 1  # each transient sibling kept its own single, unmerged candidate.
+    # Zero competing writers for the unresolved siblings -- only the 6-source
+    # canonical exists (DP 1.0.12 Root Cause A: proof exhaustion never
+    # authorizes an independent physical writer).
+    assert len(artifacts_after) == 1
+    assert artifacts_after[0].id == canonical_artifact.id
+
+    # Repeated scheduler ticks after exhaustion must not hot-loop proof
+    # acquisition or allocate a writer for a still-unresolved sibling.
+    for record in transient_records:
+        refreshed = next(
+            item for item in await engine.repository.requests(transfer.id) if item.id == record.id
+        )
+        await engine._process_request(refreshed)
+    async with database.get_db() as db:
+        for record in transient_records:
+            row = await db.fetchone(
+                "SELECT equivalence_retry_count,equivalence_disposition FROM transfer_requests WHERE id=?",
+                (record.id,),
+            )
+            assert int(row["equivalence_retry_count"]) == 2
+            assert row["equivalence_disposition"] == "exhausted"
+    assert len(await engine.repository.artifacts(transfer.id)) == 1
 
     async with database.get_db() as db:
         row = await db.fetchone(
@@ -628,6 +655,106 @@ async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_pa
 
     final_transfer = await engine.repository.get(transfer.id)
     assert final_transfer.state != TransferState.CONSOLIDATED  # Invariant 4: sibling convergence != transfer consolidation.
+
+
+async def test_five_mirror_production_263_regression(tmp_path, monkeypatch):
+    """DP 1.0.12 canonical equivalence/lifecycle correction, Section 11.1: the
+    direct five-mirror regression analogue of production transfer 263.
+
+    5 sibling mirror requests for the same logical filename, ONE Quick-Add-
+    shaped batch:
+      * mirror A -> canonical acquisition (first materialized);
+      * mirror B, C -> full-content equivalent, durably attach to A;
+      * mirror D -> equivalence sampler persistently returns
+        range_unsupported;
+      * mirror E -> equivalence sampler persistently raises a DNS resolution
+        failure (dns_failure).
+
+    Required outcome: exactly one physical canonical artifact ever exists (no
+    "(2)"/"(3)" artifact, no second/third executor writer); B and C durably
+    attach to A; D and E remain held/unresolved after their bounded proof
+    attempts exhaust (proof counters stop at the budget); the parent is never
+    FAILED merely because D/E could not prove identity."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "five-mirror-263.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"ubuntu-mirror-{index}") for index in range(1, 6))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[3].descriptor.id:  # mirror D
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
+        if candidate.provider_id == providers[4].descriptor.id:  # mirror E
+            raise socket.gaierror("simulated DNS resolution failure for mirror E")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"ubuntu-mirror-{index}", name="ubuntu-26.04-desktop-amd64.iso",
+                         preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="ubuntu-26.04-desktop-amd64.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    a_record = by_payload["ubuntu-mirror-1"]
+    b_record, c_record = by_payload["ubuntu-mirror-2"], by_payload["ubuntu-mirror-3"]
+    d_record, e_record = by_payload["ubuntu-mirror-4"], by_payload["ubuntu-mirror-5"]
+
+    # Deterministic, sequential (not gathered) resolution -- mirror A becomes
+    # the canonical baseline before any sibling is ever compared against it.
+    await engine._resolve(a_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1  # exactly one physical canonical artifact.
+    canonical_artifact = artifacts[0]
+
+    await engine._resolve(b_record)
+    await engine._resolve(c_record)
+    bindings = await engine.canonical.bindings(canonical_artifact.id)
+    assert len(bindings) == 3  # A + B + C durably attach to the same canonical artifact.
+
+    for record in (d_record, e_record):
+        await engine._resolve(record)
+        for _ in range(2):
+            refreshed = next(
+                item for item in await engine.repository.requests(transfer.id) if item.id == record.id
+            )
+            assert refreshed.state == "materializing"  # still parked pending bounded proof retry.
+            now[0] = refreshed.retry_at + 0.01
+            await engine._process_request(refreshed)
+
+    final_records = {item.id: item for item in await engine.repository.requests(transfer.id)}
+    for record in (d_record, e_record):
+        # D and E remain held/unresolved -- no "(2)"/"(3)" artifact, no
+        # second/third executor writer, once bounded proof exhausts.
+        assert final_records[record.id].state == "materializing"
+
+    async with database.get_db() as db:
+        for record in (d_record, e_record):
+            row = await db.fetchone(
+                """SELECT equivalence_disposition,equivalence_reason,equivalence_retry_count,retry_at
+                    FROM transfer_requests WHERE id=?""",
+                (record.id,),
+            )
+            assert row["equivalence_disposition"] == "exhausted"
+            assert int(row["equivalence_retry_count"]) == 2  # proof counters stop at the budget.
+            assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
+            assert float(row["retry_at"] or 0) == 0
+
+    artifacts_after = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_after) == 1  # still exactly one physical canonical artifact.
+    assert artifacts_after[0].id == canonical_artifact.id
+    starts = [call for call in executor.calls if call[0] == "start"]
+    assert len(starts) <= 1  # no second/third executor writer for D or E.
+
+    # The parent is never FAILED because D/E could not prove identity; it
+    # remains in a legitimate unresolved/autonomous state while they hold.
+    await engine._aggregate(transfer.id)
+    transfer_after = await engine.repository.get(transfer.id)
+    assert transfer_after.state != TransferState.FAILED
 
 
 async def _converge_three_unknown_size_mirrors(tmp_path, monkeypatch):

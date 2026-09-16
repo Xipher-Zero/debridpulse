@@ -23,6 +23,19 @@ _PENDING_STATES = {
 _PROOF_RETRY_BUDGET = 2
 _PROOF_RETRY_DELAY_CAP = 1.0
 
+# DP 1.0.12 canonical equivalence/lifecycle correction, Section 4: these are
+# the only durable equivalence_disposition values that authorize the caller
+# (transfers._engine_recovery.TransferEngine._materialize) to allocate an
+# ordinary independent physical writer -- each one reflects AFFIRMATIVE
+# evidence (a genuinely proven distinction, an explicit prior release, or a
+# structurally non-pairing candidate), never mere absence of proof.
+_INDEPENDENT_DISPOSITIONS = frozenset({"released", "independent", "contradictory"})
+# "exhausted" means automatic proof attempts stopped while identity remains
+# UNRESOLVED -- it must never be read as permission to materialize. A held
+# request stays in durable MATERIALIZING state; only later affirmative
+# evidence (recovered) or an explicit release event can move it forward.
+_HELD_DISPOSITIONS = frozenset({"exhausted"})
+
 
 @dataclass(frozen=True)
 class MappingResult:
@@ -127,14 +140,13 @@ async def _mapping(canonicals, incoming, registry):
     return MappingResult(None, EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="no_unique_mapping"), 0)
 
 
-async def _durable_mapping(request_id: str) -> int | None:
-    async with get_db() as db:
-        rows = await db.fetchall(
-            "SELECT canonical_artifact_id FROM artifact_consolidations WHERE source_request_id=? ORDER BY canonical_artifact_id",
-            (request_id,),
-        )
-    values = {int(row["canonical_artifact_id"]) for row in rows}
-    return next(iter(values)) if len(values) == 1 else None
+async def _durable_mapping(engine, request_id: str) -> int | None:
+    """DP 1.0.12 Section 6: durable canonical membership for ``request_id``,
+    discoverable for both cross-transfer and same-transfer contributors via
+    ``transfers.canonical.CanonicalOwnership.durable_owner_for_request`` (the
+    canonical-owner/repository owner of this lookup -- never ad hoc SQL
+    duplicated at this layer)."""
+    return await engine.canonical.durable_owner_for_request(request_id)
 
 
 def _decision(record, incoming, decision: str, reason: str = "", *, evidence=None,
@@ -160,14 +172,13 @@ def _retry_delay(engine) -> float:
     return min(_PROOF_RETRY_DELAY_CAP, max(0.1, configured))
 
 
-async def _proof_terminal(request_id: str) -> bool:
+async def _disposition(request_id: str) -> str:
     async with get_db() as db:
         row = await db.fetchone(
             "SELECT equivalence_disposition FROM transfer_requests WHERE id=?",
             (request_id,),
         )
-    disposition = str(row.get("equivalence_disposition") or "") if row else ""
-    return disposition in {"released", "independent", "contradictory", "exhausted"}
+    return str(row.get("equivalence_disposition") or "") if row else ""
 
 
 async def _proof_disposition(request_id: str, disposition: str, reason: str, *,
@@ -260,12 +271,20 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     incoming = _normalized_candidates(record, candidates)
     if not incoming:
         return False
-    # Once a cohort is conservatively released, every sibling must stay on the
-    # independent materialization path for this submission. Without this durable
-    # guard a later concurrently scheduled sibling can re-enter equivalence proof
-    # after another member exhausts, producing order-dependent partial attachment.
-    if await _proof_terminal(record.id):
+    # Once this request has a durable disposition, re-entering full proof
+    # acquisition on every scheduler tick would either re-litigate an
+    # affirmative decision that already stands, or -- for "exhausted" --
+    # hot-loop automatic proof sampling against a budget that has already
+    # stopped (DP 1.0.12 Section 4.3, quiescence). Independent-class
+    # dispositions (an affirmative prior decision) authorize materialization
+    # immediately; held-class dispositions ("exhausted": identity remains
+    # unresolved) keep the writer barrier up without doing any further proof
+    # work this tick.
+    disposition = await _disposition(record.id)
+    if disposition in _INDEPENDENT_DISPOSITIONS:
         return False
+    if disposition in _HELD_DISPOSITIONS:
+        return True
 
     canonicals = tuple(
         item for item in await engine.canonical.canonical_artifacts()
@@ -277,13 +296,23 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     current_mapping = await _mapping(canonicals, incoming, engine.registry)
     if not current_mapping.matched:
         evidence = current_mapping.evidence
-        if evidence.retryable and await _schedule_proof_retry(
-            engine, record, incoming, evidence, mapping_cardinality=current_mapping.cardinality,
-        ):
+        if evidence.retryable:
+            if await _schedule_proof_retry(
+                engine, record, incoming, evidence, mapping_cardinality=current_mapping.cardinality,
+            ):
+                return True
+            # Automatic proof retry budget exhausted (_schedule_proof_retry
+            # already persisted equivalence_disposition='exhausted' and
+            # cleared retry_at). Identity remains unresolved -- absence of
+            # proof is not proof of non-equivalence (DP 1.0.12 Section 4.1) --
+            # so this request stays held rather than authorizing a writer.
+            _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
+                      evidence=evidence, mapping_cardinality=current_mapping.cardinality)
             return True
-        disposition = "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else (
-            "exhausted" if evidence.retryable else "independent"
-        )
+        # Non-retryable: either affirmatively contradictory (proven distinct)
+        # or structurally non-pairing. Both are affirmative grounds for
+        # independent materialization.
+        disposition = "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else "independent"
         await _proof_disposition(record.id, disposition, evidence.reason, clear_retry=True)
         _decision(record, incoming, "independent", evidence.reason or "no_unique_mapping",
                   evidence=evidence, mapping_cardinality=current_mapping.cardinality)
@@ -319,9 +348,13 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         cohort = tuple(item for item in leaves if item.parent_id is None)
     material = tuple(item for item in cohort if item.state != "skipped")
     if len(material) < 2:
-        if current_evidence.retryable and await _schedule_proof_retry(
-            engine, record, incoming, current_evidence, mapping_cardinality=1,
-        ):
+        if current_evidence.retryable:
+            if await _schedule_proof_retry(
+                engine, record, incoming, current_evidence, mapping_cardinality=1,
+            ):
+                return True
+            _decision(record, incoming, "hold_unresolved", "single_member_prefix",
+                      evidence=current_evidence, mapping_cardinality=1)
             return True
         await _proof_disposition(record.id, "independent", "single_member_prefix", clear_retry=True)
         _decision(record, incoming, "independent", "single_member_prefix",
@@ -339,7 +372,17 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             _decision(record, incoming, "independent", f"sibling_{sibling.state}", evidence=current_evidence)
             return False
         if sibling.state == "resolved":
-            canonical_id = await _durable_mapping(sibling.id)
+            # A same-transfer sibling that is itself the established
+            # canonical owner (the first of this cohort to materialize, with
+            # nothing attached to it yet) has no durable origin/binding row
+            # of its own until something later attaches and formalizes it
+            # (transfers.canonical.CanonicalOwnership.attach()'s lazy
+            # self-heal, DP 1.0.12 Section 6) -- but it is already
+            # unambiguously present in ``canonicals`` by durable id, so that
+            # is checked first rather than treating "no origin yet" as
+            # "materialized independently."
+            self_owned = next((item for item in canonicals if item.request_id == sibling.id), None)
+            canonical_id = self_owned.id if self_owned is not None else await _durable_mapping(engine, sibling.id)
             if canonical_id is None:
                 await _release_cohort(material, "sibling_materialized")
                 _decision(record, incoming, "independent", "sibling_materialized", evidence=current_evidence)
@@ -353,6 +396,24 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         if sibling.retry_at > engine.clock():
             pending = True
             continue
+        if sibling.id != record.id:
+            # A sibling already durably held (exhausted: identity unresolved,
+            # automatic proof retries stopped) must not be re-sampled every
+            # time a DIFFERENT sibling's own coordinate_collection call walks
+            # this cohort -- that would hot-loop proof acquisition against an
+            # already-exhausted budget (DP 1.0.12 Section 4.3). It also must
+            # not release the cohort merely for being unresolved (Section
+            # 4.1/8.1.6); stay pending until it resolves or later evidence
+            # recovers it.
+            sibling_disposition = await _disposition(sibling.id)
+            if sibling_disposition in _HELD_DISPOSITIONS:
+                pending = True
+                continue
+            if sibling_disposition in _INDEPENDENT_DISPOSITIONS:
+                await _release_cohort(material, f"sibling_{sibling_disposition}")
+                _decision(record, incoming, "independent", f"sibling_{sibling_disposition}",
+                          evidence=current_evidence)
+                return False
 
         sibling_candidates = incoming if sibling.id == record.id else _normalized_candidates(
             sibling, await engine.repository.resolved_candidates(sibling.id),
@@ -365,16 +426,30 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         )
         if not match.matched:
             evidence = match.evidence
-            if evidence.retryable and await _schedule_proof_retry(
-                engine, sibling, sibling_candidates, evidence, mapping_cardinality=match.cardinality,
-            ):
+            if evidence.retryable:
+                if await _schedule_proof_retry(
+                    engine, sibling, sibling_candidates, evidence, mapping_cardinality=match.cardinality,
+                ):
+                    pending = True
+                    continue
+                # Automatic proof retry budget exhausted for this ONE sibling.
+                # Identity remains unresolved for it -- that alone must never
+                # release the rest of the cohort to independence (Section
+                # 8.1.6): a sibling that merely could not acquire fresh proof
+                # is not affirmative evidence of anything. Hold the whole
+                # collection decision instead; a genuinely distinct/
+                # contradictory sibling (handled below) is the only thing
+                # that still releases the cohort.
                 pending = True
                 continue
+            # Non-retryable: affirmatively contradictory (proven distinct) or
+            # structurally non-pairing. This sibling really is independent,
+            # so the weak-evidence collection hypothesis for the WHOLE cohort
+            # is disproven -- release every member to independent
+            # materialization (existing, unchanged behavior).
             await _proof_disposition(
                 sibling.id,
-                "exhausted" if evidence.retryable else (
-                    "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else "independent"
-                ),
+                "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else "independent",
                 evidence.reason,
                 clear_retry=True,
             )
