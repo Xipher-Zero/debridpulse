@@ -38,7 +38,7 @@ class ApplicationService:
         self.resolution_wakeup = asyncio.Event()
         self.integration_wakeup = asyncio.Event()
         self.execution_wakeup = asyncio.Event()
-        self.execution_poll_interval = 2
+        self.execution_poll_interval = 1
         self.definitions = ()
 
     def notify_applicability_changed(self, _integration_id: str) -> None:

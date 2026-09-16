@@ -112,7 +112,7 @@ async def sync_download_clients_loop():
                     await application.reconcile_executions()
             except Exception as e:
                 logger.error("Download client sync error: %s", sanitize_exception(e))
-        await _wait_for_work(application.execution_wakeup, max(2, application.execution_poll_interval))
+        await _wait_for_work(application.execution_wakeup, max(1, application.execution_poll_interval))
 
 
 async def postprocessing_loop():
