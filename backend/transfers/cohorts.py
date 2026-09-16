@@ -58,6 +58,11 @@ def _evidence_score(evidence: EquivalenceEvidence):
         EvidenceKind.UNAVAILABLE: 0,
         EvidenceKind.PREFIX_CONTENT_SAMPLE: 10,
         EvidenceKind.FULL_CONTENT_SAMPLE: 20,
+        # Resolver-attested identity (specification section 8.3) is stronger
+        # than a live content sample -- it is an authoritative fact reported
+        # by the resolver itself -- but is not byte-for-byte cryptographic
+        # proof, so it ranks below strong integrity verification.
+        EvidenceKind.RESOLVER_ATTESTED: 25,
         EvidenceKind.STRONG_INTEGRITY: 30,
     }[evidence.kind]
     if evidence.kind != EvidenceKind.UNAVAILABLE:

@@ -138,3 +138,178 @@ def test_native_client_has_no_duplicate_retry_or_adoption_owner():
     assert "def ensure_download" not in source
     assert "def find_existing_download" not in source
     assert "def _find_all_matches" not in source
+
+
+# --------------------------------------------------------------------------- #
+# DP 1.0.12 canonical architecture correction (Workstreams A/B/C) guardrails.
+# Section 13.1: static architecture assertions preventing regression back to
+# provider/executor-specific policy leaking into universal core modules.
+# --------------------------------------------------------------------------- #
+
+_ARIA2_NATIVE_KEYS = (
+    "min-split-size", "max-connection-per-server", "disk-cache", "file-allocation",
+    "max-overall-download-limit", "max-overall-upload-limit", "max-concurrent-downloads",
+    "lowest-speed-limit",
+)
+# transfers/mirrors.py's own EvidenceKind member name legitimately contains
+# "split" nowhere, but "split" alone is too common a substring (file
+# splitting, string.split, etc.) to check standalone; native aria2 "split" is
+# only ever meaningful alongside these more specific sibling keys, which are
+# the ones a leaking native option dict would actually carry.
+
+
+def test_universal_transfer_core_carries_no_aria2_native_option_keys():
+    """Specification section 2.5, 13.1: universal policy must not depend on
+    aria2-native option names after migration; only the aria2 implementation
+    may map neutral concepts to them internally."""
+    for path in (ROOT / "transfers").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for key in _ARIA2_NATIVE_KEYS:
+            assert key not in source, f"{path.relative_to(ROOT)} references native aria2 option {key!r}"
+
+
+def test_canonical_equivalence_has_no_provider_specific_branch():
+    """Specification section 2.2, 13.1: canonical equivalence must not branch
+    on provider_id == 'alldebrid' -- resolver-attested evidence (Workstream B)
+    is provider-neutral in the transfer model."""
+    source = (ROOT / "transfers/mirrors.py").read_text(encoding="utf-8")
+    assert "alldebrid" not in source.casefold()
+
+
+def test_no_provider_specific_branch_anywhere_in_universal_transfer_core():
+    for path in (ROOT / "transfers").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "alldebrid" not in source.casefold(), f"{path.relative_to(ROOT)} references a concrete provider"
+        assert "general_http" not in source.casefold(), f"{path.relative_to(ROOT)} references a concrete provider"
+
+
+def test_recovery_and_convergence_do_not_branch_on_file_selection_implementation_types():
+    """Specification section 2.2, 11: recovery may consume the neutral
+    PROCEED/HOLD/STALE admission decision; it must not import or branch on
+    file-selection's own implementation types to decide admission."""
+    for name in ("convergence_engine.py", "_engine_recovery.py"):
+        source = (ROOT / "transfers" / name).read_text(encoding="utf-8")
+        assert "import file_selection" not in source
+        assert "from transfers import file_selection" not in source
+        assert "from transfers.file_selection" not in source
+
+
+def test_materialization_admission_is_the_sole_repository_owned_decision_type():
+    """Specification section 7.1, 7.2: one neutral admission result type,
+    reused (not re-invented) by every dispatch entry point."""
+    for name in ("_engine_base.py", "convergence_engine.py"):
+        source = (ROOT / "transfers" / name).read_text(encoding="utf-8")
+        assert "materialization_authorization" in source
+    # No competing transfer-global mutable authorization flag was introduced
+    # (docstrings may name the forbidden pattern to explain why it is absent).
+    for path in (ROOT / "transfers").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "selection_authorized =" not in source
+        assert "selection_authorized=" not in source
+
+
+def test_bandwidth_and_tuning_routes_never_acquire_application_wide_maintenance():
+    """Specification section 2.6, 6, 9.6: executor-local/runtime-limit
+    mutations use only the ordinary application-operation admission, never
+    ``ApplicationMaintenanceGate`` merely because they are persisted."""
+    source = (ROOT / "api/routes.py").read_text(encoding="utf-8")
+    for name in (
+        "aria2_set_global_options", "patch_execution_runtime_limits",
+        "patch_transfer_policy", "patch_integration_configuration",
+    ):
+        start = source.index(f"async def {name}(")
+        end = source.index("\n\n@router.", start)
+        body = source[start:end]
+        assert "application.application_operation()" in body
+        assert "application.configuration_admission()" not in body
+
+
+def test_aria2_runtime_builds_native_options_from_canonical_namespaces_only():
+    """Specification sections 4.3, 9.1, 9.3: the native aria2 global-option
+    dict is rebuilt from the integration-owned ``integrations.aria2``
+    namespace, universal ``transfer_policy``, and neutral
+    ``execution_runtime_limits`` -- never reconstructed from flat
+    ``AppSettings.aria2_*`` fields. Every aria2-specific operational field
+    (including log rotation, RPC timeout, and result-history size) now has a
+    canonical home on ``integrations.aria2`` too -- there is no remaining
+    field-by-field justification for reading any of them off ``AppSettings``."""
+    source = (ROOT / "executors/aria2/runtime.py").read_text(encoding="utf-8")
+    start = source.index("def aria2_global_options(")
+    end = source.index("\nclass ", start)
+    body = source[start:end]
+    for forbidden in (
+        "aria2_split", "aria2_min_split_size", "aria2_max_connection_per_server",
+        "aria2_disk_cache", "aria2_file_allocation", "aria2_continue_downloads",
+        "aria2_lowest_speed_limit", "aria2_max_active_downloads", "aria2_max_download_limit",
+        "aria2_max_download_result", "aria2_keep_unfinished_download_result", "aria2_max_upload_limit",
+    ):
+        assert forbidden not in body, f"aria2_global_options still reads flat field {forbidden!r}"
+    assert "_canonical_aria2_options(cfg)" in body
+    assert "transfer_policy" in body
+    assert "execution_runtime_limits" in body
+
+
+def test_only_composition_and_migration_bind_flat_aria2_tuning_fields():
+    """Specification section 9.1: after migration, only the one-way legacy
+    translation path (``integrations.configuration.normalize_settings`` via
+    ``executors.aria2.definition``'s auto-derived ``legacy_fields``) may still
+    read the flat ``aria2_*`` fields; executor runtime/admin code must not
+    (specification section 9.3) -- for tuning, lifecycle, or administration
+    fields alike."""
+    for name in ("runtime.py", "admin.py"):
+        source = (ROOT / "executors/aria2" / name).read_text(encoding="utf-8")
+        for forbidden in (
+            "getattr(cfg, \"aria2_split\"", "getattr(cfg, \"aria2_min_split_size\"",
+            "getattr(cfg, \"aria2_max_connection_per_server\"", "getattr(cfg, \"aria2_disk_cache\"",
+            "getattr(cfg, \"aria2_file_allocation\"", "getattr(cfg, \"aria2_continue_downloads\"",
+            "getattr(cfg, \"aria2_lowest_speed_limit\"", "getattr(cfg, \"aria2_max_active_downloads\"",
+            "getattr(cfg, \"aria2_mode\"", "getattr(cfg, \"aria2_url\"", "getattr(cfg, \"aria2_secret\"",
+            "getattr(cfg, \"aria2_builtin_port\"", "getattr(cfg, \"aria2_builtin_auto_start\"",
+            "getattr(cfg, \"aria2_builtin_log_file\"", "getattr(cfg, \"aria2_builtin_log_max_mb\"",
+            "getattr(cfg, \"aria2_builtin_log_backups\"", "getattr(cfg, \"aria2_builtin_session_file\"",
+            "getattr(cfg, \"aria2_purge_interval_minutes\"", "getattr(cfg, \"aria2_restart_interval_hours\"",
+            "getattr(cfg, \"aria2_max_download_result\"", "getattr(cfg, \"aria2_keep_unfinished_download_result\"",
+            "getattr(cfg, \"aria2_operation_timeout_seconds\"", "cfg.aria2_purge_interval_minutes",
+            "cfg.aria2_restart_interval_hours", "get_settings().aria2_operation_timeout_seconds",
+        ):
+            assert forbidden not in source, f"{name} still rebuilds native tuning from flat field ({forbidden!r})"
+
+
+def test_builtin_runtime_and_administration_never_call_get_settings():
+    """Gate 9 revision-2 rejection finding, specification section 9.3:
+    namespace canonicalization alone (flat fields -> ``_canonical_aria2_options()``)
+    is not dependency inversion. ``BuiltinAria2Runtime`` and
+    ``Aria2Administration`` -- the long-lived singletons -- must receive
+    typed configuration through injection (``Aria2RuntimeConfiguration``,
+    composed by ``application.composition.configure()``) and never call
+    ``core.config.get_settings()`` themselves. The settings-boundary
+    translation helpers (``_canonical_aria2_options``, ``is_builtin_mode``,
+    ``builtin_rpc_url``, ``effective_rpc_config``, ``aria2_global_options``)
+    remain legitimate for genuine settings-boundary callers (API routes,
+    migration, composition itself) -- this test isolates the two runtime
+    CLASSES specifically, not the whole module."""
+    source = (ROOT / "executors/aria2/runtime.py").read_text(encoding="utf-8")
+    class_start = source.index("class BuiltinAria2Runtime:")
+    class_end = source.index("\nruntime = BuiltinAria2Runtime()", class_start)
+    class_body = source[class_start:class_end]
+    assert "get_settings" not in class_body
+    assert "self._config" in class_body
+
+    admin_source = (ROOT / "executors/aria2/admin.py").read_text(encoding="utf-8")
+    assert "get_settings" not in admin_source
+    assert "from core.config import" not in admin_source
+    assert "self._config" in admin_source
+
+
+def test_composition_is_the_sole_aria2_runtime_configuration_injection_point():
+    """Specification section 9.3: ``application/composition.py`` is the one
+    place that translates canonical settings into typed
+    ``Aria2RuntimeConfiguration`` and injects it -- via ``runtime.configure()``
+    and the ``Aria2Administration`` constructor -- on every settings change."""
+    source = (ROOT / "application/composition.py").read_text(encoding="utf-8")
+    assert "Aria2RuntimeConfiguration(" in source
+    assert "aria2_runtime.configure(" in source
+    assert "Aria2Administration(" in source
+    call_start = source.index("Aria2Administration(")
+    call_end = source.index(")", call_start)
+    assert "aria2_runtime_config" in source[call_start:call_end]

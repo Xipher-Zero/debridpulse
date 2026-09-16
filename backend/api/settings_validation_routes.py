@@ -517,26 +517,29 @@ async def validate_alldebrid(payload: AllDebridValidationRequest):
 
 @router.post("/settings/validate-aria2")
 async def validate_aria2(payload: Aria2ValidationRequest, application: ApplicationService = Depends(get_application)):
+    from executors.aria2.runtime import _canonical_aria2_options
+
     cfg = get_settings()
+    aria2 = _canonical_aria2_options(cfg)
     try:
         if payload.mode == "builtin":
-            if str(getattr(cfg, "aria2_mode", "external")) != "builtin":
+            if aria2.mode != "builtin":
                 raise HTTPException(
                     400,
                     "Built-in aria2 starts after Apply Settings; apply the mode change before testing it",
                 )
             result = await application.integration_admin("aria2").test()
         else:
-            url = payload.url.strip() or str(cfg.aria2_url or "").strip()
+            url = payload.url.strip() or str(aria2.url or "").strip()
             if not url:
                 raise HTTPException(400, "No external aria2 RPC URL configured or entered")
             secret = "" if payload.clear_secret else (
-                payload.secret.strip() or str(cfg.aria2_secret or "").strip()
+                payload.secret.strip() or str(aria2.secret or "").strip()
             )
             service = Aria2Service(
                 url,
                 secret,
-                getattr(cfg, "aria2_operation_timeout_seconds", 15),
+                aria2.operation_timeout_seconds,
             )
             result = await service.test()
         return {"ok": True, **result}

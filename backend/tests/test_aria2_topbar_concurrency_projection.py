@@ -32,11 +32,13 @@ async def test_topbar_concurrency_projection_uses_universal_scheduler_limit(monk
     monkeypatch.setattr(
         routes,
         "get_settings",
-        lambda: SimpleNamespace(aria2_mode=aria2_mode, max_concurrent_downloads=3),
+        lambda: SimpleNamespace(integrations={"aria2": SimpleNamespace(options={"mode": aria2_mode})}),
     )
     application = _FakeApplication(max_active_executions=7)
 
     result = await routes.aria2_get_global_options(application=application)
 
+    assert result["mode"] == aria2_mode
+    assert result["global_options_read_only"] == (aria2_mode == "external")
     assert result["max_concurrent_downloads"] == 7
     assert result["raw"]["max-concurrent-downloads"] == "99"

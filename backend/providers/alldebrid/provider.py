@@ -15,7 +15,7 @@ from transfers.errors import Category, Domain, NormalizedError, Origin, Retryabi
 from transfers.models import (
     Capability, CleanupAuthority, CleanupDirective, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
-    ProviderResource, ResolutionResult, ResourceSnapshot, ResourceState,
+    ProviderResource, ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState,
     SourceEntry, SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
 )
 
@@ -76,11 +76,28 @@ class AllDebridProvider:
                 size = max(0, int(native.get("filesize") or native.get("size") or 0))
             except Exception as exc:
                 raise TransferError(translate_error(exc, secrets=self._secrets)) from None
+            # Resolver-attested identity evidence (DP 1.0.12 canonical
+            # architecture correction, Workstream B): only populated from a
+            # name AllDebrid's resolution response itself asserted, never the
+            # submitted-URL/request-name fallback below -- an unlock response
+            # lacking a native filename carries no resolver identity fact.
+            native_name = native.get("filename") or native.get("name")
+            # Evidence requires BOTH a resolver-asserted name AND an exact
+            # positive size (specification section 8.1: "exact positive byte
+            # size"); mirrors.py's consumer already refuses a non-positive
+            # size as proof, so a name-only emission here never currently
+            # causes a false consolidation -- but the evidence object itself
+            # must not overstate what the resolver actually asserted.
+            resolver_evidence = (
+                ResolverArtifactIdentityEvidence(resolved_name=str(native_name), exact_bytes=size)
+                if native_name and size > 0 else None
+            )
             candidate = TransferCandidate(
-                str(native.get("filename") or native.get("name") or request.name),
+                str(native_name or request.name),
                 (Endpoint(urlsplit(endpoint).scheme, endpoint),), size,
                 provider_id=self.descriptor.id, refresh_request=request,
                 source_identity=SourceIdentity("host", str(urlsplit(str(request.payload)).hostname or "").casefold().removeprefix("www.").rstrip(".")),
+                resolver_identity_evidence=resolver_evidence,
             )
             return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
         if request.kind == "magnet":

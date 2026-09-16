@@ -60,6 +60,58 @@ async def test_direct_resolution_returns_usable_canonical_candidate_and_retains_
 
 
 @pytest.mark.asyncio
+async def test_direct_resolution_emits_resolver_attested_identity_evidence():
+    """DP 1.0.12 canonical architecture correction, Workstream B: the
+    provider emits a neutral resolver-attested fact -- never a duplicate or
+    standby decision (that remains ``transfers.mirrors`` policy)."""
+    client = AsyncMock()
+    client.unlock_link.return_value = {"link": "https://example.org/file", "filename": "file.bin", "filesize": 128}
+    provider = AllDebridProvider(client=client)
+    result = await provider.resolve(TransferRequest("https", "https://source.example/file"))
+    evidence = result.candidates[0].resolver_identity_evidence
+    assert evidence is not None
+    assert evidence.resolved_name == "file.bin"
+    assert evidence.exact_bytes == 128
+    assert not hasattr(evidence, "duplicate")
+    assert not hasattr(evidence, "standby")
+
+
+@pytest.mark.asyncio
+async def test_direct_resolution_without_native_filename_emits_no_resolver_evidence():
+    """No resolver-asserted name must never fall back to inferring evidence
+    from the submitted request/URL (specification section 8.2, 8.4)."""
+    client = AsyncMock()
+    client.unlock_link.return_value = {"link": "https://example.org/file", "filesize": 128}
+    provider = AllDebridProvider(client=client)
+    request = TransferRequest("https", "https://source.example/some-file.bin", name="some-file.bin")
+    result = await provider.resolve(request)
+    candidate = result.candidates[0]
+    # The submitted request name still names the candidate (existing
+    # fallback behavior, unchanged); it is simply never asserted as resolver
+    # EVIDENCE.
+    assert candidate.name == "some-file.bin"
+    assert candidate.resolver_identity_evidence is None
+
+
+@pytest.mark.asyncio
+async def test_direct_resolution_with_zero_size_emits_no_resolver_evidence():
+    """Gate 9 revision-2 rejection finding, specification section 8.1: the
+    evidence object must represent a resolver-attested name AND an exact
+    POSITIVE byte size -- a native filename with no (or a zero) size is not
+    sufficient, even though ``transfers.mirrors`` already independently
+    refuses a non-positive size as proof and so this never currently causes
+    a false consolidation. The evidence object itself must not overstate
+    what AllDebrid actually asserted."""
+    client = AsyncMock()
+    client.unlock_link.return_value = {"link": "https://example.org/file", "filename": "file.bin", "filesize": 0}
+    provider = AllDebridProvider(client=client)
+    result = await provider.resolve(TransferRequest("https", "https://source.example/file"))
+    candidate = result.candidates[0]
+    assert candidate.name == "file.bin"
+    assert candidate.resolver_identity_evidence is None
+
+
+@pytest.mark.asyncio
 async def test_upload_resource_identity_is_separate_from_transfer_and_native_id():
     client = AsyncMock()
     client.upload_magnet.return_value = {"id": "123", "statusCode": 4, "name": "payload"}

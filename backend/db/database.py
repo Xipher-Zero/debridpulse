@@ -740,6 +740,15 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'equivalence_retry_count': 'INTEGER NOT NULL DEFAULT 0',
         'equivalence_reason': 'TEXT',
         'equivalence_disposition': "TEXT NOT NULL DEFAULT ''",
+        # DP 1.0.12 canonical architecture correction, Workstream A: the
+        # ``transfer_file_selections.id`` generation that authorized this
+        # file-selection CHILD row's materialization (set once, at
+        # ``TransferRepository.manifest()`` fan-out time; NULL for a root
+        # request and for any row created before this column existed).
+        # Durable and immune to a later root re-resolution rebinding
+        # ``transfer_requests.resource`` -- see
+        # ``TransferRepository.materialization_authorization``.
+        'materialized_selection_id': 'TEXT',
     },
     'provider_resources': {
         'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',

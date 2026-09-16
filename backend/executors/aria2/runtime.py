@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -16,46 +17,105 @@ logger = logging.getLogger("alldebrid.aria2")
 BUILTIN_ARIA2_SECRET = "debridpulse-internal-aria2-rpc"
 
 
+def _canonical_aria2_options(cfg):
+    """Decode the integration-owned ``integrations.aria2`` namespace (DP 1.0.12
+    canonical architecture correction, Workstream C, specification sections
+    4.3, 9.1, 9.3): native aria2 tuning is rebuilt from this typed, executor-
+    owned schema -- never from flat ``AppSettings.aria2_*`` fields -- so
+    ``integrations.aria2`` remains the single canonical schema owner.
+
+    This is the settings-BOUNDARY translation helper: legitimate for callers
+    that already hold ``AppSettings`` and are translating it for an API
+    response or a fresh composition pass (``api/routes.py``,
+    ``executors/aria2/definition.py``'s ``build()``,
+    ``executors/aria2/migration.py``, ``api/settings_validation_routes.py``).
+    ``BuiltinAria2Runtime``/``Aria2Administration`` must NOT call this (or
+    ``core.config.get_settings()``) themselves -- they consume an already-
+    injected ``Aria2RuntimeConfiguration`` instead (specification section
+    9.3: "must not call global application get_settings() to discover its
+    own native tuning at runtime")."""
+    from executors.aria2.definition import Aria2Options
+
+    entry = (getattr(cfg, "integrations", None) or {}).get("aria2")
+    options = getattr(entry, "options", None) or {}
+    return Aria2Options(**options)
+
+
 def is_builtin_mode(cfg=None) -> bool:
     cfg = cfg or get_settings()
-    return getattr(cfg, "aria2_mode", "external") == "builtin"
+    return _canonical_aria2_options(cfg).mode == "builtin"
 
 
 def builtin_rpc_url(cfg=None) -> str:
     cfg = cfg or get_settings()
-    port = int(getattr(cfg, "aria2_builtin_port", 6800) or 6800)
+    port = _canonical_aria2_options(cfg).builtin_port
     return f"http://127.0.0.1:{port}/jsonrpc"
 
 
 def effective_rpc_config(cfg=None) -> tuple[str, str]:
     cfg = cfg or get_settings()
-    if is_builtin_mode(cfg):
-        return builtin_rpc_url(cfg), BUILTIN_ARIA2_SECRET
-    return (getattr(cfg, "aria2_url", "") or "").strip(), (getattr(cfg, "aria2_secret", "") or "").strip()
+    aria2 = _canonical_aria2_options(cfg)
+    return _effective_rpc_config(aria2)
 
 
 def aria2_global_options(cfg=None, *, include_safety: bool = False) -> Dict[str, str]:
+    """Build the native aria2 global-option dict from current settings.
+
+    DP 1.0.12 canonical architecture correction, Workstream C (specification
+    sections 2.5, 4.1, 4.3, 4.4, 9.1, 9.3): every native key here is rebuilt
+    from a canonical typed source -- the ``integrations.aria2`` namespace for
+    every aria2-native tuning/administration field (including log rotation,
+    RPC timeout, and result-history size, which now also live on
+    ``Aria2Options``), ``transfer_policy`` for the universal concurrency
+    authority, ``execution_runtime_limits`` for the neutral bandwidth
+    capability -- never from flat ``AppSettings.aria2_*`` fields. Those flat
+    fields remain only as one-way migration input, translated into the
+    canonical namespaces by ``integrations.configuration.normalize_settings``.
+
+    This is the settings-boundary convenience wrapper around the pure
+    ``build_aria2_global_options()`` -- legitimate for a genuine settings
+    read (an API response, a fresh composition pass). The long-lived
+    ``BuiltinAria2Runtime``/``Aria2Administration`` singletons call
+    ``build_aria2_global_options()`` directly against their injected
+    ``Aria2RuntimeConfiguration`` instead of this function, so they never
+    call ``get_settings()`` themselves.
+    """
     cfg = cfg or get_settings()
-    options: Dict[str, str] = {
-        "max-download-result": str(int(getattr(cfg, "aria2_max_download_result", 50) or 50)),
-        "keep-unfinished-download-result": "true" if bool(getattr(cfg, "aria2_keep_unfinished_download_result", False)) else "false",
-        "max-concurrent-downloads": str(int(getattr(cfg, "aria2_max_active_downloads", 3) or 3)),
-        "split": str(int(getattr(cfg, "aria2_split", 8) or 8)),
-        "min-split-size": str(getattr(cfg, "aria2_min_split_size", "10M") or "10M"),
-        "max-connection-per-server": str(int(getattr(cfg, "aria2_max_connection_per_server", 8) or 8)),
+    aria2 = _canonical_aria2_options(cfg)
+    policy = getattr(cfg, "transfer_policy", None)
+    limits = getattr(cfg, "execution_runtime_limits", None)
+    max_concurrent = int(getattr(policy, "max_concurrent_executions", None) or 3)
+    max_download_bps = int(getattr(limits, "max_download_bytes_per_second", None) or 0)
+    return build_aria2_global_options(aria2, max_concurrent, max_download_bps, include_safety=include_safety)
+
+
+def build_aria2_global_options(options, max_concurrent_executions: int, max_download_bytes_per_second: int,
+                                *, include_safety: bool = False) -> Dict[str, str]:
+    """Pure translation of already-injected typed configuration into the
+    native aria2 global-option dict -- no settings access of any kind. The
+    single mapping owner ``aria2_global_options()`` (above) and
+    ``BuiltinAria2Runtime``/``Aria2Administration`` (which never hold a
+    ``get_settings()``-backed value at all) both funnel through this."""
+    options_dict: Dict[str, str] = {
+        "max-download-result": str(int(options.max_download_result or 50)),
+        "keep-unfinished-download-result": "true" if bool(options.keep_unfinished_download_result) else "false",
+        "max-concurrent-downloads": str(int(max_concurrent_executions or 3)),
+        "split": str(int(options.split or 8)),
+        "min-split-size": str(options.min_split_size or "10M"),
+        "max-connection-per-server": str(int(options.max_connection_per_server or 8)),
         # disk-cache=0 per aria2 docs means ~4 MiB for HTTP.
         # On FUSE-based mounts (mergerfs, NFS) a small cache (e.g. 16M) reduces
         # FUSE round-trips and can actually lower peak RSS compared to 0.
         # Users can override this in Settings → Download → aria2 disk-cache.
-        "disk-cache": str(getattr(cfg, "aria2_disk_cache", "0") or "0"),
-        "file-allocation": str(getattr(cfg, "aria2_file_allocation", "falloc") or "falloc"),
-        "continue": "true" if bool(getattr(cfg, "aria2_continue_downloads", True)) else "false",
-        "lowest-speed-limit": str(getattr(cfg, "aria2_lowest_speed_limit", "0") or "0"),
-        "max-overall-download-limit": str(int(getattr(cfg, "aria2_max_download_limit", 0) or 0)),
-        "max-overall-upload-limit":   str(int(getattr(cfg, "aria2_max_upload_limit", 0) or 0)),
+        "disk-cache": str(options.disk_cache or "0"),
+        "file-allocation": str(options.file_allocation or "falloc"),
+        "continue": "true" if bool(options.continue_downloads) else "false",
+        "lowest-speed-limit": str(options.lowest_speed_limit or "0"),
+        "max-overall-download-limit": str(int(max_download_bytes_per_second or 0)),
+        "max-overall-upload-limit":   str(int(options.max_upload_limit or 0)),
     }
     if include_safety:
-        options.update({
+        options_dict.update({
             "follow-torrent": "false",
             "follow-metalink": "false",
             "enable-dht": "false",
@@ -63,7 +123,41 @@ def aria2_global_options(cfg=None, *, include_safety: bool = False) -> Dict[str,
             "enable-peer-exchange": "false",
             "bt-enable-lpd": "false",
         })
-    return options
+    return options_dict
+
+
+def _builtin_mode(options) -> bool:
+    return options.mode == "builtin"
+
+
+def _builtin_rpc_url(options) -> str:
+    return f"http://127.0.0.1:{options.builtin_port}/jsonrpc"
+
+
+def _effective_rpc_config(options) -> tuple[str, str]:
+    if _builtin_mode(options):
+        return _builtin_rpc_url(options), BUILTIN_ARIA2_SECRET
+    return (options.url or "").strip(), (options.secret or "").strip()
+
+
+def _default_aria2_options():
+    from executors.aria2.definition import Aria2Options
+    return Aria2Options()
+
+
+@dataclass(frozen=True)
+class Aria2RuntimeConfiguration:
+    """Typed configuration injected into ``BuiltinAria2Runtime``/
+    ``Aria2Administration`` (DP 1.0.12 canonical architecture correction,
+    Workstream C, specification section 9.3). Rebuilt and re-injected by
+    ``application.composition.configure()`` on every settings change; the
+    runtime/admin singletons never call ``core.config.get_settings()``
+    themselves to discover their own native tuning, lifecycle mode, or
+    application storage root."""
+    options: Any = field(default_factory=_default_aria2_options)
+    download_root: str = "/download"
+    max_concurrent_executions: int = 3
+    max_download_bytes_per_second: int = 0
 
 
 class BuiltinAria2Runtime:
@@ -75,27 +169,39 @@ class BuiltinAria2Runtime:
         self._stdout_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
+        self._config = Aria2RuntimeConfiguration()
+
+    def configure(self, config: Aria2RuntimeConfiguration) -> None:
+        """Injection point (specification section 9.3): composition calls
+        this on every settings change so this long-lived singleton always
+        acts on current configuration without ever reading global
+        application settings itself."""
+        self._config = config
+
+    @property
+    def options(self):
+        return self._config.options
 
     def _service(self) -> Aria2Service:
-        url, secret = effective_rpc_config()
-        return Aria2Service(url, secret, get_settings().aria2_operation_timeout_seconds)
+        url, secret = _effective_rpc_config(self._config.options)
+        return Aria2Service(url, secret, self._config.options.operation_timeout_seconds)
 
     def _is_process_alive(self) -> bool:
         return self._process is not None and self._process.returncode is None
 
     def _runtime_paths(self) -> tuple[Path, Path]:
-        cfg = get_settings()
-        log_file = Path(getattr(cfg, "aria2_builtin_log_file", "/app/data/aria2/aria2.log") or "/app/data/aria2/aria2.log")
-        session_file = Path(getattr(cfg, "aria2_builtin_session_file", "/app/data/aria2/aria2.session") or "/app/data/aria2/aria2.session")
+        aria2 = self._config.options
+        log_file = Path(aria2.builtin_log_file or "/app/data/aria2/aria2.log")
+        session_file = Path(aria2.builtin_session_file or "/app/data/aria2/aria2.session")
         log_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.touch(exist_ok=True)
         return log_file, session_file
 
     def _log_rotation_settings(self) -> tuple[int, int]:
-        cfg = get_settings()
-        max_mb = int(getattr(cfg, "aria2_builtin_log_max_mb", 25) or 25)
-        backups = int(getattr(cfg, "aria2_builtin_log_backups", 3) or 0)
+        aria2 = self._config.options
+        max_mb = int(aria2.builtin_log_max_mb or 25)
+        backups = int(aria2.builtin_log_backups or 0)
         return max(1, max_mb) * 1024 * 1024, max(0, backups)
 
     def _rotate_log_file(self) -> bool:
@@ -124,23 +230,27 @@ class BuiltinAria2Runtime:
             return False
 
     def _download_dir(self) -> Path:
-        cfg = get_settings()
         # Built-in aria2 runs in the same container as the app, so it must use
-        # the normal mounted download folder. aria2_download_path is only for a
-        # separate external aria2 container with a different path namespace.
-        return Path(getattr(cfg, "download_folder", "/download") or "/download")
+        # the normal mounted download folder (application storage root,
+        # injected -- specification section 4.2). aria2_download_path is only
+        # for a separate external aria2 container with a different path
+        # namespace.
+        return Path(self._config.download_root or "/download")
 
     def _command(self) -> list[str]:
-        cfg = get_settings()
+        aria2 = self._config.options
         log_file, session_file = self._runtime_paths()
         download_dir = self._download_dir()
         download_dir.mkdir(parents=True, exist_ok=True)
-        options = aria2_global_options(cfg, include_safety=True)
+        options = build_aria2_global_options(
+            aria2, self._config.max_concurrent_executions,
+            self._config.max_download_bytes_per_second, include_safety=True,
+        )
         cmd = [
             "aria2c",
             "--enable-rpc=true",
             "--rpc-listen-all=false",
-            f"--rpc-listen-port={int(getattr(cfg, 'aria2_builtin_port', 6800) or 6800)}",
+            f"--rpc-listen-port={aria2.builtin_port}",
             f"--rpc-secret={BUILTIN_ARIA2_SECRET}",
             "--rpc-allow-origin-all=false",
             f"--dir={download_dir}",
@@ -151,8 +261,6 @@ class BuiltinAria2Runtime:
             "--log-level=notice",
             "--summary-interval=0",
             "--disable-ipv6=true",
-            # Limit RPC result history to reduce in-memory result cache
-            f"--max-download-result={int(getattr(cfg, 'aria2_max_download_result', 50) or 50)}",
             # Disable async DNS resolver threads — they create extra glibc malloc
             # arenas which retain freed memory and cause RSS to grow over time.
             "--async-dns=false",
@@ -174,17 +282,15 @@ class BuiltinAria2Runtime:
         return cmd
 
     async def ensure_started(self) -> Dict[str, Any]:
-        cfg = get_settings()
-        if not is_builtin_mode(cfg):
+        if not _builtin_mode(self._config.options):
             return await self.status()
-        if not bool(getattr(cfg, "aria2_builtin_auto_start", True)):
+        if not self._config.options.builtin_auto_start:
             return await self.status()
         return await self.start()
 
     async def start(self) -> Dict[str, Any]:
         async with self._lock:
-            cfg = get_settings()
-            if not is_builtin_mode(cfg):
+            if not _builtin_mode(self._config.options):
                 return await self.status()
             if self._is_process_alive():
                 return await self.status()
@@ -215,7 +321,7 @@ class BuiltinAria2Runtime:
                 self._started_at = time.time()
                 self._last_error = ""
                 await self._wait_until_healthy()
-                logger.info("Built-in aria2 started on %s", builtin_rpc_url(cfg))
+                logger.info("Built-in aria2 started on %s", _builtin_rpc_url(self._config.options))
             except BaseException as exc:
                 self._last_error = str(exc).strip() or exc.__class__.__name__
                 await self._cleanup_failed_start()
@@ -227,7 +333,7 @@ class BuiltinAria2Runtime:
     async def stop(self) -> Dict[str, Any]:
         async with self._lock:
             try:
-                if is_builtin_mode():
+                if _builtin_mode(self._config.options):
                     try:
                         await self._service()._call("aria2.shutdown")
                     except Exception as _e:
@@ -253,8 +359,7 @@ class BuiltinAria2Runtime:
         return await self.start()
 
     async def ensure_log_rotation(self) -> Dict[str, Any]:
-        cfg = get_settings()
-        if not is_builtin_mode(cfg):
+        if not _builtin_mode(self._config.options):
             return {"ok": True, "enabled": False, "rotated": False}
         log_file, _ = self._runtime_paths()
         max_bytes, _ = self._log_rotation_settings()
@@ -273,16 +378,19 @@ class BuiltinAria2Runtime:
         return {"ok": True, "enabled": True, "rotated": rotated, "restarted": False, "size_bytes": size}
 
     async def apply_options(self) -> Dict[str, Any]:
-        if not is_builtin_mode():
+        if not _builtin_mode(self._config.options):
             return {"ok": False, "enabled": False}
         svc = self._service()
-        options = aria2_global_options(include_safety=True)
+        options = build_aria2_global_options(
+            self._config.options, self._config.max_concurrent_executions,
+            self._config.max_download_bytes_per_second, include_safety=True,
+        )
         await svc.change_global_options(options)
         return {"ok": True, "options": options}
 
     async def status(self) -> Dict[str, Any]:
-        cfg = get_settings()
-        enabled = is_builtin_mode(cfg)
+        aria2 = self._config.options
+        enabled = _builtin_mode(aria2)
         process_running = self._is_process_alive()
         rpc_ok = False
         version = ""
@@ -296,19 +404,22 @@ class BuiltinAria2Runtime:
                 rpc_error = str(exc)
         return {
             "enabled": enabled,
-            "mode": getattr(cfg, "aria2_mode", "external"),
-            "auto_start": bool(getattr(cfg, "aria2_builtin_auto_start", True)),
+            "mode": aria2.mode,
+            "auto_start": bool(aria2.builtin_auto_start),
             "running": bool(enabled and (process_running or rpc_ok)),
             "process_running": process_running,
             "rpc_ok": rpc_ok,
-            "rpc_url": builtin_rpc_url(cfg) if enabled else (getattr(cfg, "aria2_url", "") or ""),
+            "rpc_url": _builtin_rpc_url(aria2) if enabled else (aria2.url or ""),
             "download_dir": str(self._download_dir()) if enabled else "",
             "secret_managed": enabled,
             "version": version,
             "uptime_seconds": int(time.time() - self._started_at) if self._started_at else 0,
             "last_error": self._last_error or rpc_error,
             "last_output": "\n".join(self._last_output),
-            "safety": aria2_global_options(cfg, include_safety=True) if enabled else {},
+            "safety": build_aria2_global_options(
+                aria2, self._config.max_concurrent_executions,
+                self._config.max_download_bytes_per_second, include_safety=True,
+            ) if enabled else {},
         }
 
     async def _wait_until_healthy(self) -> None:

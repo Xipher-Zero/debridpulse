@@ -5,11 +5,16 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
+from dataclasses import replace
+
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
-from transfers.models import ArtifactFingerprint, FingerprintKind, ResolutionResult, ResourceState, TransferRequest
+from transfers.models import (
+    ArtifactFingerprint, FingerprintKind, ResolutionResult, ResolverArtifactIdentityEvidence,
+    ResourceState, TransferRequest,
+)
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -23,6 +28,17 @@ class BatchProvider(ParcelProvider):
             ResourceState.AVAILABLE,
             (self.candidate(name, payload=f"payload:{request.payload}"),),
         )
+
+
+class ResolverAttestedProvider(BatchProvider):
+    """A resolver that emits neutral resolver-attested identity evidence
+    (specification section 8.2) on every candidate it produces -- the
+    provider-side half of the Workstream B correction."""
+    def candidate(self, name="payload.bin", *, payload="parcel"):
+        base = super().candidate(name, payload=payload)
+        return replace(base, resolver_identity_evidence=ResolverArtifactIdentityEvidence(
+            resolved_name=name, exact_bytes=base.expected_bytes,
+        ))
 
 
 @pytest_asyncio.fixture
@@ -146,6 +162,62 @@ async def test_partial_overlap_full_proof_consolidates_only_proven_members(cohor
             (second.id,),
         )
     assert int(mappings["n"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_resolver_attested_evidence_consolidates_through_the_actual_cohort_path(cohort_pair, monkeypatch):
+    """Specification section 8.3's EvidenceKind integration requirement, and
+    the Gate 9 revision-2 rejection finding: ``transfers.cohorts`` is not
+    exercised merely by unit-testing ``transfers.mirrors.shared_evidence()``
+    in isolation. Cross-transfer/cohort canonicalization
+    (``_mapping`` -> ``_proof_against_primary`` -> ``_better`` ->
+    ``_evidence_score``) must actually consolidate two independent-source
+    submissions on resolver-attested identity alone, with no live content
+    sampling and no ``KeyError`` from an incomplete evidence-kind rank
+    table."""
+    resolver_a = ResolverAttestedProvider("resolver-a")
+    resolver_b = ResolverAttestedProvider("resolver-b")
+    cohort_pair.engine.registry.register_provider(resolver_a)
+    cohort_pair.engine.registry.register_provider(resolver_b)
+
+    fingerprint_calls = []
+    original_fingerprint = cohort_pair.executor.fingerprint
+
+    async def spied_fingerprint(candidate):
+        fingerprint_calls.append(candidate)
+        return await original_fingerprint(candidate)
+
+    monkeypatch.setattr(cohort_pair.executor, "fingerprint", spied_fingerprint)
+
+    first = await cohort_pair.engine.submit(
+        (TransferRequest("parcel", "ra-1", name="resolver-attested.bin", preferred_provider=resolver_a.descriptor.id),),
+        name="ra", deduplicate=False,
+    )
+    await cohort_pair.engine.tick()
+
+    second = await cohort_pair.engine.submit(
+        (TransferRequest("parcel", "rb-1", name="resolver-attested.bin", preferred_provider=resolver_b.descriptor.id),),
+        name="rb", deduplicate=False,
+    )
+    await cohort_pair.engine.tick()
+
+    canonicals = await cohort_pair.repository.artifacts(first.id)
+    # Fully consolidated: second's sole candidate became a member of first's
+    # canonical artifact, so second owns no separate artifact of its own.
+    assert await cohort_pair.repository.artifacts(second.id) == ()
+    assert len(canonicals) == 1
+    assert len(canonicals[0].candidates) == 2
+    # No executor sampling was ever performed -- resolver-attested identity
+    # proved membership without it (specification section 8.3, "without live
+    # content sampling").
+    assert fingerprint_calls == []
+
+    async with database.get_db() as db:
+        mappings = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_transfer_id=?",
+            (second.id,),
+        )
+    assert int(mappings["n"]) == 1
 
 
 @pytest.mark.asyncio

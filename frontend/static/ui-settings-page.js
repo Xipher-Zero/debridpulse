@@ -558,19 +558,21 @@
           })}
         </div>
         <div class="dp-settings-download-limit">
-          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {
+          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.transfer_policy?.max_concurrent_executions ?? s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {
             type: 'number', min: 1, max: 20,
             hint: 'Maximum number of downloads DebridPulse can run at the same time.'
           })}
         </div>
       </div>
-      <details class="dp-settings-additional dp-settings-engine-tuning" ${builtIn ? '' : 'hidden'}>
+      <details class="dp-settings-additional dp-settings-engine-tuning">
         <summary><span>Additional Engine Tuning</span></summary>
         <div class="dp-settings-additional-body">
+          <!-- Per-job tuning (specification section 9.9): applied to every
+               download regardless of built-in/external mode
+               (executors/aria2/executor.py Aria2Executor._options()), so it
+               must remain visible/controllable in BOTH modes -- never hidden
+               merely because external daemon-global mutation is read-only. -->
           <div class="dp-settings-engine-tuning-grid">
-            ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', s.aria2_lowest_speed_limit || '0', {
-              hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
-            })}
             ${tuningToggle(
               'aria2_continue_downloads',
               'Continue Partial Downloads',
@@ -588,17 +590,32 @@
             ${input('aria2_min_split_size', 'Minimum Split Size', s.aria2_min_split_size || '10M', {
               hint: 'Controls how small file sections can become when aria2 splits a download. Larger values create fewer parallel segments.'
             })}
-            ${input('aria2_disk_cache', 'Disk Cache', s.aria2_disk_cache || '64M', {
-              hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
-            })}
           </div>
-          <div class="dp-settings-engine-file-allocation">
-            ${selectField('aria2_file_allocation', 'File Allocation', s.aria2_file_allocation || 'falloc', [
-              ['trunc', 'Truncate'],
-              ['falloc', 'Fallocate'],
-              ['prealloc', 'Preallocate'],
-              ['none', 'None'],
-            ], 'Controls how aria2 prepares disk space for new files.')}
+          <!-- Built-in daemon/process-only tuning (specification section
+               9.9): these apply only to the built-in aria2 process's own
+               startup/global options (executors/aria2/runtime.py
+               build_aria2_global_options()), never per-job -- an external
+               aria2 daemon's own operator controls its own cache/allocation/
+               speed-limit configuration, so DebridPulse hides only THIS
+               group, never the per-job group above, when mode is external. -->
+          <div class="dp-settings-engine-tuning-builtin-only" data-builtin-only-tuning ${builtIn ? '' : 'hidden'}>
+            <p class="form-hint dp-settings-builtin-only-label">Built-in aria2 process only -- not applicable to an external aria2 daemon.</p>
+            <div class="dp-settings-engine-tuning-grid">
+              ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', s.aria2_lowest_speed_limit || '0', {
+                hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
+              })}
+              ${input('aria2_disk_cache', 'Disk Cache', s.aria2_disk_cache || '64M', {
+                hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
+              })}
+            </div>
+            <div class="dp-settings-engine-file-allocation">
+              ${selectField('aria2_file_allocation', 'File Allocation', s.aria2_file_allocation || 'falloc', [
+                ['trunc', 'Truncate'],
+                ['falloc', 'Fallocate'],
+                ['prealloc', 'Preallocate'],
+                ['none', 'None'],
+              ], 'Controls how aria2 prepares disk space for new files.')}
+            </div>
           </div>
         </div>
       </details>
@@ -619,10 +636,11 @@
       ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', s.stuck_download_timeout_hours ?? 6, {
         type: 'number', min: 0, max: 168, hint: '0 disables automatic stalled-download recovery.'
       })}
-      ${input('aria2_error_retry_count', 'aria2 Error Retries', s.aria2_error_retry_count ?? 3, {
-        type: 'number', min: 0, max: 20
+      ${input('aria2_error_retry_count', 'Execution Retry Count', s.transfer_policy?.execution_retry_count ?? s.aria2_error_retry_count ?? 3, {
+        type: 'number', min: 0, max: 20,
+        hint: 'Universal retry policy for a failed download execution (specification section 4.1) — not an aria2-specific setting.'
       })}
-      ${input('aria2_error_retry_delay_seconds', 'aria2 Retry Delay (seconds)', s.aria2_error_retry_delay_seconds ?? 60, {
+      ${input('aria2_error_retry_delay_seconds', 'Execution Retry Delay (seconds)', s.transfer_policy?.execution_retry_delay_seconds ?? s.aria2_error_retry_delay_seconds ?? 60, {
         type: 'number', min: 0, max: 3600
       })}
     `);
@@ -1352,7 +1370,14 @@
     root()?.querySelectorAll('[data-download-path-mode]').forEach(el => {
       el.hidden = el.dataset.downloadPathMode !== mode;
     });
-    root()?.querySelectorAll('.dp-settings-engine-tuning').forEach(el => {
+    // Specification section 9.9: only the built-in daemon/process-only
+    // tuning subsection is mode-gated. The per-job tuning fields
+    // (split/min-split-size/max-connection-per-server/continue) inside the
+    // SAME <details> apply to every download regardless of mode
+    // (Aria2Executor._options()) and must stay visible/editable in both --
+    // never hide the whole "Additional Engine Tuning" section merely
+    // because external daemon-global mutation is read-only.
+    root()?.querySelectorAll('[data-builtin-only-tuning]').forEach(el => {
       el.hidden = mode !== 'builtin';
     });
   }
@@ -1419,6 +1444,11 @@
     const result = {};
     const currentIntegrations = current?.integrations || {};
     for (const [identity, entry] of Object.entries(currentIntegrations)) {
+      // aria2 is written exclusively through its own scoped
+      // PATCH /integrations/aria2/configuration call above -- never echoed
+      // back through this whole-settings snapshot, which could otherwise
+      // silently replace it with a stale pre-save value.
+      if (identity === 'aria2') continue;
       const options = Object.fromEntries(
         Object.entries(entry?.options || {}).filter(([key]) => !key.endsWith('_configured'))
       );
@@ -1439,9 +1469,81 @@
     return result;
   }
 
-  function nonAuthPayload() {
+  // Executor/policy/runtime-limit fields are canonically owned by
+  // integrations.aria2 / transfer_policy (specification section 9.5): they
+  // are written exclusively through their scoped PATCH surfaces below, never
+  // through the whole-settings snapshot, which could otherwise silently
+  // replace a concurrently applied scoped write with a stale echoed value.
+  function aria2ConfigurationPayload() {
+    const clears = clearSecrets();
+    return {
+      options: {
+        mode: valueOf('aria2_mode', 'builtin'),
+        url: valueOf('aria2_url', 'http://127.0.0.1:6800/jsonrpc'),
+        secret: valueOf('aria2_secret'),
+        download_path: valueOf('aria2_download_path'),
+        split: intOf('aria2_split', 16),
+        min_split_size: valueOf('aria2_min_split_size', '10M'),
+        max_connection_per_server: intOf('aria2_max_connection_per_server', 16),
+        continue_downloads: boolOf('aria2_continue_downloads'),
+        disk_cache: valueOf('aria2_disk_cache', '64M'),
+        file_allocation: valueOf('aria2_file_allocation', 'falloc'),
+        lowest_speed_limit: valueOf('aria2_lowest_speed_limit', '0'),
+      },
+      clear_secrets: clears.includes('aria2_secret') ? ['secret'] : [],
+    };
+  }
+
+  function transferPolicyPayload() {
     const current = state.settings || {};
-    const maxDownloads = intOf('aria2_max_active_downloads', Number(current.max_concurrent_downloads ?? 3));
+    const maxDownloads = intOf('aria2_max_active_downloads',
+      Number(current.transfer_policy?.max_concurrent_executions ?? current.max_concurrent_downloads ?? 3));
+    return {
+      max_concurrent_executions: maxDownloads,
+      execution_retry_count: intOf('aria2_error_retry_count', 3),
+      execution_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', 60),
+    };
+  }
+
+  // Every legacy flat alias of a field now canonically owned by
+  // integrations.aria2 (backend/executors/aria2/definition.py's
+  // Aria2Options.model_fields -- kept in sync with that list by hand, since
+  // there is no runtime source of truth shared with the frontend) or by the
+  // PATCH /transfer-policy surface. Stripped from the whole-settings PUT
+  // body below so GET /settings's read-time compatibility projection
+  // (api/routes.py's _project_legacy_view) can never round-trip a stale
+  // value back through PUT /settings and silently undo a concurrently
+  // applied scoped PATCH.
+  const ARIA2_CANONICAL_LEGACY_FIELDS = [
+    'aria2_mode', 'aria2_url', 'aria2_secret', 'aria2_builtin_port', 'aria2_download_path',
+    'aria2_operation_timeout_seconds', 'aria2_split', 'aria2_min_split_size',
+    'aria2_max_connection_per_server', 'aria2_continue_downloads', 'aria2_disk_cache',
+    'aria2_file_allocation', 'aria2_lowest_speed_limit', 'aria2_waiting_window', 'aria2_stopped_window',
+    'aria2_max_upload_limit', 'aria2_builtin_auto_start', 'aria2_builtin_log_file',
+    'aria2_builtin_log_max_mb', 'aria2_builtin_log_backups', 'aria2_builtin_session_file',
+    'aria2_purge_interval_minutes', 'aria2_max_download_result', 'aria2_keep_unfinished_download_result',
+    'aria2_deep_sync_interval_minutes', 'aria2_restart_interval_hours',
+  ];
+  const TRANSFER_POLICY_CANONICAL_LEGACY_FIELDS = [
+    'max_concurrent_downloads', 'aria2_max_active_downloads',
+    'aria2_error_retry_count', 'aria2_error_retry_delay_seconds',
+  ];
+  // Legacy flat alias of a field now canonically owned by
+  // execution_runtime_limits (backend/transfers/runtime_limits.py's
+  // _LEGACY_FIELDS -- a one-way migration INPUT only). Gate 9 revision-4
+  // rejection finding 3: this was missing from the stripped-field lists
+  // above, so a stale whole-settings snapshot could resurrect an old
+  // download-bandwidth cap over a concurrently applied
+  // PATCH /execution/runtime-limits.
+  const RUNTIME_LIMIT_CANONICAL_LEGACY_FIELDS = ['aria2_max_download_limit'];
+
+  function nonAuthPayload() {
+    const current = {...(state.settings || {})};
+    delete current.transfer_policy;
+    delete current.execution_runtime_limits;
+    for (const key of ARIA2_CANONICAL_LEGACY_FIELDS) delete current[key];
+    for (const key of TRANSFER_POLICY_CANONICAL_LEGACY_FIELDS) delete current[key];
+    for (const key of RUNTIME_LIMIT_CANONICAL_LEGACY_FIELDS) delete current[key];
     return {
       ...current,
       integrations: integrationPayload(current),
@@ -1453,18 +1555,10 @@
       upload_fail_retry_count: intOf('upload_fail_retry_count', 3),
       upload_fail_retry_delay_minutes: intOf('upload_fail_retry_delay_minutes', 5),
 
-      aria2_mode: valueOf('aria2_mode', current.aria2_mode || 'builtin'),
-      aria2_url: valueOf('aria2_url', current.aria2_url || 'http://127.0.0.1:6800/jsonrpc'),
-      aria2_secret: valueOf('aria2_secret'),
       download_folder: valueOf('download_folder', current.download_folder || '/download'),
-      aria2_download_path: valueOf('aria2_download_path'),
-      max_concurrent_downloads: maxDownloads,
-      aria2_max_active_downloads: maxDownloads,
       min_free_disk_gb: floatOf('min_free_disk_gb', 0),
       disk_guard_resume_hysteresis_gb: floatOf('disk_guard_resume_hysteresis_gb', 0.5),
       stuck_download_timeout_hours: intOf('stuck_download_timeout_hours', 6),
-      aria2_error_retry_count: intOf('aria2_error_retry_count', 3),
-      aria2_error_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', 60),
       extract_enabled: boolOf('extract_enabled'),
       extract_delete_archive: boolOf('extract_delete_archive'),
       extract_max_concurrent: intOf('extract_max_concurrent', 1),
@@ -1493,19 +1587,13 @@
       events_keep_days: intOf('events_keep_days', 30),
       db_wipe_enabled: boolOf('db_wipe_enabled'),
       db_backup_before_wipe: boolOf('db_backup_before_wipe'),
-
-      aria2_split: intOf('aria2_split', 16),
-      aria2_min_split_size: valueOf('aria2_min_split_size', '10M'),
-      aria2_max_connection_per_server: intOf('aria2_max_connection_per_server', 16),
-      aria2_disk_cache: valueOf('aria2_disk_cache', '64M'),
-      aria2_file_allocation: valueOf('aria2_file_allocation', 'falloc'),
-      aria2_lowest_speed_limit: valueOf('aria2_lowest_speed_limit', '0'),
-      aria2_continue_downloads: boolOf('aria2_continue_downloads'),
     };
   }
 
   async function persistNonAuth({renderAfter = true, quiet = false} = {}) {
     const active = state.activeTab;
+    await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000);
+    await request('PATCH', '/transfer-policy', transferPolicyPayload(), 15000);
     const result = await request('PUT', '/settings', nonAuthPayload(), 15000);
     syncGlobalSettings(result);
     if (renderAfter) {

@@ -247,12 +247,19 @@ async def sqlite_operational_error_handler(_request: Request, exc: sqlite3.Opera
 
 _MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _DATABASE_WIPE_PATH = "/api/admin/database/wipe"
-# These routes own a stronger maintenance admission inside the endpoint. Wrapping
-# them in application_operation() here would put the outer request and downstream
+# This route owns a stronger maintenance admission inside the endpoint. Wrapping
+# it in application_operation() here would put the outer request and downstream
 # endpoint in different Starlette tasks and make maintenance wait on its own request.
+#
+# DP 1.0.12 canonical architecture correction, Workstream C (specification
+# sections 2.6, 9.6): /api/aria2/global-options previously belonged here too,
+# but a live bandwidth/concurrency mutation is not an application-wide
+# invariant -- it now uses the SAME ordinary application_operation() admission
+# as every other mutation route (self-entered, exactly like
+# ApplicationService.submit()/pause()/etc. already do for their own routes),
+# so it no longer needs -- or wants -- this exclusion.
 _SELF_MAINTAINED_MUTATION_PATHS = {
     "/api/settings",
-    "/api/aria2/global-options",
 }
 _AUTH_MUTATION_PATHS = {
     "/login",

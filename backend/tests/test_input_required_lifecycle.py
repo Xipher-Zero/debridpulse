@@ -16,7 +16,8 @@ from transfers.errors import Category, Domain, NormalizedError, Origin, Retryabi
 from transfers.input_required import (InputSubmissionRejected, auth_required, username_password, username_private_key, validate_submission)
 from transfers.models import (
     Capability, Endpoint, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState,
-    InputChallenge, InputField, InputMethod, InputOrigin, InputReason, IntegrationDescriptor, ResourceState, ResolutionResult,
+    InputChallenge, InputField, InputMethod, InputOrigin, InputReason, IntegrationDescriptor,
+    MaterializationAdmission, MaterializationAdmissionKind, ResourceState, ResolutionResult,
     TransferCandidate, TransferProgress, TransferRequest, TransferState,
 )
 from transfers.policy import TransferPolicy
@@ -195,6 +196,82 @@ async def test_private_key_passphrase_is_optional_in_challenge_and_unencrypted_k
     executor.finish(artifact.execution)
     await engine.tick()
     assert (await repository.get(transfer.id)).state == TransferState.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_executor_input_continuation_never_reaches_native_prepare_under_hold(base):
+    """Gate 9 revision-2 rejection finding, specification section 7.3, 7.6:
+    ``_continue_executor_input``'s ``prepare_with_input``/``start`` native
+    calls are executor side effects exactly like ``_dispatch()``'s
+    ``executor.prepare()`` -- they must stop under HOLD too, not only the
+    ordinary dispatch path. HOLD is ordinary waiting state: the submitted
+    input is not consumed, the challenge is not cleared, and a later PROCEED
+    tick still completes normally."""
+    repository, registry, engine, _ = base
+    registry.register_provider(StaticProvider())
+    executor = KeyExecutor(repository.authorize_execution, encrypted=False)
+    registry.register_executor(executor)
+    transfer = await engine.submit((TransferRequest("key-parcel", "opaque-source"),))
+    await engine.tick()
+    challenge = await engine.challenges.current(transfer.id)
+    await engine.submit_input(transfer.id, challenge.id, "username_private_key", {
+        "username": "executor-user-sentinel", "private_key": "executor-private-key-sentinel"})
+
+    real_admission = repository.materialization_authorization
+    monkeypatch_target = MaterializationAdmission(MaterializationAdmissionKind.HOLD, authority_generation="forced-generation")
+
+    async def forced_hold(_artifact):
+        return monkeypatch_target
+
+    repository.materialization_authorization = forced_hold
+    try:
+        await engine.tick()
+    finally:
+        repository.materialization_authorization = real_admission
+
+    assert executor.input_calls == 0, "prepare_with_input must never run while HOLD applies"
+    artifact = (await repository.artifacts(transfer.id))[0]
+    assert artifact.state == "input_required"
+    assert artifact.execution is None
+    # HOLD is ordinary waiting state -- the submitted input was not consumed
+    # or discarded, and the same challenge is still current.
+    assert await engine.challenges.current(transfer.id) == challenge
+
+    # A later PROCEED tick (real admission restored) completes normally.
+    await engine.tick()
+    artifact = (await repository.artifacts(transfer.id))[0]
+    assert artifact.execution is not None and executor.input_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_input_continuation_retires_under_stale_instead_of_completing_native_prepare(base):
+    """Gate 9 revision-2 rejection finding, specification section 7.5:
+    STALE must retire the pending continuation through the same canonical
+    machinery ``_dispatch()`` uses -- never let ``prepare_with_input``/
+    ``start`` commit native work for a generation that is no longer
+    current."""
+    repository, registry, engine, _ = base
+    registry.register_provider(StaticProvider())
+    executor = KeyExecutor(repository.authorize_execution, encrypted=False)
+    registry.register_executor(executor)
+    transfer = await engine.submit((TransferRequest("key-parcel", "opaque-source"),))
+    await engine.tick()
+    challenge = await engine.challenges.current(transfer.id)
+    await engine.submit_input(transfer.id, challenge.id, "username_private_key", {
+        "username": "executor-user-sentinel", "private_key": "executor-private-key-sentinel"})
+
+    async def forced_stale(_artifact):
+        return MaterializationAdmission(MaterializationAdmissionKind.STALE, authority_generation="forced-generation")
+
+    repository.materialization_authorization = forced_stale
+    await engine.tick()
+
+    assert executor.input_calls == 0, "prepare_with_input must never run for a STALE generation"
+    artifact = (await repository.artifacts(transfer.id))[0]
+    assert artifact.state == "unresolved"
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT state FROM transfer_requests WHERE id=?", (artifact.request_id,))
+    assert row["state"] == "pending"
 
 
 @pytest.mark.asyncio

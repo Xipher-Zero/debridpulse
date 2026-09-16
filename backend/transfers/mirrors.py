@@ -35,6 +35,14 @@ class EvidenceKind(str):
     STRONG_INTEGRITY = "strong_integrity"
     FULL_CONTENT_SAMPLE = "full_content_sample"
     PREFIX_CONTENT_SAMPLE = "prefix_content_sample"
+    # Resolver-attested identity (DP 1.0.12 canonical architecture correction,
+    # Workstream B): both independent-source candidates carry a
+    # ``ResolverArtifactIdentityEvidence`` whose normalized resolved name and
+    # exact positive byte size agree. A durably distinguishable member of this
+    # same taxonomy -- never a parallel signal invisible to code that already
+    # inspects ``EvidenceKind`` for presentation/audit/diagnostics -- proving
+    # one canonical artifact without live content sampling.
+    RESOLVER_ATTESTED = "resolver_attested"
     UNAVAILABLE = "unavailable"
 
 
@@ -53,7 +61,9 @@ class EquivalenceEvidence:
 
     @property
     def proves_individual(self) -> bool:
-        return self.kind in {EvidenceKind.STRONG_INTEGRITY, EvidenceKind.FULL_CONTENT_SAMPLE}
+        return self.kind in {
+            EvidenceKind.STRONG_INTEGRITY, EvidenceKind.FULL_CONTENT_SAMPLE, EvidenceKind.RESOLVER_ATTESTED,
+        }
 
     @property
     def proves_collection_member(self) -> bool:
@@ -61,6 +71,7 @@ class EquivalenceEvidence:
             EvidenceKind.STRONG_INTEGRITY,
             EvidenceKind.FULL_CONTENT_SAMPLE,
             EvidenceKind.PREFIX_CONTENT_SAMPLE,
+            EvidenceKind.RESOLVER_ATTESTED,
         }
 
     @property
@@ -194,6 +205,38 @@ def _unavailable(reason: str) -> EquivalenceEvidence:
     return EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason=reason)
 
 
+def _normalized_resolver_name(value: str) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _resolver_attested_evidence(left, right) -> EquivalenceEvidence | None:
+    """Cheap direct proof from independent resolver-attested identity facts.
+
+    Only ``ResolverArtifactIdentityEvidence`` -- a fact the resolver/provider
+    itself asserted (``transfers.models.TransferCandidate
+    .resolver_identity_evidence``) -- may satisfy this; ordinary reported
+    ``expected_bytes``/``name`` (the generic-HTTP case) never does, because
+    this function never reads them. Independence of the two source identities
+    is already guaranteed by the caller (``pairing_failure`` rejects
+    ``non_independent_source`` before this runs). Returns ``None`` -- not
+    ``UNAVAILABLE`` -- when no resolver-attested proof applies, so the caller
+    falls through to the ordinary sampling-evidence path unmodified.
+    """
+    left_evidence = left.resolver_identity_evidence
+    right_evidence = right.resolver_identity_evidence
+    if left_evidence is None or right_evidence is None:
+        return None
+    left_name = _normalized_resolver_name(left_evidence.resolved_name)
+    right_name = _normalized_resolver_name(right_evidence.resolved_name)
+    if not left_name or left_name != right_name:
+        return None
+    left_bytes = _known_positive_size(left_evidence.exact_bytes)
+    right_bytes = _known_positive_size(right_evidence.exact_bytes)
+    if left_bytes is None or right_bytes is None or left_bytes != right_bytes:
+        return None
+    return EquivalenceEvidence(EvidenceKind.RESOLVER_ATTESTED, left_bytes)
+
+
 def _fingerprint_kind(value) -> str:
     try:
         return str(value.kind.value)
@@ -240,6 +283,10 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
     right_by_algorithm = {algorithm for algorithm, _ in right_integrity}
     if left_by_algorithm & right_by_algorithm:
         return _diagnose(left, right, _unavailable("integrity_mismatch"))
+
+    resolver_evidence = _resolver_attested_evidence(left, right)
+    if resolver_evidence is not None:
+        return _diagnose(left, right, resolver_evidence)
 
     try:
         first, second = registry.executor_for(left), registry.executor_for(right)

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -9,15 +10,34 @@ from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
 from core.secure_files import atomic_write_json
 from integrations.definition import IntegrationSettings
+from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.settings import TransferSettings
 
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "/app/config/config.json"))
 logger = logging.getLogger("debridpulse.config")
 
+# Narrow serialized config-mutation authority (DP 1.0.12 canonical
+# architecture correction, Workstream C, specification sections 9.5, 13.8):
+# every settings-namespace mutation route (whole-settings PUT and every
+# scoped PATCH) must serialize its own load-modify-save critical section
+# under this lock so a concurrent writer's read-modify-write cannot silently
+# overwrite another namespace's newer value with a stale full snapshot. This
+# is deliberately NOT ``ApplicationMaintenanceGate``/``configuration_admission()``
+# (specification section 2.6, 6): it only ever contends with another config
+# writer, never with an unrelated long-running resolution/execution
+# operation, so it cannot reproduce the speed-cap collision this correction
+# eliminated.
+_config_write_lock = asyncio.Lock()
+
+
+def config_write_lock() -> asyncio.Lock:
+    return _config_write_lock
+
 
 class AppSettings(BaseModel):
     integrations: dict[str, IntegrationSettings] = Field(default_factory=dict, repr=False)
     transfer_policy: TransferSettings | None = None
+    execution_runtime_limits: ExecutionRuntimeLimits | None = None
     # AllDebrid
     alldebrid_api_key: str = ""
     alldebrid_agent: str = APP_SHORT_NAME

@@ -1,12 +1,12 @@
 """Namespace persistence and legacy input translation driven by definitions."""
 from integrations.definition import IntegrationSettings
+from transfers.runtime_limits import normalize_runtime_limits
 from transfers.settings import normalize_transfer_settings
 
 
 def normalize_settings(settings, definitions, *, previous=None, supplied_fields=None, clear_legacy_secrets=()):
     namespaces = dict(getattr(previous, "integrations", {}) or {})
     namespaces.update(dict(settings.integrations or {}))
-    translated = {}
     for definition in definitions:
         raw = namespaces.get(definition.id)
         entry = raw if isinstance(raw, IntegrationSettings) else IntegrationSettings(**(raw or {}))
@@ -31,10 +31,13 @@ def normalize_settings(settings, definitions, *, previous=None, supplied_fields=
         enabled = older.enabled if isinstance(older, IntegrationSettings) and "enabled" not in entry.model_fields_set else entry.enabled
         priority = older.priority if isinstance(older, IntegrationSettings) and "priority" not in entry.model_fields_set else entry.priority
         namespaces[definition.id] = IntegrationSettings(enabled=enabled, priority=priority, options=validated)
-        for legacy, option in definition.legacy_fields:
-            translated[legacy] = validated[option]
-    return normalize_transfer_settings(settings.model_copy(update={**translated, "integrations": namespaces}),
+    # One-way migration only (specification section 9.2): legacy flat
+    # `aria2_*` fields are compatibility INPUT, never a continually
+    # regenerated persisted mirror -- `integrations.<id>` is the sole
+    # authority on save.
+    updated = normalize_transfer_settings(settings.model_copy(update={"integrations": namespaces}),
         previous=previous, supplied_fields=supplied_fields)
+    return normalize_runtime_limits(updated, previous=previous, supplied_fields=supplied_fields)
 
 
 def public_integrations(settings, definitions):

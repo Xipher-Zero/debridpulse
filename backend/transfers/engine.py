@@ -347,7 +347,9 @@ class TransferEngine(_RecoveryTransferEngine):
                     first_commitment = bool(getattr(authorized, "first_commitment", False))
                 else:
                     authorized = entries
-                await self.repository.manifest(record, authorized)
+                await self.repository.manifest(
+                    record, authorized, selection_id=getattr(authorized, "selection_id", None),
+                )
             elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
                 error = self._error(
                     Category.RESOURCE_EXPIRED

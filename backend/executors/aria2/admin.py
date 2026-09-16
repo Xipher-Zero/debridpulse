@@ -3,15 +3,22 @@ from __future__ import annotations
 
 import time
 
-from core.config import get_settings
-from executors.aria2.runtime import runtime, is_builtin_mode, aria2_global_options
+from executors.aria2.runtime import runtime, Aria2RuntimeConfiguration, build_aria2_global_options
 
 
 class Aria2Administration:
-    def __init__(self, executor, repository, application):
+    def __init__(self, executor, repository, application, config: Aria2RuntimeConfiguration):
+        """``config`` is injected by composition (DP 1.0.12 canonical
+        architecture correction, Workstream C, specification section 9.3):
+        this class never reads global application settings to discover
+        its own native tuning/lifecycle mode -- it consumes the SAME typed
+        configuration bundle composition injects into the ``BuiltinAria2Runtime``
+        singleton, kept current by ``application.composition.configure()``
+        rebuilding and re-injecting it on every settings change."""
         self.executor = executor
         self.repository = repository
         self.application = application
+        self._config = config
         self._last_housekeeping = 0.0
         self._last_rotation = 0.0
 
@@ -75,7 +82,7 @@ class Aria2Administration:
         return await self.client.get_global_options()
 
     async def change_global_options(self, options):
-        if not is_builtin_mode():
+        if self._config.options.mode != "builtin":
             raise PermissionError("Global aria2 options are read-only in external mode")
         return await self.client.change_global_options(options)
 
@@ -87,9 +94,12 @@ class Aria2Administration:
         return {**await self.client.test(), "diagnostics": await self.memory_diagnostics()}
 
     async def apply_memory_tuning(self):
-        if not is_builtin_mode():
+        if self._config.options.mode != "builtin":
             return {"ok": True, "skipped": True, "reason": "External daemon policy is read-only"}
-        options = aria2_global_options(get_settings(), include_safety=True)
+        options = build_aria2_global_options(
+            self._config.options, self._config.max_concurrent_executions,
+            self._config.max_download_bytes_per_second, include_safety=True,
+        )
         await self.client.change_global_options(options)
         return {"ok": True, "applied": options}
 
@@ -104,18 +114,18 @@ class Aria2Administration:
         await runtime.stop()
 
     async def maintain(self):
-        cfg = get_settings()
+        aria2 = self._config.options
         now = time.time()
-        housekeeping_interval = max(0, cfg.aria2_purge_interval_minutes) * 60
+        housekeeping_interval = max(0, aria2.purge_interval_minutes) * 60
         if housekeeping_interval and now - self._last_housekeeping >= housekeeping_interval:
             await self.housekeeping()
             self._last_housekeeping = now
-        if not is_builtin_mode(cfg):
+        if aria2.mode != "builtin":
             return
         if now - self._last_rotation >= 900:
             await runtime.ensure_log_rotation()
             self._last_rotation = now
-        interval = max(0, cfg.aria2_restart_interval_hours) * 3600
+        interval = max(0, aria2.restart_interval_hours) * 3600
         if interval and runtime._started_at > 0 and now - runtime._started_at >= interval:
             # Windowed waiting/stopped lists cannot prove daemon idleness.
             stat = await self.client.get_global_stat()

@@ -553,68 +553,73 @@ class NativeRuntimeConfigurationTests(unittest.IsolatedAsyncioTestCase):
     def test_builtin_aria2_uses_fixed_internal_rpc_secret(self):
         from executors.aria2.runtime import BUILTIN_ARIA2_SECRET, effective_rpc_config
 
-        cfg = types.SimpleNamespace(
-            aria2_mode="builtin",
-            aria2_builtin_port=6800,
-            aria2_url="http://external.invalid/jsonrpc",
-            aria2_secret="user-editable-secret",
-        )
+        cfg = types.SimpleNamespace(integrations={"aria2": types.SimpleNamespace(options={
+            "mode": "builtin",
+            "builtin_port": 6800,
+            "url": "http://external.invalid/jsonrpc",
+            "secret": "user-editable-secret",
+        })})
         url, secret = effective_rpc_config(cfg)
         self.assertEqual(url, "http://127.0.0.1:6800/jsonrpc")
         self.assertEqual(secret, BUILTIN_ARIA2_SECRET)
 
 
     def test_builtin_runtime_command_uses_download_folder_not_external_root(self):
-        from executors.aria2.runtime import BuiltinAria2Runtime
+        """Specification section 9.3: the runtime consumes its injected
+        ``Aria2RuntimeConfiguration`` -- constructed here exactly as
+        ``application.composition.configure()`` would -- never
+        ``core.config.get_settings()`` itself."""
+        from executors.aria2.definition import Aria2Options
+        from executors.aria2.runtime import Aria2RuntimeConfiguration, BuiltinAria2Runtime
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
             download_dir = Path(tmp) / "download"
-            cfg = types.SimpleNamespace(
-                download_folder=str(download_dir),
-                aria2_download_path="/external/downloads",
-                aria2_builtin_log_file=str(Path(tmp) / "aria2.log"),
-                aria2_builtin_log_max_mb=25,
-                aria2_builtin_log_backups=3,
-                aria2_builtin_session_file=str(Path(tmp) / "aria2.session"),
-                aria2_builtin_port=6800,
-                aria2_max_download_result=50,
-                aria2_keep_unfinished_download_result=False,
-                aria2_max_active_downloads=3,
-                aria2_split=8,
-                aria2_min_split_size="10M",
-                aria2_max_connection_per_server=8,
-                aria2_disk_cache="64M",
-                aria2_file_allocation="falloc",
-                aria2_continue_downloads=True,
-                aria2_lowest_speed_limit="0",
+            options = Aria2Options(
+                download_path="/external/downloads",
+                builtin_log_file=str(Path(tmp) / "aria2.log"),
+                builtin_log_max_mb=25,
+                builtin_log_backups=3,
+                builtin_session_file=str(Path(tmp) / "aria2.session"),
+                builtin_port=6800,
+                max_download_result=50,
+                keep_unfinished_download_result=False,
+                split=8,
+                min_split_size="10M",
+                max_connection_per_server=8,
+                disk_cache="64M",
+                file_allocation="falloc",
+                continue_downloads=True,
+                lowest_speed_limit="0",
             )
-            with patch("executors.aria2.runtime.get_settings", return_value=cfg):
-                command = BuiltinAria2Runtime()._command()
+            runtime = BuiltinAria2Runtime()
+            runtime.configure(Aria2RuntimeConfiguration(options=options, download_root=str(download_dir)))
+            command = runtime._command()
         self.assertIn(f"--dir={download_dir}", command)
         self.assertNotIn("--dir=/external/downloads", command)
 
     def test_builtin_runtime_rotates_oversized_log_file(self):
-        from executors.aria2.runtime import BuiltinAria2Runtime
+        from executors.aria2.definition import Aria2Options
+        from executors.aria2.runtime import Aria2RuntimeConfiguration, BuiltinAria2Runtime
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
             log_file = Path(tmp) / "aria2.log"
             log_file.write_bytes(b"x" * 2048)
-            cfg = types.SimpleNamespace(
-                aria2_builtin_log_file=str(log_file),
-                aria2_builtin_log_max_mb=1,
-                aria2_builtin_log_backups=2,
-                aria2_builtin_session_file=str(Path(tmp) / "aria2.session"),
+            options = Aria2Options(
+                builtin_log_file=str(log_file),
+                builtin_log_max_mb=1,
+                builtin_log_backups=2,
+                builtin_session_file=str(Path(tmp) / "aria2.session"),
             )
-            with patch("executors.aria2.runtime.get_settings", return_value=cfg):
-                rotated = BuiltinAria2Runtime()._rotate_log_file()
+            runtime = BuiltinAria2Runtime()
+            runtime.configure(Aria2RuntimeConfiguration(options=options))
+            rotated = runtime._rotate_log_file()
             self.assertFalse(rotated)
             self.assertTrue(log_file.exists())
 
             log_file.write_bytes(b"x" * (1024 * 1024 + 1))
-            with patch("executors.aria2.runtime.get_settings", return_value=cfg):
-                rotated = BuiltinAria2Runtime()._rotate_log_file()
+            rotated = runtime._rotate_log_file()
             self.assertTrue(rotated)
             self.assertTrue(log_file.exists())
             self.assertTrue((Path(tmp) / "aria2.log.1").exists())

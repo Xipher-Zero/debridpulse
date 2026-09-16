@@ -251,15 +251,68 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
     assert "panel('advanced'" not in runtime
 
 
-def test_non_auth_serializer_starts_from_server_state_and_preserves_hidden_settings():
-    runtime = source(SETTINGS_PAGE_JS)
-    serializer = runtime[runtime.index("function nonAuthPayload()"):runtime.index("async function persistNonAuth")]
+def test_non_auth_serializer_strips_every_canonicalized_aria2_and_transfer_policy_alias():
+    """DP 1.0.12 canonical architecture correction, Workstream C (specification
+    section 9.5); Gate 9 revision-2 rejection finding: EVERY legacy flat
+    alias of a field ``integrations.aria2``/``transfer_policy`` now
+    canonically owns -- not merely the small set that predates this
+    correction -- must be stripped from the whole-settings snapshot before
+    the ``...current`` spread. Deriving the expected alias list from the
+    REAL ``Aria2Options.model_fields`` (rather than duplicating it by hand in
+    this test) means an aria2 field added later without a matching frontend
+    exclusion fails this test immediately, instead of silently reopening the
+    stale-snapshot class of bug this correction eliminated."""
+    from executors.aria2.definition import Aria2Options
+    from transfers.runtime_limits import _LEGACY_FIELDS as RUNTIME_LIMIT_LEGACY_FIELDS
 
-    assert "const current = state.settings || {};" in serializer
-    assert "...current," in serializer
+    runtime = source(SETTINGS_PAGE_JS)
+    exclusions = runtime[
+        runtime.index("const ARIA2_CANONICAL_LEGACY_FIELDS"):runtime.index("function nonAuthPayload()")
+    ]
+    for field in Aria2Options.model_fields:
+        legacy = f"aria2_{field}"
+        assert f"'{legacy}'" in exclusions, f"{legacy!r} missing from the whole-settings exclusion list"
+    # Gate 9 revision-4 rejection finding 3: the runtime-limit namespace's own
+    # one-way legacy migration input (``aria2_max_download_limit``) must be
+    # excluded from the whole-settings payload the SAME way Aria2Options'
+    # aliases are, derived from the real backend mapping rather than
+    # hand-duplicated, so a field added there later without a matching
+    # frontend exclusion fails this test immediately.
+    for legacy in RUNTIME_LIMIT_LEGACY_FIELDS:
+        assert f"'{legacy}'" in exclusions, f"{legacy!r} missing from the whole-settings exclusion list"
+
+    serializer = runtime[runtime.index("function nonAuthPayload()"):runtime.index("async function persistNonAuth")]
+    assert "...current" in serializer
     assert "clear_secrets: clearSecrets()," in serializer
-    assert "max_concurrent_downloads: maxDownloads" in serializer
-    assert "aria2_max_active_downloads: maxDownloads" in serializer
+    assert "delete current.transfer_policy" in serializer
+    assert "delete current.execution_runtime_limits" in serializer
+    assert "for (const key of ARIA2_CANONICAL_LEGACY_FIELDS) delete current[key];" in serializer
+    assert "for (const key of TRANSFER_POLICY_CANONICAL_LEGACY_FIELDS) delete current[key];" in serializer
+    assert "for (const key of RUNTIME_LIMIT_CANONICAL_LEGACY_FIELDS) delete current[key];" in serializer
+    # None of the stripped executor/policy fields are re-added below as an
+    # explicit override of the whole-settings payload.
+    assignment_region = serializer[serializer.index("return {"):]
+    for forbidden in (
+        "max_concurrent_downloads:", "aria2_max_active_downloads:", "aria2_split:", "transfer_policy:",
+        "aria2_max_download_limit:", "execution_runtime_limits:",
+    ):
+        assert forbidden not in assignment_region, f"{forbidden!r} must not be re-added to the whole-settings payload"
+
+
+def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
+    """Specification section 9.5: executor tuning/lifecycle and universal
+    concurrency/retry policy are written through their own scoped namespace
+    mutations, never through the whole-settings snapshot."""
+    runtime = source(SETTINGS_PAGE_JS)
+    assert "function aria2ConfigurationPayload()" in runtime
+    assert "function transferPolicyPayload()" in runtime
+    persist = runtime[runtime.index("async function persistNonAuth"):runtime.index("async function persistAuth")]
+    assert "request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload()" in persist
+    assert "request('PATCH', '/transfer-policy', transferPolicyPayload()" in persist
+    # aria2 is never echoed back through the generic whole-settings
+    # integrations payload -- it is owned exclusively by the scoped PATCH.
+    integration_payload = runtime[runtime.index("function integrationPayload("):runtime.index("function nonAuthPayload()")]
+    assert "identity === 'aria2'" in integration_payload
 
 
 def test_settings_is_one_master_card_with_internal_header_body_and_footer():

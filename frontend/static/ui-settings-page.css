@@ -468,6 +468,19 @@ body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-control 
   justify-content: flex-end;
 }
 
+/* Specification section 9.9: the built-in-only tuning subsection is visually
+   separated from (never merged with) the per-job group above it, which
+   stays visible/editable in both built-in and external mode. */
+body.dp-v11-structural #view-settings .dp-settings-engine-tuning-builtin-only {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dp-border-subtle);
+}
+
+body.dp-v11-structural #view-settings .dp-settings-builtin-only-label {
+  margin: 0 0 10px;
+}
+
 body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation {
   width: min(100%, 520px);
   margin: 20px auto 0;

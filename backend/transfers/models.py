@@ -254,6 +254,7 @@ class TransferCandidate:
     priority: int = 0
     id: str = field(default_factory=new_identity)
     source_identity: SourceIdentity | None = None
+    resolver_identity_evidence: ResolverArtifactIdentityEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -411,6 +412,42 @@ class RequestRecord:
     retry_at: float = 0
     error: NormalizedError | None = None
     entry: SourceEntry | None = None
+
+
+class MaterializationAdmissionKind(StrEnum):
+    """Universal execution-admission decision for one artifact's dispatch.
+
+    Derived from durable file-selection generation/commitment/membership facts
+    (``transfers.file_selection`` / ``transfers.repository
+    .materialization_authorization``). Never a transfer-global mutable
+    ``selection_authorized`` flag -- always recomputed from the same durable
+    facts the selection lifecycle already owns.
+    """
+    PROCEED = "proceed"
+    HOLD = "hold"
+    STALE = "stale"
+
+
+@dataclass(frozen=True)
+class MaterializationAdmission:
+    kind: MaterializationAdmissionKind
+    # The selection-generation id (``transfer_file_selections.id``) this
+    # decision was evaluated against, when a generation applies. ``None`` for
+    # PROCEED decisions with no applicable generation (never interactive).
+    authority_generation: str | None = None
+
+
+@dataclass(frozen=True)
+class ResolverArtifactIdentityEvidence:
+    """Neutral resolver/provider-asserted identity fact about a candidate.
+
+    States only what a resolver reported -- never a duplicate/equivalence
+    decision (``transfers.mirrors`` owns that). ``resolved_name`` must be the
+    name the provider's resolution response itself asserted, never a
+    submitted-URL basename or other non-resolver fallback.
+    """
+    resolved_name: str
+    exact_bytes: int
 
 
 @dataclass(frozen=True)

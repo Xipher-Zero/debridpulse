@@ -110,8 +110,8 @@ from transfers.input_required import EphemeralInputBroker, InputChallengeStore, 
 from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
-    OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
-    TransferCandidate, TransferState, new_identity,
+    MaterializationAdmissionKind, OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState,
+    TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
@@ -434,6 +434,19 @@ class TransferEngine:
                                     or transfer is None or transfer.paused or await self.repository.globally_paused()
                                     or not self.dispatch_permitted):
                                 continue
+                            # Universal execution-admission invariant
+                            # (Workstream A, specification section 7.5): an
+                            # existing PAUSED execution handle is not proof of
+                            # authorization. Resuming it is a native side
+                            # effect; it must stop for the same HOLD/STALE
+                            # authority a fresh dispatch would. HOLD is
+                            # ordinary waiting state -- stay paused, no
+                            # mutation, no error, no retry consumption.
+                            admission = await self.repository.materialization_authorization(current)
+                            if admission.kind != MaterializationAdmissionKind.PROCEED:
+                                if persist_passive:
+                                    await self.repository.execution(observed)
+                                return observed
                             occupied = await self.repository.occupied_execution_slots(
                                 self.clock(), exclude_artifact_id=artifact.id,
                             )
@@ -802,8 +815,35 @@ class TransferEngine:
         await self.repository.artifact_state(artifact.id, "refresh_pending", error=error, retry_at=self.clock(), release=True)
         return True
 
+    async def _retire_stale_materialization(self, artifact: Artifact) -> None:
+        """Retire executable work superseded by a newer materialization
+        authority (STALE admission, specification section 7.5) through the
+        SAME re-resolution machinery already used whenever an artifact's
+        candidate is no longer valid (``_plan_after_reconcile``'s
+        "no current candidates" branch) -- never a selection-specific side
+        path. The affected request alone is requeued; ordinary reconciliation
+        reconstructs current authorized work from there.
+        """
+        await self.repository.artifact_state(artifact.id, "unresolved", release=True)
+        await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
+
     async def _dispatch(self, artifact: Artifact):
         try:
+            # Universal execution-admission invariant (DP 1.0.12 canonical
+            # architecture correction, Workstream A): stops before ANY
+            # executor side effect -- validate_target, prepare(), native
+            # allocation, capacity accounting, retry consumption, candidate
+            # expiry/refresh -- whenever the artifact's owning request is not
+            # durably authorized for the CURRENT materialization generation.
+            # HOLD is ordinary waiting state: no mutation, no error; the
+            # existing scheduler/reconciliation cadence alone retries once
+            # commitment becomes durable.
+            admission = await self.repository.materialization_authorization(artifact)
+            if admission.kind == MaterializationAdmissionKind.HOLD:
+                return
+            if admission.kind == MaterializationAdmissionKind.STALE:
+                await self._retire_stale_materialization(artifact)
+                return
             validate_target(self.root, artifact.target)
             candidate = artifact.candidates[artifact.selected]
             executor = self.registry.executor_for(candidate)
@@ -828,6 +868,15 @@ class TransferEngine:
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
             handle = prepared
             async with self._dispatch_lock:
+                # Close the TOCTOU window (specification section 7.4):
+                # revalidate the same authority immediately before the
+                # irreversible native commitment below. A HOLD/STALE
+                # transition after the check above is caught here; retirement
+                # itself happens on the next ordinary dispatch attempt rather
+                # than while holding this lock.
+                revalidation = await self.repository.materialization_authorization(artifact)
+                if revalidation.kind != MaterializationAdmissionKind.PROCEED:
+                    return
                 if not self.dispatch_permitted or not await self._live(artifact.transfer_id, admission=True):
                     return
                 # Section 13: exclude this artifact's own (if any) continuation
@@ -866,6 +915,21 @@ class TransferEngine:
             await self.challenges.clear(challenge)
             await self.inputs.clear(challenge.id)
             return
+        # Universal execution-admission invariant (DP 1.0.12 canonical
+        # architecture correction, Workstream A): an interactive executor-
+        # input continuation (``start_with_input``/``prepare_with_input`` +
+        # ``start``, below) is a native side effect exactly like
+        # ``executor.prepare()`` in ``_dispatch()`` -- it must stop for the
+        # SAME HOLD/STALE authority before either native call, not only the
+        # ordinary dispatch path.
+        admission = await self.repository.materialization_authorization(artifact)
+        if admission.kind == MaterializationAdmissionKind.HOLD:
+            return
+        if admission.kind == MaterializationAdmissionKind.STALE:
+            await self.challenges.clear(challenge)
+            await self.inputs.clear(challenge.id)
+            await self._retire_stale_materialization(artifact)
+            return
         candidate = artifact.candidates[artifact.selected]
         eligible = {item.descriptor.id: item for item in self.registry.eligible_executors(candidate)}
         executor = eligible.get(challenge.integration_id)
@@ -878,6 +942,12 @@ class TransferEngine:
             try:
                 async with self._dispatch_lock:
                     if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
+                        return
+                    # Close the TOCTOU window (specification section 7.4):
+                    # revalidate the same authority immediately before the
+                    # irreversible native commitment below.
+                    revalidation = await self.repository.materialization_authorization(artifact)
+                    if revalidation.kind != MaterializationAdmissionKind.PROCEED:
                         return
                     occupied = await self.repository.occupied_execution_slots(
                         self.clock(), exclude_artifact_id=artifact.id,
@@ -908,6 +978,12 @@ class TransferEngine:
         try:
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
+                    return
+                # Close the TOCTOU window (specification section 7.4):
+                # revalidate the same authority immediately before the
+                # irreversible native commitment below.
+                revalidation = await self.repository.materialization_authorization(artifact)
+                if revalidation.kind != MaterializationAdmissionKind.PROCEED:
                     return
                 occupied = await self.repository.occupied_execution_slots(
                     self.clock(), exclude_artifact_id=artifact.id,

@@ -41,6 +41,7 @@ if "multipart" not in sys.modules:
 
 from api import routes
 from core.scheduler import _has_reporting_webhook
+from executors.aria2.definition import definition as aria2_definition
 from services.stats import send_stats_report
 
 
@@ -132,8 +133,8 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
             max_concurrent_downloads=1,
             aria2_max_active_downloads=1,
         )
-        fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
-        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, definitions=(), configuration_admission=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
+        fake_aria2 = SimpleNamespace(change_global_options=AsyncMock(), apply_memory_tuning=AsyncMock())
+        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, definitions=(), application_operation=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
 
         def fake_save(cfg):
             saved["cfg"] = cfg
@@ -151,11 +152,104 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
             result = await routes.aria2_set_global_options({"max_concurrent_downloads": 2}, application=application)
 
         self.assertEqual(result["applied"]["max-concurrent-downloads"], "2")
-        self.assertEqual(saved["cfg"].max_concurrent_downloads, 2)
-        self.assertEqual(saved["cfg"].aria2_max_active_downloads, 2)
-        self.assertEqual(saved["applied"].max_concurrent_downloads, 2)
+        self.assertEqual(saved["cfg"].transfer_policy.max_concurrent_executions, 2)
+        # Gate 9 revision-4 rejection finding 5: this route now forwards to
+        # the SAME canonical patch_transfer_policy implementation the neutral
+        # UI calls directly (specification sections 9.2, 9.7) instead of
+        # independently persisting the legacy flat alias itself -- so
+        # max_concurrent_downloads/aria2_max_active_downloads are neither a
+        # second writable authority NOR dual-written by this write.
+        self.assertEqual(saved["cfg"].max_concurrent_downloads, 1)
+        self.assertEqual(saved["cfg"].aria2_max_active_downloads, 1)
+        self.assertEqual(saved["applied"].max_concurrent_downloads, 1)
         reset_services.assert_called_once()
         advance.assert_awaited_once()
+        # Gate 9 revision-5 rejection finding 4: the concurrency projection
+        # into the running built-in aria2 daemon happens even when reached
+        # through this legacy compatibility-edge route, since it forwards
+        # into the SAME canonical ``patch_transfer_policy`` implementation.
+        fake_aria2.apply_memory_tuning.assert_awaited_once()
+
+    async def test_aria2_global_options_upload_speed_persists_before_native_apply_and_reconfigures(self):
+        """Gate 9 revision-5 rejection finding 3: the legacy upload-speed
+        compatibility path must migrate the desired value into canonical
+        ``integrations.aria2.max_upload_limit`` (not just the legacy flat
+        field) AND call ``application.configure()`` so the injected
+        ``Aria2RuntimeConfiguration`` snapshot ``Aria2Administration.apply_memory_tuning()``
+        consumes is refreshed -- otherwise the next unrelated tuning
+        apply/restart would silently revert a live native change back to a
+        stale injected value."""
+        saved = {}
+        current = routes.AppSettings()
+        fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
+        application = SimpleNamespace(
+            integration_admin=lambda _: fake_aria2, definitions=(aria2_definition,),
+            application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
+            reconcile_executions=AsyncMock(),
+        )
+
+        def fake_save(cfg):
+            saved["cfg"] = cfg
+
+        def fake_apply(cfg):
+            saved["applied"] = cfg
+
+        with patch("api.routes.get_settings", return_value=current), \
+             patch("api.routes.load_settings", return_value=current), \
+             patch("api.routes.save_settings", side_effect=fake_save), \
+             patch("api.routes.apply_settings", side_effect=fake_apply), \
+             patch("api.routes.get_application", return_value=application):
+            result = await routes.aria2_set_global_options({"max_upload_speed": 750_000}, application=application)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["applied"]["max-overall-upload-limit"], "750000")
+        # Canonical integration namespace received the migrated value.
+        self.assertEqual(saved["cfg"].integrations["aria2"].options["max_upload_limit"], 750_000)
+        fake_aria2.change_global_options.assert_awaited_once_with({"max-overall-upload-limit": "750000"})
+        application.configure.assert_called_once()
+
+    async def test_aria2_global_options_concurrency_apply_failure_propagates_through_legacy_compatibility_response(self):
+        """Gate 9 revision-6 rejection finding 3: ``patch_transfer_policy``
+        already reports ``ok: false`` / ``last_apply_error`` truthfully when
+        the native built-in concurrency projection fails, but this legacy
+        compatibility route was discarding that result and reading only
+        ``max_concurrent_executions`` -- so an ``ok: true`` response here
+        could imply a native apply that the canonical route itself reported
+        as failed. This must never happen: the canonical failure must
+        propagate through."""
+        saved = {}
+        current = routes.AppSettings(
+            max_concurrent_downloads=1,
+            aria2_max_active_downloads=1,
+        )
+        fake_aria2 = SimpleNamespace(
+            change_global_options=AsyncMock(),
+            apply_memory_tuning=AsyncMock(side_effect=RuntimeError("daemon unreachable")),
+        )
+        application = SimpleNamespace(
+            integration_admin=lambda _: fake_aria2, definitions=(),
+            application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
+            reconcile_executions=AsyncMock(),
+        )
+
+        def fake_save(cfg):
+            saved["cfg"] = cfg
+
+        def fake_apply(cfg):
+            saved["applied"] = cfg
+
+        with patch("api.routes.get_settings", return_value=current), \
+             patch("api.routes.load_settings", return_value=current), \
+             patch("api.routes.save_settings", side_effect=fake_save), \
+             patch("api.routes.apply_settings", side_effect=fake_apply), \
+             patch("api.routes.get_application", return_value=application):
+            result = await routes.aria2_set_global_options({"max_concurrent_downloads": 2}, application=application)
+
+        self.assertFalse(result["ok"], "a canonical native-apply failure must not be reported as legacy-route success")
+        # The durable desired value still persists regardless of the native
+        # apply outcome (specification section 2.7: configured/effective).
+        self.assertEqual(saved["cfg"].transfer_policy.max_concurrent_executions, 2)
+        self.assertEqual(result["applied"]["max-concurrent-downloads"], "2")
 
 
 @asynccontextmanager
@@ -196,7 +290,9 @@ class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
         fake_aria2 = SimpleNamespace(
             get_global_stat=AsyncMock(return_value=stat)
         )
-        cfg = SimpleNamespace(aria2_mode="builtin")
+        # Canonical aria2 tuning (specification sections 4.3, 9.1, 9.3): the
+        # route reads `integrations.aria2`, never flat `aria2_mode`.
+        cfg = SimpleNamespace(integrations={"aria2": SimpleNamespace(options={"mode": "builtin"})})
         application = SimpleNamespace(integration_admin=lambda _: fake_aria2)
 
         with patch("api.routes.get_settings", return_value=cfg), \
@@ -228,7 +324,7 @@ class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
             get_active=AsyncMock(return_value=[foreign, owned])
         )
         ownership_filter = AsyncMock(return_value=[owned])
-        cfg = SimpleNamespace(aria2_mode="external")
+        cfg = SimpleNamespace(integrations={"aria2": SimpleNamespace(options={"mode": "external"})})
         fake_aria2.filter_owned = ownership_filter
         application = SimpleNamespace(integration_admin=lambda _: fake_aria2)
 

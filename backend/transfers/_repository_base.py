@@ -1078,7 +1078,51 @@ class TransferRepository:
                 (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
             await db.commit()
 
-    async def manifest(self, record: RequestRecord, entries: tuple[SourceEntry, ...]) -> None:
+    async def manifest(self, record: RequestRecord, entries: tuple[SourceEntry, ...], *, selection_id: str | None = None) -> None:
+        """``selection_id``, when a file-selection generation authorized this
+        fan-out (``TransferRepository.commit_selected_manifest
+        .selection_id``), is durably stamped onto each child so materialization
+        admission can trace it back without re-deriving the generation from
+        the root's current (rebindable) resource -- DP 1.0.12 canonical
+        architecture correction, Workstream A, specification section 7.2.
+
+        A non-``None`` ``selection_id`` ALWAYS advances a child's stamp to
+        the newly supplied generation, never merely preserves whatever it
+        already held (a child materialized under a superseded generation A
+        must be able to advance to the current generation B, or it would
+        report STALE forever -- ``manifest()`` is called again on every
+        successful root resolution pass at the SAME generation, so a
+        COALESCE that only ever fills a NULL never lets a genuinely new
+        generation replace an old one for a path both generations share).
+        ``None`` never touches the existing stamp -- non-interactive
+        resolution passes that carry no generation at all must not erase a
+        previously stamped one.
+
+        Advancing a child from one non-``None`` generation to a DIFFERENT
+        one must never detach a still-live (non-terminal) execution's
+        ``download_files`` pointer itself -- doing so here would orphan an
+        authorized native writer without ever cancelling it (Gate 9
+        revision-3 rejection finding 1). Real cancellation requires the
+        executor, which this pure-repository method does not hold. Instead,
+        when a live execution is found under the OLD generation, the stamp
+        advance for that one child is SKIPPED entirely -- the child's stamp
+        stays at its old (superseded) generation, which is exactly what
+        makes ``materialization_authorization`` keep reporting STALE for it
+        (it compares against the transfer's independently-tracked CURRENT
+        generation via ``_current_generation``, never against the child's
+        own stamp -- so leaving the stamp untouched here does not delay
+        STALE detection at all). The existing canonical STALE-retirement
+        machinery (``ConvergenceEngine._retire_stale_execution``, which owns
+        the executor) then genuinely cancels and confirms the native writer
+        on the next dispatch/recovery pass. Once that retirement has run,
+        the child request is requeued and reprocessed through ordinary
+        resolution, calling ``manifest()`` again for the SAME generation --
+        at that point no live execution remains, so the stamp advances
+        safely and this method itself now performs the (already-safe)
+        detach-and-requeue below. A child whose old execution is already
+        terminal (or absent) is retired and advanced immediately, since
+        there is nothing left to orphan.
+        """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
@@ -1086,10 +1130,41 @@ class TransferRepository:
                 return
             for ordinal, entry in enumerate(entries):
                 identity = uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
-                await db.execute("""INSERT OR IGNORE INTO transfer_requests(id,transfer_id,parent_id,ordinal,payload,metadata)
-                    VALUES(?,?,?,?,?,?)""", (identity, record.transfer_id, record.id, ordinal, codec.dump(entry.request), codec.dump(entry)))
-                await db.execute("""UPDATE transfer_requests SET payload=?,metadata=?,state=CASE WHEN state='waiting_parent' THEN 'pending' ELSE state END
-                    WHERE id=?""", (codec.dump(entry.request), codec.dump(entry), identity))
+                await db.execute("""INSERT OR IGNORE INTO transfer_requests(id,transfer_id,parent_id,ordinal,payload,metadata,materialized_selection_id)
+                    VALUES(?,?,?,?,?,?,?)""",
+                    (identity, record.transfer_id, record.id, ordinal, codec.dump(entry.request), codec.dump(entry), selection_id))
+                advance_selection_id = selection_id
+                if selection_id is not None:
+                    existing = await db.fetchone(
+                        "SELECT materialized_selection_id FROM transfer_requests WHERE id=?", (identity,),
+                    )
+                    previous_generation = existing["materialized_selection_id"] if existing else None
+                    if previous_generation and str(previous_generation) != str(selection_id):
+                        live_execution = await db.fetchone(
+                            """SELECT f.id FROM download_files f JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                                WHERE f.request_id=? AND e.state IN ('prepared','queued','transferring','paused','unknown')""",
+                            (identity,),
+                        )
+                        if live_execution:
+                            advance_selection_id = None
+                        else:
+                            artifact_row = await db.fetchone(
+                                "SELECT id, execution_attempt_id FROM download_files WHERE request_id=?", (identity,),
+                            )
+                            if artifact_row:
+                                await db.execute("""UPDATE download_files SET status='unresolved',
+                                    execution_attempt_id=NULL,normalized_error=NULL,retry_at=0,
+                                    continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
+                                    WHERE id=? AND status!='completed'""", (artifact_row["id"],))
+                                if artifact_row["execution_attempt_id"]:
+                                    await db.execute("""UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP
+                                        WHERE id=? AND state IN ('failed','absent','cancelled','succeeded')""",
+                                        (artifact_row["execution_attempt_id"],))
+                            await db.execute("""UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL
+                                WHERE id=?""", (identity,))
+                await db.execute("""UPDATE transfer_requests SET payload=?,metadata=?,state=CASE WHEN state='waiting_parent' THEN 'pending' ELSE state END,
+                    materialized_selection_id=COALESCE(?,materialized_selection_id)
+                    WHERE id=?""", (codec.dump(entry.request), codec.dump(entry), advance_selection_id, identity))
             missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
             missing = await db.fetchall("SELECT id FROM transfer_requests WHERE parent_id=? AND state='waiting_parent'", (record.id,))
             for child in missing:

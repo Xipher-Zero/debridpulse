@@ -3436,7 +3436,13 @@ async function _setAria2Speed(bps) {
 
   if (st) { st.style.color='var(--text2)'; st.textContent='Applying…'; }
   try {
-    await api('POST', '/aria2/global-options', {max_download_speed: bps});
+    // DP 1.0.12 canonical architecture correction: the neutral runtime-limit
+    // surface, not the aria2-specific route, is the write authority for live
+    // bandwidth (specification section 9.6).
+    var limitResult = await api('PATCH', '/execution/runtime-limits', {max_download_bytes_per_second: bps});
+    if (limitResult && limitResult.ok === false) {
+      throw new Error(limitResult.last_apply_error || 'Bandwidth limit could not be applied');
+    }
     // Keep settingsData in sync so subsequent PUT /settings calls don't
     // overwrite this value with the stale cached number.
     if (settingsData) settingsData.aria2_max_download_limit = bps;
@@ -3594,15 +3600,21 @@ async function applyAria2MaxDlPreset(val) {
   var st = document.getElementById('aria2-maxdl-status');
   if (st) { st.style.color='var(--text2)'; st.textContent='Applying…'; }
   try {
-    // Apply live via RPC — POST /aria2/global-options also persists to settings.json
-    await api('POST', '/aria2/global-options', {max_concurrent_downloads: n});
+    // DP 1.0.12 canonical architecture correction: the universal
+    // transfer-policy surface, not the aria2-specific route, is the write
+    // authority for maximum concurrent executions (specification sections
+    // 4.1, 9.7). It persists to settings.json and reconfigures the scheduler.
+    await api('PATCH', '/transfer-policy', {max_concurrent_executions: n});
     // Keep settingsData in sync so subsequent PUT /settings calls don't
     // overwrite this value with the stale cached number.
     if (settingsData) {
-      // Keep BOTH config fields in sync so a subsequent PUT /settings and a
+      // Keep every alias in sync so a subsequent PUT /settings and a
       // Manager Semaphore reset both use the updated value.
       settingsData.aria2_max_active_downloads = n;
       settingsData.max_concurrent_downloads   = n;
+      if (settingsData.transfer_policy && typeof settingsData.transfer_policy === 'object') {
+        settingsData.transfer_policy.max_concurrent_executions = n;
+      }
     }
     // Sync Settings-page inputs so a subsequent Save Settings does not clobber.
     var maxDlInput2 = document.getElementById('s-aria2_max_active_downloads');

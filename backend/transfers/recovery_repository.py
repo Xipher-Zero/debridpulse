@@ -653,6 +653,83 @@ class TransferRepository(_QualifiedRepository):
             await db.commit()
         return True
 
+    async def retire_stale_materialization_if_claim_current(
+        self, claim: RecoveryClaim, artifact_id: int, transfer_id: int, request_id: str,
+    ) -> bool:
+        """Atomically fence STALE retirement's detach/requeue mutation behind
+        the SAME recovery claim ``_cancel_and_confirm_stopped`` already
+        confirmed terminal (Gate 9 revision-7 rejection: the prior sequence
+        -- revalidate the claim, THEN separately call ``artifact_state()``/
+        ``retry_requests()`` -- left a window between that check and the
+        mutation where a concurrent recovery owner (e.g. a pause/resume fence
+        via ``set_pause_and_fence``) could advance ``recovery_generation``,
+        making the claim stale while the caller still went on to perform the
+        detach/requeue as an independent, unfenced transaction. Verifying the
+        claim and performing the detach + release + requeue inside ONE
+        ``BEGIN IMMEDIATE`` transaction makes that window structurally
+        impossible: either both happen together, or neither does.
+
+        Replicates ``TransferRepository.artifact_state(artifact_id,
+        "unresolved", release=True)`` followed by
+        ``TransferRepository.retry_requests(transfer_id, request_id=request_id)``
+        -- never a parallel policy decision -- fenced by the same claim
+        token/generation check every other claim-scoped mutation in this
+        module uses.
+        """
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT torrent_id,recovery_failures,recovery_refreshes,execution_attempt_id
+                   FROM download_files WHERE id=?""",
+                (artifact_id,),
+            )
+            if not row:
+                await db.rollback()
+                return False
+            snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
+            if (
+                snapshot.get("recovery_claim_token") != claim.token
+                or int(snapshot.get("recovery_generation") or 0) != claim.generation
+            ):
+                await db.rollback()
+                return False
+            current_execution_id = row.get("execution_attempt_id")
+            cursor = await db.execute(
+                """UPDATE download_files SET status='unresolved',normalized_error=NULL,retry_at=0,
+                    execution_attempt_id=NULL,continuation_reservation_expires_at=NULL,
+                    updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND torrent_id IN (SELECT id FROM torrents
+                        WHERE status NOT IN ('deleted','consolidated','cancelled'))""",
+                (artifact_id,),
+            )
+            if not cursor.rowcount:
+                await db.rollback()
+                return False
+            if current_execution_id:
+                await db.execute(
+                    """UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP
+                        WHERE id=? AND state IN ('failed','absent','cancelled','succeeded')""",
+                    (current_execution_id,),
+                )
+            await db.execute(
+                """UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL
+                    WHERE transfer_id=? AND transfer_id IN
+                        (SELECT id FROM torrents WHERE status NOT IN ('completed','consolidated','deleted','cancelled'))
+                        AND id=?""",
+                (transfer_id, request_id),
+            )
+            # No audit append here: this mirrors ``artifact_state()``/
+            # ``retry_requests()`` (neither of which touches the sparse
+            # audit trail either) plus the atomic claim fence -- nothing
+            # more. The caller (``_reconcile_unauthorized_existing_
+            # execution``'s ``finally`` block) already records the
+            # "retired"/``materialization_superseded`` provenance via
+            # ``record_phase3_application``/``finish_recovery_claim`` once
+            # it observes this call actually succeeded; duplicating that
+            # here would create two audit rows for one fact.
+            await db.commit()
+        return True
+
     # ------------------------------------------------------------------
     # Refresh single-flight
     # ------------------------------------------------------------------

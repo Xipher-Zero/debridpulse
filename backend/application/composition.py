@@ -60,7 +60,23 @@ def configure(application):
     from postprocessors.archive.processor import ArchivePostProcessor
     application.engine.postprocessors = (ArchivePostProcessor(),) if settings.extract_enabled else ()
     from executors.aria2.admin import Aria2Administration
-    administration = Aria2Administration(registry.executors["aria2"], application.repository, application)
+    from executors.aria2.definition import Aria2Options
+    from executors.aria2.runtime import Aria2RuntimeConfiguration, runtime as aria2_runtime
+    from transfers.runtime_limits import ExecutionRuntimeLimits
+    # Dependency inversion (DP 1.0.12 canonical architecture correction,
+    # Workstream C, specification section 9.3): composition is the ONE place
+    # that translates canonical settings into typed aria2 runtime
+    # configuration and injects it into the long-lived runtime/admin
+    # singletons -- they never call core.config.get_settings() themselves.
+    limits = settings.execution_runtime_limits or ExecutionRuntimeLimits()
+    aria2_runtime_config = Aria2RuntimeConfiguration(
+        options=Aria2Options(**settings.integrations["aria2"].options),
+        download_root=settings.download_folder,
+        max_concurrent_executions=policy.max_concurrent_executions,
+        max_download_bytes_per_second=limits.max_download_bytes_per_second,
+    )
+    aria2_runtime.configure(aria2_runtime_config)
+    administration = Aria2Administration(registry.executors["aria2"], application.repository, application, aria2_runtime_config)
     application.admins = {"aria2": administration}
     runtime_state = getattr(application, "runtime_state", None)
     if runtime_state is None:

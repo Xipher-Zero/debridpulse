@@ -58,7 +58,9 @@ from transfers import file_selection as fs
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
-from transfers.models import ExecutionState, TransferProgress
+from transfers.models import (
+    ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, TransferProgress,
+)
 from transfers.policy import failure_signature, meaningful_progress_threshold
 
 
@@ -247,17 +249,25 @@ class ManifestCommitResult(tuple):
     ``.first_commitment`` -- whether THIS call is the one that moved
     ``manifest_committed_at`` from NULL for this selection generation, derived
     directly from truth already read inside that same transaction (no new
-    durable state, no second read).
+    durable state, no second read) -- and ``.selection_id``, the durable
+    generation id (``transfer_file_selections.id``) this authorization was
+    committed under, or ``None`` when no selection generation applies. Callers
+    that materialize children from this result (``TransferRepository
+    .manifest``) stamp it onto each child so materialization-admission
+    (specification section 7.2) can trace a child back to its authorizing
+    generation without re-deriving it from the root's (mutable, rebindable)
+    current resource.
 
     A ``tuple`` subclass so every existing caller that treats the result as a
     plain ``tuple[SourceEntry, ...]`` (iteration, ``len()``, equality against a
-    bare tuple) keeps working unchanged; only the one caller that needs the
-    transition fact reads the extra attribute.
+    bare tuple) keeps working unchanged; only callers that need the extra
+    facts read the extra attributes.
     """
 
-    def __new__(cls, entries, *, first_commitment: bool):
+    def __new__(cls, entries, *, first_commitment: bool, selection_id: str | None = None):
         instance = super().__new__(cls, entries)
         instance.first_commitment = first_commitment
+        instance.selection_id = selection_id
         return instance
 
 
@@ -906,7 +916,8 @@ class TransferRepository(_QualifiedTransferRepository):
                                   clear_quiescence: bool = False,
                                   candidate_switched: bool = False,
                                   continuation_reservation_until: float | None = None,
-                                  activation_provenance: dict | None = None) -> bool:
+                                  activation_provenance: dict | None = None,
+                                  claim=None) -> bool:
         """Atomically revoke terminal writer authority and persist recovery state.
 
         DP 1.0.12 recovery leveling, Section 13: ``continuation_reservation_until``
@@ -924,6 +935,20 @@ class TransferRepository(_QualifiedTransferRepository):
         provenance was lost" structurally impossible for a committed
         activation: either both persist together, or (on any failure) neither
         does and ``committed`` is correctly ``False``.
+
+        Gate 9 revision-7 rejection: an optional ``claim`` (a
+        ``RecoveryClaim``) additionally fences this mutation on the SAME
+        claim token/generation every other claim-scoped recovery mutation in
+        ``recovery_repository.py`` checks -- atomically, inside this same
+        transaction, using the snapshot already read below. Without it, the
+        pre-existing "no other active/mutating execution" check alone cannot
+        detect a concurrent claim fence (e.g. ``set_pause_and_fence``
+        advancing ``recovery_generation``) that leaves no trace in
+        ``execution_attempts`` -- exactly the gap that let a stale HOLD-
+        unpausable-executor park/settle transition commit after its
+        confirming ``_cancel_and_confirm_stopped`` call had already returned.
+        Callers that do not hold (or no longer trust) a claim may omit it,
+        preserving prior behavior exactly.
         """
         if expected_bytes is not None and expected_bytes < 0:
             return False
@@ -944,6 +969,11 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback(); return False
 
             snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
+            if claim is not None and (
+                snapshot.get("recovery_claim_token") != claim.token
+                or int(snapshot.get("recovery_generation") or 0) != claim.generation
+            ):
+                await db.rollback(); return False
             assignments = [
                 "status=?", "normalized_error=?", "retry_at=?", "execution_attempt_id=NULL",
                 "continuation_reservation_expires_at=?", "updated_at=CURRENT_TIMESTAMP",
@@ -1670,6 +1700,7 @@ class TransferRepository(_QualifiedTransferRepository):
             if not row:
                 await db.rollback()
                 return ManifestCommitResult(full_entries, first_commitment=False)
+            selection_id = row["id"]
             already = row["manifest_committed_at"] is not None
             if str(row["decision"]) in ("pending", "all"):
                 authorized = full_entries
@@ -1713,7 +1744,88 @@ class TransferRepository(_QualifiedTransferRepository):
                         (now, now, row["id"]),
                     )
             await db.commit()
-        return ManifestCommitResult(authorized, first_commitment=not already)
+        return ManifestCommitResult(authorized, first_commitment=not already, selection_id=selection_id)
+
+    async def materialization_authorization(self, artifact) -> MaterializationAdmission:
+        """Universal execution-admission decision for one artifact's dispatch
+        (DP 1.0.12 canonical architecture correction, Workstream A).
+
+        Derived entirely from the existing durable file-selection generation
+        state this module already owns -- never a transfer-global mutable
+        ``selection_authorized`` flag. An artifact materialized as a
+        file-selection child is bound to its ROOT request's resource-binding
+        generation (file-selection state is keyed on ``(root request id,
+        binding id)`` -- see :meth:`begin_file_selection_window`), so a child
+        artifact's own ``transfer_requests.resource`` (if any -- children
+        resolve their own executable candidates independently) is never
+        consulted here; only its root ancestor's binding decides admission.
+
+        Returns ``PROCEED`` with no authority generation when no selection
+        generation applies (never-interactive request, or a resource not yet
+        durably bound at all -- ordinary early-lifecycle state, not a stale
+        artifact). Returns ``HOLD`` while the generation exists but has not
+        yet been durably committed (``manifest_committed_at IS NULL`` --
+        pending decision, still-open decision hold, or a not-yet-durable
+        commit race). Returns ``STALE`` when the artifact's request is bound
+        to a selection generation that is no longer this transfer's current
+        one -- a later re-resolution onto a new provider resource
+        (specification section 3.1, acceptance test D) superseded it, so any
+        executable work already materialized under it must not dispatch or
+        resume; the caller retires it through existing canonical machinery
+        and lets ordinary re-resolution reconstruct current authorized work.
+        """
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT id, parent_id, materialized_selection_id FROM transfer_requests WHERE id=?",
+                (artifact.request_id,),
+            )
+            if not row or not row["parent_id"]:
+                # No file-selection child relationship applies to this
+                # artifact's own request at all (a root artifact never
+                # materializes directly while a generation governs it -- see
+                # ``TransferRepository.manifest``'s ``selection_id`` stamp;
+                # only children carry one).
+                return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+            root_id = row["parent_id"]
+            generation = None
+            if row["materialized_selection_id"]:
+                generation = await db.fetchone(
+                    "SELECT * FROM transfer_file_selections WHERE id=?",
+                    (row["materialized_selection_id"],),
+                )
+            if generation is None:
+                # Legacy row materialized before ``materialized_selection_id``
+                # existed (pre-migration data): best-effort fall back to the
+                # root's CURRENTLY bound resource. Correct for the ordinary
+                # case; a root re-resolved AGAIN after this migration can no
+                # longer be perfectly traced for a row this old -- a narrow,
+                # documented legacy-data limitation distinct from the durable
+                # (rebind-proof) path every row materialized from here on
+                # takes.
+                root_row = await db.fetchone(
+                    "SELECT resource FROM transfer_requests WHERE id=?", (root_id,),
+                )
+                root_resource = codec.resource(codec.load(root_row["resource"])) if root_row else None
+                if root_resource is None:
+                    return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+                binding_id = await self._resolve_binding(db, artifact.transfer_id, root_resource.id)
+                if not binding_id:
+                    return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+                generation = await self._selection_generation(db, root_id, binding_id)
+            if not generation:
+                return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+            if generation["manifest_committed_at"] is None:
+                return MaterializationAdmission(
+                    MaterializationAdmissionKind.HOLD, authority_generation=generation["id"],
+                )
+            current = await self._current_generation(db, artifact.transfer_id)
+            if current is not None and str(current["id"]) != str(generation["id"]):
+                return MaterializationAdmission(
+                    MaterializationAdmissionKind.STALE, authority_generation=current["id"],
+                )
+            return MaterializationAdmission(
+                MaterializationAdmissionKind.PROCEED, authority_generation=generation["id"],
+            )
 
     async def file_selection_presentation(self, transfer_id: int, *, now: float):
         """Safe core-only read model for one transfer's file selection.

@@ -24,11 +24,15 @@ from core.branding import APP_SHORT_NAME, REPOSITORY_API_URL
 from core.config import (
     AppSettings,
     apply_settings,
+    config_write_lock,
     get_settings,
     load_settings,
     save_settings,
 )
 from core.config_validator import validate_and_sanitise
+from integrations.definition import IntegrationSettings
+from transfers.runtime_limits import ExecutionRuntimeLimits
+from transfers.settings import TransferSettings
 from core.logging_utils import sanitize_exception, sanitize_log_value
 from core.presentation_safety import safe_original_http_resource
 from core.version import is_version_newer, normalize_version_tag, read_version
@@ -70,7 +74,7 @@ from application import dispatch_admission
 from application.dependencies import get_application
 from transfers import codec
 from application.service import ApplicationService
-from executors.aria2.runtime import runtime as aria2_runtime
+from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
 from services.notification_service import NotificationService
 from api.serializers import (
@@ -169,10 +173,46 @@ _AUTH_COMPAT_SETTINGS_FIELDS = (
 )
 
 
+def _project_legacy_view(data: dict, settings: AppSettings, definitions) -> None:
+    """Read-time-only projection of canonical namespace values onto legacy
+    flat field names (specification section 9.2). Legacy fields are
+    migration/compatibility input only and are never regenerated as a
+    persisted mirror on save (``transfers.settings.normalize_transfer_settings``,
+    ``transfers.runtime_limits.normalize_runtime_limits``,
+    ``integrations.configuration.normalize_settings``) -- but an existing
+    reader of ``GET /settings`` must still observe the CURRENT canonical
+    value under the legacy name. This mutates only the response dict; nothing
+    here is written back to storage.
+    """
+    from transfers.runtime_limits import _LEGACY_FIELDS as _RUNTIME_LEGACY_FIELDS
+    from transfers.settings import _LEGACY_FIELDS as _TRANSFER_LEGACY_FIELDS
+
+    policy = settings.transfer_policy
+    if policy is not None:
+        for legacy, canonical in _TRANSFER_LEGACY_FIELDS.items():
+            data[legacy] = getattr(policy, canonical)
+        data["max_concurrent_downloads"] = policy.max_concurrent_executions
+        data["aria2_max_active_downloads"] = policy.max_concurrent_executions
+
+    limits = settings.execution_runtime_limits
+    if limits is not None:
+        for legacy, canonical in _RUNTIME_LEGACY_FIELDS.items():
+            data[legacy] = getattr(limits, canonical)
+
+    for definition in definitions:
+        entry = settings.integrations.get(definition.id)
+        if entry is None:
+            continue
+        for legacy, option in definition.legacy_fields:
+            if option in entry.options:
+                data[legacy] = entry.options[option]
+
+
 def _public_settings(settings: AppSettings, definitions=()) -> dict:
     data = settings.model_dump()
     from integrations.configuration import public_integrations
     data["integrations"] = public_integrations(settings, definitions)
+    _project_legacy_view(data, settings, definitions)
     for field in _SECRET_SETTINGS:
         if field in data:
             data[f"{field}_configured"] = bool(str(data.get(field) or "").strip())
@@ -343,39 +383,64 @@ def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
     return merged
 
 
+async def _apply_aria2_lifecycle_transition(previous: AppSettings, clean: AppSettings, application: ApplicationService) -> None:
+    """Start/stop/restart the built-in aria2 process and reapply its native
+    tuning after a settings change that may have touched aria2 lifecycle
+    fields (mode/port). Shared by the whole-settings route and the scoped
+    integration-configuration route (specification section 9.5) so both
+    surfaces give aria2's own lifecycle the same targeted, non-blanket
+    handling -- never ``ApplicationMaintenanceGate`` (specification section
+    2.6, 6): a proven binding invariant (has this integration ever been used)
+    is checked earlier, by ``ApplicationService.validate_configuration``, not
+    by waiting for the whole application to quiesce here.
+
+    Reads the canonical ``integrations.aria2`` namespace, never the flat
+    ``aria2_mode``/``aria2_builtin_port`` fields (specification section 9.2):
+    those are migration input only and are no longer regenerated as an
+    authoritative mirror on save, so they may be stale by the time this runs.
+    """
+    previous_aria2 = _canonical_aria2_options(previous)
+    clean_aria2 = _canonical_aria2_options(clean)
+    if clean_aria2.mode == "builtin":
+        if previous_aria2.mode == "builtin" and previous_aria2.builtin_port != clean_aria2.builtin_port:
+            await aria2_runtime.restart()
+        else:
+            await aria2_runtime.ensure_started()
+        try:
+            await application.integration_admin("aria2").apply_memory_tuning()
+        except Exception as exc:
+            logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
+    elif previous_aria2.mode == "builtin":
+        await aria2_runtime.stop()
+
+
 @router.put("/settings")
 async def update_settings(new: SettingsUpdate, application: ApplicationService = Depends(get_application)):
     async with application.configuration_admission():
-        previous = get_settings()
-        merged = _merge_secret_settings(new, previous)
-        definitions = application.definitions
-        from integrations.configuration import normalize_settings
-        merged["integrations"] = new.integrations
-        clean = normalize_settings(AppSettings(**merged), definitions, previous=previous,
-            supplied_fields=new.model_fields_set, clear_legacy_secrets=new.clear_secrets)
-        clean = validate_and_sanitise(clean)
-        if getattr(clean, "max_concurrent_downloads", None) is not None:
-            clean = clean.model_copy(update={"aria2_max_active_downloads": clean.max_concurrent_downloads})
-        try:
-            await application.validate_configuration(previous, clean)
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from None
-        save_settings(clean)
-        apply_settings(clean)
+        # The narrow config-write lock (specification sections 9.5, 13.8)
+        # serializes this load-modify-save critical section against every
+        # OTHER settings-mutation route -- including the scoped PATCH
+        # surfaces below, which deliberately do NOT hold
+        # ``configuration_admission()`` and could otherwise run genuinely
+        # concurrently with this whole-settings write.
+        async with config_write_lock():
+            previous = get_settings()
+            merged = _merge_secret_settings(new, previous)
+            definitions = application.definitions
+            from integrations.configuration import normalize_settings
+            merged["integrations"] = new.integrations
+            clean = normalize_settings(AppSettings(**merged), definitions, previous=previous,
+                supplied_fields=new.model_fields_set, clear_legacy_secrets=new.clear_secrets)
+            clean = validate_and_sanitise(clean)
+            try:
+                await application.validate_configuration(previous, clean)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            save_settings(clean)
+            apply_settings(clean)
         _revoke_stale_authentication_state(previous, clean)
         application.configure()
-        if getattr(clean, "aria2_mode", "external") == "builtin":
-            if (getattr(previous, "aria2_mode", "external") == "builtin"
-                    and getattr(previous, "aria2_builtin_port", 6800) != getattr(clean, "aria2_builtin_port", 6800)):
-                await aria2_runtime.restart()
-            else:
-                await aria2_runtime.ensure_started()
-            try:
-                await application.integration_admin("aria2").apply_memory_tuning()
-            except Exception as exc:
-                logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
-        elif getattr(previous, "aria2_mode", "external") == "builtin":
-            await aria2_runtime.stop()
+        await _apply_aria2_lifecycle_transition(previous, clean, application)
         data = _public_settings(clean, application.definitions)
         data["ok"] = True
         return data
@@ -502,7 +567,7 @@ async def aria2_runtime_status( application: ApplicationService = Depends(get_ap
 async def aria2_global_stat( application: ApplicationService = Depends(get_application)):
     """Return ownership-safe live counters used by the topbar indicator."""
     cfg = get_settings()
-    external = getattr(cfg, "aria2_mode", "external") != "builtin"
+    external = _canonical_aria2_options(cfg).mode != "builtin"
 
     if not external:
         return {
@@ -1358,7 +1423,7 @@ async def aria2_get_global_options( application: ApplicationService = Depends(ge
     """Return current aria2 global options (includes speed limits)."""
     try:
         cfg = get_settings()
-        external = getattr(cfg, "aria2_mode", "external") != "builtin"
+        external = _canonical_aria2_options(cfg).mode != "builtin"
         opts = await application.integration_admin("aria2").get_global_options()
         return {
             "ok": True,
@@ -1378,71 +1443,405 @@ async def aria2_get_global_options( application: ApplicationService = Depends(ge
 @router.post("/aria2/global-options")
 async def aria2_set_global_options(body: dict, application: ApplicationService = Depends(get_application)):
     """
-    Apply global aria2 options at runtime.
-    Accepts: max_download_speed (bytes/s, 0=unlimited), max_upload_speed.
+    Legacy compatibility edge only (specification section 9.6). Forwards
+    download-bandwidth and concurrency mutations to the SAME canonical scoped
+    routes the neutral UI now calls directly -- ``patch_execution_runtime_limits``
+    and ``patch_transfer_policy`` -- so exactly one implementation ever
+    applies or persists either value; this route holds no independent
+    native-apply or persistence logic for them (Gate 9 revision-4 rejection
+    finding 5: two implementations were previously able to change the same
+    underlying state). ``max_upload_speed`` has no canonical neutral surface
+    (specification section 4.4: not a release-driving UI requirement for
+    1.0.12) and is applied/persisted narrowly below rather than reintroducing
+    a second copy of either canonical pipeline.
+
+    Accepts: max_download_speed (bytes/s, 0=unlimited), max_upload_speed,
+    max_concurrent_downloads. The UI has migrated to the neutral routes and
+    sends at most one of these per request; no external dependency requires
+    combined multi-field requests to keep working atomically.
     """
-    async with application.configuration_admission():
+    async with application.application_operation():
         cfg = get_settings()
-        external = getattr(cfg, "aria2_mode", "external") != "builtin"
-        options: dict = {}
-        cfg_updates: dict = {}
-        if "max_download_speed" in body:
-            val = int(body["max_download_speed"])
-            options["max-overall-download-limit"] = str(val)
-            cfg_updates["aria2_max_download_limit"] = val
-        if "max_upload_speed" in body:
-            val = int(body["max_upload_speed"])
-            options["max-overall-upload-limit"] = str(val)
-            cfg_updates["aria2_max_upload_limit"] = val
-        if "max_concurrent_downloads" in body:
-            val = max(1, int(body["max_concurrent_downloads"]))
-            if not external:
-                options["max-concurrent-downloads"] = str(val)
-            # Keep the legacy input and universal execution limit consistent.
-            cfg_updates["aria2_max_active_downloads"] = val
-            cfg_updates["max_concurrent_downloads"] = val
-        if external and any(
-            key in body for key in ("max_download_speed", "max_upload_speed")
-        ):
+        external = _canonical_aria2_options(cfg).mode != "builtin"
+        requested = set(body)
+        if external and requested & {"max_download_speed", "max_upload_speed"}:
             raise HTTPException(
                 409,
                 "Global bandwidth limits are read-only for an external shared aria2 daemon",
             )
-        if not options and not cfg_updates:
+        if not requested & {"max_download_speed", "max_upload_speed", "max_concurrent_downloads"}:
             raise HTTPException(400, "No valid options provided")
+
+        applied: dict = {}
+        last_apply_error = None
         try:
-            if not external:
-                await application.integration_admin("aria2").change_global_options(options)
-            # Persist so the limits survive an aria2 restart
-            if cfg_updates:
-                current = load_settings()
-                for k, v in cfg_updates.items():
-                    setattr(current, k, v)
-                from integrations.configuration import normalize_settings
-                current = normalize_settings(current, application.definitions, supplied_fields=set(cfg_updates))
-                save_settings(current)
-                apply_settings(current)
-            # Reconfigure only after active application operations have drained.
-            if "max_concurrent_downloads" in cfg_updates:
-                application.configure()
+            if "max_download_speed" in body:
+                result = await patch_execution_runtime_limits(
+                    {"max_download_bytes_per_second": body["max_download_speed"]}, application=application,
+                )
+                last_apply_error = result.get("last_apply_error")
+                applied["max-overall-download-limit"] = str(result["configured"]["max_download_bytes_per_second"])
+
+            if "max_upload_speed" in body:
+                val = int(body["max_upload_speed"])
+                # Gate 9 revision-5 rejection finding 3: persist the desired
+                # value (migrating the legacy flat field into canonical
+                # ``integrations.aria2.max_upload_limit`` via the same
+                # one-way ``normalize_settings`` path every other executor
+                # mutation uses) and refresh the injected
+                # ``Aria2RuntimeConfiguration`` snapshot via
+                # ``application.configure()`` BEFORE the native apply --
+                # exactly the persist-then-apply ordering finding 4 already
+                # established for the neutral runtime-limit route. Without
+                # the ``configure()`` call, the long-lived admin/runtime
+                # singletons kept serving the OLD upload cap until an
+                # unrelated reconfigure (e.g. the next ``apply_memory_tuning``
+                # housekeeping pass would silently revert a live native
+                # change back to the stale injected value).
+                async with config_write_lock():
+                    current = load_settings()
+                    current.aria2_max_upload_limit = val
+                    from integrations.configuration import normalize_settings
+                    current = normalize_settings(current, application.definitions, supplied_fields={"aria2_max_upload_limit"})
+                    save_settings(current)
+                    apply_settings(current)
+                    application.configure()
+                    try:
+                        await application.integration_admin("aria2").change_global_options(
+                            {"max-overall-upload-limit": str(val)},
+                        )
+                    except Exception as exc:
+                        last_apply_error = _sanitize_error(exc)
+                applied["max-overall-upload-limit"] = str(val)
+
+            if "max_concurrent_downloads" in body:
                 try:
-                    await application.reconcile_executions()
+                    update = TransferPolicyUpdate(max_concurrent_executions=body["max_concurrent_downloads"])
                 except Exception as exc:
-                    logger.debug("aria2 quick slot dispatch skipped: %s", sanitize_exception(exc))
+                    raise HTTPException(400, _sanitize_error(exc)) from None
+                result = await patch_transfer_policy(update, application=application)
+                # Gate 9 revision-6 rejection finding 3: propagate the
+                # canonical route's own native-apply truth through this
+                # compatibility forwarder -- an ``ok: true`` response here
+                # must never imply a native concurrency apply that
+                # ``patch_transfer_policy`` itself reported as failed.
+                last_apply_error = last_apply_error or result.get("last_apply_error")
+                concurrency = result["max_concurrent_executions"]
+                applied["max-concurrent-downloads" if not external else "adc-max-concurrent-downloads"] = (
+                    str(concurrency) if not external else concurrency
+                )
+
             return {
-                "ok": True,
+                "ok": last_apply_error is None,
                 "mode": "external" if external else "builtin",
-                "applied": (
-                    {"adc-max-concurrent-downloads": cfg_updates["max_concurrent_downloads"]}
-                    if external
-                    else options
-                ),
+                "applied": applied,
             }
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(502, _sanitize_error(e))
 
 
+@router.get("/execution/runtime-limits")
+async def get_execution_runtime_limits(application: ApplicationService = Depends(get_application)):
+    """Neutral live executor-runtime capability limits (specification section
+    4.4). Executor-neutral surface: never an aria2-native option name. Reports
+    both the durable configured/desired value and the currently effective
+    value observed from the executor, distinguishable per specification
+    section 2.7."""
+    cfg = get_settings()
+    configured = cfg.execution_runtime_limits or ExecutionRuntimeLimits()
+    # Gate 9 revision-3 rejection finding 6: effective is UNKNOWN, not equal
+    # to configured, when the live read itself fails -- reporting it as
+    # equal to the desired value on observation failure directly contradicts
+    # the configured/effective truth requirement (specification section 2.7).
+    effective_bytes = None
+    last_apply_error = None
+    try:
+        opts = await application.integration_admin("aria2").get_global_options()
+        effective_bytes = int(opts.get("max-overall-download-limit") or 0)
+    except Exception as exc:
+        last_apply_error = _sanitize_error(exc)
+    return {
+        "ok": last_apply_error is None,
+        "configured": {"max_download_bytes_per_second": configured.max_download_bytes_per_second},
+        "effective": {"max_download_bytes_per_second": effective_bytes},
+        "last_apply_error": last_apply_error,
+    }
 
+
+@router.patch("/execution/runtime-limits")
+async def patch_execution_runtime_limits(body: dict, application: ApplicationService = Depends(get_application)):
+    """Scoped neutral runtime-limit mutation (specification sections 4.4, 9.5,
+    9.6). Reloads only this namespace, preserves every unrelated setting, and
+    uses the SAME ordinary application-operation admission every other
+    command already uses -- never application-wide maintenance merely because
+    the value is persisted (specification section 2.6, 13.3)."""
+    if "max_download_bytes_per_second" not in body:
+        raise HTTPException(400, "max_download_bytes_per_second is required")
+    try:
+        value = max(0, int(body["max_download_bytes_per_second"]))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "max_download_bytes_per_second must be an integer") from None
+
+    async with application.application_operation():
+        # Gate 9 revision-3 rejection findings 3 and 7: the config-write lock
+        # now serializes the FULL desired-write -> native-apply ->
+        # runtime-reinjection pipeline as one critical section, not only the
+        # persistence step. Previously the native apply ran BEFORE the lock
+        # (so two concurrent speed mutations could apply/persist out of
+        # order relative to each other) and ``application.configure()`` --
+        # the sole place that rebuilds the injected ``Aria2RuntimeConfiguration``
+        # snapshot consumed by ``Aria2Administration.apply_memory_tuning()`` --
+        # was never called at all, so the long-lived runtime/admin singletons
+        # kept serving the OLD bandwidth cap until an unrelated reconfigure.
+        # Doing apply -> persist -> reconfigure inside the SAME lock makes the
+        # last writer under the lock win for the durable value, the native
+        # daemon state, and the injected runtime snapshot together.
+        async with config_write_lock():
+            # Gate 9 revision-4 rejection finding 4: durable desired state is
+            # persisted BEFORE the native apply is attempted, not after.
+            # Previously the native apply ran first; if save_settings then
+            # failed (disk fault, process interruption) the native daemon
+            # would already be at the NEW value while the durable desired
+            # state stayed at the OLD one, with no durable fact from which
+            # restart/convergence could recover. Persisting first, then
+            # refreshing the injected runtime snapshot, then attempting the
+            # native apply means a native-apply failure below (below) leaves
+            # an explicit, observable configured != effective divergence
+            # (specification section 2.7) instead of a silent split between
+            # the daemon and disk.
+            current = load_settings()
+            current.execution_runtime_limits = ExecutionRuntimeLimits(max_download_bytes_per_second=value)
+            from integrations.configuration import normalize_settings
+            current = normalize_settings(
+                current, application.definitions, supplied_fields={"execution_runtime_limits"},
+            )
+            save_settings(current)
+            apply_settings(current)
+            application.configure()
+
+            last_apply_error = None
+            try:
+                # Always attempted, never special-cased by mode here: the
+                # administration layer itself is the single owner of the
+                # external-daemon read-only invariant
+                # (``Aria2Administration.change_global_options``) and raises
+                # ``PermissionError`` for it. Skipping the attempt in external
+                # mode would silently report a native apply that never happened
+                # as effective (Gate 9 revision-2 rejection finding, specification
+                # section 2.7) -- letting the SAME rejection this route would
+                # otherwise have to reimplement flow into ``last_apply_error``
+                # keeps configured/effective truthful without a second read-only
+                # check.
+                await application.integration_admin("aria2").change_global_options(
+                    {"max-overall-download-limit": str(value)},
+                )
+            except Exception as exc:
+                last_apply_error = _sanitize_error(exc)
+
+    return {
+        "ok": last_apply_error is None,
+        "configured": {"max_download_bytes_per_second": value},
+        "effective": {"max_download_bytes_per_second": None if last_apply_error else value},
+        "last_apply_error": last_apply_error,
+    }
+
+
+# ── Scoped namespace mutation surfaces (DP 1.0.12 canonical architecture ──
+# correction, Workstream C, specification section 9.5): each surface reloads
+# only its own namespace, preserves every unrelated setting, and never
+# replaces the whole settings document from a stale UI snapshot. Neither
+# acquires ``configuration_admission()`` -- concurrency/retry policy and
+# executor tuning are not application-wide invariants (specification
+# sections 2.6, 6).
+
+class TransferPolicyUpdate(BaseModel):
+    max_concurrent_executions: int | None = None
+    execution_retry_count: int | None = None
+    execution_retry_delay_seconds: int | None = None
+
+
+@router.get("/transfer-policy")
+async def get_transfer_policy_ep(application: ApplicationService = Depends(get_application)):
+    """Universal transfer-policy namespace (specification section 4.1): the
+    single canonical authority for execution concurrency and retry policy,
+    never aria2-named."""
+    policy = get_settings().transfer_policy or TransferSettings()
+    return {"ok": True, **policy.model_dump()}
+
+
+@router.patch("/transfer-policy")
+async def patch_transfer_policy(body: TransferPolicyUpdate, application: ApplicationService = Depends(get_application)):
+    """Scoped universal transfer-policy mutation. The canonical UI writes only
+    this surface for concurrency/retry; ``max_concurrent_downloads`` and
+    ``aria2_max_active_downloads`` are never a second writable authority
+    (specification sections 4.1, 9.7, 9.8)."""
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(400, "No valid transfer-policy fields provided")
+    async with application.application_operation():
+        # The narrow config-write lock (specification sections 9.5, 13.8)
+        # serializes this load-modify-save critical section against every
+        # other settings-mutation route: no namespace may lose another
+        # namespace's newer value to a concurrent read-modify-write.
+        async with config_write_lock():
+            current = load_settings()
+            base = current.transfer_policy or TransferSettings()
+            try:
+                policy = base.model_copy(update=updates)
+                policy = TransferSettings(**policy.model_dump())  # re-validate bounds
+            except Exception as exc:
+                raise HTTPException(400, _sanitize_error(exc)) from None
+            current.transfer_policy = policy
+            from integrations.configuration import normalize_settings
+            current = normalize_settings(current, application.definitions, supplied_fields={"transfer_policy"})
+            save_settings(current)
+            apply_settings(current)
+            # Unconditional (Gate 9 revision-3 rejection finding 4):
+            # ``application.configure()`` (``composition.configure``) is the
+            # ONE place ``execution_retry_count``/``execution_retry_delay_seconds``
+            # become the running universal recovery engine's live
+            # ``max_attempts``/``retry_delay`` -- exactly as it is also the
+            # one place ``max_concurrent_executions`` becomes the live
+            # scheduler capacity. Gating this call on "did concurrency
+            # change" left a retry-only PATCH silently persisting one retry
+            # policy while the running engine kept consuming the old one
+            # until restart or an unrelated reconfigure. Held inside the
+            # SAME config-write lock so the engine's live policy always
+            # corresponds to the just-persisted revision, never a stale
+            # interleaving (specification section 13.8).
+            application.configure()
+
+            last_apply_error = None
+            if "max_concurrent_executions" in updates:
+                # Gate 9 revision-5 rejection finding 4: ``max_concurrent_executions``
+                # is the sole persisted/scheduler authority (specification
+                # sections 4.1, 9.7); when built-in aria2 is the live
+                # executor, its native ``max-concurrent-downloads`` option is
+                # a derived implementation projection that must track the
+                # just-persisted value, not stay at whatever cap the daemon
+                # was started with. ``Aria2Administration.apply_memory_tuning()``
+                # is the existing executor-owned administration entry point
+                # that already performs exactly this native reapply from the
+                # injected configuration (the same call periodic housekeeping
+                # uses) -- reused here rather than a second native-option
+                # pipeline. It is already a safe no-op in external mode (its
+                # own ``mode != "builtin"`` guard), so external aria2 remains
+                # governed only by the universal scheduler with no
+                # daemon-global mutation, without a separate mode branch here.
+                try:
+                    await application.integration_admin("aria2").apply_memory_tuning()
+                except Exception as exc:
+                    last_apply_error = _sanitize_error(exc)
+        if "max_concurrent_executions" in updates:
+            # Only the capacity-triggered dispatch nudge stays conditional:
+            # it exists solely to immediately use newly available
+            # concurrency slots, which a retry-only change does not create,
+            # and is an async dispatch operation that must not run while
+            # holding the config-write lock.
+            try:
+                await application.reconcile_executions()
+            except Exception as exc:
+                logger.debug("transfer-policy concurrency reconfigure skipped: %s", sanitize_exception(exc))
+    return {
+        "ok": last_apply_error is None,
+        "last_apply_error": last_apply_error,
+        **current.transfer_policy.model_dump(),
+    }
+
+
+class IntegrationConfigurationUpdate(BaseModel):
+    options: dict = Field(default_factory=dict)
+    enabled: bool | None = None
+    priority: int | None = None
+    clear_secrets: list[str] = Field(default_factory=list)
+
+
+def _integration_definition(application: ApplicationService, integration_id: str):
+    definition = next((d for d in application.definitions if d.id == integration_id), None)
+    if definition is None:
+        raise HTTPException(404, "Unknown integration")
+    return definition
+
+
+@router.get("/integrations/{integration_id}/configuration")
+async def get_integration_configuration(integration_id: str, application: ApplicationService = Depends(get_application)):
+    """Integration/executor-owned configuration namespace (specification
+    section 4.3): concrete executor tuning is never read back through
+    universal transfer policy."""
+    _integration_definition(application, integration_id)
+    from integrations.configuration import public_integrations
+    public = public_integrations(get_settings(), application.definitions).get(integration_id, {})
+    return {"ok": True, **public}
+
+
+@router.patch("/integrations/{integration_id}/configuration")
+async def patch_integration_configuration(
+    integration_id: str, body: IntegrationConfigurationUpdate, application: ApplicationService = Depends(get_application),
+):
+    """Scoped integration/executor configuration mutation (specification
+    sections 4.3, 9.1, 9.5). Merges only the supplied option keys into the
+    existing namespace -- every unrelated integration and every unrelated
+    option is preserved untouched. A proven lifecycle/binding invariant
+    (``ApplicationService.validate_configuration`` -- has this integration
+    ever been used) is still enforced for ownership fields (mode/url/port/
+    download_path); it is not exempt merely because this is a scoped route."""
+    definition = _integration_definition(application, integration_id)
+    async with application.application_operation():
+        # The narrow config-write lock (specification sections 9.5, 13.8)
+        # serializes this load-modify-save critical section -- including the
+        # ``previous`` baseline read used below -- against every other
+        # settings-mutation route.
+        async with config_write_lock():
+            previous = get_settings()
+            current = load_settings()
+            existing = current.integrations.get(integration_id)
+            existing_options = existing.options if isinstance(existing, IntegrationSettings) else {}
+            merged_options = {**existing_options, **body.options}
+            try:
+                validated_options = definition.options_model(**merged_options).model_dump()
+            except Exception as exc:
+                raise HTTPException(400, _sanitize_error(exc)) from None
+            entry = IntegrationSettings(
+                enabled=(existing.enabled if isinstance(existing, IntegrationSettings) and body.enabled is None else bool(body.enabled)),
+                priority=(existing.priority if isinstance(existing, IntegrationSettings) and body.priority is None else int(body.priority or 0)),
+                options=validated_options,
+                clear_secrets=body.clear_secrets,
+            )
+            current.integrations = {**current.integrations, integration_id: entry}
+            from integrations.configuration import normalize_settings
+            # ``previous=previous`` (Gate 9 revision-3 rejection finding 2):
+            # without it, ``normalize_settings``'s generic secret-preservation
+            # branch (``old_options.get(secret)``) has no prior namespace to
+            # restore a blank/omitted secret from, so an ordinary Save whose
+            # already-configured-secret UI control is intentionally blank
+            # (the existing UI contract: blank means "keep current") would
+            # erase the stored secret. This is the SAME ``previous`` the
+            # whole-settings route already threads through for exactly this
+            # reason -- a scoped route is not exempt from it.
+            clean = normalize_settings(current, application.definitions, previous=previous)
+            try:
+                await application.validate_configuration(previous, clean)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            save_settings(clean)
+            apply_settings(clean)
+            # Reconfigure and the aria2 lifecycle apply now happen INSIDE
+            # the config-write lock (Gate 9 revision-3 rejection finding 7):
+            # previously the lock was released before this apply phase, so
+            # two concurrent integration-configuration writes could apply
+            # their native/lifecycle effects out of order relative to their
+            # persisted revisions. Holding the lock across validate -> save
+            # -> apply -> reconfigure -> lifecycle makes the last writer
+            # under the lock win coherently for the durable revision AND
+            # the resulting live/native state together.
+            application.configure()
+            if integration_id == "aria2":
+                await _apply_aria2_lifecycle_transition(previous, clean, application)
+    from integrations.configuration import public_integrations
+    public = public_integrations(clean, application.definitions).get(integration_id, {})
+    return {"ok": True, **public}
 
 
 @router.get("/stats/comprehensive")

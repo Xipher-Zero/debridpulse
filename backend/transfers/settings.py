@@ -43,6 +43,7 @@ def normalize_transfer_settings(settings, *, previous=None, supplied_fields=None
                     value = min(bound.le, value)
             options[canonical] = value
     policy = TransferSettings(**options)
-    translated = {legacy: getattr(policy, canonical) for legacy, canonical in _LEGACY_FIELDS.items()}
-    translated["aria2_max_active_downloads"] = policy.max_concurrent_executions
-    return settings.model_copy(update={**translated, "transfer_policy": policy})
+    # One-way migration only (specification section 9.2): legacy flat fields
+    # are compatibility INPUT, never a continually regenerated persisted
+    # mirror -- canonical `transfer_policy` is the sole authority on save.
+    return settings.model_copy(update={"transfer_policy": policy})

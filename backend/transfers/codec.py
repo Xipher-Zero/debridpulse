@@ -11,7 +11,7 @@ from transfers.errors import NormalizedError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
     Endpoint, ExecutionHandle, IntegrityMetadata, Ownership, ProviderResource,
-    TransferCandidate, TransferRequest, SourceEntry, SourceIdentity,
+    ResolverArtifactIdentityEvidence, TransferCandidate, TransferRequest, SourceEntry, SourceIdentity,
 )
 
 
@@ -64,6 +64,8 @@ def candidate(value: dict) -> TransferCandidate:
     data["resource"] = resource(data.get("resource"))
     if data.get("source_identity"):
         data["source_identity"] = SourceIdentity(**data["source_identity"])
+    if data.get("resolver_identity_evidence"):
+        data["resolver_identity_evidence"] = ResolverArtifactIdentityEvidence(**data["resolver_identity_evidence"])
     if data.get("refresh_request"):
         data["refresh_request"] = request(data["refresh_request"])
     return TransferCandidate(**data)
