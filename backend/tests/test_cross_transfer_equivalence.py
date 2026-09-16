@@ -40,6 +40,52 @@ class NamedParcelProvider(ParcelProvider):
 
 
 @pytest_asyncio.fixture
+async def canonical_pair(tmp_path, monkeypatch):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): the one test in this module that drives a full failure/backoff
+    /refresh/candidate-switch sequence needs the canonical stack -- the lower,
+    pre-Phase-3 ``pair`` fixture's stack no longer contains a recovery-
+    decision implementation."""
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = CanonicalRepository()
+    registry = IntegrationRegistry()
+    first = NamedParcelProvider("provider-a")
+    second = NamedParcelProvider("provider-b")
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_provider(first)
+    registry.register_provider(second)
+    registry.register_executor(executor)
+    now = [1000.0]
+    policy = TransferPolicy(
+        retry_delay=1,
+        adoption_stability_seconds=0,
+        max_active_executions=32,
+        resolution_concurrency=32,
+    )
+    engine = CanonicalEngine(
+        repository,
+        registry,
+        download_root=str(tmp_path / "payloads"),
+        policy=policy,
+        clock=lambda: now[0],
+    )
+    await engine.initialize()
+    return SimpleNamespace(
+        engine=engine,
+        repository=repository,
+        registry=registry,
+        a=first,
+        b=second,
+        executor=executor,
+        now=now,
+    )
+
+
+@pytest_asyncio.fixture
 async def pair(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
     await database.init_db()
@@ -285,7 +331,11 @@ async def test_seven_plus_seven_proven_mirrors_create_seven_canonical_artifacts(
 
 
 @pytest.mark.asyncio
-async def test_paused_established_writer_is_not_resumed_by_alternate_arrival(pair):
+async def test_paused_established_writer_is_not_resumed_by_alternate_arrival(canonical_pair):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): pause is now exclusively a canonical-stack
+    # responsibility.
+    pair = canonical_pair
     first = await admit(pair, pair.a, "submission-a")
     await pair.engine.tick()
     primary = (await pair.repository.artifacts(first.id))[0]
@@ -332,7 +382,11 @@ async def test_phase1_origin_linkage_survives_restart_without_inference(pair):
 
 
 @pytest.mark.asyncio
-async def test_foreign_alternate_refresh_uses_its_actual_originating_request(pair):
+async def test_foreign_alternate_refresh_uses_its_actual_originating_request(canonical_pair):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): candidate refresh is now exclusively a
+    # canonical-stack responsibility.
+    pair = canonical_pair
     first = await admit(pair, pair.a, "submission-a")
     await pair.engine.resolve_pending()
     second = await admit(pair, pair.b, "submission-b")
@@ -341,7 +395,15 @@ async def test_foreign_alternate_refresh_uses_its_actual_originating_request(pai
     second_request = (await pair.repository.requests(second.id))[0]
     selected = next(index for index, item in enumerate(primary.candidates) if item.provider_id == "provider-b")
     candidate = primary.candidates[selected]
-    await pair.repository.artifact_state(primary.id, "queued", selected=selected, expected_bytes=candidate.expected_bytes)
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): the canonical stack's ``_refresh`` is a
+    # thin claim-acquisition entry point (``recover_artifact(trigger=
+    # AUTO_RETRY)``) that only reaches the actual per-candidate
+    # ``provider.refresh(...)`` call via ``_refresh_claimed`` when the
+    # artifact is durably in ``refresh_pending`` -- unlike the retired base-
+    # only ``_refresh``, which called the provider directly regardless of
+    # state. "queued" is no longer the right durable shape to drive this.
+    await pair.repository.artifact_state(primary.id, "refresh_pending", selected=selected, expected_bytes=candidate.expected_bytes)
     current = (await pair.repository.artifacts(first.id))[0]
 
     await pair.engine._refresh(current)
@@ -356,7 +418,8 @@ async def test_foreign_alternate_refresh_uses_its_actual_originating_request(pai
 
 
 @pytest.mark.asyncio
-async def test_cross_transfer_alternate_failover_keeps_same_canonical_artifact(pair):
+async def test_cross_transfer_alternate_failover_keeps_same_canonical_artifact(canonical_pair):
+    pair = canonical_pair
     first = await admit(pair, pair.a, "submission-a")
     await pair.engine.tick()
     second = await admit(pair, pair.b, "submission-b")

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from pathlib import Path
 import shutil
 import socket
 from dataclasses import replace
@@ -77,6 +78,18 @@ class MirrorFixtureServer:
         behavior = self.behaviors.get(path, "missing")
         if behavior == "unsupported_status":
             return web.Response(status=500)
+        if behavior == "zero_byte_success":
+            # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+            # Section 5/11: a genuinely degenerate real-server response --
+            # 200 OK, Content-Length: 0, empty body -- for what the OTHER
+            # sibling proves is a large real payload. GeneralHttpProvider
+            # never learned a size at resolution time (it does none), so
+            # aria2 completing this transfer natively as SUCCEEDED with
+            # total_bytes=0/completed_bytes=0 is indistinguishable, from raw
+            # executor evidence alone, from transfer 265's actual production
+            # shape -- core must still refuse to treat it as a legitimate
+            # empty-file completion.
+            return web.Response(status=200, body=b"", headers={"Content-Length": "0"})
         payload = self.payloads.get(path)
         if payload is None:
             return web.Response(status=404)
@@ -401,6 +414,72 @@ async def test_same_filename_different_content_siblings_do_not_converge_within_o
         assert (await runtime.engine.canonical.consolidation(transfer.id))["state"] == "none"
     finally:
         await other.stop()
+        await runtime.close()
+
+
+async def test_real_aria2_zero_byte_success_never_completes_or_delivers(tmp_path, monkeypatch):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 11
+    real-runtime proof: two genuinely different-content siblings of one
+    transfer through the real GeneralHttpProvider + real Aria2Executor --
+    one serves the real payload (a legitimate positive-size completion), the
+    other serves a real HTTP 200 with ``Content-Length: 0`` and an empty
+    body (a real aria2 SUCCEEDED execution with total_bytes=0,
+    completed_bytes=0 -- transfer 265's exact raw-evidence shape, produced
+    here by an actual native download rather than a mocked observation).
+
+    Required outcome: exactly one artifact reaches ``completed`` with the
+    real positive size and real bytes on disk; the zero-byte sibling must
+    NEVER become ``completed`` and must never be delivered, regardless of
+    how many scheduler cycles run afterward."""
+    runtime = await _build_runtime(tmp_path, monkeypatch)
+    real_path = "/" + MIRROR_FILENAME
+    empty_path = "/empty-" + MIRROR_FILENAME
+    runtime.server.route(real_path, PAYLOAD, behavior="normal")
+    runtime.server.route(empty_path, b"", behavior="zero_byte_success")
+    try:
+        real_request = TransferRequest("http", runtime.server.url(1, real_path))
+        empty_request = TransferRequest("http", runtime.server.url(2, empty_path))
+        transfer = await runtime.engine.submit((real_request, empty_request), deduplicate=False)
+
+        async def both_materialized():
+            artifacts = await runtime.repository.artifacts(transfer.id)
+            return artifacts if len(artifacts) == 2 else None
+
+        await runtime.until(both_materialized, label="both distinct-content siblings materialize independently")
+
+        async def real_one_completed():
+            artifacts = await runtime.repository.artifacts(transfer.id)
+            return next((item for item in artifacts if item.state == "completed"), None)
+
+        completed = await runtime.until(real_one_completed, label="the real payload's artifact completes")
+        assert completed.expected_bytes == len(PAYLOAD)
+        assert Path(completed.target).read_bytes() == PAYLOAD
+
+        # Let the degenerate zero-byte sibling run through several more
+        # scheduler cycles -- it must never silently become completed later,
+        # and never oscillate the parent into a false COMPLETED/consolidated
+        # state on the strength of only the OTHER sibling.
+        for _ in range(15):
+            await runtime.engine.tick()
+            await asyncio.sleep(0.02)
+
+        artifacts_by_target = {item.target: item for item in await runtime.repository.artifacts(transfer.id)}
+        zero_byte_artifact = next(item for item in artifacts_by_target.values() if item.id != completed.id)
+        assert zero_byte_artifact.state != "completed"
+        assert zero_byte_artifact.expected_bytes == 0
+
+        async with database.get_db() as db:
+            delivered = await db.fetchone(
+                """SELECT COUNT(*) AS n FROM execution_attempt_provenance
+                    WHERE artifact_id=? AND delivered=1""",
+                (zero_byte_artifact.id,),
+            )
+        assert int(delivered["n"]) == 0  # never counted as delivered provenance.
+
+        final_transfer = await runtime.repository.get(transfer.id)
+        assert final_transfer.state != TransferState.CONSOLIDATED
+        assert final_transfer.state != TransferState.COMPLETED  # the unsatisfied sibling still votes (Section 5.2/6.4).
+    finally:
         await runtime.close()
 
 

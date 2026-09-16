@@ -414,6 +414,20 @@ class RequestRecord:
     entry: SourceEntry | None = None
 
 
+class SizeKnowledge(StrEnum):
+    """Canonical payload-size-knowledge fact (DP 1.0.12 canonical
+    lifecycle/recovery/completion rework, Section 3.3): ``SIZE_UNKNOWN``,
+    ``SIZE_KNOWN(0)`` and ``SIZE_KNOWN(N>0)`` are three distinct facts. ``0``
+    must never simultaneously mean "no size evidence" and "affirmatively
+    zero bytes" -- see ``transfers.filesystem.size_knowledge`` for the one
+    canonical resolver that produces this fact from candidate/executor
+    evidence.
+    """
+    UNKNOWN = "unknown"
+    KNOWN_ZERO = "known_zero"
+    KNOWN_POSITIVE = "known_positive"
+
+
 class MaterializationAdmissionKind(StrEnum):
     """Universal execution-admission decision for one artifact's dispatch.
 

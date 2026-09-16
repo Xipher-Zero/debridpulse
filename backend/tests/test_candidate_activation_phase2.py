@@ -359,30 +359,40 @@ async def test_activation_history_never_records_contradictory_success_and_failur
 
 
 def test_one_canonical_candidate_activation_owner_for_both_engine_stacks():
-    """DP 1.0.12 recovery leveling, Section 10 correction: the lower,
-    pre-Phase-3 ``transfers.engine.TransferEngine`` stack (shared ancestry
-    with the production ``convergence_engine.TransferEngine`` via
-    ``transfers._engine_recovery``) must not retain its own independent
-    candidate-mutation implementation alongside
-    ``transfers.candidate_activation.activate_candidate``. A new module was
-    not supposed to be created while the old implementation stayed intact --
-    this asserts it did not."""
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): the lower, pre-Phase-3 ``transfers.engine.TransferEngine``
+    stack (shared ancestry with the production
+    ``convergence_engine.TransferEngine`` via ``transfers._engine_recovery``)
+    no longer retains ANY candidate-mutation or recovery-decision
+    implementation of its own -- not even a thin delegate. The prior
+    "one shared mutation, two decision wrappers" compromise (DP 1.0.12
+    recovery leveling, Section 10) still let a materially complete
+    alternate recovery lifecycle exist below the canonical owner, whose
+    correctness depended on ``convergence_engine.TransferEngine`` always
+    being layered on top to shadow it (production transfer 265 proved this
+    is not a safe invariant to depend on for parent-lifecycle authority, and
+    the same MRO-shadowing risk applied here). There is now exactly ONE
+    recovery-decision/candidate-activation owner in the whole engine MRO:
+    ``transfers.convergence_engine.TransferEngine``, which funnels every
+    candidate switch through ``transfers.candidate_activation
+    .activate_candidate``."""
     import inspect
 
-    from transfers import _engine_recovery, candidate_activation
+    from transfers import _engine_recovery, candidate_activation, convergence_engine
 
-    legacy_source = inspect.getsource(_engine_recovery.TransferEngine._activate_alternate)
-    assert "activate_candidate(" in legacy_source
-    for forbidden in ("retire_partial(", "transition_recovery(", "record_candidate_attempt("):
-        assert forbidden not in legacy_source, (
-            f"{forbidden!r} in _activate_alternate indicates a second, independent "
-            "candidate-mutation implementation instead of a thin delegate"
+    for forbidden in ("_activate_alternate", "_decide_recovery", "_terminal_recovery", "_try_exhausted_alternate"):
+        assert not hasattr(_engine_recovery.TransferEngine, forbidden), (
+            f"{forbidden!r} must not exist on the lower engine stack -- it would be a "
+            "second, independent recovery-decision implementation"
         )
 
-    canonical_source = inspect.getsource(candidate_activation.activate_candidate)
-    assert "retire_partial(" in canonical_source
-    assert "transition_recovery(" in canonical_source
-    assert "record_candidate_attempt(" in canonical_source
+    canonical_source = inspect.getsource(convergence_engine.TransferEngine._apply_recovery_decision)
+    assert "activate_candidate(" in canonical_source
+
+    activation_source = inspect.getsource(candidate_activation.activate_candidate)
+    assert "retire_partial(" in activation_source
+    assert "transition_recovery(" in activation_source
+    assert "record_candidate_attempt(" in activation_source
 
 
 def test_production_composition_uses_the_final_leveled_engine_and_repository():
@@ -409,42 +419,6 @@ def test_production_composition_uses_the_final_leveled_engine_and_repository():
     assert composition.TransferRepository is ProductionRepository
     assert type(composition.application.engine) is ProductionEngine
     assert type(composition.application.engine.repository) is ProductionRepository
-
-
-@pytest.mark.asyncio
-async def test_legacy_stack_automatic_switch_uses_canonical_operation_and_provenance(tmp_path, monkeypatch):
-    """Behavioral half of the Section 10 proof: driving an automatic failover
-    on the LOWER ``transfers.engine.TransferEngine`` stack still produces the
-    one canonical durable activation-provenance record (authority falls back
-    to ``"automatic"`` there, since that stack has no recovery-claim system),
-    not a second, independently-shaped record."""
-    from test_ws2p1_failover_depth import advance_a_to_b, attach_two as attach_two_legacy, remote_failure as legacy_failure
-    from test_ws2p1_failover_progress import EquivalentParcelProvider, NoProgressMemoryExecutor, build_engine as build_engine_legacy
-    from transfers.policy import TransferPolicy as LegacyPolicy
-
-    first = EquivalentParcelProvider("provider-a")
-    second = EquivalentParcelProvider("provider-b")
-    executor = NoProgressMemoryExecutor(None)
-    policy = LegacyPolicy(max_attempts=3, retry_delay=0, adoption_stability_seconds=0)
-    engine, repository, _registry = await build_engine_legacy(
-        tmp_path, monkeypatch, (first, second), executor, policy=policy,
-    )
-    canonical, _source = await attach_two_legacy(engine, repository, first, second)
-    failure = legacy_failure()
-    _a_attempts, artifact = await advance_a_to_b(engine, repository, executor, canonical.id, failure)
-    assert artifact.selected == 1  # switched to provider-b automatically
-
-    async with get_db() as db:
-        rows = await db.fetchall(
-            "SELECT detail FROM application_events WHERE transfer_id=? AND kind='candidate_activation' ORDER BY id",
-            (canonical.id,),
-        )
-    from transfers import codec
-    events = [codec.load(row["detail"], {}) for row in rows]
-    activated = [event for event in events if event.get("outcome") == "activated"]
-    assert activated, "the legacy stack's switch must record the SAME canonical provenance kind"
-    assert activated[-1]["authority"] == "automatic"
-    assert activated[-1]["new_candidate_id"] == str(artifact.candidates[1].id)
 
 
 # ---------------------------------------------------------------------------

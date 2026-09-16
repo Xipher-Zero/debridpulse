@@ -75,16 +75,15 @@ async def attach_two(engine, repository, first, second):
 
 async def _simulate_stale_operator_attention(repository, artifact_id, *, reason="recovery_budget_exhausted"):
     """Durably persist the exact combination
-    transfers._engine_recovery.py's ``_apply_recovery_decision`` WAIT_FOR_OPERATOR
-    branch produces: ``record_recovery_decision`` followed by ``_quiesce``'s
-    transition (raw state ``"error"`` -- ``_quiesce`` uses
-    ``"error" if reason == "recovery_exhausted" else "recovery_wait"``, and the
-    WAIT_FOR_OPERATOR branch defaults its own ``reason`` to
-    ``"recovery_exhausted"`` -- with ``quiescence_reason``/``wake_condition``
-    set). The artifact's raw status therefore lands on the same real
-    switchable state (``"error"``, a member of manual_failover.py's
-    ``SWITCH_ELIGIBLE_LIFECYCLE_STATES``) a genuinely exhausted recovery
-    leaves it in, so
+    transfers.convergence_engine.py's ``_apply_recovery_decision``
+    WAIT_FOR_OPERATOR branch produces: a decision record followed by
+    ``_park_existing_execution``/``_settle_parked_execution``'s transition
+    (raw state ``"error"`` when the quiescence reason is
+    ``"recovery_exhausted"``, else ``"recovery_wait"``, with
+    ``quiescence_reason``/``wake_condition`` set). The artifact's raw status
+    therefore lands on the same real switchable state (``"error"``, a member
+    of manual_failover.py's ``SWITCH_ELIGIBLE_LIFECYCLE_STATES``) a genuinely
+    exhausted recovery leaves it in, so
     the fixture matches real production persistence rather than an invented
     shape. Field combination mirrors
     test_transfer_recovery_phase4.py::test_requires_attention_needs_persisted_operator_decision_reason_and_wake.

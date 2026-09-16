@@ -7,9 +7,13 @@ import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
+from transfers import codec
 from transfers.engine import TransferEngine
+from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.mirrors import EvidenceFailureClass, EvidenceKind, shared_evidence
-from transfers.models import ArtifactFingerprint, FingerprintKind, ResolutionResult, ResourceState, TransferRequest
+from transfers.models import (
+    ArtifactFingerprint, ExecutionState, FingerprintKind, ResolutionResult, ResourceState, TransferRequest, TransferState,
+)
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -232,7 +236,7 @@ async def test_restart_after_exhaustion_stays_quiescent_and_can_still_recover(re
     no duplicate writer is allocated, restart does not itself consume a proof
     attempt (no hot loop), and the request remains unresolved/quiescent until
     a later valid wake (here, an explicit operator retry) recovers it."""
-    first = await _submit_batch(retry_pair, retry_pair.a, "rapidgator")
+    await _submit_batch(retry_pair, retry_pair.a, "rapidgator")
     await retry_pair.engine.tick()
 
     unavailable_forever = {"active": True}
@@ -301,7 +305,7 @@ async def test_restart_after_exhaustion_stays_quiescent_and_can_still_recover(re
 
 @pytest.mark.asyncio
 async def test_restart_preserves_pending_retry_budget_and_writer_barrier(retry_pair, monkeypatch):
-    first = await _submit_batch(retry_pair, retry_pair.a, "rapidgator")
+    await _submit_batch(retry_pair, retry_pair.a, "rapidgator")
     await retry_pair.engine.tick()
 
     seen = 0
@@ -565,3 +569,182 @@ async def test_size_and_content_contradictions_are_not_retryable(retry_pair, mon
     assert mismatch.reason == "sample_mismatch"
     assert mismatch.failure_class == EvidenceFailureClass.CONTRADICTORY
     assert not mismatch.retryable
+
+
+async def _insert_held_sibling_request(transfer_id: int, request_id: str, *, reason="dns_failure") -> None:
+    """Directly durable-inject a request row already in the exact
+    ``materializing`` + ``equivalence_disposition='exhausted'`` shape
+    ``transfers.cohorts.coordinate_collection``/``_schedule_proof_retry``
+    produce once the bounded automatic proof-retry budget is exhausted
+    (proven by the tests above -- this helper skips reproducing that
+    production machinery to isolate what these new tests actually check:
+    ``transfers._repository_base.TransferRepository.aggregate_lifecycle``'s
+    CONSUMPTION of the already-durable fact, transfer-265's NUS shape)."""
+    payload = codec.dump(TransferRequest("parcel", "held", name="held.bin"))
+    async with database.get_db() as db:
+        await db.execute(
+            """INSERT INTO transfer_requests(
+                id,transfer_id,ordinal,payload,state,equivalence_disposition,equivalence_reason,
+                equivalence_retry_count,retry_at)
+                VALUES(?,?,1,?,'materializing','exhausted',?,2,0)""",
+            (request_id, transfer_id, payload, reason),
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_quiescent_equivalence_hold_blocks_completion_until_resolved_or_released(retry_pair):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 6.4
+    (Gate 9 revision 2): transfer-265's exact shape -- one real artifact
+    fully delivers while a SEPARATE, durably unresolved (materializing +
+    equivalence_disposition=exhausted) request sits in the same transfer
+    with no autonomous work left. A prior revision of this test wrongly
+    treated the held request as a mere "artifact-less placeholder" and
+    asserted the transfer reached COMPLETED regardless. That directly
+    contradicts Section 6.4: "completed only when every logical delivery
+    obligation is satisfied." An exhausted disposition means identity is
+    UNRESOLVED, not proven equivalent -- completing around it silently
+    infers non-equivalence, exactly the inference the equivalence
+    correction exists to forbid. The parent must instead settle to the
+    quiescent, nonterminal QUEUED wait (Section 6.4's "quiescent unresolved
+    hold") for as long as the hold stands, and may reach COMPLETED only
+    after the hold is actually resolved or released."""
+    pair = retry_pair
+    transfer = await pair.engine.submit(
+        (TransferRequest("parcel", "solo", name="solo.bin", preferred_provider=pair.a.descriptor.id),),
+        deduplicate=False,
+    )
+    await pair.engine.tick()
+    artifact = (await pair.repository.artifacts(transfer.id))[0]
+    pair.executor.finish(artifact.execution)
+
+    # The held sibling must exist BEFORE the solo artifact's own completion
+    # is durably aggregated, so this test actually exercises should_complete
+    # deciding WHILE the held row is present -- inserting it only after an
+    # earlier completion had already settled the (terminal, no-longer-
+    # aggregated) transfer would silently pass regardless of this fix.
+    await _insert_held_sibling_request(transfer.id, "held-nus")
+
+    # A synthetic held sibling has no stored resolved candidates, so
+    # ``resolve_pending()``'s ordinary re-resolution pass (irrelevant to
+    # this test -- the point is aggregation's consumption of an ALREADY
+    # durable disposition) must not touch it; only ``reconcile_executions()``
+    # (execution observation + aggregation) is driven here.
+    outcomes = []
+    for _ in range(3):
+        await pair.engine.reconcile_executions()
+        outcomes.append((await pair.repository.get(transfer.id)).state)
+
+    # Truthfully quiescent and nonterminal for every one of these cycles --
+    # never COMPLETED, never oscillating, while the real artifact's own
+    # bytes are fully delivered on disk the whole time.
+    assert outcomes == [TransferState.QUEUED] * 3
+    still_pending = await pair.repository.get(transfer.id)
+    assert still_pending.state == TransferState.QUEUED
+    assert still_pending.progress == 100  # the real artifact's own delivery is truthfully reflected...
+    async with database.get_db() as db:
+        held = await db.fetchone(
+            "SELECT state,equivalence_disposition,equivalence_retry_count FROM transfer_requests WHERE id='held-nus'",
+        )
+    assert held["state"] == "materializing"
+    assert held["equivalence_disposition"] == "exhausted"
+    assert int(held["equivalence_retry_count"]) == 2  # no hot-looped proof re-attempts.
+
+    # Now release the hold -- the ambiguous duplicate claim is administratively
+    # retired (Section 6.3's "explicit operator action" wake source), leaving
+    # no further unsatisfied obligation. Only THEN may completion follow.
+    async with database.get_db() as db:
+        await db.execute("DELETE FROM transfer_requests WHERE id='held-nus'")
+        await db.commit()
+    await pair.engine.reconcile_executions()
+
+    final = await pair.repository.get(transfer.id)
+    assert final.state == TransferState.COMPLETED
+    assert final.progress == 100
+
+
+@pytest.mark.asyncio
+async def test_quiescent_hold_does_not_mask_an_independent_terminal_failure(retry_pair):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 6.4
+    (Gate 9 revision 3): a quiescent equivalence hold on ONE request must
+    never launder a genuinely terminal, independent failure belonging to a
+    DIFFERENT voting artifact into a truthless nonterminal wait. Topology:
+    artifact A reaches a real, independent terminal ERROR (its own
+    unsatisfied logical delivery obligation, nothing to do with B's identity
+    ambiguity); request B sits in the same durable quiescent hold shape the
+    sibling tests above use. No autonomous work remains for either. The
+    parent must settle FAILED -- the hold is not license to erase an actual
+    failure -- while the existing completed-artifact-plus-hold case (see
+    ``test_quiescent_equivalence_hold_blocks_completion_until_resolved_or_
+    released`` above) still correctly settles QUEUED, never COMPLETED,
+    proving the fix distinguishes the two cases rather than just always
+    picking one outcome."""
+    pair = retry_pair
+    terminal_error = NormalizedError(
+        Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Stage.EXECUTION,
+        retryability=Retryability.NEVER, recovery=Recovery.FAIL, origin=Origin.REMOTE_SOURCE,
+    )
+    transfer = await pair.engine.submit(
+        (TransferRequest("parcel", "solo", name="solo.bin", preferred_provider=pair.a.descriptor.id),),
+        deduplicate=False,
+    )
+    await pair.engine.tick()
+    artifact = (await pair.repository.artifacts(transfer.id))[0]
+
+    # The held sibling must exist BEFORE the failing artifact's own
+    # aggregation runs, so this test genuinely exercises the decision made
+    # WHILE both facts (an independent terminal failure and an unresolved
+    # hold) are simultaneously present.
+    await _insert_held_sibling_request(transfer.id, "held-nus-failure")
+
+    pair.executor.jobs[artifact.execution.attempt_id] = replace(
+        pair.executor.jobs[artifact.execution.attempt_id], state=ExecutionState.FAILED, error=terminal_error,
+    )
+    await pair.engine.reconcile_executions()
+
+    failed = (await pair.repository.artifacts(transfer.id))[0]
+    assert failed.state == "error"
+    final = await pair.repository.get(transfer.id)
+    assert final.state == TransferState.FAILED, (
+        "an independent artifact's genuine terminal failure must not be masked by an "
+        "unrelated sibling's quiescent equivalence hold"
+    )
+    async with database.get_db() as db:
+        held = await db.fetchone(
+            "SELECT state,equivalence_disposition,equivalence_retry_count FROM transfer_requests WHERE id='held-nus-failure'",
+        )
+    assert held["state"] == "materializing"
+    assert held["equivalence_disposition"] == "exhausted"
+    assert int(held["equivalence_retry_count"]) == 2  # untouched by the unrelated failure.
+
+
+@pytest.mark.asyncio
+async def test_quiescent_equivalence_hold_with_no_artifacts_is_queued_not_perpetually_resolving(retry_pair):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 6.4:
+    a transfer whose ONLY request is durably held (no autonomous work
+    scheduled, identity unresolved, no artifact yet) must truthfully show a
+    quiescent non-resolving wait, not perpetual RESOLVING ("processing") and
+    not silent staleness. Repeated scheduler cycles must not create a writer,
+    hot-loop proof attempts, or oscillate the parent state."""
+    pair = retry_pair
+    transfer = await pair.repository.admit(
+        (TransferRequest("parcel", "held-only", name="held.bin"),), name="held-only",
+    )
+    transfer_id = transfer[0].id
+    async with database.get_db() as db:
+        await db.execute("DELETE FROM transfer_requests WHERE transfer_id=?", (transfer_id,))
+        await db.commit()
+    await _insert_held_sibling_request(transfer_id, "held-solo")
+
+    outcomes = []
+    for _ in range(3):
+        await pair.engine._aggregate(transfer_id)
+        outcomes.append((await pair.repository.get(transfer_id)).state)
+
+    assert outcomes == [TransferState.QUEUED] * 3  # truthful quiescent wait, no oscillation, no hot loop.
+    async with database.get_db() as db:
+        held = await db.fetchone(
+            "SELECT equivalence_disposition,equivalence_retry_count FROM transfer_requests WHERE id='held-solo'",
+        )
+    assert held["equivalence_disposition"] == "exhausted"
+    assert int(held["equivalence_retry_count"]) == 2

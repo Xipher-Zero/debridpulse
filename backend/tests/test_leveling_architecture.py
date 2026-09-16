@@ -51,11 +51,23 @@ ROOT = Path(__file__).resolve().parents[1]
 #   ``SIDE_STATE_RETIRING_TRANSFER_STATES`` (five members, includes FAILED,
 #   whose enum value IS the string ``"error"`` -- membership is identical to
 #   the literal it replaces).
-# - engine.py's ``_aggregate`` decides whether a crash/restart-repair pass
-#   should still try to converge raw status to PAUSED. ``transition_allowed``
-#   explicitly permits FAILED -> PAUSED unconditionally, so a FAILED transfer
-#   must NOT be excluded here the way a genuine dead end is -- this consumes
-#   the narrower ``TERMINAL_TRANSFER_STATES`` (four members, no FAILED).
+# - engine.py's ``_aggregate`` used to separately decide whether a
+#   crash/restart-repair pass should still try to converge raw status to
+#   PAUSED, consuming the narrower ``TERMINAL_TRANSFER_STATES`` (four
+#   members, no FAILED) because ``transition_allowed`` explicitly permits
+#   FAILED -> PAUSED unconditionally. DP 1.0.12 canonical lifecycle/
+#   recovery/completion rework, Section 7.2 (CANON-001) folded that entire
+#   check into ``transfers._repository_base.TransferRepository
+#   .aggregate_lifecycle`` -- the one atomic parent-lifecycle decision --
+#   rather than leaving it as a second, independently-timed read-decide-
+#   write layered on top by ``engine.TransferEngine._aggregate`` (a
+#   forbidden "pause layer -> overwrite parent state" second authority).
+#   ``_repository_base.py`` already reads the narrower
+#   ``TERMINAL_TRANSFER_STATES`` family for this exact purpose via its own
+#   pre-existing ``_AGGREGATE_TERMINAL_STATES`` alias (the same early
+#   dead-end guard the ordinary decision branches already used), so no new
+#   import was needed there; ``engine.py`` now consumes neither family at
+#   all, having no parent-lifecycle-deciding responsibility left to guard.
 _RETIRED_LITERAL_ASSIGNMENTS = {
     "transfers/_repository_base.py": ("_AGGREGATE_TERMINAL_STATES = frozenset(",),
     "transfers/input_required.py": ("_TERMINAL_FOR_INPUT =",),
@@ -74,7 +86,6 @@ _REQUIRED_CANONICAL_CONSTANT = {
     "transfers/input_required.py": "SIDE_STATE_RETIRING_TRANSFER_STATES",
     "transfers/convergence_engine.py": "TERMINAL_TRANSFER_STATES",
     "transfers/canonical.py": "SIDE_STATE_RETIRING_TRANSFER_STATES",
-    "transfers/engine.py": "TERMINAL_TRANSFER_STATES",
 }
 
 
@@ -108,19 +119,32 @@ def test_terminal_literal_consumers_import_the_semantically_correct_constant():
         )
 
 
-def test_canonical_and_engine_consume_different_terminal_families_on_purpose():
-    """Guards against a future well-meaning "unify these two imports" edit:
-    canonical.py's consolidation-ordering exclusion and engine.py's
-    pause-repair dead-end check are deliberately NOT the same family (see the
-    module-level comment). If a future change makes both files import the
-    SAME single family, this test forces a human to re-confirm the semantics
-    rather than silently drifting one of them onto the wrong set."""
+def test_canonical_consumes_the_broader_side_state_retiring_family():
+    """canonical.py's consolidation-ordering exclusion deliberately consumes
+    the broader ``SIDE_STATE_RETIRING_TRANSFER_STATES`` family (includes
+    FAILED), never the narrower ``TERMINAL_TRANSFER_STATES`` (see the
+    module-level comment)."""
     canonical_source = (ROOT / "transfers/canonical.py").read_text()
-    engine_source = (ROOT / "transfers/engine.py").read_text()
     assert "SIDE_STATE_RETIRING_TRANSFER_STATES" in canonical_source
-    assert "SIDE_STATE_RETIRING_TRANSFER_STATES" not in engine_source
-    assert "TERMINAL_TRANSFER_STATES" in engine_source
     assert "TERMINAL_TRANSFER_STATES" not in canonical_source
+
+
+def test_engine_no_longer_decides_any_parent_lifecycle_terminal_family():
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 7.2
+    (CANON-001): engine.py's former pause-repair ``_aggregate`` override --
+    a second, independently-timed parent-lifecycle authority layered on top
+    of ``transfers._repository_base.TransferRepository.aggregate_lifecycle``
+    -- has been folded into that one atomic decision and deleted, not merely
+    reassigned to a different terminal-state family. engine.py must consume
+    NEITHER ``TERMINAL_TRANSFER_STATES`` nor
+    ``SIDE_STATE_RETIRING_TRANSFER_STATES``: it has no parent-lifecycle
+    decision left to guard. A future reintroduction of either import here is
+    exactly the "second authority" regression Section 3.1 forbids and must
+    be re-justified, not silently accepted."""
+    engine_source = (ROOT / "transfers/engine.py").read_text()
+    assert "TERMINAL_TRANSFER_STATES" not in engine_source
+    assert "SIDE_STATE_RETIRING_TRANSFER_STATES" not in engine_source
+    assert "async def _aggregate" not in engine_source
 
 
 def test_policy_is_the_sole_definer_of_the_terminal_literal():

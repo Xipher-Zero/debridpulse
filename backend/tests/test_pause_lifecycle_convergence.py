@@ -6,15 +6,22 @@ import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.models import ExecutionState, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
-from transfers.presentation_repository import TransferRepository
+from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 
 
 @pytest_asyncio.fixture
 async def pause_context(tmp_path, monkeypatch):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): pause/resume/pause_all/resume_all are defined exclusively on
+    # transfers.convergence_engine.TransferEngine -- no lower class defines
+    # any of them at all. recovery_repository.TransferRepository is a strict
+    # superset of presentation_repository.TransferRepository (via
+    # manual_repository.TransferRepository), so `.presentation(...)` keeps
+    # working unchanged.
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "pause-truth.db")
     await database.init_db()
     repository = TransferRepository()

@@ -80,9 +80,17 @@ async def test_contradictory_active_runtime_total_cannot_rewrite_accepted_denomi
 
 @pytest.mark.asyncio
 async def test_multiartifact_failover_is_artifact_local(tmp_path, monkeypatch):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): this test drives an actual candidate switch on failure, which
+    # is now exclusively a canonical-stack (transfers.convergence_engine
+    # .TransferEngine) behavior -- test_ws2p1_failover_progress.build_engine
+    # wires the lower, pre-Phase-3 stack, which no longer contains a
+    # recovery-decision implementation.
+    from test_ws2p1_failover_depth import build_canonical_engine
+
     provider = MultiUnknownProvider()
     executor = NoProgressMemoryExecutor(None)
-    engine, repository, _registry = await build_engine(tmp_path, monkeypatch, (provider,), executor)
+    engine, repository, _registry = await build_canonical_engine(tmp_path, monkeypatch, (provider,), executor)
     transfer = await engine.submit(
         (
             TransferRequest("multi", "one", name="one.bin"),

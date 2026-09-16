@@ -5,7 +5,7 @@ import inspect
 
 from services.network_safety import sampled_public_artifact_fingerprint
 from transfers.candidate_activation import activate_candidate
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.mirrors import reported_sizes_compatible
 
 
@@ -20,21 +20,23 @@ def test_reported_size_policy_accepts_bounded_jitter_and_rejects_outside() -> No
 
 
 def test_failover_and_refresh_delegate_reported_size_compatibility() -> None:
-    """DP 1.0.12 recovery leveling, Section 10: automatic failover's size
-    check now lives in exactly one place -- the canonical
-    transfers.candidate_activation.activate_candidate operation --
-    ``TransferEngine._activate_alternate`` is a thin delegate to it, not a
-    second implementation, so the policy is asserted on the real owner."""
-    alternate_source = inspect.getsource(TransferEngine._activate_alternate)
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): automatic failover's size check lives in exactly one place --
+    the canonical ``transfers.candidate_activation.activate_candidate``
+    operation. There is no longer a second, pre-Phase-3 engine stack with its
+    own delegate to inspect: ``transfers.convergence_engine.TransferEngine``
+    is the sole owner of both TRY_ALTERNATE_CANDIDATE application and
+    refresh, so the policy is asserted directly on that real owner."""
+    decision_source = inspect.getsource(TransferEngine._apply_recovery_decision)
     activation_source = inspect.getsource(activate_candidate)
-    refresh_source = inspect.getsource(TransferEngine._refresh)
+    refresh_source = inspect.getsource(TransferEngine._refresh_claimed)
 
-    assert "activate_candidate(" in alternate_source
-    assert "reported_sizes_compatible(" not in alternate_source
+    assert "activate_candidate(" in decision_source
+    assert "reported_sizes_compatible(" not in decision_source
     assert "reported_sizes_compatible(" in activation_source
     assert "reported_sizes_compatible(" in refresh_source
     assert "artifact.expected_bytes != replacement.expected_bytes" not in activation_source
-    assert "artifact.expected_bytes != replacement_size" not in refresh_source
+    assert "current.expected_bytes != replacement_size" not in refresh_source
 
 
 def test_http_sampler_does_not_own_reported_size_equivalence_policy() -> None:

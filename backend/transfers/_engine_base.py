@@ -19,15 +19,20 @@ are further overridden below ``convergence_engine.TransferEngine`` except
 where the table says so). A claim here that is not also proven by a named
 regression test is not a claim this module makes.
 
-1. **Per-transfer asyncio lock** (``self._transfer_locks``, this class): used
-   by ONLY ``retry()`` (both this base class and the production override,
-   which delegates its own ``reacquire=True`` path back to this one) and
-   ``cancel()`` (this base class; production has no override). It is NOT
-   used by ``pause``, ``resume``, ``resume_all``, ``delete``,
-   ``select_artifact``, ``submit`` itself (only its ``retry``-reacquire
-   path), or ``activate_candidate_command`` -- those commands are safe
-   through mechanisms 2-4 below instead, not through this lock. Do not
-   assume this lock protects a command not named in this paragraph.
+1. **Per-transfer asyncio lock** (``self._transfer_locks``, initialized here,
+   this class): used by ``resolve_pending()`` (this base class, per active
+   transfer) and ``cancel()`` (this base class; production has no override).
+   ``convergence_engine.TransferEngine`` -- the sole owner of every
+   recovery/control decision, per CANON-001 -- also reaches into this same
+   shared dict from its own ``retry()`` (both the operator-retry branch and
+   the ``reacquire=True`` terminal-transfer-reacquisition branch, the latter
+   via ``_reacquire_transfer()``, which along with pause/resume/pause_all/
+   resume_all/refresh/candidate-refresh scheduling is defined ONLY on
+   ``convergence_engine.TransferEngine``; no lower class defines any of
+   them). It is NOT used by ``select_artifact``, ``submit`` itself, or
+   ``activate_candidate_command`` -- those commands are safe through
+   mechanisms 2-4 below instead, not through this lock. Do not assume this
+   lock protects a command not named in this paragraph.
 2. **Per-execution-attempt convergence lock** (``self._convergence_lock``,
    this class): serializes every native pause/resume/observe/cancel call
    against ONE execution handle, across every caller that might touch it --
@@ -98,20 +103,20 @@ from weakref import WeakValueDictionary
 
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.canonical import CanonicalOwnership
-from transfers.contracts import (BatchObservation, CandidateRefresh, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
+from transfers.contracts import (BatchObservation, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
     Inventory, Manifest, PauseResume, ProviderInputContinuation, ResourceLookup)
 from transfers import codec
 from transfers.errors import (
-    Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage,
+    Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.filesystem import destination, payload_matches, safe_name, stable_payload, validate_target
+from transfers.filesystem import destination, payload_matches, safe_name, size_knowledge, stable_payload, validate_target
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
     MaterializationAdmissionKind, OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState,
-    TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
+    SizeKnowledge, TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
@@ -806,15 +811,6 @@ class TransferEngine:
             if retry_snapshot:
                 continue
 
-    async def _schedule_refresh(self, artifact: Artifact, error: NormalizedError):
-        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-        provider = self.registry.providers.get(candidate.provider_id) if candidate else None
-        if not isinstance(provider, CandidateRefresh) or not await self.repository.consume_recovery_refresh(artifact.id):
-            await self.repository.artifact_state(artifact.id, "error", error=error)
-            return False
-        await self.repository.artifact_state(artifact.id, "refresh_pending", error=error, retry_at=self.clock(), release=True)
-        return True
-
     async def _retire_stale_materialization(self, artifact: Artifact) -> None:
         """Retire executable work superseded by a newer materialization
         authority (STALE admission, specification section 7.5) through the
@@ -1060,10 +1056,19 @@ class TransferEngine:
         elif observed.state == ExecutionState.SUCCEEDED:
             validate_target(self.root, artifact.target)
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-            size = artifact.expected_bytes or observed.progress.total_bytes
-            valid = await stable_payload(artifact.target, size, sidecars=executor.resumable_paths(artifact.target),
-                                         integrity=candidate.integrity if candidate else (), delay=self.policy.adoption_stability_seconds,
-                                         allow_empty=size == 0)
+            # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+            # Section 5: a SUCCEEDED observation whose size is unknown (both
+            # the artifact's own expected size and the executor's own final
+            # total are absent/zero) must never silently collapse into an
+            # affirmative zero-byte completion -- route it through the same
+            # verification-failure/recovery path an ordinary payload mismatch
+            # already uses instead of inventing a second outcome.
+            knowledge, size = size_knowledge(artifact.expected_bytes, observed.progress.total_bytes)
+            valid = knowledge != SizeKnowledge.UNKNOWN and await stable_payload(
+                artifact.target, size, sidecars=executor.resumable_paths(artifact.target),
+                integrity=candidate.integrity if candidate else (), delay=self.policy.adoption_stability_seconds,
+                allow_empty=knowledge == SizeKnowledge.KNOWN_ZERO,
+            )
             if valid:
                 await self.repository.artifact_state(artifact.id, "completed", expected_bytes=size)
             else:
@@ -1082,155 +1087,6 @@ class TransferEngine:
             await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.CANCELLED,
                 cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
 
-    async def _recover_source_artifact(self, artifact: Artifact, error: NormalizedError):
-        await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error),
-                                      attempt_id=artifact.execution.attempt_id if artifact.execution else None)
-        if error.domain == Domain.SECURITY or error.retryability in {Retryability.NEVER, Retryability.UNKNOWN} or error.recovery in {
-                Recovery.REQUIRE_OPERATOR, Recovery.FAIL, Recovery.NONE}:
-            await self.repository.artifact_state(artifact.id, "error", error=error)
-            return
-        failures, refreshes = await self.repository.record_source_failure(artifact.id)
-        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-        provider = self.registry.providers.get(candidate.provider_id) if candidate else None
-        definitive_expiry = error.category in {Category.CANDIDATE_EXPIRED, Category.SOURCE_EXPIRED}
-        if isinstance(provider, CandidateRefresh) and refreshes == 0 and (definitive_expiry or failures >= 2):
-            if await self.repository.consume_recovery_refresh(artifact.id):
-                await self.repository.artifact_state(artifact.id, "refresh_pending", error=error,
-                                                     retry_at=self.clock(), release=True)
-                return
-        if failures == 1 and not definitive_expiry:
-            delay = 0.0 if error.retryability == Retryability.IMMEDIATE else float(self.policy.retry_delay)
-            if error.retry_after_seconds is not None:
-                delay = max(delay, error.retry_after_seconds)
-            await self.repository.artifact_state(artifact.id, "queued", error=error,
-                                                 retry_at=self.clock() + delay, release=True)
-            return
-        await self.repository.artifact_state(artifact.id, "error", error=error)
-
-    async def _recover_artifact(self, artifact: Artifact, error: NormalizedError):
-        """Base-class recovery hook.
-
-        Only the two branches every real engine class shares are handled
-        here: an artifact with no candidates at all (nothing to switch
-        between), and a remote-source failure (``_recover_source_artifact``,
-        not candidate-index-based). A candidate-bearing, local-source failure
-        MUST be handled by a subclass -- ``transfers._engine_recovery
-        .TransferEngine._recover_artifact`` and
-        ``transfers.convergence_engine.TransferEngine._recover_artifact``
-        both fully override this method for that case (they never call
-        ``super()._recover_artifact`` when ``artifact.candidates`` is
-        non-empty and ``error.origin`` is not ``REMOTE_SOURCE``), routing
-        through the ONE canonical candidate-activation operation
-        (``transfers.candidate_activation.activate_candidate``, DP 1.0.12
-        recovery leveling, Section 10) instead.
-
-        DP 1.0.12 recovery leveling, Section 44 code-review correction: this
-        method previously also handled that third case itself, using
-        ``artifact.selected + 1`` as the next-candidate index -- a second,
-        unreachable-in-every-real-subclass copy of exactly the
-        traversal-as-history anti-pattern this leveling pass exists to
-        remove (``transfers.repository.py`` "Cleared" comment;
-        ``transfers._engine_recovery.py`` "Traversal is no longer defined by
-        `selected + 1`" comment; ``test_candidate_activation_phase2
-        .py::test_manual_high_index_switch_does_not_hide_unattempted_lower_candidates``).
-        No engine class in this codebase has ever instantiated
-        ``_engine_base.TransferEngine`` directly, so that branch was provably
-        dead, but a stale copy of the forbidden pattern sitting in a base
-        class both real stacks inherit from is exactly the kind of
-        second-truth Section 48 warns against leaving unexplained. Raising
-        here makes the abstract contract explicit instead.
-        """
-        if not artifact.candidates:
-            decision = self.policy.retry(error, artifact.retries, self.clock(), can_refresh=True)
-            if decision.automatic:
-                await self.repository.artifact_state(artifact.id, "unresolved", release=True)
-                await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
-            else:
-                await self.repository.artifact_state(artifact.id, "error", error=error)
-            return
-        if error.origin == Origin.REMOTE_SOURCE:
-            await self._recover_source_artifact(artifact, error)
-            return
-        raise NotImplementedError(
-            "candidate-bearing, local-source recovery must be handled by a "
-            "subclass via the canonical candidate-activation operation "
-            "(transfers.candidate_activation.activate_candidate), not by "
-            "_engine_base.TransferEngine"
-        )
-
-    async def _refresh(self, artifact: Artifact):
-        candidate = artifact.candidates[artifact.selected]
-        provider = self.registry.providers.get(candidate.provider_id)
-        attempt = None
-        record = None
-        try:
-            if not isinstance(provider, CandidateRefresh):
-                raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.CANDIDATE_PREPARATION,
-                    domain=Domain.REQUEST, retryability=Retryability.NEVER))
-            if not await self._live(artifact.transfer_id, admission=True):
-                return
-            origin = await self.canonical.origin_for(artifact, candidate)
-            if origin is None:
-                raise TransferError(self._error(Category.OWNERSHIP_CONFLICT, Stage.CANDIDATE_PREPARATION,
-                    domain=Domain.LIFECYCLE, retryability=Retryability.NEVER))
-            record = origin.request
-            attempt = await self.repository.begin_refresh(record, provider.descriptor.id)
-            result = self._authoritative_provider_result(provider.descriptor.id, await provider.refresh(candidate))
-            live = await self.repository.resolution(attempt, result)
-            if not live and record.transfer_id == artifact.transfer_id:
-                return
-            if result.error:
-                raise TransferError(result.error)
-            if not result.candidates:
-                raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION))
-            if any(item.expires_at is not None and item.expires_at <= self.clock() for item in result.candidates):
-                raise TransferError(self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION))
-            if not await self.canonical.refresh_candidate(artifact, origin, candidate, result.candidates):
-                current = await self._current_artifact(artifact.transfer_id, artifact.id)
-                if current is None or current.state == "completed":
-                    return
-                raise TransferError(self._error(Category.OWNERSHIP_CONFLICT, Stage.CANDIDATE_PREPARATION,
-                    domain=Domain.LIFECYCLE, retryability=Retryability.NEVER))
-            await self.repository.artifact_state(artifact.id, "queued", selected=artifact.selected,
-                expected_bytes=result.candidates[0].expected_bytes)
-        except Exception as exc:
-            error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
-                integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.CANDIDATE_PREPARATION)
-            if attempt:
-                await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
-            await self.repository.artifact_state(artifact.id, "error", error=error)
-            if record and record.parent_id and error.category in {Category.RESOURCE_NOT_FOUND, Category.RESOURCE_EXPIRED, Category.SOURCE_EXPIRED, Category.SOURCE_NOT_FOUND}:
-                await self._renew_source_parent(record)
-
-    async def _renew_source_parent(self, record, *, operator=False):
-        parent = next((item for item in await self.repository.requests(record.transfer_id) if item.id == record.parent_id), None)
-        if parent is None or parent.resource is None:
-            return False
-        provider = self.registry.providers.get(parent.resource.provider_id)
-        if not isinstance(provider, ResourceLookup):
-            return False
-        try:
-            observation = await provider.observe(parent.resource)
-        except Exception as exc:
-            error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
-                integration_id=provider.descriptor.id, domain=Domain.PROVIDER, stage=Stage.RECONCILIATION)
-            await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
-            return False
-        await self.repository.resource_observation(record.transfer_id, observation.resource, observation.state)
-        if observation.state not in {ResourceState.ABSENT, ResourceState.EXPIRED}:
-            return False
-        error = self._error(Category.RESOURCE_EXPIRED, Stage.RESOLUTION, domain=Domain.PROVIDER,
-            retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE)
-        decision = self.policy.retry_resolution(error, 0 if operator else parent.attempts, self.clock())
-        if not decision.automatic:
-            return False
-        if observation.state != ResourceState.ABSENT and parent.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
-            await self.repository.cleanup_intent(parent.transfer_id, parent.resource.id, CleanupAuthority.OWNED)
-            await self._cleanup_pending()
-            if any(resource.id == parent.resource.id and pending for resource, _state, pending in await self.repository.resources(record.transfer_id)):
-                return False
-        await self.repository.renew_parent(parent, self.clock() if operator else decision.retry_at, reset_budget=operator)
-        return True
 
     async def _aggregate(self, transfer_id: int):
         """DP 1.0.12 recovery leveling, Sections 21-22: the decision and the
@@ -1330,10 +1186,6 @@ class TransferEngine:
                 if await self.repository.finish_postprocessing(transfer_id, processor_id, outcome):
                     await self._delivered(transfer_id)
 
-    async def pause(self, transfer_id: int):
-        await self.repository.pause_intent(transfer_id, True)
-        return await self._control(transfer_id)
-
     async def select_artifact(self, transfer_id: int, artifact_id: int, *, selected: bool):
         transfer = await self.repository.get(transfer_id)
         if not transfer or transfer.state in {TransferState.DELETED, TransferState.CONSOLIDATED}:
@@ -1354,126 +1206,6 @@ class TransferEngine:
                 raise TransferError(outcome.error)
         await self.repository.artifact_state(artifact_id, "cancelled")
         await self._aggregate(transfer_id)
-
-    async def resume(self, transfer_id: int):
-        if await self.repository.globally_paused():
-            for transfer in await self.repository.active():
-                if transfer.id != transfer_id:
-                    await self.repository.pause_intent(transfer.id, True)
-            await self.repository.global_pause(False)
-        await self.repository.pause_intent(transfer_id, False)
-        return await self._control(transfer_id)
-
-    async def _control(self, transfer_id: int):
-        transfer = await self.repository.get(transfer_id)
-        if transfer is None or transfer.state == TransferState.CONSOLIDATED:
-            return ()
-        results = []
-        for artifact in await self.repository.artifacts(transfer_id):
-            if not artifact.execution or artifact.state == "completed":
-                continue
-            executor = self.registry.executors.get(artifact.execution.executor_id)
-            if not isinstance(executor, PauseResume):
-                results.append(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.EXECUTION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
-                continue
-            observed = await self._converge_execution(artifact, executor)
-            if observed and observed.error:
-                results.append(observed.error)
-            elif observed and observed.state in {ExecutionState.ABSENT, ExecutionState.CANCELLED}:
-                transfer = await self.repository.get(transfer_id)
-                if transfer and not transfer.paused and not await self.repository.globally_paused():
-                    await self.repository.artifact_state(artifact.id, "queued", release=True)
-        if not results and not await self.challenges.current(transfer_id):
-            transfer = await self.repository.get(transfer_id)
-            paused = bool(transfer and transfer.paused) or await self.repository.globally_paused()
-            await self.repository.state(transfer_id, TransferState.PAUSED if paused else TransferState.QUEUED)
-        return tuple(results)
-
-    async def _resume_execution(self, artifact, executor):
-        return await self._converge_execution(artifact, executor)
-
-    async def pause_all(self):
-        await self.repository.global_pause(True)
-        transfers = await self.repository.active()
-        return {transfer.id: result for transfer, result in zip(
-            transfers, await asyncio.gather(*(self._control(transfer.id) for transfer in transfers))
-        )}
-
-    async def resume_all(self):
-        await self.repository.global_pause(False)
-        transfers = await self.repository.active()
-        for transfer in transfers:
-            await self.repository.pause_intent(transfer.id, False)
-        results = await asyncio.gather(*(self._control(transfer.id) for transfer in transfers))
-        return {transfer.id: result for transfer, result in zip(transfers, results)}
-
-    async def retry(self, transfer_id: int, *, reacquire=False):
-        lock = self._transfer_locks.setdefault(transfer_id, asyncio.Lock())
-        async with lock:
-            transfer = await self.repository.get(transfer_id)
-            if transfer is None:
-                raise KeyError(transfer_id)
-            if transfer.state == TransferState.CONSOLIDATED:
-                return False
-            if await self.challenges.current(transfer_id):
-                return False
-            if transfer.state == TransferState.DELETED and not reacquire:
-                return False
-            if any(pending for _resource, _state, pending in await self.repository.resources(transfer_id)):
-                return False
-            if not await self.repository.reset_postprocessing(transfer_id):
-                return False
-            plan = []
-            for artifact in await self.repository.artifacts(transfer_id):
-                candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-                executor = self.registry.executors.get(artifact.execution.executor_id) if artifact.execution else self.registry.executor_for(candidate) if candidate else None
-                if executor is None:
-                    if candidate is None and artifact.execution is None:
-                        plan.append((artifact, None, None, None))
-                        continue
-                    return False
-                observation = None
-                if artifact.execution:
-                    observation = await executor.observe(artifact.execution)
-                    if observation.state == ExecutionState.UNKNOWN:
-                        return False
-                plan.append((artifact, candidate, executor, observation))
-            if not await self.repository.state(transfer_id, TransferState.ACCEPTED if reacquire else TransferState.QUEUED,
-                                               operator=True, expected_epoch=transfer.epoch):
-                return False
-            for artifact, candidate, executor, observation in plan:
-                if observation:
-                    if observation.resumable:
-                        await self.repository.execution(observation)
-                        continue
-                if candidate is None:
-                    if artifact.execution:
-                        outcome = await executor.cancel(artifact.execution)
-                        if outcome.error:
-                            return False
-                    await self.repository.artifact_state(artifact.id, "unresolved", release=True)
-                    await self.repository.retry_requests(transfer_id, request_id=artifact.request_id)
-                    continue
-                if await stable_payload(artifact.target, artifact.expected_bytes, sidecars=executor.resumable_paths(artifact.target),
-                                        integrity=candidate.integrity, delay=self.policy.adoption_stability_seconds):
-                    await self.repository.artifact_state(artifact.id, "completed")
-                    continue
-                if artifact.execution:
-                    outcome = await executor.cancel(artifact.execution)
-                    if outcome.error:
-                        return False
-                await self.repository.reset_retry_budget(artifact.id)
-                await self.repository.artifact_state(artifact.id, "unresolved", release=True)
-                origin = await self.canonical.origin_for(artifact, candidate)
-                if origin is not None:
-                    record = origin.request
-                else:
-                    record = next(item for item in await self.repository.requests(transfer_id) if item.id == artifact.request_id)
-                if not record.parent_id or not await self._renew_source_parent(record, operator=True):
-                    await self.repository.artifact_state(artifact.id, "queued", release=True)
-            await self.repository.retry_requests(transfer_id, reset_budget=True)
-            await self.repository.pause_intent(transfer_id, False)
-            return True
 
     async def submit_input(self, transfer_id: int, challenge_id: str, method: str, values):
         transfer = await self.repository.get(transfer_id)

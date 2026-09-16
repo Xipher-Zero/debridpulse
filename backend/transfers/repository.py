@@ -887,7 +887,12 @@ class TransferRepository(_QualifiedTransferRepository):
             await self.accept_execution_total(accepted_total[0], handle, accepted_total[1])
 
     async def refine_execution_total(self, artifact_id: int, handle, total_bytes: int) -> bool:
-        if (not isinstance(total_bytes, int) or isinstance(total_bytes, bool) or total_bytes < 0 or handle is None):
+        # DP 1.0.12 canonical lifecycle/recovery/completion rework, Section
+        # 5.3: this is a durable size-truth sink -- it must reject a
+        # non-positive total exactly like ``accept_execution_total`` already
+        # does, since 0 here is absence of size knowledge, never affirmative
+        # evidence the artifact is genuinely empty.
+        if (not isinstance(total_bytes, int) or isinstance(total_bytes, bool) or total_bytes <= 0 or handle is None):
             return False
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")

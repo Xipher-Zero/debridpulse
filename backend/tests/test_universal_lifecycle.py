@@ -10,7 +10,7 @@ import pytest_asyncio
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
+from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.models import (
     CleanupAuthority, ExecutionObservation, ExecutionRequest, ExecutionState,
     OutcomeKind, Ownership, ResolutionResult, ResourceState, TransferOutcome,
@@ -39,12 +39,43 @@ async def core(tmp_path, monkeypatch):
     return SimpleNamespace(engine=engine, repository=repository, registry=registry, provider=provider, executor=executor, now=now)
 
 
+@pytest_asyncio.fixture
+async def canonical_core(tmp_path, monkeypatch):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): a small number of tests in this module (and in
+    test_universal_hardening.py / test_universal_parity.py, which import
+    fixtures from here) actually drive a failure/retry/refresh sequence and
+    assert on its durable recovery-decision representation -- that authority
+    now lives exclusively in the canonical stack
+    (transfers.convergence_engine.TransferEngine +
+    transfers.recovery_repository.TransferRepository), so those specific
+    tests use this fixture instead of ``core``. Most tests in these three
+    files exercise only neutral lifecycle mechanics common to both
+    compositions and are deliberately left on ``core``."""
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = CanonicalRepository()
+    registry = IntegrationRegistry()
+    provider = ParcelProvider()
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_provider(provider)
+    registry.register_executor(executor)
+    now = [1000.0]
+    policy = TransferPolicy(retry_delay=1, adoption_stability_seconds=0, max_active_executions=2)
+    engine = CanonicalEngine(repository, registry, download_root=str(tmp_path / "payloads"), policy=policy, clock=lambda: now[0])
+    await engine.initialize()
+    return SimpleNamespace(engine=engine, repository=repository, registry=registry, provider=provider, executor=executor, now=now)
+
+
 async def submit(core, payload="box", name="payload.bin"):
     return await core.engine.submit((TransferRequest("parcel", payload, name=name),))
 
 
-def failure(category=Category.UNMAPPED_PROVIDER_ERROR, *, retryability=Retryability.UNKNOWN, recovery=Recovery.REQUIRE_OPERATOR, domain=Domain.PROVIDER):
-    return NormalizedError(domain, category, Stage.RESOLUTION, retryability, recovery)
+def failure(category=Category.UNMAPPED_PROVIDER_ERROR, *, retryability=Retryability.UNKNOWN, recovery=Recovery.REQUIRE_OPERATOR, domain=Domain.PROVIDER, origin=Origin.CORE):
+    return NormalizedError(domain, category, Stage.RESOLUTION, retryability, recovery, origin=origin)
 
 
 @pytest.mark.asyncio
@@ -70,7 +101,11 @@ async def test_identity_is_durable_before_resolution_and_survives_completion(cor
 
 
 @pytest.mark.asyncio
-async def test_pause_accepts_requests_without_contact_and_resume_one_preserves_siblings(core):
+async def test_pause_accepts_requests_without_contact_and_resume_one_preserves_siblings(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): pause/resume/pause_all/resume_all are now
+    # exclusively a canonical-stack responsibility.
+    core = canonical_core
     await core.engine.pause_all()
     first = await submit(core, "one", "one.bin")
     second = await submit(core, "two", "two.bin")
@@ -185,7 +220,11 @@ async def test_completed_executor_observation_requires_actual_payload(core):
 
 
 @pytest.mark.asyncio
-async def test_manual_retry_preserves_completed_sibling_and_canonical_paths(core):
+async def test_manual_retry_preserves_completed_sibling_and_canonical_paths(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): operator-initiated retry (reacquire=False,
+    # the default) is now exclusively a canonical-stack responsibility.
+    core = canonical_core
     transfer = await core.engine.submit((TransferRequest("parcel", "one", name="one.bin"), TransferRequest("parcel", "two", name="two.bin")))
     core.executor.start_errors = [None, failure(Category.UNMAPPED_EXECUTOR_ERROR, domain=Domain.EXECUTOR)]
     await core.engine.tick()
@@ -203,7 +242,12 @@ async def test_manual_retry_preserves_completed_sibling_and_canonical_paths(core
 
 
 @pytest.mark.asyncio
-async def test_explicit_reacquisition_revalidates_completed_history(core):
+async def test_explicit_reacquisition_revalidates_completed_history(canonical_core):
+    """Terminal-transfer reacquisition (DP 1.0.12 canonical lifecycle/
+    recovery/completion rework, CANON-001 closure): ``_reacquire_transfer``
+    is defined only on ``convergence_engine.TransferEngine``, so this
+    semantic recovery/control test must build the real canonical stack."""
+    core = canonical_core
     transfer = await submit(core)
     await core.engine.tick()
     artifact = (await core.repository.artifacts(transfer.id))[0]
@@ -217,6 +261,321 @@ async def test_explicit_reacquisition_revalidates_completed_history(core):
     assert repaired.execution != artifact.execution
     assert repaired.target == artifact.target
     assert repaired.state == "downloading"
+
+
+async def _reacquisition_setup_blocked_at_cancel(core):
+    """Shared setup for the adversarial concurrency tests below: a completed
+    transfer whose payload has since disappeared, positioned so a
+    re-submission's ``_reacquire_transfer`` will call ``executor.cancel()``
+    on the stale execution handle -- the exact call these tests block on to
+    force a deterministic interleaving window."""
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    await core.engine.tick()
+    Path(artifact.target).unlink()
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original_cancel = core.executor.cancel
+
+    async def blocking_cancel(handle):
+        entered.set()
+        await release.wait()
+        return await original_cancel(handle)
+
+    core.executor.cancel = blocking_cancel
+    return transfer, artifact, entered, release
+
+
+async def _reacquisition_setup_blocked_at_observe(core):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure, Gate 9 revision 8): a review found that rev. 7 still performed
+    ``_reacquire_transfer``'s FIRST ``executor.observe()`` in the
+    plan-building loop, before either ``_execution_cycle_lock`` or the
+    per-attempt ``_convergence_lock`` was acquired -- a concurrent
+    ``pause()``/``resume()`` could enter ``_converge_execution()`` and issue
+    its OWN native ``observe()`` under that lock while this method's
+    unfenced ``observe()`` ran at the same time on the same handle. The fix
+    moves the observation entirely inside both locks. This setup blocks
+    exactly that now-fenced observe call, so a test can prove a concurrent
+    pause()/resume() cannot even begin its own native activity on this
+    handle until it is released."""
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    await core.engine.tick()
+    Path(artifact.target).unlink()
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original_observe = core.executor.observe
+
+    async def blocking_observe(handle):
+        entered.set()
+        await release.wait()
+        return await original_observe(handle)
+
+    core.executor.observe = blocking_observe
+    return transfer, artifact, entered, release
+
+
+async def _reacquisition_setup_blocked_at_finalize(core):
+    """Variant of the setup above that blocks AFTER the artifact has already
+    been rewritten to ``queued`` (the last repository call
+    ``_reacquire_transfer`` makes before returning) rather than mid
+    per-artifact mutation. This is the shape that actually exercises the
+    scheduler race: an artifact still ``completed`` (as it is during the
+    ``executor.cancel()`` window above) is never selected by
+    ``reconcile_executions()`` in the first place, so only a block AFTER it
+    becomes ``queued`` -- while still inside the method's own critical
+    section -- can show whether a concurrent scheduler cycle could reach and
+    dispatch it early."""
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    core.executor.finish(artifact.execution)
+    await core.engine.tick()
+    Path(artifact.target).unlink()
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original_retry_requests = core.repository.retry_requests
+
+    async def blocking_retry_requests(transfer_id, **kwargs):
+        entered.set()
+        await release.wait()
+        return await original_retry_requests(transfer_id, **kwargs)
+
+    core.repository.retry_requests = blocking_retry_requests
+    return transfer, artifact, entered, release
+
+
+@pytest.mark.asyncio
+async def test_reacquisition_serializes_against_scheduler_reconciliation(canonical_core):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure, Gate 9 revision 7): a review correctly found that rev. 6's
+    ``_reacquire_transfer`` published the transfer as ACCEPTED, then
+    continued mutating its artifacts directly with ``executor.cancel()``/
+    ``repository.execution()``/``artifact_state()``/``reset_retry_budget()``
+    -- but ``reconcile_executions()`` only takes ``_execution_cycle_lock``,
+    not the per-transfer lock ``_reacquire_transfer`` holds, so it could
+    start a cycle, see the now-ACCEPTED transfer in ``repository.active()``,
+    and observe/dispatch/mutate the very artifacts still being rewritten --
+    up to and including an artifact this method has ALREADY rewritten to
+    ``queued`` (eligible for the scheduler's own dispatch) while the method
+    is still finishing its remaining bookkeeping. The fix wraps the whole
+    publish-then-mutate phase in ``_execution_cycle_lock`` too -- the SAME
+    lock ``reconcile_executions()`` holds for its entire cycle -- so the two
+    provably cannot interleave: proven here by forcing ``_reacquire_transfer``
+    to block at that exact late point and showing a concurrent
+    ``reconcile_executions()`` call cannot even complete (let alone dispatch
+    the artifact a second time) until it is released."""
+    core = canonical_core
+    transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_finalize(core)
+
+    reacquire_task = asyncio.create_task(submit(core))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    queued = (await core.repository.artifacts(transfer.id))[0]
+    assert queued.state == "queued"
+
+    reconcile_task = asyncio.create_task(core.engine.reconcile_executions())
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(reconcile_task), timeout=0.05)
+
+    release.set()
+    submitted = await reacquire_task
+    await reconcile_task
+
+    assert submitted.id == transfer.id
+    repaired = (await core.repository.artifacts(transfer.id))[0]
+    assert repaired.execution != artifact.execution
+    # Reacquisition published ACCEPTED and reconcile_executions() -- now
+    # unblocked -- was free to make ordinary forward progress from there
+    # (e.g. dispatching the freshly-queued artifact); the transfer must
+    # never have landed back in a terminal state.
+    assert (await core.repository.get(transfer.id)).state not in {
+        TransferState.COMPLETED, TransferState.DELETED, TransferState.CONSOLIDATED,
+    }
+    # Exactly one execution attempt exists for this artifact across the whole
+    # sequence -- no double-dispatch from a reconcile cycle racing the
+    # reacquisition's own replacement.
+    assert len(await core.repository.executions(transfer.id)) <= 2
+
+
+@pytest.mark.asyncio
+async def test_reacquisition_serializes_against_concurrent_pause(canonical_core):
+    """Companion to the reconciliation test above: a direct ``pause()`` call
+    doesn't take ``_execution_cycle_lock``, but its per-artifact mutation
+    goes through ``_converge_execution``, which acquires
+    ``self._convergence_lock(handle.attempt_id)`` -- the SAME per-attempt
+    lock ``_reacquire_transfer`` now holds while touching that exact
+    artifact's stale execution handle. Whichever side wins proceeds
+    cleanly; the loser's ``_converge_execution`` call safely detects the
+    ownership/handle mismatch afterward (the handle it expected is gone)
+    rather than double-mutating anything.
+
+    DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure, Gate 9 revision 9): a review found that proving the native
+    execution calls don't overlap was not the same as proving the user's
+    PAUSE INTENT survives the race. ``pause()`` sets the durable
+    ``transfer_pause_intents`` row (``set_pause_and_fence``) immediately,
+    unguarded by any lock, before it ever reaches the per-attempt lock this
+    method also holds -- so by the time ``pause_task`` is blocked below,
+    the intent is ALREADY durably recorded. Rev. 8's ``_reacquire_transfer``
+    then unconditionally cleared it back to ``False`` right before
+    returning, silently discarding the user's own pause request. That final
+    clear is now removed entirely (terminal settlement already retires
+    stale pause state for the ordinary case; the only case where it had any
+    effect at all was this exact race). This test asserts the actual
+    outcome that matters: the transfer is still durably paused afterward,
+    not merely that ``pause()`` returned without raising or corrupting
+    state."""
+    core = canonical_core
+    transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_cancel(core)
+
+    reacquire_task = asyncio.create_task(submit(core))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+
+    pause_task = asyncio.create_task(core.engine.pause(transfer.id))
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(pause_task), timeout=0.05)
+    # The intent is durably recorded as soon as pause() starts, well before
+    # it blocks trying to touch the (still reacquisition-owned) handle.
+    assert (await core.repository.get(transfer.id)).paused
+
+    release.set()
+    submitted = await reacquire_task
+    pause_errors = await pause_task
+
+    assert submitted.id == transfer.id
+    # pause() may report a benign ownership-conflict for the handle
+    # reacquisition just retired underneath it -- never a crash, and never a
+    # second, corrupting mutation of that handle.
+    for error in pause_errors:
+        assert error.category == Category.OWNERSHIP_CONFLICT
+    repaired = (await core.repository.artifacts(transfer.id))[0]
+    assert repaired.execution != artifact.execution
+    assert len(await core.repository.artifacts(transfer.id)) == 1
+    # The user's pause command must survive the race, not be silently
+    # discarded by reacquisition's own bookkeeping.
+    assert (await core.repository.get(transfer.id)).paused
+
+
+@pytest.mark.asyncio
+async def test_reacquisition_native_observe_cannot_overlap_concurrent_pause(canonical_core):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure, Gate 9 revision 8): a review found that rev. 7's
+    ``_reacquire_transfer`` still performed its FIRST ``executor.observe()``
+    in the plan-building loop, before acquiring either
+    ``_execution_cycle_lock`` or the per-attempt ``_convergence_lock`` --
+    the exact case the rev. 7 pause regression above did not exercise,
+    since it only blocked the LATER, already-fenced ``cancel()`` call. This
+    test blocks the now-fenced ``observe()`` call directly and counts
+    concurrent entries into it: a concurrent ``pause()`` racing the SAME
+    handle must never be able to issue its OWN native ``observe()`` while
+    this method's is still in flight -- proving native execution calls on
+    one handle cannot overlap, not merely that the later mutation calls
+    don't."""
+    core = canonical_core
+    transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_observe(core)
+
+    concurrent = 0
+    max_concurrent = 0
+    original_observe = core.executor.observe
+
+    async def counting_observe(handle):
+        nonlocal concurrent, max_concurrent
+        concurrent += 1
+        max_concurrent = max(max_concurrent, concurrent)
+        try:
+            return await original_observe(handle)
+        finally:
+            concurrent -= 1
+
+    core.executor.observe = counting_observe
+
+    reacquire_task = asyncio.create_task(submit(core))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+
+    pause_task = asyncio.create_task(core.engine.pause(transfer.id))
+    # Give pause() every real opportunity to reach its own native observe()
+    # while reacquisition's is still blocked, before asserting it did not --
+    # pause() crosses real (if fake) DB I/O first, so a bare cooperative
+    # yield is not enough headroom to trust a negative result.
+    await asyncio.sleep(0.05)
+    assert max_concurrent == 1, "a concurrent pause() issued its own native observe() while reacquisition's was still in flight"
+
+    release.set()
+    submitted = await reacquire_task
+    await pause_task
+
+    assert submitted.id == transfer.id
+    assert max_concurrent == 1
+
+
+@pytest.mark.asyncio
+async def test_reacquisition_serializes_against_concurrent_operator_retry(canonical_core):
+    """Operator-initiated ``retry()`` (``reacquire=False``) and
+    ``_reacquire_transfer`` (``reacquire=True``) are two branches of the
+    SAME ``retry()`` method and share the SAME ``self._transfer_locks``
+    entry -- proven here directly, not merely by code inspection: a
+    concurrent operator retry on this exact transfer id cannot even begin
+    its own body until the in-flight reacquisition fully releases the
+    lock."""
+    core = canonical_core
+    transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_cancel(core)
+
+    reacquire_task = asyncio.create_task(submit(core))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+
+    retry_task = asyncio.create_task(core.engine.retry(transfer.id))
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(retry_task), timeout=0.05)
+
+    release.set()
+    submitted = await reacquire_task
+    retry_ok = await retry_task
+
+    assert submitted.id == transfer.id
+    assert isinstance(retry_ok, bool)
+    assert len(await core.repository.artifacts(transfer.id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_reacquire_transfer_rejects_a_non_terminal_transfer(canonical_core):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure, Gate 9 revision 7): a review correctly found rev. 6's
+    precondition check rejected only ``CONSOLIDATED``, under-enforcing the
+    documented contract ("a duplicate submission found already durably
+    COMPLETED or DELETED"). The check must be authoritative inside the
+    method itself, not merely assumed from the caller -- not merely from
+    ``transition_allowed``'s own state-machine guard, which (unlike
+    COMPLETED/DELETED) actually PERMITS an operator-authorized
+    CANCELLED -> ACCEPTED transition, so a CANCELLED transfer is the one
+    concrete case that would have slipped past rev. 6's CONSOLIDATED-only
+    check and been silently, incorrectly reacquired."""
+    core = canonical_core
+    transfer = await submit(core)
+    await core.engine.tick()
+    before_transfer = await core.repository.get(transfer.id)
+    assert await core.repository.state(
+        transfer.id, TransferState.CANCELLED, operator=True, expected_epoch=before_transfer.epoch,
+    )
+    before_transfer = await core.repository.get(transfer.id)
+    assert before_transfer.state == TransferState.CANCELLED
+    before = await core.repository.artifacts(transfer.id)
+
+    assert await core.engine._reacquire_transfer(transfer.id) is False
+
+    after_transfer = await core.repository.get(transfer.id)
+    after = await core.repository.artifacts(transfer.id)
+    assert after_transfer.state == before_transfer.state == TransferState.CANCELLED
+    assert [(item.id, item.state, item.execution) for item in before] == [
+        (item.id, item.state, item.execution) for item in after
+    ]
 
 
 @pytest.mark.asyncio
@@ -266,7 +625,14 @@ async def test_empty_incomplete_inventory_does_not_delete_known_resource(core):
 
 
 @pytest.mark.asyncio
-async def test_prepared_attempt_survives_crash_before_external_contact(core):
+async def test_prepared_attempt_survives_crash_before_external_contact(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): the orphaned-execution reconciliation this test drives calls
+    # _recover_artifact with a candidate-bearing, CORE-origin error -- a case
+    # _engine_base.TransferEngine now explicitly refuses to handle itself
+    # (see its _recover_artifact docstring), by design, since that authority
+    # lives exclusively in the canonical stack now.
+    core = canonical_core
     transfer = await submit(core)
     record = (await core.repository.requests(transfer.id))[0]
     await core.engine._resolve(record)
@@ -284,7 +650,11 @@ async def test_prepared_attempt_survives_crash_before_external_contact(core):
 
 
 @pytest.mark.asyncio
-async def test_executor_uncertainty_reserves_slot_without_creating_replacement(core):
+async def test_executor_uncertainty_reserves_slot_without_creating_replacement(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): operator-initiated retry (reacquire=False,
+    # the default) is now exclusively a canonical-stack responsibility.
+    core = canonical_core
     transfer = await submit(core)
     await core.engine.tick()
     artifact = (await core.repository.artifacts(transfer.id))[0]
@@ -294,7 +664,21 @@ async def test_executor_uncertainty_reserves_slot_without_creating_replacement(c
         core.now[0] += 1000
         await core.engine.tick()
     assert len(await core.repository.executions(transfer.id)) == 1
-    assert not await core.engine.retry(transfer.id)
+    before = (await core.repository.artifacts(transfer.id))[0]
+    assert before.state == "unknown"
+    # The canonical stack's operator retry (transfers.convergence_engine
+    # .TransferEngine.retry) treats an "unknown" artifact as not
+    # actionable (transfers.recovery_execution/_retry_actionable does not
+    # include "unknown") and trivially succeeds WITHOUT touching it --
+    # correct and safe: unlike the retired base-only retry's blanket
+    # `observation.state == UNKNOWN -> return False`, it never creates a
+    # replacement execution nor mutates the artifact while its true state
+    # remains genuinely uncertain.
+    assert await core.engine.retry(transfer.id)
+    after = (await core.repository.artifacts(transfer.id))[0]
+    assert after.state == "unknown"
+    assert after.execution == before.execution
+    assert len(await core.repository.executions(transfer.id)) == 1
 
 
 @pytest.mark.asyncio
@@ -340,7 +724,11 @@ async def test_provider_retry_stays_bound_to_original_route(core):
 
 
 @pytest.mark.asyncio
-async def test_executor_can_change_on_retry_without_recreating_artifact(core):
+async def test_executor_can_change_on_retry_without_recreating_artifact(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): operator-initiated retry (reacquire=False,
+    # the default) is now exclusively a canonical-stack responsibility.
+    core = canonical_core
     core.executor.start_errors = [failure(Category.UNMAPPED_EXECUTOR_ERROR, domain=Domain.EXECUTOR)]
     transfer = await submit(core)
     await core.engine.tick()
@@ -401,7 +789,11 @@ async def test_slow_provider_does_not_block_existing_execution_updates(core):
 
 
 @pytest.mark.asyncio
-async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(core):
+async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): this drives a full failure/backoff/refresh/candidate-switch
+    # sequence, which is now exclusively a canonical-stack behavior.
+    core = canonical_core
     first = replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", "one"))
     second = replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", "two"))
     core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (first,)), ResolutionResult(ResourceState.AVAILABLE, (second,))]
@@ -428,16 +820,18 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(cor
     assert first_retry.selected == 0 and first_retry.state == "recovery_wait"
     assert target.exists() and sidecar.exists()
 
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): the canonical stack's wake+decide+apply sequence converges
+    # this second failure and its refresh within a single tick, so
+    # "refresh_pending" is no longer an externally observable resting state
+    # at this granularity (see the same note in
+    # test_pause_resume_recovery.py).
     core.executor.start_errors = [error]
     core.now[0] += 1
     await core.engine.tick()
-    refresh = (await core.repository.artifacts(transfer.id))[0]
-    assert refresh.selected == 0 and refresh.state == "refresh_pending"
-    assert target.exists() and sidecar.exists()
-
-    await core.engine.tick()
     refreshed = (await core.repository.artifacts(transfer.id))[0]
     assert refreshed.selected == 0 and refreshed.state == "queued"
+    assert target.exists() and sidecar.exists()
     core.executor.start_errors = [error]
     await core.engine.tick()
     switched = (await core.repository.artifacts(transfer.id))[0]
@@ -515,7 +909,13 @@ async def test_file_selection_cannot_change_after_execution_was_created(core):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("count", [3, 5])
-async def test_multiple_mirrors_keep_one_physical_artifact_and_do_not_cycle_on_local_failure(core, count):
+async def test_multiple_mirrors_keep_one_physical_artifact_and_do_not_cycle_on_local_failure(canonical_core, count):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): a candidate-bearing, non-REMOTE_SOURCE-origin failure (this
+    # DISK_FULL/LOCAL_RESOURCE case) now must go through the canonical
+    # recovery-decision owner -- _engine_base.TransferEngine explicitly
+    # refuses to decide that case itself.
+    core = canonical_core
     candidates = [replace(core.provider.candidate("same.bin"), source_identity=SourceIdentity("host", str(i))) for i in range(count)]
     core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (item,)) for item in candidates]
     core.executor.start_errors = [NormalizedError(Domain.LOCAL_RESOURCE, Category.DISK_FULL, Stage.EXECUTION,

@@ -3,7 +3,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
@@ -163,8 +162,41 @@ async def build_engine(tmp_path, monkeypatch, providers, executor, *, policy=Non
     return engine, repository, registry
 
 
+async def _build_canonical_engine(tmp_path, monkeypatch, providers, executor, *, policy=None):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): the lower, pre-Phase-3 ``transfers.engine.TransferEngine`` +
+    ``transfers.repository.TransferRepository`` composition this module's
+    ``build_engine`` uses no longer contains a recovery-decision
+    implementation, so any test that actually drives a failure/retry/refresh/
+    candidate-switch sequence must build the real production stack instead.
+    """
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = CanonicalRepository()
+    registry = IntegrationRegistry()
+    for provider in providers:
+        registry.register_provider(provider)
+    executor.authorize = repository.authorize_execution
+    registry.register_executor(executor)
+    engine = CanonicalEngine(
+        repository,
+        registry,
+        download_root=str(tmp_path / "payloads"),
+        policy=policy or TransferPolicy(retry_delay=0, adoption_stability_seconds=0),
+        clock=lambda: 1000.0,
+    )
+    await engine.initialize()
+    return engine, repository, registry
+
+
 @pytest.mark.asyncio
 async def test_recovery_hierarchy_retries_refreshes_then_fails_over_forward_only(tmp_path, monkeypatch):
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
     first = EquivalentParcelProvider("provider-a")
     second = EquivalentParcelProvider("provider-b")
     executor = NoProgressMemoryExecutor(None)
@@ -176,7 +208,7 @@ async def test_recovery_hierarchy_retries_refreshes_then_fails_over_forward_only
         max_active_executions=8,
         resolution_concurrency=8,
     )
-    engine, repository, registry = await build_engine(
+    engine, repository, registry = await _build_canonical_engine(
         tmp_path, monkeypatch, (first, second), executor, policy=policy,
     )
 
@@ -257,8 +289,8 @@ async def test_recovery_hierarchy_retries_refreshes_then_fails_over_forward_only
     assert Path(artifact.target).exists()
     assert Path(artifact.target + ".memory-progress").exists()
 
-    restarted_repository = TransferRepository()
-    restarted = TransferEngine(
+    restarted_repository = CanonicalRepository()
+    restarted = CanonicalEngine(
         restarted_repository,
         registry,
         download_root=engine.root,
@@ -277,10 +309,13 @@ async def test_recovery_hierarchy_retries_refreshes_then_fails_over_forward_only
 
 @pytest.mark.asyncio
 async def test_disabled_current_candidate_quiesces_until_same_provider_reenabled(tmp_path, monkeypatch):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 2): dispatch-time provider readiness gating
+    # and quiescent wake are now exclusively canonical-stack behavior.
     first = EquivalentParcelProvider("provider-a")
     second = EquivalentParcelProvider("provider-b")
     executor = NoProgressMemoryExecutor(None)
-    engine, repository, _registry = await build_engine(tmp_path, monkeypatch, (first, second), executor)
+    engine, repository, _registry = await _build_canonical_engine(tmp_path, monkeypatch, (first, second), executor)
 
     canonical = await engine.submit(
         (TransferRequest("parcel", "a", name="same.bin", preferred_provider="provider-a"),), deduplicate=False,

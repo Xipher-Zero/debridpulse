@@ -13,19 +13,21 @@ itself.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, replace
 
 from transfers.candidate_activation import ActivationResult, activate_candidate
-from transfers.contracts import CandidateRefresh, PauseResume
+from transfers.contracts import CandidateRefresh, PauseResume, ResourceLookup
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
 from transfers.errors import (
-    Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
+    Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage, TransferError,
     unknown_failure,
 )
+from transfers.filesystem import stable_payload
 from transfers.mirrors import reported_sizes_compatible
 from transfers.models import (
-    Artifact, ExecutionObservation, ExecutionState, MaterializationAdmissionKind, OutcomeKind, ResolutionAttempt,
-    ResolutionResult, ResourceState, TransferOutcome, TransferState,
+    Artifact, CleanupAuthority, ExecutionObservation, ExecutionState, MaterializationAdmissionKind, Ownership,
+    OutcomeKind, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferState,
 )
 from transfers.policy import RecoveryAction, TERMINAL_TRANSFER_STATES, failure_signature
 from transfers.recovery_execution import RecoveryClaim, RecoveryTrigger, trigger_authority
@@ -477,22 +479,84 @@ class TransferEngine(_QualifiedTransferEngine):
         await super()._dispatch(current)
         return True
 
-    async def _refresh_claimed(self, claim: RecoveryClaim, artifact: Artifact) -> tuple[bool, str]:
-        """Single-flight refresh with a renewed fence immediately before mutation."""
+    async def _refresh_claimed(
+        self, claim: RecoveryClaim, artifact: Artifact,
+    ) -> tuple[bool, str, NormalizedError | None]:
+        """Single-flight refresh with a renewed fence immediately before mutation.
+
+        Every reason this method can return is one of exactly three kinds,
+        each proven rather than assumed (DP 1.0.12 canonical lifecycle/
+        recovery/completion rework, CANON-001 closure, Gate 9 revision 8 --
+        two reviews found successive reasons here silently classified as
+        "self-resolves on a later tick" with nothing to actually cause that):
+
+        1. Genuinely self-resolving without any decision or durable state
+           change, because something ELSE already made the condition
+           obsolete: ``refresh_not_pending`` (the artifact left
+           ``refresh_pending`` via a different path -- there is nothing left
+           for this call to do). ``claim_lost``/``claim_lost_after_refresh``
+           (a concurrent claim now owns this artifact's recovery; ITS own
+           progress, not another tick of this one, is what moves things
+           forward). ``refresh_replay_conflict``/``refresh_candidate_conflict``
+           (a concurrent writer already applied a different, valid outcome
+           for this exact decision).
+        2. A real, potentially-persistent failure of the refresh RESULT,
+           carried in the third element as a ``NormalizedError`` so the one
+           caller (``_plan_after_reconcile``) can re-enter the ordinary
+           decision cycle (``policy.recover``, which already has bounded,
+           budget-aware handling for expiry/integrity-class errors) instead
+           of leaving the artifact stuck in ``refresh_pending`` forever:
+           ``refresh_failed`` (the provider call itself failed),
+           ``refresh_result_empty`` (succeeded but returned nothing),
+           ``refresh_candidate_expired`` (returned an already-expired
+           candidate), ``refresh_size_mismatch`` (returned a
+           size-incompatible candidate), and ``refresh_unsupported`` (the
+           bound provider does not implement ``CandidateRefresh`` at all --
+           a permanent fact about this exact candidate, mapped to the same
+           ``CANDIDATE_EXPIRED``-shaped error ``manual_failover
+           ._refresh_exact`` already uses for the identical structural case,
+           so both refresh entry points treat "this provider cannot refresh
+           this candidate" identically). None of these self-resolve merely
+           by trying again unchanged.
+        3. A durable but non-error-shaped disposition applied directly by
+           this method's caller rather than through ``policy.recover``
+           (there is no candidate-level policy question to ask -- either
+           there is no candidate/provenance to act on, or the artifact's OWN
+           bounded budget for this decision is already spent):
+           ``candidate_missing`` (no selected candidate at all),
+           ``candidate_origin_missing`` (the candidate exists but its
+           provenance/origin record does not -- a durable data-shape gap,
+           not a retryable fact), and ``refresh_budget_exhausted`` (this
+           decision's one-time refresh reservation is already consumed;
+           the budget does not replenish by ticking again). All three are
+           parked by the caller exactly like ``refresh_outcome_unknown``
+           (``_park_existing_execution(reason="recovery_exhausted",
+           wake="operator_retry")`` + ``WAIT_FOR_OPERATOR``), and
+           ``provider_unavailable`` is applied via ``_decision_step``'s
+           existing ``force_provider_not_ready`` path (the SAME
+           ``quiescence_reason="provider_disabled"``/
+           ``wake_condition="provider_enabled"`` mechanism proven by
+           ``test_provider_disablement_is_quiescent_and_reenable_wakes_
+           same_work``) -- both are real, durably wakeable dispositions,
+           never a silent no-op.
+        """
         current = await self._current_artifact(artifact.transfer_id, artifact.id)
         if current is None or current.state != "refresh_pending":
-            return False, "refresh_not_pending"
+            return False, "refresh_not_pending", None
         candidate = self._candidate(current)
         if candidate is None:
-            return False, "candidate_missing"
+            return False, "candidate_missing", None
         provider = self.registry.providers.get(candidate.provider_id)
         if provider is None or not provider.descriptor.enabled:
-            return False, "provider_unavailable"
+            return False, "provider_unavailable", None
         if not isinstance(provider, CandidateRefresh):
-            return False, "refresh_unsupported"
+            return False, "refresh_unsupported", self._error(
+                Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+                retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.REQUIRE_OPERATOR,
+            )
         origin = await self.canonical.origin_for(current, candidate)
         if origin is None:
-            return False, "candidate_origin_missing"
+            return False, "candidate_origin_missing", None
         record = origin.request
         context = await self.repository.recovery_context(current.id)
         decision_id = str(context.get("recovery_decision_id") or "")
@@ -504,41 +568,50 @@ class TransferEngine(_QualifiedTransferEngine):
                 action=RecoveryAction.REFRESH_CANDIDATE.value,
                 reason="legacy_refresh_pending",
             ):
-                return False, "claim_lost"
+                return False, "claim_lost", None
             if not await self.repository.reserve_recovery_refresh(
                 claim,
                 decision_id,
                 limit=max(1, self.policy.refreshes_per_recovery_epoch),
             ):
-                return False, "refresh_budget_exhausted"
+                return False, "refresh_budget_exhausted", None
 
         state = await self.repository.begin_recovery_refresh(
             claim, record, provider.descriptor.id, decision_id,
         )
         if state is None:
-            return False, "claim_lost"
+            return False, "claim_lost", None
         attempt_id = state["attempt_id"]
         attempt = ResolutionAttempt(attempt_id, record.id, provider.descriptor.id, "started")
 
         if not state["created"]:
             if state.get("state") != "succeeded":
-                return False, "refresh_outcome_unknown"
+                return False, "refresh_outcome_unknown", None
             candidates = await self.repository.resolved_candidates(record.id)
             if not candidates:
-                return False, "refresh_result_empty"
+                return False, "refresh_result_empty", self._error(
+                    Category.NO_TRANSFER_CANDIDATE, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+                )
+            if any(item.expires_at is not None and item.expires_at <= self.clock() for item in candidates):
+                return False, "refresh_candidate_expired", self._error(
+                    Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+                    retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.REQUIRE_OPERATOR,
+                )
             replacement_size = candidates[0].expected_bytes
             if (
                 current.expected_bytes > 0
                 and replacement_size > 0
                 and not reported_sizes_compatible(current.expected_bytes, replacement_size)
             ):
-                return False, "refresh_size_mismatch"
+                return False, "refresh_size_mismatch", self._error(
+                    Category.SIZE_MISMATCH, Stage.CANDIDATE_PREPARATION, domain=Domain.INTEGRITY,
+                )
             if not await self.repository.renew_recovery_claim(
                 claim, self.clock(), lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
             ):
-                return False, "claim_lost"
+                return False, "claim_lost", None
             if not await self.canonical.refresh_candidate(current, origin, candidate, candidates):
-                return False, "refresh_replay_conflict"
+                return False, "refresh_replay_conflict", None
             size = current.expected_bytes if current.expected_bytes > 0 else replacement_size
             await self.repository.artifact_state(
                 current.id,
@@ -548,10 +621,10 @@ class TransferEngine(_QualifiedTransferEngine):
             )
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
             await self.repository.clear_recovery_quiescence(claim)
-            return True, "refresh_replayed"
+            return True, "refresh_replayed", None
 
         if not await self.repository.recovery_claim_current(claim, now=self.clock()):
-            return False, "claim_lost"
+            return False, "claim_lost", None
         bound_candidate = replace(candidate, refresh_request=record.request)
         try:
             result = self._authoritative_provider_result(
@@ -569,16 +642,21 @@ class TransferEngine(_QualifiedTransferEngine):
 
         await self.repository.resolution(attempt, result)
         if not await self.repository.recovery_claim_current(claim, now=self.clock()):
-            return False, "claim_lost_after_refresh"
+            return False, "claim_lost_after_refresh", None
         if result.error:
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
-            return False, "refresh_failed"
+            return False, "refresh_failed", result.error
         if not result.candidates:
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
-            return False, "refresh_result_empty"
+            return False, "refresh_result_empty", self._error(
+                Category.NO_TRANSFER_CANDIDATE, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+            )
         if any(item.expires_at is not None and item.expires_at <= self.clock() for item in result.candidates):
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
-            return False, "refresh_candidate_expired"
+            return False, "refresh_candidate_expired", self._error(
+                Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+                retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.REQUIRE_OPERATOR,
+            )
         replacement_size = result.candidates[0].expected_bytes
         if (
             current.expected_bytes > 0
@@ -586,13 +664,15 @@ class TransferEngine(_QualifiedTransferEngine):
             and not reported_sizes_compatible(current.expected_bytes, replacement_size)
         ):
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
-            return False, "refresh_size_mismatch"
+            return False, "refresh_size_mismatch", self._error(
+                Category.SIZE_MISMATCH, Stage.CANDIDATE_PREPARATION, domain=Domain.INTEGRITY,
+            )
         if not await self.repository.renew_recovery_claim(
             claim, self.clock(), lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
         ):
-            return False, "claim_lost_after_refresh"
+            return False, "claim_lost_after_refresh", None
         if not await self.canonical.refresh_candidate(current, origin, candidate, result.candidates):
-            return False, "refresh_candidate_conflict"
+            return False, "refresh_candidate_conflict", None
         size = current.expected_bytes if current.expected_bytes > 0 else replacement_size
         await self.repository.artifact_state(
             current.id,
@@ -602,7 +682,7 @@ class TransferEngine(_QualifiedTransferEngine):
         )
         await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
         await self.repository.clear_recovery_quiescence(claim)
-        return True, "refresh_applied"
+        return True, "refresh_applied", None
 
     async def _plan_after_reconcile(
         self,
@@ -642,17 +722,77 @@ class TransferEngine(_QualifiedTransferEngine):
                          retirement_reason=retirement_reason)
 
         if current.state == "refresh_pending":
-            refreshed, refresh_reason = await self._refresh_claimed(claim, current)
-            if not refreshed and refresh_reason == "refresh_outcome_unknown":
+            refreshed, refresh_reason, refresh_error = await self._refresh_claimed(claim, current)
+            if refreshed:
+                return _Step(True, True, RecoveryAction.REFRESH_CANDIDATE.value,
+                             refresh_reason, "refresh_applied",
+                             candidate_changed=True,
+                             retirement_reason=retirement_reason)
+            if refresh_reason in {
+                "refresh_outcome_unknown", "refresh_budget_exhausted",
+                "candidate_missing", "candidate_origin_missing",
+            }:
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework
+                # (CANON-001 closure, Gate 9 revision 8): none of these four
+                # is a candidate-level policy question `policy.recover` can
+                # meaningfully answer -- there is no candidate/provenance to
+                # act on, or this decision's own bounded refresh reservation
+                # is already spent and does not replenish by ticking again
+                # (a review correctly rejected leaving `refresh_budget_
+                # exhausted` classified as self-resolving). Park exactly like
+                # the pre-existing `refresh_outcome_unknown` case: a durable,
+                # explicitly wakeable operator-wait, never a silent no-op.
                 await self._park_existing_execution(
                     claim, current, reason="recovery_exhausted", wake="operator_retry",
                 )
                 return _Step(True, False, RecoveryAction.WAIT_FOR_OPERATOR.value,
                              refresh_reason, refresh_reason,
                              retirement_reason=retirement_reason)
-            return _Step(True, refreshed, RecoveryAction.REFRESH_CANDIDATE.value,
-                         refresh_reason, "refresh_applied" if refreshed else refresh_reason,
-                         candidate_changed=refreshed,
+            if refresh_reason == "provider_unavailable":
+                # Reuse the SAME durably-wakeable provider-quiescence path
+                # `_reconcile_current` already uses elsewhere in this class
+                # (`force_provider_not_ready=True` -> `quiescence_reason=
+                # "provider_disabled"` / `wake_condition="provider_enabled"`,
+                # proven by test_provider_disablement_is_quiescent_and_
+                # reenable_wakes_same_work) rather than a bespoke park or a
+                # silent no-op.
+                candidate = self._candidate(current)
+                return await self._decision_step(
+                    claim, current, self._provider_wait_error(candidate),
+                    count_failure=False,
+                    force_provider_not_ready=True, outcome="provider_wait",
+                    retirement_reason=retirement_reason,
+                )
+            if refresh_error is not None:
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework
+                # (CANON-001 closure): a genuine, potentially-persistent
+                # factual failure of the refresh RESULT itself -- the
+                # provider call failed (`refresh_failed`), returned nothing
+                # (`refresh_result_empty`), returned an already-expired
+                # candidate (`refresh_candidate_expired`), returned a
+                # size-incompatible candidate (`refresh_size_mismatch`), or
+                # the bound provider does not implement `CandidateRefresh`
+                # at all (`refresh_unsupported`, Gate 9 revision 8) -- is a
+                # real, actionable failure of this recovery
+                # attempt. It must re-enter the ordinary decision cycle
+                # (`policy.recover`, which already has bounded, budget-aware
+                # handling for expiry/integrity-class errors) so the artifact
+                # can retry, switch candidates, or (once every alternative is
+                # exhausted) reach a deliberate terminal/wait disposition,
+                # exactly like any other execution failure. Without this, the
+                # artifact was left stuck in refresh_pending forever with no
+                # further progress or wake mechanism -- a genuine gap this
+                # CANON-001 closure surfaced (by removing the lower,
+                # non-claim-fenced stack's different, working remote-source
+                # retry/refresh path that had been masking it for any test
+                # built on that composition) and fixes here rather than
+                # leaving unfixed.
+                return await self._decision_step(
+                    claim, current, refresh_error, count_failure=True,
+                    retirement_reason=retirement_reason,
+                )
+            return _Step(True, False, RecoveryAction.REFRESH_CANDIDATE.value,
+                         refresh_reason, refresh_reason,
                          retirement_reason=retirement_reason)
 
         if error is not None:
@@ -1336,9 +1476,18 @@ class TransferEngine(_QualifiedTransferEngine):
         return False
 
     async def retry(self, transfer_id: int, *, reacquire=False):
-        """Operator Retry is a serialized trigger adapter, not a recovery algorithm."""
+        """Operator Retry is a serialized trigger adapter, not a recovery
+        algorithm. ``reacquire=True`` (DP 1.0.12 canonical lifecycle/recovery/
+        completion rework, CANON-001 closure, Gate 9 revision 6) is a
+        DIFFERENT, exceptional lifecycle transition -- "resume tracking a
+        transfer a duplicate submission found already COMPLETED/DELETED" --
+        not the ordinary operator-retry decision below; ``submit()`` reaches
+        it only for that specific dedupe outcome, never unconditionally. Both
+        branches are owned here, by the one canonical semantic owner; see
+        ``_reacquire_transfer`` for the reacquisition branch's own claim/
+        fencing rationale."""
         if reacquire:
-            return await super().retry(transfer_id, reacquire=True)
+            return await self._reacquire_transfer(transfer_id)
 
         lock = self._transfer_locks.setdefault(transfer_id, asyncio.Lock())
         async with lock:
@@ -1397,6 +1546,184 @@ class TransferEngine(_QualifiedTransferEngine):
             await self.repository.retry_requests(transfer_id, reset_budget=True)
             await self._aggregate(transfer_id)
             return ok
+
+    async def _reacquire_transfer(self, transfer_id: int) -> bool:
+        """Resume tracking a transfer a duplicate submission found already
+        durably COMPLETED or DELETED (DP 1.0.12 canonical lifecycle/recovery/
+        completion rework, CANON-001 closure, Gate 9 revision 7: moved here
+        from ``_engine_base.TransferEngine``, the sole remaining lower-layer
+        semantic method, on the grounds that ``submit()`` needed it
+        "universally" -- corrected: ``submit()`` reaches this only for the
+        specific dedupe-onto-a-terminal-transfer outcome, an exceptional
+        lifecycle transition like any other, not a neutral primitive).
+
+        Precondition is authoritative here, not merely assumed from the
+        caller: only a transfer CURRENTLY COMPLETED or DELETED is eligible
+        (rev. 6 checked only for CONSOLIDATED, which under-enforced this).
+
+        Concurrency (Gate 9 rev. 8 correction -- rev. 7 fenced the MUTATING
+        native calls per-attempt but still performed the initial native
+        ``executor.observe()`` in the plan-building loop before acquiring
+        EITHER ``_execution_cycle_lock`` or the per-attempt
+        ``_convergence_lock``; a review correctly found this left a real
+        unfenced-observe window a concurrent ``pause()``/``resume()`` could
+        race via its own, separately-fenced ``_converge_execution()`` call
+        on the SAME handle). Only genuinely static, non-native facts --
+        which artifact ids exist for this transfer -- are gathered before
+        the critical section now; NO native call happens there. Once inside
+        ``self._execution_cycle_lock`` (the SAME lock ``reconcile_executions()``
+        holds for its own whole cycle, closing the "scheduler observes/
+        mutates artifacts this method is still rewriting" race exactly as
+        before) and, per artifact, its own ``self._convergence_lock(handle
+        .attempt_id)`` (the SAME per-attempt lock ``_converge_execution``
+        uses for every native pause/resume/cancel), this method re-reads the
+        artifact fresh and performs its OWN ``executor.observe()`` for the
+        first time -- there is no unfenced observation left to carry across
+        the boundary, because none is taken before it. A concurrent
+        ``pause()``/``resume()`` racing this exact handle therefore cannot
+        interleave with this method's observe/cancel/persist sequence for
+        it at any point: whichever side wins the per-attempt lock completes
+        first, and the other safely detects the ownership/handle mismatch
+        via ``_converge_execution``'s own existing check rather than
+        double-mutating or racing a native call. Operator-initiated
+        ``retry()`` on this SAME transfer id cannot race this method at all
+        -- both are branches of one ``retry()`` call serialized by the SAME
+        ``self._transfer_locks`` entry acquired below. The only race this
+        method's own lock protects directly is therefore what remains
+        genuine: two concurrent duplicate submissions racing to reacquire
+        the SAME terminal transfer.
+
+        This method no longer clears durable pause intent at the end (Gate 9
+        revision 9 correction). It used to call ``pause_intent(transfer_id,
+        False)`` unconditionally after the mutation loop, on the assumption
+        a reacquired transfer should simply start unpaused. That assumption
+        was already false in the ordinary case -- terminal settlement
+        (``_retire_transfer_auxiliary_state_in_db``, run when the transfer
+        first became COMPLETED/DELETED/CANCELLED/CONSOLIDATED) already
+        DELETES the ``transfer_pause_intents`` row entirely, so there is
+        normally nothing left to clear by the time this method runs. The
+        only case where the call had any effect at all was a concurrent
+        operator ``pause()`` landing mid-reacquisition: ``pause()`` sets the
+        intent row immediately (``set_pause_and_fence``, unguarded by any
+        lock this method holds) before it ever reaches the per-attempt
+        ``_convergence_lock`` this method also holds for that same artifact
+        -- so the unconditional clear, running after this method releases
+        that lock, could silently overwrite a genuine, newer user pause
+        request with a stale ``False``. ``pause_intent`` is a plain upsert
+        with no generation/CAS of its own, so there was nothing to detect
+        the conflict. Simply removing the call (rather than reintroducing it
+        behind a canonical claim/fence) is correct precisely because it was
+        never doing anything useful in the case it was meant to handle.
+        """
+        lock = self._transfer_locks.setdefault(transfer_id, asyncio.Lock())
+        async with lock:
+            transfer = await self.repository.get(transfer_id)
+            if transfer is None:
+                raise KeyError(transfer_id)
+            if transfer.state not in {TransferState.COMPLETED, TransferState.DELETED}:
+                return False
+            if await self.challenges.current(transfer_id):
+                return False
+            if any(pending for _resource, _state, pending in await self.repository.resources(transfer_id)):
+                return False
+            if not await self.repository.reset_postprocessing(transfer_id):
+                return False
+            artifact_ids = [artifact.id for artifact in await self.repository.artifacts(transfer_id)]
+            async with self._execution_cycle_lock:
+                if not await self.repository.state(transfer_id, TransferState.ACCEPTED,
+                                                   operator=True, expected_epoch=transfer.epoch):
+                    return False
+                for artifact_id in artifact_ids:
+                    artifact = await self._current_artifact(transfer_id, artifact_id)
+                    if artifact is None:
+                        return False
+                    handle = artifact.execution
+                    handle_lock = self._convergence_lock(handle.attempt_id) if handle else contextlib.nullcontext()
+                    async with handle_lock:
+                        if handle is not None:
+                            current = await self._current_artifact(transfer_id, artifact_id)
+                            if (current is None or current.execution is None
+                                    or current.execution.attempt_id != handle.attempt_id):
+                                return False
+                            artifact = current
+                        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+                        executor = (
+                            self.registry.executors.get(artifact.execution.executor_id) if artifact.execution
+                            else self.registry.executor_for(candidate) if candidate else None
+                        )
+                        if executor is None and (candidate is not None or artifact.execution is not None):
+                            return False
+                        observation = None
+                        if executor is not None and artifact.execution:
+                            observation = await executor.observe(artifact.execution)
+                            if observation.state == ExecutionState.UNKNOWN:
+                                return False
+                        if observation:
+                            if observation.resumable:
+                                await self.repository.execution(observation)
+                                continue
+                        if candidate is None:
+                            if artifact.execution:
+                                outcome = await executor.cancel(artifact.execution)
+                                if outcome.error:
+                                    return False
+                            await self.repository.artifact_state(artifact.id, "unresolved", release=True)
+                            await self.repository.retry_requests(transfer_id, request_id=artifact.request_id)
+                            continue
+                        if await stable_payload(artifact.target, artifact.expected_bytes, sidecars=executor.resumable_paths(artifact.target),
+                                                integrity=candidate.integrity, delay=self.policy.adoption_stability_seconds):
+                            await self.repository.artifact_state(artifact.id, "completed")
+                            continue
+                        if artifact.execution:
+                            outcome = await executor.cancel(artifact.execution)
+                            if outcome.error:
+                                return False
+                        await self.repository.reset_retry_budget(artifact.id)
+                        await self.repository.artifact_state(artifact.id, "unresolved", release=True)
+                        origin = await self.canonical.origin_for(artifact, candidate)
+                        if origin is not None:
+                            record = origin.request
+                        else:
+                            record = next(item for item in await self.repository.requests(transfer_id) if item.id == artifact.request_id)
+                        if not record.parent_id or not await self._renew_source_parent(record, operator=True):
+                            await self.repository.artifact_state(artifact.id, "queued", release=True)
+                await self.repository.retry_requests(transfer_id, reset_budget=True)
+                return True
+
+    async def _renew_source_parent(self, record, *, operator=False):
+        """Re-observe a manifest-member request's parent resource and renew
+        it when durably expired/absent (moved here from
+        ``_engine_base.TransferEngine`` alongside ``_reacquire_transfer``,
+        its only caller -- DP 1.0.12 canonical lifecycle/recovery/completion
+        rework, CANON-001 closure, Gate 9 revision 6)."""
+        parent = next((item for item in await self.repository.requests(record.transfer_id) if item.id == record.parent_id), None)
+        if parent is None or parent.resource is None:
+            return False
+        provider = self.registry.providers.get(parent.resource.provider_id)
+        if not isinstance(provider, ResourceLookup):
+            return False
+        try:
+            observation = await provider.observe(parent.resource)
+        except Exception as exc:
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
+                integration_id=provider.descriptor.id, domain=Domain.PROVIDER, stage=Stage.RECONCILIATION)
+            await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+            return False
+        await self.repository.resource_observation(record.transfer_id, observation.resource, observation.state)
+        if observation.state not in {ResourceState.ABSENT, ResourceState.EXPIRED}:
+            return False
+        error = self._error(Category.RESOURCE_EXPIRED, Stage.RESOLUTION, domain=Domain.PROVIDER,
+            retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE)
+        decision = self.policy.retry_resolution(error, 0 if operator else parent.attempts, self.clock())
+        if not decision.automatic:
+            return False
+        if observation.state != ResourceState.ABSENT and parent.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
+            await self.repository.cleanup_intent(parent.transfer_id, parent.resource.id, CleanupAuthority.OWNED)
+            await self._cleanup_pending()
+            if any(resource.id == parent.resource.id and pending for resource, _state, pending in await self.repository.resources(record.transfer_id)):
+                return False
+        await self.repository.renew_parent(parent, self.clock() if operator else decision.retry_at, reset_budget=operator)
+        return True
 
     # ------------------------------------------------------------------
     # Recovery entry point
@@ -1667,6 +1994,14 @@ class TransferEngine(_QualifiedTransferEngine):
                             artifact,
                             trigger=RecoveryTrigger.STARTUP_RECONCILE,
                         )
+        # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+        # closure, Gate 9 revision): this class is now the sole owner of BOTH
+        # the wake decision (_wake_quiescent_recoveries) and the scheduling
+        # trigger that invokes it every reconcile cycle -- previously invoked
+        # via a passthrough wrapper in transfers._engine_recovery.py, which
+        # also carried a second, shadowed _wake_quiescent_recoveries
+        # implementation of its own.
+        await self._wake_quiescent_recoveries()
         return await super().reconcile_executions()
 
     async def _process_executions(

@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
+from transfers.cohorts import _HELD_DISPOSITIONS
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.input_required import public_challenge
 from transfers.models import (
@@ -29,6 +30,14 @@ from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANS
 # lives in transfers.policy (FUNC-001) so this module owns no independent
 # literal.
 _AGGREGATE_TERMINAL_STATES = TERMINAL_TRANSFER_STATES
+
+# DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 7.2:
+# execution-attempt states that mean a durable native writer might still be
+# doing something -- while paused, the parent may not claim PAUSED until
+# none of a transfer's recorded attempts are in one of these.
+_UNSETTLED_EXECUTION_STATES = frozenset({
+    "prepared", ExecutionState.QUEUED.value, ExecutionState.TRANSFERRING.value, ExecutionState.UNKNOWN.value,
+})
 
 
 async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
@@ -608,7 +617,64 @@ class TransferRepository:
             # FAILED, or block completion, merely because it is present.
             voting_artifacts = await _voting_artifacts(db, artifacts)
 
-            pending = any(item.state in {"pending", "waiting", "waiting_parent", "resolving", "materializing"} for item in requests)
+            # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+            # Section 6: a request's lifecycle state (does autonomous
+            # materialization work exist?) and its equivalence disposition
+            # (what did identity proof establish?) are orthogonal durable
+            # facts, both read in this SAME transaction. A ``materializing``
+            # request whose bounded automatic proof-retry budget is durably
+            # exhausted (``transfers.cohorts._HELD_DISPOSITIONS``) has no
+            # scheduled autonomous work left -- it must not count as
+            # ``pending`` (which would falsely stick the parent RESOLVING, or
+            # block completion of the artifacts that already voted). It is
+            # equally not equivalent to "nothing is happening": the identity
+            # remains genuinely unresolved, so it durably holds the parent at
+            # QUEUED (a quiescent, non-resolving wait -- see ``quiescent_hold``
+            # below) rather than reporting either false active resolution or
+            # a silent, misleading "no change".
+            #
+            # This ``(state='materializing', equivalence_disposition in
+            # _HELD_DISPOSITIONS)`` pair is not a special case invented here:
+            # it is the SAME canonical contract ``transfers.cohorts
+            # .coordinate_collection`` already established and documents
+            # (its own "held-class dispositions... keep the writer barrier up
+            # without doing any further proof work" comment) as the sole
+            # durable state that stops autonomous materialization for a held
+            # request:
+            #   - ``_process_request`` (transfers._engine_base.TransferEngine)
+            #     routes every ``state='materializing'`` row through
+            #     ``_materialize`` -> ``coordinate_collection`` on every tick;
+            #     that function reads the SAME disposition and returns
+            #     immediately for a held row (no proof work, no writer) --
+            #     this aggregation reads the identical fact, never a second
+            #     interpretation of it.
+            #   - restart: both readers re-derive disposition fresh from this
+            #     same durable column on every pass: there is no in-memory
+            #     state to lose, so a held row cannot silently resume
+            #     autonomous work nor lose its hold across a restart.
+            #   - wake: the only writer of a `_HELD_DISPOSITIONS` value is the
+            #     bounded proof-retry budget in ``cohorts._schedule_proof_
+            #     retry``; the only path back out is an explicit operator
+            #     retry (``TransferRepository.retry_requests`` resets
+            #     ``equivalence_retry_count``/``equivalence_disposition``) or
+            #     new proof evidence re-running the mapping -- never an
+            #     automatic scheduler tick re-consuming budget or creating a
+            #     writer.
+            #   - presentation: a held request never materializes an artifact
+            #     (``coordinate_collection`` returns before
+            #     ``super()._materialize`` runs), so there is no artifact-
+            #     level row for presentation to misrepresent as active; only
+            #     the parent's own truthful QUEUED state (this branch)
+            #     surfaces the hold.
+            def _quiescently_held(row) -> bool:
+                return row["state"] == "materializing" and str(row["equivalence_disposition"] or "") in _HELD_DISPOSITIONS
+
+            pending = any(
+                r["state"] in {"pending", "waiting", "waiting_parent", "resolving", "materializing"}
+                and not _quiescently_held(r)
+                for r in request_rows
+            )
+            quiescent_hold = any(_quiescently_held(r) for r in request_rows)
             total = sum(item.expected_bytes for item in artifacts)
             local_path = str(Path(artifacts[0].target).parent) if artifacts else ""
             await db.execute(
@@ -624,22 +690,71 @@ class TransferRepository:
             progress = min(100.0, completed / total * 100) if total else 0.0
 
             should_complete = False
-            if not (transfer.paused or await self._globally_paused(db)):
-                if artifacts and not pending and all(item.state == "completed" for item in voting_artifacts):
+            paused = transfer.paused or await self._globally_paused(db)
+            if not paused:
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+                # Section 6.4 (Gate 9 revision 2): completion requires every
+                # logical delivery obligation to be satisfied -- a durably
+                # quiescent, identity-unresolved held request is exactly an
+                # unsatisfied one (identity remains UNPROVEN, not proven
+                # equivalent), never merely an inert placeholder to retire
+                # from consideration. It can never appear in
+                # ``voting_artifacts`` (a held request has no artifact at
+                # all), so without this guard every real artifact completing
+                # would silently terminalize the parent while the hold sits
+                # unresolved -- the exact inference the equivalence
+                # correction exists to forbid. The hold must first be
+                # resolved (recovered/released) or the request explicitly
+                # retried before completion may ever be reached.
+                if artifacts and not pending and not quiescent_hold and all(
+                    item.state == "completed" for item in voting_artifacts
+                ):
                     should_complete = True
                 elif any(item.state in {"downloading", "verifying"} for item in artifacts):
                     await _transition(TransferState.TRANSFERRING, progress=progress)
                 elif any(item.state == "unknown" for item in artifacts):
                     await _transition(TransferState.QUEUED, progress=progress)
-                elif any(item.state in {"queued", "paused", "refresh_pending"} for item in artifacts):
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+                # Section 7 (CANON-001): an artifact autonomously waiting on
+                # recovery is exactly one more input FACT to this one
+                # canonical decision, at the same precedence tier as the
+                # other non-transferring "there is still queued-ish work"
+                # states -- never a second, independently-timed read-decide-
+                # write layered on top of this transaction's own conclusion
+                # (the removed ``force_queued_for_autonomous_wait``). A real
+                # active download (the ``downloading``/``verifying`` branch
+                # above) still always wins.
+                elif any(item.state in {"queued", "paused", "refresh_pending", "recovery_wait"} for item in artifacts):
                     await _transition(TransferState.QUEUED, progress=progress)
                 elif pending:
                     await _transition(TransferState.RESOLVING, progress=progress)
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+                # Section 6.4 (Gate 9 revision 3): a genuine, independent
+                # terminal failure is its own unsatisfied logical obligation
+                # -- it belongs to a DIFFERENT voting artifact/request than
+                # whichever one is quiescently held, and the hold must never
+                # erase it. Evaluated BEFORE the quiescent-hold fallback
+                # below: a prior ordering let ``elif quiescent_hold`` win
+                # first, so one artifact's genuinely terminal ERROR sat
+                # forever masked behind an unrelated sibling's unresolved
+                # equivalence hold, reporting a truthless perpetual QUEUED
+                # instead of the real FAILED outcome. The hold must prevent
+                # false COMPLETED and false RESOLVING; it must not launder an
+                # actual terminal failure into a nonterminal wait.
                 elif any(item.state == "error" for item in voting_artifacts) or any(item.state == "failed" for item in requests):
                     error = next((item.error for item in (*voting_artifacts, *requests) if item.error), None)
                     await _transition(TransferState.FAILED, progress=progress, error=error)
                 elif artifacts and all(item.state == "cancelled" for item in artifacts):
                     await _transition(TransferState.CANCELLED, progress=progress)
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+                # Section 6.4: no artifact is actively working, no artifact/
+                # request has genuinely failed or been cancelled, and no
+                # request has genuine autonomous work left, but identity
+                # remains durably unresolved for at least one quiescently-
+                # held request -- truthfully a non-resolving wait, not
+                # perpetual "processing" and not silent staleness.
+                elif quiescent_hold:
+                    await _transition(TransferState.QUEUED, progress=progress)
                 elif not artifacts:
                     blocked_row = await db.fetchone(
                         "SELECT COUNT(*) AS n FROM download_files WHERE torrent_id=? AND blocked=1", (transfer_id,),
@@ -658,6 +773,20 @@ class TransferRepository:
                             "INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)",
                             (transfer_id, "info", str(skip_outcome.kind)),
                         )
+            elif not any(str(item.get("state")) in _UNSETTLED_EXECUTION_STATES for item in execution_rows):
+                # DP 1.0.12 canonical lifecycle/recovery/completion rework,
+                # Section 7.2: durable paused truth folded into this SAME
+                # atomic decision (previously a separate post-aggregate
+                # repair in ``transfers.engine.TransferEngine._aggregate``,
+                # run as its own read-decide-write after this transaction had
+                # already committed -- a second parent-lifecycle authority
+                # forbidden by Section 3.1). Pause intent alone is not enough
+                # to claim parent PAUSED while a durable execution
+                # observation is still active/unknown; once every recorded
+                # attempt is quiescent, this is metadata-only -- it does not
+                # dispatch, refresh, replace a GID, or consume recovery
+                # authority.
+                await _transition(TransferState.PAUSED)
             await db.commit()
         # DP 1.0.12 Root Cause B: the caller's completion-verification sweep
         # (_engine_base.TransferEngine._complete) must never be handed a
@@ -670,45 +799,6 @@ class TransferRepository:
     async def _globally_paused(db) -> bool:
         row = await db.fetchone("SELECT value FROM transfer_controls WHERE key='paused'")
         return bool(row and row["value"] == "1")
-
-    async def force_queued_for_autonomous_wait(self, transfer_id: int, wait_states: frozenset[str]) -> bool:
-        """DP 1.0.12 recovery leveling, Sections 21-22: the recovery-aware
-        engine's extra "an artifact is autonomously waiting, so the transfer
-        must not be left showing whatever ``aggregate_lifecycle`` computed (or
-        left unchanged) a moment ago" rule, applied as its own atomic
-        read-then-write rather than the previous separate, independently
-        timed ``get()``/``artifacts()``/``state()`` calls. ``wait_states`` is
-        supplied by the caller (e.g. ``{"recovery_wait"}``) so this base
-        repository never has to know what a recovery-specific artifact state
-        means; an empty set is always a no-op.
-        """
-        if not wait_states:
-            return False
-        async with get_db() as db:
-            await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone(
-                """SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
-                   LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id WHERE t.id=?""",
-                (transfer_id,),
-            )
-            transfer = self._transfer(row)
-            if transfer is None or transfer.state in _AGGREGATE_TERMINAL_STATES or transfer.paused:
-                await db.rollback()
-                return False
-            placeholders = ",".join("?" for _ in wait_states)
-            hit = await db.fetchone(
-                f"""SELECT 1 FROM download_files f WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')}
-                    AND f.status IN ({placeholders}) LIMIT 1""",
-                (transfer_id, *wait_states),
-            )
-            if not hit or not transition_allowed(transfer.state, TransferState.QUEUED):
-                await db.rollback()
-                return False
-            await self._write_lifecycle_transition(
-                db, transfer_id, row["status"], row["progress"], row["normalized_error"], TransferState.QUEUED,
-            )
-            await db.commit()
-        return True
 
     async def update_metadata(self, transfer_id, *, label=None, priority=None):
         async with get_db() as db:

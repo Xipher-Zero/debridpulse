@@ -1,28 +1,26 @@
 """Neutral INPUT_REQUIRED/AUTH_REQUIRED lifecycle proof with unrelated integrations."""
 import asyncio
 import json
-from dataclasses import replace
 
 import pytest
 import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
-from test_candidate_provenance_consolidation import admit, p2
+from test_candidate_provenance_consolidation import admit, p2  # noqa: F401 -- pytest fixture re-export
 from transfers import codec
 from transfers.applicability import ProviderApplicability
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage
 from transfers.input_required import (InputSubmissionRejected, auth_required, username_password, username_private_key, validate_submission)
 from transfers.models import (
-    Capability, Endpoint, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState,
-    InputChallenge, InputField, InputMethod, InputOrigin, InputReason, IntegrationDescriptor,
+    Capability, Endpoint, ExecutionHandle, InputChallenge, InputField, InputMethod, InputOrigin, InputReason, IntegrationDescriptor,
     MaterializationAdmission, MaterializationAdmissionKind, ResourceState, ResolutionResult,
-    TransferCandidate, TransferProgress, TransferRequest, TransferState,
+    TransferCandidate, TransferRequest, TransferState,
 )
 from transfers.policy import TransferPolicy
+from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
 
 
 class AuthParcelProvider:

@@ -9,12 +9,6 @@ from dataclasses import replace
 import pytest
 
 import db.database as database
-# DP 1.0.12 leveling remediation (ARCH-001): the true owner of the
-# retire_partial() call site exercised below is transfers._engine_recovery
-# (._terminal_recovery, a direct import from transfers.filesystem, never
-# proxied through another module now that the transitional cross-module
-# monkeypatch seam is gone).
-import transfers._engine_recovery as engine_module
 from executors.aria2.translation import native_failure
 from fake_integrations import MemoryExecutor
 from transfers.applicability import (
@@ -34,7 +28,6 @@ from transfers.errors import (
     Stage,
 )
 from transfers.models import (
-    Artifact,
     Capability,
     Endpoint,
     IntegrationDescriptor,
@@ -471,84 +464,22 @@ async def test_unknown_aria2_failure_has_useful_primary_message_and_sanitized_di
     assert error.retryability == Retryability.UNKNOWN
 
 
-class TerminalRepository:
-    def __init__(self, result: bool = True):
-        self.result = result
-        self.calls = []
-
-    async def transition_recovery(self, artifact_id, state, **kwargs):
-        self.calls.append((artifact_id, state, kwargs))
-        return self.result
-
-
-async def test_terminal_remote_source_cleanup_occurs_only_after_writer_revocation(monkeypatch, tmp_path):
-    repository = TerminalRepository()
-    engine = object.__new__(TransferEngine)
-    engine.repository = repository
-    engine.root = str(tmp_path)
-    engine.registry = IntegrationRegistry()
-    artifact = Artifact(
-        1, 1, "request", "payload.bin", str(tmp_path / "payload.bin"), 4,
-        "error", (),
-    )
-    calls = []
-    monkeypatch.setattr(engine, "_candidate_sidecars", lambda _artifact: (str(tmp_path / "payload.bin.aria2"),))
-    monkeypatch.setattr(
-        engine_module,
-        "retire_partial",
-        lambda root, target, sidecars: calls.append((root, target, sidecars, len(repository.calls))),
-    )
-    remote = NormalizedError(
-        Domain.EXECUTOR,
-        Category.SOURCE_NOT_FOUND,
-        Stage.EXECUTION,
-        retryability=Retryability.NEVER,
-        recovery=Recovery.FAIL,
-        origin=Origin.REMOTE_SOURCE,
-    )
-
-    assert await engine._terminal_recovery(artifact, remote)
-    assert calls == [(
-        str(tmp_path), artifact.target, (str(tmp_path / "payload.bin.aria2"),), 1
-    )]
-
-    calls.clear()
-    local = NormalizedError(
-        Domain.LOCAL_RESOURCE,
-        Category.DISK_FULL,
-        Stage.EXECUTION,
-        retryability=Retryability.AFTER_RESOURCE_CHANGE,
-        recovery=Recovery.REQUIRE_OPERATOR,
-        origin=Origin.LOCAL_SYSTEM,
-    )
-    assert await engine._terminal_recovery(artifact, local)
-    assert calls == []
-
-
-async def test_terminal_cleanup_does_not_run_when_writer_revocation_is_rejected(monkeypatch, tmp_path):
-    repository = TerminalRepository(result=False)
-    engine = object.__new__(TransferEngine)
-    engine.repository = repository
-    engine.root = str(tmp_path)
-    engine.registry = IntegrationRegistry()
-    artifact = Artifact(
-        1, 1, "request", "payload.bin", str(tmp_path / "payload.bin"), 4,
-        "error", (),
-    )
-    calls = []
-    monkeypatch.setattr(engine, "_candidate_sidecars", lambda _artifact: ())
-    monkeypatch.setattr(engine_module, "retire_partial", lambda *args: calls.append(args))
-    remote = NormalizedError(
-        Domain.EXECUTOR,
-        Category.SOURCE_NOT_FOUND,
-        Stage.EXECUTION,
-        retryability=Retryability.NEVER,
-        recovery=Recovery.FAIL,
-        origin=Origin.REMOTE_SOURCE,
-    )
-
-    assert not await engine._terminal_recovery(artifact, remote)
-    assert calls == []
+# DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+# closure): the two tests formerly here
+# (test_terminal_remote_source_cleanup_occurs_only_after_writer_revocation /
+# test_terminal_cleanup_does_not_run_when_writer_revocation_is_rejected)
+# unit-tested transfers._engine_recovery.TransferEngine._terminal_recovery in
+# isolation via object.__new__(TransferEngine), bypassing the real
+# composition/MRO entirely. That isolation hid that this exact
+# behavior -- retiring partial bytes only after a confirmed durable terminal
+# transition -- was ALREADY shadowed in production:
+# transfers.convergence_engine.TransferEngine's own FAIL_PERMANENTLY branch
+# (the only one production ever reaches) has never called retire_partial at
+# all. Deleting the duplicate lower implementation removes no real production
+# coverage; there is no equivalent to migrate these tests to, since the
+# canonical owner does not retire partial bytes on terminal failure. Whether
+# it should is a separate, out-of-scope architectural question, noted as a
+# residual risk rather than fixed here.
 
 
 # ---------------------------------------------------------------------------

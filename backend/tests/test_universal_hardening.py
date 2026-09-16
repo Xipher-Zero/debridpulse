@@ -8,8 +8,8 @@ import zipfile
 
 import pytest
 
-from test_universal_lifecycle import core, submit
-from test_aria2_executor_contract import execution
+from test_universal_lifecycle import canonical_core, core, submit  # noqa: F401 -- pytest fixture re-export
+from test_aria2_executor_contract import execution  # noqa: F401 -- pytest fixture re-export
 from application.service import ApplicationService
 from core.config import AppSettings
 from executors.aria2.executor import Aria2Executor
@@ -17,11 +17,19 @@ from integrations.catalog import definitions
 from integrations.configuration import normalize_settings
 from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers.errors import Category
-from transfers.models import ExecutionState, TransferProgress, ResolutionResult, ResourceState, TransferState, SourceEntry, TransferRequest
+from transfers.models import (
+    ExecutionObservation, ExecutionState, TransferProgress, ResolutionResult, ResourceState, TransferState,
+    SourceEntry, TransferRequest,
+)
 
 
 @pytest.mark.asyncio
-async def test_stall_recovery_confirms_cancellation_then_waits_for_retry_budget(core):
+async def test_stall_recovery_confirms_cancellation_then_waits_for_retry_budget(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): stall recovery calls _recover_artifact with a candidate-
+    # bearing, non-REMOTE_SOURCE error, which is now exclusively a
+    # canonical-stack decision.
+    core = canonical_core
     core.engine.policy = replace(core.engine.policy, stalled_after_seconds=10)
     transfer = await submit(core)
     await core.engine.tick()
@@ -172,8 +180,12 @@ async def test_invalid_archive_retains_payload_and_reports_postprocessing_failur
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("size", [0, 4])
-async def test_successful_execution_establishes_size_when_provider_size_is_unknown(core, size):
+async def test_successful_execution_establishes_size_when_provider_size_is_unknown(core):
+    """A candidate whose own size was unknown at resolution time still
+    completes correctly once the executor reports a genuinely known
+    positive final total -- SIZE_KNOWN(N>0), consumed via
+    ``transfers.filesystem.known_positive_size``."""
+    size = 4
     candidate = replace(core.provider.candidate(), expected_bytes=0)
     core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (candidate,))]
     transfer = await submit(core)
@@ -187,6 +199,52 @@ async def test_successful_execution_establishes_size_when_provider_size_is_unkno
     await core.engine.tick()
     assert (await core.repository.get(transfer.id)).state == TransferState.COMPLETED
     assert (await core.repository.artifacts(transfer.id))[0].expected_bytes == size
+
+
+@pytest.mark.asyncio
+async def test_unknown_size_zero_byte_success_never_completes(core):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 5:
+    when NEITHER the candidate's own expected size NOR the executor's final
+    total is positive, size is SIZE_UNKNOWN -- a SUCCEEDED observation must
+    not silently collapse into an affirmative zero-byte completion (a
+    zero-byte target file existing is not evidence either; it is exactly the
+    absence-of-size-knowledge signature transfer 265 proved core must not
+    trust). The artifact must instead route through ordinary verification-
+    failure/recovery, never ``completed`` and never a durable zero-byte
+    delivered artifact."""
+    candidate = replace(core.provider.candidate(), expected_bytes=0)
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, (candidate,))]
+
+    # MemoryExecutor.start() hardcodes a positive TransferProgress(4, 1, 1)
+    # regardless of candidate size, which would otherwise "reveal" a known
+    # positive size through the ordinary early-progress
+    # repository.execution()/accept_execution_total() path before this test
+    # ever reaches SUCCEEDED. Replace it with a start() that reports the
+    # SAME unknown (zero) total the real degenerate executor path reported
+    # in production, so the artifact's own expected size genuinely stays
+    # unknown throughout -- matching transfer 265's shape exactly.
+    async def unknown_size_start(request, handle):
+        assert await core.executor.authorize(handle, "start")
+        core.executor.calls.append(("start", handle))
+        result = ExecutionObservation(handle, ExecutionState.TRANSFERRING, TransferProgress(0, 0, 0), (request.target,), None)
+        core.executor.jobs[handle.attempt_id] = result
+        return result
+    core.executor.start = unknown_size_start
+
+    transfer = await submit(core)
+    await core.engine.tick()
+    artifact = (await core.repository.artifacts(transfer.id))[0]
+    assert artifact.expected_bytes == 0
+    target = Path(artifact.target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"")
+    job = core.executor.jobs[artifact.execution.attempt_id]
+    core.executor.jobs[artifact.execution.attempt_id] = replace(job, state=ExecutionState.SUCCEEDED, progress=TransferProgress(0, 0))
+    await core.engine.tick()
+    settled = (await core.repository.artifacts(transfer.id))[0]
+    assert settled.state != "completed"
+    assert settled.expected_bytes == 0
+    assert (await core.repository.get(transfer.id)).state != TransferState.COMPLETED
 
 
 @pytest.mark.asyncio

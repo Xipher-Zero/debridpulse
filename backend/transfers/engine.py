@@ -1,10 +1,15 @@
 """Canonical transfer engine with provider-transition hard-stop enforcement.
 
-The qualified recovery implementation remains in ``_engine_recovery``.  This
+Semantic recovery/control decisions belong solely to
+``transfers.convergence_engine.TransferEngine`` (DP 1.0.12 canonical
+lifecycle/recovery/completion rework, CANON-001 closure). This class and its
+bases (``_engine_recovery.TransferEngine``, ``_engine_base.TransferEngine``)
+contain only neutral provider-continuation, materialization, and factual
+mechanics -- no lower class here decides or applies a recovery outcome. This
 public owner closes the admitted-resource continuation seam so every provider
-I/O path honors the registry's bound-route enablement/health contract. It is
-also the universal boundary that attaches transitional recovery compatibility
-to factual provider/executor failures before lifecycle policy consumes them.
+I/O path honors the registry's bound-route enablement/health contract, and
+attaches transitional recovery compatibility to factual provider/executor
+failures (via ``policy.compatibility``) before lifecycle policy consumes them.
 """
 from __future__ import annotations
 
@@ -16,10 +21,8 @@ from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.models import (
-    Capability, CleanupAuthority, ExecutionState, Ownership, ResolutionResult, ResourceState,
-    TransferState,
+    Capability, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
 )
-from transfers.policy import TERMINAL_TRANSFER_STATES
 
 
 class TransferEngine(_RecoveryTransferEngine):
@@ -30,43 +33,6 @@ class TransferEngine(_RecoveryTransferEngine):
         return await super()._request_failure(
             record, self.policy.compatibility(error), attempts=attempts, waiting=waiting,
         )
-
-    async def _recover_artifact(self, artifact, error):
-        """Enter recovery with a core-derived compatibility action."""
-        return await super()._recover_artifact(artifact, self.policy.compatibility(error))
-
-    async def _aggregate(self, transfer_id: int):
-        """Repair durable paused truth after crash/restart convergence windows."""
-        result = await super()._aggregate(transfer_id)
-        transfer = await self.repository.get(transfer_id)
-        # DP 1.0.12 leveling remediation: this is a genuine dead-end check
-        # (transfers.policy.TERMINAL_TRANSFER_STATES), not the broader
-        # side-state-retiring family -- a FAILED/"error" transfer is
-        # intentionally NOT excluded here. transition_allowed() permits
-        # FAILED -> PAUSED unconditionally, and this repair path exists
-        # precisely to let a paused-but-quiescent transfer (FAILED included)
-        # converge its raw status to PAUSED after a crash/restart window.
-        if transfer is None or transfer.state in TERMINAL_TRANSFER_STATES:
-            return result
-
-        paused = transfer.paused or await self.repository.globally_paused()
-        if not paused:
-            return result
-
-        # Pause intent alone is not enough to claim parent PAUSED while a durable
-        # execution observation is still active/unknown. Once every recorded
-        # attempt is quiescent, repairing the parent is metadata-only: it does
-        # not dispatch, refresh, replace a GID, or consume recovery authority.
-        unsettled = {
-            "prepared",
-            ExecutionState.QUEUED.value,
-            ExecutionState.TRANSFERRING.value,
-            ExecutionState.UNKNOWN.value,
-        }
-        executions = await self.repository.executions(transfer_id)
-        if not any(str(item.state) in unsettled for item in executions):
-            await self.repository.state(transfer_id, TransferState.PAUSED)
-        return result
 
     def _bound_resource_provider(self, record):
         """Resolve an admitted resource owner through the canonical registry gate.

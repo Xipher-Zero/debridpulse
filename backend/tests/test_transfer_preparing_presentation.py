@@ -28,10 +28,11 @@ import pytest_asyncio
 import api.operational_downloads as downloads
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
-from transfers.engine import TransferEngine
+from transfers.convergence_engine import TransferEngine
 from transfers.models import ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
-from transfers.presentation_repository import TransferRepository, waiting_for_provider_override
+from transfers.presentation_repository import waiting_for_provider_override
+from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 
 FILES = [("a.mkv", "S/a.mkv", 10), ("b.mkv", "S/b.mkv", 20), ("c.mkv", "S/c.mkv", 30)]

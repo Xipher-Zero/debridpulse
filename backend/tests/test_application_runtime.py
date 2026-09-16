@@ -14,19 +14,23 @@ from api.routes import router
 from application.service import ApplicationService
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.applicability import ProviderApplicability
-from transfers.engine import TransferEngine
-from transfers.errors import TransferError, Category, Domain, NormalizedError, Retryability, Recovery, Stage
+from transfers.convergence_engine import TransferEngine
+from transfers.errors import TransferError, Category, Domain, NormalizedError, Stage
 from transfers.models import (
     ArtifactFingerprint, IntegrationDescriptor, OutcomeKind, ResolutionResult, ResourceState,
     TransferOutcome, TransferRequest, TransferState,
 )
 from transfers.policy import TransferPolicy
+from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
 
 
 @pytest_asyncio.fixture
 async def runtime(tmp_path, monkeypatch):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): the API's pause/resume endpoints are backed exclusively by
+    # transfers.convergence_engine.TransferEngine -- no lower class defines
+    # pause/resume/pause_all/resume_all at all.
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "application.db")
     await database.init_db()
     repository = TransferRepository()

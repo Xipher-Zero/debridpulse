@@ -54,6 +54,52 @@ class ProvenanceParcelProvider(ParcelProvider):
 
 
 @pytest_asyncio.fixture
+async def canonical_p2(tmp_path, monkeypatch):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): the one test in this module driving a full failure/backoff/
+    refresh/candidate-switch sequence needs the canonical stack -- the
+    lower, pre-Phase-3 ``p2`` fixture's stack no longer contains a
+    recovery-decision implementation."""
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = CanonicalRepository()
+    registry = IntegrationRegistry()
+    first = ProvenanceParcelProvider("provider-a")
+    second = ProvenanceParcelProvider("provider-b")
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_provider(first)
+    registry.register_provider(second)
+    registry.register_executor(executor)
+    now = [1000.0]
+    policy = TransferPolicy(
+        retry_delay=1,
+        adoption_stability_seconds=0,
+        max_active_executions=32,
+        resolution_concurrency=32,
+    )
+    engine = CanonicalEngine(
+        repository,
+        registry,
+        download_root=str(tmp_path / "payloads"),
+        policy=policy,
+        clock=lambda: now[0],
+    )
+    await engine.initialize()
+    return SimpleNamespace(
+        engine=engine,
+        repository=repository,
+        registry=registry,
+        a=first,
+        b=second,
+        executor=executor,
+        now=now,
+    )
+
+
+@pytest_asyncio.fixture
 async def p2(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
     await database.init_db()
@@ -157,7 +203,11 @@ async def test_p1_origin_handoff_migrates_without_filename_or_path_inference(p2)
 
 
 @pytest.mark.asyncio
-async def test_complete_one_target_consolidation_survives_restart_and_never_schedules(p2):
+async def test_complete_one_target_consolidation_survives_restart_and_never_schedules(canonical_p2):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): operator-initiated retry (reacquire=False,
+    # the default) is now exclusively a canonical-stack responsibility.
+    p2 = canonical_p2
     canonical_transfer = await admit(p2, p2.a, "submission-a")
     await p2.engine.resolve_pending()
     source_transfer = await admit(p2, p2.b, "submission-b")
@@ -265,7 +315,8 @@ async def test_duplicate_underlying_source_adds_origin_without_duplicate_candida
 
 
 @pytest.mark.asyncio
-async def test_foreign_alternate_execution_provenance_uses_foreign_resolution_attempt(p2):
+async def test_foreign_alternate_execution_provenance_uses_foreign_resolution_attempt(canonical_p2):
+    p2 = canonical_p2
     canonical = await admit(p2, p2.a, "submission-a")
     await p2.engine.tick()
     source = await admit(p2, p2.b, "submission-b")

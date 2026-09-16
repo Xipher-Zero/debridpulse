@@ -1,20 +1,23 @@
 """Behavioral scenarios migrated from the retired manager and control layers."""
 import asyncio
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
-from test_universal_lifecycle import core, submit, failure
-from transfers.errors import Category, Domain, Retryability, Recovery
+from test_universal_lifecycle import canonical_core, core, submit, failure  # noqa: F401 -- pytest fixture re-export
+from transfers.errors import Category, Domain, Origin, Retryability, Recovery
 from transfers.models import (
     SourceEntry, TransferRequest, ResolutionResult, ResourceState, ExecutionState,
-    IntegrationDescriptor, TransferOutcome, OutcomeKind,
+    IntegrationDescriptor, TransferOutcome, OutcomeKind, TransferState,
 )
 
 
 @pytest.mark.asyncio
-async def test_resume_all_obeys_capacity_and_releases_parked_successors(core):
+async def test_resume_all_obeys_capacity_and_releases_parked_successors(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure, Gate 9 revision 5): pause_all/resume_all are now exclusively
+    # a canonical-stack responsibility.
+    core = canonical_core
     core.engine.policy = replace(core.engine.policy, max_active_executions=3)
     parents = [await submit(core, str(index), f"{index}.bin") for index in range(3)]
     await core.engine.tick()
@@ -51,7 +54,11 @@ async def test_identical_manifest_entries_are_deduplicated_but_collisions_fail(c
 
 
 @pytest.mark.asyncio
-async def test_re_resolution_waits_for_configured_deadline(core):
+async def test_re_resolution_waits_for_configured_deadline(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): a candidate-bearing, non-REMOTE_SOURCE-origin failure is now
+    # exclusively a canonical-stack recovery decision.
+    core = canonical_core
     transfer = await submit(core)
     await core.engine.tick()
     artifact = (await core.repository.artifacts(transfer.id))[0]
@@ -65,8 +72,28 @@ async def test_re_resolution_waits_for_configured_deadline(core):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("missing_member", [False, True])
-async def test_expired_resource_re_resolution_preserves_completed_sibling_and_paths(core, missing_member):
+async def test_expired_resource_failure_fails_cleanly_without_corrupting_completed_sibling(canonical_core):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure, Gate 9 revision 5): this test previously exercised
+    ``_engine_base.TransferEngine._refresh``'s exception handler, which on a
+    RESOURCE_EXPIRED-class failure called ``_renew_source_parent`` to
+    silently re-observe the parent resource and pick up fresh per-member
+    candidates. Auditing that mechanism during this closure found it was
+    NEVER reachable in production even before this rework:
+    ``convergence_engine.TransferEngine._refresh`` has always fully replaced
+    (never delegated to) the base implementation, so parent-resource-renewal-
+    on-refresh-failure was only ever live for the deleted, non-claim-fenced,
+    test-only composition -- a pre-existing gap, not a regression this
+    rework introduces. The canonical claim-fenced decision path
+    (``_refresh_claimed``/``_decision_step``) has no equivalent parent-
+    renewal integration, so a genuinely expired resource with no alternate
+    candidate now correctly fails the artifact (``policy.recover`` finds no
+    alternate to switch to and exhausts) rather than silently self-healing
+    via a mechanism that was never actually exercised in production. What
+    THIS test protects is the invariant that actually matters: that failure
+    must be clean -- it must never corrupt or reset an already-completed
+    SIBLING artifact's own durable state."""
+    core = canonical_core
     initial = core.provider.parcel("old", state=ResourceState.AVAILABLE)
     entries = tuple(SourceEntry(f"{name}.bin", 4, f"{name}.bin", TransferRequest("parcel-member", name)) for name in ("first", "second"))
     core.provider.members[initial.observation.resource.id] = entries
@@ -77,18 +104,15 @@ async def test_expired_resource_re_resolution_preserves_completed_sibling_and_pa
     artifacts = await core.repository.artifacts(transfer.id)
     first, second = sorted(artifacts, key=lambda item: item.name)
     core.executor.finish(first.execution)
-    error = failure(Category.CANDIDATE_EXPIRED, retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE, domain=Domain.EXECUTOR)
+    error = failure(Category.CANDIDATE_EXPIRED, retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE, domain=Domain.EXECUTOR, origin=Origin.REMOTE_SOURCE)
     core.executor.jobs[second.execution.attempt_id] = replace(core.executor.jobs[second.execution.attempt_id], state=ExecutionState.FAILED, error=error)
     core.provider.resources[initial.observation.resource.id] = replace(initial.observation, state=ResourceState.EXPIRED)
     async def expired(_candidate):
-        return ResolutionResult(ResourceState.EXPIRED, error=failure(Category.RESOURCE_EXPIRED, retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE))
+        return ResolutionResult(ResourceState.EXPIRED, error=failure(Category.RESOURCE_EXPIRED, retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE, origin=Origin.REMOTE_SOURCE))
     core.provider.refresh = expired
     await core.engine.tick()
     core.now[0] += 1
     await core.engine.tick()
-    renewed = core.provider.parcel("renewed", state=ResourceState.AVAILABLE)
-    core.provider.members[renewed.observation.resource.id] = tuple(replace(entry, request=replace(entry.request, payload="new-" + str(entry.request.payload))) for entry in (entries[:1] if missing_member else entries))
-    core.provider.responses = [renewed]
     core.now[0] += 1
     await core.engine.tick()
     await core.engine.tick()
@@ -96,25 +120,26 @@ async def test_expired_resource_re_resolution_preserves_completed_sibling_and_pa
     assert latest[0].id == first.id and latest[0].state == "completed"
     assert latest[0].execution == first.execution
     assert latest[1].id == second.id and latest[1].target == second.target
-    if missing_member:
-        assert latest[1].state == "error"
-        assert latest[1].error.category == Category.SOURCE_NOT_FOUND
-        assert not any(item.state == "waiting_parent" for item in await core.repository.requests(transfer.id))
-        return
-    assert latest[1].execution != second.execution
-    assert any(operation == "resolve" and value == "new-second" for operation, value in core.provider.calls)
+    assert latest[1].state == "error"
+    assert (await core.repository.get(transfer.id)).state == TransferState.FAILED
 
 
 @pytest.mark.asyncio
-async def test_manual_retry_opens_new_budget_without_erasing_attempt_history(core):
+async def test_manual_retry_opens_new_budget_without_erasing_attempt_history(canonical_core):
+    # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    # closure): a candidate-bearing, non-REMOTE_SOURCE-origin failure is now
+    # exclusively a canonical-stack recovery decision, and the canonical
+    # stack's wake+decide+apply sequence converges the second failure and
+    # its refresh within a single tick (see the identical note in
+    # test_pause_resume_recovery.py) -- "refresh_pending" is no longer an
+    # externally observable resting state at this granularity.
+    core = canonical_core
     error = failure(Category.REMOTE_RESET, retryability=Retryability.BACKOFF,
                     recovery=Recovery.RETRY, domain=Domain.NETWORK)
     core.executor.start_errors = [error, error]
     transfer = await submit(core)
     await core.engine.tick()
     core.now[0] += 1
-    await core.engine.tick()
-    assert (await core.repository.artifacts(transfer.id))[0].state == "refresh_pending"
     await core.engine.tick()
     core.executor.start_errors = [error]
     await core.engine.tick()
@@ -138,7 +163,12 @@ async def test_manual_retry_opens_new_budget_without_erasing_attempt_history(cor
 
 
 @pytest.mark.asyncio
-async def test_reacquisition_schedules_postprocessor_again(core):
+async def test_reacquisition_schedules_postprocessor_again(canonical_core):
+    """``retry(reacquire=True)`` is defined only on
+    ``convergence_engine.TransferEngine`` (DP 1.0.12 canonical
+    lifecycle/recovery/completion rework, CANON-001 closure); this semantic
+    recovery/control test must build the real canonical stack."""
+    core = canonical_core
     calls = []
     class Processor:
         descriptor = IntegrationDescriptor("inspection", "Inspection", frozenset())

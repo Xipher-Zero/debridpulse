@@ -34,6 +34,34 @@ class HostParcelProvider(ParcelProvider):
 
 
 @pytest_asyncio.fixture
+async def canonical_details_runtime(tmp_path, monkeypatch):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): the one test in this module driving a full failure/backoff/
+    refresh/candidate-switch sequence needs the canonical stack -- the
+    lower, pre-Phase-3 ``details_runtime`` fixture's stack no longer
+    contains a recovery-decision implementation."""
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = CanonicalRepository()
+    registry = IntegrationRegistry()
+    provider = HostParcelProvider("provider-a")
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_provider(provider)
+    registry.register_executor(executor)
+    engine = CanonicalEngine(
+        repository,
+        registry,
+        download_root=str(tmp_path / "payloads"),
+        policy=TransferPolicy(retry_delay=0, adoption_stability_seconds=0, max_active_executions=8, resolution_concurrency=8),
+    )
+    await engine.initialize()
+    return engine, repository, provider, executor
+
+
+@pytest_asyncio.fixture
 async def details_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
     await database.init_db()
@@ -97,8 +125,8 @@ async def test_two_candidates_project_durable_source_provider_and_relationship(d
 
 
 @pytest.mark.asyncio
-async def test_selected_failed_and_delivering_candidate_come_from_execution_provenance(details_runtime):
-    engine, repository, _provider, executor = details_runtime
+async def test_selected_failed_and_delivering_candidate_come_from_execution_provenance(canonical_details_runtime):
+    engine, repository, _provider, executor = canonical_details_runtime
     canonical = await submit(engine, "rapidgator")
     await engine.resolve_pending()
     await submit(engine, "1fichier")

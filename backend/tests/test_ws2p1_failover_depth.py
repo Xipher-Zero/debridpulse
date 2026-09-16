@@ -1,6 +1,5 @@
 """Deep WS2 P1 qualification for failover ordering, provenance, and mixed progress."""
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
@@ -20,6 +19,35 @@ from transfers.models import ExecutionObservation, ExecutionState, TransferProgr
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
+
+
+async def build_canonical_engine(tmp_path, monkeypatch, providers, executor, *, policy=None):
+    """DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
+    closure): ``test_ws2p1_failover_progress.build_engine`` now wires the
+    lower, pre-Phase-3 stack, which no longer contains a recovery-decision
+    implementation. Any test in this module that actually drives a
+    failure/retry/refresh/candidate-switch sequence builds the real
+    production stack instead."""
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    await database.init_db()
+    repository = CanonicalRepository()
+    registry = IntegrationRegistry()
+    for provider in providers:
+        registry.register_provider(provider)
+    executor.authorize = repository.authorize_execution
+    registry.register_executor(executor)
+    engine = CanonicalEngine(
+        repository,
+        registry,
+        download_root=str(tmp_path / "payloads"),
+        policy=policy or TransferPolicy(retry_delay=0, adoption_stability_seconds=0),
+        clock=lambda: 1000.0,
+    )
+    await engine.initialize()
+    return engine, repository, registry
 
 
 def remote_failure():
@@ -120,7 +148,7 @@ async def test_foreign_b_refresh_uses_b_request_then_all_candidates_exhaust_with
     second = EquivalentParcelProvider("provider-b")
     executor = NoProgressMemoryExecutor(None)
     policy = TransferPolicy(max_attempts=3, retry_delay=0, adoption_stability_seconds=0)
-    engine, repository, _registry = await build_engine(
+    engine, repository, _registry = await build_canonical_engine(
         tmp_path, monkeypatch, (first, second), executor, policy=policy,
     )
     canonical, source = await attach_two(engine, repository, first, second)
@@ -161,7 +189,7 @@ async def test_delivering_alternate_owns_final_execution_provenance(tmp_path, mo
     first = EquivalentParcelProvider("provider-a")
     second = EquivalentParcelProvider("provider-b")
     executor = NoProgressMemoryExecutor(None)
-    engine, repository, _registry = await build_engine(tmp_path, monkeypatch, (first, second), executor)
+    engine, repository, _registry = await build_canonical_engine(tmp_path, monkeypatch, (first, second), executor)
     canonical, source = await attach_two(engine, repository, first, second)
     failure = remote_failure()
     _a_attempts, artifact = await advance_a_to_b(engine, repository, executor, canonical.id, failure)
@@ -188,7 +216,7 @@ async def test_delivering_alternate_owns_final_execution_provenance(tmp_path, mo
 async def test_discovered_size_survives_unknown_size_failover_and_stale_a_observation(tmp_path, monkeypatch):
     provider = MultiUnknownProvider()
     executor = NoProgressMemoryExecutor(None)
-    engine, repository, registry = await build_engine(tmp_path, monkeypatch, (provider,), executor)
+    engine, repository, registry = await build_canonical_engine(tmp_path, monkeypatch, (provider,), executor)
     transfer = await engine.submit((TransferRequest("multi", "x", name="unknown.bin"),), deduplicate=False)
     await engine.tick()
     artifact = (await repository.artifacts(transfer.id))[0]
@@ -219,8 +247,11 @@ async def test_discovered_size_survives_unknown_size_failover_and_stale_a_observ
     assert history[a2.attempt_id].state == "failed"
     assert history[a1.attempt_id].state == "failed"
 
-    restarted_repository = TransferRepository()
-    restarted = TransferEngine(
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    from transfers.recovery_repository import TransferRepository as CanonicalRepository
+
+    restarted_repository = CanonicalRepository()
+    restarted = CanonicalEngine(
         restarted_repository,
         registry,
         download_root=engine.root,
