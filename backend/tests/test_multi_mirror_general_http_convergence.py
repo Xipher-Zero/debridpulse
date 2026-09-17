@@ -941,6 +941,140 @@ async def test_production_266_empty_bootstrap_bad_source_first(tmp_path, monkeyp
     assert transfer_after.state != TransferState.FAILED
 
 
+async def test_production_270_exhausted_identity_satisfied_by_completed_canonical_reaches_completed(tmp_path, monkeypatch):
+    """DP 1.0.12 CANON-001 exhausted-identity completion policy correction,
+    Required production-shaped convergence regression (Section 12): direct
+    reproduction of production transfer 270's shape end to end through the
+    REAL bootstrap-admission + proof-exhaustion pipeline -- the identical
+    five-mirror topology as ``test_production_266_empty_bootstrap_bad_source_first``
+    (4 healthy equivalent mirrors converging onto one canonical artifact + 1
+    DNS-failing NUS-shaped source that exhausts identity proof) -- but driven
+    all the way to physical payload completion.
+
+    Before this correction, the parent stuck at ``QUEUED`` forever even
+    though the payload fully delivered, because the durably held, proof-
+    exhausted, non-writer sibling was read as an unconditional unsatisfied
+    delivery obligation. This proves the parent now reaches ``COMPLETED``
+    once the canonical artifact for that same logical slot completes, while
+    the DNS-failing source stays truthfully ``materializing``/``exhausted``
+    with zero fabricated artifact/execution/canonical provenance -- Section
+    16's desired durable state for the transfer-270 shape.
+    """
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "production-270.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"ubuntu-270-mirror-{index}") for index in range(1, 6))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[4].descriptor.id:  # mirror E: NUS-shaped, DNS-failing.
+            raise socket.gaierror("simulated DNS resolution failure for mirror E")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"ubuntu-270-mirror-{index}", name="ubuntu-26.04-desktop-amd64.iso",
+                         preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="ubuntu-26.04-desktop-amd64.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    a_record = by_payload["ubuntu-270-mirror-1"]
+    b_record, c_record, d_record = (by_payload[f"ubuntu-270-mirror-{i}"] for i in (2, 3, 4))
+    e_record = by_payload["ubuntu-270-mirror-5"]
+
+    # Mirror A seeds the ONE canonical artifact; B/C/D converge onto it as
+    # durable mirrors -- four healthy sources reaching "resolved" (Section 4.2).
+    await engine._resolve(a_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    canonical_artifact = artifacts[0]
+    assert canonical_artifact.request_id == a_record.id
+
+    for record in (b_record, c_record, d_record):
+        await engine._resolve(record)
+    bindings = await engine.canonical.bindings(canonical_artifact.id)
+    assert len(bindings) == 4  # A+B+C+D durably attach to the same canonical artifact.
+
+    # E (DNS-failing, NUS-shaped) drives to bounded proof exhaustion -- the
+    # identical budget/shape as the existing 263/266 regressions.
+    await engine._resolve(e_record)
+    for _ in range(2):
+        refreshed = next(item for item in await engine.repository.requests(transfer.id) if item.id == e_record.id)
+        assert refreshed.state == "materializing"  # still parked pending bounded proof retry.
+        now[0] = refreshed.retry_at + 0.01
+        await engine._process_request(refreshed)
+
+    final_e = next(item for item in await engine.repository.requests(transfer.id) if item.id == e_record.id)
+    assert final_e.state == "materializing"  # held/unresolved -- never a second/third writer.
+    async with database.get_db() as db:
+        held_row = await db.fetchone(
+            "SELECT equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
+            (e_record.id,),
+        )
+    assert held_row["equivalence_disposition"] == "exhausted"
+    assert held_row["equivalence_reason"] == "dns_failure"
+    assert float(held_row["retry_at"] or 0) == 0
+
+    artifacts_before_completion = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_before_completion) == 1  # still exactly one physical canonical artifact -- no duplicate.
+    assert artifacts_before_completion[0].id == canonical_artifact.id
+
+    # Dispatch the canonical artifact to its executor, then deliver its
+    # payload -- at that moment, production transfer 270 emitted "Transfer
+    # queued" instead of "Transfer completed" (Section 4.6); this is the
+    # exact point that symptom occurred.
+    await engine.reconcile_executions()
+    dispatched_artifact = (await engine.repository.artifacts(transfer.id))[0]
+    assert dispatched_artifact.execution is not None
+    executor.finish(dispatched_artifact.execution)
+    await engine.tick()
+
+    transfer_after = await engine.repository.get(transfer.id)
+    assert transfer_after.state == TransferState.COMPLETED
+    assert transfer_after.progress == 100
+
+    final_artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(final_artifacts) == 1
+    assert final_artifacts[0].state == "completed"
+    assert final_artifacts[0].id == canonical_artifact.id  # no numbered duplicate payload.
+
+    # The DNS-failing source remains truthfully exhausted/unresolved with
+    # zero fabricated provenance (Section 16/20).
+    async with database.get_db() as db:
+        final_e_row = await db.fetchone(
+            "SELECT state,equivalence_disposition,equivalence_reason,equivalence_retry_count,retry_at "
+            "FROM transfer_requests WHERE id=?",
+            (e_record.id,),
+        )
+        artifact_count = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (e_record.id,),
+        )
+        execution_count = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM execution_attempts WHERE artifact_id IN "
+            "(SELECT id FROM download_files WHERE request_id=?)", (e_record.id,),
+        )
+        origin_count = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM canonical_candidate_origins WHERE request_id=?", (e_record.id,),
+        )
+        consolidation_count = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_request_id=?", (e_record.id,),
+        )
+    assert final_e_row["state"] == "materializing"
+    assert final_e_row["equivalence_disposition"] == "exhausted"
+    assert final_e_row["equivalence_reason"] == "dns_failure"
+    assert int(final_e_row["equivalence_retry_count"]) == 2
+    assert float(final_e_row["retry_at"] or 0) == 0
+    assert int(artifact_count["n"]) == 0
+    assert int(execution_count["n"]) == 0
+    assert int(origin_count["n"]) == 0
+    assert int(consolidation_count["n"]) == 0
+
+
 async def test_single_member_cohort_materializes_immediately(tmp_path, monkeypatch):
     """Required Canonical Regression Test #2 / Case A: a lone General-HTTP-
     shaped source with no sibling cohort must continue to materialize

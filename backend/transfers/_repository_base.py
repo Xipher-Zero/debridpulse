@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid5
 
 from db.database import get_db, validate_transfer_repository_schema
@@ -16,6 +17,7 @@ from transfers import codec
 from transfers.cohorts import _HELD_DISPOSITIONS
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.input_required import public_challenge
+from transfers.mirrors import logical_key
 from transfers.models import (
     Artifact, ExecutionAttempt, ExecutionHandle, ExecutionObservation, ExecutionState,
     OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
@@ -151,6 +153,72 @@ async def _satisfied_elsewhere(db, artifact) -> bool:
         tuple(targets),
     )
     return row is not None
+
+
+def _logical_slot_key_for_request(record) -> str:
+    """DP 1.0.12 CANON-001 exhausted-identity completion policy, Section 9:
+    the durable logical-delivery-slot key for a request -- its own resolved
+    ``SourceEntry`` when one exists, else its declared
+    ``TransferRequest.name`` -- through the ONE ``transfers.mirrors
+    .logical_key`` pairing-key algorithm. This is the SAME dispatch
+    ``transfers.cohorts._prospective_logical_key`` already uses to derive a
+    same-transfer sibling's best-effort identity before it has necessarily
+    resolved; reusing ``mirrors.logical_key`` directly here (never a second,
+    independently-maintained normalizer) is what keeps this module and
+    ``transfers.cohorts`` from silently drifting onto two different
+    interpretations of "logical slot" over time. Empty ("") is a genuinely
+    UNKNOWN identity -- never itself evidence of a match."""
+    if record.entry is not None:
+        return logical_key(record.entry)
+    return logical_key(SimpleNamespace(relative_path="", name=str(getattr(record.request, "name", "") or "")))
+
+
+def _logical_slot_key_for_artifact(artifact) -> str:
+    """Same normalization, read directly off a completed canonical artifact's
+    own durably stored candidates -- never reconstructed from
+    ``artifact.name`` alone with an artificially empty ``relative_path``.
+    ``download_files`` has no ``relative_path`` column of its own, but each
+    of the artifact's candidates already carries the exact relative_path/name
+    facts a resolved ``SourceEntry`` stamped onto it at materialization time
+    (``transfers._engine_base.TransferEngine._materialize``); re-deriving the
+    key from the bare filename would silently collapse a pathful logical slot
+    (e.g. ``disc1/file.iso``) down to its basename, letting an unrelated
+    ``file.iso`` in a different directory falsely appear to share its slot.
+
+    Requires exactly one distinct, non-empty logical key across every
+    candidate the artifact carries -- any ambiguity (candidates disagreeing)
+    or absence (no candidates, or every one keying empty) is conservatively
+    UNKNOWN, never a match (Section 10: unknown blocks completion)."""
+    keys = {logical_key(candidate) for candidate in artifact.candidates}
+    keys.discard("")
+    return next(iter(keys)) if len(keys) == 1 else ""
+
+
+async def _completion_obligation_satisfied(db, record, completed_canonical_keys) -> bool:
+    """DP 1.0.12 CANON-001 exhausted-identity completion policy, Sections 6.2/
+    8/9/10: True only when ``record`` -- a quiescently-held (``_HELD_
+    DISPOSITIONS``), proof-exhausted request -- has its logical delivery
+    obligation ALREADY durably satisfied by a different, completed canonical
+    artifact in the SAME transfer.
+
+    This is a one-directional delivery-truth read only (Section 9): it never
+    creates a canonical binding, never proves source equivalence, never
+    merges artifacts, and never touches ``record``'s own equivalence
+    disposition -- identity for this alternate source remains genuinely
+    unresolved. Conservative by construction (Section 10): a request with no
+    derivable logical key never matches (unknown blocks completion), and a
+    request that ever produced its own ``download_files`` row -- any status,
+    not only a currently-voting one; a real materialized artifact/writer of
+    its own is conclusive evidence this is NOT a mere identity-unproven
+    alternate for someone else's already-delivered slot -- is never excused
+    this way either."""
+    key = _logical_slot_key_for_request(record)
+    if not key or key not in completed_canonical_keys:
+        return False
+    own_artifact = await db.fetchone(
+        "SELECT 1 AS ok FROM download_files WHERE request_id=? LIMIT 1", (record.id,),
+    )
+    return own_artifact is None
 
 
 async def _voting_artifacts(db, artifacts):
@@ -674,7 +742,38 @@ class TransferRepository:
                 and not _quiescently_held(r)
                 for r in request_rows
             )
-            quiescent_hold = any(_quiescently_held(r) for r in request_rows)
+            held_pairs = tuple(
+                (row, requests[index]) for index, row in enumerate(request_rows) if _quiescently_held(row)
+            )
+            quiescent_hold = bool(held_pairs)
+            # DP 1.0.12 CANON-001 exhausted-identity completion policy,
+            # Section 8: ``scheduler_held``/``quiescent_hold`` above keeps its
+            # existing meaning untouched (still the sole scheduler/
+            # materialization fact -- unavailable for writer allocation,
+            # unavailable for ``pending``). ``completion_blocking_hold`` is a
+            # SEPARATE, narrower question asked only of parent-completion
+            # eligibility: does this same held request ALSO still represent
+            # an unsatisfied delivery obligation? It starts equal to
+            # ``quiescent_hold`` (the conservative default -- Section 10: if
+            # this cannot be proven, the hold remains blocking) and is
+            # lowered only when every held request's own logical slot is
+            # already durably satisfied by a completed canonical artifact
+            # (Section 9), which cannot be true when no canonical artifact
+            # has completed at all -- skipping the per-row check entirely in
+            # that (the common, still-in-flight) case.
+            completion_blocking_hold = quiescent_hold
+            if quiescent_hold:
+                completed_canonical_keys = {
+                    key for key in (
+                        _logical_slot_key_for_artifact(item) for item in artifacts if item.state == "completed"
+                    ) if key
+                }
+                if completed_canonical_keys:
+                    completion_blocking_hold = False
+                    for _, held_record in held_pairs:
+                        if not await _completion_obligation_satisfied(db, held_record, completed_canonical_keys):
+                            completion_blocking_hold = True
+                            break
             total = sum(item.expected_bytes for item in artifacts)
             local_path = str(Path(artifacts[0].target).parent) if artifacts else ""
             await db.execute(
@@ -693,20 +792,24 @@ class TransferRepository:
             paused = transfer.paused or await self._globally_paused(db)
             if not paused:
                 # DP 1.0.12 canonical lifecycle/recovery/completion rework,
-                # Section 6.4 (Gate 9 revision 2): completion requires every
-                # logical delivery obligation to be satisfied -- a durably
-                # quiescent, identity-unresolved held request is exactly an
-                # unsatisfied one (identity remains UNPROVEN, not proven
-                # equivalent), never merely an inert placeholder to retire
-                # from consideration. It can never appear in
-                # ``voting_artifacts`` (a held request has no artifact at
-                # all), so without this guard every real artifact completing
-                # would silently terminalize the parent while the hold sits
-                # unresolved -- the exact inference the equivalence
-                # correction exists to forbid. The hold must first be
-                # resolved (recovered/released) or the request explicitly
-                # retried before completion may ever be reached.
-                if artifacts and not pending and not quiescent_hold and all(
+                # Section 6.4 (Gate 9 revision 2), refined by the CANON-001
+                # exhausted-identity completion policy (Section 6.2/8):
+                # completion requires every logical delivery obligation to be
+                # satisfied -- a durably quiescent, identity-unresolved held
+                # request is an unsatisfied one (identity remains UNPROVEN,
+                # not proven equivalent) UNLESS its own logical delivery slot
+                # is already durably satisfied by a different, completed
+                # canonical artifact in this same transfer
+                # (``completion_blocking_hold``, Section 9/10) -- never merely
+                # an inert placeholder to retire from consideration. It can
+                # never appear in ``voting_artifacts`` (a held request has no
+                # artifact at all), so without this guard every real artifact
+                # completing would silently terminalize the parent while an
+                # UNSATISFIED hold sits unresolved -- the exact inference the
+                # equivalence correction exists to forbid. An unsatisfied hold
+                # must first be resolved (recovered/released) or the request
+                # explicitly retried before completion may ever be reached.
+                if artifacts and not pending and not completion_blocking_hold and all(
                     item.state == "completed" for item in voting_artifacts
                 ):
                     should_complete = True
