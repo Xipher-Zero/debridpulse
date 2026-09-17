@@ -879,7 +879,12 @@ async def test_near_size_mirrors_require_sampling_before_consolidation(core):
     assert len(artifacts) == 1
     assert len(artifacts[0].candidates) == 2
     assert len([item for item in core.executor.calls if item[0] == "start"]) == 1
-    assert core.executor.fingerprint.await_count == 2
+    # DP 1.0.12 CANON-001 follow-up (cohorts.py bootstrap admission barrier):
+    # the first-materializing mirror now takes one extra self-evidence
+    # fingerprint call before seeding the empty-canonical cohort, on top of
+    # the two calls the second mirror's ordinary pairwise mapping already
+    # made against it -- sampling still happens for both sides either way.
+    assert core.executor.fingerprint.await_count == 3
 
 
 @pytest.mark.asyncio

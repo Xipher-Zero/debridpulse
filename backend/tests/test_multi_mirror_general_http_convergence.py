@@ -836,6 +836,775 @@ async def test_five_mirror_production_263_regression(tmp_path, monkeypatch):
     assert transfer_after.state != TransferState.FAILED
 
 
+async def test_production_266_empty_bootstrap_bad_source_first(tmp_path, monkeypatch):
+    """DP 1.0.12 CANON-001 follow-up, Required Canonical Regression Test #1:
+    direct reproduction of production transfer 266's empty-canonical
+    bootstrap-admission hole.
+
+    Same five-mirror shape as test_five_mirror_production_263_regression (3
+    good equivalent mirrors, 1 range-unsupported source, 1 DNS-failing
+    source shaped like transfer 266's NUS request) but the DNS-failing
+    source is deliberately forced to reach ``_materialize()`` FIRST, while
+    the canonical set is still genuinely empty -- exactly transfer 266's
+    shape, where the DNS-failing source crossed the physical-writer
+    boundary before any canonical existed and later accumulated real
+    recovery-exhausted artifact state. This must NOT be weakened by
+    resolving a known-good canonical first."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "production-266.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"ubuntu-266-mirror-{index}") for index in range(1, 6))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[3].descriptor.id:  # mirror D
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
+        if candidate.provider_id == providers[4].descriptor.id:  # mirror E (NUS-shaped)
+            raise socket.gaierror("simulated DNS resolution failure for mirror E")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"ubuntu-266-mirror-{index}", name="ubuntu-26.04-desktop-amd64.iso",
+                         preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="ubuntu-26.04-desktop-amd64.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    a_record = by_payload["ubuntu-266-mirror-1"]
+    b_record, c_record = by_payload["ubuntu-266-mirror-2"], by_payload["ubuntu-266-mirror-3"]
+    d_record, e_record = by_payload["ubuntu-266-mirror-4"], by_payload["ubuntu-266-mirror-5"]
+
+    # The DNS-failing source reaches the empty-canonical bootstrap decision
+    # FIRST, before ANY other sibling has even resolved -- production
+    # transfer 266's exact shape. It must hold, never seed.
+    await engine._resolve(e_record)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0  # no writer merely for being first.
+    refreshed_e = next(item for item in await engine.repository.requests(transfer.id) if item.id == e_record.id)
+    assert refreshed_e.state == "materializing"  # held pending bounded self-proof retry, not materialized.
+
+    # The good sources resolve next; mirror A must still become the ONE
+    # canonical seed, exactly as if E had never run first.
+    await engine._resolve(a_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1  # exactly one physical canonical artifact.
+    canonical_artifact = artifacts[0]
+    assert canonical_artifact.request_id == a_record.id
+
+    await engine._resolve(b_record)
+    await engine._resolve(c_record)
+    bindings = await engine.canonical.bindings(canonical_artifact.id)
+    assert len(bindings) == 3  # A + B + C durably attach to the same canonical artifact.
+
+    # Drive D (fresh) and E (already mid bounded retry) through to bounded
+    # exhaustion -- identical budget/shape as the existing 263 regression.
+    await engine._resolve(d_record)
+    for record in (d_record, e_record):
+        for _ in range(2):
+            refreshed = next(
+                item for item in await engine.repository.requests(transfer.id) if item.id == record.id
+            )
+            assert refreshed.state == "materializing"  # still parked pending bounded proof retry.
+            now[0] = refreshed.retry_at + 0.01
+            await engine._process_request(refreshed)
+
+    final_records = {item.id: item for item in await engine.repository.requests(transfer.id)}
+    for record in (d_record, e_record):
+        # Held/unresolved -- no "(2)"/"(3)" artifact, no second/third
+        # executor writer, once bounded proof exhausts.
+        assert final_records[record.id].state == "materializing"
+
+    async with database.get_db() as db:
+        for record in (d_record, e_record):
+            row = await db.fetchone(
+                """SELECT equivalence_disposition,equivalence_reason,retry_at
+                    FROM transfer_requests WHERE id=?""",
+                (record.id,),
+            )
+            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
+            assert float(row["retry_at"] or 0) == 0
+
+    artifacts_after = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_after) == 1  # still exactly one physical canonical artifact -- no numbered duplicate.
+    assert artifacts_after[0].id == canonical_artifact.id
+    starts = [call for call in executor.calls if call[0] == "start"]
+    assert len(starts) <= 1  # zero executor attempts for the held transient siblings.
+
+    # The parent is never FAILED merely because D/E could not prove identity.
+    await engine._aggregate(transfer.id)
+    transfer_after = await engine.repository.get(transfer.id)
+    assert transfer_after.state != TransferState.FAILED
+
+
+async def test_single_member_cohort_materializes_immediately(tmp_path, monkeypatch):
+    """Required Canonical Regression Test #2 / Case A: a lone General-HTTP-
+    shaped source with no sibling cohort must continue to materialize
+    immediately -- the CANON-001 follow-up bootstrap barrier applies only to
+    genuinely multi-member same-transfer cohorts, with no artificial
+    bootstrap delay or self-probe cost for the single-source case."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "single-member.sqlite3")
+    await database.init_db()
+    providers = (_UnknownSizeProvider("solo-mirror-1"),)
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+
+    probed = []
+
+    async def fingerprint(candidate):
+        probed.append(candidate.provider_id)
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    transfer = await engine.submit(
+        (TransferRequest("parcel", "solo-mirror-1", name="solo.iso",
+                          preferred_provider=providers[0].descriptor.id),),
+        name="solo.iso", deduplicate=False,
+    )
+    records = await engine.repository.requests(transfer.id)
+    await engine._resolve(records[0])
+
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1  # immediate materialization, no bootstrap hold.
+    refreshed = (await engine.repository.requests(transfer.id))[0]
+    assert refreshed.state == "resolved"
+    assert not probed  # no bootstrap self-probe fingerprint call for a single-member cohort.
+
+
+async def test_one_viable_one_transient_bootstrap_does_not_deadlock(tmp_path, monkeypatch):
+    """Required Canonical Regression Test #3 / Case E: a two-member cohort
+    with one persistently transient (DNS-failing) source and one genuinely
+    viable source must not deadlock -- exactly one physical writer must
+    still be created, even though the transient source reaches the
+    empty-canonical bootstrap decision first. Two healthy mirrors are never
+    required before a writer can exist."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "one-viable-one-transient.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = (_UnknownSizeProvider("viable-mirror"), _UnknownSizeProvider("transient-mirror"))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[1].descriptor.id:
+            raise socket.gaierror("simulated persistent DNS resolution failure")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = (
+        TransferRequest("parcel", "transient-mirror", name="mirror.iso", preferred_provider=providers[1].descriptor.id),
+        TransferRequest("parcel", "viable-mirror", name="mirror.iso", preferred_provider=providers[0].descriptor.id),
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    transient_record = by_payload["transient-mirror"]
+    viable_record = by_payload["viable-mirror"]
+
+    # The transient/unreachable source reaches the empty-canonical bootstrap
+    # decision FIRST -- it must hold, not seed, and must not block the
+    # viable source's own later turn.
+    await engine._resolve(transient_record)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+    refreshed_transient = next(
+        item for item in await engine.repository.requests(transfer.id) if item.id == transient_record.id
+    )
+    assert refreshed_transient.state == "materializing"
+
+    await engine._resolve(viable_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1  # exactly one physical writer -- no deadlock.
+    canonical_artifact = artifacts[0]
+    assert canonical_artifact.request_id == viable_record.id
+
+    for _ in range(2):
+        refreshed = next(
+            item for item in await engine.repository.requests(transfer.id) if item.id == transient_record.id
+        )
+        assert refreshed.state == "materializing"
+        now[0] = refreshed.retry_at + 0.01
+        await engine._process_request(refreshed)
+
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT equivalence_disposition,equivalence_reason FROM transfer_requests WHERE id=?",
+            (transient_record.id,),
+        )
+    assert row["equivalence_disposition"] == "exhausted"
+    assert row["equivalence_reason"] == "dns_failure"
+
+    artifacts_after = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_after) == 1
+    assert artifacts_after[0].id == canonical_artifact.id
+
+
+async def test_all_transient_cohort_creates_no_writer_and_bounds_retry(tmp_path, monkeypatch):
+    """Required Canonical Regression Test #4 / Case F: when every source in
+    a same-transfer cohort currently lacks sufficient evidence for safe
+    bootstrap, no physical writer may be created merely to "make progress" --
+    the cohort must settle into the existing bounded exhausted/HOLD
+    semantics after the proof budget, without hot-looping."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "all-transient.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"all-transient-{index}") for index in range(1, 4))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        raise socket.gaierror("simulated DNS resolution failure for every source")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"all-transient-{index}", name="mirror.iso", preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    records = await engine.repository.requests(transfer.id)
+
+    for record in records:
+        await engine._resolve(record)
+
+    assert len(await engine.repository.artifacts(transfer.id)) == 0  # no writer merely to make progress.
+
+    for record in records:
+        for _ in range(2):
+            refreshed = next(item for item in await engine.repository.requests(transfer.id) if item.id == record.id)
+            assert refreshed.state == "materializing"
+            now[0] = refreshed.retry_at + 0.01
+            await engine._process_request(refreshed)
+
+    async with database.get_db() as db:
+        for record in records:
+            row = await db.fetchone(
+                """SELECT equivalence_disposition,equivalence_reason,equivalence_retry_count,retry_at
+                    FROM transfer_requests WHERE id=?""",
+                (record.id,),
+            )
+            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_reason"] == "dns_failure"
+            assert int(row["equivalence_retry_count"]) == 2
+            assert float(row["retry_at"] or 0) == 0
+
+    assert len(await engine.repository.artifacts(transfer.id)) == 0  # still zero writers.
+
+    # Repeated ticks after exhaustion must not hot-loop proof acquisition.
+    for record in records:
+        refreshed = next(item for item in await engine.repository.requests(transfer.id) if item.id == record.id)
+        await engine._process_request(refreshed)
+    async with database.get_db() as db:
+        for record in records:
+            row = await db.fetchone("SELECT equivalence_retry_count FROM transfer_requests WHERE id=?", (record.id,))
+            assert int(row["equivalence_retry_count"]) == 2
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+
+
+async def test_bad_ordinal_zero_cannot_win_seed_authority_by_arrival(tmp_path, monkeypatch):
+    """Required Canonical Regression Test #5 / Case D: submission ordering
+    alone must never grant writer authority. The transient/unreachable
+    source is submitted FIRST (ordinal 0) and is also forced to reach
+    ``_materialize()`` first -- it must still not seed the cohort's
+    canonical artifact; the later-ordinal, later-arriving genuinely viable
+    source must become the seed instead."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "bad-ordinal-zero.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = (_UnknownSizeProvider("ordinal-zero-bad"), _UnknownSizeProvider("ordinal-one-good"))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[0].descriptor.id:
+            raise socket.gaierror("simulated DNS resolution failure for ordinal 0")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = (
+        TransferRequest("parcel", "ordinal-zero-bad", name="mirror.iso", preferred_provider=providers[0].descriptor.id),
+        TransferRequest("parcel", "ordinal-one-good", name="mirror.iso", preferred_provider=providers[1].descriptor.id),
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    records = await engine.repository.requests(transfer.id)
+    bad_record = next(item for item in records if item.request.payload == "ordinal-zero-bad")
+    good_record = next(item for item in records if item.request.payload == "ordinal-one-good")
+
+    async with database.get_db() as db:
+        bad_row = await db.fetchone("SELECT ordinal FROM transfer_requests WHERE id=?", (bad_record.id,))
+        good_row = await db.fetchone("SELECT ordinal FROM transfer_requests WHERE id=?", (good_record.id,))
+    assert int(bad_row["ordinal"] or 0) < int(good_row["ordinal"] or 0)  # genuinely ordinal 0 vs 1.
+
+    # Ordinal 0 reaches _materialize() first, deliberately, while the
+    # canonical set is still empty.
+    await engine._resolve(bad_record)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+
+    await engine._resolve(good_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    assert artifacts[0].request_id == good_record.id  # the later-ordinal source seeded, never ordinal 0.
+
+
+async def test_all_distinct_healthy_sources_still_materialize_independently(tmp_path, monkeypatch):
+    """Required Canonical Regression Test #6 / Case G: genuinely different
+    healthy sources submitted together into one empty-canonical cohort must
+    still each materialize as their own independent artifact once the
+    existing evidence model establishes they are distinct -- the bootstrap
+    barrier must not collapse unrelated files or deadlock all-distinct
+    collections."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "all-distinct.sqlite3")
+    await database.init_db()
+    providers = tuple(_UnknownSizeProvider(f"distinct-{index}") for index in range(1, 4))
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+
+    signatures = {
+        providers[0].descriptor.id: "content-alpha",
+        providers[1].descriptor.id: "content-beta",
+        providers[2].descriptor.id: "content-gamma",
+    }
+
+    async def fingerprint(candidate):
+        return ArtifactFingerprint(4, signatures[candidate.provider_id])
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"distinct-{index}", name=f"distinct-{index}.bin",
+                         preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="distinct-bundle", deduplicate=False)
+    for record in await engine.repository.requests(transfer.id):
+        await engine._resolve(record)
+
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 3  # each genuinely distinct source materialized independently.
+    assert len({artifact.request_id for artifact in artifacts}) == 3
+
+    final_transfer = await engine.repository.get(transfer.id)
+    assert final_transfer.state != TransferState.CONSOLIDATED
+
+
+async def test_bootstrap_restart_reentry_no_duplicate_writer(tmp_path, monkeypatch):
+    """Required Canonical Regression Test #7 / Case I: interrupting and
+    re-entering mid-bootstrap (fresh engine/repository/canonical instances
+    re-attached to the same durable SQLite state, simulating a process
+    restart) must reconstruct identical decisions from durable state alone
+    -- no duplicate writer appears, and bounded retry/exhaustion remains
+    idempotent."""
+    db_path = tmp_path / "bootstrap-restart.sqlite3"
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    await database.init_db()
+    now = [1000.0]
+    providers = (_UnknownSizeProvider("restart-transient"), _UnknownSizeProvider("restart-viable"))
+
+    def build():
+        return _build_unknown_size_runtime(tmp_path, monkeypatch, providers, now=lambda: now[0])
+
+    repository, engine, executor = build()
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[0].descriptor.id:
+            raise socket.gaierror("simulated persistent DNS resolution failure")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = (
+        TransferRequest("parcel", "restart-transient", name="mirror.iso", preferred_provider=providers[0].descriptor.id),
+        TransferRequest("parcel", "restart-viable", name="mirror.iso", preferred_provider=providers[1].descriptor.id),
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    transient_record = by_payload["restart-transient"]
+
+    # Interrupt mid-bootstrap: only the transient source has reached its
+    # first held self-probe attempt; nothing has materialized yet.
+    await engine._resolve(transient_record)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+
+    # Simulate a process restart: fresh repository/registry/engine/executor,
+    # same durable SQLite file, no re-submission.
+    repository2, engine2, executor2 = build()
+    await engine2.initialize()
+
+    async def fingerprint2(candidate):
+        if candidate.provider_id == providers[0].descriptor.id:
+            raise socket.gaierror("simulated persistent DNS resolution failure")
+        return ArtifactFingerprint(4, "bounded-shared-iso-content")
+
+    monkeypatch.setattr(executor2, "fingerprint", fingerprint2)
+
+    records_after_restart = await repository2.requests(transfer.id)
+    assert len(records_after_restart) == 2  # durable requests survive restart.
+    viable_record_after = next(item for item in records_after_restart if item.request.payload == "restart-viable")
+    transient_record_after = next(item for item in records_after_restart if item.request.payload == "restart-transient")
+    assert transient_record_after.state == "materializing"  # bootstrap hold survived restart.
+
+    await engine2._resolve(viable_record_after)
+    artifacts = await repository2.artifacts(transfer.id)
+    assert len(artifacts) == 1  # exactly one writer after restart, no duplicate.
+    canonical_artifact = artifacts[0]
+    assert canonical_artifact.request_id == viable_record_after.id
+
+    for _ in range(2):
+        refreshed = next(item for item in await repository2.requests(transfer.id) if item.id == transient_record.id)
+        assert refreshed.state == "materializing"
+        now[0] = refreshed.retry_at + 0.01
+        await engine2._process_request(refreshed)
+
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT equivalence_disposition,equivalence_retry_count FROM transfer_requests WHERE id=?",
+            (transient_record.id,),
+        )
+    assert row["equivalence_disposition"] == "exhausted"
+    assert int(row["equivalence_retry_count"]) == 2  # bounded retry counter survives restart, stays idempotent.
+
+    artifacts_after = await repository2.artifacts(transfer.id)
+    assert len(artifacts_after) == 1
+    assert artifacts_after[0].id == canonical_artifact.id
+
+
+async def test_resolved_sibling_reverify_bounds_retry_without_hot_loop(tmp_path, monkeypatch):
+    """Gate 9 review follow-up (cohorts.py's ``sibling.state == 'resolved'``
+    re-verification branch, added to fix the Section 8.1.5 mismatch-escape
+    bug): re-verifying an already-resolved sibling against the canonical it
+    belongs to must reuse the SAME bounded proof-retry budget/quiescence as
+    every other evidence acquisition in this module, never an unbounded
+    per-tick re-sample. Four same-transfer members share one canonical
+    (A, B, D all already consolidated); C's own mapping succeeds via D's
+    still-healthy candidate while A's and B's candidates have gone flaky --
+    re-verifying A and B during C's collection walk must hold C (not release
+    the cohort, not create a duplicate writer for C) for exactly
+    ``_PROOF_RETRY_BUDGET`` bounded attempts, then go quiescent without
+    hot-looping A/B's fingerprint call count on further ticks."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "resolved-sibling-reverify.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"reverify-{label}") for label in "abcd")
+    provider_a, provider_b, provider_c, provider_d = providers
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    call_counts = {"a": 0, "b": 0, "c": 0, "d": 0}
+    label_by_provider = {
+        provider_a.descriptor.id: "a", provider_b.descriptor.id: "b",
+        provider_c.descriptor.id: "c", provider_d.descriptor.id: "d",
+    }
+    phase = ["bootstrap"]
+
+    async def fingerprint(candidate):
+        label = label_by_provider[candidate.provider_id]
+        call_counts[label] += 1
+        if phase[0] == "reverify" and label in {"a", "b"}:
+            raise socket.gaierror(f"simulated transient flakiness for {label} during reverification")
+        if phase[0] == "attach_full":
+            return ArtifactFingerprint(4, "full-shared-content", FingerprintKind.FULL_CONTENT_SAMPLE)
+        return ArtifactFingerprint(4, "prefix-shared-content", FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                    "range_ignored", "prefix-shared-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"reverify-{label}", name="mirror.iso", preferred_provider=provider.descriptor.id)
+        for label, provider in zip("abcd", providers)
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    record_a, record_b = by_payload["reverify-a"], by_payload["reverify-b"]
+    record_c, record_d = by_payload["reverify-c"], by_payload["reverify-d"]
+
+    phase[0] = "bootstrap"
+    await engine._resolve(record_a)  # A bootstrap-seeds the sole canonical (PREFIX self-evidence).
+    assert len(await engine.repository.artifacts(transfer.id)) == 1
+
+    # B and D each attach via the immediate FULL-evidence individual fast
+    # path (never the collection walk), so the canonical reaches 3
+    # candidates without ever touching the pre-existing, out-of-scope
+    # same-name ambiguous_mapping defect (memory: weak-prefix-identical-
+    # mirror-ambiguity) that the collection-walk completion path would hit.
+    phase[0] = "attach_full"
+    await engine._resolve(record_b)
+    await engine._resolve(record_d)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    canonical = artifacts[0]
+    assert len(canonical.candidates) == 3
+
+    # C matches genuinely via D's still-healthy candidate (PREFIX), entering
+    # the collection walk, while A's and B's candidates are now flaky.
+    phase[0] = "reverify"
+    calls_before = dict(call_counts)
+    await engine._resolve(record_c)
+    assert len(await engine.repository.artifacts(transfer.id)) == 1  # no duplicate writer for C.
+    refreshed_c = next(item for item in await engine.repository.requests(transfer.id) if item.id == record_c.id)
+    assert refreshed_c.state == "materializing"  # held, not released to independence.
+
+    for _ in range(2):
+        refreshed_c = next(item for item in await engine.repository.requests(transfer.id) if item.id == record_c.id)
+        assert refreshed_c.state == "materializing"
+        now[0] = refreshed_c.retry_at + 0.01
+        await engine._process_request(refreshed_c)
+
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            """SELECT equivalence_disposition,equivalence_retry_count,retry_at
+                FROM transfer_requests WHERE id=?""",
+            (record_c.id,),
+        )
+    assert row["equivalence_disposition"] == "exhausted"
+    assert int(row["equivalence_retry_count"]) == 2
+    assert float(row["retry_at"] or 0) == 0
+
+    # Quiescent: further ticks must not keep re-sampling A/B on C's behalf.
+    calls_at_exhaustion = dict(call_counts)
+    for _ in range(3):
+        refreshed_c = next(item for item in await engine.repository.requests(transfer.id) if item.id == record_c.id)
+        await engine._process_request(refreshed_c)
+    assert call_counts == calls_at_exhaustion  # zero additional fingerprint calls once exhausted.
+    assert call_counts["a"] > calls_before["a"]  # the bounded window did genuinely re-probe A...
+    assert call_counts["b"] > calls_before["b"]  # ...and B, at least once, before bounding.
+
+    # The pre-existing 3-candidate consolidation is completely undisturbed.
+    artifacts_final = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_final) == 1
+    assert artifacts_final[0].id == canonical.id
+    assert len(artifacts_final[0].candidates) == 3
+    assert len(await engine.repository.artifacts(record_c.transfer_id)) == 1
+
+
+async def test_bad_first_structural_bootstrap_waits_for_capable_sibling(tmp_path, monkeypatch):
+    """Gate 9 review follow-up (Finding 1, revision 2): a candidate whose own
+    self-evidence is structurally, permanently unobtainable (its sampler
+    returns no fingerprint at all for this route -- not a transient
+    timeout/DNS failure) must NOT win bootstrap seed authority merely by
+    reaching the empty-canonical decision first. It must hold while a
+    genuinely capable sibling has not yet had its own turn, exactly like the
+    transient/DNS case (Case D applies identically to structural failures).
+    Only once the viable sibling seeds does the structural source fall back
+    to the existing, unchanged steady-state 'independent' precedent."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "bad-first-structural.sqlite3")
+    await database.init_db()
+    providers = (_UnknownSizeProvider("structural-bad"), _UnknownSizeProvider("viable-good"))
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[0].descriptor.id:
+            return None  # structurally unroutable for this candidate -- never transient.
+        return ArtifactFingerprint(4, "prefix-sig", FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                    "range_ignored", "prefix-sig")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = (
+        TransferRequest("parcel", "structural-bad", name="mirror.iso", preferred_provider=providers[0].descriptor.id),
+        TransferRequest("parcel", "viable-good", name="mirror.iso", preferred_provider=providers[1].descriptor.id),
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    bad_record = by_payload["structural-bad"]
+    good_record = by_payload["viable-good"]
+
+    # The structurally-incapable source reaches the empty-canonical bootstrap
+    # decision FIRST while its sibling is still unresolved -- it must hold,
+    # never seed, and must not be durably marked "independent" while the
+    # sibling remains capable.
+    await engine._resolve(bad_record)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+    refreshed_bad = next(
+        item for item in await engine.repository.requests(transfer.id) if item.id == bad_record.id
+    )
+    assert refreshed_bad.state == "materializing"
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT equivalence_disposition FROM transfer_requests WHERE id=?", (bad_record.id,),
+        )
+    assert row["equivalence_disposition"] == "bootstrap_unprovable"
+
+    await engine._resolve(good_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    assert artifacts[0].request_id == good_record.id  # the capable source seeded, never the structural one.
+
+    # The structural source's own later turn now sees a real canonical and
+    # falls back to the unchanged, already-approved steady-state precedent:
+    # it cannot sample either side of the pairing, so it independently
+    # materializes as its own separate artifact -- never blocking, never
+    # incorrectly merging into, the good source's canonical.
+    refreshed_bad = next(
+        item for item in await engine.repository.requests(transfer.id) if item.id == bad_record.id
+    )
+    await engine._process_request(refreshed_bad)
+    artifacts_after = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_after) == 2
+    assert {item.request_id for item in artifacts_after} == {bad_record.id, good_record.id}
+
+
+async def test_all_structurally_unprovable_cohort_reaches_degraded_fallback_without_deadlock(tmp_path, monkeypatch):
+    """Gate 9 review follow-up (Finding 1, revision 2): when EVERY member of
+    a same-transfer cohort is structurally, permanently unable to produce
+    self-evidence, holding forever would deadlock the cohort (Case E) for no
+    safety benefit -- no amount of waiting ever produces a capable sibling.
+    The last member to reach its own bootstrap turn, once every other
+    sibling has already durably confirmed the identical structural
+    incapability, must fall back to a deterministic degraded materialization
+    instead of holding indefinitely."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "all-structural.sqlite3")
+    await database.init_db()
+    providers = tuple(_UnknownSizeProvider(f"all-structural-{index}") for index in range(1, 4))
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        return None  # structurally unroutable for every source -- never transient.
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"all-structural-{index}", name="mirror.iso",
+                         preferred_provider=provider.descriptor.id)
+        for index, provider in enumerate(providers, start=1)
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    records = await engine.repository.requests(transfer.id)
+
+    # Resolve two of the three -- with a capable-looking (still-unresolved)
+    # third sibling outstanding, neither may seed yet.
+    await engine._resolve(records[0])
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+    await engine._resolve(records[1])
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+    async with database.get_db() as db:
+        for record in records[:2]:
+            row = await db.fetchone(
+                "SELECT equivalence_disposition FROM transfer_requests WHERE id=?", (record.id,),
+            )
+            assert row["equivalence_disposition"] == "bootstrap_unprovable"
+
+    # The third and final sibling now finds no remaining capable sibling --
+    # every other member has already durably confirmed the same structural
+    # incapability -- so it materializes as the deterministic degraded
+    # fallback rather than holding forever.
+    await engine._resolve(records[2])
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    assert artifacts[0].request_id == records[2].id
+
+    # The two that held now independently fall back on their own later turn
+    # (the unchanged steady-state precedent), never a duplicate/merged writer.
+    for record in records[:2]:
+        refreshed = next(item for item in await engine.repository.requests(transfer.id) if item.id == record.id)
+        await engine._process_request(refreshed)
+    artifacts_final = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_final) == 3  # every member ends up its own independent writer -- no deadlock.
+    assert {item.request_id for item in artifacts_final} == {record.id for record in records}
+
+
+async def test_bad_first_structural_bootstrap_treats_unnamed_sibling_as_unknown(tmp_path, monkeypatch):
+    """Gate 9 review follow-up (Finding 1, revision 3): two tightly related
+    edge cases in the structural bootstrap branch.
+
+    First, an UNRESOLVED sibling with no declared pre-resolution name has an
+    UNKNOWN logical identity, not a known-different one -- it must still
+    count as a potential competitor (Case D), never let the structural
+    source read "no name yet" as "definitely a different file" and take the
+    degraded fallback early.
+
+    Second, once this record's own structural incapability is durably
+    recorded (``equivalence_disposition='bootstrap_unprovable'``), repeated
+    scheduler passes while the sibling remains unresolved must NOT
+    re-fingerprint the permanently-unsampleable candidate again -- only the
+    sibling-capability question is re-evaluated (quiescence)."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "bad-first-unnamed-sibling.sqlite3")
+    await database.init_db()
+    providers = (_UnknownSizeProvider("structural-bad-unnamed"), _UnknownSizeProvider("unnamed-good"))
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+
+    call_counts = {"bad": 0, "good": 0}
+    label_by_provider = {providers[0].descriptor.id: "bad", providers[1].descriptor.id: "good"}
+
+    async def fingerprint(candidate):
+        call_counts[label_by_provider[candidate.provider_id]] += 1
+        if label_by_provider[candidate.provider_id] == "bad":
+            return None  # structurally unroutable -- never transient.
+        return ArtifactFingerprint(4, "prefix-sig", FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                    "range_ignored", "prefix-sig")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = (
+        TransferRequest("parcel", "structural-bad-unnamed", name="mirror.iso",
+                         preferred_provider=providers[0].descriptor.id),
+        # Deliberately no ``name`` -- a real, unresolved request whose
+        # eventual logical identity is genuinely not yet known.
+        TransferRequest("parcel", "unnamed-good", preferred_provider=providers[1].descriptor.id),
+    )
+    transfer = await engine.submit(requests, name="mixed-bundle", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    bad_record = by_payload["structural-bad-unnamed"]
+    good_record = by_payload["unnamed-good"]
+    assert good_record.request.name == ""  # genuinely no declared name yet.
+    assert good_record.state == "pending"  # deliberately left unresolved throughout the hold.
+
+    await engine._resolve(bad_record)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT equivalence_disposition FROM transfer_requests WHERE id=?", (bad_record.id,),
+        )
+    assert row["equivalence_disposition"] == "bootstrap_unprovable"
+    calls_after_determination = dict(call_counts)
+    assert calls_after_determination["bad"] >= 1
+
+    # Repeatedly re-process the held structural request while the unnamed
+    # sibling stays unresolved. It must keep holding (unknown identity still
+    # counts as a potential competitor) WITHOUT any further fingerprint call
+    # (the structural fact is already durable -- quiescence).
+    for _ in range(4):
+        refreshed_bad = next(
+            item for item in await engine.repository.requests(transfer.id) if item.id == bad_record.id
+        )
+        assert refreshed_bad.state == "materializing"
+        await engine._process_request(refreshed_bad)
+    assert len(await engine.repository.artifacts(transfer.id)) == 0  # still no arrival-order writer.
+    assert call_counts == calls_after_determination  # zero additional fingerprint calls while holding.
+
+    # The previously-unnamed sibling now resolves (to its own, unrelated
+    # identity) and -- being the only remaining capable member -- seeds the
+    # cohort's canonical normally.
+    await engine._resolve(good_record)
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    assert artifacts[0].request_id == good_record.id
+
+    # The structural source's own later turn now falls back through the
+    # unchanged steady-state precedent, independently materializing.
+    refreshed_bad = next(item for item in await engine.repository.requests(transfer.id) if item.id == bad_record.id)
+    await engine._process_request(refreshed_bad)
+    artifacts_after = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts_after) == 2
+    assert {item.request_id for item in artifacts_after} == {bad_record.id, good_record.id}
+
+
 async def _converge_three_unknown_size_mirrors(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "failover.sqlite3")
     await database.init_db()

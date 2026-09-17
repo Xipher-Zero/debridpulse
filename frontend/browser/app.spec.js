@@ -317,6 +317,40 @@ test('Help legal modal traps lifecycle and restores opener focus', async ({ page
   expect(runtime.errors).toEqual([]);
 });
 
+test('Download speed cap menu exposes the corrected preset grid and submits 30 MB/s as 31457280', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const runtime = observeRuntime(page);
+  await page.goto('/');
+
+  const menu = page.locator('#aria2-cap-menu');
+  await page.locator('#aria2-cap-toggle').click();
+  await expect(menu).toBeVisible();
+
+  const presets = page.locator('#aria2-cap-menu .aria2-cap-options button[data-cap-bps]');
+  await expect(presets).toHaveCount(8);
+  const labels = await presets.evaluateAll(nodes => nodes.map(node => node.textContent.trim()));
+  expect(labels).toEqual(['Unlimited', '1 MB/s', '5 MB/s', '10 MB/s', '20 MB/s', '30 MB/s', '50 MB/s', '100 MB/s']);
+  expect(labels).not.toContain('2 MB/s');
+
+  const values = await presets.evaluateAll(nodes => nodes.map(node => node.dataset.capBps));
+  expect(values).toEqual(['0', '1048576', '5242880', '10485760', '20971520', '31457280', '52428800', '104857600']);
+
+  await expect(menu).not.toContainText('Enter 0 for unlimited.');
+  await expect(page.locator('label[for="aria2-cap-custom-mbps"]')).toHaveText('Custom cap (MB/s)');
+  await expect(page.locator('#aria2-cap-custom-mbps')).toBeVisible();
+  await expect(page.locator('#aria2-cap-menu button:has-text("Set Custom")')).toBeVisible();
+
+  let capturedBody = null;
+  await page.route('**/api/execution/runtime-limits', route => {
+    capturedBody = route.request().postDataJSON();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+  await page.locator('#aria2-cap-menu .aria2-cap-options button[data-cap-bps="31457280"]').click();
+  await expect.poll(() => capturedBody).toEqual({ max_download_bytes_per_second: 31457280 });
+
+  expect(runtime.errors).toEqual([]);
+});
+
 test('password-authenticated cold start redirects to login and bootstraps canonical app after sign-in', async ({ browser }) => {
   const authBase = process.env.DP_AUTH_BASE_URL;
   expect(authBase, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();

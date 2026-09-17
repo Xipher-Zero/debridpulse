@@ -348,6 +348,41 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
         return _diagnose(left, right, _unavailable("sampler_unavailable"))
 
 
+async def self_evidence(candidate, registry) -> EquivalenceEvidence:
+    """DP 1.0.12 CANON-001 follow-up: sample ONE candidate alone, with no peer
+    to pair against yet, through the identical sampler/executor contract
+    ``shared_evidence`` uses for every pairwise comparison. This module is the
+    sole owner of evidence acquisition/normalization (CandidateSampling
+    lookup, FingerprintKind translation, timeout/DNS/exception classification)
+    for both the steady-state pairwise path and ``transfers.cohorts``'s
+    bootstrap admission barrier -- there is deliberately no second,
+    independently-maintained sampler classifier anywhere else.
+    """
+    try:
+        executor = registry.executor_for(candidate)
+        if not isinstance(executor, CandidateSampling):
+            return _unavailable("sampler_unsupported")
+        sample = await executor.fingerprint(candidate)
+        if sample is None:
+            return _unavailable("sampler_unsupported")
+        kind = _fingerprint_kind(sample)
+        if kind == FingerprintKind.UNAVAILABLE.value:
+            return _unavailable(str(getattr(sample, "reason", "") or "sampler_unavailable"))
+        evidence_kind = (
+            EvidenceKind.FULL_CONTENT_SAMPLE if kind == FingerprintKind.FULL_CONTENT_SAMPLE.value
+            else EvidenceKind.PREFIX_CONTENT_SAMPLE
+        )
+        return EquivalenceEvidence(evidence_kind, int(sample.total_bytes), str(getattr(sample, "reason", "") or ""))
+    except TimeoutError:
+        return _unavailable("timeout")
+    except socket.gaierror:
+        return _unavailable("dns_failure")
+    except Exception:
+        # An exception from a sampling-capable executor may be transient --
+        # identical fallback classification to shared_evidence() above.
+        return _unavailable("sampler_unavailable")
+
+
 async def shared_size(left, right, registry) -> int | None:
     """Compatibility seam: only strong/full evidence may merge one artifact."""
     evidence = await shared_evidence(left, right, registry)

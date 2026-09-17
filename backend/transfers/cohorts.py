@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import logging
+from types import SimpleNamespace
 
 from db.database import get_db
 from transfers.mirrors import (
-    EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, shared_evidence,
+    EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, self_evidence, shared_evidence,
 )
 
 
@@ -260,6 +261,207 @@ async def _release_cohort(records, reason: str) -> None:
         await db.commit()
 
 
+def _same_transfer_material_cohort(records, record):
+    """Reconstruct the leaf same-transfer cohort ``record`` belongs to from
+    durable request records alone -- never from arrival/scheduling order."""
+    child_parents = {item.parent_id for item in records if item.parent_id is not None}
+    leaves = tuple(item for item in records if item.id not in child_parents)
+    if record.parent_id is not None:
+        cohort = tuple(item for item in leaves if item.parent_id == record.parent_id)
+    else:
+        cohort = tuple(item for item in leaves if item.parent_id is None)
+    return tuple(item for item in cohort if item.state != "skipped")
+
+
+async def _bootstrap_self_evidence(incoming, registry) -> EquivalenceEvidence:
+    """Best self-evidence across ``incoming``'s own candidate routes, acquired
+    through ``transfers.mirrors.self_evidence`` -- the sole evidence-owner
+    module, never a parallel sampler classifier maintained here. Any one
+    affirmatively reachable route is sufficient to seed. ``incoming`` is
+    already guaranteed non-empty by the caller, so ``best`` always ends up a
+    real per-candidate result -- never a synthetic placeholder competing
+    (and potentially winning) via ``_better``'s scoring."""
+    best = None
+    for candidate in incoming:
+        evidence = await self_evidence(candidate, registry)
+        if evidence.kind != EvidenceKind.UNAVAILABLE:
+            return evidence
+        best = evidence if best is None else _better(best, evidence)
+    return best
+
+
+# Dispositions under which a same-transfer sibling could still independently
+# go on to produce a viable bootstrap seed: never yet evaluated ("") or
+# actively retrying transient self-evidence ("pending"). Anything else --
+# durably exhausted, already structurally unprovable itself, already
+# independent/contradictory/released, or a terminal non-materializing state
+# -- can never spontaneously recover without an explicit, external action, so
+# waiting on it would deadlock (Case E) rather than merely delay.
+_BOOTSTRAP_STILL_CAPABLE_DISPOSITIONS = frozenset({"", "pending"})
+
+
+def _prospective_logical_key(record) -> str:
+    """Best-effort logical key for a same-transfer sibling that has not
+    necessarily resolved yet, from whichever name/path is already known
+    pre-resolution -- the identical normalization ``mirrors.logical_key``
+    applies to a resolved candidate, just over the request's own declared
+    name when no candidate exists yet. Returns "" when no name is declared
+    at all -- an UNKNOWN identity, never itself evidence of a mismatch."""
+    if record.entry is not None:
+        return logical_key(record.entry)
+    return logical_key(SimpleNamespace(relative_path="", name=str(getattr(record.request, "name", "") or "")))
+
+
+def _could_compete(candidate_key: str, record_key: str) -> bool:
+    """A known key that differs from ``record_key`` proves this candidate
+    could never have shared identity with it (Case G). An UNKNOWN key (no
+    name declared/resolved yet) proves nothing either way -- it is not
+    evidence of a mismatch, so it must default to "could still compete",
+    never to "definitely unrelated"."""
+    return not candidate_key or candidate_key == record_key
+
+
+async def _bootstrap_sibling_capable(engine, record_key: str, sibling) -> bool:
+    """True while ``sibling`` could still independently produce a viable
+    bootstrap seed that would actually compete with ``record_key``'s own
+    identity -- used only to decide whether a structurally self-evidence-
+    incapable candidate must keep waiting (Case D: never win seed authority
+    merely by arriving first while a capable sibling hasn't had its turn) or
+    has reached the genuinely last-resort degraded case where no comparative
+    evidence can ever exist for THIS candidate's identity.
+
+    A same-transfer sibling whose logical identity is ALREADY KNOWN to
+    differ from ``record_key`` (Case G: genuinely distinct multi-file
+    members sharing nothing but a transfer id, e.g. two unrelated archive
+    entries) was never a competitor for this seed decision -- it must not
+    block this candidate's bootstrap turn merely for existing in the same
+    transfer. An unresolved sibling with no declared name yet has an
+    UNKNOWN identity, not a known-different one, and must still count as a
+    potential competitor until its own name/candidate is known.
+    """
+    if sibling.state in _PENDING_STATES:
+        return _could_compete(_prospective_logical_key(sibling), record_key)
+    if sibling.state != "materializing":
+        return False
+    disposition = await _disposition(sibling.id)
+    if disposition not in _BOOTSTRAP_STILL_CAPABLE_DISPOSITIONS:
+        return False
+    sibling_candidates = _normalized_candidates(sibling, await engine.repository.resolved_candidates(sibling.id))
+    if not sibling_candidates:
+        return _could_compete(_prospective_logical_key(sibling), record_key)
+    return any(_could_compete(logical_key(candidate), record_key) for candidate in sibling_candidates)
+
+
+async def _bootstrap_capable_siblings(engine, record, material, record_key: str):
+    return [
+        sibling for sibling in material
+        if sibling.id != record.id and await _bootstrap_sibling_capable(engine, record_key, sibling)
+    ]
+
+
+async def _bootstrap_admission(engine, record, incoming, disposition: str) -> bool:
+    """DP 1.0.12 CANON-001 follow-up bootstrap barrier.
+
+    Gates physical-writer admission for the FIRST request of a same-transfer
+    cohort to reach ``_materialize()`` while no canonical artifact exists yet
+    anywhere in the cohort. An empty canonical set is not itself
+    authorization to materialize once this is genuinely a multi-member
+    cohort (Canonical Ownership Invariants) -- but requiring every sibling to
+    resolve before ANY of them may seed would deadlock the cohort forever, so
+    the barrier is evidence-based, not sibling-count-based: ``record``'s own
+    candidate(s) must clear the identical sampler/executor proof seam every
+    later pairwise comparison already uses before being trusted to seed --
+    exactly the check production transfer 266's DNS-failing source never
+    received.
+
+    Because every ``_materialize()`` call for one transfer is already
+    serialized under the existing per-transfer cohort lock
+    (``_engine_recovery.TransferEngine._materialize``), at most one request
+    is ever deciding this at a time: whichever sibling's own turn under the
+    lock first produces affirmative self-evidence seeds the cohort's first
+    canonical artifact, regardless of ordinal -- every other sibling's own
+    later turn simply observes a non-empty canonical set and proceeds
+    through the existing, unchanged mapping/attach flow above. No ordinal
+    comparison of any kind occurs here.
+    """
+    records = await engine.repository.requests(record.transfer_id)
+    material = _same_transfer_material_cohort(records, record)
+    if len(material) < 2:
+        return False  # Case A: no sibling cohort, unchanged immediate materialization.
+
+    if disposition == "bootstrap_unprovable":
+        # This record's own structural incapability is ALREADY a durable
+        # fact from an earlier turn -- re-running self-evidence every tick
+        # while merely waiting on a sibling would re-fingerprint a
+        # permanently-unsampleable candidate forever, defeating the point
+        # of recording the fact durably. Only the sibling-capability
+        # question can still change tick to tick.
+        record_key = logical_key(incoming[0])
+        capable = await _bootstrap_capable_siblings(engine, record, material, record_key)
+        if capable:
+            _decision(record, incoming, "hold_unresolved", "bootstrap_unprovable", mapping_cardinality=len(capable))
+            return True
+        await _proof_disposition(record.id, "independent", "", clear_retry=True, preserve_reason=True)
+        _decision(record, incoming, "independent", "bootstrap_unprovable_fallback", mapping_cardinality=0)
+        return False
+
+    evidence = await _bootstrap_self_evidence(incoming, engine.registry)
+    if evidence.kind == EvidenceKind.UNAVAILABLE:
+        if evidence.retryable:
+            if await _schedule_proof_retry(engine, record, incoming, evidence, mapping_cardinality=0):
+                return True
+            # Bounded self-proof budget exhausted. Identity/viability remains
+            # unresolved -- absence of proof is not proof of independence --
+            # so this request stays held rather than ever becoming a writer.
+            _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
+                      evidence=evidence, mapping_cardinality=0)
+            return True
+        # Structurally non-retryable (e.g. no sampling capability at all for
+        # this executor, or a candidate its sampler cannot route at all):
+        # this is NOT affirmative proof of distinctness, and NOT even proof
+        # that this source is a viable physical writer -- so arrival order
+        # alone must never let it claim seed authority while a SIBLING that
+        # could still produce genuine evidence has not yet had its own turn
+        # (Case D). Record this durable fact about THIS record first (so a
+        # sibling's own later capability check can tell "already tried and
+        # structurally can't" apart from "hasn't tried yet" -- without that
+        # distinction, an all-structurally-incapable cohort would have every
+        # member wait on every other member forever, violating Case E from
+        # the opposite direction).
+        await _proof_disposition(record.id, "bootstrap_unprovable", evidence.reason, clear_retry=True)
+        record_key = logical_key(incoming[0])
+        capable = await _bootstrap_capable_siblings(engine, record, material, record_key)
+        if capable:
+            _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unsupported",
+                      evidence=evidence, mapping_cardinality=len(capable))
+            return True
+        # Every OTHER material sibling has also reached a state that can
+        # never independently produce a viable seed (already structurally
+        # unprovable itself, already durably exhausted, or terminally
+        # failed) -- this is now a deterministic degraded fallback for a
+        # cohort that can never produce comparative evidence at all, never
+        # an ordinal race outcome: any later-resolving sibling that CAN
+        # sample still runs the unchanged pairwise mapping against whatever
+        # this seeds, and one that also cannot sample reaches this same
+        # steady-state "independent" conclusion on its own later turn
+        # (line ~447 below), not by copying this one's disposition.
+        await _proof_disposition(record.id, "independent", evidence.reason, clear_retry=True)
+        _decision(record, incoming, "independent", evidence.reason or "sampler_unsupported",
+                  evidence=evidence, mapping_cardinality=0)
+        return False
+
+    if disposition == "pending":
+        # DP 1.0.12 secondary-residue normalization: this seed recovered
+        # after one or more transient bootstrap self-probe attempts -- clear
+        # the retry timer/disposition through the existing disposition owner
+        # so a successfully admitted canonical seed never keeps the stale
+        # 'pending' row production transfer 266 showed on its eventual
+        # canonical owner.
+        await _proof_disposition(record.id, "recovered", evidence.reason, clear_retry=True, preserve_reason=True)
+    _decision(record, incoming, "bootstrap_seed", evidence.reason, evidence=evidence, mapping_cardinality=0)
+    return False
+
+
 async def coordinate_collection(engine, record, candidates) -> bool:
     """Coordinate one request before ordinary path allocation.
 
@@ -291,7 +493,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         if item.request_id != record.id and item.candidates
     )
     if not canonicals:
-        return False
+        return await _bootstrap_admission(engine, record, incoming, disposition)
 
     current_mapping = await _mapping(canonicals, incoming, engine.registry)
     if not current_mapping.matched:
@@ -340,13 +542,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         return False
 
     records = await engine.repository.requests(record.transfer_id)
-    child_parents = {item.parent_id for item in records if item.parent_id is not None}
-    leaves = tuple(item for item in records if item.id not in child_parents)
-    if record.parent_id is not None:
-        cohort = tuple(item for item in leaves if item.parent_id == record.parent_id)
-    else:
-        cohort = tuple(item for item in leaves if item.parent_id is None)
-    material = tuple(item for item in cohort if item.state != "skipped")
+    material = _same_transfer_material_cohort(records, record)
     if len(material) < 2:
         if current_evidence.retryable:
             if await _schedule_proof_retry(
@@ -372,6 +568,64 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             _decision(record, incoming, "independent", f"sibling_{sibling.state}", evidence=current_evidence)
             return False
         if sibling.state == "resolved":
+            # DP 1.0.12 CANON-001 follow-up: an already-resolved sibling's
+            # own durable canonical must not be trusted as "accounted for"
+            # merely because it exists -- that would let a genuinely
+            # divergent member (one that already independently materialized
+            # BEFORE this walk ran, purely due to scheduling timing) slip
+            # past the same mismatch check every other material member
+            # gets, silently keeping the other siblings' consolidation alive
+            # when the whole weak-evidence collection hypothesis should
+            # dissolve (Section 8.1.5). Re-verify with the identical
+            # evidence machinery first.
+            resolved_sibling_candidates = _normalized_candidates(
+                sibling, await engine.repository.resolved_candidates(sibling.id),
+            )
+            # A canonical whose ONLY candidate is this same sibling's own
+            # (nothing else attached to it yet) can never be compared against
+            # itself: `_mapping` would report a cheap `same_candidate`
+            # pairing rejection, which is an absence of alternative evidence,
+            # never a genuine mismatch -- excluding exactly that trivial case
+            # (and only that case) still lets a real divergence show up via
+            # comparison against every OTHER canonical (including a
+            # genuinely-distinct sibling's own separate self-owned
+            # canonical, e.g. a mismatched member that raced ahead and
+            # materialized independently -- the Section 8.1.5 case this
+            # re-verification exists to catch).
+            own_ids = {candidate.id for candidate in resolved_sibling_candidates}
+            verification_pool = tuple(
+                item for item in canonicals
+                if not (len(item.candidates) == 1 and item.candidates[0].id in own_ids)
+            )
+            if resolved_sibling_candidates and verification_pool:
+                verification = await _mapping(verification_pool, resolved_sibling_candidates, engine.registry)
+                if not verification.matched:
+                    evidence = verification.evidence
+                    if evidence.retryable:
+                        # Bound this re-probe on the CURRENT record's own
+                        # existing retry budget/timer (this sibling is
+                        # already durably 'resolved', not 'materializing',
+                        # so _schedule_proof_retry cannot persist a budget
+                        # against ITS row -- see _schedule_proof_retry's
+                        # state=='materializing' guard). Once the current
+                        # record's own budget exhausts, its disposition
+                        # becomes 'exhausted' and the top-of-function
+                        # quiescence check short-circuits all future ticks
+                        # without further sampling -- never an unbounded
+                        # hot-loop against an already-resolved sibling.
+                        if await _schedule_proof_retry(
+                            engine, record, resolved_sibling_candidates, evidence,
+                            mapping_cardinality=verification.cardinality,
+                        ):
+                            pending = True
+                            continue
+                        _decision(record, incoming, "hold_unresolved", evidence.reason or "resolved_sibling_reverify",
+                                  evidence=evidence, mapping_cardinality=verification.cardinality)
+                        return True
+                    await _release_cohort(material, evidence.reason or "collection_mapping_incomplete")
+                    _decision(record, incoming, "independent", evidence.reason or "collection_mapping_incomplete",
+                              evidence=evidence, mapping_cardinality=verification.cardinality)
+                    return False
             # A same-transfer sibling that is itself the established
             # canonical owner (the first of this cohort to materialize, with
             # nothing attached to it yet) has no durable origin/binding row

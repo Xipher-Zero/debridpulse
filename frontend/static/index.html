@@ -98,10 +98,10 @@
           <div class="aria2-cap-options">
             <button type="button" data-cap-bps="0" onclick="applyAria2TopbarSpeedCap(0)">Unlimited</button>
             <button type="button" data-cap-bps="1048576" onclick="applyAria2TopbarSpeedCap(1048576)">1 MB/s</button>
-            <button type="button" data-cap-bps="2097152" onclick="applyAria2TopbarSpeedCap(2097152)">2 MB/s</button>
             <button type="button" data-cap-bps="5242880" onclick="applyAria2TopbarSpeedCap(5242880)">5 MB/s</button>
             <button type="button" data-cap-bps="10485760" onclick="applyAria2TopbarSpeedCap(10485760)">10 MB/s</button>
             <button type="button" data-cap-bps="20971520" onclick="applyAria2TopbarSpeedCap(20971520)">20 MB/s</button>
+            <button type="button" data-cap-bps="31457280" onclick="applyAria2TopbarSpeedCap(31457280)">30 MB/s</button>
             <button type="button" data-cap-bps="52428800" onclick="applyAria2TopbarSpeedCap(52428800)">50 MB/s</button>
             <button type="button" data-cap-bps="104857600" onclick="applyAria2TopbarSpeedCap(104857600)">100 MB/s</button>
           </div>
@@ -111,7 +111,6 @@
               <input id="aria2-cap-custom-mbps" type="number" min="0" step="0.1" inputmode="decimal" placeholder="MB/s" onkeydown="if(event.key==='Enter')applyAria2TopbarCustomSpeedCap()">
               <button type="button" class="btn btn-primary btn-sm" onclick="applyAria2TopbarCustomSpeedCap()">Set Custom</button>
             </div>
-            <small>Enter 0 for unlimited.</small>
           </div>
         </div>
       </div>
