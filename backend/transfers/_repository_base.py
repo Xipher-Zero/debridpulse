@@ -7,11 +7,13 @@ is persisted only as opaque context on a resource or execution attempt.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid5
 
+from core.presentation_safety import safe_route_endpoint
 from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
 from transfers.cohorts import _HELD_DISPOSITIONS
@@ -235,6 +237,65 @@ async def _voting_artifacts(db, artifacts):
             continue
         result.append(item)
     return tuple(result)
+
+
+def _route_endpoint_projection(raw_result):
+    """DP 1.0.12 Route History identity correction: the durable historical
+    route endpoint for one ``route_attempt_provenance`` row, derived from
+    that SAME resolution attempt's own durably stored ``ResolutionResult``
+    (``resolution_attempts.result``) -- never from current artifact/candidate
+    state, current execution, canonical binding, or request filename.
+
+    Returns ``(route_origin, route_location)`` via the existing
+    ``core.presentation_safety.safe_route_endpoint`` sanitizer, or
+    ``(None, None)`` when the historical result is absent, carries zero or
+    more than one candidate, that one candidate carries zero or more than one
+    endpoint (all ambiguous -- never guessed; DP 1.0.12 Route History
+    identity correction, Section 16 and Gate 9 revision 2), or has no safely
+    representable endpoint. Decodes with the SAME pattern
+    ``_backfill_provenance`` already uses for this exact column -- never a
+    second decode convention."""
+    if not raw_result:
+        return None, None
+    try:
+        payload = codec.load(raw_result, {})
+        candidates = tuple(codec.candidate(item) for item in payload.get("candidates", []))
+    except (TypeError, ValueError, KeyError):
+        return None, None
+    if len(candidates) != 1:
+        return None, None
+    endpoints = candidates[0].endpoints
+    # Gate 9 revision 2: a durable resolution attempt identifies the
+    # candidate, but nothing durable identifies which endpoint WITHIN that
+    # candidate represented the actual route when more than one exists --
+    # ``endpoints[0]`` would be exactly the positional inference this
+    # correction eliminates elsewhere. General HTTP's stated invariant is one
+    # candidate with exactly one endpoint, so this never narrows the target
+    # case; ambiguous multi-endpoint candidates report unknown rather than
+    # guessing.
+    if len(endpoints) != 1:
+        return None, None
+    return safe_route_endpoint(endpoints[0].address)
+
+
+def _assign_route_identities(route_attempts):
+    """DP 1.0.12 Route History identity correction, Section 10 (same-origin
+    disambiguation): compute each row's display-ready ``route_identity`` once,
+    in this one presentation pass over the transfer's own route history.
+
+    A ``route_origin`` shared by 2+ rows in this SAME list falls back to the
+    more specific ``route_location`` for exactly those rows; a uniquely-
+    occurring origin uses the bare origin. A row with no safely representable
+    origin gets ``route_identity=None`` -- never fabricated."""
+    origin_counts = Counter(item["route_origin"] for item in route_attempts if item.get("route_origin"))
+    for item in route_attempts:
+        origin = item.get("route_origin")
+        if not origin:
+            item["route_identity"] = None
+        elif origin_counts[origin] > 1:
+            item["route_identity"] = item.get("route_location") or origin
+        else:
+            item["route_identity"] = origin
 
 
 class TransferRepository:
@@ -491,9 +552,23 @@ class TransferRepository:
                 WHERE transfer_id=? ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,ordinal,id""", (transfer_id,))
             resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
             providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
-            route_attempts = await db.fetchall("""SELECT p.resolution_attempt_id AS id,p.request_id,p.ordinal,p.operation,p.previous_attempt_id,
+            # ``a.result`` (the durable historical ResolutionResult, used
+            # below to derive the safe per-row Route History endpoint) rides
+            # along in this SAME join, but only when ``details`` actually
+            # needs it (Gate 9 revision 3): the list path calls presentation()
+            # for every row on every poll purely for lightweight facts like
+            # current_provider_id, so unconditionally pulling the full
+            # historical result blob -- materially larger than
+            # candidate_summary -- for every historical route attempt on
+            # every list row would be a real, avoidable list-path I/O/memory
+            # cost for a fact the list projection never reads. This is a
+            # trusted internal literal switch, never untrusted input, and
+            # keeps the query a single set-based join either way -- no
+            # per-route query, no N+1.
+            resolution_result_column = ",a.result AS resolution_result" if details else ""
+            route_attempts = await db.fetchall(f"""SELECT p.resolution_attempt_id AS id,p.request_id,p.ordinal,p.operation,p.previous_attempt_id,
                 p.transition_kind,p.transition_reason,p.candidate_summary,p.outcome,p.history_quality,a.provider_id,
-                a.state AS resolution_state,a.created_at,a.updated_at FROM route_attempt_provenance p
+                a.state AS resolution_state{resolution_result_column},a.created_at,a.updated_at FROM route_attempt_provenance p
                 JOIN resolution_attempts a ON a.id=p.resolution_attempt_id WHERE p.transfer_id=?
                 ORDER BY p.ordinal,p.resolution_attempt_id""", (transfer_id,))
             execution_history = await db.fetchall("""SELECT e.id,e.artifact_id,e.executor_id,e.state AS execution_state,e.created_at,e.updated_at,
@@ -569,7 +644,11 @@ class TransferRepository:
             for row in route_attempts:
                 item = dict(row)
                 item["candidates"] = codec.load(item.pop("candidate_summary"), [])
+                item["route_origin"], item["route_location"] = _route_endpoint_projection(
+                    item.pop("resolution_result", None),
+                )
                 result["route_attempts"].append(item)
+            _assign_route_identities(result["route_attempts"])
             result["execution_attempts"] = []
             for row in execution_history:
                 item = dict(row)
@@ -775,7 +854,20 @@ class TransferRepository:
                             completion_blocking_hold = True
                             break
             total = sum(item.expected_bytes for item in artifacts)
-            local_path = str(Path(artifacts[0].target).parent) if artifacts else ""
+            # DP 1.0.12 canonical transfer-detail materialized-path
+            # correction: the durable "current materialized target"
+            # (rendered by frontend/static/app.js as "Local Path") must be
+            # the durable canonical owner's own target, never a failed
+            # non-owner's -- so this reuses ``voting_artifacts`` (computed
+            # just above), the SAME durable-binding-derived set that already
+            # excludes a failed row whose logical delivery obligation a
+            # different, completed canonical artifact durably satisfies
+            # (``_voting_artifacts``/``_satisfied_elsewhere``). Falling back
+            # to the full canonical-membership ``artifacts`` only when
+            # nothing currently votes preserves prior behavior for that
+            # otherwise-untouched edge case rather than inventing a new one.
+            path_source = voting_artifacts or artifacts
+            local_path = str(Path(path_source[0].target).parent) if path_source else ""
             await db.execute(
                 "UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status NOT IN ('deleted','consolidated')",
                 (total, local_path, transfer_id),

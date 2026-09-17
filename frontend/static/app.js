@@ -237,12 +237,15 @@ function renderRouteHistory(t) {
       : 'No provider route has been established yet.';
     return `<div class="dp-detail-route-empty">${esc(message)}</div>`;
   }
-  return `<div class="dp-detail-route-list">${attempts.map((attempt, index) => {
+  return `<div class="dp-detail-route-list">${attempts.map((attempt) => {
     const provider = attempt.provider_name || 'Unknown';
     const outcome = routeOutcomePresentation(attempt.outcome);
+    const identity = attempt.route_identity || '—';
+    const identityTitle = attempt.route_location || attempt.route_identity || '';
     return `<div class="dp-detail-route-row">
-      <span class="dp-detail-route-order">${index + 1}</span>
+      <span class="dp-detail-route-order">${esc(attempt.ordinal ?? '')}</span>
       <span class="dp-detail-route-provider">${esc(provider)}</span>
+      <span class="dp-detail-route-identity" title="${esc(identityTitle)}">${esc(identity)}</span>
       <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}">${esc(outcome.label)}</span>
     </div>`;
   }).join('')}</div>`;

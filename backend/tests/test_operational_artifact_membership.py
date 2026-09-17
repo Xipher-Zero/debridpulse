@@ -783,3 +783,102 @@ async def test_genuinely_independent_failed_child_still_fails_parent(tmp_path, m
         "genuine independence must still be able to fail the parent -- this "
         "is not a blanket completed-wins rule"
     )
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 canonical transfer-detail materialized-path/provenance correction
+# (Cases A/C/E/F/I): ``torrents.local_path`` -- the durable "current
+# materialized target" transfer-detail renders (frontend/static/app.js's
+# "Local Path" field) -- must be the durable canonical artifact's own target,
+# never a failed non-owner artifact's, regardless of which artifact's
+# download_files row happened to be created first.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_failed_first_created_artifact_never_overrides_completed_canonical_target_path(tmp_path, monkeypatch):
+    """Production-266 shape at the transfer-detail materialized-path layer:
+    a bad source crosses the physical-writer boundary FIRST -- its own
+    ``download_files`` row gets the lower id -- then a healthy sibling
+    converges onto and completes a DIFFERENT, valid canonical artifact whose
+    own request durably satisfies the bad source's logical delivery
+    obligation (the same durable binding/origin machinery
+    ``_satisfied_elsewhere``/``_voting_artifacts`` already use to exclude it
+    from the lifecycle vote -- test_satisfied_equivalent_failed_child_cannot_
+    poison_completed_parent above). Transfer-detail's materialized path must
+    report the completed canonical artifact's own durable target, never the
+    historical failed non-owner's:
+
+    - Case A: the completed canonical artifact owns presentation.
+    - Case C: a duplicate/standby (here, a durably-satisfied failed row)
+      cannot claim the current target.
+    - Case E: a failed non-owner cannot override a valid completed canonical
+      target.
+    - Case F: restart/recovery determinism -- re-derived from a brand new
+      repository instance bound to the same durable database.
+    - Case I: list and detail projections agree -- both are the SAME
+      ``repository.presentation()`` computation, never a second
+      independently-derived selection.
+    """
+    repository, registry, (provider,), executor, engine, now_box = await build_production_runtime(
+        tmp_path, monkeypatch, db_name="target_path_266.db", max_active_executions=2,
+    )
+    transfer, artifacts = await _two_artifact_transfer(engine, repository, provider, names=("bad.bin", "good.bin"))
+    # Artifact row-creation order is not guaranteed to follow request-name/
+    # submission order (resolution scheduling is independent of it) -- pick
+    # whichever of the two actually got the lower id as "bad" so this fixture
+    # deterministically reproduces production-266's shape (the bad source's
+    # own row created FIRST) regardless of which name that happens to be.
+    by_name = artifacts
+    first_created, second_created = sorted(by_name.values(), key=lambda item: item.id)
+    bad, good = first_created, second_created
+    assert bad.id < good.id, "the bad source's own artifact row must be the earlier-created (lower id) one"
+
+    # Force the two artifacts under deterministically distinct local paths --
+    # a real production topology (different provider/mirror layout) can place
+    # them anywhere; this fixture only needs to prove which one presentation
+    # selects, not reproduce a specific directory scheme.
+    quarantined_path = str(Path(tmp_path) / "quarantine" / "bad.bin")
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET local_path=? WHERE id=?", (quarantined_path, bad.id))
+        await db.commit()
+
+    await engine.reconcile_executions()
+    active = next(item for item in await repository.artifacts(transfer.id) if item.id == good.id)
+    assert active.execution is not None
+    executor.finish(active.execution)
+    await engine.reconcile_executions()
+
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='error' WHERE id=?", (bad.id,))
+        await db.commit()
+    await _mark_durably_satisfied(good, bad, transfer.id)
+
+    outcome = await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert outcome is not None
+    assert {item.id for item in outcome.artifacts} == {good.id}
+    assert outcome.should_complete is True
+    await engine._aggregate(transfer.id)
+    transfer_after = await repository.get(transfer.id)
+    assert transfer_after.state == TransferState.COMPLETED
+
+    expected_path = str(Path(good.target).parent)
+    wrong_path = str(Path(quarantined_path).parent)
+    assert expected_path != wrong_path, "fixture must place the two artifacts under distinct local paths"
+
+    details = await repository.presentation(transfer.id, details=True)
+    assert details["local_path"] == expected_path, (
+        "the completed canonical artifact's own durable target must own transfer-detail's "
+        "materialized path -- the historical failed non-owner must never supersede it"
+    )
+    assert details["local_path"] != wrong_path
+
+    # Case I: list and detail projections must report the identical fact.
+    listing = await repository.presentation(transfer.id, details=False)
+    assert listing["local_path"] == details["local_path"]
+
+    # Case F: restart/recovery determinism -- re-derive from a brand new
+    # repository instance bound to the same durable database, no volatile
+    # engine memory.
+    fresh_repository = type(repository)()
+    fresh_details = await fresh_repository.presentation(transfer.id, details=True)
+    assert fresh_details["local_path"] == expected_path

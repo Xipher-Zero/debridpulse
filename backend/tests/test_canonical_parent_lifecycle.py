@@ -13,6 +13,7 @@ while a sibling sits in autonomous recovery wait, and the parent oscillated
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -744,3 +745,67 @@ async def test_quiescent_hold_contract_shares_one_disposition_set_with_cohorts()
     from transfers import _repository_base, cohorts
 
     assert _repository_base._HELD_DISPOSITIONS is cohorts._HELD_DISPOSITIONS
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 canonical transfer-detail materialized-path/provenance
+# correction, Case D and Case H.
+# ---------------------------------------------------------------------------
+
+async def test_exhausted_non_writer_never_becomes_target_path_owner(tmp_path, monkeypatch):
+    """Case D: transfer-270 shape at the transfer-detail materialized-path
+    layer. The durably held, proof-exhausted, non-writer sibling (no
+    artifact/execution/binding of its own) must never own or influence the
+    materialized path; the completed canonical artifact's own target remains
+    current, and the exhausted sibling never materializes a row that could
+    even be considered."""
+    engine, repository, transfer, artifact, sibling_id = await _build_completed_slot_with_sibling(
+        tmp_path, monkeypatch, slot_name="ubuntu-26.04-desktop-amd64.iso",
+    )
+    await _hold_request(sibling_id, name="ubuntu-26.04-desktop-amd64.iso", reason="dns_failure")
+
+    outcome = await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert outcome is not None and outcome.should_complete is True
+    await engine._aggregate(transfer.id)
+    transfer_after = await repository.get(transfer.id)
+    assert transfer_after.state == TransferState.COMPLETED
+
+    expected_path = str(Path(artifact.target).parent)
+    details = await repository.presentation(transfer.id, details=True)
+    assert details["local_path"] == expected_path
+    async with database.get_db() as db:
+        sibling_artifact_count = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (sibling_id,),
+        )
+    assert int(sibling_artifact_count["n"]) == 0, (
+        "the exhausted, unresolved sibling must never materialize its own row -- there is "
+        "nothing for presentation to even mistakenly select"
+    )
+
+
+async def test_multi_slot_per_file_target_paths_remain_isolated(tmp_path, monkeypatch):
+    """Case H: two distinct logical slots (``a.iso``, ``b.iso``) each
+    complete their own independent canonical artifact in the same transfer.
+    Per-file materialized path in transfer-detail (``files[].local_path``)
+    must map only to its own artifact -- never cross-attributed from one
+    slot's request to the other's target."""
+    engine, repository, provider, executor = await _canonical_runtime(tmp_path, monkeypatch)
+    transfer = await engine.submit(
+        (
+            TransferRequest("parcel", "good-a", name="a.iso", preferred_provider=provider.descriptor.id),
+            TransferRequest("parcel", "good-b", name="b.iso", preferred_provider=provider.descriptor.id),
+        ),
+        name="a.iso", deduplicate=False,
+    )
+    await engine.tick()
+    artifacts = {item.name: item for item in await repository.artifacts(transfer.id)}
+    assert set(artifacts) == {"a.iso", "b.iso"}
+    for artifact in artifacts.values():
+        executor.finish(artifact.execution)
+    await engine.tick()
+
+    details = await repository.presentation(transfer.id, details=True)
+    files_by_name = {item["filename"]: item for item in details["files"]}
+    assert files_by_name["a.iso"]["local_path"] == artifacts["a.iso"].target
+    assert files_by_name["b.iso"]["local_path"] == artifacts["b.iso"].target
+    assert files_by_name["a.iso"]["local_path"] != files_by_name["b.iso"]["local_path"]

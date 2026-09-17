@@ -134,15 +134,25 @@ test('Downloads uses current provider for active transfers and delivering provid
 test('Details separates safe original resource, final provider, ordered failover history, and advanced executor identity', async ({ page }) => {
   await isolateExternalFonts(page);
   const detail = {...listFixture({id:906,name:'Failover detail'}), original_resource:'https://downloads.example/file.bin?…', executors:['aria2'],
-    route_attempts:[{ordinal:1,provider_id:'alldebrid',provider_name:'AllDebrid',outcome:'failed'},{ordinal:2,provider_id:'general_http',provider_name:'HTTP & HTTPS',outcome:'completed'}], files:[], source_outcomes:[], events:[]};
+    route_attempts:[
+      {ordinal:5,provider_id:'alldebrid',provider_name:'AllDebrid',outcome:'failed',route_origin:null,route_location:null,route_identity:null},
+      {ordinal:9,provider_id:'general_http',provider_name:'HTTP & HTTPS',outcome:'completed',route_origin:'https://mirror.example',route_location:'https://mirror.example/file.bin',route_identity:'https://mirror.example'},
+    ], files:[], source_outcomes:[], events:[]};
   await page.route(url => url.pathname === '/api/torrents/906', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(detail)}));
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[detail],total:1})}));
   await page.goto('/'); await page.evaluate(() => showDetail(906));
   await expect(page.locator('.dp-detail-provider .dv')).toHaveText('HTTP & HTTPS');
   await expect(page.locator('.dp-detail-original-resource .dv')).toHaveText('https://downloads.example/file.bin?…');
   const rows = page.locator('.dp-detail-route-row'); await expect(rows).toHaveCount(2);
+  // Case B11/backend-truth-only: the durable ordinal (5, 9) renders as given,
+  // never index+1, and route_identity is backend-provided, never re-derived.
+  await expect(rows.nth(0).locator('.dp-detail-route-order')).toHaveText('5');
   await expect(rows.nth(0)).toContainText('AllDebrid'); await expect(rows.nth(0)).toContainText('Failed');
+  await expect(rows.nth(0).locator('.dp-detail-route-identity')).toHaveText('—');
+  await expect(rows.nth(1).locator('.dp-detail-route-order')).toHaveText('9');
   await expect(rows.nth(1)).toContainText('HTTP & HTTPS'); await expect(rows.nth(1)).toContainText('Completed');
+  await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveText('https://mirror.example');
+  await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveAttribute('title', 'https://mirror.example/file.bin');
   await expect(page.locator('.detail-grid')).not.toContainText('aria2');
   await page.locator('.dp-detail-advanced > summary').click(); await expect(page.locator('.dp-detail-advanced-grid')).toContainText('aria2');
   await page.screenshot({path:'test-results/checkpoint-details-failover-dark-desktop.png', fullPage:true});
