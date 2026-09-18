@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -11,12 +12,18 @@ from providers.general_http.provider import GeneralHttpProvider
 from transfers import codec
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
 from transfers.models import (
+    CachePresence,
+    DeliveryKind,
     Endpoint,
     ExecutionHandle,
     ExecutionObservation,
     ExecutionState,
+    Ownership,
+    ProviderObservation,
+    ProviderResource,
     ResolutionResult,
     ResourceState,
+    SourceEntry,
     SourceIdentity,
     TransferCandidate,
     TransferProgress,
@@ -726,3 +733,413 @@ async def test_production_shaped_five_mirror_route_history_acceptance(tmp_path, 
     assert [routes[rid]["route_identity"] for rid in route_ids] == expected_identities
     assert len({routes[rid]["route_identity"] for rid in route_ids}) == 5
     assert [routes[rid]["ordinal"] for rid in route_ids] == [1, 2, 3, 4, 5]
+
+
+# --------------------------------------------------------------------------- #
+# DP 1.0.12 canonical torrent cache fact + debrid Route History identity
+# --------------------------------------------------------------------------- #
+
+_DELIVERY = "https://f8g9h0.debrid.it/dl/abc123/file.bin?token=SECRETTOKEN"
+
+
+def _hoster_candidate(*, provider="alldebrid", host="1fichier.com", endpoint=_DELIVERY,
+                      delivery=DeliveryKind.PROVIDER_ISSUED, identity="hoster-route", source=True):
+    return TransferCandidate(
+        name="file.bin", endpoints=(Endpoint("https", endpoint),), expected_bytes=8,
+        provider_id=provider, id=identity, delivery=delivery,
+        source_identity=SourceIdentity("host", host) if source else None,
+    )
+
+
+def _upload(provider_id, cache, native_id="native"):
+    """A provider upload result: resource readiness and cache presence are
+    independent facts, so a MISS may still be AVAILABLE and vice versa."""
+    state = ResourceState.AVAILABLE if cache == CachePresence.HIT else ResourceState.PREPARING
+    resource = ProviderResource(provider_id, {"id": native_id}, Ownership.CREATED)
+    return ResolutionResult(state, observation=ProviderObservation(resource, state, "payload", cache_presence=cache))
+
+
+async def _root_attempt(repository, record, provider_id, result, *, first):
+    attempt = (await repository.begin_resolution(record.id, provider_id) if first
+               else await repository.begin_refresh(record, provider_id))
+    assert attempt is not None
+    await repository.resolution(attempt, result)
+    return attempt
+
+
+async def _torrent_root(repository, *, kind="magnet", suffix="a"):
+    payload = f"magnet:?xt=urn:btih:{suffix * 40}" if kind == "magnet" else b"d4:infod4:name1:xee"
+    return await _admit(repository, TransferRequest(kind, payload, name=f"payload-{suffix}"))
+
+
+async def _children(repository, root, count=2):
+    entries = tuple(
+        SourceEntry(f"f{index}.bin", 8, f"f{index}.bin",
+                    TransferRequest("https", f"https://alldebrid.example/f/{root.id[:6]}{index}",
+                                    f"f{index}.bin", preferred_provider="alldebrid"))
+        for index in range(count)
+    )
+    await repository.manifest(root, entries)
+    return [item for item in await repository.requests(root.transfer_id) if item.parent_id == root.id]
+
+
+async def _child_attempt(repository, child, provider_id="alldebrid", *, first=True):
+    # The provider-generated child is HTTP(S) with a provider-issued endpoint; its
+    # own source identity is the provider's unlock host, NOT the logical source.
+    candidate = _hoster_candidate(provider=provider_id, host="alldebrid.com", identity=f"child-{child.id[:8]}")
+    return await _root_attempt(repository, child, provider_id, ResolutionResult(ResourceState.AVAILABLE, (candidate,)), first=first)
+
+
+def _routes(presentation):
+    return {item["id"]: item for item in presentation["route_attempts"]}
+
+
+def _identity_fields(item):
+    """Everything Route History presents as identity/hover for a row (the
+    ``candidates`` provenance summary is a separate, pre-existing field)."""
+    return str((item["route_origin"], item["route_location"], item["route_identity"]))
+
+
+async def _rewrite_result(attempt_id, rewrite):
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT result FROM resolution_attempts WHERE id=?", (attempt_id,))
+        payload = codec.load(row["result"], {})
+        rewrite(payload)
+        await db.execute("UPDATE resolution_attempts SET result=? WHERE id=?", (codec.dump(payload), attempt_id))
+        await db.commit()
+
+
+# --- Section 9: one canonical host normalizer ------------------------------ #
+
+async def test_safe_public_host_is_the_single_canonical_host_normalizer():
+    from core.presentation_safety import safe_public_host
+    import transfers.presentation_repository as presentation_repository
+
+    assert safe_public_host("1FICHIER.com.") == "1fichier.com"          # case + trailing dot
+    assert safe_public_host("www.Example.ORG") == "example.org"
+    assert safe_public_host("a-b.c9.example") == "a-b.c9.example"
+    for rejected in (
+        "user:pass@example.org", "user@example.org", "example.org:8443", "example.org/path",
+        "example.org?token=1", "example.org#frag", "https://example.org", "exa mple.org",
+        "-bad.example", "bad-.example", "a..b.example", "münchen.example", "", None, "   ",
+        "a" * 64 + ".example", ".".join(["a" * 60] * 5),
+    ):
+        assert safe_public_host(rejected) is None, rejected
+    # Consolidation, not a third copy: the previous private implementation is gone
+    # and its consumer uses the canonical helper.
+    assert presentation_repository.safe_public_host is safe_public_host
+    assert not hasattr(presentation_repository, "_public_host")
+    assert not hasattr(presentation_repository, "_HOST_LABEL_RE")
+    assert presentation_repository._candidate_source({"scope": "host", "key": "Www.Example.org."}) == {
+        "kind": "host", "host": "example.org"}
+    assert presentation_repository._candidate_source({"scope": "host", "key": "user@example.org"}) is None
+
+
+# --- 10.3 durable round trip / restart / legacy ----------------------------- #
+
+async def test_cache_fact_persists_in_the_existing_resolution_result_and_survives_restart(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "cache-durable.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    attempt = await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", CachePresence.HIT), first=True)
+
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT result FROM resolution_attempts WHERE id=?", (attempt.id,))
+        tables = {r["name"] for r in await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'")}
+        columns = {r["name"] for r in await db.fetchall("PRAGMA table_info(resolution_attempts)")}
+    # The existing durable ResolutionResult owns the fact: no side store, no new column.
+    assert codec.load(row["result"])["observation"]["cache_presence"] == "hit"
+    assert not any("cache" in name for name in tables)
+    assert columns == {"id", "request_id", "provider_id", "state", "error", "result", "created_at", "updated_at"}
+
+    restarted = TransferRepository()
+    await restarted.initialize()
+    details = await restarted.presentation(transfer.id, details=True)
+    assert [item["route_identity"] for item in details["route_attempts"]] == ["Torrent cache"]
+
+
+async def test_rows_persisted_before_the_fact_existed_decode_and_present_as_unknown(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "cache-legacy.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    attempt = await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", CachePresence.HIT), first=True)
+    children = await _children(repository, root, 1)
+    child_attempt = await _child_attempt(repository, children[0])
+
+    def strip_new_fields(payload):
+        (payload.get("observation") or {}).pop("cache_presence", None)
+        for candidate in payload.get("candidates", []):
+            candidate.pop("delivery", None)
+    await _rewrite_result(attempt.id, strip_new_fields)
+    await _rewrite_result(child_attempt.id, strip_new_fields)
+
+    async with database.get_db() as db:
+        raw = await db.fetchone("SELECT result FROM resolution_attempts WHERE id=?", (attempt.id,))
+    assert "cache_presence" not in raw["result"]
+    assert codec.cache_presence(codec.load(raw["result"])["observation"].get("cache_presence")) == CachePresence.UNKNOWN
+    for garbage in (None, "", "cached", 1, True, [], {}):
+        assert codec.cache_presence(garbage) == CachePresence.UNKNOWN
+
+    first = await repository.presentation(transfer.id, details=True)
+    second = await TransferRepository().presentation(transfer.id, details=True)
+    routes = _routes(first)
+    # Legacy history is never migrated into a guessed hit: BitTorrent, deterministically.
+    assert routes[attempt.id]["route_identity"] == "BitTorrent"
+    assert routes[child_attempt.id]["route_identity"] == "BitTorrent"
+    assert [i["route_identity"] for i in first["route_attempts"]] == [i["route_identity"] for i in second["route_attempts"]]
+
+
+# --- 10.4 generic / direct routes unchanged --------------------------------- #
+
+async def test_direct_route_keeps_endpoint_identity_even_when_it_carries_a_source_identity(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-direct-unchanged.sqlite3")
+    transfer, record = await _admit(repository, TransferRequest("https", "https://foo.example/a/b.iso", name="b.iso"))
+    direct = TransferCandidate(
+        name="b.iso", endpoints=(Endpoint("https", "https://user:pw@Foo.Example:443/a/b.iso?token=SECRETTOKEN#frag"),),
+        provider_id="general_http", id="direct-route", source_identity=SourceIdentity("host", "other.example"),
+    )
+    route = await _resolve(repository, record, "general_http", (direct,))
+    item = _routes(await repository.presentation(transfer.id, details=True))[route.id]
+    assert item["route_origin"] == "https://foo.example"
+    assert item["route_location"] == "https://foo.example/a/b.iso"
+    assert item["route_identity"] == "https://foo.example"
+    blob = _identity_fields(item)
+    for leaked in ("user", "pw", "SECRETTOKEN", "frag", "other.example"):
+        assert leaked not in blob
+
+
+async def test_logical_rows_never_perturb_same_origin_disambiguation_of_direct_rows(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-mixed.sqlite3")
+    transfer, record = await _admit(repository, TransferRequest("https", "https://foo.example/x.iso", name="x.iso"))
+    ids = []
+    for index, address in enumerate(("https://foo.example/releases/x.iso", "https://foo.example/archive/x.iso")):
+        candidate = TransferCandidate(name="x.iso", endpoints=(Endpoint("https", address),),
+                                      provider_id="general_http", id=f"g{index}")
+        ids.append((await _resolve(repository, record, "general_http", (candidate,))).id)
+        await repository.retry_requests(transfer.id, request_id=record.id)
+        record = (await repository.requests(transfer.id))[0]
+    # A debrid row whose delivery endpoint shares that very origin must not take part.
+    hoster = _hoster_candidate(endpoint="https://foo.example/dl/zzz/x.iso?sig=SECRET", identity="mediated")
+    mediated = await _resolve(repository, record, "alldebrid", (hoster,))
+    routes = _routes(await repository.presentation(transfer.id, details=True))
+    assert routes[ids[0]]["route_identity"] == "https://foo.example/releases/x.iso"
+    assert routes[ids[1]]["route_identity"] == "https://foo.example/archive/x.iso"
+    assert routes[mediated.id]["route_identity"] == "1fichier.com"
+
+
+# --- 10.5 debrid direct-hoster identity ------------------------------------- #
+
+async def test_debrid_hoster_route_presents_upstream_host_never_the_delivery_url(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-hoster.sqlite3")
+    transfer, record = await _admit(repository, TransferRequest("https", "https://www.1fichier.com/?abc", name="file.bin"))
+    route = await _resolve(repository, record, "alldebrid", (_hoster_candidate(host="www.1FICHIER.com."),))
+    item = _routes(await repository.presentation(transfer.id, details=True))[route.id]
+    assert item["route_identity"] == "1fichier.com"
+    # The provider capability is neither the identity nor the hover identity.
+    assert item["route_origin"] is None and item["route_location"] is None
+    blob = str(item)
+    for leaked in ("debrid.it", "f8g9h0", "/dl/", "abc123", "SECRETTOKEN"):
+        assert leaked not in blob
+
+
+async def test_alldebrid_provider_result_flows_to_the_hoster_identity_end_to_end(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-hoster-e2e.sqlite3")
+    request = TransferRequest("https", "https://1fichier.com/?xyz", name="file.bin")
+    transfer, record = await _admit(repository, request)
+    client = AsyncMock()
+    client.unlock_link.return_value = {"link": _DELIVERY, "filename": "file.bin", "filesize": 8}
+    attempt = await repository.begin_resolution(record.id, "alldebrid")
+    await repository.resolution(attempt, await AllDebridProvider(client=client).resolve(request))
+    item = _routes(await repository.presentation(transfer.id, details=True))[attempt.id]
+    assert item["route_identity"] == "1fichier.com"
+    assert "debrid.it" not in str(item)
+
+
+@pytest.mark.parametrize("candidate", [
+    _hoster_candidate(source=False, identity="no-source"),
+    TransferCandidate("f", (Endpoint("https", _DELIVERY),), provider_id="alldebrid", id="wrong-scope",
+                      delivery=DeliveryKind.PROVIDER_ISSUED, source_identity=SourceIdentity("account", "1fichier.com")),
+    _hoster_candidate(host="user:pw@evil.example/x", identity="malformed-host"),
+    _hoster_candidate(host="", identity="empty-host"),
+])
+async def test_provider_issued_route_without_a_provable_safe_host_is_unknown_not_the_delivery_url(tmp_path, monkeypatch, candidate):
+    repository = await _repository(tmp_path, monkeypatch, "route-hoster-failclosed.sqlite3")
+    transfer, record = await _admit(repository, TransferRequest("https", "https://x.example/a", name="a"))
+    route = await _resolve(repository, record, "alldebrid", (candidate,))
+    item = _routes(await repository.presentation(transfer.id, details=True))[route.id]
+    assert item["route_identity"] is None
+    assert item["route_origin"] is None and item["route_location"] is None
+    assert "debrid.it" not in str(item) and "evil.example" not in _identity_fields(item)
+
+
+async def test_provider_issued_route_with_several_candidates_is_unknown(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-hoster-multi.sqlite3")
+    transfer, record = await _admit(repository, TransferRequest("https", "https://x.example/a", name="a"))
+    route = await _resolve(repository, record, "alldebrid",
+                           (_hoster_candidate(identity="one"), _hoster_candidate(identity="two", host="other.example")))
+    item = _routes(await repository.presentation(transfer.id, details=True))[route.id]
+    assert item["route_identity"] is None
+
+
+# --- 10.6 torrent lineage presentation -------------------------------------- #
+
+@pytest.mark.parametrize("kind", ["magnet", "torrent"])
+@pytest.mark.parametrize("cache,label", [
+    (CachePresence.HIT, "Torrent cache"),
+    (CachePresence.MISS, "BitTorrent"),
+    (CachePresence.UNKNOWN, "BitTorrent"),
+])
+async def test_torrent_root_and_provider_generated_descendants_present_the_root_class(tmp_path, monkeypatch, kind, cache, label):
+    repository = await _repository(tmp_path, monkeypatch, f"route-torrent-{kind}-{cache.value}.sqlite3")
+    transfer, root = await _torrent_root(repository, kind=kind)
+    root_attempt = await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", cache), first=True)
+    children = await _children(repository, root, 2)
+    child_attempts = [await _child_attempt(repository, child) for child in children]
+    presentation = await repository.presentation(transfer.id, details=True)
+    routes = _routes(presentation)
+    for attempt in (root_attempt, *child_attempts):
+        item = routes[attempt.id]
+        assert item["route_identity"] == label
+        # Never the provider-generated http(s) descendant nor its unlock host.
+        assert item["route_origin"] is None and item["route_location"] is None
+        assert "debrid.it" not in str(item) and "alldebrid.com" not in _identity_fields(item)
+    # The child kind alone is http(s); lineage is what made it BitTorrent.
+    assert {child.request.kind for child in children} == {"https"}
+
+
+async def test_failed_root_attempt_still_belongs_to_its_bittorrent_lineage(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-torrent-failed.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    failed = await _resolve(repository, root, "alldebrid", (), error=NormalizedError(Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION))
+    item = _routes(await repository.presentation(transfer.id, details=True))[failed.id]
+    assert item["route_identity"] == "BitTorrent"
+
+
+@pytest.mark.parametrize("sequence,label", [
+    ((CachePresence.MISS, CachePresence.HIT), "BitTorrent"),                  # later readiness never upgrades a MISS
+    ((CachePresence.UNKNOWN, CachePresence.MISS, CachePresence.HIT), "BitTorrent"),
+    ((CachePresence.UNKNOWN, CachePresence.HIT), "Torrent cache"),            # UNKNOWN never establishes a fact
+    ((CachePresence.HIT, CachePresence.MISS), "Torrent cache"),               # not "latest state"
+    ((CachePresence.HIT, CachePresence.UNKNOWN), "Torrent cache"),
+    ((CachePresence.UNKNOWN, CachePresence.UNKNOWN), "BitTorrent"),
+])
+async def test_cache_label_is_the_first_authoritative_observation_never_the_latest(tmp_path, monkeypatch, sequence, label):
+    repository = await _repository(tmp_path, monkeypatch, "route-first-authoritative.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    attempts = []
+    for index, cache in enumerate(sequence):
+        attempts.append(await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", cache, f"n{index}"), first=index == 0))
+    children = await _children(repository, root, 1)
+    attempts.append(await _child_attempt(repository, children[0]))
+    routes = _routes(await repository.presentation(transfer.id, details=True))
+    # One label for the whole lineage on this provider, every row, every time.
+    assert {routes[a.id]["route_identity"] for a in attempts} == {label}
+
+
+async def test_cache_fact_is_scoped_to_the_provider_that_observed_it(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-provider-scoped.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    a = await _root_attempt(repository, root, "provider_a", _upload("provider_a", CachePresence.MISS), first=True)
+    b = await _root_attempt(repository, root, "provider_b", _upload("provider_b", CachePresence.HIT, "nb"), first=False)
+    c = await _root_attempt(repository, root, "provider_c", ResolutionResult(ResourceState.UNKNOWN), first=False)
+    routes = _routes(await repository.presentation(transfer.id, details=True))
+    # B's HIT is B's statement: it must not relabel A's (or C's) route.
+    assert routes[a.id]["route_identity"] == "BitTorrent"
+    assert routes[b.id]["route_identity"] == "Torrent cache"
+    assert routes[c.id]["route_identity"] == "BitTorrent"
+
+
+async def test_multi_root_transfer_computes_source_class_and_cache_per_root_lineage(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-multi-root.sqlite3")
+    transfer, created = await repository.admit((
+        TransferRequest("magnet", "magnet:?xt=urn:btih:" + "1" * 40, name="cached"),
+        TransferRequest("torrent", b"d4:infod4:name1:xee", name="uncached.torrent"),
+        TransferRequest("https", "https://direct.example/plain.bin", name="plain.bin"),
+    ), name="multi", deduplicate=False)
+    roots = [item for item in await repository.requests(transfer.id) if item.parent_id is None]
+    assert [r.request.kind for r in roots] == ["magnet", "torrent", "https"]
+    hit_root, miss_root, direct_root = roots
+    hit = await _root_attempt(repository, hit_root, "alldebrid", _upload("alldebrid", CachePresence.HIT, "h"), first=True)
+    miss = await _root_attempt(repository, miss_root, "alldebrid", _upload("alldebrid", CachePresence.MISS, "m"), first=True)
+    direct = await _resolve(repository, direct_root, "general_http", (TransferCandidate(
+        name="plain.bin", endpoints=(Endpoint("https", "https://direct.example/plain.bin"),),
+        provider_id="general_http", id="plain"),))
+    hit_children = await _children(repository, hit_root, 1)
+    miss_children = await _children(repository, miss_root, 1)
+    hit_child = await _child_attempt(repository, hit_children[0])
+    miss_child = await _child_attempt(repository, miss_children[0])
+    routes = _routes(await repository.presentation(transfer.id, details=True))
+    # Neither "the first request in the transfer" nor the last observation decides.
+    assert routes[hit.id]["route_identity"] == routes[hit_child.id]["route_identity"] == "Torrent cache"
+    assert routes[miss.id]["route_identity"] == routes[miss_child.id]["route_identity"] == "BitTorrent"
+    assert routes[direct.id]["route_identity"] == "https://direct.example"
+
+
+async def test_unproven_lineage_is_never_guessed_as_bittorrent(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-orphan.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", CachePresence.HIT), first=True)
+    children = await _children(repository, root, 1)
+    attempt = await _child_attempt(repository, children[0])
+    async with database.get_db() as db:      # sever the parent chain: lineage unprovable
+        await db.execute("PRAGMA foreign_keys=OFF")
+        await db.execute("UPDATE transfer_requests SET parent_id='missing-parent' WHERE id=?", (children[0].id,))
+        await db.commit()
+    item = _routes(await repository.presentation(transfer.id, details=True))[attempt.id]
+    # No proven BitTorrent root: the provider-issued child falls back to its own
+    # (fail-closed) rule -- its attested source host, never a guessed torrent label.
+    assert item["route_identity"] == "alldebrid.com"
+    assert item["route_identity"] not in {"BitTorrent", "Torrent cache"}
+    assert item["route_origin"] is None and "debrid.it" not in str(item)
+
+
+# --- 10.2 / 10.7 historical stability --------------------------------------- #
+
+async def test_initial_miss_stays_bittorrent_after_the_provider_later_reports_ready(tmp_path, monkeypatch):
+    repository = await _repository(tmp_path, monkeypatch, "route-later-ready.sqlite3")
+    transfer, root = await _torrent_root(repository)
+    miss = await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", CachePresence.MISS), first=True)
+    children = await _children(repository, root, 1)
+    child = await _child_attempt(repository, children[0])
+    before = await repository.presentation(transfer.id, details=True)
+    assert {_routes(before)[a.id]["route_identity"] for a in (miss, child)} == {"BitTorrent"}
+
+    # Later the provider reports the very same torrent ready (status polling):
+    # readiness changes; the historical acquisition fact does not.
+    provider_resource = (await repository.requests(transfer.id))[0].resource
+    ready = ProviderObservation(provider_resource, ResourceState.AVAILABLE, "payload")          # statusCode==4 style
+    assert ready.cache_presence == CachePresence.UNKNOWN
+    later = await _root_attempt(repository, root, "alldebrid", ResolutionResult(ResourceState.AVAILABLE, observation=ready), first=False)
+    after = await repository.presentation(transfer.id, details=True)
+    assert [r["state"] for r in after["resources"]] == ["available"]                            # readiness moved...
+    routes = _routes(after)
+    assert {routes[a.id]["route_identity"] for a in (miss, child, later)} == {"BitTorrent"}     # ...history did not
+    for attempt in (miss, child):
+        assert routes[attempt.id]["route_identity"] == _routes(before)[attempt.id]["route_identity"]
+
+
+async def test_provider_configuration_changes_never_rewrite_historical_labels(tmp_path, monkeypatch):
+    from transfers.registry import IntegrationRegistry
+
+    repository = await _repository(tmp_path, monkeypatch, "route-config-stable.sqlite3")
+    registry = IntegrationRegistry()
+    provider = AllDebridProvider(client=AsyncMock())
+    registry.register_provider(provider)
+    transfer, root = await _torrent_root(repository)
+    hit = await _root_attempt(repository, root, "alldebrid", _upload("alldebrid", CachePresence.HIT), first=True)
+    hoster_transfer, hoster_record = await _admit(repository, TransferRequest("https", "https://1fichier.com/?q", name="file.bin"))
+    hoster = await _resolve(repository, hoster_record, "alldebrid", (_hoster_candidate(),))
+
+    def snapshot(a, b):
+        return ([(i["id"], i["route_identity"], i["route_origin"], i["route_location"]) for i in a["route_attempts"]],
+                [(i["id"], i["route_identity"], i["route_origin"], i["route_location"]) for i in b["route_attempts"]])
+    before = snapshot(await repository.presentation(transfer.id, details=True),
+                      await repository.presentation(hoster_transfer.id, details=True))
+    assert [row[1] for row in before[0]] == ["Torrent cache"] and [row[1] for row in before[1]] == ["1fichier.com"]
+
+    # Disable, mark unhealthy, and even replace the provider's descriptor: history reads durable facts only.
+    provider.descriptor = replace(provider.descriptor, enabled=False)
+    registry.mark_health("alldebrid", healthy=False)
+    monkeypatch.setattr(IntegrationRegistry, "provider_for", lambda *a, **k: (_ for _ in ()).throw(AssertionError("registry consulted")))
+    after = snapshot(await repository.presentation(transfer.id, details=True),
+                     await repository.presentation(hoster_transfer.id, details=True))
+    assert after == before
+    assert hit.id == before[0][0][0]

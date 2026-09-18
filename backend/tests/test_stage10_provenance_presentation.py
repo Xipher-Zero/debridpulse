@@ -1,4 +1,7 @@
 """Roadmap Item 10 neutral provider/source presentation contracts."""
+import re
+from pathlib import Path
+
 from api.routes import _public_transfer_presentation, _safe_original_resource
 from integrations.catalog import definitions
 
@@ -75,3 +78,44 @@ def test_original_resource_redacts_userinfo_query_fragment_and_magnet_trackers()
     ))
     assert magnet == "<magnet:01234567...>"
     assert "tracker" not in magnet
+
+
+_STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
+
+
+def _render_route_history_source():
+    source = (_STATIC / "app.js").read_text(encoding="utf-8")
+    start = source.index("function renderRouteHistory(")
+    return source[start:source.index("\nfunction ", start + 1)]
+
+
+def test_public_projection_passes_backend_route_identity_through_unchanged():
+    routes = [
+        {"ordinal": 1, "provider_id": "alldebrid", "outcome": "resolved", "route_origin": None,
+         "route_location": None, "route_identity": "Torrent cache"},
+        {"ordinal": 2, "provider_id": "alldebrid", "outcome": "completed", "route_origin": None,
+         "route_location": None, "route_identity": "1fichier.com"},
+    ]
+    result = _public_transfer_presentation({"id": 1, "status": "completed", "route_attempts": [dict(r) for r in routes]}, definitions)
+    assert [(r["route_origin"], r["route_location"], r["route_identity"]) for r in result["route_attempts"]] == [
+        (None, None, "Torrent cache"), (None, None, "1fichier.com")]
+    assert "cache_presence" not in str(result) and "delivery" not in str(result)
+
+
+def test_route_history_renderer_is_a_thin_projector_of_backend_route_fields():
+    """The browser renders backend truth: it may read only the presentation
+    fields below, and no provider/domain/cache/request-kind semantics exist in
+    the renderer or anywhere else in first-party JS."""
+    body = _render_route_history_source()
+    assert set(re.findall(r"\battempt\??\.(\w+)", body)) <= {
+        "provider_name", "outcome", "route_identity", "route_location", "ordinal"}
+    for forbidden in ("alldebrid", "debrid", "cache", "torrent", "magnet", "general_http",
+                      "route_origin", "provider_id", "source_identity", "delivery", "hostname",
+                      "endsWith", "new URL", "URL("):
+        assert forbidden.casefold() not in body.casefold(), forbidden
+    assert "attempt.route_identity || '—'" in body
+    assert "attempt.route_location || attempt.route_identity" in body
+    for script in _STATIC.glob("*.js"):
+        text = script.read_text(encoding="utf-8")
+        assert "Torrent cache" not in text and "BitTorrent" not in text, script.name
+        assert "cache_presence" not in text, script.name

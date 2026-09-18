@@ -6,6 +6,7 @@ sanitization remains free to redact long URLs wholesale.
 """
 from __future__ import annotations
 
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -18,6 +19,28 @@ def _middle_ellipsis(value: str, max_length: int) -> str:
     tail = max(12, min(64, limit // 3))
     head = limit - tail - len(marker)
     return value[:head] + marker + value[-tail:]
+
+
+_HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def safe_public_host(value: object) -> str | None:
+    """Return a bare, browser-safe DNS host name, or ``None``.
+
+    The one host-only normalizer for browser-facing source identity: trimmed,
+    lower-cased, a leading ``www.`` and any trailing dot removed, at most 253
+    characters, and every label strictly ``[a-z0-9-]`` (no leading/trailing
+    hyphen, at most 63 characters). Userinfo, ports, paths, queries,
+    fragments, whitespace, and non-ASCII/malformed hosts all fail the label
+    check, so they are rejected outright rather than repaired -- the caller
+    must never fall back to the unsanitized input.
+    """
+    host = str(value or "").strip().lower().removeprefix("www.").rstrip(".")
+    if not host or len(host) > 253:
+        return None
+    if any(not label or not _HOST_LABEL_RE.fullmatch(label) for label in host.split(".")):
+        return None
+    return host
 
 
 _ROUTE_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp"})

@@ -10,8 +10,9 @@ from typing import Mapping
 from transfers.errors import NormalizedError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    Endpoint, ExecutionHandle, IntegrityMetadata, Ownership, ProviderResource,
-    ResolverArtifactIdentityEvidence, TransferCandidate, TransferRequest, SourceEntry, SourceIdentity,
+    CachePresence, DeliveryKind, Endpoint, ExecutionHandle, IntegrityMetadata, Ownership,
+    ProviderResource, ResolverArtifactIdentityEvidence, TransferCandidate, TransferRequest,
+    SourceEntry, SourceIdentity,
 )
 
 
@@ -68,7 +69,19 @@ def candidate(value: dict) -> TransferCandidate:
         data["resolver_identity_evidence"] = ResolverArtifactIdentityEvidence(**data["resolver_identity_evidence"])
     if data.get("refresh_request"):
         data["refresh_request"] = request(data["refresh_request"])
+    if "delivery" in data:
+        data["delivery"] = DeliveryKind(data["delivery"])
     return TransferCandidate(**data)
+
+
+def cache_presence(value) -> CachePresence:
+    """Decode a durable cache-presence value. A row persisted before the fact
+    existed (absent/None) or carrying an unrecognised value is ``UNKNOWN`` --
+    never guessed, never migrated."""
+    try:
+        return CachePresence(value)
+    except (ValueError, TypeError):
+        return CachePresence.UNKNOWN
 
 
 def handle(value: dict | None) -> ExecutionHandle | None:

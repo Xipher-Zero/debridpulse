@@ -167,8 +167,9 @@ before the session-issuing one) — ordered registration, not route-list surgery
   `window.DPDashboardTransferPresentation.sourceIconMarkup()` — **do not duplicate icon
   logic anywhere else.**
 - `identity` comes from the backend as `current_source_identity`
-  (`transfers/presentation_repository.py` `public_source_identity()` / `_candidate_source()`
-  / `_public_host()`; `api/operational_downloads.py` `_bounded_source_identity()`). The
+  (`transfers/presentation_repository.py` `public_source_identity()` / `_candidate_source()`,
+  which validate the host via `core/presentation_safety.py` `safe_public_host()`;
+  `api/operational_downloads.py` `_bounded_source_identity()`). The
   provider sets `SourceIdentity("host", <hostname of the original request URL>)`
   (`providers/alldebrid/provider.py`, `providers/general_http/provider.py`).
 - Icon PNG/SVG assets ship via `frontend/host-icons.parts/` → reassembled ZIP in the

@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid5
 
-from core.presentation_safety import safe_route_endpoint
+from core.presentation_safety import safe_public_host, safe_route_endpoint
 from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
 from transfers.cohorts import _HELD_DISPOSITIONS
@@ -21,7 +21,8 @@ from transfers.errors import Category, Domain, NormalizedError, Stage, TransferE
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
 from transfers.models import (
-    Artifact, ExecutionAttempt, ExecutionHandle, ExecutionObservation, ExecutionState,
+    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, DeliveryKind, ExecutionAttempt, ExecutionHandle,
+    ExecutionObservation, ExecutionState,
     OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
     ResourceState, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
@@ -239,49 +240,147 @@ async def _voting_artifacts(db, artifacts):
     return tuple(result)
 
 
-def _route_endpoint_projection(raw_result):
+# Route History's middle value is the logical source route, not whatever URL an
+# executor was handed. Only these two labels are produced for BitTorrent-class
+# lineage; everything about them comes from durable request lineage and the
+# durable neutral cache fact, never from a provider name or endpoint domain.
+_BITTORRENT_ROUTE_IDENTITY = "BitTorrent"
+_TORRENT_CACHE_ROUTE_IDENTITY = "Torrent cache"
+
+
+def _decode_resolution_result(raw_result):
+    """One durable ``resolution_attempts.result`` as a plain mapping, or ``{}``
+    when it is absent, undecodable, or not an object. Decodes with the SAME
+    ``codec.load`` pattern ``_backfill_provenance`` already uses for this exact
+    column -- never a second decode convention."""
+    if not raw_result:
+        return {}
+    try:
+        payload = codec.load(raw_result, {})
+    except (TypeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _single_route_candidate(payload):
+    """The one ``TransferCandidate`` a historical resolution attempt produced,
+    or ``None`` when it produced zero, several, or an undecodable set -- all
+    ambiguous, never guessed (DP 1.0.12 Route History identity correction,
+    Section 16 and Gate 9 revision 2)."""
+    try:
+        candidates = tuple(codec.candidate(item) for item in payload.get("candidates", []))
+    except (TypeError, ValueError, KeyError):
+        return None
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _route_endpoint_projection(candidate):
     """DP 1.0.12 Route History identity correction: the durable historical
-    route endpoint for one ``route_attempt_provenance`` row, derived from
-    that SAME resolution attempt's own durably stored ``ResolutionResult``
-    (``resolution_attempts.result``) -- never from current artifact/candidate
-    state, current execution, canonical binding, or request filename.
+    route endpoint of an ORDINARY (direct) route, derived from that SAME
+    resolution attempt's own durably stored candidate -- never from current
+    artifact/candidate state, current execution, canonical binding, or
+    request filename.
 
     Returns ``(route_origin, route_location)`` via the existing
     ``core.presentation_safety.safe_route_endpoint`` sanitizer, or
-    ``(None, None)`` when the historical result is absent, carries zero or
-    more than one candidate, that one candidate carries zero or more than one
-    endpoint (all ambiguous -- never guessed; DP 1.0.12 Route History
-    identity correction, Section 16 and Gate 9 revision 2), or has no safely
-    representable endpoint. Decodes with the SAME pattern
-    ``_backfill_provenance`` already uses for this exact column -- never a
-    second decode convention."""
-    if not raw_result:
+    ``(None, None)`` when there is no single candidate, that candidate carries
+    zero or more than one endpoint (nothing durable identifies which endpoint
+    WITHIN a candidate represented the actual route, so ``endpoints[0]`` would
+    be exactly the positional inference this correction eliminates; General
+    HTTP's stated invariant is one candidate with exactly one endpoint, so
+    this never narrows the target case; Gate 9 revision 2), or it has no
+    safely representable endpoint."""
+    if candidate is None or len(candidate.endpoints) != 1:
         return None, None
-    try:
-        payload = codec.load(raw_result, {})
-        candidates = tuple(codec.candidate(item) for item in payload.get("candidates", []))
-    except (TypeError, ValueError, KeyError):
-        return None, None
-    if len(candidates) != 1:
-        return None, None
-    endpoints = candidates[0].endpoints
-    # Gate 9 revision 2: a durable resolution attempt identifies the
-    # candidate, but nothing durable identifies which endpoint WITHIN that
-    # candidate represented the actual route when more than one exists --
-    # ``endpoints[0]`` would be exactly the positional inference this
-    # correction eliminates elsewhere. General HTTP's stated invariant is one
-    # candidate with exactly one endpoint, so this never narrows the target
-    # case; ambiguous multi-endpoint candidates report unknown rather than
-    # guessing.
-    if len(endpoints) != 1:
-        return None, None
-    return safe_route_endpoint(endpoints[0].address)
+    return safe_route_endpoint(candidate.endpoints[0].address)
+
+
+def _request_roots(requests):
+    """``{request_id: (root_request_id, root_kind)}`` from the transfer's own
+    durable ``parent_id`` lineage.
+
+    A transfer may hold several roots, so lineage is resolved per request, not
+    read off "the first request". A request whose parent chain never reaches a
+    root inside this transfer (orphaned or cyclic) is omitted: its lineage is
+    unproven and is never guessed."""
+    by_id = {item["id"]: item for item in requests}
+    kinds = {}
+    roots = {}
+    for item in requests:
+        current, hops = item, 0
+        while current is not None and current.get("parent_id") is not None and hops <= len(by_id):
+            current, hops = by_id.get(current["parent_id"]), hops + 1
+        if current is None or current.get("parent_id") is not None:
+            continue
+        root_id = current["id"]
+        if root_id not in kinds:
+            try:
+                kinds[root_id] = str(codec.load(current["payload"], {}).get("kind") or "").strip().lower()
+            except (TypeError, ValueError, AttributeError):
+                kinds[root_id] = ""
+        roots[item["id"]] = (root_id, kinds[root_id])
+    return roots
+
+
+def _root_cache_presence(route_attempts, payloads, roots):
+    """``{(root_request_id, provider_id): CachePresence}``: the FIRST
+    authoritative (HIT/MISS) cache observation a provider recorded for a
+    root's own acquisition.
+
+    ``route_attempts`` arrive ordered by the durable per-transfer route
+    ordinal, so "first" is chronological acquisition order, deterministically.
+    It is the observation that established that root's provider acquisition --
+    never the latest one, so a torrent that was a MISS cannot become a HIT
+    because a retry or re-resolution found it ready later. Only attempts on
+    the root request itself count: descendants describe provider-generated
+    materialization, not the acquisition. UNKNOWN never establishes a fact,
+    and the fact is per provider because cache presence is a provider's
+    statement."""
+    facts = {}
+    for row, payload in zip(route_attempts, payloads):
+        root = roots.get(row["request_id"])
+        if root is None or root[0] != row["request_id"]:
+            continue
+        key = (root[0], row["provider_id"])
+        if key in facts:
+            continue
+        observation = payload.get("observation")
+        presence = codec.cache_presence(observation.get("cache_presence") if isinstance(observation, dict) else None)
+        if presence is not CachePresence.UNKNOWN:
+            facts[key] = presence
+    return facts
+
+
+def _logical_route_identity(row, candidate, roots, root_cache):
+    """``(True, identity)`` when this attempt's route identity is its LOGICAL
+    source rather than its execution endpoint, else ``(False, None)`` for an
+    ordinary native/direct route whose endpoint is the route.
+
+    * Lineage from a BitTorrent-class root wins over the request's own kind: a
+      provider-generated HTTP(S) descendant still belongs to its magnet/torrent
+      root. Identity is "Torrent cache" only for an authoritative HIT on that
+      root's acquisition, otherwise "BitTorrent".
+    * A provider-issued delivery endpoint is an execution capability. The
+      route is the upstream host durably attested by the candidate's own
+      ``SourceIdentity``; without a provable safe host the identity is unknown
+      (``None``) -- never the delivery endpoint, and never a guess."""
+    root = roots.get(row["request_id"])
+    if root is not None and root[1] in BITTORRENT_REQUEST_KINDS:
+        hit = root_cache.get((root[0], row["provider_id"])) is CachePresence.HIT
+        return True, _TORRENT_CACHE_ROUTE_IDENTITY if hit else _BITTORRENT_ROUTE_IDENTITY
+    if candidate is not None and candidate.delivery is DeliveryKind.PROVIDER_ISSUED:
+        source = candidate.source_identity
+        if source is not None and str(source.scope or "").strip().lower() == "host":
+            return True, safe_public_host(source.key)
+        return True, None
+    return False, None
 
 
 def _assign_route_identities(route_attempts):
     """DP 1.0.12 Route History identity correction, Section 10 (same-origin
-    disambiguation): compute each row's display-ready ``route_identity`` once,
-    in this one presentation pass over the transfer's own route history.
+    disambiguation): compute each ORDINARY row's display-ready
+    ``route_identity`` once, in this one presentation pass over the
+    transfer's own route history.
 
     A ``route_origin`` shared by 2+ rows in this SAME list falls back to the
     more specific ``route_location`` for exactly those rows; a uniquely-
@@ -296,6 +395,34 @@ def _assign_route_identities(route_attempts):
             item["route_identity"] = item.get("route_location") or origin
         else:
             item["route_identity"] = origin
+
+
+def _project_route_history(route_attempts, requests):
+    """The one Route History presentation owner: sets ``route_origin``,
+    ``route_location`` and ``route_identity`` on every historical route row.
+
+    Everything derives from the exact historical ``resolution_attempts.result``
+    (carried on each row as ``resolution_result`` and consumed here) plus the
+    transfer's durable request lineage -- never from current provider
+    enablement/applicability, current cache contents, current artifact binding,
+    or current execution state. A logical-identity row (see
+    ``_logical_route_identity``) carries no endpoint origin/location, so a
+    provider-issued capability path can never reach the browser or its tooltip;
+    ordinary rows keep the endpoint projection and same-origin disambiguation
+    exactly."""
+    payloads = [_decode_resolution_result(row.pop("resolution_result", None)) for row in route_attempts]
+    roots = _request_roots(requests)
+    root_cache = _root_cache_presence(route_attempts, payloads, roots)
+    ordinary = []
+    for row, payload in zip(route_attempts, payloads):
+        candidate = _single_route_candidate(payload)
+        logical, identity = _logical_route_identity(row, candidate, roots, root_cache)
+        if logical:
+            row["route_origin"], row["route_location"], row["route_identity"] = None, None, identity
+        else:
+            row["route_origin"], row["route_location"] = _route_endpoint_projection(candidate)
+            ordinary.append(row)
+    _assign_route_identities(ordinary)
 
 
 class TransferRepository:
@@ -548,7 +675,7 @@ class TransferRepository:
                 f.blocked,f.block_reason,f.retry_count,f.mirror_group_id,f.mirror_state,f.updated_at,f.normalized_error,
                 e.progress AS execution_progress FROM download_files f
                 LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id WHERE f.torrent_id=? ORDER BY f.id""", (transfer_id,))
-            requests = await db.fetchall("""SELECT id,state,error,payload,metadata FROM transfer_requests
+            requests = await db.fetchall("""SELECT id,parent_id,state,error,payload,metadata FROM transfer_requests
                 WHERE transfer_id=? ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,ordinal,id""", (transfer_id,))
             resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
             providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
@@ -644,11 +771,8 @@ class TransferRepository:
             for row in route_attempts:
                 item = dict(row)
                 item["candidates"] = codec.load(item.pop("candidate_summary"), [])
-                item["route_origin"], item["route_location"] = _route_endpoint_projection(
-                    item.pop("resolution_result", None),
-                )
                 result["route_attempts"].append(item)
-            _assign_route_identities(result["route_attempts"])
+            _project_route_history(result["route_attempts"], requests)
             result["execution_attempts"] = []
             for row in execution_history:
                 item = dict(row)

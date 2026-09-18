@@ -10,8 +10,8 @@ from providers.alldebrid.translation import (
 )
 from transfers.errors import Category, Retryability, TransferError
 from transfers.models import (
-    Capability, CleanupAuthority, CleanupDirective, FileManifest, OutcomeKind, Ownership,
-    ProviderResource, ResourceState, TransferRequest,
+    CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, FileManifest,
+    OutcomeKind, Ownership, ProviderResource, ResourceState, TransferRequest,
 )
 
 
@@ -236,3 +236,107 @@ def test_file_manifest_from_files_response_ignores_foreign_ids_and_discards_link
     assert manifest is not None
     assert "http" not in repr(manifest).casefold()
     assert file_manifest_from_files_response([{"id": "999", "files": _NESTED_FILES}], "123") is None
+
+
+# --------------------------------------------------------------------------- #
+# Canonical torrent cache fact (DP 1.0.12): native upload ``ready`` -> neutral
+# CachePresence, orthogonal to ResourceState.
+# --------------------------------------------------------------------------- #
+
+_UPLOADS = {
+    "magnet": (TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40),
+               "upload_magnet"),
+    "torrent": (TransferRequest("torrent", b"d4:infod4:name1:xee", "payload.torrent"),
+                "upload_torrent_file"),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["magnet", "torrent"])
+@pytest.mark.parametrize("native_ready,cache,state", [
+    ({"ready": True}, CachePresence.HIT, ResourceState.AVAILABLE),
+    ({"ready": False}, CachePresence.MISS, ResourceState.PREPARING),
+])
+async def test_upload_ready_maps_to_cache_fact_and_keeps_resource_state(kind, native_ready, cache, state):
+    request, method = _UPLOADS[kind]
+    client = AsyncMock()
+    getattr(client, method).return_value = {"id": "77", "name": "payload", **native_ready}
+    result = await AllDebridProvider(client=client).resolve(request)
+    # Two orthogonal facts from one native boolean, translated once at the boundary.
+    assert result.observation.cache_presence == cache
+    assert result.observation.state == state
+    assert result.state == state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["magnet", "torrent"])
+@pytest.mark.parametrize("native", [
+    {},                                  # missing
+    {"ready": None},                     # unusable
+    {"ready": "true"},                   # ambiguous string, not a boolean
+    {"ready": 1},                        # truthy non-boolean
+    {"ready": 0},
+    {"ready": ""},
+])
+async def test_upload_without_a_boolean_ready_is_unknown_never_guessed(kind, native):
+    request, method = _UPLOADS[kind]
+    client = AsyncMock()
+    getattr(client, method).return_value = {"id": "77", "name": "payload", **native}
+    result = await AllDebridProvider(client=client).resolve(request)
+    assert result.observation.cache_presence == CachePresence.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_status_code_four_on_upload_is_not_inferred_as_a_cache_hit():
+    # statusCode 4 => ResourceState.AVAILABLE, yet no native ready boolean was
+    # given, so nothing may claim the torrent was already cached.
+    client = AsyncMock()
+    client.upload_magnet.return_value = {"id": "77", "statusCode": 4, "name": "payload"}
+    result = await AllDebridProvider(client=client).resolve(_UPLOADS["magnet"][0])
+    assert result.observation.state == ResourceState.AVAILABLE
+    assert result.observation.cache_presence == CachePresence.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_later_status_readiness_never_becomes_a_cache_hit():
+    """An earlier MISS is a historical fact; a later AVAILABLE poll (statusCode 4,
+    speed, files) is provider readiness only and carries no cache claim."""
+    client = AsyncMock()
+    client.upload_magnet.return_value = {"id": "77", "name": "payload", "ready": False}
+    provider = AllDebridProvider(client=client)
+    uploaded = await provider.resolve(_UPLOADS["magnet"][0])
+    assert uploaded.observation.cache_presence == CachePresence.MISS
+
+    client.get_magnet_status.return_value = [{
+        "id": "77", "statusCode": 4, "status": "Ready", "size": 9, "downloaded": 9,
+        "downloadSpeed": 123456, "files": _NESTED_FILES,
+    }]
+    later = await provider.observe(uploaded.observation.resource)
+    assert later.state == ResourceState.AVAILABLE
+    assert later.cache_presence == CachePresence.UNKNOWN
+    # ...even if a status record carried a stray ``ready`` flag.
+    stray = observation_from_native({"id": "77", "statusCode": 4, "ready": True})
+    assert stray.cache_presence == CachePresence.UNKNOWN
+    inventory = await _inventory_of(client, {"id": "77", "statusCode": 4, "ready": True})
+    assert inventory.observations[0].cache_presence == CachePresence.UNKNOWN
+
+
+async def _inventory_of(client, record):
+    client.get_magnet_status.return_value = [record]
+    return await AllDebridProvider(client=client).inventory()
+
+
+def test_cache_presence_is_a_distinct_neutral_type_not_a_boolean_or_resource_state():
+    assert {item.name for item in CachePresence} == {"HIT", "MISS", "UNKNOWN"}
+    assert not isinstance(CachePresence.HIT, (bool, ResourceState))
+    assert {item.value for item in CachePresence}.isdisjoint({item.value for item in ResourceState} - {"unknown"})
+
+
+@pytest.mark.asyncio
+async def test_direct_unlock_candidate_is_provider_issued_delivery_with_upstream_source_identity():
+    client = AsyncMock()
+    client.unlock_link.return_value = {"link": "https://f8g9h0.debrid.it/dl/abc/file.bin", "filename": "file.bin", "filesize": 8}
+    result = await AllDebridProvider(client=client).resolve(TransferRequest("https", "https://www.1fichier.com/?abc"))
+    candidate = result.candidates[0]
+    assert candidate.delivery == DeliveryKind.PROVIDER_ISSUED
+    assert (candidate.source_identity.scope, candidate.source_identity.key) == ("host", "1fichier.com")

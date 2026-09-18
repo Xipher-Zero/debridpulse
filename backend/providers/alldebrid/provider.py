@@ -8,12 +8,13 @@ from urllib.parse import urlsplit
 from providers.alldebrid.client import AllDebridService, API_V4, flatten_files
 from services.network_safety import validate_provider_download_url
 from providers.alldebrid.translation import (
-    file_manifest_from_files_response, observation_from_native, resource_from_native, translate_error,
+    cache_presence_from_upload, file_manifest_from_files_response, observation_from_native,
+    resource_from_native, translate_error,
 )
 from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
 from transfers.models import (
-    Capability, CleanupAuthority, CleanupDirective, Endpoint, HealthObservation,
+    Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
     ProviderResource, ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState,
     SourceEntry, SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
@@ -98,6 +99,9 @@ class AllDebridProvider:
                 provider_id=self.descriptor.id, refresh_request=request,
                 source_identity=SourceIdentity("host", str(urlsplit(str(request.payload)).hostname or "").casefold().removeprefix("www.").rstrip(".")),
                 resolver_identity_evidence=resolver_evidence,
+                # The unlocked endpoint is AllDebrid's own delivery capability;
+                # the requested hoster is identified by ``source_identity``.
+                delivery=DeliveryKind.PROVIDER_ISSUED,
             )
             return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
         if request.kind == "magnet":
@@ -109,7 +113,8 @@ class AllDebridProvider:
                                                 Stage.SUBMISSION, Retryability.NEVER,
                                                 origin=Origin.USER, integration_id=self.descriptor.id))
         resource = resource_from_native(native, ownership=Ownership.CREATED)
-        observation = observation_from_native(native, resource=resource, request=request)
+        observation = replace(observation_from_native(native, resource=resource, request=request),
+                              cache_presence=cache_presence_from_upload(native))
         return ResolutionResult(observation.state, observation=observation, error=observation.error)
 
     def _native_id(self, resource: ProviderResource) -> str:

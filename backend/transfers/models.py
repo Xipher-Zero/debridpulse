@@ -116,6 +116,36 @@ class ResourceState(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CachePresence(StrEnum):
+    """Provider-neutral torrent-cache presence, as observed when a provider
+    accepted the request (DP 1.0.12 canonical torrent cache fact).
+
+    Orthogonal to ``ResourceState``: ``AVAILABLE`` says a resource is usable
+    now, never that it was already cached when first asked for. ``HIT`` /
+    ``MISS`` are set only from a provider's own authoritative statement at the
+    observation itself; they are never derived from later readiness, status
+    codes, speed, completion time, or endpoint identity. ``UNKNOWN`` means the
+    provider gave no trustworthy fact, and is what every observation persisted
+    before this fact existed decodes to.
+    """
+    HIT = "hit"
+    MISS = "miss"
+    UNKNOWN = "unknown"
+
+
+class DeliveryKind(StrEnum):
+    """Whether a candidate's endpoint IS the requested source or a
+    provider-issued delivery capability for it.
+
+    A provider-issued endpoint is an execution capability, not the logical
+    source route. ``DIRECT`` is also what candidates persisted before this
+    fact existed decode to: their presentation is left unchanged rather than
+    guessed from the endpoint or provider.
+    """
+    DIRECT = "direct"
+    PROVIDER_ISSUED = "provider_issued"
+
+
 class TransferState(StrEnum):
     ACCEPTED = "pending"
     RESOLVING = "processing"
@@ -182,6 +212,13 @@ class TransferRequest:
     # NOT part of source identity and is excluded from the dedupe fingerprint
     # (which keys on ``fingerprint``, the BitTorrent infohash).
     selection_mode: str = "all"
+
+
+# BitTorrent-class request kinds: a magnet URI, or a torrent metainfo upload
+# ("torrent"; "torrent_file"/"file" are stored/legacy spellings). A provider
+# may materialize either into HTTP(S) descendants, but the root's class wins.
+TORRENT_FILE_REQUEST_KINDS = frozenset({"torrent", "torrent_file", "file"})
+BITTORRENT_REQUEST_KINDS = frozenset({"magnet", *TORRENT_FILE_REQUEST_KINDS})
 
 
 @dataclass(frozen=True)
@@ -255,6 +292,7 @@ class TransferCandidate:
     id: str = field(default_factory=new_identity)
     source_identity: SourceIdentity | None = None
     resolver_identity_evidence: ResolverArtifactIdentityEvidence | None = None
+    delivery: DeliveryKind = DeliveryKind.DIRECT
 
 
 @dataclass(frozen=True)
@@ -300,6 +338,7 @@ class ProviderObservation:
     error: NormalizedError | None = None
     request: TransferRequest | None = field(default=None, repr=False)
     file_manifest: FileManifest | None = None
+    cache_presence: CachePresence = CachePresence.UNKNOWN
 
 
 @dataclass(frozen=True)

@@ -20,8 +20,8 @@ from transfers.errors import (
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.models import (
-    FileManifest, FileManifestEntry, Ownership, ProviderObservation, ProviderResource,
-    ResourceState, TransferProgress, TransferRequest,
+    CachePresence, FileManifest, FileManifestEntry, Ownership, ProviderObservation,
+    ProviderResource, ResourceState, TransferProgress, TransferRequest,
 )
 
 
@@ -187,6 +187,27 @@ def file_manifest_from_files_response(records, native_id: str) -> FileManifest |
             if entries:
                 return FileManifest(tuple(entries))
     return None
+
+
+def cache_presence_from_upload(native: dict) -> CachePresence:
+    """Neutral cache presence from a magnet/torrent upload response.
+
+    ``POST /v4/magnet/upload`` and ``/v4/magnet/upload/file`` document the
+    response ``ready`` boolean as whether the magnet/torrent is *already
+    available*: that is the provider's own cache-presence statement, so exactly
+    ``True`` is a HIT and exactly ``False`` a MISS. Anything else (absent,
+    non-boolean) is UNKNOWN. This is the only place native ``ready`` becomes a
+    cache fact, and it is applied to upload responses alone: a later status
+    (``statusCode``, ``ResourceState.AVAILABLE``, speed, files/links) never
+    turns a MISS/UNKNOWN into a HIT. Resource readiness is translated
+    independently by ``observation_from_native``.
+    """
+    ready = native.get("ready")
+    if ready is True:
+        return CachePresence.HIT
+    if ready is False:
+        return CachePresence.MISS
+    return CachePresence.UNKNOWN
 
 
 def observation_from_native(native: dict, *, resource: ProviderResource | None = None,

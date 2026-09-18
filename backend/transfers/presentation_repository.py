@@ -7,17 +7,14 @@ used only as retained artifact truth; it never creates another progress store.
 """
 from __future__ import annotations
 
-import re
-
+from core.presentation_safety import safe_public_host
 from db.database import get_db
 from transfers import codec
 from transfers._repository_base import is_canonical_artifact_row
-from transfers.models import TransferProgress
+from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, TransferProgress
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
 
 
-_TORRENT_REQUEST_KINDS = frozenset({"torrent", "torrent_file", "file"})
-_HOST_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _OPERATOR_WAKES = frozenset({"operator_retry"})
 
 # "Can this child make future progress without an operator action?" (DP 1.0.12
@@ -119,20 +116,10 @@ _RAW_PRESENTATION = {
 }
 
 
-def _public_host(value) -> str | None:
-    host = str(value or "").strip().lower().removeprefix("www.").rstrip(".")
-    if not host or len(host) > 253:
-        return None
-    labels = host.split(".")
-    if any(not label or not _HOST_LABEL_RE.fullmatch(label) for label in labels):
-        return None
-    return host
-
-
 def _candidate_source(value) -> dict[str, str] | None:
     if not isinstance(value, dict) or str(value.get("scope") or "").strip().lower() != "host":
         return None
-    host = _public_host(value.get("key"))
+    host = safe_public_host(value.get("key"))
     return {"kind": "host", "host": host} if host else None
 
 
@@ -141,7 +128,7 @@ def public_source_identity(request_kind, candidate_source=None) -> dict[str, str
     kind = str(request_kind or "").strip().lower()
     if kind == "magnet":
         return {"kind": "magnet"}
-    if kind in _TORRENT_REQUEST_KINDS:
+    if kind in TORRENT_FILE_REQUEST_KINDS:
         return {"kind": "torrent_file"}
     if kind in {"http", "https"}:
         return _candidate_source(candidate_source) or {"kind": "link"}
@@ -389,7 +376,7 @@ class TransferRepository(_CanonicalTransferRepository):
 
             # Magnet/torrent identities are dictated by the root request and must
             # not be replaced by provider-generated HTTP descendants.
-            if request_kind not in {"magnet", *_TORRENT_REQUEST_KINDS}:
+            if request_kind not in BITTORRENT_REQUEST_KINDS:
                 if str(result.get("status") or "").strip().lower() == "completed":
                     row = await db.fetchone(
                         """SELECT p.candidate_source FROM execution_attempt_provenance p

@@ -158,6 +158,34 @@ test('Details separates safe original resource, final provider, ordered failover
   await page.screenshot({path:'test-results/checkpoint-details-failover-dark-desktop.png', fullPage:true});
 });
 
+test('Route History projects backend route_identity verbatim and never reconstructs provider, domain, or cache semantics', async ({ page }) => {
+  await isolateExternalFonts(page);
+  // Each row carries misleading neighbours (cache fields, a debrid-looking origin, the provider id): the
+  // renderer must show exactly what the backend decided in route_identity, nothing derived.
+  const row = (ordinal, outcome, extra) => ({ordinal, provider_id:'alldebrid', provider_name:'AllDebrid', outcome,
+    route_origin:null, route_location:null, route_identity:null, ...extra});
+  const detail = {...listFixture({id:907,name:'Debrid route identity'}), original_resource:'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567',
+    executors:[], files:[], source_outcomes:[], events:[],
+    route_attempts:[
+      row(1,'resolved',{route_identity:'Torrent cache', cache_presence:'miss'}),
+      row(2,'completed',{route_identity:'BitTorrent', cache_presence:'hit'}),
+      row(3,'completed',{route_identity:'1fichier.com'}),
+      row(4,'failed',{route_origin:'https://f8g9h0.debrid.it'}),
+    ]};
+  await page.route(url => url.pathname === '/api/torrents/907', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(detail)}));
+  await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[detail],total:1})}));
+  await page.goto('/'); await page.evaluate(() => showDetail(907));
+  const identities = page.locator('.dp-detail-route-row .dp-detail-route-identity');
+  await expect(identities).toHaveCount(4);
+  await expect(identities).toHaveText(['Torrent cache', 'BitTorrent', '1fichier.com', '—']);
+  // Hover identity is the backend identity; a logical row exposes no provider capability path.
+  await expect(identities.nth(0)).toHaveAttribute('title', 'Torrent cache');
+  await expect(identities.nth(1)).toHaveAttribute('title', 'BitTorrent');
+  await expect(identities.nth(2)).toHaveAttribute('title', '1fichier.com');
+  await expect(identities.nth(3)).toHaveAttribute('title', '');
+  await expect(page.locator('.dp-detail-route-list')).not.toContainText('debrid.it');
+});
+
 test('provider controls remain readable in light theme and narrow layout', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
   await page.locator('#theme-toggle').click();

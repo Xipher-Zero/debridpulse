@@ -48,3 +48,31 @@ The Settings Sources & Providers controls update the canonical integration `enab
 Initial routing and ordinary retry are separate decisions. A new logical route uses the neutral provider-selection policy: enabled SPECIALIZED applicability wins over GENERIC applicability, then the normal same-class selection policy applies. Once that route has selected a provider, ordinary resolution retry and re-resolution remain bound to that selected provider. Provider enablement, health, priority, or dynamic host-applicability changes do not silently reopen the global provider set for an existing route.
 
 Automatic cross-provider production failover is deferred. A future explicit failover mechanism may create a new provider route attempt and append truthful provenance such as Provider A failed -> Provider B completed, but ordinary retry is not that mechanism. Provider identity recorded on route, candidate, artifact, and execution provenance is durable historical truth and is never reconstructed later from the submitted URL or current applicability state.
+
+## Torrent cache fact and Route History identity (v1.0.12)
+
+Route History's middle value is the **logical source route**, not whichever URL an executor was handed. Two neutral durable facts make that possible without the browser (or generic core presentation) knowing any provider, hostname, or cache semantics.
+
+### Canonical torrent cache fact
+
+- Provider-native cache evidence is translated **once, at the provider boundary**, into the neutral `transfers.models.CachePresence` — `HIT`, `MISS` or `UNKNOWN` — carried as `ProviderObservation.cache_presence`. It is deliberately not a boolean. `HIT`/`MISS` mean the provider authoritatively said, at that observation, that the torrent was / was not already available in its cache; `UNKNOWN` means it gave no trustworthy fact.
+- AllDebrid documents the `ready` boolean returned by `POST /v4/magnet/upload` and `/v4/magnet/upload/file` as "already available". `providers.alldebrid.translation.cache_presence_from_upload` maps exactly `True` → `HIT`, exactly `False` → `MISS`, anything else → `UNKNOWN`, and only for upload responses. It is never inferred from a later `statusCode == 4`, `ResourceState.AVAILABLE`, speed, completion time, files/links, or an endpoint hostname.
+- Cache presence is **orthogonal to provider resource readiness**. `ResourceState` keeps its existing meaning (`AVAILABLE`: usable now; `PREPARING`: not yet) and is translated independently from the same native field. A `MISS` that later becomes `AVAILABLE` stays a `MISS`.
+- The fact is persisted in the existing `resolution_attempts.result` JSON (the durable `ResolutionResult`, `observation.cache_presence`). There is no side store and no schema migration. A row written before this fact existed has no field and decodes as `UNKNOWN` (`transfers.codec.cache_presence`); it is never migrated into a guess.
+- **Current 1.0.12 routing does not use cache presence.** Provider selection is unchanged (`IntegrationRegistry.provider_for` performs no I/O, and a provider that reports a `HIT` does not prefer itself). A future multi-provider availability/preflight policy may consume the same neutral fact through one core routing-policy owner; providers only ever emit facts.
+
+### Route History identity rules
+
+`transfers._repository_base._project_route_history` is the single presentation owner. It reads only the exact historical `resolution_attempts.result` of each route attempt plus the transfer's durable request lineage.
+
+| Route | `route_identity` |
+| --- | --- |
+| Ordinary native/direct route (for example General HTTP(S), or future FTP/SFTP/SCP) | Safe endpoint origin, or the safe path-bearing location when several routes share one origin — unchanged |
+| Provider-mediated hoster link (candidate `delivery == PROVIDER_ISSUED`) | The upstream host durably attested by the candidate's own `SourceIdentity("host", …)`, normalized by `core.presentation_safety.safe_public_host`; unknown (`—`) when no safe host is provable |
+| Any route descended from a magnet/torrent root | `Torrent cache` when the root acquisition's first authoritative cache observation on that provider is a `HIT`, otherwise `BitTorrent` |
+
+- A provider-issued delivery endpoint (`TransferCandidate.delivery == DeliveryKind.PROVIDER_ISSUED`) is an execution capability, not the logical source. It is never the row's identity or hover title (`route_origin` and `route_location` are empty for these rows). Candidates persisted before this fact existed decode as `DIRECT`, so their presentation is left as it was rather than guessed from the endpoint or provider.
+- Lineage, not child request kind, decides BitTorrent: a provider-generated HTTP(S) descendant belongs to its magnet/torrent root by durable `parent_id` lineage. Source class and cache fact are computed per root lineage, so a multi-root transfer never reads "the first request".
+- The cache label is the **first authoritative (`HIT`/`MISS`) observation** recorded on the root request itself for that provider, in durable route order — never the latest state. `UNKNOWN` never establishes a fact, and a `HIT` reported by another provider does not relabel this provider's route.
+- Ambiguity fails closed: an unprovable lineage, a missing/malformed source host, or several candidates never falls back to filenames, URLs, provider names, or endpoint domains.
+- `frontend/static/app.js::renderRouteHistory` stays a thin projector of `route_identity` / `route_location`; it holds no provider, domain, cache, or request-kind logic.
