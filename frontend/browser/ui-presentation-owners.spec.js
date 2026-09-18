@@ -1,19 +1,19 @@
 const { test, expect } = require('@playwright/test');
 
-const MARKERS=['DPToastContract','DPDashboardTransferPresentation','DPDownloadsPresentation','DPProcessingPresentation','DPActivityLog','DPArchivePasswords'];
+const MARKERS=['DPToastContract','DPDownloads','DPProcessingPresentation','DPActivityLog','DPArchivePasswords'];
 async function ready(page){await page.goto('/');await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);}
 
 test('bounded presentation graph loads without retired correction requests',async({page})=>{
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));await ready(page);
  const state=await page.evaluate(markers=>({loader:typeof window.DPPresentationLoader,retired:[typeof window.DPUICorrectionBatch1,typeof window.DPUICorrectionBatch1Final,typeof window.DPUICorrectionP4Repair],markers:markers.map(marker=>Boolean(window[marker]))}),MARKERS);
  expect(state.markers.every(Boolean)).toBe(true);expect(state.loader).toBe('undefined');expect(state.retired).toEqual(['undefined','undefined','undefined']);expect(requests.some(path=>path.includes('ui-correction-batch1')||path.includes('ui-correction-p4-repair')||path.includes('ui-presentation-loader'))).toBe(false);
- const processing=requests.indexOf('/ui-processing-presentation.js'),dashboard=requests.indexOf('/ui-dashboard-transfer-presentation.js'),downloads=requests.indexOf('/ui-downloads-presentation.js');
+ const processing=requests.indexOf('/ui-processing-presentation.js'),dashboard=requests.indexOf('/ui-dashboard-transfer-presentation.js'),downloads=requests.indexOf('/ui-downloads.js');
  expect(processing).toBeGreaterThan(-1);expect(dashboard).toBeGreaterThan(processing);expect(downloads).toBeGreaterThan(processing);
 });
 
 test('Dashboard source-domain matching is boundary safe and pause presentation is projected',async({page})=>{
  await page.setViewportSize({width:1440,height:900});await ready(page);
- const assets=await page.evaluate(()=>({exact:DPDashboardTransferPresentation.hostAsset('rapidgator.net'),sub:DPDashboardTransferPresentation.hostAsset('cdn.rapidgator.net'),boundary:DPDashboardTransferPresentation.hostAsset('notrapidgator.net')}));
+ const assets=await page.evaluate(()=>({exact:DPTransferSourcePresentation.hostAsset('rapidgator.net'),sub:DPTransferSourcePresentation.hostAsset('cdn.rapidgator.net'),boundary:DPTransferSourcePresentation.hostAsset('notrapidgator.net')}));
  expect(assets).toEqual({exact:'/icons/hosts/rapidgator.png',sub:'/icons/hosts/rapidgator.png',boundary:''});
  await page.evaluate(()=>{settingsData=settingsData||{};settingsData.paused=true;renderTopbarActions();});
  await expect(page.locator('.dp-global-pause-center')).toHaveClass(/is-visible/);await expect(page.locator('.dp-global-pause-center')).toContainText('PROCESSING PAUSED');await expect(page.locator('#btn-import-existing')).toHaveCount(0);
@@ -54,8 +54,16 @@ test('Downloads provider/source block adds host artwork and centers its two line
 });
 
 test('Downloads owner exposes fixed three-slot pager and date options',async({page})=>{
- await page.setViewportSize({width:1440,height:800});await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();renderTorrentPagination(30,10,10);});
+ await page.setViewportSize({width:1440,height:800});
+ // Drive pagination entirely through observable application behavior: mock
+ // a 60-item collection (three pages at the default page size) and click
+ // the real Next control to land on a middle page with both nav buttons
+ // visible, rather than calling the internal render function directly.
+ await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],total:60,page:1,page_size:25})}));
+ await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
+ await page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]').click();
  await expect(page.locator('#torrent-page-btns .dp-pager-btn')).toHaveCount(2);await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveCount(1);
+ await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
  const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();expect(Math.abs(group.width-116)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
  const trigger=page.locator('.dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.getByRole('menuitemradio',{name})).toBeVisible();
 });

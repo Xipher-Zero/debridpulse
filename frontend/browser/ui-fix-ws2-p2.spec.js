@@ -156,7 +156,11 @@ async function openDownloads(page) {
 }
 
 async function selectedIds(page) {
-  return page.evaluate(() => [..._selectedIds].sort((a, b) => a - b));
+  // Observable checkbox-checked state, not private module state: syncDownloadSelectionUi()
+  // keeps every rendered .t-chk's `checked` attribute in lockstep with selection.
+  return page.evaluate(() =>
+    [...document.querySelectorAll('.t-chk:checked')].map(el => Number(el.dataset.id)).sort((a, b) => a - b)
+  );
 }
 
 async function topbarOrder(page) {
@@ -299,9 +303,6 @@ test('WS2-P2 Downloads pagination changes explicitly clear stable selection scop
   expect(await selectedIds(page)).toEqual([1]);
   const nextPage = page.locator('#torrent-page-btns button[aria-label="Next page"]');
   await expect(nextPage).toBeVisible();
-  const pageSize = await page.evaluate(() => torrentPageSize);
-  expect(pageSize).toBeGreaterThan(0);
-  expect(pageSize).toBeLessThan(30);
 
   const pagedRequest = page.waitForRequest(request => {
     const url = new URL(request.url());

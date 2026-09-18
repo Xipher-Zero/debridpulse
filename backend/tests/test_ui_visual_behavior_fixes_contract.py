@@ -11,7 +11,7 @@ def read(name: str) -> str:
 
 
 def test_aria2_topbar_first_paint_is_owned_by_shell_markup() -> None:
-    entry = read("style-v11.css")
+    entry = read("style.css")
     index = read("index.html")
 
     assert "/ui-topbar-first-paint.css" not in entry

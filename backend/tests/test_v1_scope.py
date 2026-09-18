@@ -141,7 +141,10 @@ def test_v1_runtime_database_scope_is_sqlite_only():
 def test_unified_submission_input_expands_to_five_lines():
     frontend = (REPO_ROOT / "frontend/static/index.html").read_text()
     scripts = (REPO_ROOT / "frontend/static/app.js").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
+    # DP 1.0.12 canonical flattening: style.css is now a pure @import list;
+    # this content lives in ui-dashboard.css (migrated from the retired
+    # ui-legacy-foundation.css).
+    styles = (REPO_ROOT / "frontend/static/ui-dashboard.css").read_text()
 
     assert 'id="q-transfer-input" rows="2"' in frontend
     assert 'id="q-debrid-links"' not in frontend
@@ -242,7 +245,12 @@ def test_dashboard_recent_activity_exposes_pause_resume_but_not_remove():
 def test_topbar_uses_live_aria2_speed_with_human_download_units():
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
-    styles = (REPO_ROOT / "frontend/static/style.css").read_text()
+    # DP 1.0.12 canonical flattening: style.css is now a pure @import list;
+    # the aria2 speed-cap popover lives in ui-dropdown-contract.css and the
+    # topbar external-control badge state lives in ui-shell.css (both
+    # migrated from the retired ui-legacy-foundation.css).
+    styles = (REPO_ROOT / "frontend/static/ui-dropdown-contract.css").read_text()
+    shell_styles = (REPO_ROOT / "frontend/static/ui-shell.css").read_text()
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
     aria2_service = (REPO_ROOT / "backend/executors/aria2/client.py").read_text()
 
@@ -277,7 +285,7 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     assert "updateAria2TopbarBadge({limitBps: bps})" in frontend
     assert ".aria2-cap-menu" in styles
     assert ".aria2-cap-options" in styles
-    assert "#aria2-speed-badge.external-control" in styles
+    assert "#aria2-speed-badge.external-control" in shell_styles
 
     assert "async def get_active(self)" in aria2_service
     assert 'owned_active = await application.integration_admin("aria2").filter_owned(active_downloads)' in routes

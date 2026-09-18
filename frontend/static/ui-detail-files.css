@@ -1,5 +1,5 @@
 /* Details -> Files status geometry owner. */
-body.dp-v11-structural .dp-detail-files-card tbody td:last-child .badge,body.dp-v11-structural #detail-files tbody td[data-role="file-status"] .badge,body.dp-v11-structural #detail-files-table tbody td[data-role="file-status"] .badge{width:136px!important;min-width:136px!important;max-width:136px!important;height:28px!important;min-height:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:0 10px!important;white-space:nowrap!important;box-sizing:border-box}
+.dp-detail-files-card tbody td:last-child .badge,#detail-files tbody td[data-role="file-status"] .badge,#detail-files-table tbody td[data-role="file-status"] .badge{width:136px!important;min-width:136px!important;max-width:136px!important;height:28px!important;min-height:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;padding:0 10px!important;white-space:nowrap!important;box-sizing:border-box}
 
 /* Files section header: title on the left, right-side action group pinned
    right -- the transfer-level common-source group launcher (owned by
@@ -7,7 +7,7 @@ body.dp-v11-structural .dp-detail-files-card tbody td:last-child .badge,body.dp-
    Workstream B, owned by ui-file-selection.js) share this one slot; neither
    arbitrates with the other (they are never both present -- §6.10). The
    individual file rows below are untouched. */
-body.dp-v11-structural .dp-detail-files-card>.card-header.dp-detail-files-header{flex-wrap:wrap;gap:8px 12px}
+.dp-detail-files-card>.card-header.dp-detail-files-header{flex-wrap:wrap;gap:8px 12px}
 .dp-detail-files-header-actions{margin-left:auto;display:inline-flex;align-items:center;gap:10px;min-height:22px}
 .dp-detail-files-group-slot,.dp-detail-files-selection-slot{display:inline-flex;align-items:center;min-height:22px}
 .dp-detail-files-group-slot:empty,.dp-detail-files-selection-slot:empty{display:none}

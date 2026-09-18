@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 async function ready(page) {
   await page.goto('/');
-  await page.waitForFunction(() => Boolean(window.DPDownloadsPresentation));
+  await page.waitForFunction(() => Boolean(window.DPDownloads));
 }
 
 function torrentPayload(withPresentation = true) {

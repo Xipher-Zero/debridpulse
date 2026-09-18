@@ -28,28 +28,4 @@
     return typeof category === 'string' && Object.prototype.hasOwnProperty.call(labels, category) ? category : 'internal_error';
   }
   window.DPFailureSemantics = Object.freeze({labels: labels, classify: classify});
-
-  /* Load the generic Item 4 interaction independently of native error semantics.
-     Browser-only bootstrapping is guarded so the semantics module remains usable
-     by source-level Node tests without constructing a DOM. */
-  if (typeof document !== 'undefined'
-      && !document.querySelector('script[data-dp-auth-required-runtime]')) {
-    const runtime = document.createElement('script');
-    runtime.src = '/ui-auth-required.js?v=1';
-    runtime.async = false;
-    runtime.dataset.dpAuthRequiredRuntime = '1';
-    document.head.appendChild(runtime);
-  }
-
-  /* Storage health is a global application-status concern. Bootstrap its single
-     presentation owner beside the other canonical global runtimes rather than
-     coupling it to a page-specific Settings or Downloads surface. */
-  if (typeof document !== 'undefined'
-      && !document.querySelector('script[data-dp-storage-health-runtime]')) {
-    const runtime = document.createElement('script');
-    runtime.src = '/ui-storage-health.js?v=1';
-    runtime.async = false;
-    runtime.dataset.dpStorageHealthRuntime = '1';
-    document.head.appendChild(runtime);
-  }
 })();

@@ -1,18 +1,18 @@
 /* DebridPulse v1.0.11 Authentication cards. */
-body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header,
-body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header {
+#view-settings .dp-settings-username-password-card > .card-header,
+#view-settings .dp-settings-api-access-card > .card-header {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
   align-items: center;
   gap: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header > .card-title,
-body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header > .card-title {
+#view-settings .dp-settings-username-password-card > .card-header > .card-title,
+#view-settings .dp-settings-api-access-card > .card-header > .card-title {
   justify-self: start;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-header-copy {
+#view-settings .dp-settings-auth-header-copy {
   min-width: 0;
   justify-self: center;
   color: var(--dp-text-muted);
@@ -21,7 +21,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-header-copy {
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
+#view-settings .dp-settings-auth-header-enable {
   width: auto;
   min-width: 0;
   display: inline-flex;
@@ -35,25 +35,25 @@ body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
   background: transparent;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle-info {
+#view-settings .dp-settings-auth-header-enable .toggle-info {
   display: block;
   flex: 0 0 auto;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle-info .tl {
+#view-settings .dp-settings-auth-header-enable .toggle-info .tl {
   display: block;
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-header-enable .toggle {
+#view-settings .dp-settings-auth-header-enable .toggle {
   flex: 0 0 auto;
   align-self: center;
   margin: 0;
 }
 
 /* Authentication Status --------------------------------------------------- */
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
+#view-settings .dp-settings-auth-kpi-grid {
   min-width: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
@@ -61,7 +61,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
 
 /* Reuse the Dashboard KPI component classes/material language while adapting
    only the state-card geometry: no icon, no sparkline, centered two-line copy. */
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat {
+#view-settings .dp-settings-auth-kpi.dash-hero-stat {
   --c: var(--dp-text-muted);
   min-width: 0;
   min-height: 76px;
@@ -87,7 +87,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   transition: none;
 }
 
-body.light.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat {
+body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   border-color: #dce1ef;
   background:
     linear-gradient(180deg,
@@ -101,7 +101,7 @@ body.light.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat
     0 6px 18px rgba(70, 79, 113, .055);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat::before {
+#view-settings .dp-settings-auth-kpi.dash-hero-stat::before {
   display: block;
   content: '';
   position: absolute;
@@ -122,33 +122,33 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi.dash-hero-stat::befo
   pointer-events: none;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="green"] {
+#view-settings .dp-settings-auth-kpi[data-c="green"] {
   --c: var(--dp-state-success);
 }
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="yellow"] {
+#view-settings .dp-settings-auth-kpi[data-c="yellow"] {
   --c: var(--dp-state-caution);
 }
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="red"] {
+#view-settings .dp-settings-auth-kpi[data-c="red"] {
   --c: var(--dp-state-error);
 }
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="neutral"] {
+#view-settings .dp-settings-auth-kpi[data-c="neutral"] {
   --c: var(--dp-text-muted);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="green"] .dhs-val {
+#view-settings .dp-settings-auth-kpi[data-c="green"] .dhs-val {
   color: var(--dp-state-success);
 }
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="yellow"] .dhs-val {
+#view-settings .dp-settings-auth-kpi[data-c="yellow"] .dhs-val {
   color: var(--dp-state-caution);
 }
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="red"] .dhs-val {
+#view-settings .dp-settings-auth-kpi[data-c="red"] .dhs-val {
   color: var(--dp-state-error);
 }
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi[data-c="neutral"] .dhs-val {
+#view-settings .dp-settings-auth-kpi[data-c="neutral"] .dhs-val {
   color: var(--dp-text-muted);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-body {
+#view-settings .dp-settings-auth-kpi .dhs-body {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -157,7 +157,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-body {
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-label {
+#view-settings .dp-settings-auth-kpi .dhs-label {
   min-width: 0;
   color: var(--dp-text-primary);
   font-size: 11px;
@@ -168,7 +168,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-label {
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-val {
+#view-settings .dp-settings-auth-kpi .dhs-val {
   min-width: 0;
   color: var(--dp-text-muted);
   font-size: 14px;
@@ -178,7 +178,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-kpi .dhs-val {
   overflow-wrap: anywhere;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -188,35 +188,35 @@ body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings
   margin-top: 14px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row > .dp-settings-status {
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row > .dp-settings-status {
   min-width: 0;
   align-self: center;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime {
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime {
   min-width: 0;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label,
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label,
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
   position: relative;
   inset-inline-start: 3px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label {
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label {
   display: block;
   margin-bottom: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
+#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
   display: block;
   margin-top: 7px;
   line-height: 1.4;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-session-actions {
+#view-settings .dp-settings-auth-session-actions {
   min-width: max-content;
   display: grid;
   grid-template-rows: auto var(--dp-input-height);
@@ -227,42 +227,42 @@ body.dp-v11-structural #view-settings .dp-settings-auth-session-actions {
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-session-action-control {
+#view-settings .dp-settings-auth-session-action-control {
   min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
   justify-content: flex-end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-session-action-control .btn {
+#view-settings .dp-settings-auth-session-action-control .btn {
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-card .dp-settings-auth-public-base-field {
+#view-settings .dp-settings-oidc-card .dp-settings-auth-public-base-field {
   margin-top: 0;
 }
 
 /* Username & Password ------------------------------------------------------ */
 /* Match the form datum used by Sources, Downloads, Maintenance, and
    Notifications: labels and helper copy start with the input content edge. */
-body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label,
-body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
+#view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label,
+#view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
   position: relative;
   inset-inline-start: 3px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label {
+#view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label {
   display: block;
   margin-bottom: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
+#view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
   display: block;
   margin-top: 7px;
   line-height: 1.4;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
+#view-settings .dp-settings-auth-credentials-row {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr) auto;
@@ -270,7 +270,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
   gap: 28px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row > .dp-settings-field {
+#view-settings .dp-settings-auth-credentials-row > .dp-settings-field {
   min-width: 0;
   margin: 0;
 }
@@ -278,7 +278,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row > .dp-se
 /* The destructive action owns the same label/control vertical tracks as the
    two field sandwiches. The small button is centered inside an input-height
    control slot, so its centerline matches both form fields exactly. */
-body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
+#view-settings .dp-settings-auth-password-actions {
   min-width: max-content;
   display: grid;
   grid-template-rows: auto var(--dp-input-height);
@@ -289,7 +289,7 @@ body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-action-label {
+#view-settings .dp-settings-auth-action-label {
   display: block;
   visibility: hidden;
   margin-bottom: 7px;
@@ -297,19 +297,19 @@ body.dp-v11-structural #view-settings .dp-settings-auth-action-label {
   user-select: none;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-action-control {
+#view-settings .dp-settings-auth-action-control {
   min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
   justify-content: flex-end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-action-control .btn {
+#view-settings .dp-settings-auth-action-control .btn {
   white-space: nowrap;
 }
 
 /* API Access --------------------------------------------------------------- */
-body.dp-v11-structural #view-settings .dp-settings-api-token-layout {
+#view-settings .dp-settings-api-token-layout {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -322,7 +322,7 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-layout {
   row-gap: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-actions {
+#view-settings .dp-settings-api-token-actions {
   min-width: 0;
   min-height: var(--dp-input-height);
   grid-column: 1;
@@ -334,7 +334,7 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-actions {
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-status {
+#view-settings .dp-settings-api-token-status {
   grid-column: 1;
   grid-row: 2;
   justify-self: center;
@@ -346,14 +346,14 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-status {
 }
 
 /* Keep every Generate/Rotate busy and resting label on exactly one footprint. */
-body.dp-v11-structural #view-settings .dp-settings-api-token-generate {
+#view-settings .dp-settings-api-token-generate {
   inline-size: 136px;
   min-inline-size: 136px;
   justify-content: center;
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-revoke {
+#view-settings .dp-settings-api-token-revoke {
   inline-size: 116px;
   min-inline-size: 116px;
   justify-content: center;
@@ -362,7 +362,7 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-revoke {
 
 /* When a one-time token exists, use explicit shared grid rows so the button
    centerline and readonly token field centerline are identical. */
-body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
+#view-settings .dp-settings-api-token-layout.has-token {
   grid-template-columns: minmax(300px, auto) minmax(520px, 1fr);
   grid-template-rows: auto var(--dp-input-height) auto;
   justify-content: stretch;
@@ -370,20 +370,20 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
   row-gap: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
+#view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
   grid-column: 1;
   grid-row: 2;
   justify-self: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
+#view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
   grid-column: 1;
   grid-row: 3;
   justify-self: center;
   margin-top: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-warning {
+#view-settings .dp-settings-api-token-warning {
   min-width: 0;
   grid-column: 2;
   grid-row: 1;
@@ -395,7 +395,7 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-warning {
   line-height: 1.4;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-field {
+#view-settings .dp-settings-api-token-field {
   min-width: 0;
   min-height: var(--dp-input-height);
   width: 100%;
@@ -406,119 +406,119 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-field {
   gap: 8px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-field .input {
+#view-settings .dp-settings-api-token-field .input {
   min-width: 0;
   flex: 1 1 auto;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
+#view-settings .dp-settings-api-token-field .btn {
   flex: 0 0 auto;
   white-space: nowrap;
 }
 
 @media (max-width: 1280px) {
-  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header,
-  body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header {
+  #view-settings .dp-settings-username-password-card > .card-header,
+  #view-settings .dp-settings-api-access-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
+  #view-settings .dp-settings-auth-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
+  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
     grid-template-columns: minmax(190px, 1fr) minmax(230px, 1.1fr) minmax(230px, .9fr) auto;
     gap: 18px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
+  #view-settings .dp-settings-auth-credentials-row {
     grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.2fr) auto;
     gap: 22px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
+  #view-settings .dp-settings-api-token-layout.has-token {
     grid-template-columns: minmax(300px, auto) minmax(420px, 1fr);
     column-gap: 28px;
   }
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings .dp-settings-username-password-card > .card-header,
-  body.dp-v11-structural #view-settings .dp-settings-api-access-card > .card-header {
+  #view-settings .dp-settings-username-password-card > .card-header,
+  #view-settings .dp-settings-api-access-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
     padding-block: 10px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-header-copy {
+  #view-settings .dp-settings-auth-header-copy {
     justify-self: start;
     text-align: left;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-header-enable {
+  #view-settings .dp-settings-auth-header-enable {
     justify-self: start;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-kpi-grid {
+  #view-settings .dp-settings-auth-kpi-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-auth-session-actions {
-    grid-template-rows: auto;
-    justify-self: end;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-auth-session-actions .dp-settings-auth-action-label {
-    display: none;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-auth-credentials-row {
+  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
+  #view-settings .dp-settings-auth-session-actions {
+    grid-template-rows: auto;
     justify-self: end;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-action-label {
+  #view-settings .dp-settings-auth-session-actions .dp-settings-auth-action-label {
     display: none;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-auth-password-actions {
+  #view-settings .dp-settings-auth-credentials-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  #view-settings .dp-settings-auth-password-actions {
+    justify-self: end;
+  }
+
+  #view-settings .dp-settings-auth-action-label {
+    display: none;
+  }
+
+  #view-settings .dp-settings-auth-password-actions {
     grid-template-rows: auto;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token {
+  #view-settings .dp-settings-api-token-layout.has-token {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: var(--dp-input-height) auto auto var(--dp-input-height);
     row-gap: 7px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
+  #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
     grid-column: 1;
     grid-row: 1;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
+  #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
     grid-column: 1;
     grid-row: 2;
     margin-top: 0;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-api-token-warning {
+  #view-settings .dp-settings-api-token-warning {
     grid-column: 1;
     grid-row: 3;
     justify-self: start;
     margin: 8px 0 0 3px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-api-token-field {
+  #view-settings .dp-settings-api-token-field {
     grid-column: 1;
     grid-row: 4;
   }
@@ -531,28 +531,28 @@ body.dp-v11-structural #view-settings .dp-settings-api-token-field .btn {
  * control. The runtime derives this value from the control's computed inline
  * padding so the relationship survives shared input-padding changes.
  */
-body.dp-v11-structural #view-settings .dp-settings-auth-session-lifetime-polished > .form-label,
-body.dp-v11-structural #view-settings .dp-settings-auth-session-lifetime-polished > .form-hint,
-body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-label,
-body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-hint {
+#view-settings .dp-settings-auth-session-lifetime-polished > .form-label,
+#view-settings .dp-settings-auth-session-lifetime-polished > .form-hint,
+#view-settings .dp-settings-auth-callback-field > .form-label,
+#view-settings .dp-settings-auth-callback-field > .form-hint {
   position: relative;
   inset-inline-start: var(--dp-settings-auth-input-text-inset, 3px);
 }
 
 /* Keep the title clean while declaring the UOM as part of the control. */
-body.dp-v11-structural #view-settings .dp-settings-auth-duration-control {
+#view-settings .dp-settings-auth-duration-control {
   position: relative;
   display: block;
   min-width: 0;
   width: 100%;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-duration-control > .input {
+#view-settings .dp-settings-auth-duration-control > .input {
   width: 100%;
   padding-inline-end: 62px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-duration-unit {
+#view-settings .dp-settings-auth-duration-unit {
   position: absolute;
   inset-inline-end: 14px;
   inset-block-start: 50%;
@@ -565,25 +565,25 @@ body.dp-v11-structural #view-settings .dp-settings-auth-duration-unit {
 }
 
 /* Callback is OIDC reference information, not Authentication Status. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
+#view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
   width: clamp(420px, 30%, 640px);
   max-width: 100%;
   margin: 18px auto 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-label {
+#view-settings .dp-settings-auth-callback-field > .form-label {
   display: block;
   margin-bottom: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-hint {
+#view-settings .dp-settings-auth-callback-field > .form-hint {
   display: block;
   margin-top: 7px;
   line-height: 1.4;
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
+  #view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
     width: 100%;
   }
 }
@@ -595,51 +595,51 @@ body.dp-v11-structural #view-settings .dp-settings-auth-callback-field > .form-h
 
 /* Header follows the same Title / centered flavor / Enable pattern as the
    other Settings cards with a master control. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header {
+#view-settings .dp-settings-oidc-grouped-card > .card-header {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
   align-items: center;
   gap: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .card-title {
+#view-settings .dp-settings-oidc-grouped-card > .card-header > .card-title {
   justify-self: start;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy {
+#view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy {
   justify-self: center;
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
+#view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
   justify-self: end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-body {
+#view-settings .dp-settings-oidc-grouped-card > .card-body {
   display: grid;
   gap: 20px;
 }
 
 /* OIDC uses the same reviewed field datum as the other Settings sandwiches:
    title and helper copy start 3px inside the actual form-field edge. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-label,
-body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-hint {
+#view-settings .dp-settings-oidc-sandwich > .form-label,
+#view-settings .dp-settings-oidc-sandwich > .form-hint {
   position: relative;
   inset-inline-start: 3px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-label {
+#view-settings .dp-settings-oidc-sandwich > .form-label {
   display: block;
   margin-bottom: 7px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-sandwich > .form-hint {
+#view-settings .dp-settings-oidc-sandwich > .form-hint {
   display: block;
   margin-top: 7px;
   line-height: 1.4;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-row {
+#view-settings .dp-settings-oidc-row {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -647,7 +647,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-row {
   gap: 28px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-row > .dp-settings-field {
+#view-settings .dp-settings-oidc-row > .dp-settings-field {
   min-width: 0;
   width: 100%;
   margin: 0;
@@ -655,25 +655,25 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-row > .dp-settings-field
 
 /* Use horizontal space according to expected content rather than giving every
    value a full-width row. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-row--origin {
+#view-settings .dp-settings-oidc-row--origin {
   grid-template-columns: minmax(0, 1.85fr) minmax(380px, 1fr);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-row--identity {
+#view-settings .dp-settings-oidc-row--identity {
   grid-template-columns: minmax(260px, .72fr) minmax(0, 1.68fr);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-row--credentials {
+#view-settings .dp-settings-oidc-row--credentials {
   grid-template-columns: minmax(300px, .8fr) minmax(420px, 1.2fr) auto;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-row--protocol {
+#view-settings .dp-settings-oidc-row--protocol {
   grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr);
 }
 
 /* The callback is no longer a floating centered reference field; it is the
    derived half of the Public Base URL relationship. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card .dp-settings-auth-callback-field {
+#view-settings .dp-settings-oidc-grouped-card .dp-settings-auth-callback-field {
   width: 100%;
   max-width: none;
   margin: 0;
@@ -681,7 +681,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card .dp-setting
 
 /* Clearing a stored OIDC secret remains a clear-on-Apply choice, but now owns
    the third control slot in the Client ID / Client Secret row. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-action {
+#view-settings .dp-settings-oidc-clear-secret-action {
   --dp-oidc-clear-copy-line: 13.75px;
   min-width: max-content;
   display: grid;
@@ -693,7 +693,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-action {
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-spacer {
+#view-settings .dp-settings-oidc-clear-secret-spacer {
   display: block;
   visibility: hidden;
   margin-bottom: 7px;
@@ -701,14 +701,14 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-spacer {
   user-select: none;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-control {
+#view-settings .dp-settings-oidc-clear-secret-control {
   min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
   justify-content: flex-end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret {
+#view-settings .dp-settings-oidc-clear-secret {
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -719,7 +719,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret {
   cursor: pointer;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy {
+#view-settings .dp-settings-oidc-clear-secret-copy {
   color: var(--dp-text-primary);
   font-size: 11px;
   font-weight: 700;
@@ -727,12 +727,12 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-copy {
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret > input {
+#view-settings .dp-settings-oidc-clear-secret > input {
   flex: 0 0 auto;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-hint {
+#view-settings .dp-settings-oidc-clear-secret-hint {
   max-width: 220px;
   /* The checkbox copy is centered in an input-height slot. Collapse the
      unused lower half of that slot so helper copy starts at the normal 7px
@@ -746,7 +746,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-hint {
 
 /* Access-control policy is one coherent section. The policy title/toggle now
    lives in the section heading rather than consuming a separate body row. */
-body.dp-v11-structural #view-settings .dp-settings-oidc-access {
+#view-settings .dp-settings-oidc-access {
   min-width: 0;
   display: grid;
   gap: 16px;
@@ -754,7 +754,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-access {
   border-top: 1px solid color-mix(in srgb, var(--dp-border, var(--border)) 65%, var(--dp-text-muted) 35%);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
+#view-settings .dp-settings-oidc-section-heading {
   min-width: 0;
   position: relative;
   display: grid;
@@ -763,14 +763,14 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
   gap: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-section-title {
+#view-settings .dp-settings-oidc-section-title {
   justify-self: start;
   color: var(--dp-text-primary);
   font-weight: 700;
   line-height: 1.25;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
+#view-settings .dp-settings-oidc-section-copy {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -782,7 +782,7 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
+#view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
   width: auto;
   min-width: 0;
   display: inline-flex;
@@ -796,24 +796,24 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading > .dp-se
   background: transparent;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-allow-all .toggle-info {
+#view-settings .dp-settings-oidc-allow-all .toggle-info {
   display: block;
   flex: 0 0 auto;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-allow-all .toggle-info .tl {
+#view-settings .dp-settings-oidc-allow-all .toggle-info .tl {
   display: block;
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-allow-all .toggle {
+#view-settings .dp-settings-oidc-allow-all .toggle {
   flex: 0 0 auto;
   align-self: center;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists {
+#view-settings .dp-settings-oidc-allowlists {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -821,80 +821,80 @@ body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists {
   gap: 20px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists > .dp-settings-field {
+#view-settings .dp-settings-oidc-allowlists > .dp-settings-field {
   min-width: 0;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists textarea.input {
+#view-settings .dp-settings-oidc-allowlists textarea.input {
   min-height: 104px;
   resize: vertical;
 }
 
 @media (max-width: 1280px) {
-  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header {
+  #view-settings .dp-settings-oidc-grouped-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-row {
+  #view-settings .dp-settings-oidc-row {
     gap: 22px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-row--origin {
+  #view-settings .dp-settings-oidc-row--origin {
     grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
+  #view-settings .dp-settings-oidc-section-copy {
     width: min(500px, 40%);
   }
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header {
+  #view-settings .dp-settings-oidc-grouped-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
     padding-block: 10px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
+  #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-copy,
+  #view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-oidc-header-enable {
     justify-self: start;
     text-align: left;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-row--origin,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-row--identity,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-row--credentials,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-row--protocol,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-allowlists,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
+  #view-settings .dp-settings-oidc-row--origin,
+  #view-settings .dp-settings-oidc-row--identity,
+  #view-settings .dp-settings-oidc-row--credentials,
+  #view-settings .dp-settings-oidc-row--protocol,
+  #view-settings .dp-settings-oidc-allowlists,
+  #view-settings .dp-settings-oidc-section-heading {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-action,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-title,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
+  #view-settings .dp-settings-oidc-clear-secret-action,
+  #view-settings .dp-settings-oidc-section-title,
+  #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
     justify-self: start;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
+  #view-settings .dp-settings-oidc-section-copy {
     position: static;
     width: auto;
     transform: none;
     justify-self: start;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-control,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret {
+  #view-settings .dp-settings-oidc-clear-secret-control,
+  #view-settings .dp-settings-oidc-clear-secret {
     justify-content: flex-start;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-clear-secret-hint,
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-copy {
+  #view-settings .dp-settings-oidc-clear-secret-hint,
+  #view-settings .dp-settings-oidc-section-copy {
     text-align: left;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-oidc-section-heading {
+  #view-settings .dp-settings-oidc-section-heading {
     gap: 6px;
   }
 }

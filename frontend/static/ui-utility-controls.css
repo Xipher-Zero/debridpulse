@@ -5,10 +5,10 @@
 /* Import and Recover All belong to the card header, not on top of it. Activity
    Refresh deliberately consumes the exact Recover All control recipe so the
    same recovery/refresh semantic reads identically across pages. */
-body.dp-v11-structural #view-dashboard #btn-import-existing,
-body.dp-v11-structural #view-dashboard #btn-recover-all,
-body.dp-v11-structural #view-events .dp-activity-refresh,
-body.dp-v11-structural #view-torrents .dp-downloads-refresh {
+#view-dashboard #btn-import-existing,
+#view-dashboard #btn-recover-all,
+#view-events .dp-activity-refresh,
+#view-torrents .dp-downloads-refresh {
   height: 36px !important;
   min-height: 36px !important;
   padding: 0 14px !important;
@@ -22,89 +22,89 @@ body.dp-v11-structural #view-torrents .dp-downloads-refresh {
 
 /* Import stays neutral: a quiet outline utility that is present when needed
    without competing with the primary Add action. */
-body.dp-v11-structural #view-dashboard #btn-import-existing {
+#view-dashboard #btn-import-existing {
   background: rgba(255,255,255,.018) !important;
   border-color: rgba(164,150,186,.38) !important;
   color: #d2c8dc !important;
 }
-body.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+#view-dashboard #btn-import-existing .dp-utility-icon {
   color: #baaaca !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-import-existing {
+body.light #view-dashboard #btn-import-existing {
   background: rgba(255,255,255,.28) !important;
   border-color: #d3cedd !important;
   color: #625c6d !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-import-existing .dp-utility-icon {
+body.light #view-dashboard #btn-import-existing .dp-utility-icon {
   color: #776d84 !important;
 }
 
 /* Recover / Refresh share the same violet recovery/application accent. Amber
    remains reserved for pause/caution semantics. */
-body.dp-v11-structural #view-dashboard #btn-recover-all,
-body.dp-v11-structural #view-events .dp-activity-refresh,
-body.dp-v11-structural #view-torrents .dp-downloads-refresh {
+#view-dashboard #btn-recover-all,
+#view-events .dp-activity-refresh,
+#view-torrents .dp-downloads-refresh {
   background: rgba(157,91,213,.028) !important;
   border-color: rgba(183,116,228,.50) !important;
   color: #dcbcf2 !important;
 }
-body.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+#view-dashboard #btn-recover-all .dp-icon {
   filter:
     hue-rotate(215deg)
     saturate(1.22)
     brightness(1.08)
     drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
-body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
-body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
+#view-events .dp-activity-refresh .dp-utility-icon,
+#view-torrents .dp-downloads-refresh .dp-utility-icon {
   width: 18px !important;
   height: 18px !important;
   stroke-width: 2 !important;
   color: inherit !important;
   filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-recover-all,
-body.light.dp-v11-structural #view-events .dp-activity-refresh,
-body.light.dp-v11-structural #view-torrents .dp-downloads-refresh {
+body.light #view-dashboard #btn-recover-all,
+body.light #view-events .dp-activity-refresh,
+body.light #view-torrents .dp-downloads-refresh {
   background: rgba(151,87,203,.018) !important;
   border-color: #c5a3dc !important;
   color: #714790 !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-icon {
+body.light #view-dashboard #btn-recover-all .dp-icon {
   filter:
     hue-rotate(215deg)
     saturate(1.18)
     brightness(.91)
     drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }
-body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
-body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
+body.light #view-events .dp-activity-refresh .dp-utility-icon,
+body.light #view-torrents .dp-downloads-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }
 
 /* Hover adds only a trace of local tint. These controls should never acquire
    the lift or heavy fill used by a primary CTA. */
-body.dp-v11-structural #view-dashboard #btn-import-existing:hover {
+#view-dashboard #btn-import-existing:hover {
   background: rgba(255,255,255,.04) !important;
   border-color: rgba(173,158,195,.54) !important;
   filter: none !important;
   transform: none !important;
 }
-body.dp-v11-structural #view-dashboard #btn-recover-all:hover,
-body.dp-v11-structural #view-events .dp-activity-refresh:hover,
-body.dp-v11-structural #view-torrents .dp-downloads-refresh:hover {
+#view-dashboard #btn-recover-all:hover,
+#view-events .dp-activity-refresh:hover,
+#view-torrents .dp-downloads-refresh:hover {
   background: rgba(157,91,213,.055) !important;
   border-color: rgba(190,125,234,.68) !important;
   filter: none !important;
   transform: none !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-import-existing:hover {
+body.light #view-dashboard #btn-import-existing:hover {
   background: rgba(246,243,250,.70) !important;
   border-color: #c5bfd2 !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-recover-all:hover,
-body.light.dp-v11-structural #view-events .dp-activity-refresh:hover,
-body.light.dp-v11-structural #view-torrents .dp-downloads-refresh:hover {
+body.light #view-dashboard #btn-recover-all:hover,
+body.light #view-events .dp-activity-refresh:hover,
+body.light #view-torrents .dp-downloads-refresh:hover {
   background: rgba(154,91,207,.055) !important;
   border-color: #b98dd5 !important;
 }
@@ -113,7 +113,7 @@ body.light.dp-v11-structural #view-torrents .dp-downloads-refresh:hover {
 /* Pause remains a caution action, but should read like the other translucent
    secondary controls rather than an opaque gold slab. The row-level pause
    contract uses these exact light-theme values as well. */
-body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn {
+body.light #topbar-actions #btn-pause-all.btn {
   background:
     linear-gradient(180deg, rgba(255,251,236,.54) 0%, rgba(250,234,186,.22) 100%) !important;
   border-color: rgba(207,158,55,.62) !important;
@@ -123,7 +123,7 @@ body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn {
     inset 0 1px rgba(255,255,255,.72),
     0 3px 8px -6px rgba(137,99,24,.18) !important;
 }
-body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn:hover {
+body.light #topbar-actions #btn-pause-all.btn:hover {
   background:
     linear-gradient(180deg, rgba(255,249,226,.68) 0%, rgba(249,229,168,.30) 100%) !important;
   border-color: rgba(196,142,40,.72) !important;
@@ -137,17 +137,17 @@ body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn:hover {
 /* ── Recover All / Activity Refresh exact icon parity ───────────────── */
 /* Both controls now render the same utilitySvg('refresh') geometry. Keep the
    icon dimensions, stroke, inherited violet color and glow identical. */
-body.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,
-body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
-body.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
+#view-dashboard #btn-recover-all .dp-utility-icon,
+#view-events .dp-activity-refresh .dp-utility-icon,
+#view-torrents .dp-downloads-refresh .dp-utility-icon {
   width: 18px !important;
   height: 18px !important;
   stroke-width: 2 !important;
   color: inherit !important;
   filter: drop-shadow(0 0 3px rgba(160,88,215,.14)) !important;
 }
-body.light.dp-v11-structural #view-dashboard #btn-recover-all .dp-utility-icon,
-body.light.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon,
-body.light.dp-v11-structural #view-torrents .dp-downloads-refresh .dp-utility-icon {
+body.light #view-dashboard #btn-recover-all .dp-utility-icon,
+body.light #view-events .dp-activity-refresh .dp-utility-icon,
+body.light #view-torrents .dp-downloads-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }

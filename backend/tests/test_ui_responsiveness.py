@@ -7,30 +7,38 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def test_live_refresh_keeps_action_nodes_stable_and_coalesces_core_loaders():
     js = (REPO_ROOT / "frontend/static/app.js").read_text()
+    # DP 1.0.12 canonical flattening: loadTorrents is ui-downloads.js's own
+    # self-wrap (the sole Downloads owner), not app.js's.
+    downloads_js = (REPO_ROOT / "frontend/static/ui-downloads.js").read_text()
 
     assert "el.dataset.initialized !== '1'" in js
     assert 'id="btn-pause-all"' in js
     assert 'id="btn-resume-all"' in js
     assert "loadStats = coalesceAsync(loadStats);" in js
     assert "loadRecent = coalesceAsync(loadRecent);" in js
-    assert "loadTorrents = coalesceAsync(loadTorrents);" in js
+    assert "loadTorrents = coalesceAsync(loadTorrents);" in downloads_js
 
 
 
 
 def test_async_controls_acknowledge_clicks_immediately():
     js = (REPO_ROOT / "frontend/static/app.js").read_text()
-    css = (REPO_ROOT / "frontend/static/style.css").read_text()
+    downloads_js = (REPO_ROOT / "frontend/static/ui-downloads.js").read_text()
+    # DP 1.0.12 canonical flattening: style.css is now a pure @import list;
+    # the universal .btn material (including this active-state transform) is
+    # the :is(.dp-btn, .btn) bridge in ui-universal-language.css, not a
+    # second copy (the retired ui-legacy-foundation.css's own .btn material
+    # was fully superseded by that bridge and was deleted, not migrated).
+    css = (REPO_ROOT / "frontend/static/ui-universal-language.css").read_text()
 
-    for label in (
-        "Pausing…",
-        "Resuming…",
-        "Retrying…",
-        "Deleting…",
-    ):
+    # Pause/Resume are shared with Dashboard Recent and stay in app.js;
+    # Retry/Delete are Downloads-only and live in ui-downloads.js.
+    for label in ("Pausing…", "Resuming…"):
         assert label in js
+    for label in ("Retrying…", "Deleting…"):
+        assert label in downloads_js
 
-    assert '.btn:not(:disabled):active' in css
+    assert ':is(.dp-btn, .btn):not(:disabled):active' in css
     assert 'aria-busy' in js
 
 

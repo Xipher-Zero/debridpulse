@@ -1,16 +1,16 @@
 /* DebridPulse v1.0.11 Settings inner-card icon presentation. */
 
-body.dp-v11-structural #view-settings .dp-settings-replaced-legacy-icon {
+#view-settings .dp-settings-replaced-legacy-icon {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inner-card-title {
+#view-settings .dp-settings-inner-card-title {
   display: inline-flex;
   align-items: center;
   gap: 10px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon {
+#view-settings .dp-settings-inner-card-icon {
   --dp-settings-inner-icon-color: #b866f5;
   width: 34px;
   height: 34px;
@@ -20,23 +20,23 @@ body.dp-v11-structural #view-settings .dp-settings-inner-card-icon {
   overflow: visible;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon[data-section='downloads'] {
+#view-settings .dp-settings-inner-card-icon[data-section='downloads'] {
   --dp-settings-inner-icon-color: #4c8fff;
 }
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon[data-section='extraction'] {
+#view-settings .dp-settings-inner-card-icon[data-section='extraction'] {
   --dp-settings-inner-icon-color: #e0a02b;
 }
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon[data-section='authentication'] {
+#view-settings .dp-settings-inner-card-icon[data-section='authentication'] {
   --dp-settings-inner-icon-color: #48c77e;
 }
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon[data-section='notifications'] {
+#view-settings .dp-settings-inner-card-icon[data-section='notifications'] {
   --dp-settings-inner-icon-color: #39c6e8;
 }
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon[data-section='maintenance'] {
+#view-settings .dp-settings-inner-card-icon[data-section='maintenance'] {
   --dp-settings-inner-icon-color: #3ab8a8;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inner-card-icon img {
+#view-settings .dp-settings-inner-card-icon img {
   width: 34px;
   height: 34px;
   display: block;
@@ -46,7 +46,7 @@ body.dp-v11-structural #view-settings .dp-settings-inner-card-icon img {
     drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-inner-icon-color) 34%, transparent));
 }
 
-body.light.dp-v11-structural #view-settings .dp-settings-inner-card-icon img {
+body.light #view-settings .dp-settings-inner-card-icon img {
   filter:
     saturate(1.08)
     contrast(1.04)

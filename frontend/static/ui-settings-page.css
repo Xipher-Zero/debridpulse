@@ -10,11 +10,11 @@
    #content already owns the 24px lower datum, so Settings fills that box rather
    than recomputing viewport height. */
 @media (min-width: 901px) {
-  body.dp-v11-structural #content:has(#view-settings.active) {
+  #content:has(#view-settings.active) {
     overflow-y: hidden;
   }
 
-  body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
+  #view-settings.dp-settings-clean-view.active {
     display: flex !important;
     flex-direction: column;
     height: 100% !important;
@@ -22,7 +22,7 @@
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-settings > .dp-settings-master-card {
+  #view-settings > .dp-settings-master-card {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -32,7 +32,7 @@
 }
 
 /* ── Master header ───────────────────────────────────────────────────── */
-body.dp-v11-structural #view-settings .dp-settings-master-header {
+#view-settings .dp-settings-master-header {
   flex: 0 0 auto;
   min-height: 76px;
   padding: 10px 16px;
@@ -42,14 +42,14 @@ body.dp-v11-structural #view-settings .dp-settings-master-header {
   gap: 16px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-header-copy {
+#view-settings .dp-settings-header-copy {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-header-icon {
+#view-settings .dp-settings-header-icon {
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
@@ -60,7 +60,7 @@ body.dp-v11-structural #view-settings .dp-settings-header-icon {
   line-height: 1;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-header-title {
+#view-settings .dp-settings-header-title {
   color: var(--dp-text-primary);
   font-size: 16px;
   line-height: 1.2;
@@ -68,7 +68,7 @@ body.dp-v11-structural #view-settings .dp-settings-header-title {
   letter-spacing: -.01em;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
+#view-settings .dp-settings-header-subtitle {
   margin-top: 4px;
   max-width: 560px;
   color: var(--dp-text-muted);
@@ -76,13 +76,13 @@ body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
   line-height: 1.35;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-tabs {
+#view-settings .dp-settings-tabs {
   width: max-content;
   max-width: 100%;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
+#view-settings .dp-settings-tabs .stab {
   appearance: none;
   min-height: 32px;
   flex: 0 0 auto;
@@ -91,7 +91,7 @@ body.dp-v11-structural #view-settings .dp-settings-tabs .stab {
 }
 
 /* ── Master body / sole scroll owner ────────────────────────────────── */
-body.dp-v11-structural #view-settings .dp-settings-master-body {
+#view-settings .dp-settings-master-body {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -99,7 +99,7 @@ body.dp-v11-structural #view-settings .dp-settings-master-body {
   overflow: hidden;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-scroll {
+#view-settings .dp-settings-scroll {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -111,108 +111,108 @@ body.dp-v11-structural #view-settings .dp-settings-scroll {
 
 /* Inset the tab content so nested shared-card contact shadows have paint room
    inside the scroll viewport. The master card itself owns the outer frame. */
-body.dp-v11-structural #view-settings .dp-settings-panels {
+#view-settings .dp-settings-panels {
   width: 100%;
   min-width: 0;
   padding: 12px 12px 16px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-panel {
+#view-settings .dp-settings-panel {
   width: 100%;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-panel[hidden] {
+#view-settings .dp-settings-panel[hidden] {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-card {
+#view-settings .dp-settings-card {
   width: 100%;
   margin: 0 0 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-card:last-child {
+#view-settings .dp-settings-card:last-child {
   margin-bottom: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-card > .card-header {
+#view-settings .dp-settings-card > .card-header {
   min-height: 50px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-copy {
+#view-settings .dp-settings-copy {
   margin: 0 0 14px;
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.5;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-field,
-body.dp-v11-structural #view-settings .dp-settings-toggle + .dp-settings-field,
-body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-toggle,
-body.dp-v11-structural #view-settings .dp-settings-toggle + .dp-settings-toggle,
-body.dp-v11-structural #view-settings .dp-settings-clear-secret + .dp-settings-field,
-body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-clear-secret,
-body.dp-v11-structural #view-settings .dp-settings-mode-external + .dp-settings-field,
-body.dp-v11-structural #view-settings .dp-settings-field + .dp-settings-mode-external {
+#view-settings .dp-settings-field + .dp-settings-field,
+#view-settings .dp-settings-toggle + .dp-settings-field,
+#view-settings .dp-settings-field + .dp-settings-toggle,
+#view-settings .dp-settings-toggle + .dp-settings-toggle,
+#view-settings .dp-settings-clear-secret + .dp-settings-field,
+#view-settings .dp-settings-field + .dp-settings-clear-secret,
+#view-settings .dp-settings-mode-external + .dp-settings-field,
+#view-settings .dp-settings-field + .dp-settings-mode-external {
   margin-top: 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-mode-external[hidden],
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning[hidden] {
+#view-settings .dp-settings-mode-external[hidden],
+#view-settings .dp-settings-engine-tuning[hidden] {
   display: none !important;
 }
 
 /* Download Engine owns a three-part header: title/artwork on the left, the
    engine explanation true-centered, and mode selection pinned to the right. */
-body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header {
+#view-settings .dp-settings-download-engine-card > .card-header {
   display: grid;
   grid-template-columns: minmax(250px, 1fr) minmax(420px, 900px) minmax(250px, 1fr);
   align-items: center;
   gap: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
+#view-settings .dp-settings-download-engine-card > .card-header > .card-title {
   justify-self: start;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-card-header-center {
+#view-settings .dp-settings-card-header-center {
   min-width: 0;
   justify-self: center;
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-header-copy {
+#view-settings .dp-settings-download-engine-header-copy {
   display: block;
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.45;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-mode {
+#view-settings .dp-settings-download-engine-mode {
   min-width: 0;
   justify-self: end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-mode > .dp-settings-field {
+#view-settings .dp-settings-download-engine-mode > .dp-settings-field {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-mode .form-label {
+#view-settings .dp-settings-download-engine-mode .form-label {
   margin: 0;
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-mode .dp-dropdown-shell {
+#view-settings .dp-settings-download-engine-mode .dp-dropdown-shell {
   width: 180px;
   min-width: 180px;
 }
 
 /* External connection controls form one connection band. The URL remains the
    dominant datum; secret replacement and explicit clearing stay adjacent. */
-body.dp-v11-structural #view-settings .dp-settings-external-connection-row {
+#view-settings .dp-settings-external-connection-row {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(260px, .65fr);
   align-items: start;
@@ -222,16 +222,16 @@ body.dp-v11-structural #view-settings .dp-settings-external-connection-row {
   border: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured {
+#view-settings .dp-settings-external-connection-row.is-secret-configured {
   grid-template-columns: minmax(0, 1.7fr) minmax(260px, .65fr) minmax(280px, .65fr);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-external-connection-row > .dp-settings-field {
+#view-settings .dp-settings-external-connection-row > .dp-settings-field {
   min-width: 0;
   margin-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-aria2-secret-meta {
+#view-settings .dp-settings-aria2-secret-meta {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -239,11 +239,11 @@ body.dp-v11-structural #view-settings .dp-settings-aria2-secret-meta {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-aria2-secret-meta .form-hint:first-child {
+#view-settings .dp-settings-aria2-secret-meta .form-hint:first-child {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-external-connection-row .dp-settings-clear-secret--aria2 {
+#view-settings .dp-settings-external-connection-row .dp-settings-clear-secret--aria2 {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -255,12 +255,12 @@ body.dp-v11-structural #view-settings .dp-settings-external-connection-row .dp-s
   border-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > .form-label {
+#view-settings .dp-settings-clear-secret--aria2 > .form-label {
   grid-column: 1 / -1;
   align-self: end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control {
+#view-settings .dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control {
   grid-column: 1 / -1;
   min-height: 38px;
   display: flex;
@@ -268,17 +268,17 @@ body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > .dp-set
   justify-content: flex-end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 > small {
+#view-settings .dp-settings-clear-secret--aria2 > small {
   grid-column: 1 / -1;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret--aria2 input {
+#view-settings .dp-settings-clear-secret--aria2 input {
   margin-left: auto;
 }
 
 /* The active path consumes all remaining row width; concurrency remains compact
    and pinned to the card's right datum in both engine modes. */
-body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
+#view-settings .dp-settings-download-engine-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   align-items: start;
@@ -286,26 +286,26 @@ body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
   margin-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-path-stack,
-body.dp-v11-structural #view-settings .dp-settings-download-limit {
+#view-settings .dp-settings-download-path-stack,
+#view-settings .dp-settings-download-limit {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-path-stack[hidden] {
+#view-settings .dp-settings-download-path-stack[hidden] {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-engine-row .dp-settings-field {
+#view-settings .dp-settings-download-engine-row .dp-settings-field {
   margin-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-download-limit {
+#view-settings .dp-settings-download-limit {
   width: 100%;
   max-width: 320px;
   justify-self: end;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret {
+#view-settings .dp-settings-clear-secret {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -317,20 +317,20 @@ body.dp-v11-structural #view-settings .dp-settings-clear-secret {
   cursor: pointer;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret > span {
+#view-settings .dp-settings-clear-secret > span {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret b {
+#view-settings .dp-settings-clear-secret b {
   font-size: 12px;
   font-weight: 600;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-clear-secret small,
-body.dp-v11-structural #view-settings .dp-settings-inline-check {
+#view-settings .dp-settings-clear-secret small,
+#view-settings .dp-settings-inline-check {
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.35;
@@ -339,7 +339,7 @@ body.dp-v11-structural #view-settings .dp-settings-inline-check {
 /* AllDebrid keeps the primary secret action in one coherent row: the key field
    gives up horizontal space to the explicit clear control, while the checkbox
    stays pinned to the card's right datum and centers against the two-line copy. */
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row {
+#view-settings .dp-settings-alldebrid-key-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 22px;
@@ -347,15 +347,15 @@ body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row.is-configured {
+#view-settings .dp-settings-alldebrid-key-row.is-configured {
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-field {
+#view-settings .dp-settings-alldebrid-key-field {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta {
+#view-settings .dp-settings-alldebrid-key-meta {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -363,11 +363,11 @@ body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta .form-hint:first-child {
+#view-settings .dp-settings-alldebrid-key-meta .form-hint:first-child {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-key-present {
+#view-settings .dp-settings-key-present {
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--dp-state-success);
@@ -376,7 +376,7 @@ body.dp-v11-structural #view-settings .dp-settings-key-present {
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid {
+#view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid {
   width: 100%;
   min-width: 0;
   align-self: center;
@@ -385,11 +385,11 @@ body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-setting
   border-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > span {
+#view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > span {
   padding-right: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > input {
+#view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > input {
   flex: 0 0 auto;
   margin-left: auto;
 }
@@ -397,12 +397,12 @@ body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row .dp-setting
 /* Secondary provider/engine tuning lives in native disclosures rather than
    nested cards. Native details/summary keeps collapsed state accessible and
    requires no additional runtime state or event ownership. */
-body.dp-v11-structural #view-settings .dp-settings-additional {
+#view-settings .dp-settings-additional {
   margin-top: 14px;
   border-top: 1px solid var(--dp-divider);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-additional > summary {
+#view-settings .dp-settings-additional > summary {
   min-height: 42px;
   display: flex;
   align-items: center;
@@ -416,11 +416,11 @@ body.dp-v11-structural #view-settings .dp-settings-additional > summary {
   user-select: none;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-additional > summary::-webkit-details-marker {
+#view-settings .dp-settings-additional > summary::-webkit-details-marker {
   display: none;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-additional > summary::after {
+#view-settings .dp-settings-additional > summary::after {
   content: '›';
   flex: 0 0 auto;
   color: var(--dp-text-muted);
@@ -430,38 +430,38 @@ body.dp-v11-structural #view-settings .dp-settings-additional > summary::after {
   transition: transform .15s ease, color .15s ease;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-additional[open] > summary::after {
+#view-settings .dp-settings-additional[open] > summary::after {
   color: var(--dp-accent-purple-bright);
   transform: rotate(90deg);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-additional-body {
+#view-settings .dp-settings-additional-body {
   padding: 2px 0 4px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-additional-body > .dp-settings-field + .dp-settings-field {
+#view-settings .dp-settings-additional-body > .dp-settings-field + .dp-settings-field {
   margin-top: 12px;
 }
 
 /* Built-in aria2 tuning follows the Settings field grammar in a compact two-
    column matrix, then terminates with the semantically distinct allocation
    selector centered beneath the performance controls. */
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning {
+#view-settings .dp-settings-engine-tuning {
   margin-top: 18px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning-grid {
+#view-settings .dp-settings-engine-tuning-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px 28px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning-grid > .dp-settings-field {
+#view-settings .dp-settings-engine-tuning-grid > .dp-settings-field {
   min-width: 0;
   margin-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-control {
+#view-settings .dp-settings-engine-tuning-toggle-control {
   min-height: 38px;
   display: flex;
   align-items: center;
@@ -471,42 +471,42 @@ body.dp-v11-structural #view-settings .dp-settings-engine-tuning-toggle-control 
 /* Specification section 9.9: the built-in-only tuning subsection is visually
    separated from (never merged with) the per-job group above it, which
    stays visible/editable in both built-in and external mode. */
-body.dp-v11-structural #view-settings .dp-settings-engine-tuning-builtin-only {
+#view-settings .dp-settings-engine-tuning-builtin-only {
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--dp-border-subtle);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-builtin-only-label {
+#view-settings .dp-settings-builtin-only-label {
   margin: 0 0 10px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation {
+#view-settings .dp-settings-engine-file-allocation {
   width: min(100%, 520px);
   margin: 20px auto 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-engine-file-allocation > .dp-settings-field {
+#view-settings .dp-settings-engine-file-allocation > .dp-settings-field {
   margin-top: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inline-check {
+#view-settings .dp-settings-inline-check {
   display: flex;
   align-items: center;
   gap: 7px;
   margin-top: 8px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-filter-fields {
+#view-settings .dp-settings-filter-fields {
   margin-top: 12px;
   transition: opacity .15s ease;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-filter-fields.is-disabled {
+#view-settings .dp-settings-filter-fields.is-disabled {
   opacity: .45;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-actions {
+#view-settings .dp-settings-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -514,11 +514,11 @@ body.dp-v11-structural #view-settings .dp-settings-actions {
   margin-top: 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-file-button {
+#view-settings .dp-settings-file-button {
   cursor: pointer;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-avatar-preview {
+#view-settings .dp-settings-avatar-preview {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -528,11 +528,11 @@ body.dp-v11-structural #view-settings .dp-settings-avatar-preview {
   overflow-wrap: anywhere;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-avatar-preview[hidden] {
+#view-settings .dp-settings-avatar-preview[hidden] {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-avatar-preview img {
+#view-settings .dp-settings-avatar-preview img {
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -541,14 +541,14 @@ body.dp-v11-structural #view-settings .dp-settings-avatar-preview img {
   object-fit: cover;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-status-grid {
+#view-settings .dp-settings-status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
   margin-bottom: 14px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-status {
+#view-settings .dp-settings-status {
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid var(--dp-border-default);
@@ -559,18 +559,18 @@ body.dp-v11-structural #view-settings .dp-settings-status {
   line-height: 1.4;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-status b {
+#view-settings .dp-settings-status b {
   display: block;
   margin-bottom: 2px;
   color: var(--dp-text-primary);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-status span {
+#view-settings .dp-settings-status span {
   overflow-wrap: anywhere;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution,
-body.dp-v11-structural #view-settings .dp-settings-load-error {
+#view-settings .dp-settings-caution,
+#view-settings .dp-settings-load-error {
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--dp-state-caution) 45%, var(--dp-border-default));
   border-radius: var(--radius-sm);
@@ -580,38 +580,38 @@ body.dp-v11-structural #view-settings .dp-settings-load-error {
   line-height: 1.45;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution {
+#view-settings .dp-settings-caution {
   margin-bottom: 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution b {
+#view-settings .dp-settings-caution b {
   display: block;
   margin-bottom: 2px;
   color: var(--dp-state-caution);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-caution span,
-body.dp-v11-structural #view-settings .dp-settings-load-error span {
+#view-settings .dp-settings-caution span,
+#view-settings .dp-settings-load-error span {
   display: block;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-load-error {
+#view-settings .dp-settings-load-error {
   border-color: color-mix(in srgb, var(--dp-state-error) 42%, var(--dp-border-default));
   background: var(--dp-state-error-bg);
   color: var(--dp-state-error);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-loading,
-body.dp-v11-structural #view-settings .dp-settings-load-error {
+#view-settings .dp-settings-loading,
+#view-settings .dp-settings-load-error {
   margin: 4px 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-loading {
+#view-settings .dp-settings-loading {
   color: var(--dp-text-muted);
   font-size: 12px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-token-once {
+#view-settings .dp-settings-token-once {
   margin-top: 12px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 45%, var(--dp-border-default));
@@ -619,32 +619,32 @@ body.dp-v11-structural #view-settings .dp-settings-token-once {
   background: var(--dp-surface-2);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-token-once > b {
+#view-settings .dp-settings-token-once > b {
   display: block;
   margin-bottom: 8px;
   color: var(--dp-accent-purple-bright);
   font-size: 11px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inline-field {
+#view-settings .dp-settings-inline-field {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-inline-field > .input {
+#view-settings .dp-settings-inline-field > .input {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-result-list {
+#view-settings .dp-settings-result-list {
   margin-top: 10px;
   color: var(--dp-text-secondary);
   font-size: 11px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-result-row {
+#view-settings .dp-settings-result-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -652,17 +652,17 @@ body.dp-v11-structural #view-settings .dp-settings-result-row {
   border-bottom: 1px solid var(--dp-divider);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-result-row:last-child {
+#view-settings .dp-settings-result-row:last-child {
   border-bottom: 0;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-result-row span:last-child {
+#view-settings .dp-settings-result-row span:last-child {
   color: var(--dp-text-muted);
   text-align: right;
 }
 
 /* ── Fixed-within-card footer ───────────────────────────────────────── */
-body.dp-v11-structural #view-settings .dp-settings-master-footer {
+#view-settings .dp-settings-master-footer {
   flex: 0 0 auto;
   min-height: 60px;
   padding: 10px 13px;
@@ -673,7 +673,7 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer {
   background: transparent;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-save-hint {
+#view-settings .dp-settings-save-hint {
   flex: 1 1 auto;
   min-width: 180px;
   color: var(--dp-text-muted);
@@ -681,114 +681,114 @@ body.dp-v11-structural #view-settings .dp-settings-save-hint {
   line-height: 1.35;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-context-actions {
+#view-settings .dp-settings-context-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-context-actions [hidden] {
+#view-settings .dp-settings-context-actions [hidden] {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
+#view-settings .dp-settings-master-footer .btn {
   min-height: 36px;
   margin: 0;
 }
 
 @media (max-width: 1420px) {
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header {
+  #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.3fr) minmax(250px, 1fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured {
+  #view-settings .dp-settings-external-connection-row.is-secret-configured {
     grid-template-columns: minmax(0, 1.5fr) minmax(230px, .65fr) minmax(250px, .65fr);
     gap: 18px;
   }
 }
 
 @media (max-width: 1180px) {
-  body.dp-v11-structural #view-settings .dp-settings-master-header {
+  #view-settings .dp-settings-master-header {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-tabs {
+  #view-settings .dp-settings-tabs {
     width: 100%;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header {
+  #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
+  #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
     grid-column: 1;
     grid-row: 1;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-card-header-center {
+  #view-settings .dp-settings-card-header-center {
     grid-column: 1 / -1;
     grid-row: 2;
     padding-top: 2px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-mode {
+  #view-settings .dp-settings-download-engine-mode {
     grid-column: 2;
     grid-row: 1;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row,
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured {
+  #view-settings .dp-settings-external-connection-row,
+  #view-settings .dp-settings-external-connection-row.is-secret-configured {
     grid-template-columns: minmax(0, 1fr) minmax(260px, .55fr);
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured .dp-settings-clear-secret--aria2 {
+  #view-settings .dp-settings-external-connection-row.is-secret-configured .dp-settings-clear-secret--aria2 {
     grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-settings.dp-settings-clean-view.active {
+  #view-settings.dp-settings-clean-view.active {
     height: auto;
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-settings > .dp-settings-master-card,
-  body.dp-v11-structural #view-settings .dp-settings-master-body,
-  body.dp-v11-structural #view-settings .dp-settings-scroll {
+  #view-settings > .dp-settings-master-card,
+  #view-settings .dp-settings-master-body,
+  #view-settings .dp-settings-scroll {
     min-height: auto;
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row.is-configured,
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row,
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured,
-  body.dp-v11-structural #view-settings .dp-settings-engine-tuning-grid {
+  #view-settings .dp-settings-alldebrid-key-row.is-configured,
+  #view-settings .dp-settings-external-connection-row,
+  #view-settings .dp-settings-external-connection-row.is-secret-configured,
+  #view-settings .dp-settings-engine-tuning-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured .dp-settings-clear-secret--aria2 {
+  #view-settings .dp-settings-external-connection-row.is-secret-configured .dp-settings-clear-secret--aria2 {
     grid-column: auto;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-row {
+  #view-settings .dp-settings-download-engine-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-limit {
+  #view-settings .dp-settings-download-limit {
     max-width: none;
     justify-self: stretch;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-master-footer {
+  #view-settings .dp-settings-master-footer {
     align-items: stretch;
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-context-actions {
+  #view-settings .dp-settings-context-actions {
     width: 100%;
     justify-content: flex-start;
     margin-left: 0;
@@ -797,79 +797,114 @@ body.dp-v11-structural #view-settings .dp-settings-master-footer .btn {
 }
 
 @media (max-width: 700px) {
-  body.dp-v11-structural #view-settings .dp-settings-master-header {
+  #view-settings .dp-settings-master-header {
     padding: 12px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-panels {
+  #view-settings .dp-settings-panels {
     padding: 10px 10px 14px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header {
+  #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header > .card-title,
-  body.dp-v11-structural #view-settings .dp-settings-card-header-center,
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-mode {
+  #view-settings .dp-settings-download-engine-card > .card-header > .card-title,
+  #view-settings .dp-settings-card-header-center,
+  #view-settings .dp-settings-download-engine-mode {
     grid-column: 1;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
+  #view-settings .dp-settings-download-engine-card > .card-header > .card-title {
     grid-row: 1;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-card-header-center {
+  #view-settings .dp-settings-card-header-center {
     grid-row: 2;
     text-align: left;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-mode {
+  #view-settings .dp-settings-download-engine-mode {
     grid-row: 3;
     width: 100%;
     justify-self: stretch;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-download-engine-mode > .dp-settings-field {
+  #view-settings .dp-settings-download-engine-mode > .dp-settings-field {
     justify-content: space-between;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-meta,
-  body.dp-v11-structural #view-settings .dp-settings-aria2-secret-meta {
+  #view-settings .dp-settings-alldebrid-key-meta,
+  #view-settings .dp-settings-aria2-secret-meta {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-key-present {
+  #view-settings .dp-settings-key-present {
     margin-left: 0;
     text-align: left;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-inline-field,
-  body.dp-v11-structural #view-settings .dp-settings-result-row {
+  #view-settings .dp-settings-inline-field,
+  #view-settings .dp-settings-result-row {
     align-items: stretch;
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-result-row span:last-child {
+  #view-settings .dp-settings-result-row span:last-child {
     text-align: left;
   }
 }
 
 /* Canonical Settings master subtitle. */
-body.dp-v11-structural #view-settings .dp-settings-header-subtitle {
+#view-settings .dp-settings-header-subtitle {
   font-size: 11px !important;
   line-height: 1.35;
 }
-body.dp-v11-structural #view-settings .dp-settings-header-subtitle::after { content: none !important; }
+#view-settings .dp-settings-header-subtitle::after { content: none !important; }
 
 /* Roadmap Item 10: Sources & Providers. */
-body.dp-v11-structural #view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
-body.dp-v11-structural #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
-body.dp-v11-structural #view-settings .dp-settings-provider-minimal-copy { margin-bottom:0; }
+#view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
+#view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
+#view-settings .dp-settings-provider-minimal-copy { margin-bottom:0; }
 @media (max-width:700px) {
-  body.dp-v11-structural #view-settings .dp-settings-provider-card > .card-header { gap:10px; }
-  body.dp-v11-structural #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
+  #view-settings .dp-settings-provider-card > .card-header { gap:10px; }
+  #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
 }
+
+/* Settings: tabs and action footer remain visible; only the body scrolls.
+   (DP 1.0.12 canonical flattening: migrated from the retired
+   ui-legacy-foundation.css) */
+#view-settings.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+#settings-tabs {
+  flex: 0 0 auto;
+  margin: 0 24px;
+}
+#settings-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 28px 0 24px;
+}
+@media (max-width: 700px) {
+  #settings-tabs {
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+  #settings-form {
+    padding: 10px 14px 0 10px;
+  }
+}
+#settings-form .scard-body { gap: 14px; }
+#settings-form .toggle-row { max-width: 860px; }
+#settings-form .input { width: 100%; }
+#settings-form input[type="number"].input { max-width: 220px; }
+#settings-form textarea.input { max-width: 100%; }

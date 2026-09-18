@@ -21,34 +21,53 @@ def test_retired_correction_assets_and_globals_are_absent() -> None:
 
 
 def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
+    # DP 1.0.12 canonical flattening: Provider Status no longer bootstraps
+    # unrelated UI modules. Every bounded presentation owner is now a direct,
+    # explicit <script defer> dependency of index.html, in dependency order,
+    # not dynamically injected by ui-provider-status.js.
     provider = read("ui-provider-status.js")
+    assert "bootPresentationOwners" not in provider
+    assert "PRESENTATION_OWNERS" not in provider
+    assert "createElement('script')" not in provider
+    assert 'createElement("script")' not in provider
+    assert "debridpulse:presentation-ready" not in provider
+    assert "ui-presentation-loader.js" not in provider
+    assert "DPPresentationLoader" not in provider
+
+    index = read("index.html")
     expected = (
         "/ui-toast-contract.js?v=2",
-        "/ui-processing-presentation.js?v=1",
-        "/ui-dashboard-transfer-presentation.js?v=3",
-        "/ui-downloads-presentation.js?v=2",
+        "/ui-processing-presentation.js?v=2",
+        "/ui-transfer-source-presentation.js?v=1",
+        "/ui-file-selection.js?v=1",
+        "/ui-dashboard-transfer-presentation.js?v=4",
+        "/ui-downloads.js?v=1",
         "/ui-activity-log-runtime.js?v=1",
         "/ui-settings-archive-passwords.js?v=1",
     )
     positions = []
     for src in expected:
-        assert provider.count(src) == 1
-        positions.append(provider.index(src))
+        assert index.count(src) == 1, src
+        assert f'<script src="{src}" defer></script>' in index, src
+        positions.append(index.index(src))
     assert positions == sorted(positions)
-    assert "bootPresentationOwners" in provider
-    assert "ui-presentation-loader.js" not in provider
-    assert "DPPresentationLoader" not in provider
 
 
 def test_bounded_runtime_owners_are_present() -> None:
     provider = read("ui-provider-status.js")
     assert "ui-correction" not in provider
     assert "createElement('script')" not in read("ui-settings-card-icons.js")
-    assert "window.DPDashboardTransferPresentation" in read("ui-dashboard-transfer-presentation.js")
-    downloads = read("ui-downloads-presentation.js")
-    assert "window.DPDownloadsPresentation" in downloads and "ResizeObserver" in downloads
+    # DP 1.0.12 Gate 9 fix-forward: the module no longer exports an empty
+    # window.DPDashboardTransferPresentation marker whose only consumer was
+    # a readiness test -- __dpRegisterRecentRenderer is its real, functional
+    # registration with the canonical Dashboard Recent delegation entrypoint.
+    assert "window.__dpRegisterRecentRenderer" in read("ui-dashboard-transfer-presentation.js")
+    assert "window.DPDashboardTransferPresentation" not in read("ui-dashboard-transfer-presentation.js")
+    downloads = read("ui-downloads.js")
+    assert "window.DPDownloads" in downloads and "window.loadTorrents" in downloads and "ResizeObserver" in downloads
     assert all(token in downloads for token in ("Friendly", "International", "ISO", "12-hour", "24-hour", "dp-pager-placeholder"))
     assert "window.DPProcessingPresentation" in read("ui-processing-presentation.js")
+    assert "window.DPTransferSourcePresentation" in read("ui-transfer-source-presentation.js")
     activity = read("ui-activity-log-runtime.js")
     assert "window.DPActivityLog" in activity and "EVENT_LIMIT=500" in activity and "include_meta" in activity
     archive = read("ui-settings-archive-passwords.js")
@@ -60,13 +79,16 @@ def test_bounded_runtime_owners_are_present() -> None:
 
 
 def test_canonical_css_graph_uses_named_component_owners() -> None:
-    style = read("style-v11.css")
+    assert not (STATIC / "style-v11.css").exists()
+    style = read("style.css")
     for owner in (
-        "ui-provider-summary.css", "ui-dashboard-transfer-presentation.css",
-        "ui-downloads-presentation.css", "ui-activity-log-controls.css",
+        "ui-provider-state.css", "ui-dashboard-transfer-presentation.css",
+        "ui-downloads-page.css", "ui-activity-log-controls.css",
         "ui-settings-archive-passwords.css", "ui-detail-files.css",
     ):
         assert style.count(owner) == 1
+    assert "ui-downloads-presentation.css" not in style
+    assert "ui-downloads-desktop.css" not in style
     assert "ui-correction" not in style
     assert "width:136px" in read("ui-detail-files.css").replace(" ", "")
 
@@ -102,7 +124,7 @@ def test_candidate_chip_family_has_one_shared_base_visual_owner() -> None:
     # Surface / detail / group files own only bounded layout or interactive
     # differences, never a second base definition of the chip material.
     for surface in (
-        "ui-dashboard-transfer-presentation.css", "ui-downloads-presentation.css",
+        "ui-dashboard-transfer-presentation.css", "ui-downloads-page.css",
         "ui-detail-candidates.css", "ui-group-candidates.css",
     ):
         assert ".dp-candidate-chip {" not in read(surface)
@@ -117,7 +139,7 @@ def test_transfer_level_candidate_control_is_one_shared_group_owner() -> None:
     assert "window.DPGroupCandidates = Object.freeze" in group
     assert "function computeGroup" in group and "function launcherMarkup" in group
 
-    for surface in ("ui-downloads-presentation.js", "ui-dashboard-transfer-presentation.js"):
+    for surface in ("ui-downloads.js", "ui-dashboard-transfer-presentation.js"):
         source = read(surface)
         assert "DPGroupCandidates" in source and "launcherMarkup" in source
         assert "candidateChipMarkup" not in source
@@ -135,13 +157,13 @@ def test_transfer_level_candidate_control_is_one_shared_group_owner() -> None:
     # per-file candidate owner), not through the bounded presentation loader.
     assert index.count("/ui-group-candidates.js?v=1") == 1
     assert "ui-group-candidates.js" not in provider
-    style = read("style-v11.css")
+    style = read("style.css")
     assert style.count("/ui-group-candidates.css") == 1
     assert "@import url('/ui-group-candidates.css?v=1');" in style
 
 
 def test_candidate_detail_css_is_in_the_canonical_graph_and_not_runtime_injected() -> None:
-    style = read("style-v11.css")
+    style = read("style.css")
     assert style.count("/ui-detail-candidates.css") == 1
     assert "@import url('/ui-detail-candidates.css?v=4');" in style
 
@@ -216,13 +238,13 @@ def test_file_selection_has_one_bounded_runtime_and_style_owner() -> None:
     assert (STATIC / "ui-file-selection.js").exists()
     assert (STATIC / "ui-file-selection.css").exists()
 
-    style = read("style-v11.css")
+    style = read("style.css")
     assert style.count("/ui-file-selection.css") == 1
-    assert "@import url('/ui-file-selection.css?v=1');" in style
+    assert "@import url('/ui-file-selection.css?v=2');" in style
 
-    provider = read("ui-provider-status.js")
-    assert provider.count("/ui-file-selection.js?v=1") == 1
-    assert "'DPFileSelection'" in provider
+    index = read("index.html")
+    assert index.count("/ui-file-selection.js?v=1") == 1
+    assert "ui-file-selection.js" not in read("ui-provider-status.js")
 
     runtime = read("ui-file-selection.js")
     assert "window.DPFileSelection = Object.freeze" in runtime
@@ -245,24 +267,24 @@ def test_file_selection_has_one_bounded_runtime_and_style_owner() -> None:
 
 
 def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
-    # DP 1.0.12 Workstream B: ui-file-selection.js must load before
-    # ui-dashboard-transfer-presentation.js and ui-downloads-presentation.js,
-    # since both now call window.DPFileSelection.chipMarkup() synchronously
-    # while building each row's markup and this chain loads owners strictly
-    # in order (see ui-provider-status.js bootPresentationOwners()).
-    provider = read("ui-provider-status.js")
+    # DP 1.0.12 canonical flattening: ui-file-selection.js must load before
+    # ui-dashboard-transfer-presentation.js and ui-downloads.js, since both
+    # call window.DPFileSelection.chipMarkup() while building each row's
+    # markup. All are now direct, explicit <script defer> tags in index.html,
+    # in dependency order -- not a dynamically-injected boot chain.
+    index = read("index.html")
     ordered = (
         "/ui-toast-contract.js?v=2",
-        "/ui-processing-presentation.js?v=1",
+        "/ui-processing-presentation.js?v=2",
         "/ui-file-selection.js?v=1",
-        "/ui-dashboard-transfer-presentation.js?v=3",
-        "/ui-downloads-presentation.js?v=2",
+        "/ui-dashboard-transfer-presentation.js?v=4",
+        "/ui-downloads.js?v=1",
         "/ui-activity-log-runtime.js?v=1",
         "/ui-settings-archive-passwords.js?v=1",
     )
-    positions = [provider.index(item) for item in ordered]
+    positions = [index.index(item) for item in ordered]
     assert positions == sorted(positions)
-    assert "bootPresentationOwners()" in provider
+    assert "bootPresentationOwners" not in read("ui-provider-status.js")
 
 
 def test_details_exposes_a_stable_file_selection_action_host() -> None:

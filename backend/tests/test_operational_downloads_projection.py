@@ -421,7 +421,11 @@ def test_link_kind_multi_file_batch_still_uses_artifact_normalization(monkeypatc
 
 
 def test_file_selection_affordance_pure_classifier_covers_all_five_states():
-    classify = downloads._file_selection_affordance
+    # DP 1.0.12 canonical flattening (CANON-002 closure): the classifier is
+    # now the one shared backend domain function, consumed (not
+    # reimplemented) by both api.operational_downloads and
+    # transfers.repository.TransferRepository.file_selection_presentation.
+    from transfers.file_selection import file_selection_affordance as classify
     # 5. genuinely not applicable: no selection generation row at all.
     assert classify(None, None, None, 0) == "none"
     # 1. applicable but manifest not ready yet.

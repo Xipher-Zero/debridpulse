@@ -100,7 +100,7 @@
     if (document.querySelector('link[data-dp-settings-directory-browser-style="1"]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/ui-settings-directory-browser.css?v=1';
+    link.href = '/ui-settings-directory-browser.css?v=2';
     link.dataset.dpSettingsDirectoryBrowserStyle = '1';
     document.head.appendChild(link);
   }

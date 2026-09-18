@@ -94,8 +94,11 @@ def test_error_semantics_does_not_busy_poll_for_core_helpers() -> None:
 def test_shell_and_downloads_have_direct_canonical_owners() -> None:
     index = read("index.html")
     app = read("app.js")
+    # DP 1.0.12 canonical flattening: ui-downloads.js is the sole Downloads
+    # controller/renderer owner -- app.js no longer carries this content.
+    downloads = read("ui-downloads.js")
     icons = read("operator-title.js")
-    for retired in ("ui-runtime.js", "ui-downloads-runtime.js"):
+    for retired in ("ui-runtime.js", "ui-downloads-runtime.js", "ui-downloads-presentation.js"):
         assert not (STATIC / retired).exists()
         assert retired not in index
         assert retired not in icons
@@ -104,11 +107,11 @@ def test_shell_and_downloads_have_direct_canonical_owners() -> None:
         "decorateNavigation", "ensureRuntime",
     ):
         assert forbidden not in icons
-    assert "function renderTorrentPagination(" in app
-    assert "function setFilter(" in app
-    assert "function updateDownloadsTrackedCopy(" in app
-    assert "dp-downloads-detail-row" in app
-    assert 'draggable="true"' not in app
+    assert "function renderTorrentPagination(" in downloads
+    assert "function setFilter(" in downloads
+    assert "function updateDownloadsTrackedCopy(" in downloads
+    assert "dp-downloads-detail-row" in downloads
+    assert 'draggable="true"' not in downloads
     assert 'data-dp-ui="v1.0.12-canonical"' in index
 
 

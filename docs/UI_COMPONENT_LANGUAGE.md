@@ -152,7 +152,7 @@ The approved static references do not directly specify every hover, pressed, foc
 
 ## Release-state implementation
 
-The v1.0.11.1 shell and pages consume this language from the canonical shared sources and direct page owners. `style-v11.css` is the stylesheet import root; canonical JavaScript page/runtime assets are loaded directly by the base document rather than sequenced through a presentation loader.
+The v1.0.11.1 shell and pages consume this language from the canonical shared sources and direct page owners. `style.css` is the stylesheet import root; canonical JavaScript page/runtime assets are loaded directly by the base document rather than sequenced through a presentation loader.
 
 Historical Dashboard batch/polish rules that remain behaviorally required have already been folded into `ui-dashboard.css`. The old batch files are not live runtime layers. Cleanup may remove unreachable source, but shared compatibility code with a supported consumer remains until a deliberate canonical rewrite replaces it.
 

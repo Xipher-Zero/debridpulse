@@ -19,33 +19,38 @@ def test_downloads_rows_use_row_level_details_and_retire_drag_semantics() -> Non
     # ownership bug where the common-source group launcher's click also fired
     # row-level Details navigation). The guard's match set is unchanged and
     # now additionally covers the group-candidates trigger explicitly.
+    # DP 1.0.12 canonical flattening: ui-downloads.js is the sole owner of
+    # the Downloads row template; app.js keeps only the shared
+    # dpIsInteractiveRowTarget guard that both Downloads and Dashboard
+    # Recent call.
     app = read("app.js")
+    downloads = read("ui-downloads.js")
     required = (
         "dp-downloads-detail-row", 'tabindex="0"',
         "event.key==='Enter'", "showDetail(${t.id})",
         "if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})",
-        "function dpIsInteractiveRowTarget(target)",
-        "button,input,a,select,textarea,label,[role=\"button\"],[data-dp-group-candidates-trigger]",
     )
-    missing = [fragment for fragment in required if fragment not in app]
+    missing = [fragment for fragment in required if fragment not in downloads]
     assert not missing, f"row detail contract is missing: {missing}"
+    assert "function dpIsInteractiveRowTarget(target)" in app
+    assert "button,input,a,select,textarea,label,[role=\"button\"],[data-dp-group-candidates-trigger]" in app
     for forbidden in ('draggable="true"', "ondragstart=", "ondragover=", "ondrop="):
-        assert forbidden not in app
+        assert forbidden not in downloads
 
 
 def test_downloads_rows_emit_final_status_and_action_language() -> None:
-    app = read("app.js")
+    downloads = read("ui-downloads.js")
     transfer = read("ui-transfer-contract.css")
-    desktop = read("ui-downloads-desktop.css")
+    desktop = read("ui-downloads-page.css")
     for fragment in (
         'data-default-label="Pause"', 'data-default-label="Resume"',
         'data-default-label="Remove"', 'data-default-label="Retry"',
         "pauseT(${t.id},this)", "resumeT(${t.id},this)",
         "deleteT(${t.id},event,this)", "retryT(${t.id},this)",
     ):
-        assert fragment in app
+        assert fragment in downloads
     for obsolete in ("⏸ Pause", "▶ Resume", "✕ Remove", "↻ Retry"):
-        assert obsolete not in app
+        assert obsolete not in downloads
     assert 'button[onclick*="retryT("]' not in desktop
     assert "font-size: 0 !important" not in desktop
     assert "content: 'Retry'" not in desktop
@@ -67,7 +72,7 @@ def test_downloads_rows_emit_final_status_and_action_language() -> None:
 
 
 def test_downloads_footer_language_tracks_selected_filter() -> None:
-    app = read("app.js")
+    app = read("ui-downloads.js")
     matrix = (
         "No Items Added Yet", "Showing 1 Added Item", "Added Items",
         "No Active Downloads", "1 Active Download", "Active Downloads",
@@ -79,7 +84,7 @@ def test_downloads_footer_language_tracks_selected_filter() -> None:
     )
     missing = [fragment for fragment in matrix if fragment not in app]
     assert not missing, f"filter footer language is missing: {missing}"
-    assert "downloadPaginationSummary(normalizedTotal, from, to)" in app
+    assert "downloadPaginationSummary(n, from, to)" in app
 
 
 def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
@@ -90,7 +95,9 @@ def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
 
 
 def test_downloads_desktop_columns_preserve_provider_identity_status_progress_and_actions() -> None:
-    css = read("ui-downloads-desktop.css")
+    # DP 1.0.12 canonical flattening: ui-downloads-desktop.css was folded
+    # into ui-downloads-page.css.
+    css = read("ui-downloads-page.css")
     expected = (
         "nth-child(2) { width: 25%; }", "nth-child(3) { width: 13%; }",
         "nth-child(4) { width: 13%; }", "nth-child(5) { width: 20%; }",

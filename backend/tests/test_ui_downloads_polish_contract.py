@@ -9,11 +9,12 @@ import xml.etree.ElementTree as ET
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
-STYLE = STATIC / "style-v11.css"
+STYLE = STATIC / "style.css"
 TOKENS = STATIC / "ui-language-tokens.css"
 UNIVERSAL = STATIC / "ui-universal-language.css"
 DOWNLOADS = STATIC / "ui-downloads-page.css"
 APP = STATIC / "app.js"
+DOWNLOADS_JS = STATIC / "ui-downloads.js"
 OPERATOR = STATIC / "operator-title.js"
 ICON = STATIC / "icons" / "dp" / "card-download.svg"
 REMOVED_ICON = STATIC / "icons" / "dp" / "green-download-button.svg"
@@ -23,11 +24,11 @@ MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 def test_dashboard_derived_material_is_a_base_layer_not_a_last_guard() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     tokens = "/ui-language-tokens.css?v=21"
-    universal = "/ui-universal-language.css?v=20"
-    dashboard = "/ui-dashboard.css?v=20"
-    statistics = "/ui-statistics-page.css?v=22"
-    downloads = "/ui-downloads-page.css?v=28"
-    help_page = "/ui-help-page.css?v=22"
+    universal = "/ui-universal-language.css?v=21"
+    dashboard = "/ui-dashboard.css?v=21"
+    statistics = "/ui-statistics-page.css?v=23"
+    downloads = "/ui-downloads-page.css?v=30"
+    help_page = "/ui-help-page.css?v=23"
     for layer in (tokens, universal, dashboard, statistics, downloads, help_page):
         assert layer in overlay
     assert overlay.index(tokens) < overlay.index(universal)
@@ -115,7 +116,9 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
 
 
 def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
-    app = APP.read_text(encoding="utf-8")
+    # DP 1.0.12 canonical flattening: this content is owned by ui-downloads.js,
+    # the sole Downloads controller/renderer owner -- not app.js.
+    app = DOWNLOADS_JS.read_text(encoding="utf-8")
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     required_app = (
         "download tracked", "downloads tracked", "No downloads yet. Add a link, magnet, or torrent file to get started.",
@@ -124,7 +127,7 @@ def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
         "function renderTorrentPagination(", "function setFilter(",
     )
     missing = [fragment for fragment in required_app if fragment not in app]
-    assert not missing, f"Downloads direct app owner is missing: {missing}"
+    assert not missing, f"Downloads direct owner is missing: {missing}"
     for fragment in ("card-download.svg?v=11", "On the Books", "Search downloads…", "Refresh downloads", "dp-downloads-table-wrap"):
         assert fragment in index
     assert "card-document-stack.svg" not in index[index.index('id="view-torrents"'):index.index('<!-- Events -->')]

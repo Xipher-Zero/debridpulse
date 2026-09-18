@@ -1863,6 +1863,9 @@ class TransferRepository(_QualifiedTransferRepository):
             "provider_resource_id": row["provider_resource_id"],
             "manifest_id": row["manifest_id"],
             "decision": str(row["decision"]),
+            "file_selection_affordance": fs.file_selection_affordance(
+                row["manifest_id"], str(row["decision"]), row["manifest_committed_at"], file_count,
+            ),
             "decision_reason": row["decision_reason"],
             "file_count": file_count,
             "total_size_bytes": sum(int(e["expected_bytes"] or 0) for e in entries),

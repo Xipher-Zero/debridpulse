@@ -73,7 +73,7 @@ def test_download_safety_recovery_has_vector_header_artwork_and_established_glow
     assert "height: 34px;" in css
     assert "drop-shadow(0 0 4px rgba(184,102,245,.78))" in css
     assert "drop-shadow(0 0 9px rgba(184,102,245,.34))" in css
-    assert "body.light.dp-v11-structural #view-settings .dp-settings-download-recovery-icon img" in css
+    assert "body.light #view-settings .dp-settings-download-recovery-icon img" in css
     assert "drop-shadow(0 0 10px rgba(184,102,245,.44))" in css
 
     assert 'viewBox="0 0 256 256"' in icon

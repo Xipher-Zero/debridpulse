@@ -1,7 +1,7 @@
 /* DebridPulse 1.0.12 canonical toast presentation contract.
  * Live coordinates are written by operator-title.js from rendered topbar bounds.
  */
-body.dp-v11-structural #toasts {
+#toasts {
   position: fixed;
   right: auto !important;
   bottom: auto !important;
@@ -16,7 +16,7 @@ body.dp-v11-structural #toasts {
   pointer-events: none;
 }
 
-body.dp-v11-structural #toasts .toast {
+#toasts .toast {
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -33,25 +33,43 @@ body.dp-v11-structural #toasts .toast {
   transition: opacity 250ms ease;
 }
 
-body.dp-v11-structural #toasts .dp-toast-icon {
+#toasts .dp-toast-icon {
   flex: 0 0 auto;
   margin: 0;
 }
 
-body.dp-v11-structural #toasts .dp-toast-copy {
+#toasts .dp-toast-copy {
   flex: 1 1 auto;
   min-width: 0;
   text-align: center;
   overflow-wrap: anywhere;
 }
 
-body.dp-v11-structural #toasts .dp-toast-title {
+#toasts .dp-toast-title {
   font-weight: 800;
   line-height: 1.15;
 }
 
-body.dp-v11-structural #toasts .dp-toast-body {
+#toasts .dp-toast-body {
   margin-top: 2px;
   font-weight: 500;
   line-height: 1.2;
 }
+
+/* DP 1.0.12 canonical flattening: toast surface material (color/shape) that
+   the geometry contract above never redefines, migrated from the retired
+   ui-legacy-foundation.css. #toasts .toast already forces animation:none
+   !important, so the old keyframe-driven entrance animation is dropped as
+   dead rather than migrated. */
+.toast {
+  background: linear-gradient(180deg, var(--surface2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 320px;
+  box-shadow: var(--shadow-soft);
+}
+.toast.success { border-color: rgba(34,197,94,.4); }
+.toast.error   { border-color: rgba(239,68,68,.4); }
+.toast.warn    { border-color: rgba(234,179,8,.4); }

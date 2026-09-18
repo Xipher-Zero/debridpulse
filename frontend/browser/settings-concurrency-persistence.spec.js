@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-async function ready(page){await page.goto('/');await page.waitForFunction(()=>Boolean(window.DPProcessingPresentation&&window.DPDownloadsPresentation));}
+async function ready(page){await page.goto('/');await page.waitForFunction(()=>Boolean(window.DPProcessingPresentation&&window.DPDownloads));}
 
 test('configured scheduler denominator wins over later telemetry refresh',async({page})=>{
  await ready(page);

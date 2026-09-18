@@ -7,7 +7,7 @@
  */
 
 /* Duplicate is a caution/status presentation, not runtime-generated CSS. */
-body.dp-v11-structural .badge-duplicate {
+.badge-duplicate {
   background: var(--dp-state-caution-bg);
   color: var(--dp-state-caution);
   text-transform: capitalize;
@@ -17,7 +17,7 @@ body.dp-v11-structural .badge-duplicate {
    presentation shim. Bridge that legacy class to the canonical DP page-button
    material until the runtime markup is retired; Downloads may still own the
    hit-target geometry in its page layer. */
-body.dp-v11-structural .dp-pager-btn {
+.dp-pager-btn {
   min-width: 30px;
   height: 30px;
   display: grid;
@@ -36,27 +36,27 @@ body.dp-v11-structural .dp-pager-btn {
   transition: filter .14s ease, border-color .14s ease, color .14s ease,
               box-shadow .14s ease, transform .06s ease, opacity .14s ease;
 }
-body.dp-v11-structural .dp-pager-btn:hover:not(:disabled):not([aria-current="page"]) {
+.dp-pager-btn:hover:not(:disabled):not([aria-current="page"]) {
   border-color: var(--dp-border-strong);
   filter: brightness(1.045);
 }
-body.dp-v11-structural .dp-pager-btn[aria-current="page"] {
+.dp-pager-btn[aria-current="page"] {
   border-color: var(--dp-segment-active-border);
   background: var(--dp-segment-active-surface);
   color: var(--dp-segment-active-text);
   box-shadow: var(--dp-segment-active-shadow);
 }
-body.dp-v11-structural .dp-pager-btn:disabled {
+.dp-pager-btn:disabled {
   opacity: .45;
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
 }
-body.dp-v11-structural .dp-pager-btn:focus-visible {
+.dp-pager-btn:focus-visible {
   outline: none;
   box-shadow: var(--dp-focus-ring);
 }
-body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
+.dp-pager-btn:not(:disabled):active {
   transform: translateY(1px) scale(.985);
 }
 
@@ -64,35 +64,50 @@ body.dp-v11-structural .dp-pager-btn:not(:disabled):active {
    accessibility runtime need the same visible keyboard focus as DP-native
    controls. Outline is used so existing selected/semantic box-shadows remain
    untouched. */
-body.dp-v11-structural .nav-item[role="button"]:focus-visible,
-body.dp-v11-structural .ftab[role="button"]:focus-visible,
-body.dp-v11-structural .stab[role="tab"]:focus-visible,
-body.dp-v11-structural .modal-close[role="button"]:focus-visible,
-body.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
+.nav-item[role="button"]:focus-visible,
+.ftab[role="button"]:focus-visible,
+.stab[role="tab"]:focus-visible,
+.modal-close[role="button"]:focus-visible,
+#dash-error-card[role="button"]:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--dp-accent-purple-bright) 82%, white 18%);
   outline-offset: 2px;
 }
 
-body.light.dp-v11-structural .nav-item[role="button"]:focus-visible,
-body.light.dp-v11-structural .ftab[role="button"]:focus-visible,
-body.light.dp-v11-structural .stab[role="tab"]:focus-visible,
-body.light.dp-v11-structural .modal-close[role="button"]:focus-visible,
-body.light.dp-v11-structural #dash-error-card[role="button"]:focus-visible {
+body.light .nav-item[role="button"]:focus-visible,
+body.light .ftab[role="button"]:focus-visible,
+body.light .stab[role="tab"]:focus-visible,
+body.light .modal-close[role="button"]:focus-visible,
+body.light #dash-error-card[role="button"]:focus-visible {
   outline-color: color-mix(in srgb, var(--dp-accent-purple) 78%, #31105c 22%);
 }
 
 /* Toast coordinates are calculated from live topbar geometry by the canonical
    presenter. CSS owns only neutral fixed-layer and fade material; no corner or
    footer offset may compete with that geometry. */
-body.dp-v11-structural #toasts {
+#toasts {
   position: fixed;
   right: auto;
   bottom: auto;
   z-index: 1000;
   pointer-events: none;
 }
-body.dp-v11-structural #toasts .toast {
+#toasts .toast {
   animation: none;
   pointer-events: none;
   transition: opacity 250ms ease;
 }
+
+/* DP 1.0.12 canonical flattening: generic key/value list used by both the
+   Details overlay and Statistics, migrated from the retired
+   ui-legacy-foundation.css -- not page-specific, so it lives here rather
+   than in either page's own owner. */
+.kv-list { display: flex; flex-direction: column; gap: 10px; }
+.kv-row { display: flex; justify-content: space-between; gap: 14px; color: var(--text2); font-size: 13px; }
+.kv-row strong { color: var(--text); font-weight: 700; }
+
+/* The universal card material (ui-universal-language.css) owns background,
+   border and typography for .card-header/.card-title; this fills in the
+   layout-only concern (fill available header width) that material layer
+   intentionally leaves to a cross-cutting owner. */
+.card-title { flex: 1; }
+.scard-body { display: flex; flex-direction: column; gap: 13px; }

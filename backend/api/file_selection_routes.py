@@ -34,7 +34,7 @@ _PUBLIC_SELECTION_FIELDS = (
     "eligible", "mutable", "manifest_id", "decision", "decision_reason",
     "file_count", "total_size_bytes", "entries", "selected_entry_ids",
     "auto_offer", "auto_offer_until", "decision_deadline", "initially_available",
-    "server_now",
+    "server_now", "file_selection_affordance",
 )
 _PUBLIC_OFFER_FIELDS = (
     "transfer_id", "manifest_id", "file_count", "decision_deadline", "auto_offer_until",
@@ -103,10 +103,17 @@ async def get_file_selection(
     try:
         view = await application.file_selection(transfer_id)
     except KeyError:
-        return {"eligible": False}
+        return _ineligible_view()
     if view is None:
-        return {"eligible": False}
+        return _ineligible_view()
     return _public_selection_view(view)
+
+
+def _ineligible_view() -> dict:
+    """The one canonical affordance owner also classifies the no-generation
+    case, so the browser never has to reconstruct 'no generation means no
+    affordance' from `eligible` -- it only ever consumes the field."""
+    return {"eligible": False, "file_selection_affordance": fs.file_selection_affordance(None, None, None, 0)}
 
 
 @router.post("/torrents/{transfer_id}/file-selection/confirm")

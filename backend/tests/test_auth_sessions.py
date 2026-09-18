@@ -110,7 +110,7 @@ async def test_auth_bootstrap_loads_before_application_javascript():
     bundle_response = await auth_routes.application_javascript_bundle()
     bundle = bundle_response.body.decode("utf-8")
     auth_marker = "DebridPulse application-session bootstrap"
-    app_marker = "DebridPulse — AllDebrid + aria2 download manager"
+    app_marker = "DebridPulse — self-hosted multi-provider transfer manager."
     assert auth_marker in bundle
     assert app_marker in bundle
     assert bundle.index(auth_marker) < bundle.index(app_marker)

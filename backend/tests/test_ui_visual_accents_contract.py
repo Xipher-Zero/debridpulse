@@ -11,8 +11,8 @@ def read(name: str) -> str:
 
 
 def test_visual_accents_load_after_shared_transfer_semantics() -> None:
-    entry = read("style-v11.css")
-    assert entry.index("/ui-transfer-contract.css?v=32") < entry.index("/ui-visual-accents.css?v=21")
+    entry = read("style.css")
+    assert entry.index("/ui-transfer-contract.css?v=33") < entry.index("/ui-visual-accents.css?v=22")
 
 
 def test_status_badges_are_lucide_only_and_keep_semantic_glow() -> None:
@@ -67,6 +67,6 @@ def test_theme_elevation_keeps_dark_and_light_provider_parity() -> None:
     assert "--dp-panel-shadow:" in css
     assert "rgba(84, 38, 131, .18)" in css
     assert "rgba(167, 139, 250, .06)" in css
-    assert "body.dp-v11-structural:not(.light) #sidebar .sidebar-footer" in css
-    assert "body.light.dp-v11-structural #sidebar .sidebar-footer" in css
+    assert "body:not(.light) #sidebar .sidebar-footer" in css
+    assert "body.light #sidebar .sidebar-footer" in css
     assert "var(--dp-shadow-raised)" in css

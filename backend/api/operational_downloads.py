@@ -25,6 +25,7 @@ from application.manual_candidate_failover import switch_candidate
 from application.service import ApplicationService
 from db.database import get_db
 from transfers import codec
+from transfers import file_selection as fs
 from transfers._repository_base import canonical_artifact_membership_sql
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
@@ -261,36 +262,12 @@ def _bounded_child_presentations(raw_facts, *, paused, input_required, capacity_
     return presentations
 
 
-# DP 1.0.12 Workstream B (Section 10): the one canonical file-selection
-# affordance semantic, shared by Details, Dashboard Recent, and Downloads —
-# never three independent per-surface eligibility heuristics. Derived only
-# from durable transfers.file_selection facts (the same ones
-# transfers.repository.TransferRepository.file_selection_presentation exposes
-# through the fresh-click read endpoint): whether a selection generation
-# exists at all, whether it is still mutable (fs.selection_mutable ==
-# manifest_committed_at IS NULL), whether a manifest is bound, its file
-# count, and its decision. Never inferred from provider name, filename shape,
-# UI glyph, or an open connection.
-_FILE_SELECTION_EXPLICIT_DECISION = "explicit"
-
-
-def _file_selection_affordance(manifest_id, decision, committed_at, file_count: int) -> str:
-    if manifest_id is None and decision is None:
-        # No selection generation exists for this transfer at all.
-        return "none"
-    if committed_at is not None:
-        # Executable child materialization already committed -- locked.
-        return "none"
-    if manifest_id is None:
-        # A generation exists (torrent/magnet resolution in progress) but no
-        # usable manifest has arrived yet.
-        return "pending_manifest"
-    if file_count <= 1:
-        # Single-file torrent/magnet: no picker action (Section 6.9).
-        return "none"
-    if str(decision or "") == _FILE_SELECTION_EXPLICIT_DECISION:
-        return "change"
-    return "choose"
+# DP 1.0.12 Workstream B (Section 10): the bounded list projects the same
+# durable facts the fresh-click read endpoint uses and classifies them through
+# the one canonical domain function, transfers.file_selection
+# .file_selection_affordance -- shared by Details, Dashboard Recent, and
+# Downloads, never a per-surface eligibility heuristic. Never inferred from
+# provider name, filename shape, UI glyph, or an open connection.
 
 
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
@@ -1294,7 +1271,7 @@ async def list_operational_torrents(
         # only, never mutation authority -- the browser always performs one
         # fresh authoritative GET .../file-selection read on click before
         # opening any picker (Section 6.8).
-        item["file_selection_affordance"] = _file_selection_affordance(
+        item["file_selection_affordance"] = fs.file_selection_affordance(
             file_selection_manifest_id,
             file_selection_decision,
             file_selection_committed_at,

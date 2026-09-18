@@ -2,13 +2,13 @@
  * Application-wide shell ownership. Kept separate from page CSS so Statistics,
  * Settings, and other page layers cannot become accidental shell authorities.
  */
-body.dp-v11-structural #sidebar .logo-text {
+#sidebar .logo-text {
   min-width: 0;
   height: 48px;
   display: flex;
   align-items: center;
 }
-body.dp-v11-structural #sidebar .logo-name {
+#sidebar .logo-name {
   margin: 0;
   font-size: 20px;
   line-height: 1;
@@ -16,7 +16,7 @@ body.dp-v11-structural #sidebar .logo-name {
   white-space: nowrap;
 }
 
-body.dp-v11-structural > #sidebar-version.dp-app-version {
+body > #sidebar-version.dp-app-version {
   position: fixed !important;
   right: max(
     var(--dp-shell-x),
@@ -41,7 +41,7 @@ body.dp-v11-structural > #sidebar-version.dp-app-version {
   box-shadow: 0 2px 8px rgba(0, 0, 12, .12);
   pointer-events: none;
 }
-body.light.dp-v11-structural > #sidebar-version.dp-app-version {
+body.light > #sidebar-version.dp-app-version {
   border-color: rgba(113, 124, 166, .18);
   background: rgba(255, 255, 255, .78);
   color: #66708e;
@@ -49,7 +49,7 @@ body.light.dp-v11-structural > #sidebar-version.dp-app-version {
   box-shadow: 0 2px 8px rgba(45, 61, 96, .08);
 }
 
-body.light.dp-v11-structural #sidebar .logo-icon {
+body.light #sidebar .logo-icon {
   border: 0 !important;
   outline: 0 !important;
   background: transparent !important;
@@ -58,21 +58,21 @@ body.light.dp-v11-structural #sidebar .logo-icon {
 }
 
 @media (max-width: 1179px) {
-  body.dp-v11-structural #sidebar .logo-name {
+  #sidebar .logo-name {
     font-size: 19px;
   }
 
-  body.dp-v11-structural > #sidebar-version.dp-app-version {
+  body > #sidebar-version.dp-app-version {
     right: var(--dp-shell-x) !important;
   }
 }
 
 @media (max-width: 899px) {
-  body.dp-v11-structural #sidebar .logo-text {
+  #sidebar .logo-text {
     display: flex;
   }
 
-  body.dp-v11-structural > #sidebar-version.dp-app-version {
+  body > #sidebar-version.dp-app-version {
     right: 14px !important;
     bottom: 5px !important;
     font-size: 8px;

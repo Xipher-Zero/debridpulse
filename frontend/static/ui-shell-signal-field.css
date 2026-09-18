@@ -5,7 +5,7 @@
  */
 
 /* ── Global version datum: value only ────────────────────────────────── */
-body.dp-v11-structural > #sidebar-version.dp-app-version {
+body > #sidebar-version.dp-app-version {
   padding: 0 !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -15,12 +15,12 @@ body.dp-v11-structural > #sidebar-version.dp-app-version {
   line-height: 1 !important;
 }
 
-body.dp-v11-structural:not(.light) > #sidebar-version.dp-app-version {
+body:not(.light) > #sidebar-version.dp-app-version {
   color: #aeb5d1;
   text-shadow: 0 1px 5px rgba(0, 0, 0, .42), 0 0 8px rgba(124, 92, 246, .10);
 }
 
-body.light.dp-v11-structural > #sidebar-version.dp-app-version {
+body.light > #sidebar-version.dp-app-version {
   color: #697491;
   text-shadow: 0 1px 2px rgba(255, 255, 255, .95), 0 0 5px rgba(66, 78, 120, .08);
 }
@@ -30,7 +30,7 @@ body.light.dp-v11-structural > #sidebar-version.dp-app-version {
    sparse bright nodes and an intentional lower-left to upper-right envelope.
    The paths remain vertically separated rather than collapsing into a single
    fibre bundle. Both themes share the same geometry; only emphasis changes. */
-body.dp-v11-structural #sidebar::before {
+#sidebar::before {
   left: -28px !important;
   right: -20px !important;
   bottom: 205px !important;
@@ -43,25 +43,25 @@ body.dp-v11-structural #sidebar::before {
   filter: saturate(1.10) drop-shadow(0 0 10px rgba(124, 58, 237, .12));
 }
 
-body.light.dp-v11-structural #sidebar::before {
+body.light #sidebar::before {
   opacity: .34 !important;
   filter: saturate(.92) drop-shadow(0 0 8px rgba(124, 58, 237, .055));
 }
 
 @media (max-width: 1179px) {
-  body.dp-v11-structural #sidebar::before {
+  #sidebar::before {
     left: -38px !important;
     right: -30px !important;
   }
 }
 
 @media (max-width: 899px) {
-  body.dp-v11-structural #sidebar::before {
+  #sidebar::before {
     bottom: 190px !important;
     height: 280px !important;
     opacity: .60 !important;
   }
-  body.light.dp-v11-structural #sidebar::before {
+  body.light #sidebar::before {
     opacity: .28 !important;
   }
 }

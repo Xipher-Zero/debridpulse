@@ -1,12 +1,6 @@
-/* DebridPulse — AllDebrid + aria2 download manager */
+/* DebridPulse — self-hosted multi-provider transfer manager. */
 
 const API = '/api';
-let currentFilter = '';
-let currentTorrentSearch = '';
-let torrentPage = 1;
-let torrentPageSize = 25;
-let torrentTotal = 0;
-let _torrentSearchTimer = null;
 let settingsData = {};
 let aria2DownloadsTimer = null;
 let pausedTransferCount = 0;
@@ -64,6 +58,9 @@ function renderTopbarActions() {
       else resumePausedBtn.textContent = label;
     }
   }
+
+  window.DPProcessingPresentation?.syncConfiguredConcurrency?.();
+  window.DPProcessingPresentation?.syncPauseUi?.();
 }
 
 // ── Nav ────────────────────────────────────────────────────────────────────
@@ -415,11 +412,23 @@ function badge(s, detail) {
   if (!window.DPIcons || typeof window.DPIcons.statusBadge !== 'function') {
     throw new Error('DebridPulse icon runtime is unavailable');
   }
+  // A backend-projected presentation_status (transfers.presentation_repository
+  // .effective_presentation) is canonical lifecycle truth and always wins over
+  // the raw status/failure-semantics guess below.
+  const projected = String(detail?.presentation_status || '').trim().toLowerCase();
+  if (projected) {
+    const tone = String(detail?.presentation_badge_status || projected).trim().toLowerCase();
+    const label = String(detail?.presentation_label || '').trim();
+    const html = window.DPIcons.statusBadge(tone, label || undefined, '');
+    return html.replace('<span class="badge ', '<span data-dp-lifecycle-status="' + esc(projected) + '" class="badge ');
+  }
   const semantics = window.DPFailureSemantics;
   const category = s === 'error' && semantics ? semantics.classify(detail) : '';
   return window.DPIcons.statusBadge(s, category ? semantics.labels[category] : '', category);
 }
 function transferDisplayStatus(t) {
+  const projected = String(t && t.presentation_status || '').trim().toLowerCase();
+  if (projected) return projected;
   if (t && String(t.extraction_status || '').trim() === 'extracting') return 'extracting';
   if (t && t.status === 'completed' && (t.extraction_status === 'error' || Number(t.source_failure_count) > 0)) return 'completed_with_errors';
   if (t && t.status === 'downloading' && Number(t.source_failure_count) > 0) return 'downloading_with_errors';
@@ -1049,20 +1058,6 @@ async function loadStats() {
 }
 
 
-function goToTorrentPage(p) {
-  const nextPage = Math.max(1, p);
-  if (nextPage !== torrentPage) clearSelection();
-  torrentPage = nextPage;
-  loadTorrents();
-}
-function onPageSizeChange(v) {
-  const nextSize = Math.min(Math.max(parseInt(v)||25,1),100);
-  if (nextSize !== torrentPageSize || torrentPage !== 1) clearSelection();
-  torrentPageSize = nextSize;
-  torrentPage = 1;
-  loadTorrents();
-}
-
 async function checkForUpdate() {
   try {
     const data = await api('GET', '/version/check');
@@ -1344,153 +1339,10 @@ async function addDashboardEntries() {
   }
 }
 
-// ── Torrents ───────────────────────────────────────────────────────────────
-
-function activeDownloadFilterStatus() {
-  return document.querySelector('#view-torrents .filter-tabs .ftab.active')?.dataset.dpStatus || '';
-}
-
-function downloadPaginationSummary(total, from, to) {
-  const search = document.getElementById('torrent-search');
-  if (search && search.value.trim()) {
-    if (total <= 0) return 'No downloads match your search';
-    if (total === 1 && from === 1 && to === 1) return 'Showing 1 matching download';
-    if (from === 1 && to === total) return 'Showing all ' + total + ' matching downloads';
-    return 'Showing ' + from + '–' + to + ' of ' + total + ' matching downloads';
-  }
-  const status = activeDownloadFilterStatus();
-  const language = {
-    '': ['No Items Added Yet', 'Showing 1 Added Item', n => 'Showing ' + n + ' Added Items'],
-    downloading: ['No Active Downloads', '1 Active Download', n => n + ' Active Downloads'],
-    paused: ['No Paused Downloads', '1 Paused Download', n => n + ' Paused Downloads'],
-    processing: ['No Downloads Currently Processing', '1 Download Currently Processing', n => n + ' Downloads Currently Processing'],
-    ready: ['No Downloads in Ready State', '1 Download in Ready State', n => n + ' Downloads in Ready State'],
-    completed: ['No Downloads Completed Yet', '1 Download Completed', n => n + ' Downloads Completed'],
-    error: ['No Downloads Have Errors', '1 Download Has Errors', n => n + ' Downloads Have Errors'],
-  }[status];
-  if (!language) return total === 1 ? '1 Download' : total + ' Downloads';
-  return total <= 0 ? language[0] : total === 1 ? language[1] : language[2](total);
-}
-
-function renderTorrentPagination(total, limit, offset) {
-  const normalizedTotal = Math.max(0, Number(total) || 0);
-  const normalizedLimit = Math.max(1, Number(limit) || 25);
-  const normalizedOffset = Math.max(0, Number(offset) || 0);
-  const totalPages = Math.max(1, Math.ceil(normalizedTotal / normalizedLimit));
-  const current = Math.min(totalPages, Math.floor(normalizedOffset / normalizedLimit) + 1);
-  torrentPage = current;
-  const info = document.getElementById('torrent-page-info');
-  const buttons = document.getElementById('torrent-page-btns');
-  if (!info || !buttons) return;
-  const from = normalizedTotal === 0 ? 0 : normalizedOffset + 1;
-  const to = Math.min(normalizedOffset + normalizedLimit, normalizedTotal);
-  info.textContent = downloadPaginationSummary(normalizedTotal, from, to);
-  const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
-  const controls = [];
-  if (current > 1) controls.push('<button type="button" class="dp-pager-btn" aria-label="Previous page" onclick="goToTorrentPage(' + (current - 1) + ')">' + icon('chevronLeft') + '</button>');
-  controls.push('<button type="button" class="dp-pager-btn dp-pager-current" aria-current="page" aria-label="Page ' + current + ', current page">' + current + '</button>');
-  if (current < totalPages) controls.push('<button type="button" class="dp-pager-btn" aria-label="Next page" onclick="goToTorrentPage(' + (current + 1) + ')">' + icon('chevronRight') + '</button>');
-  buttons.innerHTML = controls.join('');
-}
-
-function setFilter(element, status) {
-  document.querySelectorAll('#view-torrents .filter-tabs .ftab').forEach(tab => {
-    tab.classList.remove('active');
-    tab.setAttribute('aria-selected', 'false');
-  });
-  if (element) {
-    element.classList.add('active');
-    element.setAttribute('aria-selected', 'true');
-  }
-  currentFilter = status;
-  torrentPage = 1;
-  clearSelection();
-  loadTorrents();
-}
-
-function updateDownloadsTrackedCopy(total) {
-  const count = Math.max(0, Number(total) || 0);
-  const copy = count === 1
-    ? '1 download tracked. It followed instructions.'
-    : count + ' downloads tracked. Most of them followed instructions.';
-  const title = document.getElementById('torrent-card-title');
-  const subtitle = title?.querySelector('.dp-downloads-subtitle');
-  if (subtitle) subtitle.textContent = copy;
-  if (title) title.setAttribute('aria-label', 'On the Books. ' + copy);
-}
-
-function downloadEmptyMessage() {
-  const search = document.getElementById('torrent-search');
-  if (search && search.value.trim()) return 'No downloads match your search.';
-  if (activeDownloadFilterStatus()) return 'No downloads match your current filters.';
-  return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
-}
-
-function onTorrentSearchInput() {
-  const nextSearch = (document.getElementById('torrent-search')?.value || '').trim();
-  if (nextSearch !== currentTorrentSearch) clearSelection();
-  currentTorrentSearch = nextSearch;
-  torrentPage = 1;
-  if (_torrentSearchTimer) clearTimeout(_torrentSearchTimer);
-  _torrentSearchTimer = setTimeout(() => {
-    _torrentSearchTimer = null;
-    loadTorrents().catch(()=>{});
-  }, 250);
-}
-
-async function loadTorrents() {
-  try {
-    const params = new URLSearchParams();
-    const _limit = Math.min(Math.max(parseInt(torrentPageSize)||25,1),100);
-    const _offset = (torrentPage - 1) * _limit;
-    params.set('limit', String(_limit));
-    params.set('offset', String(_offset));
-    if (currentFilter) params.set('status', currentFilter);
-    if (currentTorrentSearch) params.set('search', currentTorrentSearch);
-    const {items, total} = await api('GET', '/torrents?'+params.toString());
-    torrentTotal = total ?? items.length;
-    const tb = document.getElementById('t-tbody');
-    renderTorrentPagination(torrentTotal, _limit, _offset);
-    reconcileDownloadSelection(items);
-    if (!items.length) {
-      tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
-      syncDownloadSelectionUi();
-      return;
-    }
-    const icon = name => window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg(name) : '';
-    tb.innerHTML = items.map(t => `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" tabindex="0" onclick="if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
-      <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
-      <td>
-        <div class="t-name">${esc(t.display_name||t.name)||'(unnamed)'}</div>
-        <div class="t-hash">${(t.hash||'').substring(0,16)}${t.hash?'…':''}</div>
-      </td>
-      <td class="sz dp-downloads-provider-cell">
-        ${providerChip(t)}
-        <span class="dp-transfer-source-label">${sourceLabel(t.source)}</span>
-        ${t.label?`<span class="lbl-badge">🏷 ${esc(t.label)}</span>`:''}
-      </td>
-      <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
-      <td data-role="transfer-progress">${progress(t.progress,t.status)}</td>
-      <td class="sz">${fmtSize(t.size_bytes)}</td>
-      <td class="sz">${fmtDate(t.created_at)}</td>
-      <td onclick="event.stopPropagation()">
-        <div class="actions">
-          ${t.status==='downloading' || t.status==='queued' ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)">Pause</button>` : ''}
-          ${t.status==='paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)">Resume</button>` : ''}
-          ${t.status==='error'?`<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)">Retry</button>`:''}
-          <button class="btn btn-danger btn-sm" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>
-        </div>
-      </td>
-    </tr>`).join('');
-    syncDownloadSelectionUi();
-  } catch(e) { toast(sanitizeErrorMsg(e.message),'error'); }
-  document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));
-}
-
 // Prevent SSE bursts and manual actions from stacking duplicate full renders.
+// loadTorrents is the Downloads owner's own self-wrap (ui-downloads.js).
 loadStats = coalesceAsync(loadStats);
 loadRecent = coalesceAsync(loadRecent);
-loadTorrents = coalesceAsync(loadTorrents);
 
 async function addMagnet() {
   const input = document.getElementById('t-magnet');
@@ -1583,45 +1435,6 @@ async function recoverAll(button) {
       sanitizeErrorMsg(e.message),
       'error'
     );
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function deleteT(id, eventObj, button) {
-  eventObj?.stopPropagation();
-
-  const confirmedIds = await confirmDownloadRemoval([id]);
-  if (!confirmedIds) return;
-  const targetId = confirmedIds[0];
-
-  setButtonPending(button, true, 'Deleting…');
-
-  try {
-    await api(
-      'DELETE',
-      `/torrents/${targetId}?from_alldebrid=true`
-    );
-
-    toast('Deleted','success');
-    await loadTorrents();
-    loadStats();
-  } catch(e) {
-    toast(sanitizeErrorMsg(e.message),'error');
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function retryT(id, button) {
-  setButtonPending(button, true, 'Retrying…');
-
-  try {
-    await api('POST',`/torrents/${id}/retry`);
-    toast('Queued for retry','success');
-    loadTorrents();
-  } catch(e) {
-    toast(sanitizeErrorMsg(e.message),'error');
   } finally {
     setButtonPending(button, false);
   }
@@ -1941,166 +1754,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
 });
 
-// ── Bulk selection ────────────────────────────────────────────────────────────
-let _selectedIds = new Set();
-
-function stableDownloadId(value) {
-  const id = Number(value);
-  return Number.isFinite(id) ? id : null;
-}
-
-function reconcileDownloadSelection(items) {
-  const presentIds = new Set(
-    (Array.isArray(items) ? items : [])
-      .map(item => stableDownloadId(item?.id))
-      .filter(id => id !== null)
-  );
-  for (const id of [..._selectedIds]) {
-    if (!presentIds.has(id)) _selectedIds.delete(id);
-  }
-}
-
-function syncDownloadSelectionUi() {
-  const checkboxes = [...document.querySelectorAll('.t-chk')];
-  let selectedVisible = 0;
-  checkboxes.forEach(checkbox => {
-    const id = stableDownloadId(checkbox.dataset.id);
-    checkbox.checked = id !== null && _selectedIds.has(id);
-    if (checkbox.checked) selectedVisible += 1;
-  });
-
-  const all = document.getElementById('chk-all');
-  if (all) {
-    all.checked = checkboxes.length > 0 && selectedVisible === checkboxes.length;
-    all.indeterminate = selectedVisible > 0 && selectedVisible < checkboxes.length;
-  }
-
-  const bar = document.getElementById('bulk-bar');
-  const count = document.getElementById('bulk-count');
-  if (_selectedIds.size > 0) {
-    bar?.classList.add('visible');
-    if (count) count.textContent = _selectedIds.size + ' Selected';
-  } else {
-    bar?.classList.remove('visible');
-    if (count) count.textContent = '';
-  }
-}
-
-function onCheckboxChange(checkbox) {
-  const id = stableDownloadId(checkbox?.dataset?.id);
-  if (id === null) {
-    syncDownloadSelectionUi();
-    return;
-  }
-  if (checkbox.checked) _selectedIds.add(id);
-  else _selectedIds.delete(id);
-  syncDownloadSelectionUi();
-}
-
-function toggleAllCheckboxes(el) {
-  document.querySelectorAll('.t-chk').forEach(checkbox => {
-    const id = stableDownloadId(checkbox.dataset.id);
-    if (id === null) return;
-    if (el.checked) _selectedIds.add(id);
-    else _selectedIds.delete(id);
-  });
-  syncDownloadSelectionUi();
-}
-
-function clearSelection() {
-  _selectedIds.clear();
-  syncDownloadSelectionUi();
-}
-
-async function confirmDownloadRemoval(ids) {
-  const stableIds = [...new Set(
-    (Array.isArray(ids) ? ids : [])
-      .map(stableDownloadId)
-      .filter(id => id !== null)
-  )];
-  if (!stableIds.length) return null;
-
-  const modal = window.DPSettingsModal;
-  if (!modal || typeof modal.confirm !== 'function') {
-    toast('Removal confirmation is unavailable. No downloads were removed.', 'error');
-    return null;
-  }
-
-  const count = stableIds.length;
-  const confirmed = await modal.confirm({
-    title: count === 1 ? 'Remove download?' : `Remove ${count} downloads?`,
-    message: count === 1
-      ? 'Remove this download from Downloads?'
-      : `Remove these ${count} downloads from Downloads?`,
-    confirmLabel: 'Remove',
-    cancelLabel: 'Cancel',
-    tone: 'danger',
-  });
-
-  return confirmed ? stableIds : null;
-}
-
-async function bulkAction(action, button) {
-  if (!_selectedIds.size) return;
-
-  let ids = [..._selectedIds];
-
-  if (action === 'delete') {
-    const confirmedIds = await confirmDownloadRemoval(ids);
-    if (!confirmedIds) return;
-    ids = confirmedIds;
-  }
-
-  const pendingLabels = {
-    delete: 'Deleting…',
-    reset: 'Resetting…',
-    pause: 'Pausing…',
-    resume: 'Resuming…',
-  };
-
-  setButtonPending(
-    button,
-    true,
-    pendingLabels[action] || 'Working…'
-  );
-
-  try {
-    const r =
-      await api(
-        'POST',
-        '/torrents/bulk',
-        {ids, action}
-      );
-
-    toast(
-      `Done: ${r.ok} ok, ${r.failed} failed`,
-      r.failed ? 'warn' : 'success'
-    );
-
-    if (action === 'delete') {
-      await loadTorrents();
-    } else {
-      clearSelection();
-      loadTorrents();
-    }
-    loadStats();
-  } catch(e) {
-    toast(e.message, 'error');
-  } finally {
-    setButtonPending(button, false);
-    document.dispatchEvent(new CustomEvent('debridpulse:downloads-bulk-action-settled', {detail:{action}}));
-  }
-}
-
-async function setLabel(id) {
-  const label = prompt('Label (leave empty to clear):') ?? null;
-  if (label === null) return;
-  try {
-    await api('PUT', `/torrents/${id}/label`, {label: label.trim(), priority: 0});
-    toast('Label updated', 'success');
-    loadTorrents();
-  } catch(e) { toast(e.message, 'error'); }
-}
 
 // ── Events ─────────────────────────────────────────────────────────────────
 let _allEvents = [];
@@ -3345,6 +2998,11 @@ async function runRecovery() {
 // ── Speed Limit ───────────────────────────────────────────────────────────────
 
 async function loadAria2SpeedLimit() {
+  // A client-configured max-concurrency intention (settingsData, captured
+  // before this fetch) always wins over whatever this aria2 query itself
+  // reports, once the query settles -- see the `finally` below.
+  const configured = window.DPProcessingPresentation
+    ? (window.DPProcessingPresentation.configuredMaxConcurrency() ?? 3) : 3;
   try {
     var data = await api('GET', '/aria2/global-options', null, 10000);
     var externalControl = !!data.global_options_read_only;
@@ -3407,6 +3065,13 @@ async function loadAria2SpeedLimit() {
     });
 
   } catch (e) { /* aria2 not connected — silently ignore */ }
+  finally {
+    if (settingsData) {
+      settingsData.max_concurrent_downloads = configured;
+      settingsData.aria2_max_active_downloads = configured;
+    }
+    window.DPProcessingPresentation?.syncConfiguredConcurrency?.();
+  }
 }
 
 async function applyAria2SpeedPreset(val) {

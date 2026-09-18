@@ -8,7 +8,7 @@
 
 /* ── Full-height desktop workspace ───────────────────────────────────── */
 @media (min-width: 901px) {
-  body.dp-v11-structural #view-torrents.active {
+  #view-torrents.active {
     display: flex !important;
     flex-direction: column;
     /* #content already owns the remaining shell height and 24px bottom gutter.
@@ -20,7 +20,7 @@
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-torrents > .card {
+  #view-torrents > .card {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -30,7 +30,7 @@
     margin-bottom: 0 !important;
   }
 
-  body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
+  #view-torrents .dp-downloads-table-wrap {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto !important;
@@ -38,25 +38,25 @@
   }
 }
 
-body.dp-v11-structural #view-torrents > .card > .card-header,
-body.dp-v11-structural #view-torrents > .card > div:has(#torrent-search),
-body.dp-v11-structural #view-torrents #torrent-pagination {
+#view-torrents > .card > .card-header,
+#view-torrents > .card > div:has(#torrent-search),
+#view-torrents #torrent-pagination {
   flex: 0 0 auto;
 }
 
 /* ── Card heading geometry ───────────────────────────────────────────── */
-body.dp-v11-structural #view-torrents > .card > .card-header {
+#view-torrents > .card > .card-header {
   min-height: 70px;
 }
 
-body.dp-v11-structural #view-torrents #torrent-card-title.dp-downloads-card-title {
+#view-torrents #torrent-card-title.dp-downloads-card-title {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
+#view-torrents .dp-downloads-title-icon {
   width: 51px;
   min-width: 51px;
   height: 51px;
@@ -65,7 +65,7 @@ body.dp-v11-structural #view-torrents .dp-downloads-title-icon {
   padding: 1px;
 }
 
-body.dp-v11-structural #view-torrents .dp-downloads-heading-copy {
+#view-torrents .dp-downloads-heading-copy {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -73,7 +73,7 @@ body.dp-v11-structural #view-torrents .dp-downloads-heading-copy {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-torrents .dp-downloads-heading {
+#view-torrents .dp-downloads-heading {
   color: var(--dp-text-primary);
   font-size: 16px;
   line-height: 1.2;
@@ -81,7 +81,7 @@ body.dp-v11-structural #view-torrents .dp-downloads-heading {
   letter-spacing: -.01em;
 }
 
-body.dp-v11-structural #view-torrents .dp-downloads-subtitle {
+#view-torrents .dp-downloads-subtitle {
   color: var(--dp-text-muted);
   font-size: 10.5px;
   line-height: 1.25;
@@ -89,24 +89,24 @@ body.dp-v11-structural #view-torrents .dp-downloads-subtitle {
 }
 
 /* ── Header control placement ────────────────────────────────────────── */
-body.dp-v11-structural #view-torrents .filter-tabs {
+#view-torrents .filter-tabs {
   margin-left: auto;
   flex: 0 1 auto;
 }
 
-body.dp-v11-structural #view-torrents .filter-tabs .ftab {
+#view-torrents .filter-tabs .ftab {
   min-width: 64px;
 }
 
 /* Refresh consumes the shared Recover All / Activity Refresh material.
    Downloads owns placement only. */
-body.dp-v11-structural #view-torrents .dp-downloads-refresh {
+#view-torrents .dp-downloads-refresh {
   margin-left: 8px !important;
 }
 
 /* ── Contextual multi-selection toolbar ─────────────────────────────── */
 /* Native band inside the Downloads card, between Search and the table. */
-body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card {
+#view-torrents #bulk-bar.dp-downloads-bulk-card {
   display: none;
   flex: 0 0 auto;
   margin: 0 !important;
@@ -121,30 +121,30 @@ body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card {
   font-size: inherit !important;
   font-weight: inherit !important;
 }
-body.dp-v11-structural #view-torrents #bulk-bar.dp-downloads-bulk-card.visible {
+#view-torrents #bulk-bar.dp-downloads-bulk-card.visible {
   display: block !important;
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-toolbar {
+#view-torrents .dp-downloads-bulk-toolbar {
   width: 100%;
   min-height: 54px;
   justify-content: space-between;
   gap: 16px;
   border-radius: 0 !important;
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-actions {
+#view-torrents .dp-downloads-bulk-actions {
   display: flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-separator {
+#view-torrents .dp-downloads-bulk-separator {
   width: 1px;
   height: 24px;
   flex: 0 0 1px;
   margin: 0 3px;
   background: var(--dp-divider);
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-action {
+#view-torrents .dp-downloads-bulk-action {
   min-height: 36px !important;
   height: 36px !important;
   padding: 0 12px !important;
@@ -153,15 +153,15 @@ body.dp-v11-structural #view-torrents .dp-downloads-bulk-action {
   line-height: 1 !important;
   font-weight: 600 !important;
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-action .dp-utility-icon {
+#view-torrents .dp-downloads-bulk-action .dp-utility-icon {
   width: 16px;
   height: 16px;
   stroke-width: 2;
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-action--clear {
+#view-torrents .dp-downloads-bulk-action--clear {
   color: var(--dp-text-secondary);
 }
-body.dp-v11-structural #view-torrents .dp-downloads-bulk-status {
+#view-torrents .dp-downloads-bulk-status {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -177,7 +177,7 @@ body.dp-v11-structural #view-torrents .dp-downloads-bulk-status {
 
 /* ── Search band ─────────────────────────────────────────────────────── */
 /* This is page-specific composition around the universal field itself. */
-body.dp-v11-structural #view-torrents > .card > div:has(#torrent-search) {
+#view-torrents > .card > div:has(#torrent-search) {
   position: relative;
   z-index: 1;
   padding: 13px 16px 14px !important;
@@ -187,14 +187,14 @@ body.dp-v11-structural #view-torrents > .card > div:has(#torrent-search) {
     transparent 76%);
 }
 
-body.light.dp-v11-structural #view-torrents > .card > div:has(#torrent-search) {
+body.light #view-torrents > .card > div:has(#torrent-search) {
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--dp-accent-purple) 4.5%, transparent),
     transparent 78%);
 }
 
 /* ── Data viewport ───────────────────────────────────────────────────── */
-body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
+#view-torrents .dp-downloads-table-wrap {
   position: relative;
   z-index: 1;
   overflow-x: auto !important;
@@ -202,24 +202,24 @@ body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
   background: transparent;
 }
 
-body.dp-v11-structural #view-torrents .dp-downloads-table-wrap .t-table thead th {
+#view-torrents .dp-downloads-table-wrap .t-table thead th {
   position: sticky;
   top: 0;
   z-index: 3;
 }
 
-body.dp-v11-structural #view-torrents .t-table,
-body.dp-v11-structural #view-torrents #t-tbody {
+#view-torrents .t-table,
+#view-torrents #t-tbody {
   background: transparent;
 }
 
-body.dp-v11-structural #view-torrents #t-tbody tr.dp-downloads-detail-row {
+#view-torrents #t-tbody tr.dp-downloads-detail-row {
   cursor: pointer;
 }
 
 /* Empty Downloads uses the same content-specific download art as Recent
    Activity; the surrounding empty-state typography/material is universal. */
-body.dp-v11-structural #view-torrents .empty-icon {
+#view-torrents .empty-icon {
   width: 76px;
   height: 76px;
   margin: 0 auto 12px;
@@ -229,23 +229,23 @@ body.dp-v11-structural #view-torrents .empty-icon {
   opacity: .78;
   filter: saturate(.92) drop-shadow(0 3px 7px rgba(116, 56, 196, .18));
 }
-body.light.dp-v11-structural #view-torrents .empty-icon {
+body.light #view-torrents .empty-icon {
   opacity: .72;
   filter: saturate(.88) drop-shadow(0 3px 7px rgba(107, 62, 171, .14));
 }
-body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]),
-body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]):hover {
+#view-torrents #t-tbody tr:not([data-torrent-id]),
+#view-torrents #t-tbody tr:not([data-torrent-id]):hover {
   background: transparent;
   border-bottom: 0;
 }
-body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]) td,
-body.dp-v11-structural #view-torrents #t-tbody tr:not([data-torrent-id]) .empty {
+#view-torrents #t-tbody tr:not([data-torrent-id]) td,
+#view-torrents #t-tbody tr:not([data-torrent-id]) .empty {
   border-bottom: 0;
   background: transparent;
 }
 
 /* ── Footer / pagination layout ──────────────────────────────────────── */
-body.dp-v11-structural #view-torrents #torrent-pagination {
+#view-torrents #torrent-pagination {
   position: relative;
   z-index: 1;
   display: grid !important;
@@ -258,7 +258,7 @@ body.dp-v11-structural #view-torrents #torrent-pagination {
   background: transparent;
 }
 
-body.dp-v11-structural #view-torrents #torrent-page-btns {
+#view-torrents #torrent-page-btns {
   grid-column: 2;
   display: inline-flex !important;
   align-items: center;
@@ -266,7 +266,7 @@ body.dp-v11-structural #view-torrents #torrent-page-btns {
   gap: 4px !important;
 }
 
-body.dp-v11-structural #view-torrents #torrent-page-info {
+#view-torrents #torrent-page-info {
   grid-column: 3;
   justify-self: end;
   color: var(--dp-text-secondary) !important;
@@ -279,19 +279,19 @@ body.dp-v11-structural #view-torrents #torrent-page-info {
 
 /* Pager buttons intentionally keep the Downloads-reviewed hit target while
    consuming the universal pagination material. */
-body.dp-v11-structural #view-torrents .dp-pager-btn {
+#view-torrents .dp-pager-btn {
   width: 36px;
   min-width: 36px;
   height: 34px;
   min-height: 34px;
   padding: 0;
 }
-body.dp-v11-structural #view-torrents .dp-pager-btn svg {
+#view-torrents .dp-pager-btn svg {
   width: 16px;
   height: 16px;
   stroke-width: 2.25;
 }
-body.dp-v11-structural #view-torrents .dp-pager-ellipsis {
+#view-torrents .dp-pager-ellipsis {
   padding: 0 4px;
   color: var(--dp-text-muted);
   font-size: 12px;
@@ -299,44 +299,114 @@ body.dp-v11-structural #view-torrents .dp-pager-ellipsis {
 
 /* ── Responsive geometry ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-torrents.active {
+  #view-torrents.active {
     height: auto;
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-torrents .dp-downloads-table-wrap {
+  #view-torrents .dp-downloads-table-wrap {
     max-height: 62vh;
   }
 }
 
 @media (max-width: 700px) {
-  body.dp-v11-structural #view-torrents > .card > .card-header {
+  #view-torrents > .card > .card-header {
     flex-wrap: wrap;
     gap: 8px;
     padding-top: 9px;
     padding-bottom: 9px;
   }
 
-  body.dp-v11-structural #view-torrents .filter-tabs {
+  #view-torrents .filter-tabs {
     order: 3;
     width: 100%;
     margin-left: 0;
   }
 
-  body.dp-v11-structural #view-torrents .filter-tabs .ftab {
+  #view-torrents .filter-tabs .ftab {
     flex: 1 1 0;
     min-width: 0;
     padding-inline: 7px;
   }
 
-  body.dp-v11-structural #view-torrents #torrent-pagination {
+  #view-torrents #torrent-pagination {
     grid-template-columns: 1fr;
     justify-items: center;
   }
 
-  body.dp-v11-structural #view-torrents #torrent-page-btns,
-  body.dp-v11-structural #view-torrents #torrent-page-info {
+  #view-torrents #torrent-page-btns,
+  #view-torrents #torrent-page-info {
     grid-column: 1;
     justify-self: center;
   }
 }
+
+/* ── Desktop composition refinements (folded from the retired
+   ui-downloads-desktop.css, DP 1.0.12 canonical flattening) ──────────── */
+@media (min-width: 901px) {
+  /* Reclaim Source / Label slack for long transfer states while preserving the
+     reviewed Name, Progress and trailing control geometry. */
+  #view-torrents .t-table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  #view-torrents .t-table :is(th, td):nth-child(1) { width: 36px; }
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 13%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 13%; }
+  #view-torrents .t-table :is(th, td):nth-child(5) { width: 20%; }
+  #view-torrents .t-table :is(th, td):nth-child(6) { width: 6%; }
+  #view-torrents .t-table :is(th, td):nth-child(7) { width: 8%; }
+  #view-torrents .t-table :is(th, td):nth-child(8) { width: 190px; }
+
+  #view-torrents .t-table td:nth-child(8) .actions {
+    justify-content: flex-start;
+    gap: 7px;
+    white-space: nowrap;
+  }
+
+  /* Desktop is the current viewport contract. Do not compress the seven-state
+     filter rail to accommodate tablet/mobile; those contexts will be designed
+     separately. */
+  #view-torrents .filter-tabs {
+    max-width: none;
+    overflow: visible;
+  }
+
+  #view-torrents .filter-tabs .ftab {
+    min-width: 64px;
+    padding-inline: 14px;
+  }
+}
+
+/* ── Pause shim, date menu, and provider/candidate row material (folded
+   from the retired ui-downloads-presentation.css, DP 1.0.12 canonical
+   flattening). Pagination geometry (#torrent-pagination, #torrent-page-btns,
+   #torrent-page-info, .dp-pager-btn svg) remains solely owned by the
+   scoped rules above -- their unscoped equivalents from that file were
+   already dead (lower specificity) and are not carried forward. ────────── */
+.dp-downloads-pause-shim{display:none;min-height:30px;padding:6px 14px;align-items:center;justify-content:center;text-align:center;font-size:10px;font-weight:600;color:var(--yellow);background:color-mix(in srgb,var(--yellow) 7%,transparent);border-bottom:1px solid color-mix(in srgb,var(--yellow) 20%,var(--border))}
+.dp-downloads-pause-shim.is-visible{display:flex}
+.dp-pager-slot,.dp-pager-placeholder,.dp-pager-current,.dp-pager-btn{width:36px!important;min-width:36px!important;max-width:36px!important;height:34px!important;min-height:34px!important;max-height:34px!important;box-sizing:border-box}
+.dp-pager-slot{display:grid;place-items:center}
+.dp-pager-placeholder{display:block}
+.dp-pager-current,.dp-pager-btn{display:inline-flex!important;align-items:center;justify-content:center;padding:0!important}
+.dp-pager-current{pointer-events:none}
+#view-torrents th:has(.dp-date-menu-trigger){position:relative;white-space:nowrap}
+.dp-date-menu-trigger{appearance:none;width:22px;height:22px;margin-left:3px;padding:0;display:inline-grid;place-items:center;border:1px solid transparent;border-radius:5px;color:var(--text3);background:transparent;cursor:pointer}
+.dp-date-menu-trigger:hover,.dp-date-menu-trigger:focus-visible{color:var(--text);border-color:var(--border);background:var(--surface2)}
+.dp-date-menu-trigger svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2}
+.dp-date-menu{position:absolute;z-index:30;top:calc(100% + 4px);right:0;width:184px;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.24)}
+.dp-date-menu[hidden]{display:none}
+.dp-date-menu-title{padding:5px 7px 3px;color:var(--text3);font-size:9px;font-weight:700;text-transform:uppercase}
+#view-torrents .dp-date-menu button{position:relative;display:block;width:100%;padding:6px 8px 6px 28px;text-align:left;border:0;border-radius:5px;color:var(--text2);background:transparent;cursor:pointer}
+.dp-date-menu button[aria-checked="true"]::before{content:'✓';position:absolute;left:9px}
+.dp-date-menu button:hover,.dp-date-menu button:focus-visible,.dp-date-menu button[aria-checked="true"]{color:var(--text);background:var(--surface2)}
+.dp-downloads-date-value:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dp-downloads-provider-block{display:inline-flex;flex-direction:column;align-items:flex-start;width:max-content;max-width:100%;vertical-align:middle}
+.dp-downloads-provider-line{display:inline-flex;align-items:center;justify-content:flex-start;max-width:100%;gap:4px;min-width:0}
+.dp-downloads-provider-block .dp-transfer-source-label{width:100%;margin-top:2px;text-align:left;align-self:stretch}
+.dp-downloads-provider-cell .dp-downloads-provider-block .dp-provider-chip{margin-bottom:0;padding-inline:4px;flex:0 1 auto;min-width:0}
+.dp-downloads-provider-line .dp-candidate-chip{flex:0 0 auto;min-height:18px;padding:1px 5px 1px 4px}
+.dp-downloads-provider-line .dp-candidate-chip svg,.dp-downloads-provider-line .dp-candidate-chip .lucide{width:11px;height:11px;min-width:11px;flex:0 0 11px}

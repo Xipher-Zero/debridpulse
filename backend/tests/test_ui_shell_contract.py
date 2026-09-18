@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
 STYLE_ENTRY = STATIC / "style.css"
-V11_STYLE = STATIC / "style-v11.css"
+V11_STYLE = STATIC / "style.css"  # DP 1.0.12 canonical flattening: style-v11.css was folded into style.css.
 SHELL_STYLE = STATIC / "ui-shell.css"
 SHELL_STRUCTURAL = STATIC / "ui-shell-structural.css"
 SHELL_PROVIDER = STATIC / "ui-shell-provider-status.css"
@@ -30,34 +30,35 @@ def read(path: Path) -> str:
 def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
     assert STYLE_ENTRY.is_file()
     assert not (STATIC / "style-legacy.css").exists()
+    assert not (STATIC / "style-v11.css").exists()
     index = read(INDEX)
-    assert "/style.css?v=15" in index
-    assert "/style-v11.css?v=28" in index
-    assert index.index("/style.css?v=15") < index.index("/style-v11.css?v=28")
+    assert "/style.css?v=18" in index
+    assert index.count('<link rel="stylesheet" href="/style.css?v=18">') == 1
+    assert "style-v11.css" not in index
 
     overlay = read(V11_STYLE)
     imports = (
-        "/design-tokens.css?v=20",
+        "/design-tokens.css?v=21",
         "/ui-language-tokens.css?v=21",
-        "/ui-foundation.css?v=20",
+        "/ui-foundation.css?v=21",
         "/ui-components.css?v=20",
-        "/ui-universal-language.css?v=20",
-        "/ui-shared-contract.css?v=32",
-        "/ui-modal-contract.css?v=25",
-        "/ui-shell.css?v=21",
-        "/ui-shell-structural.css?v=30",
-        "/ui-shell-provider-status.css?v=24",
-        "/ui-dashboard.css?v=20",
-        "/ui-utility-controls.css?v=23",
-        "/ui-statistics-page.css?v=22",
-        "/ui-activity-log-page.css?v=30",
-        "/ui-downloads-page.css?v=28",
-        "/ui-settings-page.css?v=2",
-        "/ui-help-page.css?v=22",
-        "/ui-panel-surface-treatment.css?v=22",
-        "/ui-transfer-contract.css?v=32",
-        "/ui-visual-accents.css?v=21",
-        "/ui-shell-signal-field.css?v=20",
+        "/ui-universal-language.css?v=21",
+        "/ui-shared-contract.css?v=33",
+        "/ui-modal-contract.css?v=26",
+        "/ui-shell.css?v=22",
+        "/ui-shell-structural.css?v=31",
+        "/ui-shell-provider-status.css?v=25",
+        "/ui-dashboard.css?v=21",
+        "/ui-utility-controls.css?v=24",
+        "/ui-statistics-page.css?v=23",
+        "/ui-activity-log-page.css?v=31",
+        "/ui-downloads-page.css?v=30",
+        "/ui-settings-page.css?v=3",
+        "/ui-help-page.css?v=23",
+        "/ui-panel-surface-treatment.css?v=23",
+        "/ui-transfer-contract.css?v=33",
+        "/ui-visual-accents.css?v=22",
+        "/ui-shell-signal-field.css?v=21",
     )
     positions = [overlay.index(item) for item in imports]
     assert positions == sorted(positions)
@@ -93,24 +94,23 @@ def test_v11_cache_generations_remain_targeted() -> None:
     generations = dict(re.findall(r"@import url\('([^']+)\?v=(\d+)'\);", overlay))
     expected = {
         "/ui-language-tokens.css": "21",
-        "/ui-shared-contract.css": "32",
-        "/ui-modal-contract.css": "25",
-        "/ui-shell.css": "21",
-        "/ui-shell-structural.css": "30",
-        "/ui-shell-provider-status.css": "24",
-        "/ui-utility-controls.css": "23",
-        "/ui-statistics-page.css": "22",
-        "/ui-activity-log-page.css": "30",
-        "/ui-downloads-page.css": "28",
-        "/ui-downloads-desktop.css": "28",
-        "/ui-settings-page.css": "2",
-        "/ui-settings-chrome.css": "2",
-        "/ui-help-page.css": "22",
-        "/ui-feature-icon-contract.css": "4",
-        "/ui-panel-surface-treatment.css": "22",
-        "/ui-transfer-contract.css": "32",
+        "/ui-shared-contract.css": "33",
+        "/ui-modal-contract.css": "26",
+        "/ui-shell.css": "22",
+        "/ui-shell-structural.css": "31",
+        "/ui-shell-provider-status.css": "25",
+        "/ui-utility-controls.css": "24",
+        "/ui-statistics-page.css": "23",
+        "/ui-activity-log-page.css": "31",
+        "/ui-downloads-page.css": "30",
+        "/ui-settings-page.css": "3",
+        "/ui-settings-chrome.css": "3",
+        "/ui-help-page.css": "23",
+        "/ui-feature-icon-contract.css": "5",
+        "/ui-panel-surface-treatment.css": "23",
+        "/ui-transfer-contract.css": "33",
         "/ui-detail-candidates.css": "4",
-        "/ui-visual-accents.css": "21",
+        "/ui-visual-accents.css": "22",
     }
     for path, version in expected.items():
         assert generations[path] == version
@@ -133,8 +133,8 @@ def test_shell_owns_topbar_navigation_canvas_and_provider_support_geometry() -> 
     for fragment in (
         "margin-left: 0 !important;",
         ".sidebar-theme-control.topbar-theme-control",
-        "body.dp-v11-structural .nav-item.active::after",
-        "body.light.dp-v11-structural #page-title",
+        ".nav-item.active::after",
+        "body.light #page-title",
         "radial-gradient(920px 540px at 36% 4%",
     ):
         assert fragment in structural
@@ -150,9 +150,14 @@ def test_shell_owns_topbar_navigation_canvas_and_provider_support_geometry() -> 
         ".conn-row:has(#dot-api)",
     ):
         assert legacy not in provider
+    # DP 1.0.12 canonical flattening (Gate 9 round 3 fix-forward): the old
+    # ::before pseudo-title was always suppressed by a correction layer in
+    # the (now-deleted) ui-provider-summary.css and never rendered; the real
+    # heading is the explicit .dp-provider-status-heading element the
+    # runtime creates.
+    assert ".dp-provider-status-list::before" not in provider_state
     for fragment in (
-        ".dp-provider-status-list::before",
-        "content: 'Provider Status';",
+        ".dp-provider-status-heading",
         ".dp-provider-status-row",
         "justify-content: center;",
         "text-align: center;",

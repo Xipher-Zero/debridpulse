@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
 INDEX = STATIC / "index.html"
-STYLE = STATIC / "style-v11.css"
+STYLE = STATIC / "style.css"
 THEME_BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 PRESENTATION_LOADER = STATIC / "ui-presentation-loader.js"
 SETTINGS_RUNTIME = STATIC / "ui-settings-page.js"
@@ -81,9 +81,10 @@ def test_normal_ui_bootstrap_keeps_core_first_paint_static_and_bounded() -> None
     html = read(INDEX)
     bootstrap = read(THEME_BOOTSTRAP)
 
-    assert '<body class="dp-v11-structural">' in html
+    assert "<body>" in html
+    assert '<body class="dp-v11-structural">' not in html
     assert "/style.css" in html
-    assert "/style-v11.css" in html
+    assert "style-v11.css" not in html
     assert "/ui-theme-bootstrap.js" in html
     assert "localStorage.getItem('theme')" in bootstrap
     assert "document.body.classList.add('light')" in bootstrap

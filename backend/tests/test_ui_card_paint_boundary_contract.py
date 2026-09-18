@@ -12,12 +12,12 @@ def read_static(name: str) -> str:
 def test_downloads_outer_view_does_not_clip_universal_card_paint():
     css = read_static("ui-downloads-page.css")
 
-    assert "body.dp-v11-structural #view-torrents.active" in css
+    assert "#view-torrents.active" in css
     assert "overflow: visible;" in css
-    assert "body.dp-v11-structural #view-torrents .dp-downloads-table-wrap" in css
+    assert "#view-torrents .dp-downloads-table-wrap" in css
     assert "overflow: auto !important;" in css
 
-    desktop_rule = css.split("body.dp-v11-structural #view-torrents.active", 1)[1].split("}", 1)[0]
+    desktop_rule = css.split("#view-torrents.active", 1)[1].split("}", 1)[0]
     assert "overflow: hidden" not in desktop_rule
 
 
@@ -25,7 +25,7 @@ def test_clean_settings_uses_one_master_card_and_one_internal_scroll_boundary():
     css = read_static("ui-settings-page.css")
     runtime = read_static("ui-settings-page.js")
 
-    selector = "body.dp-v11-structural #view-settings.dp-settings-clean-view.active"
+    selector = "#view-settings.dp-settings-clean-view.active"
     assert selector in css
     rule = css.split(selector, 1)[1].split("}", 1)[0]
     assert "overflow: visible;" in rule
@@ -61,8 +61,11 @@ def test_clean_settings_uses_one_master_card_and_one_internal_scroll_boundary():
 
 
 def test_inherited_settings_shell_state_is_rejected_but_normal_content_height_is_reused():
+    # DP 1.0.12 canonical flattening: the retired ui-legacy-foundation.css's
+    # #content.settings-active rule was merged into ui-shell-structural.css's
+    # own pre-existing rule for the same selector -- there is exactly one
+    # owner now, not two.
     shell = read_static("ui-shell-structural.css")
-    legacy = read_static("style.css")
     runtime = read_static("ui-settings-page.js")
     settings = read_static("ui-settings-page.css")
 
@@ -70,11 +73,10 @@ def test_inherited_settings_shell_state_is_rejected_but_normal_content_height_is
     # The clean Settings entry removes it synchronously before rendering any
     # Settings DOM. The only #content selector Settings owns mirrors Activity:
     # suppress outer scrolling while the page fills the shell-owned content box.
-    assert "#content.settings-active" in legacy
-    assert "body.dp-v11-structural #content.settings-active" in shell
+    assert "#content.settings-active" in shell
     assert "classList.remove('settings-active')" in runtime
     assert "#content.settings-active" not in settings
-    assert "body.dp-v11-structural #content:has(#view-settings.active)" in settings
+    assert "#content:has(#view-settings.active)" in settings
 
     content_rule = settings.split("#content:has(#view-settings.active)", 1)[1].split("}", 1)[0]
     assert "overflow-y: hidden;" in content_rule
@@ -103,13 +105,13 @@ def test_help_downloads_and_settings_corrections_do_not_redefine_card_material()
 
 
 def test_card_paint_boundary_page_layers_are_loaded_after_universal_language():
-    overlay = read_static("style-v11.css")
+    overlay = read_static("style.css")
 
-    universal = overlay.index("/ui-universal-language.css?v=20")
-    stats = overlay.index("/ui-statistics-page.css?v=22")
-    activity = overlay.index("/ui-activity-log-page.css?v=30")
-    downloads = overlay.index("/ui-downloads-page.css?v=28")
-    settings = overlay.index("/ui-settings-page.css?v=2")
-    help_page = overlay.index("/ui-help-page.css?v=22")
+    universal = overlay.index("/ui-universal-language.css?v=21")
+    stats = overlay.index("/ui-statistics-page.css?v=23")
+    activity = overlay.index("/ui-activity-log-page.css?v=31")
+    downloads = overlay.index("/ui-downloads-page.css?v=30")
+    settings = overlay.index("/ui-settings-page.css?v=3")
+    help_page = overlay.index("/ui-help-page.css?v=23")
 
     assert universal < stats < activity < downloads < settings < help_page

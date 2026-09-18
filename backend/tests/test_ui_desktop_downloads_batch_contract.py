@@ -10,7 +10,9 @@ def read(name: str) -> str:
 
 def test_downloads_desktop_filter_contract_and_details_are_directly_owned():
     index = read("index.html")
-    app = read("app.js")
+    # DP 1.0.12 canonical flattening: ui-downloads.js is the sole Downloads
+    # owner -- app.js no longer carries this markup/logic.
+    downloads = read("ui-downloads.js")
     expected = (
         'data-dp-status=""', 'data-dp-status="downloading"', 'data-dp-status="paused"',
         'data-dp-status="processing"', 'data-dp-status="ready"',
@@ -18,13 +20,14 @@ def test_downloads_desktop_filter_contract_and_details_are_directly_owned():
     )
     for fragment in expected:
         assert fragment in index
-    assert "function setFilter(" in app
-    assert "dp-downloads-detail-row" in app
-    assert "showDetail(${t.id})" in app
-    assert 'draggable="true"' not in app
+    assert "function setFilter(" in downloads
+    assert "dp-downloads-detail-row" in downloads
+    assert "showDetail(${t.id})" in downloads
+    assert 'draggable="true"' not in downloads
 
 def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_progress():
-    css = read("ui-downloads-desktop.css")
+    # DP 1.0.12 canonical flattening: folded into ui-downloads-page.css.
+    css = read("ui-downloads-page.css")
     assert "nth-child(2) { width: 25%; }" in css
     assert "nth-child(3) { width: 13%; }" in css
     assert "nth-child(4) { width: 13%; }" in css
@@ -61,14 +64,14 @@ def test_detail_modal_scrolls_inside_frame_with_thicker_scrollbar():
 
 
 def test_new_contract_layers_live_in_correct_cascade_sections():
-    style = read("style-v11.css")
-    modal = style.index("ui-modal-contract.css?v=25")
-    shell = style.index("ui-shell.css?v=21")
-    provider = style.index("ui-shell-provider-status.css?v=24")
-    downloads_base = style.index("ui-downloads-page.css?v=28")
-    downloads_desktop = style.index("ui-downloads-desktop.css?v=28")
-    transfer = style.index("ui-transfer-contract.css?v=32")
+    style = read("style.css")
+    modal = style.index("ui-modal-contract.css?v=26")
+    shell = style.index("ui-shell.css?v=22")
+    provider = style.index("ui-shell-provider-status.css?v=25")
+    downloads_base = style.index("ui-downloads-page.css?v=30")
+    transfer = style.index("ui-transfer-contract.css?v=33")
     assert modal < shell < provider
-    assert downloads_base < downloads_desktop < transfer
+    assert downloads_base < transfer
+    assert "ui-downloads-desktop.css" not in style
     assert "ui-shell-provider-status-v2.css" not in style
     assert style.count("ui-shell-provider-status.css") == 1

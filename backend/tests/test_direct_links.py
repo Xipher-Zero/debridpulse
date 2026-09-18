@@ -171,7 +171,15 @@ class DashboardContractTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[2]
         html = (repo_root / "frontend/static/index.html").read_text()
         js = (repo_root / "frontend/static/app.js").read_text()
-        css = (repo_root / "frontend/static/style.css").read_text()
+        # DP 1.0.12 canonical flattening: style.css is now a pure @import
+        # list. #content.dashboard-active / #view-dashboard.active's own
+        # unscoped definitions in style.css were provably dead (ui-dashboard
+        # .css's identical unscoped copy, loaded later in the same cascade,
+        # already won) and were removed; #dash-activity-card had no such
+        # surviving duplicate and was migrated into ui-dashboard.css itself
+        # (from the retired ui-legacy-foundation.css) rather than left
+        # orphaned.
+        dashboard_css = (repo_root / "frontend/static/ui-dashboard.css").read_text()
 
         self.assertIn('<div id="content" class="dashboard-active">', html)
         self.assertIn('id="dash-activity-card"', html)
@@ -185,9 +193,9 @@ class DashboardContractTests(unittest.TestCase):
             repo_root / "frontend/static/ui-dashboard-transfer-presentation.js"
         ).read_text()
         self.assertIn("api('GET',`/torrents?limit=${recentLimit}&order=activity`)", owner)
-        self.assertIn("#content.dashboard-active { overflow-y: hidden; }", css)
-        self.assertIn("#view-dashboard.active {", css)
-        self.assertIn("#dash-activity-card {", css)
+        self.assertIn("#content.dashboard-active {\n  overflow-y: hidden;\n}", dashboard_css)
+        self.assertIn("#view-dashboard.active {", dashboard_css)
+        self.assertIn("#dash-activity-card {", dashboard_css)
 
 if __name__ == "__main__":
     unittest.main()

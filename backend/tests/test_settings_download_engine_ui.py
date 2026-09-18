@@ -46,7 +46,7 @@ def test_download_engine_header_matches_reviewed_identity_mode_and_copy_contract
     assert "width: 34px;" in icon_rule
     assert "height: 34px;" in icon_rule
     assert icon_rule.count("drop-shadow") == 2
-    light_icon = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-download-engine-icon img {", 1)[1].split("}", 1)[0]
+    light_icon = chrome.split("body.light #view-settings .dp-settings-download-engine-icon img {", 1)[1].split("}", 1)[0]
     assert light_icon.count("drop-shadow") == 2
 
 
@@ -68,7 +68,7 @@ def test_download_engine_mode_switch_preserves_contextual_paths_and_builtin_tuni
     assert "grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);" in row
     assert "gap: 32px;" in row
     assert (
-        "body.dp-v11-structural #view-settings .dp-settings-download-limit {\n"
+        "#view-settings .dp-settings-download-limit {\n"
         "  width: 100%;\n"
         "  max-width: 320px;\n"
         "  justify-self: end;\n"

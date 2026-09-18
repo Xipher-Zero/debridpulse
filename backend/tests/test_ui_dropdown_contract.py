@@ -10,11 +10,11 @@ def read(name: str) -> str:
 
 
 def test_universal_dropdown_contract_is_loaded_before_page_layers():
-    style = read("style-v11.css")
-    dropdown_import = "@import url('/ui-dropdown-contract.css?v=20');"
+    style = read("style.css")
+    dropdown_import = "@import url('/ui-dropdown-contract.css?v=21');"
     assert dropdown_import in style
-    assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=2');")
-    assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=30');")
+    assert style.index(dropdown_import) < style.index("@import url('/ui-settings-page.css?v=3');")
+    assert style.index(dropdown_import) < style.index("@import url('/ui-activity-log-page.css?v=31');")
 
 
 def test_single_selects_are_upgraded_globally_not_per_page():
@@ -69,10 +69,10 @@ def test_dropdown_contract_has_keyboard_and_escape_navigation():
 
 def test_speed_cap_rich_popover_anchors_to_complete_operational_widget():
     css = read("ui-dropdown-contract.css")
-    assert "body.dp-v11-structural #aria2-speed-badge .aria2-cap-control" in css
-    speed_anchor = css.split("body.dp-v11-structural #aria2-speed-badge .aria2-cap-control", 1)[1].split("}", 1)[0]
+    assert "#aria2-speed-badge .aria2-cap-control" in css
+    speed_anchor = css.split("#aria2-speed-badge .aria2-cap-control", 1)[1].split("}", 1)[0]
     assert "position: static;" in speed_anchor
-    assert "body.dp-v11-structural .aria2-cap-menu" in css
+    assert ".aria2-cap-menu" in css
     assert "right: 0 !important;" in css
 
 
@@ -83,4 +83,4 @@ def test_open_dropdown_surface_uses_shared_depth_language_in_both_themes():
     assert "var(--dp-panel-surface)" in menu
     assert "var(--dp-shadow-raised)" in menu
     assert "body.light .dp-dropdown-menu" in css
-    assert "body.light.dp-v11-structural .aria2-cap-menu" in css
+    assert "body.light .aria2-cap-menu" in css

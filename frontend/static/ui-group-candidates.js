@@ -1119,15 +1119,12 @@
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
     document.addEventListener('debridpulse:detail-rendered', onDetailRendered);
     document.addEventListener('debridpulse:detail-closed', onDetailClosed);
-    // Deferred to a microtask: Downloads (and, defensively, Recent) enrich
-    // their raw row markup with the group launcher in a SEPARATE listener
-    // for this same event (ui-downloads-presentation.js's
-    // applyProviderSourcePresentation, lazily installed and so registered
-    // AFTER this module's own listener). Checking synchronously within the
-    // same dispatch would see the launcher before that enrichment runs and
-    // misreport a confirmed permanent loss. A microtask always runs after
-    // every same-dispatch listener has finished, independent of
-    // registration order.
+    // Deferred to a microtask defensively: Downloads and Dashboard Recent
+    // both render the group launcher inline, in the same pass as the rest
+    // of the row, before this event fires -- but a microtask still runs
+    // after every same-dispatch listener has finished, independent of
+    // registration order, so this stays correct even if a future owner adds
+    // its own listener for this event.
     document.addEventListener('debridpulse:dashboard-recent-rendered', function () { queueMicrotask(function () { onSurfaceRendered('dashboard_recent'); }); });
     document.addEventListener('debridpulse:downloads-rendered', function () { queueMicrotask(function () { onSurfaceRendered('downloads'); }); });
     window.addEventListener('resize', onViewportChange, {passive: true});

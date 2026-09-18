@@ -1,66 +1,70 @@
-/* Provider Status and premium-provider disclosure presentation. */
+/* Provider Status list/group presentation and premium-provider Settings-card
+ * disclosure (the collapsible header, config-status badge, and expand/
+ * collapse control that ui-provider-cards.js attaches to any integration
+ * whose definition sets presentation.premium -- currently AllDebrid).
+ *
+ * ui-shell-provider-status.css is a distinct, narrower owner: premium-account
+ * row composition (the crown icon, #premium-row layout, .dp-provider-premium-
+ * until/-days display, which it already governs with !important so this file
+ * does not duplicate it) and shell-level aria2/DB exception presentation.
+ */
 
-body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-list {
+#sidebar .sidebar-footer .dp-provider-status-list {
   display: block;
   width: 100%;
   min-width: 0;
 }
 
-body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-list::before {
-  content: 'Provider Status';
-  display: block;
-  margin: 0 0 9px;
-  color: #9da3bf;
-  font-size: 9.5px;
+.dp-provider-status-heading {
+  width: 100%;
+  margin: 0 0 5px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: .085em;
+  letter-spacing: .12em;
   text-transform: uppercase;
   text-align: center;
+  color: var(--text3);
 }
 
-body.light.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-list::before {
-  color: #777e99;
-}
-
-body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-row {
+#sidebar .sidebar-footer .dp-provider-status-row,
+#sidebar .sidebar-footer .dp-provider-status-group-row {
   width: 100%;
   min-width: 0;
   justify-content: center;
   align-items: center;
+  text-align: center;
 }
 
-body.dp-v11-structural #sidebar .sidebar-footer .dp-provider-status-row > span {
+#sidebar .sidebar-footer .dp-provider-status-row > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dp-provider-premium-until,
-.dp-provider-premium-days {
-  display: block;
+.dp-provider-status-group {
+  width: 100%;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, auto) minmax(220px, 1fr);
-  align-items: center;
-  gap: 16px;
-}
+/* ── Premium provider Settings card (ui-provider-cards.js decorate()) ──── */
+/* The disclosure/config-status/header-controls elements are created only for
+   an integration with presentation.premium set (AllDebrid today), directly
+   under .dp-settings-provider-card's header -- not behind a reflected
+   data-provider-premium attribute, so these selectors target the real
+   classes the runtime creates rather than an attribute it never sets. */
 
-body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header > .card-title {
-  min-width: 0;
-  justify-self: start;
-  overflow: hidden;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] .dp-settings-card-title-text {
+#view-settings .dp-settings-provider-card .dp-settings-card-title-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
+#view-settings .dp-settings-provider-card .dp-settings-integration-header-enable {
+  min-width: 0;
+  margin: 0;
+}
+
+#view-settings .dp-settings-provider-config-status {
   min-width: 0;
   max-width: 280px;
   justify-self: center;
@@ -71,16 +75,16 @@ body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
   text-align: center;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-config-status[data-tone="warning"] {
+#view-settings .dp-settings-provider-config-status[data-tone="warning"] {
   color: var(--dp-state-caution);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-config-status[hidden] {
+#view-settings .dp-settings-provider-config-status[hidden] {
   visibility: hidden;
   display: block !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
+#view-settings .dp-settings-provider-header-controls {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -89,7 +93,7 @@ body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
   gap: 8px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-disclosure {
+#view-settings .dp-settings-provider-disclosure {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
@@ -104,18 +108,18 @@ body.dp-v11-structural #view-settings .dp-settings-provider-disclosure {
   transition: color .15s ease, border-color .15s ease, background .15s ease;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-disclosure:hover {
+#view-settings .dp-settings-provider-disclosure:hover {
   border-color: var(--dp-border-default);
   background: var(--dp-surface-2);
   color: var(--dp-text-primary);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-disclosure:focus-visible {
+#view-settings .dp-settings-provider-disclosure:focus-visible {
   outline: 2px solid var(--dp-accent-purple-bright);
   outline-offset: 2px;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-disclosure > span {
+#view-settings .dp-settings-provider-disclosure > span {
   display: block;
   font-size: 22px;
   line-height: 1;
@@ -123,63 +127,43 @@ body.dp-v11-structural #view-settings .dp-settings-provider-disclosure > span {
   transition: transform .15s ease;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-disclosure[aria-expanded="true"] > span {
+#view-settings .dp-settings-provider-disclosure[aria-expanded="true"] > span {
   transform: rotate(90deg);
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] .dp-settings-integration-header-enable {
-  min-width: 0;
-  margin: 0;
-}
-
-body.dp-v11-structural #view-settings .dp-settings-provider-card > .card-body[hidden] {
+#view-settings .dp-settings-provider-card > .card-body[hidden] {
   display: none !important;
 }
 
-body.dp-v11-structural #view-settings .dp-settings-provider-card--collapsed > .card-header {
+#view-settings .dp-settings-provider-card--collapsed > .card-header {
   border-bottom-color: transparent;
 }
 
-@media (max-width: 1180px) {
-  body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header {
-    grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: min(100%, 320px);
-    padding-top: 2px;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
-    grid-column: 2;
-    grid-row: 1;
-  }
-}
-
-@media (max-width: 700px) {
-  body.dp-v11-structural #view-settings .dp-settings-provider-card[data-provider-premium="true"] > .card-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-provider-header-controls {
-    grid-column: 1;
-    grid-row: 2;
-    justify-content: flex-start;
-  }
-
-  body.dp-v11-structural #view-settings .dp-settings-provider-config-status {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-    text-align: left;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  body.dp-v11-structural #view-settings .dp-settings-provider-disclosure,
-  body.dp-v11-structural #view-settings .dp-settings-provider-disclosure > span {
+  #view-settings .dp-settings-provider-disclosure,
+  #view-settings .dp-settings-provider-disclosure > span {
     transition: none;
+  }
+}
+
+/* The AllDebrid card is currently the only premium-flagged provider; its
+   header becomes a 3-column grid (title / config-status / header-controls)
+   at desktop widths once ui-provider-cards.js has inserted the status badge
+   and header-controls wrapper described above. */
+@media (min-width: 1181px) {
+  #view-settings .dp-settings-provider-card--alldebrid > .card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+  #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-provider-config-status {
+    grid-column: 2;
+    justify-self: center;
+    text-align: center;
+  }
+  #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-provider-header-controls {
+    grid-column: 3;
+    justify-self: end;
   }
 }

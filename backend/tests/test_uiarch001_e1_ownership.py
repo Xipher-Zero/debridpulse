@@ -28,7 +28,9 @@ def test_icon_owner_has_no_loader_observer_or_dom_reparenting() -> None:
 
 def test_shell_structure_is_static_and_download_rows_are_final_at_render_time() -> None:
     index = read("index.html")
-    app = read("app.js")
+    # DP 1.0.12 canonical flattening: ui-downloads.js is the sole Downloads
+    # controller/renderer owner -- app.js no longer carries this content.
+    app = read("ui-downloads.js")
     assert 'data-dp-ui="v1.0.12-canonical"' in index
     assert "topbar-theme-control" in index
     assert "dp-dashboard-quick-add" in index

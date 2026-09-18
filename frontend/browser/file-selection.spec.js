@@ -31,6 +31,11 @@ function selectionView(overrides) {
     decision_deadline: 1120.0,
     initially_available: true,
     server_now: 1000.0,
+    // Mirrors the canonical backend domain function
+    // (transfers.file_selection.file_selection_affordance) for the default
+    // mutable/pending/multi-file scenario; callers override it alongside
+    // decision/mutable when they override those fields.
+    file_selection_affordance: 'choose',
   }, overrides || {});
 }
 
@@ -59,7 +64,8 @@ async function stub(page, state) {
         body: JSON.stringify({detail: 'Executable manifest already committed'})});
     }
     state.view = selectionView({decision: 'explicit', mutable: true,
-      selected_entry_ids: state.confirmBody.entry_ids, auto_offer: false, decision_deadline: null});
+      selected_entry_ids: state.confirmBody.entry_ids, auto_offer: false, decision_deadline: null,
+      file_selection_affordance: 'change'});
     return route.fulfill({status: 200, contentType: 'application/json',
       body: JSON.stringify({ok: true, decision: 'explicit', manifest_id: MANIFEST_A, detail: 'confirmed'})});
   });
@@ -260,7 +266,7 @@ test('reaching zero refreshes authoritative state; an expired hold closes the se
   await openViaEvent(page);
   // Backend has since settled to ALL.
   state.view = selectionView({mutable: false, decision: 'all', decision_reason: 'decision_timeout',
-    auto_offer: false, decision_deadline: null});
+    auto_offer: false, decision_deadline: null, file_selection_affordance: 'none'});
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/, {timeout: 6000});
   await expect(page.locator('.toast')).toContainText(/window closed|will download/i);
 });
@@ -291,7 +297,7 @@ test('Cancel Transfer routes to the existing transfer cancel endpoint', async ({
 test('a single-file resource never opens the selector', async ({page}) => {
   const only = [ENTRIES[3]];
   const state = {view: selectionView({entries: only, file_count: 1, decision: 'all',
-    decision_reason: 'single_file', auto_offer: false})};
+    decision_reason: 'single_file', auto_offer: false, file_selection_affordance: 'none'})};
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => document.dispatchEvent(
@@ -350,7 +356,7 @@ test('Details Files header exposes "Choose Files" while mutable and pending, and
 
 test('Details Files header exposes "Change Files" once an explicit subset is confirmed', async ({page}) => {
   const state = {view: selectionView({decision: 'explicit', auto_offer: false, decision_deadline: null,
-    selected_entry_ids: ['e-s1e01', 'e-s1e02']})};
+    selected_entry_ids: ['e-s1e01', 'e-s1e02'], file_selection_affordance: 'change'})};
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => showDetail(7));
@@ -359,7 +365,7 @@ test('Details Files header exposes "Change Files" once an explicit subset is con
 
 test('a locked selection shows a passive summary and no mutation control', async ({page}) => {
   const state = {view: selectionView({decision: 'explicit', mutable: false, auto_offer: false,
-    decision_deadline: null, selected_entry_ids: ['e-s1e01', 'e-s1e02']})};
+    decision_deadline: null, selected_entry_ids: ['e-s1e01', 'e-s1e02'], file_selection_affordance: 'none'})};
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => showDetail(7));

@@ -404,6 +404,38 @@ def auto_offer_active(state: SelectionWindowState, now: float) -> bool:
     return state.hold_until is not None and now < state.hold_until
 
 
+def file_selection_affordance(
+    manifest_id: str | None, decision: str | None, committed_at, file_count: int,
+) -> str:
+    """Canonical ``none``/``pending_manifest``/``choose``/``change`` classification.
+
+    Derived only from durable ``transfer_file_selections`` facts (specification
+    section 10): whether a selection generation exists at all, whether it is
+    still mutable (``committed_at is None``), whether a manifest is bound, its
+    file count, and its decision. This is the single semantic owner shared by
+    the bounded list projection (``api.operational_downloads``) and the
+    fresh-click read model (``TransferRepository.file_selection_presentation``);
+    the browser only renders the field this returns and never reconstructs it
+    from ``eligible``/``mutable``/``manifest_id``/``file_count``/``decision``.
+    """
+    if manifest_id is None and decision is None:
+        # No selection generation exists for this transfer at all.
+        return "none"
+    if committed_at is not None:
+        # Executable child materialization already committed -- locked.
+        return "none"
+    if manifest_id is None:
+        # A generation exists (torrent/magnet resolution in progress) but no
+        # usable manifest has arrived yet.
+        return "pending_manifest"
+    if file_count <= 1:
+        # Single-file torrent/magnet: no picker action (Section 6.9).
+        return "none"
+    if str(decision or "") == SelectionDecision.EXPLICIT:
+        return "change"
+    return "choose"
+
+
 def manifest_grace_deadline(now: float) -> float:
     return float(now) + POST_AVAILABLE_MANIFEST_GRACE_SECONDS
 

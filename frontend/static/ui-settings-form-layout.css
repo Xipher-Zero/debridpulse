@@ -7,7 +7,7 @@
 /* Let the configured AllDebrid API key consume every spare pixel before the
    compact clear-key action rather than reserving an oversized action column. */
 @media (min-width: 901px) {
-  body.dp-v11-structural #view-settings .dp-settings-alldebrid-key-row.is-configured {
+  #view-settings .dp-settings-alldebrid-key-row.is-configured {
     grid-template-columns: minmax(0, 1fr) max-content;
     gap: 22px;
   }
@@ -16,7 +16,7 @@
 /* Match the configured external-secret edge to the 320px right-hand datum used
    by Maximum Concurrent Downloads below it. */
 @media (min-width: 1181px) {
-  body.dp-v11-structural #view-settings .dp-settings-external-connection-row.is-secret-configured {
+  #view-settings .dp-settings-external-connection-row.is-secret-configured {
     grid-template-columns: minmax(0, 1.35fr) minmax(300px, .9fr) 320px;
     column-gap: 32px;
   }
@@ -24,7 +24,7 @@
 
 /* Treat concurrency + delete-after-extraction as one centered desktop block. */
 @media (min-width: 901px) {
-  body.dp-v11-structural #view-settings .dp-settings-extraction-controls-row {
+  #view-settings .dp-settings-extraction-controls-row {
     width: min(100%, 1040px);
     margin-inline: auto;
     grid-template-columns: minmax(360px, 460px) minmax(0, 520px);
@@ -36,20 +36,20 @@
   /* The Extraction panel owns the available Settings viewport height. The
      password editor then flexes into the remaining card body instead of ending
      at an arbitrary textarea-height cap and leaving a large dead area below. */
-  body.dp-v11-structural #view-settings .dp-settings-scroll:has([data-panel="extraction"]:not([hidden])) .dp-settings-panels {
+  #view-settings .dp-settings-scroll:has([data-panel="extraction"]:not([hidden])) .dp-settings-panels {
     min-height: 100%;
     display: flex;
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings [data-panel="extraction"]:not([hidden]) {
+  #view-settings [data-panel="extraction"]:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings [data-panel="extraction"] .dp-settings-extraction-card {
+  #view-settings [data-panel="extraction"] .dp-settings-extraction-card {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -57,23 +57,38 @@
     margin-bottom: 0;
   }
 
-  body.dp-v11-structural #view-settings [data-panel="extraction"] .dp-settings-extraction-card > .card-body {
+  #view-settings [data-panel="extraction"] .dp-settings-extraction-card > .card-body {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-extraction-password-field {
+  #view-settings .dp-settings-extraction-password-field {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
 
-  body.dp-v11-structural #view-settings .dp-settings-extraction-password-editor {
+  #view-settings .dp-settings-extraction-password-editor {
     flex: 1 1 auto;
     min-height: 118px;
     max-height: none;
   }
 }
+
+/* ── Generic form field/toggle material (DP 1.0.12 canonical flattening:
+   migrated from the retired ui-legacy-foundation.css) ───────────────────── */
+.form-label { font-size: 11px; font-weight: 600; color: var(--text2); letter-spacing: .04em; }
+.form-hint  { font-size: 10px; color: var(--text3); margin-top: 3px; }
+body.light .form-hint { color: var(--text2); }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.toggle-info .tl { font-size: 13px; font-weight: 600; }
+.toggle-info .td { font-size: 11px; color: var(--text2); margin-top: 1px; }
+.toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.ttrack { position: absolute; inset: 0; background: var(--border2); border-radius: 12px; cursor: pointer; transition: background .2s; }
+.ttrack::after { content:''; position: absolute; left: 4px; top: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--text3); transition: all .2s; }
+.toggle input:checked + .ttrack { background: var(--accent); }
+.toggle input:checked + .ttrack::after { left: 22px; background: #fff; }

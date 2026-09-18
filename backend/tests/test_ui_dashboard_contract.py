@@ -7,15 +7,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
-V11_STYLE = STATIC / "style-v11.css"
+V11_STYLE = STATIC / "style.css"
 DASHBOARD_CSS = STATIC / "ui-dashboard.css"
 STATISTICS_CSS = STATIC / "ui-statistics-page.css"
 
 
 def test_dashboard_stylesheet_is_active() -> None:
     entry = V11_STYLE.read_text(encoding="utf-8")
-    assert "/ui-dashboard.css?v=20" in entry
-    assert "/ui-shell.css?v=21" in entry
+    assert "/ui-dashboard.css?v=21" in entry
+    assert "/ui-shell.css?v=22" in entry
     for retired in (
         "ui-dashboard-structural.css",
         "ui-dashboard-consistency.css",

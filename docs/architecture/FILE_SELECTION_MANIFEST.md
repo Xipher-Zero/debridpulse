@@ -391,7 +391,7 @@ listens to those lifecycle events.
 
 `frontend/static/ui-file-selection.js` (`window.DPFileSelection`, lazy-loaded via
 `ui-provider-status.js` `bootPresentationOwners()`, styled by
-`ui-file-selection.css` imported once in `style-v11.css`) owns the file tree,
+`ui-file-selection.css` imported once through the `style.css` graph) owns the file tree,
 tri-state folders reconstructed from paths, Select all / Deselect all, selected
 count + byte total, Confirm / Close / Cancel Transfer, the countdown, automatic
 presentation, and the Details `Select files` / `Change file selection` entry

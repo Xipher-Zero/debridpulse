@@ -133,7 +133,11 @@ const accept = page => page.locator('[data-confirm-accept]');
 const cancel = page => page.locator('[data-confirm-cancel]');
 
 async function selectedIds(page) {
-  return page.evaluate(() => [..._selectedIds].sort((a, b) => a - b));
+  // Observable checkbox-checked state, not private module state: syncDownloadSelectionUi()
+  // keeps every rendered .t-chk's `checked` attribute in lockstep with selection.
+  return page.evaluate(() =>
+    [...document.querySelectorAll('.t-chk:checked')].map(el => Number(el.dataset.id)).sort((a, b) => a - b)
+  );
 }
 
 async function installNativeDialogWatch(page) {

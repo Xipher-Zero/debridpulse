@@ -7,17 +7,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
-STYLE = STATIC / "style-v11.css"
+STYLE = STATIC / "style.css"
 TRANSFER = STATIC / "ui-transfer-contract.css"
 DASHBOARD = STATIC / "ui-dashboard.css"
 
 
 def test_transfer_contract_is_final_shared_layer_after_page_geometry() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    dashboard = "/ui-dashboard.css?v=20"
-    downloads = "/ui-downloads-page.css?v=28"
-    help_page = "/ui-help-page.css?v=22"
-    transfer = "/ui-transfer-contract.css?v=32"
+    dashboard = "/ui-dashboard.css?v=21"
+    downloads = "/ui-downloads-page.css?v=30"
+    help_page = "/ui-help-page.css?v=23"
+    transfer = "/ui-transfer-contract.css?v=33"
 
     for layer in (dashboard, downloads, help_page, transfer):
         assert layer in overlay

@@ -124,25 +124,32 @@ async function installEventSourceFixture(page) {
   });
 }
 
+// file_selection_affordance mirrors the canonical backend domain function
+// (transfers.file_selection.file_selection_affordance) for each fixture
+// scenario -- the browser consumes this field, it never reclassifies it.
 function pendingView() {
   return {eligible: true, mutable: true, manifest_id: null, decision: 'pending',
     decision_reason: null, file_count: 0, total_size_bytes: 0, entries: [],
     selected_entry_ids: [], auto_offer: false, auto_offer_until: null,
-    decision_deadline: null, initially_available: true, server_now: 1000.0};
+    decision_deadline: null, initially_available: true, server_now: 1000.0,
+    file_selection_affordance: 'pending_manifest'};
 }
 function chooseView() {
   return {eligible: true, mutable: true, manifest_id: 'm-1', decision: 'pending',
     decision_reason: null, file_count: ENTRIES.length,
     total_size_bytes: ENTRIES.reduce((s, e) => s + e.size_bytes, 0), entries: ENTRIES,
     selected_entry_ids: [], auto_offer: false, auto_offer_until: null,
-    decision_deadline: 1120.0, initially_available: true, server_now: 1000.0};
+    decision_deadline: 1120.0, initially_available: true, server_now: 1000.0,
+    file_selection_affordance: 'choose'};
 }
 function changeView() {
-  return Object.assign(chooseView(), {decision: 'explicit', selected_entry_ids: ['e1', 'e2']});
+  return Object.assign(chooseView(), {decision: 'explicit', selected_entry_ids: ['e1', 'e2'],
+    file_selection_affordance: 'change'});
 }
 function lockedView() {
   return Object.assign(chooseView(), {decision: 'explicit', mutable: false,
-    selected_entry_ids: ['e1', 'e2'], decision_deadline: null});
+    selected_entry_ids: ['e1', 'e2'], decision_deadline: null,
+    file_selection_affordance: 'none'});
 }
 
 async function boot(page) {
@@ -288,7 +295,8 @@ test('Case F: a single-file torrent has no file-selection action anywhere', asyn
     view: {eligible: true, mutable: false, manifest_id: 'm-1', decision: 'all',
       decision_reason: 'single_file', file_count: 1, total_size_bytes: 1000,
       entries: [ENTRIES[0]], selected_entry_ids: ['e1'], auto_offer: false,
-      auto_offer_until: null, decision_deadline: null, initially_available: true, server_now: 1000.0},
+      auto_offer_until: null, decision_deadline: null, initially_available: true, server_now: 1000.0,
+      file_selection_affordance: 'none'},
   });
   await installDetailFixture(page, 501, row);
   await boot(page);

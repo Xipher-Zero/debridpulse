@@ -411,7 +411,7 @@
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
   }
 
-  // Candidate styling is loaded through the canonical style-v11.css @import
+  // Candidate styling is loaded through the canonical style.css @import
   // graph, not injected here, so it has one loaded owner.
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, {once:true});
   else install();

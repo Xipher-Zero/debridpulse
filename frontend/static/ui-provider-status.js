@@ -1,22 +1,16 @@
-/* Neutral provider/direct-source status presentation owner. */
+/* Neutral provider/direct-source status presentation owner.
+ *
+ * DP 1.0.12 canonical flattening: this module previously also bootstrapped
+ * every other bounded presentation owner, dynamically injecting their
+ * <script> tags on DOMContentLoaded and tolerating a load failure silently.
+ * Those modules are now direct, explicit <script defer> dependencies in
+ * index.html, loaded by the browser like any other required script -- a
+ * failure to load one is a visible page error, not a silently-continuing
+ * "ready" application. This module owns provider-status candidate
+ * discovery, observation, invalidation and rendering only.
+ */
 (function () {
   'use strict';
-
-  // ui-file-selection.js must load before ui-dashboard-transfer-presentation.js
-  // and ui-downloads-presentation.js (DP 1.0.12 Workstream B): both call
-  // window.DPFileSelection.chipMarkup() synchronously while building each
-  // row's markup, and this chain loads owners strictly in order -- loading
-  // it later would leave the very first Dashboard/Downloads paint missing
-  // the file-selection chip until an unrelated refresh happened to re-render.
-  const PRESENTATION_OWNERS = Object.freeze([
-    ['/ui-toast-contract.js?v=2', 'DPToastContract'],
-    ['/ui-processing-presentation.js?v=1', 'DPProcessingPresentation'],
-    ['/ui-file-selection.js?v=1', 'DPFileSelection'],
-    ['/ui-dashboard-transfer-presentation.js?v=3', 'DPDashboardTransferPresentation'],
-    ['/ui-downloads-presentation.js?v=2', 'DPDownloadsPresentation'],
-    ['/ui-activity-log-runtime.js?v=1', 'DPActivityLog'],
-    ['/ui-settings-archive-passwords.js?v=1', 'DPArchivePasswords'],
-  ]);
 
   let generation = 0;
   function invalidate() { generation += 1; return generation; }
@@ -152,40 +146,8 @@
     return observations;
   }
 
-  function bootPresentationOwners() {
-    let chain = Promise.resolve();
-    for (const [src, marker] of PRESENTATION_OWNERS) {
-      chain = chain.then(() => new Promise(resolve => {
-        if (window[marker]) { resolve(); return; }
-        const path = src.split('?')[0];
-        const existing = Array.from(document.scripts).find(node => {
-          try { return new URL(node.src, location.href).pathname === path; } catch (_) { return false; }
-        });
-        if (existing) {
-          if (window[marker]) { resolve(); return; }
-          existing.addEventListener('load', resolve, {once:true});
-          existing.addEventListener('error', resolve, {once:true});
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = false;
-        script.dataset.dpPresentationOwner = marker;
-        script.addEventListener('load', resolve, {once:true});
-        script.addEventListener('error', () => {
-          console.error('Unable to load bounded presentation owner:', src);
-          resolve();
-        }, {once:true});
-        document.head.appendChild(script);
-      }));
-    }
-    chain.finally(() => document.dispatchEvent(new CustomEvent('debridpulse:presentation-ready')));
-    return chain;
-  }
-
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
   ensureHeading();
   render([], 'loading');
-  bootPresentationOwners();
   document.addEventListener('DOMContentLoaded', () => refresh().catch(() => render([], 'unknown')), {once:true});
 })();

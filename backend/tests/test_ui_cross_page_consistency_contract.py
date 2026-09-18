@@ -50,8 +50,12 @@ def test_provider_status_has_one_neutral_centered_presentation_owner() -> None:
     assert "#sidebar .sidebar-footer::before" not in shell
     assert ".conn-row:has(#dot-api)" not in shell
     assert "AllDebrid: Connected" not in shell
-    assert ".dp-provider-status-list::before" in provider
-    assert "content: 'Provider Status'" in provider
+    # DP 1.0.12 canonical flattening (Gate 9 round 3 fix-forward): the old
+    # ::before pseudo-title was always suppressed by a correction layer and
+    # never rendered; the real heading is the explicit element the runtime
+    # creates.
+    assert ".dp-provider-status-list::before" not in provider
+    assert ".dp-provider-status-heading" in provider
     assert ".dp-provider-status-row" in provider
     assert "justify-content: center;" in provider
     assert "text-align: center;" in provider
@@ -75,15 +79,15 @@ def test_quick_add_focus_resets_to_universal_field_language() -> None:
 
 
 def test_cross_page_owners_remain_in_deliberate_cascade_order() -> None:
-    overlay = read_static("style-v11.css")
-    shared = overlay.index("/ui-shared-contract.css?v=32")
-    shell = overlay.index("/ui-shell.css?v=21")
-    provider = overlay.index("/ui-shell-provider-status.css?v=24")
-    dashboard = overlay.index("/ui-dashboard.css?v=20")
-    downloads = overlay.index("/ui-downloads-page.css?v=28")
-    transfer = overlay.index("/ui-transfer-contract.css?v=32")
-    visual = overlay.index("/ui-visual-accents.css?v=21")
-    signal = overlay.index("/ui-shell-signal-field.css?v=20")
+    overlay = read_static("style.css")
+    shared = overlay.index("/ui-shared-contract.css?v=33")
+    shell = overlay.index("/ui-shell.css?v=22")
+    provider = overlay.index("/ui-shell-provider-status.css?v=25")
+    dashboard = overlay.index("/ui-dashboard.css?v=21")
+    downloads = overlay.index("/ui-downloads-page.css?v=30")
+    transfer = overlay.index("/ui-transfer-contract.css?v=33")
+    visual = overlay.index("/ui-visual-accents.css?v=22")
+    signal = overlay.index("/ui-shell-signal-field.css?v=21")
     assert shared < shell < provider < dashboard < downloads < transfer < visual < signal
 
 
@@ -94,7 +98,7 @@ def test_global_toast_uses_one_topbar_safe_anchor_across_pages() -> None:
 
     assert "--dp-toast-bottom-offset" not in shared
     assert "bottom: var(--dp-toast-bottom-offset);" not in shared
-    assert "body.dp-v11-structural #toasts" in toast
+    assert "#toasts" in toast
     assert "bottom: auto !important;" in toast
     assert "pointer-events: none;" in toast
     assert "function toastSafeLane()" in operator

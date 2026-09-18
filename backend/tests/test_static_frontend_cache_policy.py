@@ -23,7 +23,7 @@ def _request(path: str, method: str = "GET") -> Request:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path", ["/", "/app.js", "/style-v11.css", "/oidc-verify-complete.html"])
+@pytest.mark.parametrize("path", ["/", "/app.js", "/style.css", "/oidc-verify-complete.html"])
 async def test_frontend_executable_and_presentation_assets_require_revalidation(path: str):
     async def call_next(_request):
         return Response(content="asset")

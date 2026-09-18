@@ -11,8 +11,13 @@ Post-processors operate on verified local artifacts and report separate outcomes
 | Responsibility | Canonical owner |
 | --- | --- |
 | Request parsing and fingerprints | `backend/transfers/requests.py` |
-| Lifecycle, dispatch, retry, control, recovery | `backend/transfers/engine.py` |
-| Durable identity, attempts, intents, read models | `backend/transfers/repository.py` |
+| Lifecycle/recovery/control decision authority (sole) | `backend/transfers/convergence_engine.py` (`TransferEngine`) |
+| Provider-transition hard-stop enforcement, admitted-resource continuation | `backend/transfers/engine.py` (`TransferEngine`, base of `convergence_engine.TransferEngine`) |
+| Neutral recovery/materialization mechanics (no decision authority) | `backend/transfers/_engine_recovery.py` |
+| Universal admission, durable attempts, retry-policy application, cleanup orchestration | `backend/transfers/_engine_base.py` |
+| Durable identity, attempts, intents, read models | `backend/transfers/repository.py`, `_repository_base.py` |
+| Recovery-repository durable claim/lock/state transitions | `backend/transfers/recovery_repository.py` |
+| Presentation projection (never a lifecycle decision) | `backend/transfers/presentation_repository.py` |
 | Retry decisions and transitions | `backend/transfers/policy.py` |
 | Paths, local possession, partial-file retirement | `backend/transfers/filesystem.py` |
 | Candidate equivalence | `backend/transfers/mirrors.py` |

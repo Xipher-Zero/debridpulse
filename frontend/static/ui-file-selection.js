@@ -319,20 +319,6 @@
       Number(view.file_count || 0) > 1);
   }
 
-  // ── DP 1.0.12 Workstream B: one canonical affordance classifier ─────────
-  // Mirrors backend api/operational_downloads.py's _file_selection_affordance
-  // exactly (same durable facts: eligible/mutable/manifest_id/file_count/
-  // decision), applied to the FRESH view this module already fetches from
-  // GET .../file-selection. One semantic, shared by Details and both list
-  // chips -- never three independent per-surface heuristics (§6.4).
-  function classifyView(view) {
-    if (!view || !view.eligible) return 'none';
-    if (!view.mutable) return 'none';
-    if (view.manifest_id == null) return 'pending_manifest';
-    if (Number(view.file_count || 0) <= 1) return 'none';
-    return view.decision === 'explicit' ? 'change' : 'choose';
-  }
-
   function affordanceLabel(affordance) {
     return affordance === 'change' ? 'Change Files' : 'Choose Files';
   }
@@ -537,10 +523,19 @@
   // ── Fresh click authority (§6.8) — shared by Details and both list chips.
   // The bounded list's file_selection_affordance is a HINT only; every click
   // re-fetches authoritative state before deciding what to open. ──────────
+  // The one canonical backend affordance (transfers.file_selection
+  // .file_selection_affordance) is never reclassified client-side, and never
+  // gated on a second field here -- the ineligible/no-generation case is
+  // itself classified by that same backend function and always arrives as
+  // an explicit 'none', so this only ever consumes the field.
+  function affordanceOf(view) {
+    return (view && view.file_selection_affordance) || 'none';
+  }
+
   function handleAffordanceClick(transferId, options) {
     const opts = options || {};
     fetchSelection(transferId).then(function (view) {
-      const affordance = classifyView(view);
+      const affordance = affordanceOf(view);
       if (affordance === 'pending_manifest') {
         openPendingManifestModal();
         return;
@@ -580,7 +575,7 @@
         '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
       if (currentHost !== host) return;
       if (!view || !view.eligible) { host.innerHTML = ''; return; }
-      const affordance = classifyView(view);
+      const affordance = affordanceOf(view);
       if (affordance === 'choose' || affordance === 'change' || affordance === 'pending_manifest') {
         const label = affordance === 'pending_manifest' ? 'Choose Files' : affordanceLabel(affordance);
         host.innerHTML = '<button type="button" class="btn btn-ghost btn-sm dp-file-selection-entry" ' +

@@ -66,12 +66,17 @@ def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_d
 
 
 def test_application_shell_explicitly_loads_the_single_provider_owners():
+    # DP 1.0.12 canonical flattening (Gate 9 round 3 fix-forward): the styling
+    # owner is loaded through style.css's @import graph, not a second
+    # top-level <link>; index.html only carries the JS runtimes directly.
+    style = (ROOT / "frontend" / "static" / "style.css").read_text()
     assert 'id="provider-status-list"' in INDEX
     assert INDEX.count('id="provider-status-list"') == 1
-    assert '/ui-provider-status.js?v=2' in INDEX
+    assert '/ui-provider-status.js?v=3' in INDEX
     assert '/ui-alldebrid-account-status.js?v=2' in INDEX
     assert '/ui-provider-cards.js?v=2' in INDEX
-    assert '/ui-provider-state.css?v=2' in INDEX
+    assert "ui-provider-state.css" not in INDEX
+    assert "@import url('/ui-provider-state.css" in style
     assert '/ui-provider-status.js' not in BOOTSTRAP
     assert '/ui-provider-cards.js' not in BOOTSTRAP
 

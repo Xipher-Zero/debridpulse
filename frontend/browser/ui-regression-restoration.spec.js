@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const MARKERS=['DPActivityLog','DPArchivePasswords','DPDownloadsPresentation','DPDashboardTransferPresentation'];
+const MARKERS=['DPActivityLog','DPArchivePasswords','DPDownloads'];
 async function ready(page){await page.goto('/');await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);}
 
 test('Activity Log keeps search, Time Window dropdown, Severity label, and Severity dropdown in order',async({page})=>{
@@ -258,7 +258,7 @@ test('Archive Passwords Apply submits the full edited multi-row list with no cle
 test('Torrent and magnet source identities use teal Lucide Boxes while MegaUp reuses the Mega host asset',async({page})=>{
  await ready(page);
  const result=await page.evaluate(()=>{
-  const presentation=window.DPDashboardTransferPresentation;
+  const presentation=window.DPTransferSourcePresentation;
   const probe=identity=>{const slot=document.createElement('span');slot.className='dp-source-icon-slot';slot.innerHTML=presentation.sourceIconMarkup(identity);document.body.appendChild(slot);const svg=slot.querySelector('svg'),img=slot.querySelector('img'),value={slotColor:getComputedStyle(slot).color,glyphColor:svg?getComputedStyle(svg).color:null,classes:svg?[...svg.classList]:[],pathCount:svg?.querySelectorAll('path').length||0,firstPath:svg?.querySelector('path')?.getAttribute('d')||'',src:img?.getAttribute('src')||''};slot.remove();return value;};
   return {magnet:probe({kind:'magnet'}),torrent:probe({kind:'torrent_file'}),megaup:probe({kind:'host',host:'megaup.net'}),megaupAsset:presentation.hostAsset('cdn.megaup.net')};
  });

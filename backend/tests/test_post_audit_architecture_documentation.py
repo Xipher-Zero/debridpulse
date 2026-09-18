@@ -35,15 +35,15 @@ def test_frontend_docs_describe_live_bounded_owners() -> None:
     assert "six reachable navigation surfaces" in doc
     assert "`ui-presentation-loader.js` is physically absent" in doc
     assert "bounded presentation owners" in doc
-    for owner in ("ui-dashboard-transfer-presentation.js", "ui-downloads-presentation.js", "ui-processing-presentation.js", "ui-activity-log-runtime.js", "ui-settings-archive-passwords.js"):
+    for owner in ("ui-dashboard-transfer-presentation.js", "ui-downloads.js", "ui-transfer-source-presentation.js", "ui-processing-presentation.js", "ui-activity-log-runtime.js", "ui-settings-archive-passwords.js"):
         assert owner in doc
     assert "There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrectionP4Repair`" in doc
     assert "Correction-named Batch-1 styles are absent" in doc
-    assert "`style-v11.css` is the canonical import graph" in doc
+    assert "`style.css` is the canonical import graph" in doc
 
 
 def test_canonical_bundle_comment_no_longer_claims_v111_overlay() -> None:
-    style = read("frontend/static/style-v11.css")
+    style = read("frontend/static/style.css")
     assert "v1.0.12 canonical visual import graph" in style
     assert "v1.0.11 visual system overlay" not in style
     assert "UI Correction Batch" not in style

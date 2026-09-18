@@ -11,7 +11,7 @@ def read_static(name: str) -> str:
 
 
 SHELL_SELECTOR = re.compile(
-    r"body(?:\.light)?\.dp-v11-structural\s+#(?P<node>sidebar|main)(?P<pseudo>::(?:before|after))?\s*\{(?P<body>[^}]*)\}",
+    r"(?:body(?:\.light)?\s+)?#(?P<node>sidebar|main)(?P<pseudo>::(?:before|after))?\s*\{(?P<body>[^}]*)\}",
     re.DOTALL,
 )
 IMPORT_SELECTOR = re.compile(r"@import\s+url\('/(?P<name>[^'?]+)\?[^']+'\);")
@@ -37,7 +37,7 @@ def test_dashboard_review_layers_cannot_own_outer_shell_radius_or_shadow():
 
 def test_post_structural_layers_cannot_repaint_outer_shell_seam():
     """Once the structural shell is loaded, later CSS cannot reacquire its seam."""
-    imports = IMPORT_SELECTOR.findall(read_static("style-v11.css"))
+    imports = IMPORT_SELECTOR.findall(read_static("style.css"))
     structural_index = imports.index("ui-shell-structural.css")
     late_styles = imports[structural_index + 1 :]
 
@@ -66,12 +66,12 @@ def test_universal_card_bridge_cannot_paint_shell_roots():
     """Legacy card aliases must never be able to convert shell canvases into cards."""
     css = read_static("ui-universal-language.css")
     aliases = ":is(.dp-card, .card, .scard, .list-card)"
-    guarded = f"body.dp-v11-structural {aliases}{CARD_SHELL_GUARD}"
+    guarded = f"{aliases}{CARD_SHELL_GUARD}"
 
     assert f"{guarded} {{" in css
     assert f"{guarded}::after {{" in css
-    assert f"body.dp-v11-structural {aliases} {{" not in css
-    assert f"body.dp-v11-structural {aliases}::after {{" not in css
+    assert f"{aliases} {{" not in css
+    assert f"{aliases}::after {{" not in css
 
     material_rule = css.split(f"{guarded} {{", 1)[1].split("}", 1)[0]
     assert "border-radius: var(--dp-radius-lg);" in material_rule
@@ -98,7 +98,7 @@ def test_static_shell_roots_do_not_carry_card_aliases():
 
 def test_shared_shell_owns_a_straight_sidebar_canvas_seam():
     css = read_static("ui-shell-structural.css")
-    selector = "body.dp-v11-structural #sidebar"
+    selector = "#sidebar {"
     assert selector in css
     rule = css.split(selector, 1)[1].split("}", 1)[0]
 

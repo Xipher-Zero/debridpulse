@@ -5,10 +5,10 @@
  */
 
 /* ── Shared footer host ─────────────────────────────────────────────────── */
-body.dp-v11-structural #modal > #modal-footer {
+#modal > #modal-footer {
   flex: 0 0 auto;
 }
-body.dp-v11-structural #modal:not([data-dp-modal-mode="file-selection"]) > #modal-footer {
+#modal:not([data-dp-modal-mode="file-selection"]) > #modal-footer {
   display: none;
 }
 
@@ -63,7 +63,7 @@ body.dp-v11-structural #modal:not([data-dp-modal-mode="file-selection"]) > #moda
 }
 
 /* ── Selector body ─────────────────────────────────────────────────────── */
-body.dp-v11-structural #modal[data-dp-modal-mode="file-selection"] .modal-body {
+#modal[data-dp-modal-mode="file-selection"] .modal-body {
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -210,7 +210,7 @@ body.dp-v11-structural #modal[data-dp-modal-mode="file-selection"] .modal-body {
 }
 
 /* ── Footer ────────────────────────────────────────────────────────────── */
-body.dp-v11-structural #modal[data-dp-modal-mode="file-selection"] > #modal-footer {
+#modal[data-dp-modal-mode="file-selection"] > #modal-footer {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;

@@ -257,7 +257,7 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
 def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> None:
     source = read(STATS)
     html = read(INDEX)
-    style = read(STATIC / "style-v11.css")
+    style = read(STATIC / "style.css")
     view = html[html.index('<!-- Statistics -->'):html.index('<!-- Help -->')]
     for fragment in (
         "window.loadDetailedStats = loadDetailedStats;",
@@ -321,17 +321,33 @@ def test_canonical_coordination_uses_explicit_events_not_page_convergence_observ
     assert not (STATIC / "ui-runtime.js").exists()
     assert not (STATIC / "ui-downloads-runtime.js").exists()
 
-def test_downloads_pagination_filtering_are_owned_directly_by_app() -> None:
+def test_downloads_pagination_filtering_are_owned_by_the_canonical_downloads_owner() -> None:
+    # DP 1.0.12 canonical flattening (CANON-001 closure): app.js no longer
+    # carries a second Downloads pagination/filter implementation. There is
+    # exactly one Downloads controller/renderer owner, ui-downloads.js, and
+    # app.js only calls into its published window entry points.
     app = read(APP)
-    assert "function renderTorrentPagination(" in app
-    assert "function setFilter(" in app
-    assert "renderTorrentPagination" in app
-    assert "setFilter" in app
+    downloads = read(STATIC / "ui-downloads.js")
+    assert "function renderTorrentPagination(" not in app
+    assert "function setFilter(" not in app
+    assert "function loadTorrents(" not in app
+    assert "function renderTorrentPagination(" in downloads
+    assert "function setFilter(" in downloads
+    assert "function loadTorrents(" in downloads
+    assert "window.setFilter = setFilter" in downloads
+    assert "window.loadTorrents = loadTorrents" in downloads
     assert not (STATIC / "ui-downloads-runtime.js").exists()
+    assert not (STATIC / "ui-downloads-presentation.js").exists()
 
-def test_downloads_static_and_dynamic_owners_are_the_accepted_integrated_composition() -> None:
+def test_downloads_has_exactly_one_owner_with_no_wrapper_patch_composition() -> None:
+    # DP 1.0.12 canonical flattening (CANON-001 closure): the historical
+    # "static app.js owner + dynamic patch layer" composition is retired.
+    # ui-downloads.js is the sole Downloads load/render owner; it never
+    # replaces api/loadTorrents/renderTorrentPagination/fmtDate on another
+    # owner, and no second Downloads renderer exists anywhere.
     html = read(INDEX)
     app = read(APP)
+    downloads = read(STATIC / "ui-downloads.js")
     page_css = read(STATIC / "ui-downloads-page.css")
     operator = read(STATIC / "operator-title.js")
     view = html[html.index('id="view-torrents"'):html.index('<!-- Events -->')]
@@ -340,7 +356,6 @@ def test_downloads_static_and_dynamic_owners_are_the_accepted_integrated_composi
     assert 'class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar"' in view
     assert view.index('id="torrent-search"') < view.index('id="bulk-bar"') < view.index('class="dp-downloads-table-wrap"')
     assert 'id="torrent-page-size"' not in view
-    assert 'Most of them followed instructions.' in app
     assert "bar.replaceChildren(header)" not in app
     assert "insertBefore(bar" not in app
     assert "bar.classList.add('dp-card'" not in app
@@ -348,6 +363,16 @@ def test_downloads_static_and_dynamic_owners_are_the_accepted_integrated_composi
     assert "data-dp-downloads-runtime" not in operator
     assert '/ui-downloads-runtime.js' not in html
     assert not (STATIC / "ui-downloads-runtime.js").exists()
+
+    for pattern in ("const baseApi = api", "const canonical = loadTorrents", "loadTorrents = async function",
+                     "renderTorrentPagination = renderPagination", "oldFmt", "fmtDate = dateMarkup"):
+        assert pattern not in downloads
+    for name in STATIC.glob("*.js"):
+        source = read(name)
+        assert "const baseApi=api" not in source, name.name
+        assert "const canonical=loadTorrents" not in source, name.name
+        assert "loadTorrents=async function" not in source, name.name
+    assert 'Most of them followed instructions.' in downloads
 
 def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
     html = read(INDEX)

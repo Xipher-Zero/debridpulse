@@ -7,17 +7,17 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STATIC = REPO_ROOT / "frontend" / "static"
-STYLE = STATIC / "style-v11.css"
+STYLE = STATIC / "style.css"
 UNIVERSAL = STATIC / "ui-universal-language.css"
 DOWNLOADS = STATIC / "ui-downloads-page.css"
 
 
 def test_universal_language_loads_before_reference_and_page_layers() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    universal = "/ui-universal-language.css?v=20"
-    dashboard = "/ui-dashboard.css?v=20"
-    statistics = "/ui-statistics-page.css?v=22"
-    downloads = "/ui-downloads-page.css?v=28"
+    universal = "/ui-universal-language.css?v=21"
+    dashboard = "/ui-dashboard.css?v=21"
+    statistics = "/ui-statistics-page.css?v=23"
+    downloads = "/ui-downloads-page.css?v=30"
     for layer in (universal, dashboard, statistics, downloads):
         assert layer in overlay
     assert overlay.index(universal) < overlay.index(dashboard) < overlay.index(statistics) < overlay.index(downloads)

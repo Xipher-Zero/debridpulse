@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
-STYLE = STATIC / "style-v11.css"
+STYLE = STATIC / "style.css"
 DASHBOARD = STATIC / "ui-dashboard.css"
 UTILITY = STATIC / "ui-utility-controls.css"
 
@@ -29,7 +29,7 @@ def dashboard_css() -> str:
 
 def test_dashboard_has_one_canonical_calibration_owner() -> None:
     overlay = read(STYLE)
-    assert "/ui-dashboard.css?v=20" in overlay
+    assert "/ui-dashboard.css?v=21" in overlay
     for retired in (
         "ui-dashboard-structural.css",
         "ui-dashboard-consistency.css",
@@ -313,7 +313,7 @@ def test_shared_utility_controls_keep_light_pause_all_treatment() -> None:
     require(
         read(UTILITY),
         (
-            "body.light.dp-v11-structural #topbar-actions #btn-pause-all.btn",
+            "body.light #topbar-actions #btn-pause-all.btn",
             "rgba(255,251,236,.54)",
             "rgba(250,234,186,.22)",
             "rgba(207,158,55,.62)",

@@ -108,21 +108,21 @@ def test_desktop_provider_status_bottom_datum_is_shell_owned() -> None:
     activity = read("ui-activity-log-page.css")
 
     assert "@media (min-width: 901px)" in shell
-    assert "body.dp-v11-structural .sidebar-footer" in shell
+    assert ".sidebar-footer" in shell
     assert "bottom: 24px !important" in shell
     assert ":has(#view-torrents.active) .sidebar-footer" not in shell
     assert ".sidebar-footer" not in activity
 
 
 def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> None:
-    overlay = read("style-v11.css")
+    overlay = read("style.css")
 
-    shell = overlay.index("/ui-shell-structural.css?v=30")
-    dashboard = overlay.index("/ui-dashboard.css?v=20")
-    controls = overlay.index("/ui-utility-controls.css?v=23")
-    stats = overlay.index("/ui-statistics-page.css?v=22")
-    activity = overlay.index("/ui-activity-log-page.css?v=30")
-    downloads = overlay.index("/ui-downloads-page.css?v=28")
-    transfer = overlay.index("/ui-transfer-contract.css?v=32")
+    shell = overlay.index("/ui-shell-structural.css?v=31")
+    dashboard = overlay.index("/ui-dashboard.css?v=21")
+    controls = overlay.index("/ui-utility-controls.css?v=24")
+    stats = overlay.index("/ui-statistics-page.css?v=23")
+    activity = overlay.index("/ui-activity-log-page.css?v=31")
+    downloads = overlay.index("/ui-downloads-page.css?v=30")
+    transfer = overlay.index("/ui-transfer-contract.css?v=33")
 
     assert shell < dashboard < controls < stats < activity < downloads < transfer

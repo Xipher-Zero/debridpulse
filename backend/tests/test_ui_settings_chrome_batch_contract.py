@@ -13,7 +13,7 @@ CHROME = STATIC / "ui-settings-chrome.css"
 PAGE = STATIC / "ui-settings-page.css"
 RUNTIME = STATIC / "ui-settings-page.js"
 FEATURE = STATIC / "ui-feature-icon-contract.css"
-STYLE = STATIC / "style-v11.css"
+STYLE = STATIC / "style.css"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 LUCIDE = STATIC / "icons" / "lucide"
 PROVIDERS = STATIC / "icons" / "providers"
@@ -28,10 +28,10 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     overlay = read(STYLE)
     chrome = read(CHROME)
 
-    settings = overlay.index("/ui-settings-page.css?v=2")
-    settings_chrome = overlay.index("/ui-settings-chrome.css?v=2")
-    help_page = overlay.index("/ui-help-page.css?v=22")
-    feature = overlay.index("/ui-feature-icon-contract.css?v=4")
+    settings = overlay.index("/ui-settings-page.css?v=3")
+    settings_chrome = overlay.index("/ui-settings-chrome.css?v=3")
+    help_page = overlay.index("/ui-help-page.css?v=23")
+    feature = overlay.index("/ui-feature-icon-contract.css?v=5")
     assert settings < settings_chrome < help_page < feature
 
     assert "#view-settings" in chrome
@@ -106,7 +106,7 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
     assert "gap: 7px;" in chrome
 
     dark_glyph = chrome.split(".dp-settings-tab-glyph {", 1)[1].split("}", 1)[0]
-    light_glyph = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-tab-glyph {", 1)[1].split("}", 1)[0]
+    light_glyph = chrome.split("body.light #view-settings .dp-settings-tab-glyph {", 1)[1].split("}", 1)[0]
     chip = chrome.split(".dp-settings-tab-chip {", 1)[1].split("}", 1)[0]
     assert "saturate(1.5)" in dark_glyph
     assert "drop-shadow" in dark_glyph
@@ -202,7 +202,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "width: 34px;" in icon_rule
     assert "height: 34px;" in icon_rule
     assert icon_rule.count("drop-shadow") == 2
-    light_rule = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
+    light_rule = chrome.split("body.light #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
     assert light_rule.count("drop-shadow") == 2
 
 
@@ -226,7 +226,7 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger
     assert "drop-shadow(0 0 3px rgba(220,158,14,.92))" in logo
     assert "drop-shadow(0 0 7px rgba(220,158,14,.52))" in logo
 
-    light_logo = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
+    light_logo = chrome.split("body.light #view-settings .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
     assert "drop-shadow(0 0 8px rgba(220,158,14,.62))" in light_logo
 
     assert root.tag.endswith("svg")
@@ -247,7 +247,7 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     assert 'class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg"' in runtime
     action_owner = chrome.split("button[data-action='test-alldebrid'] {", 1)[1].split("}", 1)[0]
     action_glyph = chrome.split(".dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
-    light_action = chrome.split("body.light.dp-v11-structural #view-settings .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
+    light_action = chrome.split("body.light #view-settings .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
     action_chip = chrome.split(".dp-settings-action-chip {", 1)[1].split("}", 1)[0]
     assert "--dp-settings-action-color: #b866f5;" in action_owner
     assert "saturate(1.5)" in action_glyph

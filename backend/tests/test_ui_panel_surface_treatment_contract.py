@@ -11,10 +11,10 @@ def read(name: str) -> str:
 
 
 def test_panel_surface_treatment_loads_after_page_geometry() -> None:
-    entry = read("style-v11.css")
-    downloads = entry.index("/ui-downloads-desktop.css?v=28")
-    treatment = entry.index("/ui-panel-surface-treatment.css?v=22")
-    transfer = entry.index("/ui-transfer-contract.css?v=32")
+    entry = read("style.css")
+    downloads = entry.index("/ui-downloads-page.css?v=30")
+    treatment = entry.index("/ui-panel-surface-treatment.css?v=23")
+    transfer = entry.index("/ui-transfer-contract.css?v=33")
     assert downloads < treatment < transfer
 
 
@@ -42,7 +42,7 @@ def test_dark_surface_has_stronger_varied_luminance_clouds() -> None:
 
 def test_light_surface_remains_clean_but_is_no_longer_barely_visible() -> None:
     css = read("ui-panel-surface-treatment.css")
-    assert "body.light.dp-v11-structural" in css
+    assert "body.light :is(" in css
     assert "var(--dp-accent-purple-bright) 8.5%" in css
     assert "var(--dp-state-active) 5.2%" in css
     assert "radial-gradient(ellipse 72% 54% at 56% 14%" in css

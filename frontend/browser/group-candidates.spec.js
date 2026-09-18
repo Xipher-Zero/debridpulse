@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 // Shared runtime + surface owners must all be live before a scenario runs.
-const MARKERS = ['DPGroupCandidates', 'DPDownloadsPresentation', 'DPDashboardTransferPresentation'];
+const MARKERS = ['DPGroupCandidates', 'DPDownloads'];
 async function ready(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.goto('/');
@@ -1239,6 +1239,7 @@ test('Files-header: an INTERACTIVE (mutable) File Selection control has no candi
         eligible: true, mutable: true, manifest_id: 'm-340', decision: 'pending', decision_reason: null,
         file_count: 2, total_size_bytes: 100, entries: [], selected_entry_ids: [],
         auto_offer: false, auto_offer_until: null, decision_deadline: null, initially_available: true, server_now: 1000,
+        file_selection_affordance: 'choose',
       }),
     }));
   await page.route(url => url.pathname === '/api/file-selections/offers', route =>
@@ -1301,6 +1302,7 @@ test('Files-header: a SETTLED (non-mutable) File Selection summary legitimately 
         eligible: true, mutable: false, manifest_id: 'm-342', decision: 'explicit', decision_reason: null,
         file_count: 4, total_size_bytes: 100, entries: [], selected_entry_ids: ['e-1', 'e-2'],
         auto_offer: false, auto_offer_until: null, decision_deadline: null, initially_available: true, server_now: 1000,
+        file_selection_affordance: 'none',
       }),
     }));
   await page.route(url => url.pathname === '/api/file-selections/offers', route =>

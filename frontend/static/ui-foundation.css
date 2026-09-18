@@ -213,3 +213,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Global reset / base geometry (DP 1.0.12 canonical flattening: migrated
+   from the retired ui-legacy-foundation.css) ────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background:
+    radial-gradient(circle at 16% 12%, rgba(var(--accent-rgb), .13), transparent 25%),
+    radial-gradient(circle at 88% 8%, rgba(99, 164, 255, .10), transparent 20%),
+    linear-gradient(180deg, var(--bg2), var(--bg));
+  color: var(--text);
+  font-family: var(--font);
+  display: flex;
+  font-size: 14px;
+}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+@media (max-width: 700px) {
+  /* Keep body as flex — sidebar is position:fixed so it's out of flow.
+     #main will naturally fill 100% width since sidebar takes no flex space. */
+  body { font-size: 13px; }
+}

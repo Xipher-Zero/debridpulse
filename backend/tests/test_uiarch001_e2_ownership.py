@@ -9,7 +9,7 @@ def read(name: str) -> str:
 
 
 def test_provider_status_has_one_canonical_style_owner() -> None:
-    style = read("style-v11.css")
+    style = read("style.css")
     provider = read("ui-shell-provider-status.css")
     assert not (STATIC / "ui-shell-provider-status-v2.css").exists()
     assert style.count("ui-shell-provider-status.css") == 1

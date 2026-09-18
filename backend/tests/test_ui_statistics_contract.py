@@ -46,7 +46,7 @@ def test_statistics_composition_is_direct_static_owner_not_runtime_convergence()
     view = statistics_view()
     source = read(STATS)
     app = read(APP)
-    style = read(STATIC / "style-v11.css")
+    style = read(STATIC / "style.css")
     for fragment in ('class="view card dp-statistics-master" id="view-stats"', 'class="card-header dp-stats-master-header"', 'class="card-body dp-stats-master-body"', 'class="dash-kpi-strip dp-stats-history-grid"', 'class="scard dp-stats-chart dp-list-workspace-surface"', 'class="dp-stats-breakdown-grid"', "By the Numbers", "Because vibes are not a performance metric."):
         assert fragment in view
     assert "split-grid" not in view

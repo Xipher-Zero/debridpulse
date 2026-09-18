@@ -7,7 +7,7 @@ BOOTSTRAP_JS = STATIC / "ui-theme-bootstrap.js"
 PRESENTATION_LOADER_JS = STATIC / "ui-presentation-loader.js"
 SETTINGS_PAGE_JS = STATIC / "ui-settings-page.js"
 SETTINGS_PAGE_CSS = STATIC / "ui-settings-page.css"
-STYLE_V11 = STATIC / "style-v11.css"
+STYLE_V11 = STATIC / "style.css"
 AUTH_BOOTSTRAP_JS = STATIC / "auth.js"
 APP_JS = STATIC / "app.js"
 INDEX_HTML = STATIC / "index.html"
@@ -126,7 +126,7 @@ def test_old_authentication_settings_augmentations_are_not_loaded():
     # auth-ux.css remains only for the authenticated sidebar stack. The clean
     # Settings runtime intentionally uses different ids/classes so those old
     # Settings selectors cannot match it.
-    assert "/auth-ux.css?v=1" in bootstrap
+    assert "/auth-ux.css?v=2" in bootstrap
 
 
 def test_settings_tabs_match_the_reviewed_order_and_glyph_inventory():
@@ -386,7 +386,7 @@ def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_regi
 
 def test_settings_page_css_is_loaded_as_a_normal_page_contract():
     styles = source(STYLE_V11)
-    assert "@import url('/ui-settings-page.css?v=2');" in styles
+    assert "@import url('/ui-settings-page.css?v=3');" in styles
 
 
 def test_settings_page_runtime_is_owned_by_dynamic_frontend_syntax_gate():

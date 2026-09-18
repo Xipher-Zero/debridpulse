@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
-STYLE_V11 = STATIC / "style-v11.css"
+STYLE_V11 = STATIC / "style.css"
 SETTINGS_CSS = STATIC / "ui-settings-page.css"
 SPACING_CSS = STATIC / "ui-settings-download-engine-spacing.css"
 
@@ -17,7 +17,7 @@ def test_download_engine_spacing_is_owned_by_canonical_settings_stylesheet():
     imports = source(STYLE_V11)
 
     selector = (
-        "body.dp-v11-structural #view-settings "
+        "#view-settings "
         ".dp-settings-download-engine-row {"
     )
     assert selector in settings

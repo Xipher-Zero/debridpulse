@@ -7,7 +7,7 @@
  * controls, palette and shell depth remain shared concerns.
  */
 
-body.dp-v11-structural #view-events > .dp-activity-card {
+#view-events > .dp-activity-card {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -15,19 +15,19 @@ body.dp-v11-structural #view-events > .dp-activity-card {
 }
 
 /* ── Header ───────────────────────────────────────────────────────────── */
-body.dp-v11-structural #view-events > .dp-activity-card > .card-header {
+#view-events > .dp-activity-card > .card-header {
   flex: 0 0 auto;
   min-height: 70px;
 }
 
-body.dp-v11-structural #view-events .dp-activity-card-title {
+#view-events .dp-activity-card-title {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-events .dp-activity-title-icon {
+#view-events .dp-activity-title-icon {
   width: 38px;
   min-width: 38px;
   height: 38px;
@@ -35,7 +35,7 @@ body.dp-v11-structural #view-events .dp-activity-title-icon {
   object-fit: contain;
 }
 
-body.dp-v11-structural #view-events .dp-activity-heading-copy {
+#view-events .dp-activity-heading-copy {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -43,7 +43,7 @@ body.dp-v11-structural #view-events .dp-activity-heading-copy {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-events .dp-activity-heading {
+#view-events .dp-activity-heading {
   color: var(--dp-text-primary);
   font-size: 16px;
   line-height: 1.2;
@@ -51,18 +51,18 @@ body.dp-v11-structural #view-events .dp-activity-heading {
   letter-spacing: -.01em;
 }
 
-body.dp-v11-structural #view-events .dp-activity-subtitle {
+#view-events .dp-activity-subtitle {
   color: var(--dp-text-muted);
   font-size: 10.5px;
   line-height: 1.25;
   font-weight: 400;
 }
 
-body.dp-v11-structural #view-events .dp-activity-refresh {
+#view-events .dp-activity-refresh {
   margin-left: auto;
 }
 
-body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
+#view-events .dp-activity-refresh .dp-utility-icon {
   width: 15px;
   height: 15px;
 }
@@ -70,7 +70,7 @@ body.dp-v11-structural #view-events .dp-activity-refresh .dp-utility-icon {
 /* ── Search / filter band ─────────────────────────────────────────────── */
 /* Mirror the accepted Downloads search-band composition around the shared
    field controls. This is structural page chrome, not the list-body material. */
-body.dp-v11-structural #view-events .dp-activity-search-band {
+#view-events .dp-activity-search-band {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
@@ -81,24 +81,24 @@ body.dp-v11-structural #view-events .dp-activity-search-band {
     transparent 76%);
 }
 
-body.light.dp-v11-structural #view-events .dp-activity-search-band {
+body.light #view-events .dp-activity-search-band {
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--dp-accent-purple) 4.5%, transparent),
     transparent 78%);
 }
 
-body.dp-v11-structural #view-events .dp-activity-search-row {
+#view-events .dp-activity-search-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-body.dp-v11-structural #view-events #ev-search {
+#view-events #ev-search {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-body.dp-v11-structural #view-events #ev-level {
+#view-events #ev-level {
   width: 160px;
   max-width: 160px;
   flex: 0 0 160px;
@@ -107,7 +107,7 @@ body.dp-v11-structural #view-events #ev-level {
 /* The universal projected select is inserted next to the native control. Once
    the native select becomes visually hidden its old flex-basis no longer owns
    the row, so carry the reviewed 160px footprint onto the projected shell. */
-body.dp-v11-structural #view-events #ev-level + .dp-dropdown-shell {
+#view-events #ev-level + .dp-dropdown-shell {
   width: 160px;
   max-width: 160px;
   flex: 0 0 160px;
@@ -117,36 +117,36 @@ body.dp-v11-structural #view-events #ev-level + .dp-dropdown-shell {
    Reset control. Own the desktop geometry here so shared compact-control rules
    cannot collapse the selected-value text. */
 @media (min-width: 901px) {
-  body.dp-v11-structural #view-events .dp-activity-search-row {
+  #view-events .dp-activity-search-row {
     display: grid;
     grid-template-columns: minmax(260px, 1fr) minmax(170px, 190px) minmax(170px, 190px) auto;
     align-items: end;
     gap: 12px;
   }
 
-  body.dp-v11-structural #view-events .dp-activity-filter-field {
+  #view-events .dp-activity-filter-field {
     width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
   }
 
-  body.dp-v11-structural #view-events .dp-activity-filter-field .input,
-  body.dp-v11-structural #view-events .dp-activity-filter-field .dp-dropdown-shell,
-  body.dp-v11-structural #view-events .dp-activity-filter-field .dp-dropdown__trigger {
+  #view-events .dp-activity-filter-field .input,
+  #view-events .dp-activity-filter-field .dp-dropdown-shell,
+  #view-events .dp-activity-filter-field .dp-dropdown__trigger {
     width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
     box-sizing: border-box;
   }
 
-  body.dp-v11-structural #view-events #ev-reset {
+  #view-events #ev-reset {
     justify-self: end;
     white-space: nowrap;
   }
 }
 
 /* ── Event viewport ───────────────────────────────────────────────────── */
-body.dp-v11-structural #view-events .dp-activity-list {
+#view-events .dp-activity-list {
   position: relative;
   z-index: 1;
   flex: 1 1 auto;
@@ -163,7 +163,7 @@ body.dp-v11-structural #view-events .dp-activity-list {
 /* Main-page events receive Activity-specific classes at the presentation
    boundary. Transfer Details keeps the legacy .event-item implementation and
    is therefore insulated from this page contract. */
-body.dp-v11-structural #view-events .dp-activity-row {
+#view-events .dp-activity-row {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: start;
@@ -176,32 +176,32 @@ body.dp-v11-structural #view-events .dp-activity-row {
   transition: background-color .12s ease;
 }
 
-body.dp-v11-structural #view-events .dp-activity-row:hover {
+#view-events .dp-activity-row:hover {
   background: var(--dp-table-row-hover);
 }
 
-body.dp-v11-structural #view-events .dp-activity-row:last-child {
+#view-events .dp-activity-row:last-child {
   border-bottom: 0;
 }
 
-body.dp-v11-structural #view-events .dp-activity-level {
+#view-events .dp-activity-level {
   width: 8px;
   height: 8px;
   margin-top: 3px;
   flex: 0 0 8px;
 }
 
-body.dp-v11-structural #view-events .dp-activity-copy {
+#view-events .dp-activity-copy {
   min-width: 0;
 }
 
-body.dp-v11-structural #view-events .dp-activity-message {
+#view-events .dp-activity-message {
   color: var(--dp-text-primary);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
-body.dp-v11-structural #view-events .dp-activity-transfer {
+#view-events .dp-activity-transfer {
   margin-top: 2px;
   color: var(--dp-text-muted);
   font-size: 10.5px;
@@ -209,7 +209,7 @@ body.dp-v11-structural #view-events .dp-activity-transfer {
   overflow-wrap: anywhere;
 }
 
-body.dp-v11-structural #view-events .dp-activity-time {
+#view-events .dp-activity-time {
   color: var(--dp-text-muted);
   font-family: var(--dp-font-mono);
   font-size: 10px;
@@ -218,17 +218,17 @@ body.dp-v11-structural #view-events .dp-activity-time {
   white-space: nowrap;
 }
 
-body.dp-v11-structural #view-events .dp-activity-list > .empty {
+#view-events .dp-activity-list > .empty {
   background: transparent;
 }
 
 /* ── Full-height desktop workspace ───────────────────────────────────── */
 @media (min-width: 901px) {
-  body.dp-v11-structural #content:has(#view-events.active) {
+  #content:has(#view-events.active) {
     overflow-y: hidden;
   }
 
-  body.dp-v11-structural #view-events.active {
+  #view-events.active {
     display: flex !important;
     flex-direction: column;
     height: 100% !important;
@@ -236,37 +236,37 @@ body.dp-v11-structural #view-events .dp-activity-list > .empty {
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-events.active > .dp-activity-card {
+  #view-events.active > .dp-activity-card {
     flex: 1 1 auto;
     min-height: 0;
   }
 }
 
 @media (max-width: 900px) {
-  body.dp-v11-structural #view-events.active {
+  #view-events.active {
     height: auto;
     overflow: visible;
   }
 
-  body.dp-v11-structural #view-events .dp-activity-list {
+  #view-events .dp-activity-list {
     max-height: 62vh;
   }
 }
 
 /* Canonical user-facing Activity Log naming retained from the accepted review.
    Internal events identifiers remain unchanged. */
-body.dp-v11-structural .nav-item[data-view="events"] .nav-label {
+.nav-item[data-view="events"] .nav-label {
   font-size: 0 !important;
 }
-body.dp-v11-structural .nav-item[data-view="events"] .nav-label::after {
+.nav-item[data-view="events"] .nav-label::after {
   content: 'Activity Log';
   font-size: 13px;
   color: inherit;
 }
-body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title {
+body:has(.nav-item[data-view="events"].active) #page-title {
   font-size: 0 !important;
 }
-body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::before {
+body:has(.nav-item[data-view="events"].active) #page-title::before {
   content: 'Activity Log';
   font-size: 28px;
   line-height: 1.04;
@@ -274,10 +274,10 @@ body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::be
   letter-spacing: -.03em;
   color: inherit;
 }
-body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle {
+body:has(.nav-item[data-view="events"].active) #page-subtitle {
   font-size: 0 !important;
 }
-body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle::before {
+body:has(.nav-item[data-view="events"].active) #page-subtitle::before {
   content: 'Recent transfer activity, decisions, warnings, and errors.';
   font-size: 12.5px;
   line-height: 1.35;
@@ -285,10 +285,23 @@ body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle:
 }
 
 @media (max-width: 700px) {
-  body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-title::before {
+  body:has(.nav-item[data-view="events"].active) #page-title::before {
     font-size: 23px;
   }
-  body.dp-v11-structural:has(.nav-item[data-view="events"].active) #page-subtitle::before {
+  body:has(.nav-item[data-view="events"].active) #page-subtitle::before {
     font-size: 11.5px;
   }
+  .etime { font-size: 10px; }
 }
+
+/* ── Event row material (DP 1.0.12 canonical flattening: migrated from the
+   retired ui-legacy-foundation.css) ─────────────────────────────────────── */
+.event-item { display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12px; align-items: flex-start; }
+.event-item:last-child { border-bottom: none; }
+.elevel { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+.elevel.info  { background: var(--blue); }
+.elevel.warn  { background: var(--yellow); }
+.elevel.error { background: var(--red); }
+.emsg { flex: 1; }
+.ename { font-size: 10px; color: var(--text2); margin-top: 1px; }
+.etime { font-family: var(--mono); font-size: 10px; color: var(--text3); white-space: nowrap; }

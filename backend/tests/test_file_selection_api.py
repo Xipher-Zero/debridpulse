@@ -138,7 +138,29 @@ async def test_get_file_selection_reports_not_eligible_for_unknown_transfer(api)
     # file-selection generation, so transfer existence is not disclosed.
     response = await api.client.get("/api/torrents/999999/file-selection")
     assert response.status_code == 200
-    assert response.json() == {"eligible": False}
+    # DP 1.0.12 Gate 9 fix-forward (CANON-002 closure): the ineligible/
+    # no-generation case is itself classified by the one canonical backend
+    # domain function (transfers.file_selection.file_selection_affordance),
+    # not left for the browser to derive from `eligible`.
+    assert response.json() == {"eligible": False, "file_selection_affordance": "none"}
+
+
+@pytest.mark.asyncio
+async def test_get_file_selection_reports_none_affordance_for_a_real_transfer_with_no_generation(api):
+    # A non-interactive submission never opts into the file-selection
+    # lifecycle, so no selection generation row is ever created for it --
+    # the real-transfer counterpart to the unknown-transfer case above.
+    api.provider.responses.append(
+        api.provider.parcel("showB", state=ResourceState.AVAILABLE, files=FILES6)
+    )
+    transfer = await api.engine.submit(
+        (TransferRequest("parcel", "box", name="show", selection_mode="all"),),
+        deduplicate=False)
+    await api.engine.resolve_pending()
+
+    response = await api.client.get(f"/api/torrents/{transfer.id}/file-selection")
+    assert response.status_code == 200
+    assert response.json() == {"eligible": False, "file_selection_affordance": "none"}
 
 
 @pytest.mark.asyncio

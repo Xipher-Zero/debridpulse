@@ -254,7 +254,7 @@ def test_authentication_session_and_help_assets_are_packaged_without_settings_au
     ux_style = (static / "auth-ux.css").read_text()
 
     assert "/auth-help.js?v=1" in bootstrap
-    assert "/auth-ux.css?v=1" in bootstrap
+    assert "/auth-ux.css?v=2" in bootstrap
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "sidebar-bottom-stack" in ux_style

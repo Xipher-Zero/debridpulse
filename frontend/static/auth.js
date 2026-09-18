@@ -186,7 +186,7 @@
   if (!document.querySelector('link[data-debridpulse-auth-ux]')) {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = '/auth-ux.css?v=1';
+    style.href = '/auth-ux.css?v=2';
     style.dataset.debridpulseAuthUx = 'true';
     document.head.appendChild(style);
   }

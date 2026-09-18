@@ -199,4 +199,22 @@ body.light,
   --panel-b: rgba(248, 250, 255, .97);
   --panel-glow: rgba(132, 40, 237, .07);
   --focus-ring: rgba(132, 40, 237, .19);
+  --bg: #e9eff6;
+  --bg2: #f7f9fc;
+  --surface: #ffffff;
+  --surface2: #f1f5f9;
+  --border: #cfd9e5;
+  --border2: #a9b8ca;
+  --accent: #315fae;
+  --accent2: #477ac5;
+  --accent-rgb: 49, 95, 174;
+  --accent-contrast: #ffffff;
+  --primary-gradient: linear-gradient(135deg, #4479c9, #315fae);
+  --primary-gradient-hover: linear-gradient(135deg, #315fae, #234a8f);
+  --text: #172033;
+  --text2: #46566f;
+  --text3: #6b7b91;
+  --nav-hover: #e7edf5;
+  --nav-active: rgba(49, 95, 174, .11);
+  --shadow-soft: 0 8px 24px rgba(28, 44, 70, .08);
 }

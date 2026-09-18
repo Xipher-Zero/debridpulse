@@ -118,7 +118,7 @@ The application still contains inherited markup and the canonical `style.css` co
 
 For v1.0.11 maintenance:
 
-1. `style.css` remains the single compatibility stylesheet loaded before `style-v11.css`.
+1. `style.css` remains the single canonical import graph; the compatibility aliases it used to carry as literal rules (via the retired `ui-legacy-foundation.css`) now live directly in `design-tokens.css`'s own `:root`/`body.light` blocks alongside the `--dp-*` tokens.
 2. `design-tokens.css` remains authoritative for shared semantic values.
 3. New or deliberately rebuilt components use `--dp-*` tokens directly.
 4. Page-local literal colors are removed when ownership is intentionally refactored, not through speculative release cleanup.

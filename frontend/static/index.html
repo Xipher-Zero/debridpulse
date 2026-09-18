@@ -6,13 +6,11 @@
 <title>DebridPulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=15">
-<link id="debridpulse-duplicate-status-style" rel="stylesheet" href="/style-v11.css?v=28" data-dp-v11-styles="1">
-<link id="dp-provider-state-css" rel="stylesheet" href="/ui-provider-state.css?v=2">
+<link rel="stylesheet" href="/style.css?v=18">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=6">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5">
 </head>
-<body class="dp-v11-structural">
+<body>
 <script src="/ui-theme-bootstrap.js?v=21"></script>
 
 <aside id="sidebar">
@@ -436,10 +434,25 @@
 <script src="/ui-error-semantics.js?v=2" defer></script>
 <script src="/operator-title.js?v=26" defer></script>
 <script src="/app.js?v=22" defer></script>
+<script src="/ui-auth-required.js?v=1" defer></script>
+<script src="/ui-storage-health.js?v=1" defer></script>
 <script src="/ui-topbar-concurrency.js?v=1" defer></script>
 <script src="/ui-detail-candidates.js?v=4" defer></script>
 <script src="/ui-group-candidates.js?v=1" defer></script>
-<script id="dp-provider-status-script" src="/ui-provider-status.js?v=2" defer></script>
+<!-- Required bounded presentation owners (DP 1.0.12 canonical flattening):
+     direct application dependencies, no longer dynamically injected by
+     Provider Status. ui-file-selection.js must precede
+     ui-dashboard-transfer-presentation.js and ui-downloads.js -- both call
+     window.DPFileSelection.chipMarkup() while building row markup. -->
+<script src="/ui-toast-contract.js?v=2" defer></script>
+<script src="/ui-processing-presentation.js?v=2" defer></script>
+<script src="/ui-transfer-source-presentation.js?v=1" defer></script>
+<script src="/ui-file-selection.js?v=1" defer></script>
+<script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
+<script src="/ui-downloads.js?v=1" defer></script>
+<script src="/ui-activity-log-runtime.js?v=1" defer></script>
+<script src="/ui-settings-archive-passwords.js?v=1" defer></script>
+<script id="dp-provider-status-script" src="/ui-provider-status.js?v=3" defer></script>
 <script id="dp-alldebrid-account-status-script" src="/ui-alldebrid-account-status.js?v=2" defer></script>
 <script id="dp-provider-cards-script" src="/ui-provider-cards.js?v=2" defer></script>
 <script src="/ui-accessibility-runtime.js?v=21" defer></script>
