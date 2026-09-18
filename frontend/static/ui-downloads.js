@@ -35,6 +35,14 @@ let torrentPageSize = 25;
 let torrentTotal = 0;
 let _torrentSearchTimer = null;
 let _selectedIds = new Set();
+// Bumped by every authoritative state mutation that changes the requested
+// list projection (page, filter, search, page size -- including a
+// capacity-derived page-size transition). A fetch snapshots this value when
+// it starts; if it no longer matches on completion, a newer intent has
+// superseded it and the response must be discarded rather than rendered --
+// an in-flight response for an older view state must never overwrite newer
+// user/application intent.
+let requestGeneration = 0;
 
 // ── Date presentation preference ────────────────────────────────────────
 let pref = loadPref();
@@ -146,6 +154,7 @@ function applySize(size) {
   const offset = Math.max(0, (Math.max(1, Number(torrentPage) || 1) - 1) * old);
   torrentPageSize = size;
   torrentPage = Math.floor(offset / size) + 1;
+  requestGeneration++;
   return true;
 }
 function captureFocus() {
@@ -217,9 +226,13 @@ function downloadEmptyMessage() {
   return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
 }
 function renderTorrentPagination(total, limit, offset) {
+  // Pure projector: authoritative (total, limit, offset) -> DOM. Holds no
+  // state-transition authority of its own -- callers (fetchAndRenderTorrents)
+  // own deciding what is authoritative, including clamping an out-of-range
+  // page, and must only ever call this with an offset that is already
+  // guaranteed to be in range for the given total/limit.
   const n = Math.max(0, +total || 0), l = Math.max(1, +limit || +torrentPageSize || 1), o = Math.max(0, +offset || 0);
   const pages = Math.max(1, Math.ceil(n / l)), current = Math.min(pages, Math.floor(o / l) + 1);
-  torrentPage = current;
   const info = document.getElementById('torrent-page-info');
   const buttons = document.getElementById('torrent-page-btns');
   if (!info || !buttons) return;
@@ -242,6 +255,7 @@ function setFilter(element, status) {
   if (element) { element.classList.add('active'); element.setAttribute('aria-selected', 'true'); }
   currentFilter = status;
   torrentPage = 1;
+  requestGeneration++;
   clearSelection();
   loadTorrents();
 }
@@ -250,6 +264,7 @@ function onTorrentSearchInput() {
   if (nextSearch !== currentTorrentSearch) clearSelection();
   currentTorrentSearch = nextSearch;
   torrentPage = 1;
+  requestGeneration++;
   if (_torrentSearchTimer) clearTimeout(_torrentSearchTimer);
   _torrentSearchTimer = setTimeout(() => { _torrentSearchTimer = null; loadTorrents().catch(() => {}); }, 250);
 }
@@ -257,6 +272,7 @@ function goToTorrentPage(p) {
   const nextPage = Math.max(1, p);
   if (nextPage !== torrentPage) clearSelection();
   torrentPage = nextPage;
+  requestGeneration++;
   loadTorrents();
 }
 function onPageSizeChange(v) {
@@ -264,6 +280,7 @@ function onPageSizeChange(v) {
   if (nextSize !== torrentPageSize || torrentPage !== 1) clearSelection();
   torrentPageSize = nextSize;
   torrentPage = 1;
+  requestGeneration++;
   loadTorrents();
 }
 
@@ -358,16 +375,46 @@ function rowMarkup(t) {
 
 // ── Bounded fetch + render ──────────────────────────────────────────────
 async function fetchAndRenderTorrents() {
+  // Immutable snapshot of the request this call represents. Captured before
+  // the await so a later authoritative-state mutation (page/filter/search/
+  // page-size change) cannot retroactively change what this in-flight
+  // request "was for".
+  const _requestGeneration = requestGeneration;
+  const _limit = Math.min(Math.max(parseInt(torrentPageSize) || 25, 1), 100);
+  const _offset = (torrentPage - 1) * _limit;
   try {
     const params = new URLSearchParams();
-    const _limit = Math.min(Math.max(parseInt(torrentPageSize) || 25, 1), 100);
-    const _offset = (torrentPage - 1) * _limit;
     params.set('limit', String(_limit));
     params.set('offset', String(_offset));
     if (currentFilter) params.set('status', currentFilter);
     if (currentTorrentSearch) params.set('search', currentTorrentSearch);
     const {items, total} = await api('GET', '/torrents?' + params.toString());
-    torrentTotal = total ?? items.length;
+    // A newer authoritative intent superseded this request while it was in
+    // flight: this response is stale and must not become truth. Do not
+    // render it, do not mutate torrentPage, do not replace rows, do not
+    // reconcile selection, do not overwrite pagination. The coalesced
+    // trailing run already queued behind this one will fetch and render the
+    // current state.
+    if (_requestGeneration !== requestGeneration) return;
+    const _total = total ?? items.length;
+    // The requested page can fall out of range while this request was in
+    // flight (e.g. the last item(s) on the last page were just deleted).
+    // Clamping is a canonical state transition owned here, at the
+    // fetch/controller boundary -- never inside the renderer, and never by
+    // projecting this out-of-range response's (necessarily empty-for-that-
+    // offset) rows as though they belonged to the clamped page. Establish
+    // the clamp, then fetch the clamped page's own authoritative projection
+    // instead of rendering this obsolete payload.
+    const _pages = Math.max(1, Math.ceil(_total / _limit));
+    const _requestedPage = Math.floor(_offset / _limit) + 1;
+    const _clampedPage = Math.min(_requestedPage, _pages);
+    if (_clampedPage !== _requestedPage) {
+      torrentPage = _clampedPage;
+      requestGeneration++;
+      await fetchAndRenderTorrents();
+      return;
+    }
+    torrentTotal = _total;
     const tb = document.getElementById('t-tbody');
     renderTorrentPagination(torrentTotal, _limit, _offset);
     reconcileDownloadSelection(items);
@@ -378,7 +425,10 @@ async function fetchAndRenderTorrents() {
       tb.innerHTML = items.map(rowMarkup).join('');
       syncDownloadSelectionUi();
     }
-  } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
+  } catch (e) {
+    if (_requestGeneration !== requestGeneration) return;
+    toast(sanitizeErrorMsg(e.message), 'error');
+  }
   document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));
 }
 

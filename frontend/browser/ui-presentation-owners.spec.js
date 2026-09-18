@@ -68,6 +68,129 @@ test('Downloads owner exposes fixed three-slot pager and date options',async({pa
  const trigger=page.locator('.dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.getByRole('menuitemradio',{name})).toBeVisible();
 });
 
+test('Downloads pager: a stale in-flight refresh cannot overwrite a newer page click (race regression)',async({page})=>{
+ await page.setViewportSize({width:1440,height:800});
+ // Deterministically reproduce the exact-SHA Browser Runtime race: a plain
+ // page-1 refresh is in flight (held unresolved here) when the user clicks
+ // Next through the real control. The stale page-1 response must be
+ // discarded as non-authoritative rather than reverting the newer page-2
+ // intent -- see ui-downloads.js's requestGeneration mechanism. Only the
+ // real bounded list GET is intercepted (mirrors downloads-large-history.spec.js);
+ // every other /api/torrents* call (candidate refresh, dashboard recent,
+ // SSE-driven housekeeping, etc.) falls through to the real local backend so
+ // it cannot pollute this test's determinism.
+ let page1Count=0,releaseHeld=null;
+ const offsets=[];
+ await page.route('**/api/torrents**',async route=>{
+  const request=route.request();
+  const url=new URL(request.url());
+  if(url.pathname!=='/api/torrents'||request.method()!=='GET'||!url.searchParams.has('offset')){return route.fallback();}
+  const offset=url.searchParams.get('offset');
+  offsets.push(offset);
+  if(offset==='0'){
+   page1Count+=1;
+   // Hold the *second* page-1 request unresolved, regardless of whether it
+   // was triggered by our own deliberate refresh below or by the owner's
+   // own capacity/navigation lifecycle -- either is a legitimate instance
+   // of "a page-1 refresh is already running" per the fix-forward task.
+   if(page1Count===2){await new Promise(resolve=>{releaseHeld=resolve;});}
+  }
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],total:60,page:1,page_size:25})});
+ });
+ await ready(page);
+ await page.evaluate(()=>{nav(document.querySelector('[data-view="torrents"]'));});
+ await expect(page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]')).toBeVisible();
+
+ // Start a second page-1 refresh; the route handler above holds it unresolved.
+ await page.evaluate(()=>{loadTorrents();});
+ await expect.poll(()=>page1Count).toBeGreaterThanOrEqual(2);
+ await expect.poll(()=>typeof releaseHeld).toBe('function');
+
+ // While that stale refresh is still in flight, drive the real Next control.
+ await page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]').click();
+
+ // Release the held, now-stale page-1 response.
+ releaseHeld();
+
+ // The trailing/current request (coalesced behind the held one) must win and
+ // render page 2 -- the stale page-1 payload must never resurface page 1.
+ await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
+ await expect(page.locator('#torrent-page-btns .dp-pager-btn')).toHaveCount(2);
+ await expect(page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Previous page"]')).toBeVisible();
+ await expect(page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]')).toBeVisible();
+ // The winning request must carry the page-2 offset (25 for a 25-item page
+ // size) -- proof the fetch itself, not just the render, used the newer
+ // intent.
+ await expect.poll(()=>offsets[offsets.length-1]).toBe('25');
+ // Give any further stale-tail activity a moment, then confirm page 2 held
+ // -- the late page-1 response must not revert it.
+ await page.waitForTimeout(150);
+ await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
+});
+
+test('Downloads pager: a shrink-triggered clamp refetches the clamped page instead of rendering the out-of-range payload',async({page})=>{
+ await page.setViewportSize({width:1440,height:800});
+ // Real rows (unlike the empty-item fixtures used elsewhere in this file)
+ // participate in measuredSize()/applySize() capacity auto-fit, so the
+ // effective page size is whatever the owner settles on for this viewport --
+ // never assumed. 300 rows guarantees several pages regardless of that size.
+ // Every row carries an identifiable id so assertions can prove *which*
+ // page's data actually rendered, not just that the pager label changed.
+ function transfer(id){return{id,name:`Historical Transfer ${id}`,hash:`hash-${id}-0123456789abcdef`,status:'completed',progress:100,size_bytes:1024*1024*id,created_at:'2026-08-01T12:00:00Z',source:'direct_link',label:null,current_provider_id:'general_http',current_provider_name:'HTTP & HTTPS',delivering_provider_id:'general_http',delivering_provider_name:'HTTP & HTTPS',provider_provenance_status:'known'};}
+ let downloads=Array.from({length:300},(_,i)=>transfer(i+1));
+ const requests=[];
+ await page.route('**/api/torrents**',async route=>{
+  const request=route.request();const url=new URL(request.url());
+  if(url.pathname!=='/api/torrents'||request.method()!=='GET'||!url.searchParams.has('offset')){return route.fallback();}
+  const limit=Math.max(1,Number(url.searchParams.get('limit'))||25),offset=Math.max(0,Number(url.searchParams.get('offset'))||0);
+  requests.push({limit,offset});
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:downloads.slice(offset,offset+limit),total:downloads.length})});
+ });
+ async function settle(){
+  let last=-1;
+  while(last!==requests.length){last=requests.length;await page.waitForTimeout(300);}
+ }
+ await ready(page);
+ await page.evaluate(()=>{nav(document.querySelector('[data-view="torrents"]'));});
+ await expect(page.locator('.dp-downloads-detail-row').first()).toBeVisible();
+ // Let any capacity-driven auto-fit corrective fetch settle before treating
+ // the effective page size as fixed.
+ await settle();
+ const effectiveLimit=requests[requests.length-1].limit;
+ expect(effectiveLimit).toBeGreaterThan(0);
+
+ // Navigate to page 3 through the real UI (two real Next clicks).
+ await page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]').click();
+ await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
+ await page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]').click();
+ await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('3');
+ const page3FirstId=await page.locator('.dp-downloads-detail-row').first().getAttribute('data-torrent-id');
+ expect(page3FirstId).toBeTruthy();
+
+ // Shrink the collection to fewer than one page's worth -- the requested
+ // page-3 offset becomes out of range regardless of the effective limit.
+ downloads=downloads.slice(0,Math.max(1,Math.min(3,effectiveLimit-1)));
+ const beforeRefresh=requests.length;
+
+ // Trigger a normal refresh through the real Refresh control -- not a
+ // test-only setter -- while the application's authoritative state is still
+ // "page 3" (now out of range for the shrunk collection).
+ await page.locator('.dp-downloads-refresh').click();
+
+ // The application must issue a fresh request for the clamped page (offset
+ // 0), not merely relabel the out-of-range response.
+ await expect.poll(()=>requests.length).toBeGreaterThan(beforeRefresh);
+ await expect.poll(()=>requests[requests.length-1]?.offset).toBe(0);
+
+ await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('1');
+ // Only one slot: the shrunk total fits in one page, so both nav buttons are absent.
+ await expect(page.locator('#torrent-page-btns .dp-pager-btn')).toHaveCount(0);
+ // Real, correct page-1 rows -- not the empty/out-of-range page-3 payload.
+ await expect(page.locator('.dp-downloads-detail-row')).toHaveCount(downloads.length);
+ await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${downloads[0].id}"]`)).toBeVisible();
+ await expect(page.locator(`.dp-downloads-detail-row[data-torrent-id="${page3FirstId}"]`)).toHaveCount(0);
+});
+
 test('Activity Log filter interaction reaches server with filter metadata',async({page})=>{
  const requests=[];await page.route('**/api/events*',async route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams.entries()));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[{level:'warning',message:'Retry delayed',torrent_name:'example.iso',created_at:'2026-09-06 08:30:00'}],truncated:false,limit:500})});});
  await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));await page.locator('#ev-timeframe').selectOption('72h');await page.locator('#ev-level').selectOption('warning');await page.locator('#ev-search').fill('Retry');await page.waitForTimeout(325);await expect.poll(()=>requests.length).toBeGreaterThan(0);
