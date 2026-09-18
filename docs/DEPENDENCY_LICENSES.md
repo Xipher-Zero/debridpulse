@@ -14,7 +14,7 @@ the lock file and `licenses/python-runtime.json`.
 | aiosqlite | 0.22.1 | MIT |
 | annotated-doc | 0.0.4 | MIT |
 | annotated-types | 0.7.0 | MIT |
-| anyio | 4.13.0 | MIT |
+| anyio | 4.14.2 | MIT |
 | argon2-cffi | 25.1.0 | MIT |
 | argon2-cffi-bindings | 26.1.0 | MIT; vendored Argon2/BLAKE2 components are CC0-1.0 |
 | attrs | 26.1.0 | MIT |
