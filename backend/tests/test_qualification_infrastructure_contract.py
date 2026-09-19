@@ -412,11 +412,13 @@ def test_documentation_and_claude_md_point_to_the_policy() -> None:
     assert "docs/QUALIFICATION_DETERMINISM.md" in claude
     assert "Do not repeatedly rerun full qualification to chase green." in claude
     assert "Use candidate-vs-anchor classification." in claude
-    # The product defect behind the WS2-P1 focus test is carried as a separate workstream, never claimed fixed.
+    # The product defect behind the WS2-P1 focus test was carried, deliberately unfixed, until the canonical
+    # modal owner corrected it at its lifecycle boundary; the record now says exactly that and no more.
     section = doc.split("## 10. Findings carried by this workstream")[1].split("## 11.")[0]
     flat = " ".join(section.split())
-    assert "DPSettingsModal.confirm" in flat and "not fixed and not masked" in flat
-    assert "separate product corrective workstream" in flat.lower()
+    assert "ui-settings-modal.js" in flat and "resolved" in flat.lower()
+    assert "not fixed and not masked" not in flat
+    assert "parked on `<body>`" in flat
     assert "intermittently flaky" not in claude, "the mirror failover test is deterministic now"
     assert "test_mirrors_share_one_artifact_and_failover_retires_partial_bytes" not in claude.split("## 10.")[1]
 

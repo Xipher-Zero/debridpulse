@@ -17,8 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from test_candidate_activation_phase2 import attach_three, build_engine3
-from transfers.candidate_activation import activate_candidate
+from test_candidate_activation_phase2 import activate_with_real_claim, attach_three, build_engine3
 from transfers.models import TransferRequest
 
 
@@ -49,7 +48,7 @@ async def test_capacity_only_blocked_reflects_a_held_continuation_reservation(tm
     a_live = (await repository.artifacts(canonical_a.id))[0]
     assert a_live.execution is not None
 
-    result = await activate_candidate(engine, a_live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, a_live, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact_a.id) is not None
 
@@ -70,7 +69,7 @@ async def test_active_failover_preserves_execution_admission(tmp_path, monkeypat
     assert live.execution is not None
     assert await repository.occupied_execution_slots(now_box[0]) == 1
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     switched = (await repository.artifacts(canonical.id))[0]
     assert switched.execution is None
@@ -107,7 +106,7 @@ async def test_unrelated_queue_cannot_steal_failover_continuation_slot(tmp_path,
     assert a_live.execution is not None
     assert b_queued.execution is None and b_queued.state == "queued"
 
-    result = await activate_candidate(engine, a_live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, a_live, 1, retry_at=now_box[0])
     assert result.committed
 
     # A's old writer is retired and B is still queued/capacity-blocked right
@@ -147,7 +146,7 @@ async def test_nonactive_manual_switch_does_not_gain_capacity_priority(tmp_path,
     a_queued = (await repository.artifacts(canonical_a.id))[0]
     assert a_queued.execution is None and a_queued.state == "queued"
 
-    result = await activate_candidate(engine, a_queued, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, a_queued, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(a_queued.id) is None
     # Occupancy is unchanged -- B's real slot only -- A gained nothing.
@@ -167,7 +166,7 @@ async def test_failed_handoff_releases_capacity_reservation(tmp_path, monkeypatc
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact.id) is not None
     assert await repository.occupied_execution_slots(now_box[0]) == 1
@@ -195,7 +194,7 @@ async def test_restart_reconciles_stale_handoff_reservation(tmp_path, monkeypatc
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     reserved_until = await repository.continuation_reservation(artifact.id)
     assert reserved_until is not None and reserved_until > now_box[0]
@@ -237,7 +236,7 @@ async def test_pause_releases_or_freezes_continuation_reservation_by_documented_
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact.id) is not None
 
@@ -260,7 +259,7 @@ async def test_global_pause_does_not_leave_capacity_consumed(tmp_path, monkeypat
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact.id) is not None
 
@@ -288,7 +287,7 @@ async def test_storage_gate_does_not_leave_unusable_continuation_capacity_reserv
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     reserved_until = await repository.continuation_reservation(artifact.id)
     assert reserved_until is not None
@@ -324,7 +323,7 @@ async def test_permanent_quiescence_releases_continuation_reservation(tmp_path, 
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact.id) is not None
 
@@ -345,7 +344,7 @@ async def test_cancel_delete_release_continuation_reservation(tmp_path, monkeypa
     canonical_cancel, artifact_cancel = await attach_three(engine, repository, providers)
     await engine.reconcile_executions()
     live_cancel = (await repository.artifacts(canonical_cancel.id))[0]
-    result = await activate_candidate(engine, live_cancel, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live_cancel, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact_cancel.id) is not None
 
@@ -358,7 +357,7 @@ async def test_cancel_delete_release_continuation_reservation(tmp_path, monkeypa
     )
     await engine.reconcile_executions()
     live_delete = (await repository.artifacts(canonical_delete.id))[0]
-    result = await activate_candidate(engine, live_delete, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live_delete, 1, retry_at=now_box[0])
     assert result.committed
     assert await repository.continuation_reservation(artifact_delete.id) is not None
 
@@ -388,7 +387,7 @@ async def test_deleted_transfer_reservation_cannot_reacquire_before_ttl_on_resur
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
     reserved_until = await repository.continuation_reservation(artifact.id)
     assert reserved_until is not None and reserved_until > now_box[0]

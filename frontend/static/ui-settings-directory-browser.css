@@ -1,7 +1,7 @@
 /* DebridPulse v1.0.12 Settings directory-field browser.
  *
- * This stylesheet extends the established Settings confirmation-dialog shell.
- * It owns the shared Settings directory-field/control/browse layout (used by
+ * This stylesheet extends the neutral application-dialog shell
+ * (ui-modal-contract.css, .dp-modal-*). It owns the shared Settings directory-field/control/browse layout (used by
  * both Built-in Download Folder and Backup Folder -- see Correction 5, DP
  * 1.0.12 UI Finishing) and the browse-modal geometry/state presentation.
  */
@@ -35,8 +35,8 @@
   flex-direction: column;
 }
 
-.dp-settings-directory-dialog > .dp-settings-confirm-header,
-.dp-settings-directory-dialog > .dp-settings-confirm-footer {
+.dp-settings-directory-dialog > .dp-modal-header,
+.dp-settings-directory-dialog > .dp-modal-footer {
   flex: 0 0 auto;
 }
 

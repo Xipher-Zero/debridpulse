@@ -1,7 +1,9 @@
 /* Settings directory picker: the modal that browses server directories for the
  * Download Folder and Backup Folder fields.
  *
- * Owns exactly that interaction. The fields and their Browse buttons are part of
+ * Owns exactly that interaction, as a direct client of the canonical dialog owner
+ * (ui-settings-modal.js): it opens its own directory-browser dialog through that
+ * owner's API and never touches the shell DOM. The fields and their Browse buttons are part of
  * the Settings markup emitted by ui-settings-page.js, which calls
  * DPSettingsDirectoryPicker.open(purpose) from the button; this module reads the
  * field's current value and writes the chosen one back, and touches no other
@@ -97,74 +99,64 @@
     return `${scaled.toFixed(1)} ${units[unit]}`;
   }
 
-  function openDirectoryPicker(config, _origin) {
+  function openDirectoryPicker(config) {
     const field = root()?.querySelector(config.fieldSelector);
-    const modalApi = window.DPSettingsModal;
-    if (!field || typeof api !== 'function' || !modalApi || typeof modalApi.confirm !== 'function') return;
+    if (!field || typeof api !== 'function') return;
 
     const originalValue = String(field.value ?? '');
     let currentResponse = null;
     let generation = 0;
     let controller = null;
+    let view = null;
 
-    const confirmation = modalApi.confirm({
+    const dialog = window.DPSettingsModal.open({
       title: config.dialogTitle,
-      message: '',
-      confirmLabel: 'Use This Folder',
-      tone: 'warning',
+      acceptLabel: 'Use This Folder',
+      acceptDisabled: true,
+      className: 'dp-settings-directory-dialog',
+      bodyClassName: 'dp-settings-directory-body',
+      mount(body) {
+        body.innerHTML = `
+          <div class="dp-settings-directory-browser">
+            <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
+            <div class="dp-settings-directory-current">
+              <span class="dp-settings-directory-current-label">Current server path</span>
+              <code class="dp-settings-directory-current-path" data-directory-current-path>—</code>
+              <div class="dp-settings-directory-current-meta">
+                <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">Not validated</span>
+                <span data-directory-capacity>Capacity unavailable</span>
+              </div>
+            </div>
+            <div class="dp-settings-directory-toolbar">
+              <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled>Up</button>
+              <span class="dp-settings-directory-loading" data-directory-loading role="status" aria-live="polite"></span>
+            </div>
+            <div class="dp-settings-directory-error" data-directory-error role="alert" hidden></div>
+            <div class="dp-settings-directory-list" data-directory-list aria-label="Directories"></div>
+          </div>`;
+        view = {
+          notice: body.querySelector('[data-directory-notice]'),
+          currentPath: body.querySelector('[data-directory-current-path]'),
+          currentState: body.querySelector('[data-directory-current-state]'),
+          capacity: body.querySelector('[data-directory-capacity]'),
+          up: body.querySelector('[data-directory-up]'),
+          loading: body.querySelector('[data-directory-loading]'),
+          errorBox: body.querySelector('[data-directory-error]'),
+          list: body.querySelector('[data-directory-list]'),
+        };
+        view.up.addEventListener('click', () => {
+          if (currentResponse?.parent == null) return;
+          void loadDirectory(currentResponse.parent);
+        });
+      },
     });
-    const overlays = Array.from(document.querySelectorAll('.dp-settings-confirm-overlay'));
-    const overlay = overlays[overlays.length - 1];
-    const dialog = overlay?.querySelector('.dp-settings-confirm-dialog');
-    const body = overlay?.querySelector('.dp-settings-confirm-body');
-    const cancel = overlay?.querySelector('[data-confirm-cancel]');
-    const accept = overlay?.querySelector('[data-confirm-accept]');
-    if (!overlay || !dialog || !body || !cancel || !accept) return;
-
-    dialog.classList.add('dp-settings-directory-dialog');
-    dialog.setAttribute('role', 'dialog');
-    dialog.removeAttribute('aria-describedby');
-    dialog.removeAttribute('data-tone');
-    body.classList.add('dp-settings-directory-body');
-    cancel.dataset.directoryCancel = '1';
-    accept.dataset.directoryConfirm = '1';
-    accept.disabled = true;
-    cancel.focus();
-
-    body.innerHTML = `
-      <div class="dp-settings-directory-browser">
-        <div class="dp-settings-directory-notice" data-directory-notice hidden></div>
-        <div class="dp-settings-directory-current">
-          <span class="dp-settings-directory-current-label">Current server path</span>
-          <code class="dp-settings-directory-current-path" data-directory-current-path>—</code>
-          <div class="dp-settings-directory-current-meta">
-            <span class="dp-settings-directory-current-state" data-directory-current-state data-selectable="false">Not validated</span>
-            <span data-directory-capacity>Capacity unavailable</span>
-          </div>
-        </div>
-        <div class="dp-settings-directory-toolbar">
-          <button class="btn btn-ghost btn-sm" type="button" data-directory-up disabled>Up</button>
-          <span class="dp-settings-directory-loading" data-directory-loading role="status" aria-live="polite"></span>
-        </div>
-        <div class="dp-settings-directory-error" data-directory-error role="alert" hidden></div>
-        <div class="dp-settings-directory-list" data-directory-list aria-label="Directories"></div>
-      </div>`;
-
-    const notice = body.querySelector('[data-directory-notice]');
-    const currentPath = body.querySelector('[data-directory-current-path]');
-    const currentState = body.querySelector('[data-directory-current-state]');
-    const capacity = body.querySelector('[data-directory-capacity]');
-    const up = body.querySelector('[data-directory-up]');
-    const loading = body.querySelector('[data-directory-loading]');
-    const errorBox = body.querySelector('[data-directory-error]');
-    const list = body.querySelector('[data-directory-list]');
 
     const setLoading = busy => {
-      dialog.setAttribute('aria-busy', busy ? 'true' : 'false');
-      loading.textContent = busy ? 'Loading…' : '';
-      accept.disabled = busy || currentResponse?.current?.selectable !== true;
-      up.disabled = busy || currentResponse?.parent == null;
-      list.querySelectorAll('[data-directory-row]').forEach(row => {
+      dialog.setBusy(busy);
+      view.loading.textContent = busy ? 'Loading…' : '';
+      dialog.setAcceptEnabled(!busy && currentResponse?.current?.selectable === true);
+      view.up.disabled = busy || currentResponse?.parent == null;
+      view.list.querySelectorAll('[data-directory-row]').forEach(row => {
         row.disabled = busy || row.dataset.accessible !== 'true';
       });
     };
@@ -172,41 +164,41 @@
     const render = payload => {
       const current = payload?.current || null;
       currentResponse = payload && current ? payload : null;
-      errorBox.hidden = true;
-      errorBox.textContent = '';
-      list.replaceChildren();
+      view.errorBox.hidden = true;
+      view.errorBox.textContent = '';
+      view.list.replaceChildren();
 
       if (!current) {
-        currentPath.textContent = '—';
-        currentState.textContent = 'Not validated';
-        currentState.dataset.selectable = 'false';
-        capacity.textContent = 'Capacity unavailable';
-        accept.disabled = true;
-        up.disabled = true;
+        view.currentPath.textContent = '—';
+        view.currentState.textContent = 'Not validated';
+        view.currentState.dataset.selectable = 'false';
+        view.capacity.textContent = 'Capacity unavailable';
+        dialog.setAcceptEnabled(false);
+        view.up.disabled = true;
         return;
       }
 
-      currentPath.textContent = String(current.path ?? '');
-      currentPath.title = String(current.path ?? '');
+      view.currentPath.textContent = String(current.path ?? '');
+      view.currentPath.title = String(current.path ?? '');
       const selectable = current.selectable === true;
-      currentState.dataset.selectable = selectable ? 'true' : 'false';
-      currentState.textContent = selectable
+      view.currentState.dataset.selectable = selectable ? 'true' : 'false';
+      view.currentState.textContent = selectable
         ? config.selectableLabel
         : `Not selectable — ${directoryReasonLabel(current.reason)}`;
 
       const total = directorySize(current.capacity?.total_bytes);
       const free = directorySize(current.capacity?.free_bytes);
-      capacity.textContent = total !== null && free !== null
+      view.capacity.textContent = total !== null && free !== null
         ? `${free} free of ${total}`
         : 'Capacity unavailable';
 
-      up.disabled = payload.parent == null;
+      view.up.disabled = payload.parent == null;
       const children = Array.isArray(payload.children) ? payload.children : [];
       if (!children.length) {
         const empty = document.createElement('div');
         empty.className = 'dp-settings-directory-empty';
         empty.textContent = 'No child directories.';
-        list.appendChild(empty);
+        view.list.appendChild(empty);
       } else {
         children.forEach(child => {
           const row = document.createElement('button');
@@ -234,19 +226,19 @@
             if (row.dataset.accessible !== 'true') return;
             void loadDirectory(row.dataset.path);
           });
-          list.appendChild(row);
+          view.list.appendChild(row);
         });
       }
 
-      accept.disabled = !selectable;
+      dialog.setAcceptEnabled(selectable);
     };
 
     const loadDirectory = async (path, {fallbackOnFailure = false} = {}) => {
       const requestGeneration = ++generation;
       if (controller) controller.abort();
       controller = new AbortController();
-      errorBox.hidden = true;
-      errorBox.textContent = '';
+      view.errorBox.hidden = true;
+      view.errorBox.textContent = '';
       setLoading(true);
 
       const queryParams = {purpose: config.purpose};
@@ -254,29 +246,24 @@
       const query = `?${new URLSearchParams(queryParams).toString()}`;
       try {
         const payload = await api('GET', `/settings/directories${query}`, undefined, 10000, {signal: controller.signal});
-        if (requestGeneration !== generation || !overlay.isConnected) return;
+        if (requestGeneration !== generation || !dialog.isOpen) return;
         render(payload);
         setLoading(false);
       } catch (error) {
-        if (requestGeneration !== generation || error?.name === 'AbortError' || !overlay.isConnected) return;
+        if (requestGeneration !== generation || error?.name === 'AbortError' || !dialog.isOpen) return;
         if (fallbackOnFailure) {
-          notice.hidden = false;
-          notice.textContent = config.fallbackNoticeText;
+          view.notice.hidden = false;
+          view.notice.textContent = config.fallbackNoticeText;
           void loadDirectory(null);
           return;
         }
-        errorBox.textContent = directoryErrorMessage(error);
-        errorBox.hidden = false;
+        view.errorBox.textContent = directoryErrorMessage(error);
+        view.errorBox.hidden = false;
         setLoading(false);
       }
     };
 
-    up.addEventListener('click', () => {
-      if (currentResponse?.parent == null) return;
-      void loadDirectory(currentResponse.parent);
-    });
-
-    void confirmation.then(accepted => {
+    void dialog.closed.then(({accepted}) => {
       generation += 1;
       if (controller) controller.abort();
       controller = null;

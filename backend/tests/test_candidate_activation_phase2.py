@@ -10,8 +10,13 @@ test built on the lower, isolated transfers.engine.TransferEngine stack.
 """
 from __future__ import annotations
 
+import ast
+import asyncio
+import inspect
 import uuid
 from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,11 +26,13 @@ from fake_integrations import MemoryExecutor
 from test_manual_candidate_failover import HostParcelProvider, attach_two
 from test_manual_candidate_failover import build_engine as build_engine2
 from test_ws2p1_failover_depth import remote_failure
+from transfers import candidate_activation
 from transfers.candidate_activation import activate_candidate
 from transfers.convergence_engine import TransferEngine
 from transfers.manual_failover import manual_candidate_failover
 from transfers.models import ExecutionState, ResolutionResult, ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
+from transfers.recovery_execution import RecoveryTrigger
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 
@@ -72,6 +79,35 @@ async def attach_three(engine, repository, providers, *, name="same.bin", payloa
     artifact = (await repository.artifacts(canonical.id))[0]
     assert [item.provider_id for item in artifact.candidates] == [p.descriptor.id for p in providers]
     return canonical, artifact
+
+
+async def activate_with_real_claim(
+    engine, artifact, target_index, *, retry_at, error=None, trigger=RecoveryTrigger.AUTO_RETRY,
+):
+    """Call the canonical primitive the way production does: inside a REAL recovery claim.
+
+    ``activate_candidate`` requires the caller's already-held ``RecoveryClaim``; there is no claim-less
+    mode and no test-only fabricated claim. This acquires the real exclusive claim through the production
+    repository, runs the primitive, and releases the fence exactly like the two production callers
+    (``TransferEngine._apply_recovery_decision`` and ``activate_candidate_command``) so later engine steps
+    are not blocked by a leaked lease. ``trigger`` names the recovery authority being exercised.
+    """
+    claim = await engine.repository.claim_recovery(
+        artifact.id, trigger, engine.clock(), lease_seconds=max(300.0, float(engine.policy.max_retry_delay)),
+    )
+    assert claim is not None, "the artifact must be claimable for a direct activation"
+    result = None
+    try:
+        result = await activate_candidate(engine, artifact, target_index, retry_at=retry_at, error=error, claim=claim)
+        return result
+    finally:
+        await engine.repository.finish_recovery_claim(
+            claim,
+            action="candidate_activation",
+            reason=result.reason if result is not None else "application_error",
+            outcome="activated" if (result is not None and result.committed) else "not_applied",
+            candidate_changed=bool(result is not None and result.committed),
+        )
 
 
 async def _exhaust_current(engine, repository, executor, canonical_id, error, attempts=3):
@@ -255,16 +291,21 @@ async def test_candidate_activation_advances_or_fences_recovery_generation(tmp_p
 
     before = await repository.recovery_context(artifact.id)
 
-    # Fenced: an invalid target must leave the generation completely
-    # untouched -- one canonical operation is either a full commit or a
-    # true no-op, never a partial mutation.
-    rejected = await activate_candidate(engine, artifact, artifact.selected, retry_at=0)
+    # Fenced: an invalid target must leave the recovery state completely
+    # untouched -- one canonical operation is either a full commit or a true
+    # no-op, never a partial mutation. Holding the real claim is the CALLER's
+    # act (it legitimately advances the generation); the fence asserted here
+    # is that the activation primitive itself changes nothing beyond it.
+    claim = await repository.claim_recovery(artifact.id, RecoveryTrigger.USER_CANDIDATE_SWITCH, engine.clock())
+    assert claim is not None and claim.generation >= 1
+    held = await repository.recovery_context(artifact.id)
+    rejected = await activate_candidate(engine, artifact, artifact.selected, retry_at=0, claim=claim)
     assert rejected.committed is False and rejected.reason == "invalid_target"
-    unchanged = await repository.recovery_context(artifact.id)
-    assert unchanged == before
+    assert await repository.recovery_context(artifact.id) == held
+    await repository.finish_recovery_claim(claim, action="candidate_activation", reason=rejected.reason, outcome="not_applied")
 
-    # Advanced: a valid target commits and moves the generation forward.
-    accepted = await activate_candidate(engine, artifact, 1, retry_at=0)
+    # Advanced: a valid target commits under a NEW claim generation and moves the switch bookkeeping forward.
+    accepted = await activate_with_real_claim(engine, artifact, 1, retry_at=0, trigger=RecoveryTrigger.USER_CANDIDATE_SWITCH)
     assert accepted.committed is True
     advanced = await repository.recovery_context(artifact.id)
     assert advanced["candidate_switches"] == before["candidate_switches"] + 1
@@ -294,7 +335,7 @@ async def test_stale_recovery_claim_cannot_overwrite_new_candidate(tmp_path, mon
     # believes A's now-superseded execution is still the live writer) must
     # not be able to commit a second switch out from under the now-active
     # B writer (Section 11: a stale claim can never overwrite a newer one).
-    stale_attempt = await activate_candidate(engine, stale_view, 2, retry_at=0)
+    stale_attempt = await activate_with_real_claim(engine, stale_view, 2, retry_at=0)
     assert stale_attempt.committed is False
     assert stale_attempt.reason == "execution_changed_concurrently"
     unchanged = (await repository.artifacts(canonical.id))[0]
@@ -470,7 +511,11 @@ async def test_candidate_activation_provenance_records_all_required_fields(tmp_p
     old_handle = live.execution
     assert old_handle is not None
 
-    result = await activate_candidate(engine, live, 1, retry_at=engine.clock())
+    # The recorded authority and generation are exactly the real claim's -- nothing is defaulted or fabricated.
+    claim = await repository.claim_recovery(live.id, RecoveryTrigger.EXECUTOR_RECOVERY, engine.clock())
+    assert claim is not None
+    result = await activate_candidate(engine, live, 1, retry_at=engine.clock(), claim=claim)
+    await repository.finish_recovery_claim(claim, action="candidate_activation", reason=result.reason, outcome="activated")
     assert result.committed
 
     async with get_db() as db:
@@ -487,7 +532,8 @@ async def test_candidate_activation_provenance_records_all_required_fields(tmp_p
     assert record["old_provider_id"] == providers[0].descriptor.id
     assert record["new_candidate_id"] == str(artifact.candidates[1].id)
     assert record["new_provider_id"] == providers[1].descriptor.id
-    assert record["authority"] == "automatic"
+    assert record["authority"] == RecoveryTrigger.EXECUTOR_RECOVERY.value == "executor_recovery"
+    assert record["recovery_generation"] == claim.generation and claim.generation >= 1
     assert record["old_execution_id"] == old_handle.attempt_id
     assert record["partial_decision"] in {"reused", "retired"}
     assert record["admission_decision"] == "reserved"  # the old writer held the only slot
@@ -533,7 +579,7 @@ async def test_candidate_activation_provenance_write_is_atomic_with_the_commit(t
 
     _break_activation_payload_encoding(monkeypatch, repository_module)
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed is False
     assert result.reason == "commit_conflict"
 
@@ -576,3 +622,217 @@ async def test_manual_switch_reports_real_rejection_when_activation_provenance_c
 
     unchanged = (await repository.artifacts(canonical.id))[0]
     assert unchanged.selected == 0, "nothing durably changed when the atomic commit+provenance write failed"
+
+
+# ---------------------------------------------------------------------------
+# Canonical-authority guardrails (Canonical Release Remediation, Workstream B)
+#
+# Every production candidate activation is attributable to exactly one REAL
+# recovery claim (authority + generation). These prove the ABSENCE of the
+# retired claim-less semantic -- not merely the presence of the claim path --
+# structurally (signature + AST), so a comment-only regression cannot hide it.
+# ---------------------------------------------------------------------------
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _production_modules():
+    """(relative path, parsed AST) for every non-test backend module."""
+    for path in sorted(_BACKEND_ROOT.rglob("*.py")):
+        relative = path.relative_to(_BACKEND_ROOT)
+        if "tests" in relative.parts or "__pycache__" in relative.parts:
+            continue
+        yield relative.as_posix(), ast.parse(path.read_text(encoding="utf-8"))
+
+
+def _call_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def test_activate_candidate_signature_requires_a_keyword_only_claim():
+    parameter = inspect.signature(activate_candidate).parameters["claim"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty, "claim must have no default (no claim=None mode)"
+
+
+def test_activate_candidate_source_has_no_claimless_authority_path():
+    source = inspect.getsource(candidate_activation)
+    tree = ast.parse(source)
+    for forbidden in ("claim=None", "claim is None", "claim is not None", "claim: None"):
+        assert forbidden not in source, forbidden
+
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "activate_candidate"
+    )
+    claim_names = {"claim"}
+
+    def mentions_claim(node) -> bool:
+        return any(isinstance(item, ast.Name) and item.id in claim_names for item in ast.walk(node))
+
+    for node in ast.walk(function):
+        # No comparison of the claim against None (or anything else that makes it optional).
+        if isinstance(node, ast.Compare) and mentions_claim(node):
+            assert not any(isinstance(item, ast.Constant) and item.value is None for item in ast.walk(node))
+        # No conditional expression / branch that picks a different authority when the claim is absent.
+        # Exactly two guard shapes may test the claim, and both only ever REFUSE: the fail-closed type guard
+        # (raises) and the currency fence (returns a not-committed result). Neither selects another authority.
+        if isinstance(node, ast.IfExp) and mentions_claim(node.test):
+            raise AssertionError("activate_candidate must not select an authority based on its claim")
+        if isinstance(node, ast.If) and mentions_claim(node.test):
+            guard = ast.unparse(node.test)
+            assert not node.orelse and len(node.body) == 1, guard
+            if guard == "not isinstance(claim, RecoveryClaim)":
+                assert isinstance(node.body[0], ast.Raise)
+            else:
+                assert guard == "not await engine.repository.recovery_claim_current(claim, now=engine.clock())", guard
+                assert isinstance(node.body[0], ast.Return) and "claim_not_current" in ast.unparse(node.body[0])
+        # No fabricated generic authority literal.
+        if isinstance(node, ast.Constant) and node.value == "automatic":
+            raise AssertionError('activate_candidate must not fabricate a generic "automatic" authority')
+
+    # Authority and generation derive from the claim and from nothing else.
+    assigned = {
+        target.id: ast.unparse(node.value)
+        for node in function.body if isinstance(node, ast.Assign)
+        for target in node.targets if isinstance(target, ast.Name)
+    }
+    assert assigned["authority"] == "claim.trigger.value"
+    assert assigned["recovery_generation"] == "claim.generation"
+
+    # The claim is authority, not only provenance: the one durable commit is atomically fenced by it.
+    commits = [
+        node for node in ast.walk(function)
+        if isinstance(node, ast.Call) and _call_name(node) == "transition_recovery"
+    ]
+    assert len(commits) == 1
+    fence = next((keyword.value for keyword in commits[0].keywords if keyword.arg == "claim"), None)
+    assert isinstance(fence, ast.Name) and fence.id == "claim"
+
+
+@pytest.mark.asyncio
+async def test_activate_candidate_rejects_a_missing_or_fabricated_claim_before_touching_state():
+    with pytest.raises(TypeError):
+        await activate_candidate(None, None, 0, retry_at=0)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        await activate_candidate(None, None, 0, retry_at=0, claim=None)  # type: ignore[arg-type]
+    fabricated = SimpleNamespace(trigger=SimpleNamespace(value="automatic"), generation=0)
+    with pytest.raises(TypeError):
+        await activate_candidate(None, None, 0, retry_at=0, claim=fabricated)  # type: ignore[arg-type]
+
+
+def test_every_production_activation_call_passes_a_claim_from_the_one_engine_owner():
+    calls = []
+    importers = []
+    for relative, tree in _production_modules():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _call_name(node) == "activate_candidate":
+                calls.append((relative, node))
+            # Importing the read-only helpers (e.g. resolve_candidate_index) is fine; only the MUTATION is fenced.
+            if isinstance(node, ast.ImportFrom) and node.module == "transfers.candidate_activation" and any(
+                alias.name == "activate_candidate" for alias in node.names
+            ):
+                importers.append(relative)
+    assert {relative for relative, _ in calls} == {"transfers/convergence_engine.py"}
+    assert importers == ["transfers/convergence_engine.py"]
+    # Automatic (TRY_ALTERNATE_CANDIDATE) and manual (activate_candidate_command): the two, and only two, callers.
+    assert len(calls) == 2
+    for _relative, node in calls:
+        claim = next((keyword.value for keyword in node.keywords if keyword.arg == "claim"), None)
+        assert isinstance(claim, ast.Name) and claim.id == "claim", ast.unparse(node)
+
+
+# ---------------------------------------------------------------------------
+# The required claim is real AUTHORITY, not provenance metadata (Workstream B).
+# A claim that was superseded (newer generation) or expired (lease) cannot
+# retire a writer, retire partial bytes, or switch a candidate.
+# ---------------------------------------------------------------------------
+
+
+async def _stale_and_fresh_claims(repository, engine, artifact_id):
+    stale = await repository.claim_recovery(artifact_id, RecoveryTrigger.AUTO_RETRY, engine.clock())
+    assert stale is not None
+    await repository.finish_recovery_claim(stale, action="candidate_activation", reason="released", outcome="not_applied")
+    fresh = await repository.claim_recovery(artifact_id, RecoveryTrigger.USER_RETRY, engine.clock())
+    assert fresh is not None and fresh.generation > stale.generation
+    return stale, fresh
+
+
+@pytest.mark.asyncio
+async def test_superseded_claim_is_rejected_before_any_side_effect_and_the_current_claim_still_works(tmp_path, monkeypatch):
+    engine, repository, providers, executor, _now_box = await build_engine3(tmp_path, monkeypatch)
+    canonical, _artifact = await attach_three(engine, repository, providers)
+    await engine.reconcile_executions()
+    live = (await repository.artifacts(canonical.id))[0]
+    assert live.execution is not None and live.selected == 0
+    stale, fresh = await _stale_and_fresh_claims(repository, engine, live.id)
+
+    result = await activate_candidate(engine, live, 1, retry_at=engine.clock(), claim=stale)
+    assert result.committed is False and result.reason == "claim_not_current"
+    unchanged = (await repository.artifacts(canonical.id))[0]
+    assert unchanged.selected == 0 and unchanged.execution == live.execution
+    # Nothing was cancelled or retired on behalf of a claim that no longer holds authority.
+    assert executor.jobs[live.execution.attempt_id].state not in {
+        ExecutionState.CANCELLED, ExecutionState.FAILED, ExecutionState.ABSENT,
+    }
+
+    current = await activate_candidate(engine, live, 1, retry_at=engine.clock(), claim=fresh)
+    assert current.committed is True and current.new_candidate is not None
+    await repository.finish_recovery_claim(fresh, action="candidate_activation", reason=current.reason, outcome="activated")
+
+
+@pytest.mark.asyncio
+async def test_expired_claim_lease_cannot_switch_a_candidate(tmp_path, monkeypatch):
+    engine, repository, providers, _executor, now_box = await build_engine3(tmp_path, monkeypatch)
+    canonical, _artifact = await attach_three(engine, repository, providers)
+    await engine.reconcile_executions()
+    live = (await repository.artifacts(canonical.id))[0]
+    claim = await repository.claim_recovery(live.id, RecoveryTrigger.AUTO_RETRY, engine.clock(), lease_seconds=5)
+    assert claim is not None
+
+    now_box[0] += 3600
+    result = await activate_candidate(engine, live, 1, retry_at=engine.clock(), claim=claim)
+    assert result.committed is False and result.reason == "claim_not_current"
+    assert (await repository.artifacts(canonical.id))[0].selected == 0
+
+
+@pytest.mark.asyncio
+async def test_candidate_commit_is_atomically_claim_fenced_even_if_the_entry_check_is_bypassed(tmp_path, monkeypatch):
+    """Defense in depth: a claim superseded AFTER the entry check (mid-flight) is refused by the one atomic commit."""
+    engine, repository, providers, _executor, _now_box = await build_engine3(tmp_path, monkeypatch)
+    canonical, _artifact = await attach_three(engine, repository, providers)
+    live = (await repository.artifacts(canonical.id))[0]
+    assert live.execution is None  # no writer to retire: the commit itself is the only fence exercised
+    stale, _fresh = await _stale_and_fresh_claims(repository, engine, live.id)
+
+    async def entry_check_passes(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(repository, "recovery_claim_current", entry_check_passes)
+    result = await activate_candidate(engine, live, 1, retry_at=engine.clock(), claim=stale)
+    assert result.committed is False and result.reason == "commit_conflict"
+    assert (await repository.artifacts(canonical.id))[0].selected == 0
+
+
+@pytest.mark.asyncio
+async def test_stale_claim_racing_a_new_candidate_switch_cannot_overwrite_it(tmp_path, monkeypatch):
+    engine, repository, providers, _executor, _now_box = await build_engine3(tmp_path, monkeypatch)
+    canonical, artifact = await attach_three(engine, repository, providers)
+    await engine.reconcile_executions()
+    live = (await repository.artifacts(canonical.id))[0]
+    stale = await repository.claim_recovery(live.id, RecoveryTrigger.AUTO_RETRY, engine.clock())
+    await repository.finish_recovery_claim(stale, action="candidate_activation", reason="released", outcome="not_applied")
+
+    stale_attempt, fresh_switch = await asyncio.gather(
+        activate_candidate(engine, live, 2, retry_at=engine.clock(), claim=stale),
+        engine.activate_candidate_command(canonical.id, artifact.id, 1),
+    )
+    assert stale_attempt.committed is False and stale_attempt.reason == "claim_not_current"
+    assert fresh_switch is not None and fresh_switch.committed is True
+    final = (await repository.artifacts(canonical.id))[0]
+    assert final.selected == 1, "the newer authority's candidate stands; the stale claim wrote nothing"

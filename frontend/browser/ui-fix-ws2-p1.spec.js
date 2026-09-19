@@ -155,8 +155,8 @@ async function openDownloads(page) {
 
 const rowCheckbox = (page, id) => page.locator(`.t-chk[data-id="${id}"]`);
 const row = (page, id) => page.locator(`.dp-downloads-detail-row[data-torrent-id="${id}"]`);
-const accept = page => page.locator('[data-confirm-accept]');
-const cancel = page => page.locator('[data-confirm-cancel]');
+const accept = page => page.locator('[data-modal-accept]');
+const cancel = page => page.locator('[data-modal-cancel]');
 
 async function selectedIds(page) {
   // Observable checkbox-checked state, not private module state: syncDownloadSelectionUi()
@@ -181,7 +181,7 @@ async function refreshDownloads(page) {
 }
 
 async function expectModalInsideViewport(page) {
-  const box = await page.locator('.dp-settings-confirm-dialog').boundingBox();
+  const box = await page.locator('.dp-modal-dialog').boundingBox();
   const viewport = page.viewportSize();
   expect(box).not.toBeNull();
   expect(viewport).not.toBeNull();
@@ -267,21 +267,21 @@ test('WS2-P1 bulk Remove uses the canonical app modal, restores focus, supports 
   const remove = page.locator('.dp-downloads-bulk-action--delete');
 
   await remove.click();
-  await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
   await expect(accept(page)).toHaveClass(/\bbtn-danger\b/);
   await expect(accept(page)).toHaveText('Remove');
   await expect(cancel(page)).toHaveText('Cancel');
   await expectModalInsideViewport(page);
   await cancel(page).click();
-  await expect(page.locator('.dp-settings-confirm-overlay')).toHaveCount(0);
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
   await expect(remove).toBeFocused();
   expect(fixture.snapshot().requests.bulk).toEqual([]);
 
   await remove.click();
-  await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
   await expect(cancel(page)).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.dp-settings-confirm-overlay')).toHaveCount(0);
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
   await expect(remove).toBeFocused();
 
   await page.locator('#theme-toggle').click();
@@ -302,7 +302,7 @@ test('WS2-P1 bulk Remove captures its stable targets once, rejects double-confir
 
   await rowCheckbox(page, 1).check();
   await page.locator('.dp-downloads-bulk-action--delete').click();
-  await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
   await page.evaluate(() => {
     const alpha = document.querySelector('.t-chk[data-id="1"]');
     const beta = document.querySelector('.t-chk[data-id="2"]');
@@ -355,25 +355,221 @@ test('WS2-P1 single-row Remove uses the same canonical modal and existing DELETE
   await openDownloads(page);
 
   const remove = row(page, 1).locator('button.btn-danger');
-  // Cancelling the confirmation restores focus to the row's own control, so no Downloads refresh may
-  // replace that control while the dialog is open. Park the owner's next refresh read: once it is
-  // parked the DOM is settled (earlier refreshes have rendered) and cannot change until released.
-  const listReads = fixture.holdListReads();
-  try {
-    await page.evaluate(() => { loadTorrents(); });
-    await listReads.parked;
-    await remove.click();
-    await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
-    await cancel(page).click();
-    expect(fixture.snapshot().requests.singleDelete).toEqual([]);
-    await expect(remove).toBeFocused();
-  } finally {
-    listReads.release();
-  }
+  // No refresh is parked: the dialog owner restores focus correctly whether or not a list refresh
+  // replaced the row control while the dialog was open (see the dedicated refresh-landing tests below).
+  await remove.click();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
+  await cancel(page).click();
+  expect(fixture.snapshot().requests.singleDelete).toEqual([]);
+  await expect(remove).toBeFocused();
 
   await remove.click();
   await accept(page).click();
   await expect.poll(() => fixture.snapshot().requests.singleDelete).toEqual([1]);
   await expect(row(page, 1)).toHaveCount(0);
   expect(dialogs).toEqual([]);
+});
+
+// ── Canonical modal focus lifecycle (Canonical Release Remediation, Workstream A) ──────────────────────
+// No list reads are parked below: a refresh is allowed to land, and replace the row controls, while the
+// dialog is open. The focus contract belongs to the dialog owner's settlement boundary, not to timing luck.
+
+test('WS2-P1 Cancel and Escape restore focus to the replacement of the initiating row control when a refresh lands while the dialog is open', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta')]);
+  await page.goto('/');
+  await openDownloads(page);
+
+  const remove = row(page, 2).locator('button.btn-danger');
+  for (const dismiss of ['cancel', 'escape']) {
+    await remove.click();
+    await expect(page.locator('.dp-modal-overlay')).toBeVisible();
+    await expect(cancel(page)).toBeFocused();
+
+    const original = await remove.elementHandle();
+    await page.evaluate(() => loadTorrents());
+    expect(await original.evaluate(node => node.isConnected)).toBe(false);
+
+    if (dismiss === 'cancel') await cancel(page).click();
+    else await page.keyboard.press('Escape');
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+    await expect(remove).toBeFocused();
+    // The equivalent control of the SAME row -- never a different row's destructive button.
+    expect(await page.evaluate(() => document.activeElement.closest('[data-torrent-id]')?.dataset.torrentId)).toBe('2');
+    expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
+  }
+});
+
+test('WS2-P1 when the initiating row disappears while the dialog is open, Cancel lands on a surviving control, never <body>', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta')]);
+  await page.goto('/');
+  await openDownloads(page);
+
+  await row(page, 1).locator('button.btn-danger').click();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
+  fixture.setDownloads([transfer(2, 'Beta')]);
+  await page.evaluate(() => loadTorrents());
+  await expect(row(page, 1)).toHaveCount(0);
+
+  await cancel(page).click();
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+  const landed = await page.evaluate(() => ({
+    onBody: document.activeElement === document.body,
+    insideDownloads: !!document.activeElement.closest('#view-torrents'),
+  }));
+  expect(landed).toEqual({onBody: false, insideDownloads: true});
+});
+
+test('WS2-P1 a confirmed removal leaves focus on a deliberate surviving control; a failed removal keeps the retry control focused', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta'), transfer(3, 'Gamma')]);
+  await page.goto('/');
+  await openDownloads(page);
+  const search = page.locator('#torrent-search');
+
+  // Single-row success: the row is gone; focus moves to the list toolbar, which no refresh replaces.
+  await row(page, 1).locator('button.btn-danger').click();
+  await accept(page).click();
+  await expect(row(page, 1)).toHaveCount(0);
+  await expect(search).toBeFocused();
+
+  // Single-row failure: the row and its control survive; focus stays on the retryable control. The owner's
+  // unrelated background list refresh is parked for this interaction (the failure path performs no list read),
+  // because a refresh replaces every row control and is not part of the dialog's focus contract.
+  fixture.setSingleFailures([2]);
+  const listReads = fixture.holdListReads();
+  try {
+    await page.evaluate(() => { loadTorrents(); });
+    await listReads.parked;
+    await row(page, 2).locator('button.btn-danger').click();
+    await accept(page).click();
+    await expect.poll(() => fixture.snapshot().requests.singleDelete).toEqual([1, 2]);
+    await expect(row(page, 2).locator('button.btn-danger')).toBeEnabled();
+    await expect(row(page, 2).locator('button.btn-danger')).toBeFocused();
+  } finally {
+    listReads.release();
+  }
+
+  // Bulk success: the bulk bar leaves with the selection; focus lands on the toolbar search field.
+  await rowCheckbox(page, 3).check();
+  await page.locator('.dp-downloads-bulk-action--delete').click();
+  await accept(page).click();
+  await expect(row(page, 3)).toHaveCount(0);
+  await expect(search).toBeFocused();
+
+  // Nothing survives: the same stable toolbar control holds focus.
+  fixture.setSingleFailures([]);
+  await row(page, 2).locator('button.btn-danger').click();
+  await accept(page).click();
+  await expect(page.locator('#t-tbody .dp-downloads-detail-row')).toHaveCount(0);
+  await expect(search).toBeFocused();
+});
+
+test('WS2-P1 repeated open/cancel/confirm cycles settle exactly once, never leak a prior target, and always clear the body modal state', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta')]);
+  await page.goto('/');
+  await openDownloads(page);
+
+  // Open from row 1, dismiss; open from row 2, dismiss: each restores ITS OWN initiator, not the earlier one.
+  for (const id of [1, 2, 1, 2]) {
+    const remove = row(page, id).locator('button.btn-danger');
+    await remove.click();
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+    await expect(remove).toBeFocused();
+    expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
+  }
+  expect(fixture.snapshot().requests.singleDelete).toEqual([]);
+
+  // A confirm triple-click settles once: exactly one DELETE.
+  await row(page, 1).locator('button.btn-danger').click();
+  await accept(page).evaluate(button => { button.click(); button.click(); button.click(); });
+  await expect.poll(() => fixture.snapshot().requests.singleDelete).toEqual([1]);
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+});
+
+test('WS2-P1 Escape and Tab stay owned by the dialog even after focus leaves it, and nested dialogs never clear each other\'s body state', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await installDownloadsFixture(page, [transfer(1, 'Alpha')]);
+  await page.goto('/');
+  await openDownloads(page);
+
+  await row(page, 1).locator('button.btn-danger').click();
+  const overlay = page.locator('.dp-modal-overlay');
+  await expect(overlay).toBeVisible();
+
+  // Focus escapes to <body> (backdrop click): Tab is pulled back into the dialog, and Escape still settles it.
+  await overlay.click({position: {x: 4, y: 4}});
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => !!document.activeElement.closest('.dp-modal-dialog'))).toBe(true);
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => !!document.activeElement.closest('.dp-modal-dialog'))).toBe(true);
+
+  // A second dialog opened from inside the first: closing the top one keeps the body lock for the one beneath.
+  const nested = await page.evaluate(() => {
+    window.__nestedResult = 'pending';
+    window.DPSettingsModal.confirm({title: 'Nested', message: 'Nested dialog', tone: 'warning'})
+      .then(value => { window.__nestedResult = value; });
+    return document.querySelectorAll('.dp-modal-overlay').length;
+  });
+  expect(nested).toBe(2);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => window.__nestedResult)).toBe(false);
+  await expect(overlay).toHaveCount(1);
+  expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(overlay).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
+});
+
+test('WS2-P1 Settings destructive confirmation: Cancel restores the initiator, a failed operation keeps it focused, an accepted one lands on a surviving control', async ({ page }) => {
+  await isolateExternalFonts(page);
+  let failRevoke = false;
+  const revokes = [];
+  await page.route('**/api/auth/config', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({response, json: {...body, api_token_enabled: true, api_token_configured: true}});
+  });
+  await page.route('**/api/auth/api-token', async route => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    revokes.push(failRevoke ? 'failed' : 'revoked');
+    if (failRevoke) {
+      return route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'fixture revoke failure'})});
+    }
+    return route.fulfill({status: 200, contentType: 'application/json', body: '{}'});
+  });
+  await page.goto('/');
+  await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+  await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
+  await page.locator('.dp-settings-tabs .stab[data-tab="authentication"]').click();
+  const revoke = page.locator('button[data-action="clear-token"]');
+  await expect(revoke).toBeEnabled();
+
+  await revoke.click();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
+  await expect(page.locator('.dp-modal-dialog')).toHaveAttribute('role', 'alertdialog');
+  await cancel(page).click();
+  await expect(revoke).toBeFocused();
+  expect(revokes).toEqual([]);
+
+  failRevoke = true;
+  await revoke.click();
+  await accept(page).click();
+  await expect.poll(() => revokes).toEqual(['failed']);
+  await expect(revoke).toBeEnabled();
+  await expect(revoke).toBeFocused();
+
+  failRevoke = false;
+  await revoke.click();
+  await accept(page).click();
+  await expect.poll(() => revokes).toEqual(['failed', 'revoked']);
+  await expect(revoke).toBeDisabled();
+  await expect(page.locator('button[data-action="generate-token"]')).toBeFocused();
 });

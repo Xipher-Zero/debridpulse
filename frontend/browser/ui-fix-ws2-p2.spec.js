@@ -258,10 +258,10 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
 
   const remove = page.locator('.dp-downloads-bulk-action--delete');
   await remove.click();
-  await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
-  await expect(page.locator('[data-confirm-accept]')).toHaveClass(/\bbtn-danger\b/);
-  await expect(page.locator('[data-confirm-cancel]')).toHaveText('Cancel');
-  await page.locator('[data-confirm-cancel]').click();
+  await expect(page.locator('.dp-modal-overlay')).toBeVisible();
+  await expect(page.locator('[data-modal-accept]')).toHaveClass(/\bbtn-danger\b/);
+  await expect(page.locator('[data-modal-cancel]')).toHaveText('Cancel');
+  await page.locator('[data-modal-cancel]').click();
   await expect(alpha).toBeChecked();
   expect(fixture.snapshot().requests.bulk).toEqual([]);
 
@@ -276,7 +276,7 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
   });
   expect(await selectedIds(page)).toEqual([2]);
   await page.screenshot({path: 'test-results/checkpoint-ui-fix-ws2-p2-integrated-remove-light.png', fullPage: true});
-  await page.locator('[data-confirm-accept]').click();
+  await page.locator('[data-modal-accept]').click();
 
   await expect.poll(() => fixture.snapshot().requests.bulk.length).toBe(1);
   expect(fixture.snapshot().requests.bulk[0]).toEqual({ids: [1], action: 'delete'});

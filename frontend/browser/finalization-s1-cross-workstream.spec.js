@@ -107,7 +107,7 @@ test('storage warning and Browse modal remain truthful and usable together in da
     fullPage: true,
   });
 
-  await dialog.locator('[data-directory-cancel]').click();
+  await dialog.locator('[data-modal-cancel]').click();
   await expect(browse).toBeFocused();
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
@@ -118,7 +118,7 @@ test('storage warning and Browse modal remain truthful and usable together in da
   const geometry = await dialog.evaluate(node => {
     const rect = node.getBoundingClientRect();
     const list = node.querySelector('.dp-settings-directory-list');
-    const footer = node.querySelector('.dp-settings-confirm-footer');
+    const footer = node.querySelector('.dp-modal-footer');
     return {
       left: rect.left,
       right: rect.right,

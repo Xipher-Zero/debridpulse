@@ -448,6 +448,18 @@ async function loadTorrents() {
 loadTorrents = coalesceAsync(loadTorrents);
 
 // ── Row/bulk actions ─────────────────────────────────────────────────────
+// A confirmed removal re-renders the list, so the control that started it is gone or replaced. Once the
+// operation settles, focus goes to a deliberate surviving control and never stays on <body>: the retry
+// button after a failure, otherwise the list toolbar's search field. The successor is deliberately NOT a
+// row -- rows are replaced wholesale by every refresh (including the debounced capacity refresh that
+// follows a shrinking table), the toolbar is not. Focus the operator moved elsewhere in the meantime is
+// left alone.
+function settleRemovalFocus(button) {
+  const active = document.activeElement;
+  if (active && active !== document.body && active.isConnected) return;
+  const retry = button?.isConnected && !button.disabled && button.getClientRects().length ? button : null;
+  (retry || document.getElementById('torrent-search'))?.focus();
+}
 async function deleteT(id, eventObj, button) {
   eventObj?.stopPropagation();
   const confirmedIds = await confirmDownloadRemoval([id]);
@@ -460,7 +472,7 @@ async function deleteT(id, eventObj, button) {
     await loadTorrents();
     loadStats();
   } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
-  finally { setButtonPending(button, false); }
+  finally { setButtonPending(button, false); settleRemovalFocus(button); }
 }
 async function retryT(id, button) {
   setButtonPending(button, true, 'Retrying…');
@@ -505,6 +517,7 @@ async function bulkAction(action, button) {
   } catch (e) { toast(e.message, 'error'); }
   finally {
     setButtonPending(button, false);
+    if (action === 'delete') settleRemovalFocus(button);
     document.dispatchEvent(new CustomEvent('debridpulse:downloads-bulk-action-settled', {detail: {action}}));
   }
 }

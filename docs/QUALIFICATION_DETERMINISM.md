@@ -281,21 +281,20 @@ loss. A change that skips this preflight is incomplete regardless of green CI.
 
 There are no unresolved test-infrastructure findings: every qualification flake known when
 this workstream was frozen has been corrected at its oracle, which is why the registry has
-zero active entries. One **product** finding is carried, deliberately unfixed here.
+zero active entries.
 
-**Separate product corrective workstream — focus restoration across a background list refresh.**
-`DPSettingsModal.confirm` (`frontend/static/ui-settings-page.js`) restores focus to the
-element that was focused when the dialog opened, but only `if (previousFocus?.isConnected)`.
-Any Downloads refresh that lands while the dialog is open (measured-capacity refresh,
-SSE `torrent_updated`, the 15 s polling fallback) replaces the row controls, so cancelling
-the single-row Remove dialog leaves focus on `<body>`. Reproducer: open Downloads, click a
-row's Remove, and let the debounced capacity refresh render (about 120 ms after layout
-changes) before pressing Cancel; a `debridpulse:downloads-rendered` fires between the click
-and the cancel. This is a real product defect, not test nondeterminism, and it is **not
-fixed and not masked**: product behavior is unchanged. The WS2-P1 test now parks the owner's
-list reads for that interaction so it verifies the focus-return contract it owns
-deterministically; that does not claim the underlying behavior is correct when a refresh does
-land. It needs its own corrective workstream (and its own Gate 9).
+One **product** finding was carried here while it was deliberately left unfixed, and is now
+**resolved** by the Canonical Release Remediation: *focus restoration across a background list
+refresh.* The old confirmation dialog restored focus to the element that was focused when it
+opened only if that element was still connected, so a Downloads refresh that landed while the
+dialog was open (measured-capacity refresh, SSE `torrent_updated`, the 15 s polling fallback)
+replaced the row controls and cancelling left focus on `<body>`. The dialog shell now has one
+owner, `frontend/static/ui-settings-modal.js`, and restoration is resolved at its settlement
+boundary: the initiating control if it is still focusable, otherwise its equivalent replacement
+inside the nearest surviving ancestor, otherwise the first focusable control of the nearest
+surviving region. Focus is never parked on `<body>` and a detached control is never focused.
+The WS2-P1 tests no longer park the owner's list reads to avoid the defect; dedicated
+tests let a refresh land while the dialog is open and assert the restored target.
 
 ## 11. Reproducing locally
 

@@ -205,14 +205,14 @@ The primary supported configuration is available through **Settings**.
 
 The current qualified development tree exposes:
 
-- **AllDebrid** — enablement, API key, agent identity, and provider maintenance/rate-limit controls;
+- **AllDebrid** — enablement, API key, API request rate limit, provider poll and full-sync intervals, and upload-failure retry and delay controls;
 - **Direct Sources → HTTP & HTTPS** — one canonical enable control and no speculative protocol-specific tuning.
 
 Provider enablement is backend-owned configuration. `enabled`, `configured`, provider health, and current host availability are distinct facts.
 
 ### Authentication
 
-Authentication has its own Settings tab and is not configured in General.
+Authentication has its own Settings tab.
 
 DebridPulse supports four effective interactive states:
 
@@ -227,7 +227,7 @@ DebridPulse includes lockout protections: Password cannot be disabled in favor o
 
 See **[docs/authentication.md](docs/authentication.md)** for configuration examples, reverse-proxy/OIDC callback guidance, API authentication, credential lifecycle, and recovery behavior.
 
-### Download
+### Downloads
 
 Configure:
 
@@ -237,7 +237,7 @@ Configure:
 - DebridPulse download concurrency;
 - download concurrency, limits, and recovery behavior.
 
-### Extract
+### Extraction
 
 Configure optional archive extraction. DebridPulse enforces per-archive file-count, expanded-size, and compression-ratio limits. Every supported archive format is extracted into an isolated staging directory, validated, and committed to the download tree with no-clobber semantics.
 
@@ -245,13 +245,11 @@ Configure optional archive extraction. DebridPulse enforces per-archive file-cou
 
 Configure optional Discord lifecycle notifications.
 
-### Database
+### Data & Maintenance
 
 DebridPulse uses a single authoritative SQLite/WAL database. Configure its persistent path through `DB_PATH` or the container data mount.
 
-### Advanced
-
-Additional application and operational settings are available here.
+The **Data & Maintenance** tab configures scheduled backups (backup folder, interval, and retention), statistics snapshot and event-log retention, and the guarded **Reset Database** action. Reset stays locked until **Allow Database Reset** is enabled; with **Backup Database Before Reset** enabled, the reset is aborted if the backup fails.
 
 ---
 

@@ -5,6 +5,7 @@ STATIC = ROOT / "frontend" / "static"
 SETTINGS = STATIC / "ui-settings-page.js"
 STYLE = STATIC / "ui-settings-page.css"
 MODAL_STYLE = STATIC / "ui-modal-contract.css"
+MODAL = STATIC / "ui-settings-modal.js"
 
 
 def source(path: Path) -> str:
@@ -34,22 +35,23 @@ def test_settings_apply_rerenders_without_losing_viewport():
 
 def test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs():
     js = source(SETTINGS)
+    modal = source(MODAL)
     css = source(STYLE)
     modal_css = source(MODAL_STYLE)
-    assert "async function confirmAction" in js
-    assert 'role="alertdialog"' in js
-    assert 'aria-modal="true"' in js
-    assert "event.key === 'Escape'" in js
-    assert "event.key !== 'Tab'" in js
-    assert "previousFocus?.isConnected" in js
-    assert "cancel.focus()" in js
-    assert "window.confirm" not in js
-    assert "window.prompt" not in js
-    assert ".dp-settings-confirm-overlay" not in css
+    # The shell (role, focus trap, Escape, restoration) is owned by the canonical dialog module, not Settings.
+    assert "role: 'alertdialog'" in modal
+    assert 'aria-modal="true"' in modal
+    assert "event.key === 'Escape'" in modal
+    assert "event.key === 'Tab'" in modal
+    assert "resolveFocusTarget(origin)" in modal
+    assert "cancel.focus()" in modal
+    assert "window.confirm" not in js and "window.confirm" not in modal
+    assert "window.prompt" not in js and "window.prompt" not in modal
+    assert ".dp-modal-overlay" not in css
     assert "--dp-panel-surface" not in css
     assert "box-shadow: var(--dp-panel-shadow)" not in css
-    assert ".dp-settings-confirm-overlay" in modal_css
-    assert ".dp-settings-confirm-dialog" in modal_css
+    assert ".dp-modal-overlay" in modal_css
+    assert ".dp-modal-dialog" in modal_css
     assert 'data-tone="warning"' in modal_css
     assert 'data-tone="danger"' in modal_css
 
@@ -61,26 +63,26 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     password = block(js, "async function clearPassword", "async function setApiTokenEnabled")
     token = block(js, "async function clearToken", "async function copyToken")
 
-    assert "await confirmAction" in persist_auth
+    assert "await window.DPSettingsModal.confirm" in persist_auth
     assert "Continue to Open Mode" in persist_auth
     assert "!payload.confirm_open_mode" in persist_auth
     assert "if (!confirmed) return false;" in persist_auth
     assert persist_auth.index("if (!confirmed) return false;") < persist_auth.index("payload.confirm_open_mode = true")
 
-    assert "await confirmAction" in password
-    assert password.count("await confirmAction") == 1
+    assert "await window.DPSettingsModal.confirm" in password
+    assert password.count("await window.DPSettingsModal.confirm") == 1
     assert "entersOpenMode" in password
     assert "payload.confirm_open_mode = true" in password
     assert "if (!confirmed) return;" in password
     assert password.index("if (!confirmed) return;") < password.index("payload.auth_password_enabled = false")
 
-    assert "await confirmAction" in token
+    assert "await window.DPSettingsModal.confirm" in token
     assert "Revoke API token?" in token
     assert "Revoke Token" in token
     assert "if (!confirmed) return;" in token
     assert token.index("if (!confirmed) return;") < token.index("request('DELETE', '/auth/api-token'")
 
-    assert "await confirmAction" in wipe
+    assert "await window.DPSettingsModal.confirm" in wipe
     assert "typedPhrase: 'WIPE'" in wipe
     assert "Wipe Database" in wipe
     assert "if (!confirmed) return;" in wipe
@@ -88,11 +90,12 @@ def test_destructive_settings_actions_share_confirmation_primitive():
 
 
 def test_typed_confirmation_gates_destructive_action_until_exact_phrase():
-    js = source(SETTINGS)
-    confirm = block(js, "async function confirmAction", "function syncGlobalSettings")
-    assert "accept.disabled = true" in confirm
-    assert "accept.disabled = typedInput.value !== typedPhrase" in confirm
-    assert "event.key === 'Enter' && !accept.disabled" in confirm
+    confirm = block(source(MODAL), "function confirm(", "window.DPSettingsModal")
+    assert "acceptDisabled: !!typedPhrase" in confirm
+    assert "handle.setAcceptEnabled(typedInput.value === typedPhrase)" in confirm
+    # Enter in the typed field submits only once the accept action is enabled (shell-owned key handling).
+    assert "event.key === 'Enter'" in source(MODAL)
+    assert "!entry.accept.disabled" in source(MODAL)
 
 
 def test_settings_action_rerenders_use_viewport_preserving_refresh():

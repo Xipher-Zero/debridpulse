@@ -20,10 +20,15 @@ call ``activate_candidate`` below. It owns:
 
 This module owns no claim/fence lifecycle itself -- claim acquisition and
 completion are the caller's responsibility (Section 11), exactly like every
-other recovery mutation in this codebase. ``activate_candidate`` never raises
-on a caller-facing "was the switch accepted" question; it always returns an
-``ActivationResult`` so a caller can implement Section 26's truthful
-acknowledgement contract without special-casing exceptions.
+other recovery mutation in this codebase. It does VERIFY the caller's claim,
+as every productive recovery mutation does: the claim must still be current
+before any side effect (writer retirement, partial-file retirement) and the
+durable commit is atomically fenced by the same token/generation. A
+superseded or expired claim therefore cannot switch a candidate.
+``activate_candidate`` never raises on a caller-facing "was the switch
+accepted" question; it always returns an ``ActivationResult`` so a caller can
+implement Section 26's truthful acknowledgement contract without
+special-casing exceptions.
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ from transfers.errors import TransferError
 from transfers.filesystem import retire_partial
 from transfers.mirrors import reported_sizes_compatible
 from transfers.models import ExecutionState, TransferCandidate
+from transfers.recovery_execution import RecoveryClaim
 
 _TERMINAL_EXECUTION_STATES = frozenset({
     ExecutionState.FAILED, ExecutionState.ABSENT, ExecutionState.CANCELLED, ExecutionState.SUCCEEDED,
@@ -105,7 +111,7 @@ def resolve_candidate_index(artifact, candidate: TransferCandidate) -> int | Non
 
 
 async def activate_candidate(
-    engine, artifact, target_index: int, *, retry_at: float, error=None, claim=None,
+    engine, artifact, target_index: int, *, retry_at: float, claim: RecoveryClaim, error=None,
 ) -> ActivationResult:
     """Activate ``artifact.candidates[target_index]`` as the selected candidate.
 
@@ -114,27 +120,32 @@ async def activate_candidate(
     retirement dance and again immediately before commit, so a concurrent
     mutation is detected rather than silently overwritten.
 
-    ``claim`` (DP 1.0.12 recovery leveling, Section 11): the caller's ALREADY-
-    HELD ``transfers.recovery_execution.RecoveryClaim``, when it has one. This
-    function never acquires or finishes a claim itself -- that stays the
-    caller's responsibility, exactly as before. Automatic recovery
-    (``transfers.convergence_engine.TransferEngine._apply_recovery_decision``,
-    already running inside the claim ``recover_artifact`` acquired for its
-    real trigger -- AUTO_RETRY, EXECUTOR_RECOVERY, PROVIDER_RECOVERY,
-    STARTUP_RECONCILE, ...) passes that SAME claim through here so this
-    activation is correctly attributed to its real recovery authority in
-    provenance, rather than borrowing the operator's USER_CANDIDATE_SWITCH
-    identity merely because both paths call this one function. The manual
-    path (``convergence_engine.TransferEngine.activate_candidate_command``)
-    legitimately acquires its own fresh USER_CANDIDATE_SWITCH claim (it is a
-    new top-level command, not already inside one) and passes that instead.
-    ``claim=None`` covers the lower, pre-Phase-3 ``transfers.engine.TransferEngine``
-    stack, which has no claim system at all; provenance falls back to a
-    generic automatic authority there.
+    ``claim`` (DP 1.0.12 recovery leveling, Section 11) is REQUIRED: the
+    caller's ALREADY-HELD ``transfers.recovery_execution.RecoveryClaim``.
+    Every candidate activation is attributable to exactly one real recovery
+    authority and generation -- there is no claim-less mode. This function
+    never acquires or finishes a claim itself; that stays the caller's
+    responsibility, exactly like every other recovery mutation. Automatic
+    recovery (``transfers.convergence_engine.TransferEngine
+    ._apply_recovery_decision``, already running inside the claim
+    ``recover_artifact`` acquired for its real trigger -- AUTO_RETRY,
+    EXECUTOR_RECOVERY, PROVIDER_RECOVERY, STARTUP_RECONCILE, USER_RETRY, or
+    RESUME) passes that SAME claim through, so the activation is attributed
+    to its real recovery authority in provenance rather than borrowing the
+    operator's identity. The manual path
+    (``convergence_engine.TransferEngine.activate_candidate_command``)
+    acquires its own fresh USER_CANDIDATE_SWITCH claim -- it is a new
+    top-level command, not already inside one -- and passes that instead.
+
+    Anything that is not a real ``RecoveryClaim`` is a programming error and
+    raises ``TypeError`` before any state is read or mutated; it is never
+    downgraded to a generic authority.
     """
+    if not isinstance(claim, RecoveryClaim):
+        raise TypeError("activate_candidate requires the caller's real RecoveryClaim")
     transfer_id, artifact_id = artifact.transfer_id, artifact.id
-    authority = claim.trigger.value if claim is not None else "automatic"
-    recovery_generation = claim.generation if claim is not None else None
+    authority = claim.trigger.value
+    recovery_generation = claim.generation
 
     async def _record(result: ActivationResult, *, partial_decision: str, admission_decision: str, old_execution_id):
         # Section 26 applies to this write too: it happens strictly after
@@ -152,6 +163,14 @@ async def activate_candidate(
         except Exception:
             return replace(result, provenance_recorded=False)
         return result
+
+    # The claim is authority, not just provenance: a claim that was superseded by a newer generation, or whose
+    # lease expired, must not retire a writer, retire partial bytes, or switch a candidate.
+    if not await engine.repository.recovery_claim_current(claim, now=engine.clock()):
+        return await _record(
+            ActivationResult(False, "claim_not_current", transfer_id=transfer_id, artifact_id=artifact_id),
+            partial_decision="not_applicable", admission_decision="not_applicable", old_execution_id=None,
+        )
 
     if (
         target_index is None
@@ -340,6 +359,7 @@ async def activate_candidate(
             candidate_switched=True, clear_quiescence=True,
             continuation_reservation_until=continuation_reservation_until,
             activation_provenance=activation_detail,
+            claim=claim,
         )
     except Exception:
         # The provenance write is now part of THIS SAME transaction: if it

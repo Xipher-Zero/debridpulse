@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -12,6 +13,13 @@ AUTH_BOOTSTRAP_JS = STATIC / "auth.js"
 APP_JS = STATIC / "app.js"
 INDEX_HTML = STATIC / "index.html"
 TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
+MODAL_JS = STATIC / "ui-settings-modal.js"
+DIRECTORY_PICKER_JS = STATIC / "ui-settings-directory-picker.js"
+DOWNLOADS_JS = STATIC / "ui-downloads.js"
+AUTH_REQUIRED_JS = STATIC / "ui-auth-required.js"
+MODAL_CSS = STATIC / "ui-modal-contract.css"
+DIRECTORY_BROWSER_CSS = STATIC / "ui-settings-directory-browser.css"
+PROVIDER_STATUS_JS = STATIC / "ui-provider-status.js"
 
 
 def source(path: Path) -> str:
@@ -424,3 +432,134 @@ def test_static_settings_dom_is_never_a_runtime_dependency():
     assert "view.innerHTML =" in runtime
     assert "getElementById('settings-tabs')" not in runtime
     assert "getElementById('settings-form')" not in runtime
+
+
+
+# ---------------------------------------------------------------------------
+# Canonical modal ownership (Canonical Release Remediation, Workstream A).
+#
+# One neutral application-dialog owner (ui-settings-modal.js) owns the shell,
+# focus trap, Escape, focus restoration, settlement and body scroll lock.
+# Confirmation and directory browsing are direct clients. These tests prove the
+# ABSENCE of every competitor (old owner, post-render mutation, wrappers,
+# observers, fallbacks, duplicate traps) as well as the presence of the owner.
+# ---------------------------------------------------------------------------
+
+MODAL_CONSUMERS = (SETTINGS_PAGE_JS, DIRECTORY_PICKER_JS, DOWNLOADS_JS)
+# Shell material is shared, by CSS class only, with the separately-owned
+# authentication-required dialog (its own singleton lifecycle; not a DPSettingsModal client).
+SHELL_CLASS_JS_ALLOWLIST = {MODAL_JS.name, AUTH_REQUIRED_JS.name}
+
+
+def _static_js() -> list[Path]:
+    return sorted(STATIC.glob("*.js"))
+
+
+def test_modal_shell_has_exactly_one_owner_and_one_global_assignment():
+    assert MODAL_JS.exists(), "the canonical modal owner must exist"
+    assignments = []
+    for path in _static_js():
+        text = source(path)
+        for pattern in (
+            r"window\s*\.\s*DPSettingsModal\s*=(?!=)",
+            r"window\s*\[\s*['\"]DPSettingsModal['\"]\s*\]\s*=(?!=)",
+            r"(?<![\w.])DPSettingsModal\s*=(?!=)",
+            r"defineProperty\(\s*window\s*,\s*['\"]DPSettingsModal['\"]",
+            r"Object\.assign\(\s*window\.DPSettingsModal",
+        ):
+            assignments.extend((path.name, pattern) for _ in re.finditer(pattern, text))
+    assert [name for name, _ in assignments] == [MODAL_JS.name], assignments
+
+    owner = source(MODAL_JS)
+    exported = re.search(r"window\.DPSettingsModal = Object\.freeze\(\{([^}]*)\}\);", owner)
+    assert exported, "the canonical global must be one frozen API"
+    assert {name.strip() for name in exported.group(1).split(",") if name.strip()} == {"open", "confirm"}
+    # No other read/rebind of the global inside the owner (no self-wrapping, no late replacement).
+    assert owner.count("DPSettingsModal") == 1
+
+
+def test_old_confirm_owner_is_physically_removed():
+    for path in _static_js():
+        assert "confirmAction" not in source(path), path.name
+    settings = source(SETTINGS_PAGE_JS)
+    assert "createElement('div')" not in settings.split("function syncGlobalSettings")[0]
+    assert "overlay" not in settings.lower().replace("overlaid", "")
+    assert "dp-settings-confirm" not in "".join(source(p) for p in [*_static_js(), *STATIC.glob("*.css"), INDEX_HTML])
+
+
+def test_modal_shell_markup_and_traps_live_only_in_the_canonical_owner():
+    shell_tokens = ("dp-modal-overlay", "dp-modal-dialog", "dp-modal-header", "dp-modal-footer",
+                    'role="alertdialog"', "aria-modal", "data-modal-cancel", "data-modal-accept")
+    for path in MODAL_CONSUMERS:
+        text = source(path)
+        for token in shell_tokens:
+            assert token not in text, f"{path.name} must not carry shell markup: {token}"
+        assert "'Tab'" not in text and '"Tab"' not in text, f"{path.name} must not own a focus trap"
+    for path in (SETTINGS_PAGE_JS, DIRECTORY_PICKER_JS):
+        assert "'Escape'" not in source(path), f"{path.name} must not own modal Escape handling"
+    for path in _static_js():
+        if path.name in SHELL_CLASS_JS_ALLOWLIST:
+            continue
+        assert "dp-modal-overlay" not in source(path), path.name
+
+    owner = source(MODAL_JS)
+    assert owner.count("'Escape'") == 1 and owner.count("'Tab'") == 1, "one Escape owner and one focus-trap owner"
+    assert owner.count("addEventListener('keydown'") == 1 + owner.count("typedInput.addEventListener('keydown'")
+
+
+def test_directory_picker_is_a_first_class_client_not_a_post_render_mutator():
+    picker = source(DIRECTORY_PICKER_JS)
+    assert "DPSettingsModal.open(" in picker
+    assert ".confirm(" not in picker
+    for forbidden in (
+        "overlay", "dp-modal", "data-modal", "dp-settings-confirm", "alertdialog",
+        "setAttribute('role'", ".removeAttribute(", "dataset.directoryCancel", "dataset.directoryConfirm",
+        "classList.add('dp-settings-directory-dialog')", "keydown",
+    ):
+        assert forbidden not in picker, forbidden
+    # The body slot is only ever the parameter the owner hands to this client's own mount callback: it is
+    # filled once, at creation, and never obtained by querying (and rewriting) a rendered dialog.
+    mount = picker.index("mount(body)")
+    assert picker.count("body.innerHTML") == 1
+    assert mount < picker.index("body.innerHTML") < picker.index("view.up.addEventListener('click'")
+    # The picker asks the shell for state; it never reaches into the shell DOM.
+    assert not re.search(r"document\.querySelector(All)?\(\s*['\"][^'\"]*(dialog|modal|overlay|confirm)", picker)
+
+
+def test_modal_owner_and_consumers_have_no_repair_patch_wrapper_or_timer_patterns():
+    owner = source(MODAL_JS)
+    for path in (MODAL_JS, *MODAL_CONSUMERS):
+        text = source(path)
+        assert "MutationObserver" not in text, path.name
+        assert not re.search(r"\.prototype\.\w+\s*=(?!=)", text), path.name
+        for forbidden in ("Object.setPrototypeOf", "__proto__", "Object.defineProperty("):
+            assert forbidden not in text, (path.name, forbidden)
+    # Focus/lifecycle correctness is an explicit lifecycle boundary, never timer convergence.
+    for forbidden in ("setTimeout", "setInterval", "requestAnimationFrame", "queueMicrotask"):
+        assert forbidden not in owner, forbidden
+    # Consumers only read the global; nobody wraps or saves it.
+    for path in MODAL_CONSUMERS:
+        assert not re.search(r"=\s*window\.DPSettingsModal\.(open|confirm)\s*;", source(path)), path.name
+
+
+def test_modal_owner_is_loaded_directly_and_before_every_consumer():
+    html = source(INDEX_HTML)
+    tag = re.findall(r'<script src="/ui-settings-modal\.js\?v=\d+" defer></script>', html)
+    assert len(tag) == 1, "the canonical modal owner is a direct <script>, exactly once"
+    position = html.index("/ui-settings-modal.js")
+    for consumer in ("/ui-downloads.js", "/ui-settings-page.js", "/ui-settings-directory-picker.js"):
+        assert position < html.index(consumer), consumer
+    assert "ui-settings-modal" not in source(PROVIDER_STATUS_JS), "not a lazily-loaded presentation owner"
+    assert "ui-settings-modal" not in source(PRESENTATION_LOADER_JS) if PRESENTATION_LOADER_JS.exists() else True
+
+
+def test_modal_css_is_one_neutral_contract_that_directory_browsing_extends():
+    modal_css = source(MODAL_CSS)
+    for selector in (".dp-modal-overlay", ".dp-modal-dialog", ".dp-modal-header", ".dp-modal-title",
+                     ".dp-modal-body", ".dp-modal-footer", "body.dp-modal-open"):
+        assert selector in modal_css, selector
+    directory_css = source(DIRECTORY_BROWSER_CSS)
+    assert "dp-settings-confirm" not in directory_css
+    assert ".dp-modal-header" in directory_css and ".dp-modal-footer" in directory_css
+    assert "dp-settings-confirm" not in modal_css
+    assert "dp-settings-confirm" not in source(STATIC / "ui-auth-required.css")

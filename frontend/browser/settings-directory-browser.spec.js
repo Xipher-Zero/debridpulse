@@ -177,7 +177,7 @@ test('Browse is built-in only and preserves backend path, ordering, capacity, ro
   await dialog.locator('[data-directory-up]').click();
   await expect(dialog.locator('[data-directory-current-path]')).toHaveText('/');
   await expect(dialog.locator('[data-directory-up]')).toBeDisabled();
-  await expect(dialog.locator('[data-directory-confirm]')).toBeDisabled();
+  await expect(dialog.locator('[data-modal-accept]')).toBeDisabled();
   await expect(dialog.locator('[data-directory-capacity]')).toHaveText('Capacity unavailable');
 });
 
@@ -197,7 +197,7 @@ test('invalid initial path falls back without repairing the field and Cancel/Esc
   await expect(field).toHaveValue('/missing/or/unavailable');
   expect(requests.slice(0, 2)).toEqual(['/missing/or/unavailable', null]);
 
-  await dialog.locator('[data-directory-cancel]').click();
+  await dialog.locator('[data-modal-cancel]').click();
   await expect(dialog).toHaveCount(0);
   await expect(field).toHaveValue('/missing/or/unavailable');
   await expect(browse).toBeFocused();
@@ -249,7 +249,7 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   const dialog = directoryDialog(page);
   await dialog.locator('[data-directory-row][data-path="/download/Alpha"]').click();
   await expect(dialog.locator('[data-directory-current-path]')).toHaveText('/download/Alpha');
-  await dialog.locator('[data-directory-confirm]').click();
+  await dialog.locator('[data-modal-accept]').click();
 
   await expect(dialog).toHaveCount(0);
   await expect(field).toHaveValue('/download/Alpha');
@@ -269,7 +269,7 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   await field.fill('/download');
   await browse.click();
   await directoryDialog(page).locator('[data-directory-row][data-path="/download/Alpha"]').click();
-  await directoryDialog(page).locator('[data-directory-confirm]').click();
+  await directoryDialog(page).locator('[data-modal-accept]').click();
   rejectSave = true;
   await save.click();
   await expect.poll(() => putCount).toBe(2);
@@ -347,7 +347,7 @@ test('Backup Folder shares the same modal/runtime and endpoint, with backup purp
   // Every request for this field carries purpose=backup, never plain/download.
   expect(requests.every(r => r.purpose === 'backup')).toBe(true);
 
-  await dialog.locator('[data-directory-confirm]').click();
+  await dialog.locator('[data-modal-accept]').click();
   await expect(dialog).toHaveCount(0);
   await expect(field).toHaveValue('/backups');
   expect(putCount).toBe(0); // Confirm never calls Save itself.
@@ -361,7 +361,7 @@ test('Backup Folder shares the same modal/runtime and endpoint, with backup purp
   await field.fill('/manually-typed-path');
   await browse.click();
   await expect(directoryDialog(page)).toBeVisible();
-  await page.locator('[data-confirm-cancel]').click();
+  await page.locator('[data-modal-cancel]').click();
   await expect(directoryDialog(page)).toHaveCount(0);
   await expect(field).toHaveValue('/manually-typed-path');
 
@@ -414,7 +414,7 @@ test('directory modal traps/restores focus and remains usable in dark, light, an
   expect(await page.evaluate(() => document.querySelector('.dp-settings-directory-dialog').contains(document.activeElement))).toBe(true);
 
   await page.screenshot({ path: 'test-results/checkpoint-settings-directory-browser-dark-desktop.png', fullPage: true });
-  await dialog.locator('[data-directory-cancel]').click();
+  await dialog.locator('[data-modal-cancel]').click();
   await expect(browse).toBeFocused();
 
   await page.locator('#theme-toggle').click();
@@ -426,7 +426,7 @@ test('directory modal traps/restores focus and remains usable in dark, light, an
   const geometry = await dialog.evaluate(node => {
     const rect = node.getBoundingClientRect();
     const list = node.querySelector('.dp-settings-directory-list');
-    const footer = node.querySelector('.dp-settings-confirm-footer');
+    const footer = node.querySelector('.dp-modal-footer');
     return {
       left: rect.left,
       right: rect.right,
@@ -444,4 +444,164 @@ test('directory modal traps/restores focus and remains usable in dark, light, an
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
   expect(geometry.footerVisible).toBe(true);
   await page.screenshot({ path: 'test-results/checkpoint-settings-directory-browser-light-narrow.png', fullPage: true });
+});
+
+// ── Canonical modal lifecycle: directory requests race dialog close (Canonical Release Remediation) ────
+
+async function installGatedDirectoryFixture(page) {
+  const holds = new Map();
+  const requests = [];
+  await page.route('**/api/settings/directories*', async route => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.has('path') ? url.searchParams.get('path') : null;
+    requests.push(path);
+    const hold = holds.get(path);
+    if (hold) {
+      holds.delete(path);
+      hold.markArrived();
+      await hold.gate;
+    }
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(directoryResponse(path || '/download')),
+      });
+    } catch (_) {
+      // The page aborted the request (the dialog closed): a late fulfil has nowhere to go.
+    }
+    if (hold) hold.markSettled();
+  });
+  return {
+    requests,
+    // Park the next request for `path` until release(); `arrived` resolves once it is parked and
+    // `settled` once the (possibly late) response has been delivered or dropped.
+    hold(path) {
+      let release;
+      let markArrived;
+      let markSettled;
+      const hold = {
+        gate: new Promise(resolve => { release = resolve; }),
+        arrived: new Promise(resolve => { markArrived = resolve; }),
+        settled: new Promise(resolve => { markSettled = resolve; }),
+        markArrived: () => markArrived(),
+        markSettled: () => markSettled(),
+      };
+      holds.set(path, hold);
+      return {arrived: hold.arrived, settled: hold.settled, release: () => release()};
+    },
+  };
+}
+
+function watchPageErrors(page) {
+  const errors = [];
+  page.on('pageerror', error => errors.push(String(error)));
+  return errors;
+}
+
+const currentPath = dialog => dialog.locator('[data-directory-current-path]');
+
+test('a directory response that arrives after the dialog closed cannot mutate the field, the DOM, or the page', async ({ page }) => {
+  const errors = watchPageErrors(page);
+  const fixture = await installGatedDirectoryFixture(page);
+  await openDownloadsSettings(page);
+  await builtinField(page).fill('/download');
+  await browseButton(page).click();
+  const dialog = directoryDialog(page);
+  await expect(currentPath(dialog)).toHaveText('/download');
+
+  const held = fixture.hold('/download/Alpha');
+  await dialog.locator('[data-directory-row][data-path="/download/Alpha"]').click();
+  await held.arrived;
+  await page.keyboard.press('Escape');
+  await expect(directoryDialog(page)).toHaveCount(0);
+  await expect(browseButton(page)).toBeFocused();
+
+  held.release();
+  await held.settled;
+  await expect(directoryDialog(page)).toHaveCount(0);
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
+  await expect(builtinField(page)).toHaveValue('/download');
+  expect(errors).toEqual([]);
+});
+
+test('a stale response from a closed dialog can never mutate, or be accepted into, a newer dialog', async ({ page }) => {
+  const errors = watchPageErrors(page);
+  const fixture = await installGatedDirectoryFixture(page);
+  await openDownloadsSettings(page);
+  await builtinField(page).fill('/download');
+  await browseButton(page).click();
+  let dialog = directoryDialog(page);
+  await expect(currentPath(dialog)).toHaveText('/download');
+
+  const held = fixture.hold('/download/Alpha');
+  await dialog.locator('[data-directory-row][data-path="/download/Alpha"]').click();
+  await held.arrived;
+  await page.keyboard.press('Escape');
+  await expect(directoryDialog(page)).toHaveCount(0);
+
+  // A newer dialog opens and loads its own state while the old request is still parked.
+  await browseButton(page).click();
+  dialog = directoryDialog(page);
+  await expect(currentPath(dialog)).toHaveText('/download');
+  held.release();
+  await held.settled;
+
+  await expect(currentPath(dialog)).toHaveText('/download');
+  await expect(dialog.locator('[data-modal-accept]')).toBeEnabled();
+  await dialog.locator('[data-modal-accept]').click();
+  await expect(builtinField(page)).toHaveValue('/download');
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('repeated open/cancel cycles settle once each, restore Browse every time, and Escape works after focus leaves the dialog', async ({ page }) => {
+  const fixture = await installGatedDirectoryFixture(page);
+  await openDownloadsSettings(page);
+  await builtinField(page).fill('/download');
+  const browse = browseButton(page);
+
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    await browse.click();
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(1);
+    await expect(currentPath(directoryDialog(page))).toHaveText('/download');
+    await expect(directoryDialog(page).locator('[data-modal-cancel]')).toBeFocused();
+    if (cycle === 1) {
+      // Focus leaves the dialog (backdrop click): Escape must still be owned by the dialog.
+      await page.locator('.dp-modal-overlay').click({position: {x: 4, y: 4}});
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+      await page.keyboard.press('Escape');
+    } else {
+      await directoryDialog(page).locator('[data-modal-cancel]').click();
+    }
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+    await expect(browse).toBeFocused();
+    expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
+  }
+  expect(fixture.requests).toEqual(['/download', '/download', '/download']);
+  await expect(builtinField(page)).toHaveValue('/download');
+});
+
+test('the directory browser is a direct client of the dialog owner: its own dialog, no confirmation shell to mutate', async ({ page }) => {
+  await installGatedDirectoryFixture(page);
+  await openDownloadsSettings(page);
+  await builtinField(page).fill('/download');
+  await browseButton(page).click();
+  const dialog = directoryDialog(page);
+  await expect(dialog).toBeVisible();
+  const shell = await dialog.evaluate(node => ({
+    role: node.getAttribute('role'),
+    describedBy: node.getAttribute('aria-describedby'),
+    tone: node.getAttribute('data-tone'),
+    labelled: !!document.getElementById(node.getAttribute('aria-labelledby')),
+    bodyIsSlot: node.querySelector(':scope > .dp-modal-body')?.classList.contains('dp-settings-directory-body'),
+    confirmMessage: !!node.querySelector('.dp-modal-message, .dp-modal-typed'),
+    dialogs: document.querySelectorAll('.dp-modal-dialog').length,
+  }));
+  expect(shell).toEqual({
+    role: 'dialog', describedBy: null, tone: null, labelled: true,
+    bodyIsSlot: true, confirmMessage: false, dialogs: 1,
+  });
+  await expect(dialog.locator('[data-modal-accept]')).toHaveText('Use This Folder');
 });

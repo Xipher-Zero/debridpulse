@@ -358,3 +358,35 @@ def test_detector_flags_replacement_stacking_and_unregistered_layers():
     assert "stacked: 2 stacked overrides" in problems
     assert "wrapped: unregistered specialization" in problems
     assert "hook: implements an unregistered abstract hook" in problems
+
+
+def test_lower_engine_stack_owns_no_candidate_activation():
+    """Workstream B: candidate activation has exactly one command owner
+    (``convergence_engine.TransferEngine``) and one mutation
+    (``candidate_activation.activate_candidate``, which requires a real
+    recovery claim). No layer beneath the final engine defines, imports, or
+    names an alternate activation mode. This verifies the audited stack; it
+    does not reorder or flatten it."""
+    from transfers import _engine_base, _engine_recovery, candidate_activation, convergence_engine, engine, manual_failover
+
+    lower = (_engine_base.TransferEngine, _engine_recovery.TransferEngine, engine.TransferEngine)
+    for cls in lower:
+        for name in ("activate_candidate", "activate_candidate_command", "_activate_alternate"):
+            assert name not in cls.__dict__, f"{cls.__module__}.{name}: second candidate-activation owner"
+    owners = [_module(cls) for cls in TransferEngine.__mro__ if "activate_candidate_command" in cls.__dict__]
+    assert owners == ["convergence_engine"]
+
+    for module in (_engine_base, _engine_recovery, engine, manual_failover):
+        tree = ast.parse(inspect.getsource(module))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                # Read-only helpers (resolve_candidate_index) may be imported; the mutation may not.
+                assert not any(alias.name == "activate_candidate" for alias in node.names), module.__name__
+            if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) == "activate_candidate":
+                raise AssertionError(f"{module.__name__} calls activate_candidate directly")
+
+    # The operator path reaches the one mutation only through the engine's command.
+    assert "activate_candidate_command(" in inspect.getsource(manual_failover)
+    assert "activate_candidate(" in inspect.getsource(convergence_engine.TransferEngine._apply_recovery_decision)
+    assert "activate_candidate(" in inspect.getsource(convergence_engine.TransferEngine.activate_candidate_command)
+    assert candidate_activation.activate_candidate.__module__ == "transfers.candidate_activation"

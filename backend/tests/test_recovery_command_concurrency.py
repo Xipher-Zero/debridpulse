@@ -32,10 +32,9 @@ import asyncio
 import pytest
 
 from db.database import get_db
-from test_candidate_activation_phase2 import attach_three, build_engine3
+from test_candidate_activation_phase2 import activate_with_real_claim, attach_three, build_engine3
 from test_ws2p1_failover_depth import remote_failure
 from transfers import codec
-from transfers.candidate_activation import activate_candidate
 from transfers.manual_failover import manual_candidate_failover
 from transfers.models import ExecutionState
 from transfers.recovery_execution import RecoveryTrigger
@@ -102,6 +101,8 @@ async def test_automatic_alternate_activation_reuses_existing_recovery_claim(tmp
     events = await _candidate_activation_events(canonical.id)
     activated = [event for event in events if event.get("outcome") == "activated"]
     assert activated and activated[-1]["authority"] == "auto_retry"
+    # ...and a REAL claim generation: the retired claim-less mode recorded ``None`` here.
+    assert isinstance(activated[-1]["recovery_generation"], int) and activated[-1]["recovery_generation"] >= 1
 
 
 @pytest.mark.asyncio
@@ -131,6 +132,7 @@ async def test_manual_switch_uses_user_candidate_switch_trigger(tmp_path, monkey
     # (transfers.candidate_activation.activate_candidate) and its one
     # provenance record -- only the recorded authority differs.
     assert activated and activated[-1]["authority"] == "user_candidate_switch"
+    assert isinstance(activated[-1]["recovery_generation"], int) and activated[-1]["recovery_generation"] >= 1
 
 
 @pytest.mark.asyncio
@@ -145,7 +147,7 @@ async def test_late_retired_writer_observation_cannot_mutate_new_generation(tmp_
     old_handle = live.execution
     assert old_handle is not None
 
-    result = await activate_candidate(engine, live, 1, retry_at=engine.clock())
+    result = await activate_with_real_claim(engine, live, 1, retry_at=engine.clock())
     assert result.committed
     await engine.reconcile_executions()
     new_state = (await repository.artifacts(canonical.id))[0]
@@ -226,7 +228,7 @@ async def test_uncertain_writer_retirement_never_commits_candidate_activation(tm
 
     monkeypatch.setattr(executor, "cancel", unconfirmable_cancel)
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed is False
     assert result.reason == "writer_retirement_uncertain"
     assert result.retirement == "uncertain"
@@ -258,7 +260,7 @@ async def test_candidate_activation_provenance_links_to_replacement_execution(tm
     await engine.reconcile_executions()
     live = (await repository.artifacts(canonical.id))[0]
 
-    result = await activate_candidate(engine, live, 1, retry_at=now_box[0])
+    result = await activate_with_real_claim(engine, live, 1, retry_at=now_box[0])
     assert result.committed
 
     before_dispatch = await _candidate_activation_events(canonical.id)

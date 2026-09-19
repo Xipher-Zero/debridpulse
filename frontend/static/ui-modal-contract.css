@@ -220,12 +220,17 @@ body.light #modal.dp-detail-modal {
   #modal .detail-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Settings confirmation dialog ─────────────────────────────────────── */
-body.dp-settings-confirm-open {
+/* ── Application dialog shell ─────────────────────────────────────────────
+   One neutral contract, built only by ui-settings-modal.js (the canonical
+   dialog owner) and shared by confirmation, directory browsing and the
+   authentication-required dialog's shell classes. Clients extend it with their
+   own scoped class (e.g. .dp-settings-directory-dialog); nothing here is
+   confirmation-private. ─────────────────────────────────────────────────── */
+body.dp-modal-open {
   overflow: hidden;
 }
 
-.dp-settings-confirm-overlay {
+.dp-modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 5000;
@@ -236,12 +241,12 @@ body.dp-settings-confirm-open {
   backdrop-filter: blur(8px) saturate(.92);
 }
 
-body.light .dp-settings-confirm-overlay {
+body.light .dp-modal-overlay {
   background: rgba(42, 34, 60, .28);
   backdrop-filter: blur(8px) saturate(.88);
 }
 
-.dp-settings-confirm-dialog {
+.dp-modal-dialog {
   width: min(520px, 100%);
   overflow: hidden;
   border: 1px solid var(--dp-border-subtle);
@@ -250,19 +255,19 @@ body.light .dp-settings-confirm-overlay {
   box-shadow: var(--dp-panel-shadow), 0 24px 70px rgba(0, 0, 12, .42);
 }
 
-body.light .dp-settings-confirm-dialog {
+body.light .dp-modal-dialog {
   box-shadow: var(--dp-panel-shadow), 0 22px 58px rgba(45, 39, 68, .18);
 }
 
-.dp-settings-confirm-dialog[data-tone="warning"] {
+.dp-modal-dialog[data-tone="warning"] {
   border-color: color-mix(in srgb, var(--dp-state-caution) 48%, var(--dp-border-subtle));
 }
 
-.dp-settings-confirm-dialog[data-tone="danger"] {
+.dp-modal-dialog[data-tone="danger"] {
   border-color: color-mix(in srgb, var(--dp-state-error) 52%, var(--dp-border-subtle));
 }
 
-.dp-settings-confirm-header {
+.dp-modal-header {
   min-height: 58px;
   display: flex;
   align-items: center;
@@ -271,15 +276,15 @@ body.light .dp-settings-confirm-dialog {
   background: var(--dp-panel-header-surface);
 }
 
-.dp-settings-confirm-dialog[data-tone="warning"] .dp-settings-confirm-header {
+.dp-modal-dialog[data-tone="warning"] .dp-modal-header {
   box-shadow: inset 0 2px 0 color-mix(in srgb, var(--dp-state-caution) 74%, transparent);
 }
 
-.dp-settings-confirm-dialog[data-tone="danger"] .dp-settings-confirm-header {
+.dp-modal-dialog[data-tone="danger"] .dp-modal-header {
   box-shadow: inset 0 2px 0 color-mix(in srgb, var(--dp-state-error) 78%, transparent);
 }
 
-.dp-settings-confirm-title {
+.dp-modal-title {
   color: var(--dp-text-primary);
   font-family: var(--dp-font-sans);
   font-size: 15px;
@@ -287,13 +292,13 @@ body.light .dp-settings-confirm-dialog {
   font-weight: 700;
 }
 
-.dp-settings-confirm-body {
+.dp-modal-body {
   display: grid;
   gap: 18px;
   padding: 20px 20px 18px;
 }
 
-.dp-settings-confirm-message {
+.dp-modal-message {
   margin: 0;
   color: var(--dp-text-secondary);
   font-family: var(--dp-font-sans);
@@ -301,20 +306,20 @@ body.light .dp-settings-confirm-dialog {
   line-height: 1.55;
 }
 
-.dp-settings-confirm-typed {
+.dp-modal-typed {
   display: grid;
   gap: 7px;
 }
 
-.dp-settings-confirm-typed[hidden] {
+.dp-modal-typed[hidden] {
   display: none;
 }
 
-.dp-settings-confirm-typed .input {
+.dp-modal-typed .input {
   width: 100%;
 }
 
-.dp-settings-confirm-footer {
+.dp-modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -322,20 +327,20 @@ body.light .dp-settings-confirm-dialog {
   border-top: 1px solid var(--dp-border-subtle);
 }
 
-.dp-settings-confirm-footer .btn {
+.dp-modal-footer .btn {
   min-width: 104px;
 }
 
 @media (max-width: 620px) {
-  .dp-settings-confirm-overlay {
+  .dp-modal-overlay {
     padding: 12px;
   }
 
-  .dp-settings-confirm-footer {
+  .dp-modal-footer {
     flex-direction: column-reverse;
   }
 
-  .dp-settings-confirm-footer .btn {
+  .dp-modal-footer .btn {
     width: 100%;
   }
 }

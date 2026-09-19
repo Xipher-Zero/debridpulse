@@ -158,26 +158,26 @@
     if (!state.overlay) {
       state.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const overlay = document.createElement('div');
-      overlay.className = 'dp-settings-confirm-overlay dp-auth-required-overlay';
+      overlay.className = 'dp-modal-overlay dp-auth-required-overlay';
       overlay.dataset.dpAuthRequiredOverlay = '1';
       document.body.appendChild(overlay);
-      document.body.classList.add('dp-settings-confirm-open');
+      document.body.classList.add('dp-modal-open');
       document.addEventListener('keydown', handleDocumentKeydown, true);
       state.overlay = overlay;
     }
 
     const overlay = state.overlay;
     overlay.innerHTML = `
-      <section class="dp-settings-confirm-dialog dp-auth-required-dialog"
+      <section class="dp-modal-dialog dp-auth-required-dialog"
                data-dp-input-required-modal
                data-dp-auth-transfer-id="${active.transferId}"
                role="dialog" aria-modal="true"
                aria-labelledby="dp-auth-required-title"
                aria-describedby="dp-auth-required-error">
-        <header class="dp-settings-confirm-header dp-auth-required-header">
-          <div class="dp-settings-confirm-title" id="dp-auth-required-title">Authentication Required</div>
+        <header class="dp-modal-header dp-auth-required-header">
+          <div class="dp-modal-title" id="dp-auth-required-title">Authentication Required</div>
         </header>
-        <div class="dp-settings-confirm-body dp-auth-required-body">
+        <div class="dp-modal-body dp-auth-required-body">
           <label class="dp-auth-required-field">
             <span class="form-label">Username</span>
             <input class="input" type="text" autocomplete="off" spellcheck="false"
@@ -192,7 +192,7 @@
           <div class="dp-auth-required-error" id="dp-auth-required-error"
                data-dp-auth-error role="status" aria-live="polite" hidden></div>
         </div>
-        <footer class="dp-settings-confirm-footer dp-auth-required-footer">
+        <footer class="dp-modal-footer dp-auth-required-footer">
           <button class="btn btn-ghost" type="button" data-dp-auth-cancel>Cancel</button>
           ${showKey ? `
             <button class="btn btn-ghost dp-auth-required-key${active.keySelected ? ' is-selected' : ''}"
@@ -494,8 +494,8 @@
       state.overlay.remove();
       state.overlay = null;
     }
-    if (!document.querySelector('.dp-settings-confirm-overlay')) {
-      document.body.classList.remove('dp-settings-confirm-open');
+    if (!document.querySelector('.dp-modal-overlay')) {
+      document.body.classList.remove('dp-modal-open');
     }
     const previous = state.previousFocus;
     state.previousFocus = null;

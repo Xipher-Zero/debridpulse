@@ -101,6 +101,20 @@
     }
   }
 
+  // An accepted confirmation whose operation re-renders Settings can remove or
+  // disable the control that started it. Each such flow names its own surviving
+  // successor (first enabled match wins) instead of leaving focus on <body>.
+  function focusSurvivor(...selectors) {
+    for (const selector of selectors) {
+      const target = root()?.querySelector(selector);
+      if (target && !target.disabled && target.getClientRects().length) {
+        target.focus();
+        return true;
+      }
+    }
+    return false;
+  }
+
   async function request(method, path, body, timeout) {
     if (typeof api !== 'function') throw new Error('Application API client is unavailable');
     return api(method, path, body, timeout);
@@ -154,114 +168,6 @@
     if (typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(() => restoreSettingsViewport(snapshot));
     }
-  }
-
-  async function confirmAction({
-    title,
-    message,
-    confirmLabel = 'Confirm',
-    tone = 'warning',
-    typedPhrase = '',
-  }) {
-    return new Promise(resolve => {
-      const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const overlay = document.createElement('div');
-      const dialogId = `dp-settings-confirm-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const titleId = `${dialogId}-title`;
-      const messageId = `${dialogId}-message`;
-      overlay.className = 'dp-settings-confirm-overlay';
-      overlay.innerHTML = `
-        <section class="dp-settings-confirm-dialog" data-tone="${tone === 'danger' ? 'danger' : 'warning'}"
-                 role="alertdialog" aria-modal="true" aria-labelledby="${titleId}" aria-describedby="${messageId}">
-          <header class="dp-settings-confirm-header">
-            <div class="dp-settings-confirm-title" id="${titleId}"></div>
-          </header>
-          <div class="dp-settings-confirm-body">
-            <p class="dp-settings-confirm-message" id="${messageId}"></p>
-            <label class="dp-settings-confirm-typed" ${typedPhrase ? '' : 'hidden'}>
-              <span class="form-label"></span>
-              <input class="input" type="text" autocomplete="off" spellcheck="false">
-            </label>
-          </div>
-          <footer class="dp-settings-confirm-footer">
-            <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
-            <button class="btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}" type="button" data-confirm-accept></button>
-          </footer>
-        </section>`;
-
-      const dialog = overlay.querySelector('.dp-settings-confirm-dialog');
-      const titleEl = overlay.querySelector('.dp-settings-confirm-title');
-      const messageEl = overlay.querySelector('.dp-settings-confirm-message');
-      const typed = overlay.querySelector('.dp-settings-confirm-typed');
-      const typedLabel = typed?.querySelector('.form-label');
-      const typedInput = typed?.querySelector('input');
-      const cancel = overlay.querySelector('[data-confirm-cancel]');
-      const accept = overlay.querySelector('[data-confirm-accept]');
-
-      titleEl.textContent = String(title || 'Confirm action');
-      messageEl.textContent = String(message || '');
-      accept.textContent = String(confirmLabel || 'Confirm');
-
-      if (typedPhrase) {
-        typed.hidden = false;
-        typedLabel.textContent = `Type ${typedPhrase} to confirm.`;
-        typedInput.placeholder = typedPhrase;
-        accept.disabled = true;
-        typedInput.addEventListener('input', () => {
-          accept.disabled = typedInput.value !== typedPhrase;
-        });
-        typedInput.addEventListener('keydown', event => {
-          if (event.key === 'Enter' && !accept.disabled) {
-            event.preventDefault();
-            accept.click();
-          }
-        });
-      }
-
-      let settled = false;
-      const finish = value => {
-        if (settled) return;
-        settled = true;
-        overlay.remove();
-        if (!document.querySelector('.dp-settings-confirm-overlay')) {
-          document.body.classList.remove('dp-settings-confirm-open');
-        }
-        if (previousFocus?.isConnected) {
-          try { previousFocus.focus(); } catch (_) {}
-        }
-        resolve(value);
-      };
-
-      cancel.addEventListener('click', () => finish(false));
-      accept.addEventListener('click', () => finish(true));
-      overlay.addEventListener('keydown', event => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          finish(false);
-          return;
-        }
-        if (event.key !== 'Tab') return;
-        const focusable = Array.from(dialog.querySelectorAll('button:not([disabled]), input:not([disabled])'));
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      });
-
-      document.body.appendChild(overlay);
-      document.body.classList.add('dp-settings-confirm-open');
-      if (typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(() => cancel.focus());
-      } else {
-        cancel.focus();
-      }
-    });
   }
 
   function syncGlobalSettings(data) {
@@ -1899,8 +1805,9 @@
   }
 
   async function persistAuth(button, payload = authPayload(), successMessage = 'Authentication settings saved') {
+    let openModeConfirmed = false;
     if (!payload.auth_password_enabled && !payload.auth_oidc_enabled && state.auth?.authentication_required && !payload.confirm_open_mode) {
-      const confirmed = await confirmAction({
+      const confirmed = await window.DPSettingsModal.confirm({
         title: 'Disable interactive authentication?',
         message: 'Username & Password and OpenID Connect will both be disabled. DebridPulse and its API will be intentionally open.',
         confirmLabel: 'Continue to Open Mode',
@@ -1908,6 +1815,7 @@
       });
       if (!confirmed) return false;
       payload.confirm_open_mode = true;
+      openModeConfirmed = true;
     }
 
     setBusy(button, true, 'Saving…');
@@ -1916,6 +1824,7 @@
       const generation = acceptAuth(auth, {probe: false});
       state.activeTab = 'authentication';
       renderPreservingViewport();
+      if (openModeConfirmed) focusSurvivor('[data-action="save"]');
       void probeOidcRuntime(auth, generation);
       notify(successMessage, 'success');
       return true;
@@ -1924,6 +1833,7 @@
       return false;
     } finally {
       setBusy(button, false);
+      if (openModeConfirmed && button?.isConnected) button.focus();
     }
   }
 
@@ -2088,7 +1998,7 @@
       notify('Database wipe is disabled in the current draft', 'warn');
       return;
     }
-    const confirmed = await confirmAction({
+    const confirmed = await window.DPSettingsModal.confirm({
       title: 'Wipe database?',
       message: 'Processing must be paused. This permanently removes all database rows. If Backup Before Wipe is enabled, DebridPulse will create the required backup first.',
       confirmLabel: 'Wipe Database',
@@ -2107,17 +2017,20 @@
         if (document.getElementById('view-torrents')?.classList.contains('active') && typeof loadTorrents === 'function') loadTorrents();
       } catch (_) {}
       renderPreservingViewport();
+      focusSurvivor('[data-action="wipe-database"]', '[data-action="save"]');
     } catch (error) {
       notify(error.message, 'error');
     } finally {
       setBusy(button, false);
+      // A failed wipe kept its button: return to it once re-enabled so the retry is one keypress away.
+      if (button?.isConnected) button.focus();
     }
   }
 
   async function clearPassword(button) {
     const payload = authPayload();
     const entersOpenMode = !payload.auth_oidc_enabled && state.auth?.authentication_required;
-    const confirmed = await confirmAction({
+    const confirmed = await window.DPSettingsModal.confirm({
       title: 'Clear stored password?',
       message: entersOpenMode
         ? 'The stored local password will be removed and Username & Password authentication will be disabled. Because OpenID Connect is also disabled, DebridPulse will enter open mode.'
@@ -2131,7 +2044,12 @@
     payload.auth_password = '';
     payload.clear_password = true;
     if (entersOpenMode) payload.confirm_open_mode = true;
-    await persistAuth(button, payload, 'Stored password cleared');
+    if (await persistAuth(button, payload, 'Stored password cleared')) {
+      // The stored-password control is now disabled; the password field is where the operator goes next.
+      focusSurvivor('#dp-auth-new-password', '[data-action="save"]');
+    } else if (button?.isConnected) {
+      button.focus();
+    }
   }
 
   async function setApiTokenEnabled(inputEl) {
@@ -2168,7 +2086,7 @@
   }
 
   async function clearToken(button) {
-    const confirmed = await confirmAction({
+    const confirmed = await window.DPSettingsModal.confirm({
       title: 'Revoke API token?',
       message: 'Existing automation using this token will immediately lose access.',
       confirmLabel: 'Revoke Token',
@@ -2182,11 +2100,13 @@
       state.auth.api_token_configured = false;
       state.oneTimeToken = '';
       renderPreservingViewport();
+      focusSurvivor('[data-action="generate-token"]');
       notify('API token revoked', 'success');
     } catch (error) {
       notify(error.message, 'error');
     } finally {
       setBusy(button, false);
+      if (button?.isConnected) button.focus();
     }
   }
 
@@ -2404,5 +2324,4 @@
   try { loadSettings = load; } catch (_) {}
 
   window.DPSettingsPage = Object.freeze({load});
-  window.DPSettingsModal = Object.freeze({confirm: confirmAction});
 })();
