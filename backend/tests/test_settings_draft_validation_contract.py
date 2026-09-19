@@ -102,7 +102,8 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
     ):
         assert route in validation
 
-    assert "AllDebridService(api_key, cfg.alldebrid_agent)" in validation
+    assert "AllDebridService(api_key, alldebrid.agent)" in validation
+    assert "alldebrid_canonical_options(get_settings())" in validation
     assert "Aria2Service(" in validation
     assert "NotificationService(webhook_url).test()" in validation
     assert "clear_api_key" in validation

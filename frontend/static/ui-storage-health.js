@@ -223,7 +223,7 @@
   }
 
   async function requestHealth() {
-    const response = await fetch('/api/storage/health', {
+    const response = await window.debridPulseAuth.fetch('/api/storage/health', {
       method: 'GET',
       headers: {'Accept': 'application/json'},
       cache: 'no-store',

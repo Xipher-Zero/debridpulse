@@ -5,7 +5,6 @@
 /* Import and Recover All belong to the card header, not on top of it. Activity
    Refresh deliberately consumes the exact Recover All control recipe so the
    same recovery/refresh semantic reads identically across pages. */
-#view-dashboard #btn-import-existing,
 #view-dashboard #btn-recover-all,
 #view-events .dp-activity-refresh,
 #view-torrents .dp-downloads-refresh {
@@ -18,25 +17,6 @@
   box-shadow: none !important;
   transform: none !important;
   transition: background-color .14s ease, border-color .14s ease, color .14s ease !important;
-}
-
-/* Import stays neutral: a quiet outline utility that is present when needed
-   without competing with the primary Add action. */
-#view-dashboard #btn-import-existing {
-  background: rgba(255,255,255,.018) !important;
-  border-color: rgba(164,150,186,.38) !important;
-  color: #d2c8dc !important;
-}
-#view-dashboard #btn-import-existing .dp-utility-icon {
-  color: #baaaca !important;
-}
-body.light #view-dashboard #btn-import-existing {
-  background: rgba(255,255,255,.28) !important;
-  border-color: #d3cedd !important;
-  color: #625c6d !important;
-}
-body.light #view-dashboard #btn-import-existing .dp-utility-icon {
-  color: #776d84 !important;
 }
 
 /* Recover / Refresh share the same violet recovery/application accent. Amber
@@ -82,14 +62,6 @@ body.light #view-torrents .dp-downloads-refresh .dp-utility-icon {
   filter: drop-shadow(0 0 3px rgba(139,72,188,.12)) !important;
 }
 
-/* Hover adds only a trace of local tint. These controls should never acquire
-   the lift or heavy fill used by a primary CTA. */
-#view-dashboard #btn-import-existing:hover {
-  background: rgba(255,255,255,.04) !important;
-  border-color: rgba(173,158,195,.54) !important;
-  filter: none !important;
-  transform: none !important;
-}
 #view-dashboard #btn-recover-all:hover,
 #view-events .dp-activity-refresh:hover,
 #view-torrents .dp-downloads-refresh:hover {
@@ -97,10 +69,6 @@ body.light #view-torrents .dp-downloads-refresh .dp-utility-icon {
   border-color: rgba(190,125,234,.68) !important;
   filter: none !important;
   transform: none !important;
-}
-body.light #view-dashboard #btn-import-existing:hover {
-  background: rgba(246,243,250,.70) !important;
-  border-color: #c5bfd2 !important;
 }
 body.light #view-dashboard #btn-recover-all:hover,
 body.light #view-events .dp-activity-refresh:hover,

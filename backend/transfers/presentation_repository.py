@@ -7,10 +7,13 @@ used only as retained artifact truth; it never creates another progress store.
 """
 from __future__ import annotations
 
+import json
+
 from core.presentation_safety import safe_public_host
 from db.database import get_db
 from transfers import codec
 from transfers._repository_base import is_canonical_artifact_row
+from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
 from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, TransferProgress
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
 
@@ -312,9 +315,14 @@ class TransferRepository(_CanonicalTransferRepository):
         result = await super().presentation(transfer_id, details=details)
         if not result:
             return result
+        if details:
+            await self._overlay_candidate_presentation(result, transfer_id)
 
         request_kind = ""
         candidate_source = None
+        selected_source = None
+        selected_provider = ""
+        failover_transitions = []
         paused = False
         file_rows = []
         progress_rows = []
@@ -418,6 +426,41 @@ class TransferRepository(_CanonicalTransferRepository):
                                     candidate_source = source
                                     break
 
+            # The bound candidate of the artifact that is currently (or next)
+            # being fetched is the authoritative ACTIVE source of a transfer that
+            # is not yet completed; a completed transfer keeps the delivered
+            # provenance resolved above.
+            if str(result.get("status") or "").lower() != "completed":
+                selected_row = await db.fetchone(
+                    """SELECT b.source_scope,b.source_key,b.provider_id
+                        FROM download_files f
+                        JOIN canonical_candidate_bindings b
+                          ON b.canonical_artifact_id=f.id
+                         AND b.candidate_order=f.selected_candidate+1
+                        WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+                          AND f.status NOT IN ('completed','cancelled','duplicate')
+                        ORDER BY CASE f.status WHEN 'downloading' THEN 0 WHEN 'paused' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,
+                          f.updated_at DESC,f.id DESC LIMIT 1""",
+                    (transfer_id,),
+                )
+                if selected_row:
+                    selected_source = {"scope": selected_row.get("source_scope"), "key": selected_row.get("source_key")}
+                    selected_provider = str(selected_row.get("provider_id") or "")
+
+            if details:
+                for event_row in await db.fetchall(
+                    """SELECT detail,created_at FROM application_events
+                        WHERE transfer_id=? AND kind='manual_candidate_failover' ORDER BY id""",
+                    (transfer_id,),
+                ):
+                    try:
+                        item = json.loads(event_row.get("detail") or "{}")
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(item, dict):
+                        item["created_at"] = event_row.get("created_at")
+                        failover_transitions.append(item)
+
             # Presentation already owns this DB session. Reuse it for durable
             # recovery snapshots instead of opening one fresh SQLite connection
             # per artifact through recovery_context(). Details need every child;
@@ -501,4 +544,26 @@ class TransferRepository(_CanonicalTransferRepository):
                     item["download_speed"] = 0
 
         result["current_source_identity"] = public_source_identity(request_kind, candidate_source)
+        if _candidate_source(selected_source) is not None:
+            result["current_source_identity"] = public_source_identity(request_kind, selected_source)
+        if selected_provider:
+            result["current_provider_id"] = selected_provider
+
+        if details and isinstance(result.get("files"), list):
+            for file in result["files"]:
+                state = str(file.get("status") or "").lower()
+                candidates = file.get("acquisition_candidates")
+                if not isinstance(candidates, list):
+                    continue
+                for candidate in candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    selected = bool(candidate.get("is_selected"))
+                    candidate["is_active"] = selected
+                    # Historical execution failure is truthful provenance, not a
+                    # permanent capability verdict. The write path revalidates the
+                    # exact bound candidate/provider before switching, so the UI
+                    # must not suppress a retry solely because an older attempt failed.
+                    candidate["switch_eligible"] = not selected and state in _SWITCHABLE_STATES
+            result["manual_candidate_failovers"] = failover_transitions
         return result

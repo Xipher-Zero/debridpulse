@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 
-from application.consolidation_events import ConsolidationEventCanonical, ConsolidationEvents
+from application.consolidation_events import ConsolidationEvents
 from application.observability import Observability
 from db import database
 
@@ -150,21 +150,29 @@ async def test_public_payload_strips_secret_material():
 
 @pytest.mark.asyncio
 async def test_failed_attach_never_stages_success_event():
-    class Canonical:
-        async def attach(self, *_args):
-            return False
+    """A refused attach (no alternatives, so nothing is written) never announces."""
+    from transfers.canonical import CanonicalOwnership
 
-    class Events:
-        staged = []
+    staged = []
 
-        async def stage(self, transfer_id):
-            self.staged.append(transfer_id)
+    async def stage(transfer_id):
+        staged.append(transfer_id)
 
+    canonical = CanonicalOwnership(SimpleNamespace(), on_attached=stage)
+    canonical._initialized = True
     source = SimpleNamespace(transfer_id=42)
-    events = Events()
-    canonical = ConsolidationEventCanonical(Canonical(), events)
     assert await canonical.attach(object(), source, (), 0) is False
-    assert events.staged == []
+    assert staged == []
+
+
+def test_composition_injects_the_callback_and_nothing_wraps_the_canonical_owner():
+    import inspect
+    from application import composition, consolidation_events
+
+    assert not hasattr(consolidation_events, "ConsolidationEventCanonical")
+    source = inspect.getsource(composition)
+    assert "engine.canonical.on_attached = consolidation_events.stage" in source
+    assert "engine.canonical =" not in source
 
 
 @pytest.mark.asyncio

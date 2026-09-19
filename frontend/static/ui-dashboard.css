@@ -466,7 +466,6 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   gap: 8px;
   margin-left: auto;
 }
-#view-dashboard #btn-import-existing,
 #view-dashboard #btn-recover-all,
 #view-dashboard .dp-dashboard-activity .btn {
   min-height: 36px;
@@ -1779,9 +1778,8 @@ body.light .nav-item:not(.active):hover {
 }
 
 /* ── Quick Add secondary utility controls ─────────────────────────────── */
-/* Import and Recover All are helpers, not primary or semantic state actions.
+/* Recover All is a helper, not a primary or semantic state action.
    Keep them clearly clickable, but let Add and Pause own the visual hierarchy. */
-#view-dashboard #btn-import-existing,
 #view-dashboard #btn-recover-all {
   height: 32px !important;
   min-height: 32px !important;
@@ -1790,21 +1788,6 @@ body.light .nav-item:not(.active):hover {
   font-weight: 650 !important;
   transform: none;
   transition: filter .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease !important;
-}
-
-#view-dashboard #btn-import-existing {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.085) 0%, rgba(255,255,255,.018) 34%, transparent 46%),
-    linear-gradient(145deg, rgba(65,60,80,.80) 0%, rgba(47,43,61,.78) 56%, rgba(36,33,48,.82) 100%) !important;
-  border-color: rgba(151,137,174,.45) !important;
-  color: #d7cde3 !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.085),
-    -4px 6px 12px -9px rgba(7,5,13,.48),
-    0 4px 9px -8px rgba(9,7,16,.34) !important;
-}
-#view-dashboard #btn-import-existing .dp-utility-icon {
-  color: #bfa9d8 !important;
 }
 
 #view-dashboard #btn-recover-all {
@@ -1827,21 +1810,6 @@ body.light .nav-item:not(.active):hover {
     drop-shadow(0 0 4px rgba(166,92,224,.24)) !important;
 }
 
-body.light #view-dashboard #btn-import-existing {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.42) 34%, transparent 46%),
-    linear-gradient(145deg, #fcfbff 0%, #f4f1f8 56%, #ece8f2 100%) !important;
-  border-color: #cec5da !important;
-  color: #62586f !important;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,1),
-    -4px 6px 12px -9px rgba(68,59,83,.24),
-    0 4px 9px -8px rgba(76,67,91,.17) !important;
-}
-body.light #view-dashboard #btn-import-existing .dp-utility-icon {
-  color: #78678b !important;
-}
-
 body.light #view-dashboard #btn-recover-all {
   background:
     radial-gradient(ellipse 112% 100% at 16% -8%, rgba(155,94,211,.11) 0%, transparent 56%),
@@ -1862,7 +1830,6 @@ body.light #view-dashboard #btn-recover-all .dp-icon {
     drop-shadow(0 0 4px rgba(144,74,194,.20)) !important;
 }
 
-#view-dashboard #btn-import-existing:hover,
 #view-dashboard #btn-recover-all:hover {
   filter: brightness(1.025) !important;
   transform: translateY(-1px) !important;

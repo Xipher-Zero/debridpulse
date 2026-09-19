@@ -128,9 +128,21 @@ before the session-issuing one) — ordered registration, not route-list surgery
   (`DPDashboardTransferPresentation`), `ui-downloads-presentation.js`
   (`DPDownloadsPresentation`), `ui-activity-log-runtime.js` (`DPActivityLog`),
   `ui-settings-archive-passwords.js` (`DPArchivePasswords`).
-- `ui-settings-page.js` renders Settings clean-room markup; `ui-settings-downloads-completion.js`
-  finishes Downloads/Extraction *layout* (card identity, controls row, download-folder
-  browser) but owns **no** Settings persistence and **no** archive-password editor.
+- `ui-settings-page.js` is the **sole** Settings markup owner (every tab/panel/card/icon/ARIA
+  attribute, rendered once; also persistence). No satellite script may rewrite it after render
+  — the former `ui-settings-downloads-completion.js`, `-notifications.js`, `-maintenance-wipe.js`,
+  `-card-icons.js`, `ui-provider-cards.js` were folded in and deleted. Bounded feature owners
+  that remain: `ui-settings-directory-picker.js` (folder-browse modal), `ui-settings-aria2-live.js`
+  (built-in engine queue; behavior only), `ui-settings-archive-passwords.js`.
+- Global processing pause is **operational state**: the durable application state
+  (`TransferRepository.globally_paused()`) is the only authority. `AppSettings` has no `paused`;
+  a pre-1.0.12 `config.json` value is a one-shot migration input (`legacy_paused_input()` →
+  `db/migrations/v112.py`). `/stats`, pause/resume results and SSE project from it; the frontend
+  keeps a non-persisted `processingPaused` (never in `settingsData`).
+- `NormalizedError.recovery` / `operator_action_required` are **output-only** projections stamped by
+  `policy.compatibility_error` from `policy.recovery_action(error)` (a pure function of canonical
+  facts). Nothing reads them back; emitters must not pass `recovery=`.
+  Proof: `backend/tests/test_recovery_projection_boundary.py`.
 - **Multi-source candidate chip** (2026-09-09): `/api/torrents` list rows carry
   `candidate_source_max` — the largest per-artifact distinct canonical candidate count
   across a transfer's eligible artifacts, computed inside the one bounded projection SQL
@@ -216,8 +228,8 @@ storage-health checks can diagnose bad mounts — chmods `700` config/data, `600
 
 ### Local image testing
 
-A push to `1.0.12` triggers **Fork Image** which publishes an immutable
-`ghcr.io/xipher-zero/debridpulse:sha-<short7>` multi-arch image (amd64 + arm64,
+A push to `1.0.12` triggers **Fork Image** which publishes a write-once
+`ghcr.io/xipher-zero/debridpulse:sha-<full 40-char sha>` multi-arch image (amd64 + arm64,
 provenance + SBOM). Pull that tag into a local compose file to verify a change before it
 gets a release tag. The image is pullable once Fork Image's "Publish immutable image"
 job completes; Container Security and Candidate Runtime Qualification then run against
@@ -274,8 +286,8 @@ All gate on: `main`, `1.0.11`, `1.0.12`, `staging/**`, some `audit/**`, plus `v*
 | **tests.yml** (`Tests`) | Job `test`: Python 3.12; `ruff check … --select F821,F822,F823` (undefined names) over the backend packages; run `post_audit_qualification.txt`, then `two_provider_checkpoint_qualification.txt`, then full `pytest tests/`; `python -m compileall -q .`; `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Installs `aria2`+`openssl` for downloader regression tests. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
 | **browser-runtime.yml** (`Browser Runtime`) | Builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite and asserts `discovered == running == passed`. Uploads traces + `checkpoint-*.png`. |
 | **codeql.yml** (`CodeQL`) | `security-and-quality` queries for `python`, `javascript-typescript`, `actions`. Weekly cron (Thu 20:17 UTC). |
-| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.12` publishes. It builds `linux/amd64,linux/arm64` and pushes an **immutable `sha-<short7>` tag only** to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
-| **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<short7>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |
+| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.12` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
+| **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<full-sha>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |
 | **candidate-runtime-qualification.yml** (`Candidate Runtime Qualification`) | Pulls the published amd64 + arm64 children by digest (arm64 via QEMU), verifies OCI labels, non-root runtime (uid/gid 99/100), writable `/app/data` `/app/config` `/download`, `/api/health` version, AllDebrid integration status, a live `GeneralHttpProvider.resolve()` call, and a 7z+RAR round-trip; signs a `candidate-runtime/v1` attestation. |
 | **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Fork Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.12` pushes. |
 | **ws3-adversarial.yml** (`WS3 Adversarial`) | `1.0.12` branch only. Runs `ws3p1_adversarial_qualification.txt`. |
@@ -310,6 +322,18 @@ re-pointed at a digest that already passed every gate.
 
 ---
 
+### Settings authority (final audit, 2026-09)
+
+`integrations.<id>` (incl. AllDebrid credentials and every aria2 option), `transfer_policy` and
+`execution_runtime_limits` are the **only** persisted/runtime authorities. The flat names
+(`aria2_*`, `max_concurrent_downloads`, `alldebrid_api_key`, `poll_interval_seconds`, ...) are
+not `AppSettings` fields; they are read only by `integrations.configuration.migrate_legacy_settings`
+while `core.config.load_settings()` loads a file, and `GET /settings` derives them read-only
+(`api/legacy_settings_view.py`, named in `compatibility_fields`). `PUT /settings` never writes a
+canonical namespace (it carries `previous` forward); use `PATCH /integrations/{id}/configuration`,
+`PATCH /transfer-policy`, `PATCH /execution/runtime-limits`. `Aria2Service(owns_daemon=...)` is
+injected; the client never reads settings. Metrics are `debridpulse_*`.
+
 ## 9. Presentation-owner consolidation — status
 
 The "consolidate presentation owners" refactor (commit `7f652197`, 2026-09-07) was
@@ -320,8 +344,8 @@ in place, and the two would race and corrupt shared DOM/state.
 
 | File | State |
 |---|---|
-| `frontend/static/ui-settings-archive-passwords.js` (`window.DPArchivePasswords`) | **Sole owner.** Builds its own editor scaffold + reveal button, hides the raw `[data-setting="extraction_password"]` textarea, hydrates from `GET /api/settings/extraction-passwords`, exposes `DPArchivePasswords.hydrated`. |
-| `frontend/static/ui-settings-downloads-completion.js` | Archive-password code **deleted** (was `extractionPasswords`, `buildPasswordEditor`, `renderPasswordRows`, `loadExtractionPasswords`, `syncExtractionPasswordSource`, `setRevealAll`, the hidden `data-dp-extraction-clear-compat` checkbox). Keeps only non-password Extraction/Downloads layout. |
+| `frontend/static/ui-settings-archive-passwords.js` (`window.DPArchivePasswords`) | **Sole owner of editor behavior.** `ui-settings-page.js` renders the whole field (hidden form-field `[data-setting="extraction_password"]` textarea, editor container, reveal button, hint); this file only fills the rows, binds its own events, hydrates from `GET /api/settings/extraction-passwords`, exposes `DPArchivePasswords.hydrated`. |
+| `frontend/static/ui-settings-downloads-completion.js` (**file since deleted entirely**, Settings final-audit fold) | Archive-password code **deleted** (was `extractionPasswords`, `buildPasswordEditor`, `renderPasswordRows`, `loadExtractionPasswords`, `syncExtractionPasswordSource`, `setRevealAll`, the hidden `data-dp-extraction-clear-compat` checkbox). Keeps only non-password Extraction/Downloads layout. |
 | `frontend/static/app.js` | Dead `_extractionPasswords` block **deleted**. |
 | `frontend/static/ui-settings-downloads-completion.css` | Stale `.dp-settings-clear-secret:has([data-clear-secret="extraction_password"]) { display:none }` rule **removed** so the visible "Clear stored archive passwords" checkbox shows. |
 | `frontend/static/ui-settings-page.js` | `nonAuthPayload()` routes `extraction_password` through `extractionPasswordValue()` — returns `''` (backend keeps stored list) while the editor is mounted but `!DPArchivePasswords.hydrated`; `clearSecrets()` drops a pre-hydration `extraction_password` clear. |
@@ -340,7 +364,7 @@ Before trusting a "this component was refactored / consolidated" claim: **grep f
 old owner's symbols and confirm it was actually deleted, not just superseded.** The
 `7f652197` failure mode — new owner added via `PRESENTATION_OWNERS`, old owner left
 mutating the same DOM — could recur in other settings panels. Check
-`ui-settings-downloads-completion.js` and `app.js` for stragglers if similar
+`ui-settings-page.js` and `app.js` for stragglers if similar
 "state resets on navigate-away" bugs surface elsewhere.
 
 ---

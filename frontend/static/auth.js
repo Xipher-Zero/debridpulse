@@ -1,8 +1,13 @@
-/* DebridPulse application-session bootstrap. Loaded before app.js. */
+/* DebridPulse application-session bootstrap and owner. Loaded before app.js.
+ *
+ * Owns the browser session and the authenticated same-origin request path.
+ * It publishes that path as debridPulseAuth.fetch (session cookie, CSRF header
+ * on mutations, session revalidation on 401); it does not replace the native
+ * fetch. Every application HTTP call goes through debridPulseAuth.fetch. */
 (() => {
   'use strict';
 
-  const nativeFetch = window.fetch.bind(window);
+  const nativeFetch = window.fetch.bind(window);   // native API, never reassigned
   const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   let csrfToken = '';
   let sessionState = null;
@@ -28,77 +33,63 @@
     }
   }
 
+  // The shell provides #sidebar-bottom-stack (which wraps the sidebar footer) and
+  // an empty #sidebar-auth-mount. This owner populates its own mount and marks the
+  // stack's session state; it does not move or restyle any other owner's markup.
   function syncSidebarSessionUi(data) {
-    const footer = document.querySelector('.sidebar-footer');
-    if (!footer) return;
+    const stack = document.getElementById('sidebar-bottom-stack');
+    const mount = document.getElementById('sidebar-auth-mount');
+    if (!stack || !mount) return;
 
-    footer.querySelector('a[href="https://alldebrid.com"]')?.closest('.conn-row')?.remove();
-    document.getElementById('aria2ng-row')?.remove();
-
-    let row = document.getElementById('sidebar-auth-row');
-    let stack = document.getElementById('sidebar-bottom-stack');
     if (!data?.authenticated) {
-      row?.remove();
-      if (stack) {
-        if (footer.parentElement === stack) {
-          stack.insertAdjacentElement('beforebegin', footer);
-        }
-        stack.remove();
-      }
+      delete stack.dataset.session;
+      mount.hidden = true;
+      mount.replaceChildren();
       return;
     }
 
-    if (!stack) {
-      stack = document.createElement('div');
-      stack.id = 'sidebar-bottom-stack';
-      stack.className = 'sidebar-bottom-stack';
-      footer.insertAdjacentElement('beforebegin', stack);
-      stack.appendChild(footer);
-    } else if (footer.parentElement !== stack) {
-      stack.prepend(footer);
-    }
+    stack.dataset.session = 'authenticated';
+    mount.hidden = false;
+    if (mount.querySelector('#sidebar-auth-row')) return;
 
-    if (!row) {
-      row = document.createElement('div');
-      row.id = 'sidebar-auth-row';
-      row.className = 'nav-item';
-      row.setAttribute('role', 'button');
-      row.setAttribute('tabindex', '0');
-      row.setAttribute('aria-label', 'Log out of DebridPulse');
-      row.style.flexShrink = '0';
-      row.innerHTML = `
-        <span class="icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path>
-            <path d="M14 8l4 4-4 4"></path>
-            <path d="M18 12H9"></path>
-          </svg>
-        </span>
-        <span class="nav-label">Log Out</span>`;
+    const row = document.createElement('div');
+    row.id = 'sidebar-auth-row';
+    row.className = 'nav-item';
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-label', 'Log out of DebridPulse');
+    row.style.flexShrink = '0';
+    row.innerHTML = `
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path>
+          <path d="M14 8l4 4-4 4"></path>
+          <path d="M18 12H9"></path>
+        </svg>
+      </span>
+      <span class="nav-label">Log Out</span>`;
 
-      const activate = async () => {
-        if (row.getAttribute('aria-disabled') === 'true') return;
-        row.setAttribute('aria-disabled', 'true');
-        const label = row.querySelector('.nav-label');
-        if (label) label.textContent = 'Logging out…';
-        try {
-          const ok = await logoutSession();
-          if (!ok) throw new Error('Logout failed');
-        } catch (_) {
-          row.setAttribute('aria-disabled', 'false');
-          if (label) label.textContent = 'Log Out';
-        }
-      };
+    const activate = async () => {
+      if (row.getAttribute('aria-disabled') === 'true') return;
+      row.setAttribute('aria-disabled', 'true');
+      const label = row.querySelector('.nav-label');
+      if (label) label.textContent = 'Logging out…';
+      try {
+        const ok = await logoutSession();
+        if (!ok) throw new Error('Logout failed');
+      } catch (_) {
+        row.setAttribute('aria-disabled', 'false');
+        if (label) label.textContent = 'Log Out';
+      }
+    };
 
-      row.addEventListener('click', activate);
-      row.addEventListener('keydown', event => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        activate();
-      });
-    }
-
-    if (row.parentElement !== stack) stack.appendChild(row);
+    row.addEventListener('click', activate);
+    row.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      activate();
+    });
+    mount.appendChild(row);
   }
 
   async function refreshSession({force = false} = {}) {
@@ -113,6 +104,7 @@
         csrfToken = '';
         sessionState = null;
         syncSidebarSessionUi(null);
+        document.dispatchEvent(new CustomEvent('debridpulse:session-changed'));
         redirectToLogin();
         return null;
       }
@@ -121,6 +113,7 @@
       sessionState = data;
       csrfToken = String(data && data.csrf_token || '');
       syncSidebarSessionUi(data);
+      document.dispatchEvent(new CustomEvent('debridpulse:session-changed'));
       return data;
     }).catch(() => sessionState).finally(() => {
       sessionRequest = null;
@@ -128,7 +121,7 @@
     return sessionRequest;
   }
 
-  window.fetch = async function debridPulseFetch(input, init) {
+  async function debridPulseFetch(input, init) {
     const options = {...(init || {})};
     const requestMethod = input instanceof Request ? input.method : 'GET';
     const method = String(options.method || requestMethod || 'GET').toUpperCase();
@@ -156,10 +149,10 @@
       await refreshSession({force: true});
     }
     return response;
-  };
+  }
 
   async function logoutSession() {
-    const response = await window.fetch('/api/auth/logout', {method: 'POST'});
+    const response = await debridPulseFetch('/api/auth/logout', {method: 'POST'});
     if (response.ok) {
       csrfToken = '';
       sessionState = null;
@@ -171,6 +164,7 @@
   }
 
   window.debridPulseAuth = Object.freeze({
+    fetch: debridPulseFetch,
     refreshSession,
     session: () => sessionState,
     logout: logoutSession,
@@ -178,21 +172,4 @@
 
   refreshSession().catch(() => {});
   window.setInterval(() => refreshSession({force: true}).catch(() => {}), 60000);
-
-  // Authentication-specific Settings ownership now lives entirely in the
-  // clean-room ui-settings-page.js runtime. Keep only independent auth assets:
-  // auth-ux.css owns the authenticated sidebar stack and auth-help.js augments
-  // Help documentation. The retired Settings augmentation runtimes are not loaded.
-  if (!document.querySelector('link[data-debridpulse-auth-ux]')) {
-    const style = document.createElement('link');
-    style.rel = 'stylesheet';
-    style.href = '/auth-ux.css?v=2';
-    style.dataset.debridpulseAuthUx = 'true';
-    document.head.appendChild(style);
-  }
-
-  const script = document.createElement('script');
-  script.src = '/auth-help.js?v=1';
-  script.async = false;
-  document.head.appendChild(script);
 })();

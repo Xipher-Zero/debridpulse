@@ -52,12 +52,13 @@ async def _prepare_startup_settings_and_migrate():
     """Establish one sanitized settings authority before migration decisions.
 
     v1.0.12 migration can mint durable executor mutation authority, so it must
-    never interpret a stale pre-sanitization ``aria2_mode``.  Keep the legacy
-    tolerant load/repair behavior, but fail closed if a safe effective settings
-    object cannot be established before the ownership-sensitive migration.
+    decide from the canonical ``integrations.aria2`` options of the sanitized
+    settings and nothing else.  Keep the tolerant load/repair behavior, but fail
+    closed if a safe effective settings object cannot be established before the
+    ownership-sensitive migration.
     """
     try:
-        from core.config import get_settings, apply_settings, save_settings
+        from core.config import get_settings, apply_settings, save_settings, legacy_paused_input
         from core.config_validator import validate_and_sanitise
 
         raw = get_settings()
@@ -76,11 +77,16 @@ async def _prepare_startup_settings_and_migrate():
         ) from exc
 
     from db.migrations.v112 import migrate
+    from executors.aria2.runtime import _canonical_aria2_options
+
+    # Resolved once from the canonical namespace; used for the ownership-
+    # sensitive migration decision and reused by the startup banner.
+    aria2 = _canonical_aria2_options(cfg)
     await migrate(
-        external_executor=cfg.aria2_mode == "external",
-        globally_paused=cfg.paused,
+        external_executor=aria2.mode == "external",
+        globally_paused=legacy_paused_input(),
     )
-    return cfg
+    return cfg, aria2
 
 
 @asynccontextmanager
@@ -88,7 +94,7 @@ async def lifespan(app: FastAPI):
     # v1.0.12 migration owns database classification and the legacy backup
     # boundary. No current initializer may touch a predecessor database first.
     # Sanitized settings are authoritative before this ownership-sensitive step.
-    cfg = await _prepare_startup_settings_and_migrate()
+    cfg, aria2 = await _prepare_startup_settings_and_migrate()
 
     password_enabled = password_auth_enabled(cfg)
     oidc_enabled = oidc_auth_enabled(cfg)
@@ -103,7 +109,7 @@ async def lifespan(app: FastAPI):
         version=read_version(),
         mode="Docker / Unraid",
         database="SQLite",
-        download_client=("aria2 builtin" if getattr(cfg, "aria2_mode", "builtin") == "builtin" else "aria2 external"),
+        download_client=f"aria2 {aria2.mode}",
         web_ui=f"http://0.0.0.0:{getattr(cfg, 'port', 8080)}",
         auth=("+".join(auth_mechanisms) if auth_mechanisms else "disabled"),
     )

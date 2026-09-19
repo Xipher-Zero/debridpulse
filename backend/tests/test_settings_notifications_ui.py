@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
-RUNTIME = STATIC / "ui-settings-notifications.js"
+RUNTIME = STATIC / "ui-settings-page.js"   # the one Settings owner emits this markup
 STYLE = STATIC / "ui-settings-notifications.css"
 LOADER = STATIC / "ui-presentation-loader.js"
 SEND_ICON = STATIC / "icons" / "lucide" / "send.svg"
@@ -34,8 +34,7 @@ def test_discord_notifications_header_and_field_copy_are_locked():
         assert title in js
         assert flavor in js
 
-    assert "updateIntervalInput.setAttribute('min', '0')" in js
-    assert "updateIntervalInput.setAttribute('max', '168')" in js
+    assert "type: 'number', min: 0, max: 168, step: 1," in js.split("update_check_interval_hours", 2)[2][:200]
 
 
 def test_discord_notification_event_copy_and_row_grouping_are_locked():
@@ -52,8 +51,12 @@ def test_discord_notification_event_copy_and_row_grouping_are_locked():
         assert title in js
         assert flavor in js
 
-    assert "primaryToggleRow.append(addedToggle, completedToggle, errorToggle);" in js
-    assert "secondaryToggleRow.append(extractToggle, updateToggle);" in js
+    primary = js.split("dp-settings-notifications-toggle-row--primary", 1)[1].split("</div>", 1)[0]
+    secondary = js.split("dp-settings-notifications-toggle-row--secondary", 1)[1].split("</div>", 1)[0]
+    assert [k for k in ("discord_notify_added", "discord_notify_finished", "discord_notify_error") if k in primary] == [
+        "discord_notify_added", "discord_notify_finished", "discord_notify_error"]
+    assert [k for k in ("discord_notify_extract", "discord_notify_update") if k in secondary] == [
+        "discord_notify_extract", "discord_notify_update"]
 
 
 
@@ -122,9 +125,9 @@ def test_statistics_reporting_copy_and_single_row_layout_are_locked():
     for text in expected:
         assert text in js
 
-    assert "reportingRow.append(webhookField, intervalField, windowField);" in js
-    assert "reportIntervalInput.setAttribute('min', '0')" in js
-    assert "reportIntervalInput.setAttribute('max', '168')" in js
+    row = js.split("dp-settings-statistics-reporting-row", 1)[1]
+    assert row.index("stats_report_webhook_url") < row.index("stats_report_interval_hours") < row.index("stats_report_window_hours")
+    assert "type: 'number', min: 0, max: 168, step: 1," in row
 
     assert ".dp-settings-statistics-reporting-row" in css
     assert "width: min(88%, 1450px);" in css
@@ -137,12 +140,14 @@ def test_notifications_footer_actions_are_contextual_and_semantically_distinct()
     icon = source(SEND_ICON)
 
     assert "Changes remain unsaved until Apply Settings is selected." in js
-    assert "test-discord-draft" in js
-    assert "send-report-draft" in js
-    assert "reportButton.dataset.contextAction = 'notifications';" in js
-    assert "testDiscord.insertAdjacentElement('afterend', reportButton);" in js
-    assert "'/icons/lucide/flask-conical.svg', 'Test Discord'" in js
-    assert "'/icons/lucide/send.svg', 'Send Report Now'" in js
+    footer = js[js.index('<div class="dp-settings-context-actions">'):js.index('data-action="save"')]
+    # Both notification actions are footer buttons of the notifications context,
+    # in this order, emitted directly by the Settings owner (nothing relocates them).
+    assert footer.index('data-action="test-discord"') < footer.index('data-action="send-report"')
+    assert footer.count('data-context-action="notifications"') == 2
+    assert "/icons/lucide/flask-conical.svg" in footer and "<span>Test Discord</span>" in footer
+    assert "/icons/lucide/send.svg" in footer and "<span>Send Report Now</span>" in footer
+    assert "-draft" not in js
     assert "<svg" in icon
     assert "<path" in icon
     assert 'stroke="#B866F5"' in icon
@@ -156,15 +161,15 @@ def test_notification_context_actions_use_current_draft_without_persisting_it():
     assert "'/settings/validate-discord'" in js
     assert "username: valueOf('discord_username')" in js
     assert "avatar_url: valueOf('discord_avatar_url')" in js
-    assert "clear_webhook: clearChecked('discord_webhook_url')" in js
+    assert "clear_webhook: clears.has('discord_webhook_url')" in js
 
     assert "'/settings/send-stats-report'" in js
     assert "stats_report_webhook_url: valueOf('stats_report_webhook_url')" in js
-    assert "clear_stats_report_webhook: clearChecked('stats_report_webhook_url')" in js
+    assert "clear_stats_report_webhook: clearSecrets().includes('stats_report_webhook_url')" in js
     assert "discord_webhook_url: valueOf('discord_webhook_url')" in js
-    assert "clear_discord_webhook: clearChecked('discord_webhook_url')" in js
-    assert "hours = Math.max(1, intValueOf('stats_report_window_hours', 24))" in js
+    assert "clear_discord_webhook: clearSecrets().includes('discord_webhook_url')" in js
+    assert "hours = Math.max(1, intOf('stats_report_window_hours', 24))" in js
 
     # A contextual send must not rerender the Settings page and discard unsaved draft fields.
-    send_function = js[js.index("async function sendReportNow"):js.index("function polishDiscordCard")]
-    assert "render()" not in send_function
+    send_function = js[js.index("async function sendReport("):js.index("async function", js.index("async function sendReport(") + 10)]
+    assert "render" not in send_function

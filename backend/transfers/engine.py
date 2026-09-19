@@ -20,6 +20,7 @@ from transfers.contracts import Manifest, ResourceLookup
 from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
+from transfers.policy import recovery_action
 from transfers.models import (
     Capability, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
 )
@@ -140,16 +141,16 @@ class TransferEngine(_RecoveryTransferEngine):
                 await self.repository.resource_observation(
                     record.transfer_id, previous.resource, previous.state,
                 )
-                previous_error = self.policy.compatibility(previous.error) if previous.error else None
+                previous_error = previous.error or None
                 restartable = previous.state in {ResourceState.EXPIRED, ResourceState.ABSENT} or (
                     previous.state == ResourceState.UNAVAILABLE
                     and previous_error is not None
                     and previous_error.retryability not in {Retryability.NEVER, Retryability.UNKNOWN}
                     and previous_error.domain != Domain.SECURITY
-                    and previous_error.recovery in {Recovery.RETRY, Recovery.RERESOLVE, Recovery.BACKOFF}
+                    and recovery_action(previous_error) in {Recovery.RETRY, Recovery.RERESOLVE, Recovery.BACKOFF}
                 )
                 if previous_error and not restartable:
-                    raise TransferError(previous_error)
+                    raise TransferError(self.policy.compatibility(previous_error))
                 if previous.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}:
                     await self.repository.poll_after(record.id, self.clock(), waiting=True)
                     return
@@ -290,7 +291,6 @@ class TransferEngine(_RecoveryTransferEngine):
                         Stage.CANDIDATE_PREPARATION,
                         domain=Domain.RESOLUTION,
                         retryability=Retryability.BACKOFF,
-                        recovery=Recovery.BACKOFF,
                     ))
                 paths = [
                     str(_engine_base.destination(self.root, entry.relative_path)).casefold()
@@ -324,7 +324,6 @@ class TransferEngine(_RecoveryTransferEngine):
                     Stage.RESOLUTION,
                     domain=Domain.PROVIDER,
                     retryability=Retryability.AFTER_RERESOLUTION,
-                    recovery=Recovery.RERESOLVE,
                 )
                 await self._request_failure(record, error, waiting=True)
             elif observation.state in {ResourceState.UNKNOWN, ResourceState.UNAVAILABLE}:

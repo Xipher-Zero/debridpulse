@@ -65,7 +65,7 @@ def test_runtime_requirements_are_hash_pinned_for_every_package():
 def test_supply_chain_policy_document_exists_and_states_the_authority_contract():
     assert "authoritative release artifact" in _POLICY.lower()
     assert "manifest" in _POLICY.lower() and "digest" in _POLICY.lower()
-    assert "sha-<short7>" in _POLICY or "sha-" in _POLICY
+    assert "sha-<40-char-git-sha>" in _POLICY
 
 
 def test_supply_chain_policy_does_not_claim_bit_identical_rebuilds():
@@ -74,15 +74,124 @@ def test_supply_chain_policy_does_not_claim_bit_identical_rebuilds():
     assert "bit-identical" in lowered or "reproducib" in lowered
 
 
-def test_fork_image_workflow_remains_sha_only_immutable_publication():
-    workflow = (ROOT / ".github" / "workflows" / "fork-image.yml").read_text()
-    assert "type=sha,prefix=sha-,format=short" in workflow
+def _workflow(name: str) -> str:
+    return (ROOT / ".github" / "workflows" / name).read_text()
+
+
+def _step(workflow: str, name: str) -> str:
+    """Text of one workflow step, from its ``- name:`` line to the next step."""
+    marker = f"- name: {name}"
+    assert workflow.count(marker) == 1, f"expected exactly one step named {name!r}"
+    start = workflow.index(marker)
+    following = workflow.find("\n      - name:", start + len(marker))
+    return workflow[start:] if following == -1 else workflow[start:following]
+
+
+def test_fork_image_workflow_publishes_only_the_full_sha_tag():
+    workflow = _workflow("fork-image.yml")
+    # Exactly one tag rule, and it is the full source SHA -- never a truncation.
+    assert workflow.count("type=raw,value=sha-${{ github.sha }}") == 2
+    assert "type=sha" not in workflow
+    assert "format=short" not in workflow
+    assert "GITHUB_SHA:0:7" not in workflow
     assert "latest=false" in workflow
-    # The publish job's own runtime guard: refuse to proceed if the tag it
-    # is about to push is not a sha- tag, or if it resolves to a mutable
-    # latest/version tag.
-    assert 'generated_tags[0]}" != "${IMAGE_NAME}:sha-"*' in workflow
+    # The publish job's own runtime guard: the one generated tag must equal the
+    # full-SHA candidate ref, and may never be a mutable latest/version tag.
+    assert '"${generated_tags[0]}" != "${IMAGE_NAME}:sha-${GITHUB_SHA}"' in workflow
+    assert "^[0-9a-f]{40}$" in workflow
     assert '":latest"' in workflow and '":v"' in workflow
+
+
+def test_fork_image_checks_for_an_existing_candidate_before_publishing():
+    workflow = _workflow("fork-image.yml")
+    check = workflow.index("- name: Check for an existing candidate for this source SHA")
+    build = workflow.index("- name: Build and publish")
+    assert check < build, "the existence check must precede the build/push step"
+
+    existing = _step(workflow, "Check for an existing candidate for this source SHA")
+    assert "docker buildx imagetools inspect" in existing
+    # An inconclusive registry answer must never be read as "absent".
+    assert "Unable to determine whether" in existing
+    assert "denied|unauthorized|forbidden" in existing
+
+    publish = _step(workflow, "Build and publish")
+    assert "if: steps.existing.outputs.exists != 'true'" in publish
+    assert "push: true" in publish
+    # Exactly one push in the whole workflow, and it is the guarded step.
+    assert workflow.count("push: true") == 1
+
+
+def test_fork_image_reuses_a_valid_existing_candidate_without_overwriting_it():
+    workflow = _workflow("fork-image.yml")
+    existing = _step(workflow, "Check for an existing candidate for this source SHA")
+    assert 'echo "exists=true" >> "$GITHUB_OUTPUT"' in existing
+    assert 'echo "digest=$digest" >> "$GITHUB_OUTPUT"' in existing
+    assert "will be reused unchanged" in existing
+    # A reuse path performs no build and no push of its own.
+    assert "build-push-action" not in existing
+    assert "imagetools create" not in existing
+    assert "docker push" not in existing
+
+    selected = _step(workflow, "Select the immutable candidate digest")
+    assert 'if [ "$EXISTING" = "true" ]' in selected
+    assert "An existing candidate was reused but a build also reported a digest" in selected
+
+    # Later verification is keyed on the selected digest, for both paths.
+    verify = _step(workflow, "Verify candidate digest and OCI identity")
+    assert "steps.candidate.outputs.digest" in verify
+    assert "steps.publish.outputs.digest" not in verify
+
+
+def test_fork_image_fails_closed_when_an_existing_tag_records_another_revision():
+    workflow = _workflow("fork-image.yml")
+    existing = _step(workflow, "Check for an existing candidate for this source SHA")
+    assert 'existing_revision" != "$GITHUB_SHA"' in existing
+    assert "refusing to reuse or overwrite" in existing
+    revision_check = existing.index('existing_revision" != "$GITHUB_SHA"')
+    assert "exit 1" in existing[revision_check:revision_check + 400]
+    # Reuse still requires both platform children to be present.
+    assert 'for arch in amd64 arm64' in existing
+
+
+def test_fork_image_serializes_runs_for_the_same_source_sha():
+    workflow = _workflow("fork-image.yml")
+    head = workflow[:workflow.index("\njobs:")]
+    assert "concurrency:" in head
+    assert "group: fork-image-${{ github.sha }}" in head
+    # Never cancel a publication that is already in flight.
+    assert "cancel-in-progress: false" in head
+    assert "cancel-in-progress: true" not in workflow
+
+
+def test_no_candidate_consumer_or_promotion_step_truncates_the_source_sha():
+    for name in (
+        "fork-image.yml",
+        "container-security.yml",
+        "candidate-runtime-qualification.yml",
+        "release-promotion.yml",
+    ):
+        text = _workflow(name)
+        assert "GITHUB_SHA:0:7" not in text, name
+        assert "candidate_sha:0:7" not in text, name
+        assert "format=short" not in text, name
+    for name in ("container-security.yml", "candidate-runtime-qualification.yml"):
+        assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA}"' in _workflow(name), name
+    promotion = _workflow("release-promotion.yml")
+    assert 'source_tag=sha-${candidate_sha}' in promotion
+    assert "^[0-9a-f]{40}$" in promotion
+
+
+def test_supply_chain_policy_states_the_write_once_full_sha_rule():
+    lowered = _POLICY.lower()
+    assert "write-once" in lowered
+    assert "sha-<40-char-git-sha>" in _POLICY
+    assert "sha-<short7>" not in _POLICY
+    assert "reuses" in lowered and "fails closed" in lowered
+    assert "new candidate requires a new source sha" in lowered
+    assert "cancel-in-progress: false" in _POLICY
+    # The policy must not both promise a write-once tag and treat a same-SHA
+    # rebuild as a fresh candidate.
+    assert "a rebuild is a new candidate" not in lowered
 
 
 def test_release_promotion_remains_digest_preserving_no_rebuild():

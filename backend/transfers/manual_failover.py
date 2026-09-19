@@ -23,7 +23,6 @@ from transfers.errors import (
     Domain,
     NormalizedError,
     Origin,
-    Recovery,
     Retryability,
     Stage,
     TransferError,
@@ -37,7 +36,7 @@ from transfers.models import ResolutionResult, ResourceState
 # lifecycle states in which a candidate switch is ever permitted -- both the
 # command's own precondition below and every presentation projection
 # (``transfers.repository._SWITCHABLE_ARTIFACT_STATES``,
-# ``transfers.manual_repository._SWITCHABLE_STATES``, and
+# ``transfers.presentation_repository._SWITCHABLE_STATES``, and
 # ``api.operational_downloads._SWITCHABLE_STATES_SQL``, which is derived from
 # ``transfers.repository._SWITCHABLE_ARTIFACT_STATES``) import THIS frozenset
 # rather than defining their own. There is no second literal anywhere in the
@@ -59,7 +58,6 @@ def _error(
     *,
     domain: Domain = Domain.LIFECYCLE,
     retryability: Retryability = Retryability.NEVER,
-    recovery: Recovery = Recovery.FAIL,
     integration_id: str = "",
 ) -> TransferError:
     return TransferError(NormalizedError(
@@ -67,7 +65,6 @@ def _error(
         category,
         stage,
         retryability=retryability,
-        recovery=recovery,
         origin=Origin.CORE,
         operator_action_required=True,
         integration_id=integration_id,
@@ -104,7 +101,6 @@ async def _refresh_exact(engine, artifact, index: int):
             Stage.CANDIDATE_PREPARATION,
             domain=Domain.RESOLUTION,
             retryability=Retryability.AFTER_RERESOLUTION,
-            recovery=Recovery.REQUIRE_OPERATOR,
             integration_id=candidate.provider_id,
         )
 
@@ -139,7 +135,6 @@ async def _refresh_exact(engine, artifact, index: int):
                 Stage.CANDIDATE_PREPARATION,
                 domain=Domain.RESOLUTION,
                 retryability=Retryability.AFTER_RERESOLUTION,
-                recovery=Recovery.REQUIRE_OPERATOR,
             )
         if not await engine.canonical.refresh_candidate(
             artifact,

@@ -23,10 +23,11 @@ def read(name: str) -> str:
 
 
 def test_settings_icon_replacement_does_not_recreate_legacy_icons() -> None:
-    source = read("ui-settings-card-icons.js")
+    page = read("ui-settings-page.js")
     css = read("ui-settings-card-icons.css")
-    assert "child.dataset.dpSettingsReplacedIcon = '1'" in source
-    assert "child.classList.add('dp-settings-replaced-legacy-icon')" in source
-    assert "child.remove()" not in source
-    assert ".dp-settings-replaced-legacy-icon" in css
-    assert "display: none !important" in css
+    # Each card emits exactly one icon (from CARD_ICONS). No legacy icon is
+    # created, hidden, or replaced afterwards, so no such node or rule exists.
+    assert "CARD_ICONS" in page
+    for retired in ("dpSettingsReplacedIcon", "dp-settings-replaced-legacy-icon", "child.remove()"):
+        assert retired not in page and retired not in css
+    assert not (STATIC / "ui-settings-card-icons.js").exists()

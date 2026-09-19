@@ -166,7 +166,11 @@ def test_extraction_state_is_persisted_and_operator_visible():
     assert "active_operations" in routes_source
     assert "extracting_count" in routes_source
     assert "extracting: {icon: 'packageOpen', label: 'Extracting'" in icon_source
-    assert "t.extraction_status" in app_source
+    # The extracting badge is the backend's effective presentation, never
+    # re-derived in the browser from the extraction fields.
+    assert "completed_with_errors" not in app_source and "downloading_with_errors" not in app_source
+    assert "return 'extracting'" not in app_source
+    assert "t && t.presentation_status" in app_source
 
 
 def test_external_extraction_stages_inside_destination(tmp_path, monkeypatch):
@@ -195,6 +199,9 @@ def test_external_extraction_stages_inside_destination(tmp_path, monkeypatch):
 def test_frontend_surfaces_extraction_failure_toast():
     root = Path(__file__).resolve().parents[2]
     app_source = (root / "frontend/static/app.js").read_text()
-    assert "patchExtractionTransferEvent" in app_source
+    assert "notifyExtractionFailure" in app_source
+    # The toast is a notification only: no client-side status derivation paints
+    # the row (the badge is the backend's effective presentation).
+    assert "patchExtractionTransferEvent" not in app_source
     assert "Extraction failed:" in app_source
     assert "extraction_error" in app_source

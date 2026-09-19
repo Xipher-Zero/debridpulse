@@ -29,6 +29,8 @@ from core.config import (
     load_settings,
     save_settings,
 )
+from api.legacy_settings_view import legacy_settings_projection
+from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
 from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
@@ -144,8 +146,11 @@ def _is_public_url(url: str) -> bool:
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
+# Secrets of the broad settings document only. Integration-owned secrets
+# (AllDebrid ``api_key``, aria2 ``secret``) live in their ``integrations.<id>``
+# namespace and are written, cleared and redacted through it.
 _SECRET_SETTINGS = {
-    "alldebrid_api_key", "aria2_secret", "discord_webhook_url",
+    "discord_webhook_url",
     "discord_webhook_added", "stats_report_webhook_url",
     "auth_password", "extraction_password",
 }
@@ -173,46 +178,17 @@ _AUTH_COMPAT_SETTINGS_FIELDS = (
 )
 
 
-def _project_legacy_view(data: dict, settings: AppSettings, definitions) -> None:
-    """Read-time-only projection of canonical namespace values onto legacy
-    flat field names (specification section 9.2). Legacy fields are
-    migration/compatibility input only and are never regenerated as a
-    persisted mirror on save (``transfers.settings.normalize_transfer_settings``,
-    ``transfers.runtime_limits.normalize_runtime_limits``,
-    ``integrations.configuration.normalize_settings``) -- but an existing
-    reader of ``GET /settings`` must still observe the CURRENT canonical
-    value under the legacy name. This mutates only the response dict; nothing
-    here is written back to storage.
-    """
-    from transfers.runtime_limits import _LEGACY_FIELDS as _RUNTIME_LEGACY_FIELDS
-    from transfers.settings import _LEGACY_FIELDS as _TRANSFER_LEGACY_FIELDS
-
-    policy = settings.transfer_policy
-    if policy is not None:
-        for legacy, canonical in _TRANSFER_LEGACY_FIELDS.items():
-            data[legacy] = getattr(policy, canonical)
-        data["max_concurrent_downloads"] = policy.max_concurrent_executions
-        data["aria2_max_active_downloads"] = policy.max_concurrent_executions
-
-    limits = settings.execution_runtime_limits
-    if limits is not None:
-        for legacy, canonical in _RUNTIME_LEGACY_FIELDS.items():
-            data[legacy] = getattr(limits, canonical)
-
-    for definition in definitions:
-        entry = settings.integrations.get(definition.id)
-        if entry is None:
-            continue
-        for legacy, option in definition.legacy_fields:
-            if option in entry.options:
-                data[legacy] = entry.options[option]
-
-
 def _public_settings(settings: AppSettings, definitions=()) -> dict:
     data = settings.model_dump()
     from integrations.configuration import public_integrations
     data["integrations"] = public_integrations(settings, definitions)
-    _project_legacy_view(data, settings, definitions)
+    # Compatibility output for pre-canonical readers, derived from the
+    # canonical namespaces above at response time; never persisted or consumed.
+    compatibility = legacy_settings_projection(settings, definitions)
+    data.update(compatibility)
+    # Self-describing: a client that re-submits this document strips exactly
+    # these names, so no client has to keep its own list of them.
+    data["compatibility_fields"] = sorted(compatibility)
     for field in _SECRET_SETTINGS:
         if field in data:
             data[f"{field}_configured"] = bool(str(data.get(field) or "").strip())
@@ -394,10 +370,7 @@ async def _apply_aria2_lifecycle_transition(previous: AppSettings, clean: AppSet
     is checked earlier, by ``ApplicationService.validate_configuration``, not
     by waiting for the whole application to quiesce here.
 
-    Reads the canonical ``integrations.aria2`` namespace, never the flat
-    ``aria2_mode``/``aria2_builtin_port`` fields (specification section 9.2):
-    those are migration input only and are no longer regenerated as an
-    authoritative mirror on save, so they may be stale by the time this runs.
+    Reads the canonical ``integrations.aria2`` namespace only.
     """
     previous_aria2 = _canonical_aria2_options(previous)
     clean_aria2 = _canonical_aria2_options(clean)
@@ -428,9 +401,15 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             merged = _merge_secret_settings(new, previous)
             definitions = application.definitions
             from integrations.configuration import normalize_settings
-            merged["integrations"] = new.integrations
-            clean = normalize_settings(AppSettings(**merged), definitions, previous=previous,
-                supplied_fields=new.model_fields_set, clear_legacy_secrets=new.clear_secrets)
+            # The broad document never writes a canonical namespace: those have
+            # their own scoped surfaces (``/integrations/{id}/configuration``,
+            # ``/transfer-policy``, ``/execution/runtime-limits``). Whatever a
+            # stale snapshot echoes for them is ignored, so it cannot undo a
+            # concurrently applied scoped write.
+            merged["integrations"] = previous.integrations
+            merged["transfer_policy"] = previous.transfer_policy
+            merged["execution_runtime_limits"] = previous.execution_runtime_limits
+            clean = normalize_settings(AppSettings(**merged), definitions, previous=previous)
             clean = validate_and_sanitise(clean)
             try:
                 await application.validate_configuration(previous, clean)
@@ -524,7 +503,7 @@ async def test_discord():
 async def test_alldebrid():
     from providers.alldebrid.admin import account_status
     cfg = get_settings()
-    if not cfg.alldebrid_api_key:
+    if not alldebrid_canonical_options(cfg).api_key:
         raise HTTPException(400, "No API key configured")
     try:
         return await account_status(cfg)
@@ -629,11 +608,11 @@ async def aria2_runtime_apply( application: ApplicationService = Depends(get_app
 
 @router.get("/aria2/downloads")
 async def aria2_downloads( application: ApplicationService = Depends(get_application)):
-    cfg = get_settings()
+    aria2 = _canonical_aria2_options(get_settings())
     try:
         downloads = await application.integration_admin("aria2").get_all(
-            getattr(cfg, "aria2_waiting_window", 100),
-            getattr(cfg, "aria2_stopped_window", 100),
+            aria2.waiting_window,
+            aria2.stopped_window,
         )
         downloads = await application.integration_admin("aria2").filter_owned(downloads)
     except Exception as e:
@@ -909,7 +888,7 @@ async def pause_torrent(torrent_id: int, application: ApplicationService = Depen
 async def resume_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
     try:
         await application.resume(torrent_id)
-        return {"ok": True, "paused": bool(get_settings().paused)}
+        return {"ok": True, "paused": await application.repository.globally_paused()}
     except Exception as e:
         raise HTTPException(400, _sanitize_error(e))
 
@@ -975,7 +954,7 @@ async def performance_diagnostics( application: ApplicationService = Depends(get
 # ── Statistics ─────────────────────────────────────────────────────────────────
 
 @router.get("/stats")
-async def get_stats():
+async def get_stats(application: ApplicationService = Depends(get_application)):
     started = time.monotonic()
     async with get_db() as db:
         by_status_rows = await db.fetchall(
@@ -1058,7 +1037,7 @@ async def get_stats():
             aggregate.get("avg_download_duration_seconds") or 0
         ),
         "avg_torrent_size_bytes": int(aggregate.get("avg_torrent_size_bytes") or 0),
-        "paused": bool(get_settings().paused),
+        "paused": await application.repository.globally_paused(),
     }
     from core.performance import observe
     observe("api.stats", time.monotonic() - started)
@@ -1180,12 +1159,12 @@ async def get_stats_detail(period: str = "all"):
 @router.post("/processing/pause")
 async def pause_processing( application: ApplicationService = Depends(get_application)):
     result = await application.pause_all()
-    return {"ok": True, "paused": bool(get_settings().paused), **result}
+    return {"ok": True, **result}
 
 @router.post("/processing/resume")
 async def resume_processing( application: ApplicationService = Depends(get_application)):
     result = await application.resume_all()
-    return {"ok": True, "paused": bool(get_settings().paused), **result}
+    return {"ok": True, **result}
 
 # ── Changelog ──────────────────────────────────────────────────────────────────
 
@@ -1350,7 +1329,7 @@ async def wipe_database_admin(body: dict | None = None, application: Application
     cfg = get_settings()
     if not getattr(cfg, "db_wipe_enabled", False):
         raise HTTPException(400, "Database wipe is disabled in settings")
-    if not getattr(cfg, "paused", False):
+    if not await application.repository.globally_paused():
         raise HTTPException(409, "Pause processing before wiping the database")
     if not (body or {}).get("confirm"):
         raise HTTPException(400, "Wipe confirmation required")
@@ -1370,7 +1349,7 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                 cfg = get_settings()
                 if not getattr(cfg, "db_wipe_enabled", False):
                     raise HTTPException(400, "Database wipe is disabled in settings")
-                if not getattr(cfg, "paused", False):
+                if not await application.repository.globally_paused():
                     raise HTTPException(409, "Pause processing before wiping the database")
 
                 if scheduler_was_running:
@@ -1484,34 +1463,22 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
 
             if "max_upload_speed" in body:
                 val = int(body["max_upload_speed"])
-                # Gate 9 revision-5 rejection finding 3: persist the desired
-                # value (migrating the legacy flat field into canonical
-                # ``integrations.aria2.max_upload_limit`` via the same
-                # one-way ``normalize_settings`` path every other executor
-                # mutation uses) and refresh the injected
-                # ``Aria2RuntimeConfiguration`` snapshot via
-                # ``application.configure()`` BEFORE the native apply --
-                # exactly the persist-then-apply ordering finding 4 already
-                # established for the neutral runtime-limit route. Without
-                # the ``configure()`` call, the long-lived admin/runtime
-                # singletons kept serving the OLD upload cap until an
-                # unrelated reconfigure (e.g. the next ``apply_memory_tuning``
-                # housekeeping pass would silently revert a live native
-                # change back to the stale injected value).
-                async with config_write_lock():
-                    current = load_settings()
-                    current.aria2_max_upload_limit = val
-                    from integrations.configuration import normalize_settings
-                    current = normalize_settings(current, application.definitions, supplied_fields={"aria2_max_upload_limit"})
-                    save_settings(current)
-                    apply_settings(current)
-                    application.configure()
-                    try:
-                        await application.integration_admin("aria2").change_global_options(
-                            {"max-overall-upload-limit": str(val)},
-                        )
-                    except Exception as exc:
-                        last_apply_error = _sanitize_error(exc)
+                # Upload bandwidth has no neutral surface (specification
+                # section 4.4), so it is an aria2-owned option. It is written
+                # only through the canonical scoped integration surface -- this
+                # compatibility edge holds no persistence logic of its own --
+                # and the native apply is then attempted so a failure is still
+                # reported truthfully.
+                await patch_integration_configuration(
+                    "aria2", IntegrationConfigurationUpdate(options={"max_upload_limit": val}),
+                    application=application,
+                )
+                try:
+                    await application.integration_admin("aria2").change_global_options(
+                        {"max-overall-upload-limit": str(val)},
+                    )
+                except Exception as exc:
+                    last_apply_error = _sanitize_error(exc)
                 applied["max-overall-upload-limit"] = str(val)
 
             if "max_concurrent_downloads" in body:
@@ -1614,9 +1581,7 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
             current = load_settings()
             current.execution_runtime_limits = ExecutionRuntimeLimits(max_download_bytes_per_second=value)
             from integrations.configuration import normalize_settings
-            current = normalize_settings(
-                current, application.definitions, supplied_fields={"execution_runtime_limits"},
-            )
+            current = normalize_settings(current, application.definitions)
             save_settings(current)
             apply_settings(current)
             application.configure()
@@ -1657,16 +1622,23 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
 # sections 2.6, 6).
 
 class TransferPolicyUpdate(BaseModel):
+    """Partial update of ``transfer_policy``: every operator-tunable field of
+    the canonical namespace, and only through this surface."""
     max_concurrent_executions: int | None = None
     execution_retry_count: int | None = None
     execution_retry_delay_seconds: int | None = None
+    resolution_retry_count: int | None = None
+    resolution_retry_delay_minutes: int | None = None
+    execution_poll_interval_seconds: int | None = None
+    provider_poll_interval_seconds: int | None = None
+    stalled_timeout_hours: int | None = None
 
 
 @router.get("/transfer-policy")
 async def get_transfer_policy_ep(application: ApplicationService = Depends(get_application)):
     """Universal transfer-policy namespace (specification section 4.1): the
-    single canonical authority for execution concurrency and retry policy,
-    never aria2-named."""
+    single canonical authority for execution concurrency, retry, polling and
+    stall policy, never aria2-named."""
     policy = get_settings().transfer_policy or TransferSettings()
     return {"ok": True, **policy.model_dump()}
 
@@ -1674,9 +1646,8 @@ async def get_transfer_policy_ep(application: ApplicationService = Depends(get_a
 @router.patch("/transfer-policy")
 async def patch_transfer_policy(body: TransferPolicyUpdate, application: ApplicationService = Depends(get_application)):
     """Scoped universal transfer-policy mutation. The canonical UI writes only
-    this surface for concurrency/retry; ``max_concurrent_downloads`` and
-    ``aria2_max_active_downloads`` are never a second writable authority
-    (specification sections 4.1, 9.7, 9.8)."""
+    this surface for every ``transfer_policy`` field; no flat alias is a second
+    writable authority (specification sections 4.1, 9.7, 9.8)."""
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No valid transfer-policy fields provided")
@@ -1695,7 +1666,7 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
                 raise HTTPException(400, _sanitize_error(exc)) from None
             current.transfer_policy = policy
             from integrations.configuration import normalize_settings
-            current = normalize_settings(current, application.definitions, supplied_fields={"transfer_policy"})
+            current = normalize_settings(current, application.definitions)
             save_settings(current)
             apply_settings(current)
             # Unconditional (Gate 9 revision-3 rejection finding 4):
@@ -2005,8 +1976,11 @@ async def disk_guard_status( application: ApplicationService = Depends(get_appli
 async def prometheus_metrics():
     """Prometheus-compatible metrics endpoint.
 
-    Scrape with: `- job_name: alldebrid  static_configs: [{targets: [host:8080]}]`
+    Scrape with: `- job_name: debridpulse  static_configs: [{targets: [host:8080]}]`
     and set `metrics_path: /api/metrics`.
+
+    Every metric describes universal transfer/scheduler state under the
+    ``debridpulse_`` namespace; none is named for a provider or an executor.
     """
     try:
         from prometheus_client import (
@@ -2049,35 +2023,35 @@ async def prometheus_metrics():
         lines.append(f"# TYPE {name} gauge")
         lines.append(f"{name}{lstr} {value}")
 
-    _gauge("alldebrid_torrents_total",
-           "Number of torrents by status",
+    _gauge("debridpulse_transfers_total",
+           "Number of transfers across all statuses",
            sum(by_status.values()))
 
     for status, count in by_status.items():
-        lines.append(f'alldebrid_torrents_by_status{{status="{status}"}} {count}')
+        lines.append(f'debridpulse_transfers_by_status{{status="{status}"}} {count}')
 
-    _gauge("alldebrid_active_downloads",
-           "Torrents currently in queued or downloading state",
+    _gauge("debridpulse_active_downloads",
+           "Transfers currently in queued or downloading state",
            by_status.get("queued", 0) + by_status.get("downloading", 0))
 
-    _gauge("alldebrid_completed_downloads",
-           "Total torrents completed",
+    _gauge("debridpulse_completed_downloads",
+           "Total transfers completed",
            by_status.get("completed", 0))
 
-    _gauge("alldebrid_error_torrents",
-           "Torrents in error state",
+    _gauge("debridpulse_error_transfers",
+           "Transfers in error state",
            by_status.get("error", 0))
 
-    _gauge("alldebrid_pending_files",
-           "download_files rows in pending state (waiting for aria2 slot)",
+    _gauge("debridpulse_pending_files",
+           "Download files in pending state (waiting for an available execution slot)",
            by_file_status.get("pending", 0))
 
-    _gauge("alldebrid_sse_subscribers",
+    _gauge("debridpulse_sse_subscribers",
            "Number of SSE connections",
            len(_sse_subscribers))
 
-    _gauge("alldebrid_downloaded_bytes_total",
-           "Total bytes downloaded (completed torrents)",
+    _gauge("debridpulse_downloaded_bytes_total",
+           "Total bytes downloaded (completed transfers)",
            total_bytes)
 
     return Response(

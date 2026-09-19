@@ -17,7 +17,7 @@ Use shell commands on the deployment host only for things that actually require 
 1. Perform source edits through the GitHub connector on the active staging/feature branch.
 2. Re-read changed files/diffs after writes. Verify that only intended files changed.
 3. Run the permanent CI matrix (Tests, CodeQL, Container Security, Fork Image) on the candidate SHA.
-4. Prefer immutable candidate images (`sha-<shortsha>`) for local runtime validation.
+4. Prefer immutable candidate images (`sha-<full-git-sha>`) for local runtime validation.
 5. Before replacing the deployed image, verify the OCI label `org.opencontainers.image.revision` exactly matches the expected full candidate SHA.
 6. Perform local behavioral acceptance against that exact image.
 7. Freeze the accepted SHA. Do not make opportunistic changes after acceptance; any source change creates a new candidate and requires requalification.
@@ -122,7 +122,7 @@ For candidate or release deployment:
 8. Query the internal `/api/health` endpoint.
 9. Restore the previous Compose file/image if validation or recreation fails.
 
-For staging candidates, use immutable `sha-<shortsha>` images. After release publication, move production to the version tag only after verifying the version tag's OCI revision equals the promoted `main` release commit.
+For staging candidates, use immutable `sha-<full-git-sha>` images. After release publication, move production to the version tag only after verifying the version tag's OCI revision equals the promoted `main` release commit.
 
 ## Promotion gate
 

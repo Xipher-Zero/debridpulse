@@ -44,30 +44,34 @@
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="nav-label">Help &amp; License</span>
     </div>
   </nav>
-  <div class="sidebar-footer">
-    <div class="conn-row" id="premium-row" style="display:none">
-      <span id="lbl-premium" style="font-size:10px;color:var(--accent);line-height:1.4"></span>
-    </div>
-    <div id="provider-status-list" class="dp-provider-status-list" aria-label="Provider Status">
-      <div class="conn-row dp-provider-status-row" data-provider-state="checking">
-        <div class="dot check"></div><span>Provider Status: checking…</span>
+  <div id="sidebar-bottom-stack" class="sidebar-bottom-stack">
+    <div class="sidebar-footer">
+      <div class="dp-provider-status-heading">Provider Status</div>
+      <div class="conn-row" id="premium-row" style="display:none">
+        <span id="lbl-premium" style="font-size:10px;color:var(--accent);line-height:1.4"></span>
+      </div>
+      <div id="provider-status-list" class="dp-provider-status-list" aria-label="Provider Status">
+        <div class="conn-row dp-provider-status-row" data-provider-state="checking">
+          <div class="dot check"></div><span>Provider Status: checking…</span>
+        </div>
+      </div>
+      <div class="conn-row">
+        <div class="dot" id="dot-aria2"></div>
+        <span id="lbl-aria2">aria2: —</span>
+      </div>
+      <div class="conn-row">
+        <div class="dot" id="dot-db"></div>
+        <span id="lbl-db">DB: —</span>
+      </div>
+      <div class="conn-row" id="aria2ng-row" style="display:none;margin-top:4px">
+        <a id="aria2ng-link" href="#" target="_blank" rel="noopener"
+           style="font-size:10px;color:var(--text3);text-decoration:none;display:flex;align-items:center;gap:4px;transition:color .15s"
+           onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">
+          ↗ aria2ng
+        </a>
       </div>
     </div>
-    <div class="conn-row">
-      <div class="dot" id="dot-aria2"></div>
-      <span id="lbl-aria2">aria2: —</span>
-    </div>
-    <div class="conn-row">
-      <div class="dot" id="dot-db"></div>
-      <span id="lbl-db">DB: —</span>
-    </div>
-    <div class="conn-row" id="aria2ng-row" style="display:none;margin-top:4px">
-      <a id="aria2ng-link" href="#" target="_blank" rel="noopener"
-         style="font-size:10px;color:var(--text3);text-decoration:none;display:flex;align-items:center;gap:4px;transition:color .15s"
-         onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'">
-        ↗ aria2ng
-      </a>
-    </div>
+    <div id="sidebar-auth-mount" hidden></div>
   </div>
 </aside>
 
@@ -242,15 +246,15 @@
             <img src="/icons/dp/card-link.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg">
             <span class="dp-card-heading-copy"><span>Quick Add</span><span class="dp-card-subtitle">Add links, magnets, or torrent files to the queue.</span></span>
           </div>
+          <div class="dp-global-pause-center"><div class="dp-global-pause-title"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg><span>PROCESSING PAUSED</span></div><div class="dp-global-pause-copy">New downloads can still be added. They will remain queued until processing is resumed.</div></div>
           <div class="dp-card-header-actions">
-            <button class="btn btn-ghost btn-sm" id="btn-import-existing" data-default-label="Import" onclick="importExisting(this)" title="Import all AllDebrid magnets not yet in the local database"><svg class="lucide dp-utility-icon" data-dp-lucide="upload" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg><span>Import</span></button>
-            <span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Reset stuck or errored torrents — re-dispatches from AllDebrid"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span>
+            <span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span>
           </div>
         </div>
         <div style="padding:12px 16px">
           <div class="direct-link-entry">
             <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="https://example-hoster.com/file/…&#10;magnet:?xt=urn:btih:…" oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
-            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit direct links and magnets through AllDebrid; when empty, choose a .torrent file">Add</button></span>
+            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit links and magnets for provider routing; when empty, choose a .torrent file">Add</button></span>
           </div>
         </div>
       </div>
@@ -298,6 +302,7 @@
           </div>
           <button class="btn btn-ghost btn-sm dp-downloads-refresh" data-default-label="Refresh" onclick="loadTorrents()" aria-label="Refresh downloads" title="Refresh downloads"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
         </div>
+        <div class="dp-downloads-pause-shim">Processing paused. Queued and newly added downloads will not start until processing is resumed.</div>
         <div style="padding:10px 14px 0">
           <div class="ev-search-row">
             <input class="input" id="torrent-search" placeholder="Search downloads…" oninput="onTorrentSearchInput()"/>
@@ -336,19 +341,36 @@
       <div class="card dp-activity-card">
         <div class="card-header">
           <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading">For the Record</span><span class="dp-activity-subtitle">Everything DebridPulse thought was worth mentioning.</span></span></span>
-          <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="loadEvents()" aria-label="Refresh activity log" title="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
+          <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="DPActivityLog.load()" aria-label="Refresh activity log" title="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
         </div>
         <div class="dp-activity-search-band">
           <div class="ev-search-row dp-activity-search-row">
-            <input class="input" id="ev-search" placeholder="Search by torrent name or message…" oninput="filterEvents()"/>
-            <select class="input" id="ev-level" onchange="filterEvents()">
-              <option value="">All levels</option>
-              <option value="info">Info</option>
-              <option value="warn">Warn</option>
-              <option value="error">Error</option>
-            </select>
+            <input class="input" id="ev-search" placeholder="Search by torrent name or message…"/>
+            <label class="dp-activity-filter-field dp-activity-filter-field--time">
+              <span class="dp-activity-filter-label"><span>Time</span><span>Window</span></span>
+              <select class="input" id="ev-timeframe">
+                <option value="1h">Last hour</option>
+                <option value="12h">Last 12 hours</option>
+                <option value="24h">Last day</option>
+                <option value="72h">Last 3 days</option>
+                <option value="7d">Last week</option>
+                <option value="30d">Last 30 days</option>
+                <option value="all" selected>Available history</option>
+              </select>
+            </label>
+            <label class="dp-activity-filter-field dp-activity-filter-field--severity">
+              <span class="dp-activity-filter-label">Severity</span>
+              <select class="input" id="ev-level">
+                <option value="" selected>All</option>
+                <option value="info">Info</option>
+                <option value="warning">Warning</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+            <button type="button" id="ev-reset" class="btn btn-ghost btn-sm" hidden>Reset Filters</button>
           </div>
         </div>
+        <div id="dp-activity-result-note" class="dp-activity-result-note" hidden></div>
         <div id="event-list" class="dp-activity-list"><div class="empty">Loading…</div></div>
       </div>
     </div>
@@ -432,39 +454,34 @@
 
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
-<script src="/operator-title.js?v=26" defer></script>
-<script src="/app.js?v=22" defer></script>
+<script src="/operator-title.js?v=27" defer></script>
+<script src="/app.js?v=24" defer></script>
 <script src="/ui-auth-required.js?v=1" defer></script>
-<script src="/ui-storage-health.js?v=1" defer></script>
-<script src="/ui-topbar-concurrency.js?v=1" defer></script>
-<script src="/ui-detail-candidates.js?v=4" defer></script>
-<script src="/ui-group-candidates.js?v=1" defer></script>
+<script src="/ui-storage-health.js?v=2" defer></script>
+<script src="/ui-detail-candidates.js?v=5" defer></script>
+<script src="/ui-group-candidates.js?v=2" defer></script>
 <!-- Required bounded presentation owners (DP 1.0.12 canonical flattening):
      direct application dependencies, no longer dynamically injected by
      Provider Status. ui-file-selection.js must precede
      ui-dashboard-transfer-presentation.js and ui-downloads.js -- both call
      window.DPFileSelection.chipMarkup() while building row markup. -->
 <script src="/ui-toast-contract.js?v=2" defer></script>
-<script src="/ui-processing-presentation.js?v=2" defer></script>
+<script src="/ui-processing-presentation.js?v=3" defer></script>
 <script src="/ui-transfer-source-presentation.js?v=1" defer></script>
 <script src="/ui-file-selection.js?v=1" defer></script>
 <script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
 <script src="/ui-downloads.js?v=1" defer></script>
-<script src="/ui-activity-log-runtime.js?v=1" defer></script>
-<script src="/ui-settings-archive-passwords.js?v=1" defer></script>
-<script id="dp-provider-status-script" src="/ui-provider-status.js?v=3" defer></script>
+<script src="/ui-activity-log-runtime.js?v=2" defer></script>
+<script src="/ui-settings-archive-passwords.js?v=2" defer></script>
+<script id="dp-provider-status-script" src="/ui-provider-status.js?v=4" defer></script>
 <script id="dp-alldebrid-account-status-script" src="/ui-alldebrid-account-status.js?v=2" defer></script>
-<script id="dp-provider-cards-script" src="/ui-provider-cards.js?v=2" defer></script>
-<script src="/ui-accessibility-runtime.js?v=21" defer></script>
+<script src="/ui-accessibility-runtime.js?v=22" defer></script>
 <script src="/ui-statistics.js?v=3" defer></script>
 <script src="/ui-help-page.js?v=3" defer></script>
-<script src="/ui-help-license-documents.js?v=3" defer></script>
-<script src="/ui-settings-page.js?v=2" defer></script>
-<script src="/ui-settings-maintenance-wipe.js?v=2" defer></script>
-<script src="/ui-settings-notifications.js?v=2" defer></script>
-<script src="/ui-settings-downloads-completion.js?v=2" defer></script>
-<script src="/ui-settings-aria2-live.js?v=2" defer></script>
-<script src="/ui-settings-card-icons.js?v=2" defer></script>
+<script src="/ui-help-license-documents.js?v=4" defer></script>
+<script src="/ui-settings-page.js?v=4" defer></script>
+<script src="/ui-settings-directory-picker.js?v=1" defer></script>
+<script src="/ui-settings-aria2-live.js?v=4" defer></script>
 <div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version">v…</div>
 <div id="mobile-overlay" onclick="closeSidebar()"></div>
 </body>

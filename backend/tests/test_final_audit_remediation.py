@@ -88,15 +88,20 @@ async def test_startup_sanitization_is_authoritative_for_external_aria2_migratio
 
     monkeypatch.setattr(database, "DB_PATH", db_path)
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
-    malformed = config.AppSettings(aria2_mode="legacy-garbage", paused=False)
-    monkeypatch.setattr(config, "_settings", malformed)
+    # A persisted pre-canonical configuration with a malformed mode. Loading it
+    # is the one migration boundary: the unknown mode becomes the conservative
+    # ``external`` in the canonical namespace, and no flat key survives.
+    (tmp_path / "config.json").write_text(json.dumps({"aria2_mode": "legacy-garbage", "paused": False}))
+    monkeypatch.setattr(config, "_settings", config.load_settings())
 
-    effective = await main._prepare_startup_settings_and_migrate()
+    effective, aria2 = await main._prepare_startup_settings_and_migrate()
 
-    assert effective.aria2_mode == "external"
-    assert config.get_settings().aria2_mode == "external"
+    assert aria2.mode == "external"
+    assert effective.integrations["aria2"].options["mode"] == "external"
+    assert config.get_settings().integrations["aria2"].options["mode"] == "external"
     persisted = json.loads((tmp_path / "config.json").read_text())
-    assert persisted["aria2_mode"] == "external"
+    assert persisted["integrations"]["aria2"]["options"]["mode"] == "external"
+    assert "aria2_mode" not in persisted
 
     with sqlite3.connect(db_path) as conn:
         attempt = conn.execute(

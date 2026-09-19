@@ -146,7 +146,7 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
     try {
-      const response = await fetch('/api/legal-documents/' + encodeURIComponent(documentId), {
+      const response = await window.debridPulseAuth.fetch('/api/legal-documents/' + encodeURIComponent(documentId), {
         method: 'GET',
         credentials: 'same-origin',
         cache: 'no-store',

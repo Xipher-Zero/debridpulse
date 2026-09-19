@@ -2,8 +2,25 @@
 
 const API = '/api';
 let settingsData = {};
-let aria2DownloadsTimer = null;
+
+// settingsData is the cached GET /settings document. aria2 configuration, the
+// scheduler's concurrency and the download bandwidth cap are each read from
+// their one canonical namespace; no flat alias is read, mirrored or written.
+function aria2Options() {
+  var entry = settingsData && settingsData.integrations && settingsData.integrations.aria2;
+  return (entry && entry.options) || {};
+}
+function aria2Mode() {
+  return aria2Options().mode || 'builtin';
+}
+// Per-transfer pauses are counted by the backend (GET /stats by_status.paused);
+// this is only the last value read from there and is never adjusted locally.
 let pausedTransferCount = 0;
+// Global processing pause is operational state owned by the backend's durable
+// application state -- not a setting. This is a non-persisted projection of it,
+// assigned only from server responses (GET /stats and the pause/resume results)
+// and never written to, or read from, settingsData.
+let processingPaused = false;
 function invalidateProviderStatus() {
   return window.DPProviderStatus?.invalidate?.();
 }
@@ -29,7 +46,7 @@ function renderTopbarActions() {
     el.dataset.initialized = '1';
   }
 
-  const globallyPaused = !!settingsData.paused;
+  const globallyPaused = processingPaused;
   const selectivelyPaused = Math.max(0, Number(pausedTransferCount) || 0);
   const pauseBtn = document.getElementById('btn-pause-all');
   const resumeAllBtn = document.getElementById('btn-resume-all');
@@ -59,8 +76,8 @@ function renderTopbarActions() {
     }
   }
 
-  window.DPProcessingPresentation?.syncConfiguredConcurrency?.();
   window.DPProcessingPresentation?.syncPauseUi?.();
+  updateAria2TopbarBadge({});
 }
 
 // ── Nav ────────────────────────────────────────────────────────────────────
@@ -101,7 +118,7 @@ function nav(el) {
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title:titles[v]||v}}));
   if (v === 'dashboard') { loadStats(); loadRecent(); }
   if (v === 'torrents')  { clearSelection(); loadTorrents(); }
-  if (v === 'events')    loadEvents();
+  if (v === 'events')    window.DPActivityLog.load();
   if (v === 'stats')     loadDetailedStats();
   if (v === 'settings')  loadSettings();
   if (v === 'help')      loadHelp();
@@ -128,7 +145,7 @@ async function api(method, path, body, timeoutMs, options) {
   }
   opts.signal = controller.signal;
   try {
-    const r = await fetch(API + path, opts);
+    const r = await window.debridPulseAuth.fetch(API + path, opts);
     clearTimeout(tid);
     if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
     const data = await r.json().catch(() => ({detail: r.statusText}));
@@ -320,7 +337,6 @@ function coalesceAsync(fn) {
 }
 
 
-
 // ── Format ─────────────────────────────────────────────────────────────────
 function fmtSize(b) {
   if (!b) return '—';
@@ -349,14 +365,6 @@ function fmtSpeedCap(bps) {
   const speed = Number(bps);
   if (!Number.isFinite(speed) || speed <= 0) return 'Unlimited';
   return fmtTransferRate(speed, 1000);
-}
-function fmtEta(secs) {
-  if (!secs || secs <= 0) return '';
-  if (secs < 60)   return secs + 's';
-  if (secs < 3600) return Math.floor(secs/60) + 'm ' + (secs%60) + 's';
-  var h = Math.floor(secs/3600);
-  var m = Math.floor((secs%3600)/60);
-  return h + 'h ' + m + 'm';
 }
 function parseApiDate(d) {
   if (!d) return null;
@@ -388,26 +396,6 @@ function pct(part, total) {
   if (!total) return 0;
   return Math.round((part / total) * 100);
 }
-function renderKvMap(arr, formatter) {
-  // arr is an array of {status/level, count} objects from the API
-  if (!arr || !arr.length) return '<div class="empty">No data available.</div>';
-  const entries = Array.isArray(arr)
-    ? arr.map(item => {
-        const key = item.status ?? item.level ?? item.source ?? Object.keys(item).find(k => k !== 'count') ?? '?';
-        return [key, item];
-      })
-    : Object.entries(arr);
-  return `<div class="kv-list">${entries.map(([key, value]) => {
-    const rendered = formatter
-      ? formatter(value, key)
-      : (value && typeof value === 'object' ? value.count ?? '—' : value);
-    return `
-    <div class="kv-row">
-      <span>${esc(key)}</span>
-      <strong>${esc(rendered)}</strong>
-    </div>`;
-  }).join('')}</div>`;
-}
 function badge(s, detail) {
   if (!window.DPIcons || typeof window.DPIcons.statusBadge !== 'function') {
     throw new Error('DebridPulse icon runtime is unavailable');
@@ -426,16 +414,13 @@ function badge(s, detail) {
   const category = s === 'error' && semantics ? semantics.classify(detail) : '';
   return window.DPIcons.statusBadge(s, category ? semantics.labels[category] : '', category);
 }
+// The backend's effective presentation is the one display-status authority; every
+// list and detail payload carries it. The raw lifecycle status is only what a
+// caller that fabricated a payload without a projection can fall back to --
+// no status is derived here from extraction or source-failure fields.
 function transferDisplayStatus(t) {
   const projected = String(t && t.presentation_status || '').trim().toLowerCase();
-  if (projected) return projected;
-  if (t && String(t.extraction_status || '').trim() === 'extracting') return 'extracting';
-  if (t && t.status === 'completed' && (t.extraction_status === 'error' || Number(t.source_failure_count) > 0)) return 'completed_with_errors';
-  if (t && t.status === 'downloading' && Number(t.source_failure_count) > 0) return 'downloading_with_errors';
-  return (t && t.status) || '';
-}
-function providerDisplayStatus(t) {
-  return (t && t.resources || []).map(resource => resource.state).join(', ');
+  return projected || (t && t.status) || '';
 }
 function progress(pct, status) {
   const state = String(status || '').toLowerCase();
@@ -462,36 +447,15 @@ function progress(pct, status) {
          '<span class="prog-pct">' + label + '</span>';
 }
 
-function patchExtractionTransferEvent(data) {
-  const id = Number(data?.id ?? data?.torrent_id);
-  const extractionStatus = String(data?.extraction_status || '').trim();
-
-  if (!Number.isFinite(id) || !extractionStatus) {
-    return false;
-  }
-
-  let displayStatus = 'completed';
-  if (extractionStatus === 'extracting') {
-    displayStatus = 'extracting';
-  } else if (extractionStatus === 'error') {
-    displayStatus = 'completed_with_errors';
-  }
-
-  document
-    .querySelectorAll(`tr[data-torrent-id="${id}"]`)
-    .forEach(row => {
-      const statusCell = row.querySelector('[data-role="transfer-status"]');
-      if (statusCell) statusCell.innerHTML = badge(displayStatus);
-    });
-
-  if (extractionStatus === 'error') {
-    const reason = sanitizeErrorMsg(
-      data?.extraction_error || 'Archive extraction failed'
-    );
-    toast(`Extraction failed: ${reason}`, 'error');
-  }
-
-  return true;
+// An extraction failure is announced once per event; it paints nothing. The
+// status badge of every row comes from the backend's effective presentation on
+// the authoritative refresh that every torrent_updated event triggers.
+function notifyExtractionFailure(data) {
+  if (String(data?.extraction_status || '').trim() !== 'error') return;
+  const reason = sanitizeErrorMsg(
+    data?.extraction_error || 'Archive extraction failed'
+  );
+  toast(`Extraction failed: ${reason}`, 'error');
 }
 
 function patchProgressOnlyTransferEvent(data) {
@@ -510,7 +474,6 @@ function patchProgressOnlyTransferEvent(data) {
   for (const update of updates) {
     const id = Number(update?.id ?? update?.torrent_id);
     const nextProgress = Number(update?.progress);
-    const nextStatus = String(update?.status || '');
 
     if (!Number.isFinite(id) || !Number.isFinite(nextProgress)) {
       continue;
@@ -519,8 +482,9 @@ function patchProgressOnlyTransferEvent(data) {
     document
       .querySelectorAll(`tr[data-torrent-id="${id}"]`)
       .forEach(row => {
-        const currentStatus = String(row.dataset.status || '');
-        const status = nextStatus || currentStatus;
+        // The bar is styled by the presentation status the row was rendered with;
+        // the event's raw lifecycle state is never a second source for it.
+        const status = String(row.dataset.presentationStatus || row.dataset.status || '');
 
         const progressCell =
           row.querySelector('[data-role="transfer-progress"]');
@@ -563,24 +527,28 @@ function getAria2ngUrl(aria2Url) {
 }
 
 function updateAria2ngLink() {
-  const aria2Url = (settingsData || {}).aria2_url || '';
+  const aria2Url = aria2Options().url || '';
   const row  = document.getElementById('aria2ng-row');
   const link = document.getElementById('aria2ng-link');
   if (!row || !link) return;
-  if (aria2Url) {
+  // The aria2 web UI link is not offered inside an authenticated session.
+  const authenticated = !!(window.debridPulseAuth && window.debridPulseAuth.session()
+    && window.debridPulseAuth.session().authenticated);
+  if (aria2Url && !authenticated) {
     link.href = getAria2ngUrl(aria2Url) || '#';
     row.style.display = 'flex';
   } else {
     row.style.display = 'none';
   }
 }
+document.addEventListener('debridpulse:session-changed', updateAria2ngLink);
 
 async function checkConnections() {
   const cfg = settingsData || {};
   await refreshProviderStatus();
 
   // aria2 check — retry once if first attempt fails
-  if (cfg.aria2_url || cfg.aria2_mode === 'builtin') {
+  if (aria2Options().url || aria2Mode() === 'builtin') {
     let aria2Ok = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -611,10 +579,6 @@ function setDot(id, state, label) {
   l.textContent = label;
 }
 
-function getActiveSettingsTab() {
-  return document.querySelector('#settings-tabs .stab.active')?.dataset.tab || 'tab-general';
-}
-
 async function pauseProcessing() {
   const button =
     document.getElementById('btn-pause-all');
@@ -623,7 +587,7 @@ async function pauseProcessing() {
 
   try {
     await api('POST', '/processing/pause');
-    settingsData.paused = true;
+    processingPaused = true;
     renderTopbarActions();
     toast('Processing paused','warn');
     loadStats();
@@ -652,8 +616,7 @@ async function resumeProcessing() {
 
   try {
     await api('POST', '/processing/resume');
-    settingsData.paused = false;
-    pausedTransferCount = 0;
+    processingPaused = false;
     renderTopbarActions();
     toast('Processing resumed','success');
     loadStats();
@@ -682,8 +645,7 @@ async function resumePausedDownloads() {
 
   try {
     await api('POST', '/processing/resume');
-    settingsData.paused = false;
-    pausedTransferCount = 0;
+    processingPaused = false;
     renderTopbarActions();
     toast('Paused downloads resumed','success');
     loadStats();
@@ -1000,7 +962,7 @@ async function loadStats() {
       // ── populate sidebar version ────────────────────────────────────────
       const versionEl = document.getElementById('sidebar-version');
       if (versionEl) versionEl.textContent = s.version ? `v${s.version}` : 'v—';
-      if (settingsData) settingsData.paused = !!s.paused;
+      processingPaused = !!s.paused;
       const bs = s.by_status || {};
       pausedTransferCount = Math.max(0, Number(bs.paused) || 0);
       renderTopbarActions();
@@ -1056,23 +1018,6 @@ async function loadStats() {
   }
   return false;
 }
-
-
-async function checkForUpdate() {
-  try {
-    const data = await api('GET', '/version/check');
-    const badge = document.getElementById('update-badge');
-    const badgeV = document.getElementById('update-badge-version');
-    if (!badge) return;
-    if (data.update_available && data.latest) {
-      if (badgeV) badgeV.textContent = 'v' + data.latest;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  } catch (_) {}
-}
-
 
 
 function setStatsPeriod(el) {
@@ -1344,60 +1289,6 @@ async function addDashboardEntries() {
 loadStats = coalesceAsync(loadStats);
 loadRecent = coalesceAsync(loadRecent);
 
-async function addMagnet() {
-  const input = document.getElementById('t-magnet');
-  const v = input.value.trim();
-  if (!v) {
-    openTorrentFilePicker();
-    return;
-  }
-  try {
-    const res = await api('POST','/torrents/add-magnet',{magnet:v, selection_mode:'interactive'}, 30000);
-    if (res && res._duplicate && res._duplicate.action === 'skip') {
-      toast('Already in queue: ' + (res.name || res._duplicate.reason), 'warn');
-    } else if (res && res._duplicate && res._duplicate.action === 'warn') {
-      toast('Added (possible duplicate)', 'warn');
-    } else {
-      toast('Magnet added!', 'success');
-    }
-    input.value = '';
-    input.focus();
-    loadTorrents();
-  } catch(e) { toast(sanitizeErrorMsg(e.message),'error'); }
-}
-
-async function importExisting(button) {
-  setButtonPending(button, true, 'Importing…');
-
-  try {
-    const r =
-      await api('POST','/torrents/import-existing');
-
-    toast(
-      `Imported ${r.imported} magnets from AllDebrid`,
-      'success'
-    );
-
-    loadStats();
-    loadRecent();
-
-    if (
-      document
-        .getElementById('view-torrents')
-        .classList.contains('active')
-    ) {
-      loadTorrents();
-    }
-  } catch(e) {
-    toast(
-      sanitizeErrorMsg(e.message),
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
 async function recoverAll(button) {
   setButtonPending(button, true, 'Recovering…');
 
@@ -1464,12 +1355,7 @@ async function resumeT(id, button) {
       await api('POST',`/torrents/${id}/resume`);
 
     if (typeof result.paused === 'boolean') {
-      settingsData.paused = result.paused;
-
-      if (!result.paused) {
-        pausedTransferCount =
-          Math.max(0, pausedTransferCount - 1);
-      }
+      processingPaused = result.paused;
 
       renderTopbarActions();
     }
@@ -1631,15 +1517,7 @@ async function showDetail(id) {
           <div class="dp-detail-table-wrap">
             <table class="t-table">
               <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
-              <tbody>${t.files.map(f=>`<tr>
-                <td class="dp-detail-filename">${esc(f.filename)}
-                  ${f.blocked
-                    ? `<span class="badge badge-error" style="font-size:9px;margin-left:6px">BLOCKED: ${esc(f.block_reason)}</span>`
-                    : (f.block_reason ? `<div style="font-size:10px;color:var(--red);margin-top:4px">${esc(f.block_reason)}</div>` : '')}
-                </td>
-                <td class="sz">${fmtSize(f.size_bytes)}</td>
-                <td>${badge(f.status, f)}</td>
-              </tr>`).join('')}</tbody>
+              <tbody>${window.DPDetailCandidates.rowsMarkup(t.files)}</tbody>
             </table>
           </div>
           `:''}
@@ -1724,7 +1602,7 @@ function updateThemeToggle(isLight) {
 }
 document.addEventListener('DOMContentLoaded', () => {
   setInterval(function() {
-    if (settingsData && (settingsData.aria2_mode||'builtin')==='builtin') {
+    if (settingsData && aria2Mode()==='builtin') {
       loadAria2Runtime().catch(()=>{});
     }
   }, 5000);
@@ -1755,880 +1633,31 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// ── Events ─────────────────────────────────────────────────────────────────
-let _allEvents = [];
-
-async function loadEvents() {
-  try {
-    _allEvents = await api('GET','/events?limit=500');
-    filterEvents();
-  } catch(e) { toast(sanitizeErrorMsg(e.message),'error'); }
-}
-
-function filterEvents() {
-  const el = document.getElementById('event-list');
-  const q   = (document.getElementById('ev-search')?.value || '').toLowerCase();
-  const lvl = document.getElementById('ev-level')?.value || '';
-  const evs = _allEvents.filter(ev => {
-    if (lvl && ev.level !== lvl) return false;
-    if (!q) return true;
-    return (ev.message||'').toLowerCase().includes(q) ||
-           (ev.torrent_name||'').toLowerCase().includes(q);
-  });
-  if (!evs.length) {
-    el.innerHTML='<div class="empty">No events match the filter.</div>';
-    document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));
-    return;
-  }
-  el.innerHTML = evs.map(ev=>`
-    <div class="dp-activity-row">
-      <div class="elevel dp-activity-level ${esc(ev.level)}"></div>
-      <div class="dp-activity-copy"><div class="emsg dp-activity-message">${esc(ev.message)}</div>${ev.torrent_name?`<div class="ename dp-activity-transfer">${esc(ev.torrent_name)}</div>`:''}</div>
-      <div class="etime dp-activity-time">${fmtDate(ev.created_at)}</div>
-    </div>`).join('');
-  document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));
-}
-
-// ── Settings ───────────────────────────────────────────────────────────────
-
-function toggleFilterFields() {
-  const enabled = document.getElementById('s-filters_enabled')?.checked;
-  const fields = document.getElementById('filter-fields');
-  if (fields) {
-    fields.style.opacity = enabled ? '' : '0.4';
-    fields.style.pointerEvents = enabled ? '' : 'none';
-  }
-}
-
-async function triggerFullSync(button) {
-  setButtonPending(
-    button,
-    true,
-    'Syncing…'
-  );
-
-  try {
-    const r =
-      await api(
-        'POST',
-        '/admin/full-sync'
-      );
-
-    toast(
-      'Full sync: ' +
-        r.updated +
-        ' torrent(s) updated',
-      r.updated > 0
-        ? 'success'
-        : 'info'
-    );
-
-    setTimeout(() => {
-      loadStats();
-      loadRecent();
-    }, 1500);
-  } catch(e) {
-    toast(
-      e.message,
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function saveSettings(button) {
-  setButtonPending(button, true, 'Saving…');
-  // A pre-save status observation describes the old provider configuration.
-  // Invalidate it before the settings mutation begins; the post-save refresh
-  // will establish the next authoritative generation.
-  invalidateProviderStatus();
-
-  try {
-    const activeTab =
-      getActiveSettingsTab();
-
-    const d =
-      getFormSettings();
-
-    settingsData =
-      await api('PUT','/settings',d);
-
-    renderSettings();
-    switchSettingsTab(activeTab);
-    updateAria2ngLink();
-
-    toast(
-      'Settings saved!',
-      'success'
-    );
-
-    checkConnections();
-    loadAria2SpeedLimit();
-  } catch(e) {
-    toast(
-      sanitizeErrorMsg(e.message),
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function testDiscord(button) {
-  const activeTab =
-    getActiveSettingsTab();
-
-  let settingsApplied = false;
-  let rendered = false;
-
-  setButtonPending(
-    button,
-    true,
-    'Testing…'
-  );
-
-  try {
-    const current =
-      getFormSettings();
-
-    settingsData =
-      await api(
-        'PUT',
-        '/settings',
-        current
-      );
-
-    settingsApplied = true;
-
-    await api(
-      'POST',
-      '/settings/test-discord'
-    );
-
-    renderSettings();
-    switchSettingsTab(activeTab);
-    rendered = true;
-
-    toast(
-      'Discord notification sent ✓',
-      'success'
-    );
-  } catch(e) {
-    toast(
-      'Discord: ' + e.message,
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
-
-    if (settingsApplied && !rendered) {
-      renderSettings();
-      switchSettingsTab(activeTab);
-    }
-  }
-}
-
-async function testAD(button) {
-  setButtonPending(
-    button,
-    true,
-    'Testing…'
-  );
-
-  try {
-    const r =
-      await api(
-        'POST',
-        '/settings/test-alldebrid'
-      );
-
-    toast(
-      `AllDebrid: connected as ${r.username} ${r.isPremium?'(Premium)':'(Free)'}✓`,
-      'success'
-    );
-  } catch(e) {
-    toast(
-      'AllDebrid: ' + e.message,
-      'error'
-    );
-  } finally {
-    refreshProviderStatus().catch(()=>{});
-    setButtonPending(button, false);
-  }
-}
-
-async function testAria2(button) {
-  const activeTab =
-    getActiveSettingsTab();
-
-  let settingsApplied = false;
-  let rendered = false;
-
-  setButtonPending(
-    button,
-    true,
-    'Testing…'
-  );
-
-  try {
-    const current =
-      getFormSettings();
-
-    settingsData =
-      await api(
-        'PUT',
-        '/settings',
-        current
-      );
-
-    settingsApplied = true;
-
-    const r =
-      await api(
-        'POST',
-        '/settings/test-aria2'
-      );
-
-    renderSettings();
-    switchSettingsTab(activeTab);
-    rendered = true;
-
-    renderAria2Diagnostics(
-      r.diagnostics || null
-    );
-
-    toast(
-      `aria2: ${r.version||'online'} ✓`,
-      'success'
-    );
-
-    setDot(
-      'aria2',
-      'ok',
-      `aria2: ${r.version||'online'}`
-    );
-  } catch(e) {
-    toast(
-      'aria2: ' + e.message,
-      'error'
-    );
-
-    setDot(
-      'aria2',
-      'error',
-      'aria2: error'
-    );
-  } finally {
-    setButtonPending(button, false);
-
-    if (settingsApplied && !rendered) {
-      renderSettings();
-      switchSettingsTab(activeTab);
-    }
-  }
-}
-
-function renderAria2Diagnostics(diag) {
-  const el = document.getElementById('aria2-memory-diagnostics');
-  if (!el) return;
-  if (!diag) {
-    el.textContent = '';
-    return;
-  }
-  const opts = diag.global_options || {};
-  const limits = diag.query_limits || {};
-  el.innerHTML =
-    `<b>aria2 memory diagnostics</b><br>` +
-    `Active: ${diag.active_count ?? 0} · Waiting: ${diag.waiting_count ?? 0} · Stopped: ${diag.stopped_count ?? 0}<br>` +
-    `max-download-result: ${esc(opts['max-download-result'] || 'n/a')} · keep-unfinished-download-result: ${esc(opts['keep-unfinished-download-result'] || 'n/a')}<br>` +
-    `query window — waiting: ${limits.waiting ?? 'n/a'} · stopped: ${limits.stopped ?? 'n/a'}`;
-}
-
-function renderAria2Runtime(data) {
-  const el = document.getElementById('aria2-runtime-status');
-  if (!el) return;
-  if (!data) {
-    el.textContent = 'Runtime status not loaded yet.';
-    return;
-  }
-  const mode = data.mode || 'external';
-  const state = data.running ? 'Running' : (mode === 'builtin' ? 'Stopped' : 'External');
-  const rpc = data.rpc_ok ? 'RPC online' : (mode === 'builtin' ? 'RPC offline' : 'External RPC');
-  const version = data.version ? ` · v${data.version}` : '';
-  const uptime = data.uptime_seconds ? ` · uptime ${Math.floor(data.uptime_seconds / 60)}m` : '';
-  const secret = data.secret_managed ? ' · internal secret managed' : '';
-  const dir = data.download_dir ? `<br>Download folder: ${esc(data.download_dir)}` : '';
-  const diag = data.diagnostics || {};
-  const counts = diag && !diag.error
-    ? `<br>Active: ${diag.active_count ?? 0} · Waiting: ${diag.waiting_count ?? 0} · Stopped: ${diag.stopped_count ?? 0}`
-    : '';
-  const err = data.last_error ? `<br><span style="color:var(--red)">${esc(data.last_error)}</span>` : '';
-  el.innerHTML = `<b>${esc(state)}</b> · ${esc(mode)} · ${esc(rpc)}${esc(version)}${esc(uptime)}${secret}<br>${esc(data.rpc_url || '')}${counts}${err}`;
-  el.innerHTML += dir;
-  if (data.last_output) el.innerHTML += `<br><small>${esc(data.last_output)}</small>`;
-  renderAria2Diagnostics(diag && !diag.error ? diag : null);
-}
-
-function aria2StatusLabel(status) {
-  const map = {active:'Downloading', waiting:'Waiting', paused:'Paused', complete:'Complete', error:'Error', removed:'Removed'};
-  const cls = status === 'active' ? 'downloading' : status === 'complete' ? 'completed' : status === 'error' ? 'error' : status === 'paused' ? 'paused' : 'queued';
-  return `<span class="badge badge-${cls}">${esc(map[status] || status || 'Unknown')}</span>`;
-}
-
-function renderAria2Downloads(data) {
-  const el = document.getElementById('aria2-downloads');
-  if (!el) return;
-  if (!data || !Array.isArray(data.items)) {
-    el.innerHTML = '<div class="empty">Queue not loaded yet.</div>';
-    return;
-  }
-  const summary = data.summary || {};
-  const items = data.items || [];
-  const ordered = items.slice().sort((a,b) => {
-    const weight = {active:0, waiting:1, paused:2, error:3, complete:4};
-    return (weight[a.status] ?? 9) - (weight[b.status] ?? 9);
-  });
-  const header = `
-    <div class="aria2-summary">
-      <span class="aria2-chip">Active: ${summary.active ?? 0}</span>
-      <span class="aria2-chip">Waiting: ${summary.waiting ?? 0}</span>
-      <span class="aria2-chip">Stopped: ${summary.stopped ?? 0}</span>
-      <span class="aria2-chip">Speed: ${fmtSpeed(summary.download_speed || 0)}</span>
-      <span class="aria2-chip">Remaining: ${fmtSize(summary.remaining_length || 0)}</span>
-    </div>`;
-  if (!ordered.length) {
-    el.innerHTML = header + '<div class="empty">No aria2 jobs currently visible.</div>';
-    return;
-  }
-  el.innerHTML = header + ordered.map(job => {
-    const canPause = job.status === 'active' || job.status === 'waiting';
-    const canResume = job.status === 'paused';
-    const files = (job.files || []).slice(0, 4).map(file => `
-      <div title="${esc(file.path || '')}">
-        ${esc(file.name || file.path || 'file')} · ${Math.max(0, file.progress || 0).toFixed(1)}% · ${fmtSize(file.completed_length || 0)} / ${fmtSize(file.length || 0)}
-      </div>`).join('');
-    const more = (job.files || []).length > 4 ? `<div>+ ${(job.files || []).length - 4} more file(s)</div>` : '';
-    const error = job.error_message ? `<div class="aria2-error">${esc((job.error || {}).category || '')} ${esc(job.error_message)}</div>` : '';
-    return `
-      <div class="aria2-job">
-        <div class="aria2-job-top">
-          <div class="aria2-job-title">
-            <div class="aria2-job-name" title="${esc(job.name || '')}">${esc(job.name || job.gid || 'aria2 job')}</div>
-            <div class="aria2-job-meta" title="${esc(job.path || '')}">${esc(job.gid || '')}${job.path ? ' · ' + esc(job.path) : ''}</div>
-          </div>
-          <div class="aria2-actions">
-            ${canPause ? `<button class="btn btn-ghost btn-sm" onclick="aria2DownloadAction('${esc(job.gid)}','pause',this)">Pause</button>` : ''}
-            ${canResume ? `<button class="btn btn-blue btn-sm" onclick="aria2DownloadAction('${esc(job.gid)}','resume',this)">Resume</button>` : ''}
-            <button class="btn btn-danger btn-sm" onclick="aria2DownloadAction('${esc(job.gid)}','remove',this)">Remove</button>
-          </div>
-        </div>
-        <div>${progress(job.progress || 0, job.status === 'complete' ? 'completed' : 'downloading')}</div>
-        <div class="aria2-job-grid">
-          <div><div class="aria2-k">Status</div><div class="aria2-v">${aria2StatusLabel(job.status)}</div></div>
-          <div><div class="aria2-k">Speed</div><div class="aria2-v">${fmtSpeed(job.download_speed || 0)}</div></div>
-          <div><div class="aria2-k">Done</div><div class="aria2-v">${fmtSize(job.completed_length || 0)} / ${fmtSize(job.total_length || 0)}</div></div>
-          <div><div class="aria2-k">Remaining</div><div class="aria2-v">${fmtSize(job.remaining_length || 0)}</div></div>
-        </div>
-        ${error}
-        ${(files || more) ? `<div class="aria2-file-list">${files}${more}</div>` : ''}
-      </div>`;
-  }).join('');
-}
-
-async function loadAria2Downloads() {
-  try {
-    const data =
-      await api(
-        'GET',
-        '/aria2/downloads'
-      );
-
-    renderAria2Downloads(data);
-
-    return data;
-  } catch(e) {
-    const el =
-      document.getElementById(
-        'aria2-downloads'
-      );
-
-    if (el) {
-      el.innerHTML =
-        `<div class="aria2-error">Queue error: ${esc(e.message)}</div>`;
-    }
-
-    throw e;
-  }
-}
-
-loadAria2Downloads =
-  coalesceAsync(loadAria2Downloads);
-
-async function refreshAria2Downloads(button) {
-  setButtonPending(
-    button,
-    true,
-    'Refreshing…'
-  );
-
-  try {
-    await loadAria2Downloads();
-  } catch (_) {
-    // loadAria2Downloads owns its visible error state.
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function aria2DownloadAction(gid, action, button) {
-  const pendingLabels = {
-    pause: 'Pausing…',
-    resume: 'Resuming…',
-    remove: 'Removing…',
-  };
-
-  setButtonPending(
-    button,
-    true,
-    pendingLabels[action] || 'Working…'
-  );
-
-  try {
-    await api(
-      'POST',
-      `/aria2/downloads/${encodeURIComponent(gid)}/${action}`
-    );
-
-    toast(
-      `aria2 ${action} sent`,
-      'success'
-    );
-
-    await loadAria2Downloads();
-    await loadAria2Runtime();
-  } catch(e) {
-    toast(
-      `aria2 ${action}: ${e.message}`,
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
-    document.dispatchEvent(new CustomEvent('debridpulse:aria2-engine-action-settled', {detail:{gid, action}}));
-  }
-}
+// ── aria2 runtime badge ─────────────────────────────────────────────────────
 
 async function loadAria2Runtime() {
-  try {
-    const data = await api('GET', '/aria2/runtime');
-    renderAria2Runtime(data);
-    const badge = document.getElementById('aria2-speed-badge');
-    if (badge) {
-      const isBuiltin = (data.mode || '') === 'builtin';
-
-      if (settingsData) {
-        _aria2BadgeState.limitBps =
-          parseInt(settingsData.aria2_max_download_limit) || 0;
-        _aria2BadgeState.maxDl =
-          parseInt(
-            settingsData.max_concurrent_downloads ??
-            settingsData.aria2_max_active_downloads
-          ) || 3;
-      }
-
-      if (isBuiltin && !data.running) {
-        badge.style.display = 'none';
-      } else if (isBuiltin) {
-        badge.style.display = 'flex';
-        updateAria2TopbarBadge({
-          active: Number(data.active) || 0,
-          liveBps: Number(data.download_speed) || 0,
-          externalControl: false,
-        });
-        loadAria2SpeedLimit().catch(function(){});
-      } else {
-        badge.style.display = 'flex';
-        updateAria2TopbarBadge({
-          maxDl: _aria2BadgeState.maxDl,
-          externalControl: true,
-        });
-        loadAria2TopbarStat().catch(function(){});
-      }
-    }
-    return data;
-  } catch(e) {
-    const el = document.getElementById('aria2-runtime-status');
-    if (el) el.innerHTML = `<span style="color:var(--red)">Runtime error: ${esc(e.message)}</span>`;
-    throw e;
-  }
-}
-
-async function aria2RuntimeAction(action, button) {
-  const pendingLabels = {
-    start: 'Starting…',
-    restart: 'Restarting…',
-    stop: 'Stopping…',
-    apply: 'Applying…',
-  };
-
-  setButtonPending(
-    button,
-    true,
-    pendingLabels[action] || 'Working…'
-  );
-
-  try {
-    const current =
-      getFormSettings();
-
-    settingsData =
-      await api(
-        'PUT',
-        '/settings',
-        current
-      );
-
-    const data =
-      await api(
-        'POST',
-        `/aria2/runtime/${action}`
-      );
-
-    renderAria2Runtime(data);
-    loadAria2Downloads().catch(()=>{});
-
-    toast(
-      `aria2 ${action} complete`,
-      'success'
-    );
-  } catch(e) {
-    toast(
-      `aria2 ${action}: ${e.message}`,
-      'error'
-    );
-
-    loadAria2Runtime().catch(()=>{});
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function runAria2Housekeeping(button) {
-  setButtonPending(
-    button,
-    true,
-    'Cleaning…'
-  );
-
-  try {
-    const current =
-      getFormSettings();
-
-    settingsData =
-      await api(
-        'PUT',
-        '/settings',
-        current
-      );
-
-    const r =
-      await api(
-        'POST',
-        '/settings/aria2-housekeeping'
-      );
-
-    renderAria2Diagnostics(
-      r.diagnostics || null
-    );
-
-    toast(
-      'aria2 cleanup finished',
-      'success'
-    );
-  } catch(e) {
-    toast(
-      e.message,
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function uploadDiscordAvatar(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const formData = new FormData();
-  formData.append('file', file);
-  try {
-    const resp = await fetch('/api/settings/upload-avatar', {method:'POST', body: formData});
-    const data = await resp.json();
-    if (!resp.ok) { toast(data.detail || 'Upload failed', 'error'); return; }
-    // Discord requires a real HTTP URL, not a data URI
-    // The server saves the file and returns the public URL
-    document.getElementById('s-discord_avatar_url').value = data.url;
-    showAvatarPreview(data.url, file.name, data.size_bytes);
-    toast('Avatar uploaded — URL: ' + data.url, 'success');
-    if (data.warning) toast(data.warning, 'warn');
-  } catch(e) { toast(e.message, 'error'); }
-  input.value = '';
-}
-
-function showAvatarPreview(src, name, bytes) {
-  const preview = document.getElementById('avatar-preview');
-  const img = document.getElementById('avatar-preview-img');
-  const lbl = document.getElementById('avatar-preview-label');
-  if (!preview) return;
-  img.src = src;
-  lbl.textContent = (name || 'Custom avatar') + (bytes > 0 ? ' (' + Math.round(bytes/1024) + ' KB)' : '');
-  preview.style.display = 'flex';
-}
-
-function clearDiscordAvatar() {
-  document.getElementById('s-discord_avatar_url').value = '';
-  const preview = document.getElementById('avatar-preview');
-  if (preview) preview.style.display = 'none';
-}
-
-async function runDeepSync() {
-  try {
-    toast('Running deep sync…', 'info');
-    const r = await api('POST', '/admin/deep-sync');
-    toast(`Deep sync done in ${r.elapsed_seconds}s ✓`, 'success');
-    loadTorrents(); loadStats();
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-async function triggerBackup() {
-  try {
-    toast('Running backup…', 'info');
-    const r = await api('POST', '/admin/backup');
-    if (r.skipped) { toast('Backup disabled in settings', 'warn'); return; }
-    toast(`Backup done: ${r.backed_up.join(', ')} (${r.rotated} old removed)`, 'success');
-    loadBackupList();
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-async function loadBackupList() {
-  try {
-    const r = await api('GET', '/admin/backups');
-    const el = document.getElementById('backup-list');
-    if (!el) return;
-    if (!r.backups.length) { el.textContent = 'No backups found.'; return; }
-    el.innerHTML = r.backups.map(b =>
-      `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
-        <span>${esc(b.name)}</span>
-        <span style="color:var(--text3)">${esc((b.files||[]).join(', '))} — ${Math.round(Number(b.size_bytes||0)/1024)} KB</span>
-      </div>`
-    ).join('');
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-async function triggerDatabaseBackup() {
-  try {
-    toast('Running database backup…', 'info');
-    const r = await api('POST', '/admin/database/backup');
-    if (r.skipped) { toast('Database backup disabled in settings', 'warn'); return; }
-    toast(`Database backup done (${Object.values(r.tables || {}).reduce((a, b) => a + b, 0)} rows exported)`, 'success');
-    loadDatabaseBackupList();
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-async function loadDatabaseBackupList() {
-  try {
-    const r = await api('GET', '/admin/database/backups');
-    const el = document.getElementById('db-backup-list');
-    if (!el) return;
-    if (!r.backups.length) { el.textContent = 'No database backups found.'; return; }
-    el.innerHTML = r.backups.map(b =>
-      `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
-        <span>${esc(b.name)}</span>
-        <span style="color:var(--text3)">${esc((b.files||[]).join(', '))} — ${Math.round(Number(b.size_bytes||0)/1024)} KB</span>
-      </div>`
-    ).join('');
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-async function wipeDatabase(button) {
-  const enabled =
-    document
-      .getElementById(
-        's-db_wipe_enabled'
-      )
-      ?.checked;
-
-  if (!enabled) {
-    toast(
-      'Enable database wipe in settings first',
-      'warn'
-    );
-    return;
-  }
-
-  if (
-    !confirm(
-      'This will remove all database rows. Continue?'
-    )
-  ) {
-    return;
-  }
-
-  const confirmText =
-    prompt(
-      'Type WIPE to confirm database wipe'
-    );
-
-  if (confirmText !== 'WIPE') return;
-
-  // Start pending state only after explicit operator confirmation.
-  setButtonPending(
-    button,
-    true,
-    'Wiping…'
-  );
-
-  try {
-    toast(
-      'Wiping database…',
-      'warn'
-    );
-
-    const r =
-      await api(
-        'POST',
-        '/admin/database/wipe',
-        {confirm: true}
-      );
-
-    if (
-      r.backup &&
-      !r.backup.skipped
-    ) {
-      toast(
-        'Database wiped. Pre-wipe backup created.',
-        'success'
-      );
+  const data = await api('GET', '/aria2/runtime');
+  const badge = document.getElementById('aria2-speed-badge');
+  if (badge) {
+    const isBuiltin = (data.mode || '') === 'builtin';
+    if (isBuiltin && !data.running) {
+      badge.style.display = 'none';
+    } else if (isBuiltin) {
+      badge.style.display = 'flex';
+      updateAria2TopbarBadge({
+        active: Number(data.active) || 0,
+        liveBps: Number(data.download_speed) || 0,
+        externalControl: false,
+      });
+      loadAria2SpeedLimit().catch(function(){});
     } else {
-      toast(
-        'Database wiped.',
-        'success'
-      );
+      badge.style.display = 'flex';
+      updateAria2TopbarBadge({externalControl: true});
+      loadAria2TopbarStat().catch(function(){});
     }
-
-    loadDatabaseBackupList();
-    loadStats().catch(()=>{});
-    loadRecent().catch(()=>{});
-
-    if (
-      document
-        .getElementById('view-torrents')
-        ?.classList.contains('active')
-    ) {
-      loadTorrents().catch(()=>{});
-    }
-  } catch(e) {
-    toast(
-      e.message,
-      'error'
-    );
-  } finally {
-    setButtonPending(button, false);
   }
+  return data;
 }
-
-async function sendStatsReport(button) {
-  const hours = parseInt(document.getElementById('stats-report-hours')?.value || '24', 10);
-
-  setButtonPending(
-    button,
-    true,
-    'Sending…'
-  );
-
-  try {
-    const r = await api('POST', `/stats/report/send?hours=${hours}`);
-
-    toast(
-      `Report sent via webhook (${r.hours}h) ✓`,
-      'success'
-    );
-  } catch(e) {
-    toast(e.message, 'error');
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
-async function loadComprehensiveStats() {
-  const el = document.getElementById('comprehensive-stats');
-  if (!el) return;
-  const hours = parseInt(document.getElementById('stats-report-hours')?.value || '24');
-  el.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Loading…</div>';
-  try {
-    const r = await api('GET', `/stats/comprehensive?hours=${hours}`);
-    const t = r.torrents || {};
-    const d = r.downloads || {};
-    const f = r.files || {};
-    const ev = r.events || {};
-    const fmtBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB' : b > 1e6 ? (b/1e6).toFixed(1)+' MB' : (b/1024).toFixed(0)+' KB';
-    const fmtDur = s => s > 3600 ? `${(s/3600).toFixed(1)}h` : s > 60 ? `${Math.floor(s/60)}m` : s+'s';
-    el.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        ${[
-          ['Total Downloads', t.total||0, ''],
-          ['Completed', t.completed||0, 'var(--green)'],
-          ['Errors', t.errors||0, 'var(--red)'],
-          ['Success Rate', t.success_rate_pct != null ? t.success_rate_pct+'%' : '—', 'var(--accent)'],
-          ['Downloaded', fmtBytes(d.total_bytes||0), 'var(--blue)'],
-          ['Avg Size', fmtBytes(d.avg_bytes||0), ''],
-          ['Avg Duration', fmtDur(d.avg_duration_sec||0), ''],
-          ['Total Files', f.total||0, ''],
-          ['Blocked Files', f.blocked||0, 'var(--yellow)'],
-          ['Total Retries', f.retry_total||0, ''],
-          ['Error Events', ev.error||0, 'var(--red)'],
-          ['Warn Events', ev.warn||0, 'var(--yellow)'],
-        ].map(([k,v,c]) => `<div style="background:var(--surface2);padding:8px 10px;border-radius:6px">
-          <div style="font-size:9px;text-transform:uppercase;color:var(--text2);font-weight:700">${k}</div>
-          <div style="font-size:20px;font-weight:800;color:${c||'var(--text)'}">${v}</div>
-        </div>`).join('')}
-      </div>
-      ${r.daily_trend?.length ? `<div style="font-size:11px;color:var(--text2);margin-top:8px"><b>Daily completions (last ${Math.min(14, hours/24|0)} days):</b><br>${r.daily_trend.map(d=>`${esc(d.date)}: ${Number(d.cnt)||0}`).join(' · ')}</div>` : ''}
-      ${Object.keys(t.sources||{}).length ? `<div style="font-size:11px;color:var(--text2);margin-top:6px"><b>Sources:</b> ${Object.entries(t.sources||{}).map(([k,v])=>`${esc(k)}: ${Number(v)||0}`).join(', ')}</div>` : ''}
-    `;
-  } catch(e) {
-    el.innerHTML = `<span style="color:var(--red)">✗ ${esc(e.message)}</span>`;
-  }
-}
-
-async function exportStats() {
-  const hours = parseInt(document.getElementById('stats-report-hours')?.value || '24');
-  window.open(`/api/stats/export?hours=${hours}`, '_blank');
-}
-
-async function triggerStatsSnapshot(button) {
-  setButtonPending(
-    button,
-    true,
-    'Taking…'
-  );
-
-  try {
-    await api(
-      'POST',
-      '/stats/snapshot'
-    );
-
-    toast(
-      'Stats snapshot taken',
-      'success'
-    );
-  } catch(e) {
-    toast(e.message, 'error');
-  } finally {
-    setButtonPending(button, false);
-  }
-}
-
 
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -2730,6 +1759,23 @@ async function triggerStatsSnapshot(button) {
           }
         );
 
+        // Duplicate-consolidation notice. This module owns the one application
+        // EventSource, so the event is registered here; operator-title.js owns
+        // only the copy (consolidationToastCopy) and the toast presentation.
+        // The payload carries public counts/ids only and is never replayed
+        // client-side after a reload.
+        es.addEventListener(
+          'duplicate_consolidated',
+          function(e) {
+            try {
+              const copy = window.DPIcons.consolidationToastCopy(JSON.parse(e.data));
+              if (copy) window.DPIcons.toast(copy, 'success');
+            } catch (_) {
+              // Invalid public event data is ignored rather than rendered.
+            }
+          }
+        );
+
         es.addEventListener(
           'stats_changed',
           function() {
@@ -2760,15 +1806,12 @@ async function triggerStatsSnapshot(button) {
               payload = JSON.parse(e.data || '{}');
             } catch (_) {}
 
-            const patchedExtraction =
-              patchExtractionTransferEvent(payload);
+            notifyExtractionFailure(payload);
 
             const patchedProgress =
-              patchedExtraction
-                ? false
-                : patchProgressOnlyTransferEvent(payload);
+              patchProgressOnlyTransferEvent(payload);
 
-            if (!patchedExtraction && !patchedProgress) {
+            if (!patchedProgress) {
               if (
                 document
                   .getElementById('view-torrents')
@@ -2805,14 +1848,6 @@ async function triggerStatsSnapshot(button) {
                 ()=>{
                   progressStatsTimer = null;
                   loadStats().catch(()=>{});
-                  if (patchedExtraction && payload.extraction_status !== 'extracting') {
-                    if (document.getElementById('view-torrents')?.classList.contains('active')) {
-                      loadTorrents().catch(()=>{});
-                    }
-                    if (document.getElementById('view-dashboard')?.classList.contains('active')) {
-                      loadRecent().catch(()=>{});
-                    }
-                  }
                 },
                 1500
               );
@@ -2895,205 +1930,24 @@ async function triggerStatsSnapshot(button) {
 })();
 
 
-// ── Priority Queue ─────────────────────────────────────────────────────────
-
-async function setTorrentPriority(torrentId, priority) {
-  try {
-    await api('PATCH', `/torrents/${torrentId}/priority`, {priority});
-    loadTorrents();
-  } catch(e) { toast(e.message, 'error'); }
-}
-
-// ── AllDebrid Orphan Cleanup ───────────────────────────────────────────────────
-
-async function cleanupAlldebridOrphans() {
-  var btn = document.getElementById('btn-cleanup-orphans');
-  if (btn) { btn.disabled = true; btn.textContent = 'Cleaning…'; }
-  try {
-    var res = await api('POST', '/admin/cleanup-alldebrid-orphans', {}, 60000);
-    toast(
-      res.deleted > 0
-        ? res.deleted + ' orphan magnet(s) removed from AllDebrid'
-        : 'No orphaned magnets found on AllDebrid',
-      res.deleted > 0 ? 'success' : 'info'
-    );
-    loadTorrents();
-  } catch(e) { toast(sanitizeErrorMsg(e.message), 'error'); }
-  finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🧹 Clean AD Orphans'; }
-  }
-}
-
-async function setTorrentPriority(torrentId, priority) {
-  try {
-    await api('PATCH', '/torrents/' + torrentId + '/priority', {priority: parseInt(priority)||0}, 10000);
-    loadTorrents();
-  } catch(e) { toast(sanitizeErrorMsg(e.message), 'error'); }
-}
-
-
-
-// ── Drag & Drop Priority Reordering ───────────────────────────────────────────
-
-var _dragSrcId = null;
-
-function onTorrentDragStart(e, torrentId) {
-  _dragSrcId = torrentId;
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', String(torrentId));
-  e.currentTarget.style.opacity = '0.5';
-}
-
-function onTorrentDragEnd(e) {
-  e.currentTarget.style.opacity = '';
-  document.querySelectorAll('#t-tbody tr').forEach(function(r) {
-    r.classList.remove('drag-over');
-  });
-}
-
-function onTorrentDragOver(e, torrentId) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('#t-tbody tr').forEach(function(r) {
-    r.classList.remove('drag-over');
-  });
-  e.currentTarget.classList.add('drag-over');
-}
-
-async function onTorrentDrop(e, targetId) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  if (!_dragSrcId || _dragSrcId === targetId) return;
-  // Move dragged item above the target: boost its priority by 1 relative to target
-  try {
-    // Get current rows to compute new priority
-    var rows = Array.from(document.querySelectorAll('#t-tbody tr[data-torrent-id]'));
-    var srcIdx  = rows.findIndex(function(r) { return parseInt(r.dataset.torrentId) === _dragSrcId; });
-    var tgtIdx  = rows.findIndex(function(r) { return parseInt(r.dataset.torrentId) === targetId; });
-    var newPriority = tgtIdx < srcIdx ? 10 : -10;
-    await api('PATCH', '/torrents/' + _dragSrcId + '/priority', {priority: newPriority}, 10000);
-    loadTorrents();
-  } catch(e) {
-    toast(sanitizeErrorMsg(e.message), 'error');
-  }
-  _dragSrcId = null;
-}
-
-// ── Auto-Recovery ─────────────────────────────────────────────────────────────
-
-async function runRecovery() {
-  try {
-    var res = await api('POST', '/recovery/run', {}, 30000);
-    var r = res.result || {};
-    toast(
-      'Recovery done — ' +
-      r.orphaned_queued_files + ' orphaned, ' +
-      r.missed_completions + ' completions fixed, ' +
-      (r.deadlock_reset ? 'deadlock reset' : 'no deadlock'),
-      'success'
-    );
-  } catch(e) { toast(sanitizeErrorMsg(e.message), 'error'); }
-}
-
 // ── Speed Limit ───────────────────────────────────────────────────────────────
 
 async function loadAria2SpeedLimit() {
-  // A client-configured max-concurrency intention (settingsData, captured
-  // before this fetch) always wins over whatever this aria2 query itself
-  // reports, once the query settles -- see the `finally` below.
-  const configured = window.DPProcessingPresentation
-    ? (window.DPProcessingPresentation.configuredMaxConcurrency() ?? 3) : 3;
   try {
     var data = await api('GET', '/aria2/global-options', null, 10000);
-    var externalControl = !!data.global_options_read_only;
-    var bps   = parseInt(data.max_download_speed || 0);
-    var maxDl = parseInt(data.max_concurrent_downloads || 0)
-                || (settingsData && settingsData.aria2_max_active_downloads)
-                || 3;
-
-    // ── Sync settingsData so PUT /settings uses the live value ───────────
-    if (settingsData) {
-      settingsData.aria2_max_active_downloads = maxDl;
-      settingsData.max_concurrent_downloads   = maxDl;
-      if (!externalControl) {
-        settingsData.aria2_max_download_limit = bps;
-      }
-    }
-    // ── Sync Settings-page inputs (Downloads → Settings, bidirectional) ──
-    var inMad = document.getElementById('s-aria2_max_active_downloads');
-    if (inMad) inMad.value = maxDl;
-
-    // ── Sync speed preset in Downloads panel ─────────────────────────────
-    var sel = document.getElementById('aria2-speed-preset');
-    var st  = document.getElementById('aria2-speed-status');
-    if (sel) {
-      var found = false;
-      for (var i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value !== 'custom' && parseInt(sel.options[i].value || 0) === bps) {
-          sel.value = sel.options[i].value;
-          found = true; break;
-        }
-      }
-      if (!found) {
-        sel.value = 'custom';
-        var ci = document.getElementById('aria2-speed-custom');
-        var cb = document.getElementById('aria2-speed-apply');
-        if (ci) { ci.style.display = ''; ci.value = Math.round(bps / 1024); }
-        if (cb)   cb.style.display = '';
-      }
-      if (st) st.textContent = '(' + fmtSpeedCap(bps) + ')';
-    }
-
-    // ── Sync Max DL preset in Downloads panel ─────────────────────────────
-    var msel = document.getElementById('aria2-maxdl-preset');
-    if (msel) {
-      var mfound = false;
-      for (var j = 0; j < msel.options.length; j++) {
-        if (parseInt(msel.options[j].value) === maxDl) {
-          msel.value = msel.options[j].value;
-          mfound = true; break;
-        }
-      }
-      if (!mfound) msel.value = '3';
-    }
-
-    // ── Update topbar badge ───────────────────────────────────────────────
+    // The native effective cap is what this badge displays. Scheduler capacity
+    // is universal transfer policy and is never taken from an aria2 response.
     updateAria2TopbarBadge({
-      limitBps: bps,
-      maxDl: maxDl,
-      externalControl: externalControl,
+      limitBps: parseInt(data.max_download_speed || 0),
+      externalControl: !!data.global_options_read_only,
     });
-
   } catch (e) { /* aria2 not connected — silently ignore */ }
-  finally {
-    if (settingsData) {
-      settingsData.max_concurrent_downloads = configured;
-      settingsData.aria2_max_active_downloads = configured;
-    }
-    window.DPProcessingPresentation?.syncConfiguredConcurrency?.();
-  }
-}
-
-async function applyAria2SpeedPreset(val) {
-  var ci = document.getElementById('aria2-speed-custom');
-  var cb = document.getElementById('aria2-speed-apply');
-  if (val === 'custom') {
-    if (ci) ci.style.display=''; if (cb) cb.style.display=''; return;
-  }
-  if (ci) ci.style.display='none'; if (cb) cb.style.display='none';
-  await _setAria2Speed(parseInt(val||0));
-}
-
-async function applyAria2SpeedCustom() {
-  var ci = document.getElementById('aria2-speed-custom');
-  var kbps = parseInt((ci&&ci.value)||0);
-  await _setAria2Speed(kbps * 1024);
 }
 
 async function _setAria2Speed(bps) {
   var st = document.getElementById('aria2-speed-status');
 
-  if (settingsData && (settingsData.aria2_mode || 'builtin') !== 'builtin') {
+  if (aria2Mode() !== 'builtin') {
     if (st) {
       st.style.color = 'var(--text2)';
       st.textContent = 'Externally Controlled';
@@ -3111,9 +1965,11 @@ async function _setAria2Speed(bps) {
     if (limitResult && limitResult.ok === false) {
       throw new Error(limitResult.last_apply_error || 'Bandwidth limit could not be applied');
     }
-    // Keep settingsData in sync so subsequent PUT /settings calls don't
-    // overwrite this value with the stale cached number.
-    if (settingsData) settingsData.aria2_max_download_limit = bps;
+    // The canonical cache follows the value the runtime-limits surface accepted.
+    if (settingsData) {
+      settingsData.execution_runtime_limits = Object.assign({}, settingsData.execution_runtime_limits,
+        {max_download_bytes_per_second: bps});
+    }
     if (st) { st.style.color='var(--green)'; st.textContent = bps > 0 ? 'Set: ' + fmtSpeedCap(bps) : 'Unlimited'; }
     setTimeout(function(){ if(st) st.style.color='var(--text2)'; }, 3000);
     updateAria2TopbarBadge({limitBps: bps});
@@ -3126,18 +1982,11 @@ async function _setAria2Speed(bps) {
 }
 
 // Update Downloads badge from loadStats
-function updateAria2Badge(activeCount) {
-  var badge = document.getElementById('nb-aria2-active');
-  if (!badge) return;
-  badge.textContent = activeCount;
-  badge.style.display = activeCount > 0 ? '' : 'none';
-}
 
 // Topbar badge: live active count, speed cap, and max concurrent
 var _aria2BadgeState = {
   active: 0,
   limitBps: 0,
-  maxDl: 3,
   liveBps: 0,
   externalControl: false,
 };
@@ -3151,10 +2000,6 @@ async function loadAria2TopbarStat() {
     updateAria2TopbarBadge({
       active: Number(data.active) || 0,
       liveBps: Number(data.download_speed) || 0,
-      maxDl: Number(
-        settingsData.max_concurrent_downloads ??
-        settingsData.aria2_max_active_downloads
-      ) || 3,
       externalControl: !!data.external_control,
     });
   } finally {
@@ -3176,7 +2021,11 @@ function updateAria2TopbarBadge(patch) {
   var externalControl = !!s.externalControl;
 
   if (elActive) elActive.textContent = s.active;
-  if (elMax)    elMax.textContent    = s.maxDl || '—';
+  // The denominator is DebridPulse scheduler capacity: the canonical
+  // transfer policy, never a value reported by the aria2 daemon.
+  var maxDl = window.DPProcessingPresentation
+    ? window.DPProcessingPresentation.configuredMaxConcurrency() : null;
+  if (elMax)    elMax.textContent    = maxDl || '—';
   if (elSpeed)  elSpeed.textContent  = fmtSpeed(s.liveBps || 0);
 
   if (elLimit) {
@@ -3261,89 +2110,4 @@ async function applyAria2TopbarCustomSpeedCap() {
     return;
   }
   await applyAria2TopbarSpeedCap(Math.round(mbps * 1048576));
-}
-
-async function applyAria2MaxDlPreset(val) {
-  var n = parseInt(val) || 3;
-  var st = document.getElementById('aria2-maxdl-status');
-  if (st) { st.style.color='var(--text2)'; st.textContent='Applying…'; }
-  try {
-    // DP 1.0.12 canonical architecture correction: the universal
-    // transfer-policy surface, not the aria2-specific route, is the write
-    // authority for maximum concurrent executions (specification sections
-    // 4.1, 9.7). It persists to settings.json and reconfigures the scheduler.
-    await api('PATCH', '/transfer-policy', {max_concurrent_executions: n});
-    // Keep settingsData in sync so subsequent PUT /settings calls don't
-    // overwrite this value with the stale cached number.
-    if (settingsData) {
-      // Keep every alias in sync so a subsequent PUT /settings and a
-      // Manager Semaphore reset both use the updated value.
-      settingsData.aria2_max_active_downloads = n;
-      settingsData.max_concurrent_downloads   = n;
-      if (settingsData.transfer_policy && typeof settingsData.transfer_policy === 'object') {
-        settingsData.transfer_policy.max_concurrent_executions = n;
-      }
-    }
-    // Sync Settings-page inputs so a subsequent Save Settings does not clobber.
-    var maxDlInput2 = document.getElementById('s-aria2_max_active_downloads');
-    if (maxDlInput2) maxDlInput2.value = n;
-    if (st) { st.style.color='var(--green)'; st.textContent=n+' active'; }
-    setTimeout(function(){ if(st) st.style.color='var(--text2)'; st.textContent=''; }, 3000);
-    updateAria2TopbarBadge({maxDl: n});
-  } catch(e) {
-    if (st) { st.style.color='var(--red)'; st.textContent='Error'; }
-    toast('Max downloads error: '+e.message, 'error');
-  }
-}
-
-
-function switchHelpTab(el) {
-  if (!el) return;
-  const tabId = el.dataset.htab;
-  document.querySelectorAll('#help-tabs .stab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.help-panel').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  const panel = document.getElementById('htab-' + tabId);
-  if (panel) panel.classList.add('active');
-}
-
-
-async function showMemoryInfo() {
-  var el = document.getElementById('aria2-memory-info');
-  if (!el) return;
-  el.style.display = '';
-  el.innerHTML = '<span style="color:var(--text2)">Loading&#8230;</span>';
-  try {
-    var d = await api('GET', '/admin/memory-info');
-    el.innerHTML =
-      '<b>&#128202; System Memory</b><br>' +
-      'Total: <b>' + d.total + '</b> &nbsp; ' +
-      'Really used: <b>' + d.really_used + '</b> &nbsp; ' +
-      'Page cache: <b style="color:var(--accent)">' + d.page_cache + '</b> &nbsp; ' +
-      'Available: <b style="color:var(--green)">' + d.available + '</b><br>' +
-      '<span style="font-size:11px;color:var(--text2)">' +
-      'Page cache = kernel file cache shown as \"used\" in Unraid dashboard, ' +
-      'but reclaimed automatically when needed. ' +
-      'If large, click \"Drop Page Cache\" to release it immediately.' +
-      '</span>';
-  } catch(e) {
-    el.innerHTML = '<span style="color:var(--red)">Error: ' + esc(e.message) + '</span>';
-  }
-}
-
-async function dropPageCache() {
-  var el = document.getElementById('aria2-memory-info');
-  if (el) { el.style.display = ''; el.innerHTML = '<span style="color:var(--text2)">Releasing page cache&#8230;</span>'; }
-  try {
-    var d = await api('POST', '/admin/drop-page-cache');
-    toast('Page cache released for ' + d.cache_released + '/' + d.files_processed + ' files', 'success');
-    if (el) el.innerHTML =
-      '<b style="color:var(--green)">&#10003; ' + esc(d.message) + '</b><br>' +
-      '<span style="font-size:11px;color:var(--text2)">Run Memory Info again to see updated RAM usage.</span>';
-    // refresh memory info after 1s
-    setTimeout(showMemoryInfo, 1200);
-  } catch(e) {
-    toast('Drop page cache failed: ' + e.message, 'error');
-    if (el) el.innerHTML = '<span style="color:var(--red)">Error: ' + esc(e.message) + '</span>';
-  }
 }

@@ -187,33 +187,6 @@
   gap: 10px;
 }
 
-#view-settings .dp-settings-download-recovery-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-}
-
-#view-settings .dp-settings-download-recovery-icon img {
-  width: 34px;
-  height: 34px;
-  display: block;
-  object-fit: contain;
-  filter:
-    drop-shadow(0 0 4px rgba(184,102,245,.78))
-    drop-shadow(0 0 9px rgba(184,102,245,.34));
-}
-
-body.light #view-settings .dp-settings-download-recovery-icon img {
-  filter:
-    saturate(1.08)
-    contrast(1.04)
-    drop-shadow(0 0 4px rgba(184,102,245,.88))
-    drop-shadow(0 0 10px rgba(184,102,245,.44));
-}
-
 /* Safety & Recovery is deliberately a 3-over-2 equal-width matrix. */
 #view-settings .dp-settings-download-recovery-card > .card-body {
   display: grid;
@@ -281,33 +254,6 @@ body.light #view-settings .dp-settings-download-recovery-icon img {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-}
-
-#view-settings .dp-settings-extraction-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-}
-
-#view-settings .dp-settings-extraction-icon img {
-  width: 34px;
-  height: 34px;
-  display: block;
-  object-fit: contain;
-  filter:
-    drop-shadow(0 0 4px rgba(184,102,245,.78))
-    drop-shadow(0 0 9px rgba(184,102,245,.34));
-}
-
-body.light #view-settings .dp-settings-extraction-icon img {
-  filter:
-    saturate(1.08)
-    contrast(1.04)
-    drop-shadow(0 0 4px rgba(184,102,245,.88))
-    drop-shadow(0 0 10px rgba(184,102,245,.44));
 }
 
 #view-settings .dp-settings-extraction-header-copy {

@@ -97,8 +97,8 @@ def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() 
         "['sources', 'Sources & Providers', 'zap']",
         "['downloads', 'Downloads', 'download']",
         "['extraction', 'Extraction', 'package-open']",
-        "['notifications', 'Notifications', 'bell']",
         "['authentication', 'Authentication', 'shield-check']",
+        "['notifications', 'Notifications', 'bell']",
         "['maintenance', 'Data & Maintenance', 'database-backup']",
     ]
     positions = [source.index(item) for item in expected]
@@ -305,9 +305,13 @@ def test_canonical_coordination_uses_explicit_events_not_page_convergence_observ
     operator = read(STATIC / "operator-title.js")
     for event in (
         "debridpulse:navigation",
-        "debridpulse:activity-rendered", "debridpulse:dashboard-stats-rendered",
+        "debridpulse:dashboard-stats-rendered",
     ):
         assert event in app
+    # The Activity Log owner is the sole producer of its render event.
+    activity_owner = read(STATIC / "ui-activity-log-runtime.js")
+    assert "debridpulse:activity-rendered" in activity_owner
+    assert "debridpulse:activity-rendered" not in app
     # The Dashboard Recent Items renderer was consolidated into its bounded
     # presentation owner (ui-dashboard-transfer-presentation.js). That owner is
     # now the sole producer of debridpulse:dashboard-recent-rendered; the app.js
@@ -383,8 +387,9 @@ def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
     assert 'function dbg(' not in app
     assert 'dbg(' not in app
     assert 'function updateHealthBar(' not in app
-    assert 'function runRecovery(' in app
-    assert "'/recovery/run'" in app
+    # The unreferenced app.js recovery trigger is retired: recovery is driven by
+    # the unified backend machinery, not a second frontend entry point.
+    assert 'function runRecovery(' not in app
 
 def test_v112_candidate_preserves_v1111_production_install_references() -> None:
     version = read(VERSION).strip()

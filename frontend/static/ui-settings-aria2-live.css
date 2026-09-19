@@ -24,33 +24,6 @@
   text-align: center;
 }
 
-#view-settings .dp-settings-aria2-live-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-}
-
-#view-settings .dp-settings-aria2-live-icon img {
-  width: 34px;
-  height: 34px;
-  display: block;
-  object-fit: contain;
-  filter:
-    drop-shadow(0 0 4px rgba(184,102,245,.78))
-    drop-shadow(0 0 9px rgba(184,102,245,.34));
-}
-
-body.light #view-settings .dp-settings-aria2-live-icon img {
-  filter:
-    saturate(1.08)
-    contrast(1.04)
-    drop-shadow(0 0 4px rgba(184,102,245,.88))
-    drop-shadow(0 0 10px rgba(184,102,245,.44));
-}
-
 #view-settings .dp-settings-aria2-live-copy {
   color: var(--text3);
   font-size: 12px;

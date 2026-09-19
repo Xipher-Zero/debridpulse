@@ -128,7 +128,6 @@ def _error_row(*, retry_count=0, age=120):
 
 def _settings(*, count=3, delay=60):
     return SimpleNamespace(
-        paused=False,
         aria2_error_retry_count=count,
         aria2_error_retry_delay_seconds=delay,
     )
@@ -158,7 +157,9 @@ def test_tar_lzma_uses_exact_codec_then_validated_tar(tmp_path):
 
 
 def test_retry_delay_zero_is_a_valid_immediate_retry_configuration():
-    cfg = validate_and_sanitise(AppSettings(aria2_error_retry_delay_seconds=0))
-    assert cfg.aria2_error_retry_delay_seconds == 0
+    from transfers.settings import TransferSettings
+
+    cfg = validate_and_sanitise(AppSettings(transfer_policy=TransferSettings(execution_retry_delay_seconds=0)))
+    assert cfg.transfer_policy.execution_retry_delay_seconds == 0
 
 

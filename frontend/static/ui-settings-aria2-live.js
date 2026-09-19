@@ -1,29 +1,27 @@
-/* DebridPulse v1.0.11 Settings built-in engine-state escape hatch.
+/* Built-in aria2 engine-state queue (Settings → Downloads).
  *
  * This surface intentionally exposes the built-in aria2 engine beneath the
  * normal DebridPulse transfer workflow. Engine actions mutate aria2 directly;
  * DebridPulse remains the durable transfer record and reconciles afterward.
+ *
+ * The card's structure is part of the Settings markup (ui-settings-page.js).
+ * This module owns the queue inside it: polling, the job rows it renders, the
+ * filter selection, the live metrics, and the direct engine actions.
  */
 (function () {
   'use strict';
 
-  const TAB_ORDER = Object.freeze([
-    'sources',
-    'downloads',
-    'extraction',
-    'authentication',
-    'notifications',
-    'maintenance',
-  ]);
   const FILTERS = Object.freeze(['all', 'active', 'waiting', 'paused', 'stopped']);
   const STOPPED_STATES = new Set(['complete', 'error', 'removed']);
+  const STATUS_WEIGHT = Object.freeze({active: 0, waiting: 1, paused: 2, error: 3, complete: 4, removed: 5});
   const POLL_MS = 5000;
   const QUEUE_TIMEOUT_MS = 20000;
-  const QUEUE_ID = 'dp-settings-aria2-downloads';
-  let scheduled = false;
+  const ACTION_LABELS = Object.freeze({pause: 'Pausing…', resume: 'Resuming…', remove: 'Removing…'});
+
   let pollTimer = null;
   let refreshRunning = null;
   let activeFilter = 'all';
+  let primedCard = null;
 
   const root = () => document.getElementById('view-settings');
   const downloadsPanel = () => root()?.querySelector('[data-panel="downloads"]') || null;
@@ -35,7 +33,7 @@
     const control = modeControl();
     if (control) return String(control.value || 'builtin');
     try {
-      return String((settingsData && settingsData.aria2_mode) || 'builtin');
+      return String(aria2Mode());
     } catch (_) {
       return 'builtin';
     }
@@ -54,139 +52,55 @@
     return settingsVisible() && downloadsVisible() && currentMode() === 'builtin';
   }
 
-  function reorderTabs(view) {
-    const tablist = view?.querySelector('.dp-settings-tabs');
-    if (!tablist) return;
-
-    const buttons = new Map(
-      Array.from(tablist.querySelectorAll(':scope > [data-tab]'))
-        .map(button => [String(button.dataset.tab || ''), button])
-    );
-    if (!TAB_ORDER.every(id => buttons.has(id))) return;
-
-    const current = Array.from(tablist.querySelectorAll(':scope > [data-tab]'))
-      .map(button => String(button.dataset.tab || ''));
-    if (current.join('|') === TAB_ORDER.join('|')) return;
-
-    for (const id of TAB_ORDER) tablist.appendChild(buttons.get(id));
-  }
-
-  function filterMarkup() {
-    const labels = {
-      all: 'All',
-      active: 'Active',
-      waiting: 'Waiting',
-      paused: 'Paused',
-      stopped: 'Stopped',
-    };
-    return FILTERS.map(id => `
-      <button type="button"
-              class="ftab${id === activeFilter ? ' active' : ''}"
-              role="tab"
-              aria-selected="${id === activeFilter ? 'true' : 'false'}"
-              data-engine-filter="${id}">${labels[id]}</button>`).join('');
-  }
-
-  function cardMarkup() {
-    return `
-      <div class="card-header">
-        <span class="card-title dp-settings-card-title--with-icon">
-          <span class="dp-settings-aria2-live-icon" aria-hidden="true">
-            <img src="/icons/dp/card-download.svg?v=1" alt="" decoding="async">
-          </span>
-          <span class="dp-settings-card-title-text">Built-In Download Engine State</span>
-        </span>
-        <div class="dp-settings-card-header-center">
-          <span class="dp-settings-aria2-live-copy">Inspect and control the built-in aria2 engine.</span>
-        </div>
-        <div class="dp-settings-aria2-live-header-actions">
-          <button type="button" class="btn btn-ghost btn-sm" data-dp-aria2-live-refresh>Refresh</button>
-        </div>
-      </div>
-      <div class="card-body" data-dp-aria2-live-body>
-        <div class="dp-settings-aria2-live-context">
-          This reflects temporary aria2 runtime state, not transfer history. DebridPulse Downloads remains the historical record.
-        </div>
-        <div class="dp-settings-aria2-live-control-row">
-          <div class="dp-settings-aria2-live-note">
-            <div class="dp-settings-aria2-live-note-title">Direct Engine Controls</div>
-            <div class="dp-settings-aria2-live-note-text">Bypasses normal DebridPulse transfer controls. Use for troubleshooting or recovery.</div>
-          </div>
-          <div class="dp-settings-aria2-live-tools">
-            <div class="dp-settings-aria2-live-metrics" aria-label="Built-in aria2 engine metrics">
-              <span data-dp-aria2-live-speed>0 KB/s</span>
-              <span data-dp-aria2-live-remaining>— Remaining</span>
-            </div>
-            <div class="filter-tabs dp-settings-aria2-live-filters" role="tablist" aria-label="Filter built-in aria2 engine jobs">
-              ${filterMarkup()}
-            </div>
-          </div>
-        </div>
-        <div id="${QUEUE_ID}" data-dp-aria2-live-queue="1" class="dp-settings-aria2-live-queue" aria-live="polite">
-          <div class="empty">Loading built-in aria2 engine state…</div>
-        </div>
-      </div>`;
-  }
-
-  function ensureCard(panel) {
-    if (!panel) return null;
-    let card = panel.querySelector('[data-dp-aria2-live-card="1"]');
-    if (card) return card;
-
-    card = document.createElement('section');
-    card.className = 'card dp-settings-card dp-settings-aria2-live-card';
-    card.dataset.dpAria2LiveCard = '1';
-    card.setAttribute('aria-label', 'Built-In Download Engine State');
-    card.innerHTML = cardMarkup();
-
-    const refresh = card.querySelector('[data-dp-aria2-live-refresh]');
-    refresh?.addEventListener('click', () => void refreshQueue(true));
-
-    card.addEventListener('click', event => {
-      const filter = event.target.closest('[data-engine-filter]');
-      if (!filter || !card.contains(filter)) return;
-      const next = String(filter.dataset.engineFilter || 'all');
-      if (!FILTERS.includes(next)) return;
-      activeFilter = next;
-      applyFilter();
-    });
-
-    panel.appendChild(card);
-
-    /* Prime the queue exactly once when this Settings card is materialized.
-       The initial read must not depend on Settings/Downloads visibility timing;
-       visibility only controls the continuing poll loop. */
-    void refreshQueue(false, true);
-    return card;
-  }
-
-  function relabelEngineActions() {
-    const queue = queueNode();
-    if (!queue) return;
-
-    queue.querySelectorAll('.aria2-actions button').forEach(button => {
-      const label = String(button.textContent || '').trim();
-      const fallback = String(button.dataset.defaultLabel || '').trim();
-      if (label !== 'Remove' && fallback !== 'Remove') return;
-
-      button.textContent = 'Remove from aria2';
-      button.dataset.defaultLabel = 'Remove from aria2';
-      button.title = 'Directly remove this GID from the built-in aria2 engine.';
-      button.classList.add('dp-settings-aria2-live-remove');
-    });
-  }
-
   function orderedItems(data) {
     const items = Array.isArray(data?.items) ? data.items.slice() : [];
-    const weight = {active: 0, waiting: 1, paused: 2, error: 3, complete: 4, removed: 5};
-    return items.sort((a, b) => (weight[a?.status] ?? 9) - (weight[b?.status] ?? 9));
+    return items.sort((a, b) => (STATUS_WEIGHT[a?.status] ?? 9) - (STATUS_WEIGHT[b?.status] ?? 9));
   }
 
   function filterGroup(status) {
     const value = String(status || '').toLowerCase();
-    if (STOPPED_STATES.has(value)) return 'stopped';
-    if (value === 'active' || value === 'waiting' || value === 'paused') return value;
-    return value;
+    return STOPPED_STATES.has(value) ? 'stopped' : value;
+  }
+
+  function statusBadge(status) {
+    const map = {active: 'Downloading', waiting: 'Waiting', paused: 'Paused', complete: 'Complete', error: 'Error', removed: 'Removed'};
+    const cls = status === 'active' ? 'downloading' : status === 'complete' ? 'completed' : status === 'error' ? 'error' : status === 'paused' ? 'paused' : 'queued';
+    return `<span class="badge badge-${cls}">${esc(map[status] || status || 'Unknown')}</span>`;
+  }
+
+  function jobMarkup(job) {
+    const gid = esc(job.gid);
+    const canPause = job.status === 'active' || job.status === 'waiting';
+    const canResume = job.status === 'paused';
+    const files = (job.files || []).slice(0, 4).map(file => `
+      <div title="${esc(file.path || '')}">
+        ${esc(file.name || file.path || 'file')} · ${Math.max(0, file.progress || 0).toFixed(1)}% · ${fmtSize(file.completed_length || 0)} / ${fmtSize(file.length || 0)}
+      </div>`).join('');
+    const more = (job.files || []).length > 4 ? `<div>+ ${(job.files || []).length - 4} more file(s)</div>` : '';
+    const error = job.error_message ? `<div class="aria2-error">${esc((job.error || {}).category || '')} ${esc(job.error_message)}</div>` : '';
+    return `
+      <div class="aria2-job" data-engine-status="${esc(String(job.status || '').toLowerCase())}">
+        <div class="aria2-job-top">
+          <div class="aria2-job-title">
+            <div class="aria2-job-name" title="${esc(job.name || '')}">${esc(job.name || job.gid || 'aria2 job')}</div>
+            <div class="aria2-job-meta" title="${esc(job.path || '')}">${gid}${job.path ? ' · ' + esc(job.path) : ''}</div>
+          </div>
+          <div class="aria2-actions">
+            ${canPause ? `<button class="btn btn-ghost btn-sm" data-aria2-action="pause" data-gid="${gid}">Pause</button>` : ''}
+            ${canResume ? `<button class="btn btn-blue btn-sm" data-aria2-action="resume" data-gid="${gid}">Resume</button>` : ''}
+            <button class="btn btn-danger btn-sm dp-settings-aria2-live-remove" data-aria2-action="remove" data-gid="${gid}" data-default-label="Remove from aria2" title="Directly remove this GID from the built-in aria2 engine.">Remove from aria2</button>
+          </div>
+        </div>
+        <div>${progress(job.progress || 0, job.status === 'complete' ? 'completed' : 'downloading')}</div>
+        <div class="aria2-job-grid">
+          <div><div class="aria2-k">Status</div><div class="aria2-v">${statusBadge(job.status)}</div></div>
+          <div><div class="aria2-k">Speed</div><div class="aria2-v">${fmtSpeed(job.download_speed || 0)}</div></div>
+          <div><div class="aria2-k">Done</div><div class="aria2-v">${fmtSize(job.completed_length || 0)} / ${fmtSize(job.total_length || 0)}</div></div>
+          <div><div class="aria2-k">Remaining</div><div class="aria2-v">${fmtSize(job.remaining_length || 0)}</div></div>
+        </div>
+        ${error}
+        ${(files || more) ? `<div class="aria2-file-list">${files}${more}</div>` : ''}
+      </div>`;
   }
 
   function updateMetrics(data) {
@@ -197,10 +111,7 @@
     const remainingNode = card.querySelector('[data-dp-aria2-live-remaining]');
     const speed = Number(summary.download_speed || 0);
     const remaining = Number(summary.remaining_length || 0);
-
-    if (speedNode) {
-      speedNode.textContent = typeof fmtSpeed === 'function' ? fmtSpeed(speed) : `${Math.max(0, speed)} B/s`;
-    }
+    if (speedNode) speedNode.textContent = typeof fmtSpeed === 'function' ? fmtSpeed(speed) : `${Math.max(0, speed)} B/s`;
     if (remainingNode) {
       const formatted = remaining > 0 && typeof fmtSize === 'function' ? fmtSize(remaining) : '—';
       remainingNode.textContent = `${formatted} Remaining`;
@@ -208,9 +119,7 @@
   }
 
   function updateFilterSelection() {
-    const card = liveCard();
-    if (!card) return;
-    card.querySelectorAll('[data-engine-filter]').forEach(button => {
+    liveCard()?.querySelectorAll('[data-engine-filter]').forEach(button => {
       const selected = String(button.dataset.engineFilter || '') === activeFilter;
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', selected ? 'true' : 'false');
@@ -225,8 +134,7 @@
     const jobs = Array.from(queue.querySelectorAll('.aria2-job'));
     let visible = 0;
     jobs.forEach(job => {
-      const group = filterGroup(job.dataset.engineStatus);
-      const show = activeFilter === 'all' || group === activeFilter;
+      const show = activeFilter === 'all' || filterGroup(job.dataset.engineStatus) === activeFilter;
       job.hidden = !show;
       if (show) visible += 1;
     });
@@ -236,7 +144,6 @@
       filteredEmpty?.remove();
       return;
     }
-
     if (!filteredEmpty) {
       filteredEmpty = document.createElement('div');
       filteredEmpty.className = 'empty dp-settings-aria2-filter-empty';
@@ -247,23 +154,13 @@
     filteredEmpty.textContent = `No ${label.toLowerCase()} jobs currently retained by aria2.`;
   }
 
-  function postProcessQueue(data) {
+  function renderQueue(data) {
     const queue = queueNode();
     if (!queue) return;
-
-    queue.querySelector('.aria2-summary')?.remove();
-
     const items = orderedItems(data);
-    const jobs = Array.from(queue.querySelectorAll('.aria2-job'));
-    jobs.forEach((job, index) => {
-      job.dataset.engineStatus = String(items[index]?.status || '').toLowerCase();
-    });
-
-    if (!items.length) {
-      const empty = queue.querySelector('.empty');
-      if (empty) empty.textContent = 'No jobs currently retained by aria2.';
-    }
-
+    queue.innerHTML = items.length
+      ? items.map(jobMarkup).join('')
+      : '<div class="empty">No jobs currently retained by aria2.</div>';
     updateMetrics(data);
     applyFilter();
   }
@@ -276,37 +173,6 @@
     error.textContent = `Queue error: ${String(message || 'Unable to load built-in aria2 engine state')}`;
     queue.replaceChildren(error);
     updateMetrics(null);
-  }
-
-  function renderIntoSettingsQueue(data) {
-    const queue = queueNode();
-    if (!queue) throw new Error('Settings aria2 queue target is unavailable');
-    if (typeof renderAria2Downloads !== 'function') {
-      throw new Error('aria2 queue renderer is unavailable');
-    }
-
-    /* The inherited renderer is intentionally reused, but it historically
-       resolves a global #aria2-downloads node. Give it the Settings queue as
-       an explicit temporary target and displace any stale legacy target for
-       the duration of the render. */
-    const displaced = Array.from(document.querySelectorAll('[id="aria2-downloads"]'))
-      .filter(element => element !== queue);
-    displaced.forEach((element, index) => {
-      element.id = `dp-legacy-aria2-downloads-${index}`;
-    });
-
-    const originalId = queue.id;
-    queue.id = 'aria2-downloads';
-    try {
-      renderAria2Downloads(data);
-    } finally {
-      queue.id = originalId || QUEUE_ID;
-      displaced.forEach(element => {
-        element.id = 'aria2-downloads';
-      });
-    }
-
-    postProcessQueue(data);
   }
 
   function stopPolling() {
@@ -325,14 +191,11 @@
   }
 
   async function refreshQueue(manual, force = false) {
-    const builtin = currentMode() === 'builtin';
-    if (!builtin) return null;
+    if (currentMode() !== 'builtin') return null;
     if (!manual && !force && !shouldRunLiveQueue()) return null;
     if (refreshRunning) return refreshRunning;
 
-    const card = liveCard();
-    const refresh = card?.querySelector('[data-dp-aria2-live-refresh]');
-
+    const refresh = liveCard()?.querySelector('[data-dp-aria2-live-refresh]');
     if (typeof api !== 'function') {
       showQueueError('Application API client is unavailable');
       return null;
@@ -345,8 +208,7 @@
       }
       try {
         const data = await api('GET', '/aria2/downloads', null, QUEUE_TIMEOUT_MS);
-        renderIntoSettingsQueue(data);
-        relabelEngineActions();
+        renderQueue(data);
         return data;
       } catch (error) {
         showQueueError(error?.message || error);
@@ -359,8 +221,22 @@
         refreshRunning = null;
       }
     })();
-
     return refreshRunning;
+  }
+
+  async function engineAction(gid, action, button) {
+    setButtonPending(button, true, ACTION_LABELS[action] || 'Working…');
+    try {
+      await api('POST', `/aria2/downloads/${encodeURIComponent(gid)}/${action}`);
+      toast(`aria2 ${action} sent`, 'success');
+      await refreshQueue(false, true);
+      if (typeof loadAria2Runtime === 'function') await loadAria2Runtime().catch(() => {});
+      if (shouldRunLiveQueue()) schedulePoll(POLL_MS);
+    } catch (error) {
+      toast(`aria2 ${action}: ${error.message}`, 'error');
+    } finally {
+      setButtonPending(button, false);
+    }
   }
 
   function startVisibleQueue() {
@@ -372,74 +248,61 @@
     schedulePoll(POLL_MS);
   }
 
-  function syncCardForMode(panel = downloadsPanel()) {
-    const builtin = currentMode() === 'builtin';
-    if (!builtin) {
+  /* Bind a freshly rendered card once and prime its queue exactly once. The
+     initial read does not depend on Settings/Downloads visibility timing;
+     visibility only controls the continuing poll loop. */
+  function attachCard(card) {
+    if (primedCard === card) return;
+    primedCard = card;
+    card.querySelector('[data-dp-aria2-live-refresh]')?.addEventListener('click', () => void refreshQueue(true));
+    card.addEventListener('click', event => {
+      const filter = event.target.closest('[data-engine-filter]');
+      if (filter && card.contains(filter)) {
+        const next = String(filter.dataset.engineFilter || 'all');
+        if (FILTERS.includes(next)) {
+          activeFilter = next;
+          applyFilter();
+        }
+        return;
+      }
+      const action = event.target.closest('[data-aria2-action]');
+      if (action && card.contains(action)) void engineAction(action.dataset.gid, action.dataset.aria2Action, action);
+    });
+    updateFilterSelection();
+    void refreshQueue(false, true);
+  }
+
+  function syncCardForMode() {
+    if (currentMode() !== 'builtin') {
       stopPolling();
-      liveCard()?.remove();
-      return null;
+      return;
     }
-
-    const card = ensureCard(panel);
-    if (card) startVisibleQueue();
-    return card;
+    const card = liveCard();
+    if (!card) return;
+    attachCard(card);
+    startVisibleQueue();
   }
-
-  function apply() {
-    const view = root();
-    if (!view) return;
-
-    reorderTabs(view);
-    syncCardForMode(downloadsPanel());
-  }
-
-
-
-
-
-
-
-  function bindInteractions(view) {
-    if (!view || view.dataset.dpSettingsAria2LiveBound === '1') return;
-    view.dataset.dpSettingsAria2LiveBound = '1';
-
-    view.addEventListener('change', event => {
-      if (!event.target.matches('[data-setting="aria2_mode"]')) return;
-      queueMicrotask(() => {
-        syncCardForMode(downloadsPanel());
-      });
-    });
-
-    view.addEventListener('click', event => {
-      if (!event.target.closest('.dp-settings-tabs [data-tab]')) return;
-      queueMicrotask(startVisibleQueue);
-    });
-  }
-
-
 
   function attach() {
     const view = root();
     if (!view) return;
-    bindInteractions(view);
-    apply();
-
-    document.addEventListener('debridpulse:settings-rendered', apply);
-    document.addEventListener('debridpulse:aria2-engine-action-settled', function () {
-      if (shouldRunLiveQueue()) {
-        void refreshQueue(false);
-        schedulePoll(POLL_MS);
-      }
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) stopPolling();
-      else startVisibleQueue();
-    });
+    if (view.dataset.dpSettingsAria2LiveBound !== '1') {
+      view.dataset.dpSettingsAria2LiveBound = '1';
+      view.addEventListener('change', event => {
+        if (event.target.matches('[data-setting="aria2_mode"]')) queueMicrotask(syncCardForMode);
+      });
+      view.addEventListener('click', event => {
+        if (event.target.closest('.dp-settings-tabs [data-tab]')) queueMicrotask(startVisibleQueue);
+      });
+    }
+    syncCardForMode();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', attach, {once: true});
-  } else {
-    attach();
-  }
+  document.addEventListener('debridpulse:settings-rendered', attach);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopPolling();
+    else startVisibleQueue();
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach, {once: true});
+  else attach();
 })();

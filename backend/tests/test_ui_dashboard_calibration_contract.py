@@ -29,7 +29,7 @@ def dashboard_css() -> str:
 
 def test_dashboard_has_one_canonical_calibration_owner() -> None:
     overlay = read(STYLE)
-    assert "/ui-dashboard.css?v=21" in overlay
+    assert "/ui-dashboard.css?v=22" in overlay
     for retired in (
         "ui-dashboard-structural.css",
         "ui-dashboard-consistency.css",
@@ -288,15 +288,12 @@ def test_shared_utility_controls_keep_integrated_outline_hierarchy() -> None:
     require(
         read(UTILITY),
         (
-            "#btn-import-existing",
             "#btn-recover-all",
             "#view-events .dp-activity-refresh",
             "#view-torrents .dp-downloads-refresh",
             "height: 36px !important",
             "min-height: 36px !important",
             "box-shadow: none !important",
-            "rgba(255,255,255,.018)",
-            "#d3cedd",
             "rgba(157,91,213,.028)",
             "#c5a3dc",
             "#714790",

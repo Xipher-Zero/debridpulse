@@ -84,7 +84,7 @@ jobs:
           echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
           echo "target_tag=$target_tag" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
-          echo "source_tag=sha-${candidate_sha:0:7}" >> "$GITHUB_OUTPUT"
+          echo "source_tag=sha-${candidate_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout exact candidate
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

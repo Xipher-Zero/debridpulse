@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
 from core.secure_files import atomic_write_json
+from integrations.configuration import clamp_persisted_namespaces, migrate_legacy_settings, normalize_settings
 from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.settings import TransferSettings
@@ -35,12 +36,15 @@ def config_write_lock() -> asyncio.Lock:
 
 
 class AppSettings(BaseModel):
+    # Canonical authorities. ``integrations.<id>`` owns each provider's and the
+    # executor's configuration (including the AllDebrid credentials and every
+    # aria2 option), ``transfer_policy`` owns execution/resolution policy, and
+    # ``execution_runtime_limits`` owns runtime capability limits. Nothing below
+    # duplicates them: pre-canonical flat names are migration input only
+    # (``integrations.configuration.migrate_legacy_settings``).
     integrations: dict[str, IntegrationSettings] = Field(default_factory=dict, repr=False)
-    transfer_policy: TransferSettings | None = None
-    execution_runtime_limits: ExecutionRuntimeLimits | None = None
-    # AllDebrid
-    alldebrid_api_key: str = ""
-    alldebrid_agent: str = APP_SHORT_NAME
+    transfer_policy: TransferSettings = Field(default_factory=TransferSettings)
+    execution_runtime_limits: ExecutionRuntimeLimits = Field(default_factory=ExecutionRuntimeLimits)
 
     # Logging
     log_level: str = "INFO"
@@ -51,39 +55,6 @@ class AppSettings(BaseModel):
 
     # Download control
     download_folder: str = "/download"
-    max_concurrent_downloads: int = 3
-    max_speed_mbps: int = 0
-    aria2_max_download_limit: int = 0  # bytes/s, 0=unlimited — persisted across restarts
-    aria2_max_upload_limit: int = 0    # bytes/s, 0=unlimited
-
-    # Download delivery
-    download_client: str = "aria2"
-    aria2_mode: str = "builtin"  # built-in is the default; no extra setup required
-    aria2_url: str = "http://127.0.0.1:6800/jsonrpc"
-    aria2_secret: str = ""
-    aria2_download_path: str = ""
-    aria2_builtin_auto_start: bool = True
-    aria2_builtin_port: int = 6800
-    aria2_builtin_log_file: str = "/app/data/aria2/aria2.log"
-    aria2_builtin_log_max_mb: int = 25
-    aria2_builtin_log_backups: int = 3
-    aria2_builtin_session_file: str = "/app/data/aria2/aria2.session"
-    aria2_operation_timeout_seconds: int = 15
-    aria2_start_paused: bool = False
-    aria2_poll_interval_seconds: int = 2  # validated scheduler cadence
-    aria2_max_active_downloads: int = 3
-    aria2_purge_interval_minutes: int = 5  # purge completed results more often to free RAM
-    aria2_max_download_result: int = 20  # lower = less RAM for completed download metadata
-    aria2_keep_unfinished_download_result: bool = False
-    aria2_waiting_window: int = 100
-    aria2_stopped_window: int = 100
-    aria2_split: int = 16             # segments per file — more = faster on fast connections
-    aria2_min_split_size: str = "10M"  # split files >40 MB with split=16 (aria2 default)
-    aria2_max_connection_per_server: int = 16  # parallel connections per server
-    aria2_disk_cache: str = "64M"  # 64 MiB write buffer; reduces FUSE/NFS round-trips and syscall overhead
-    aria2_file_allocation: str = "falloc"  # prealloc disk space for fewer write syscalls; use 'none' on FUSE/NFSa2
-    aria2_continue_downloads: bool = True
-    aria2_lowest_speed_limit: str = "0"
 
     # Discord
     discord_webhook_url: str = ""
@@ -98,19 +69,6 @@ class AppSettings(BaseModel):
     # ── Advanced Extraction ───────────────────────────────────────────────────
     extraction_password: str = ""
 
-    # Deep aria2 filesystem sync
-    aria2_deep_sync_interval_minutes: int = 10
-    aria2_restart_interval_hours: float = 0
-
-    # Polling
-    poll_interval_seconds: int = 30
-    paused: bool = False
-
-    # Rate limiting — AllDebrid API calls per minute (0 = unlimited)
-    alldebrid_rate_limit_per_minute: int = 60
-
-    # Auto-recover stalled downloads
-    stuck_download_timeout_hours: int = 6
     full_sync_interval_minutes: int = 5
 
     # Backups
@@ -134,14 +92,6 @@ class AppSettings(BaseModel):
     extract_max_expanded_gb: float = 250.0
     extract_max_compression_ratio: float = 1000.0
     discord_notify_extract: bool = True
-
-    # AllDebrid upload retry
-    upload_fail_retry_count: int = 3
-    upload_fail_retry_delay_minutes: int = 5
-
-    # aria2 download retry on error
-    aria2_error_retry_count: int = 3
-    aria2_error_retry_delay_seconds: int = 60
 
     # ── Statistics & Reporting ────────────────────────────────────────────────
     stats_snapshot_interval_minutes: int = 60
@@ -233,18 +183,40 @@ def _migrate_password_settings(loaded: dict) -> bool:
     return changed
 
 
+# Pre-1.0.12 configuration persisted the global pause flag. Processing pause is
+# operational state whose only authority is the durable application state; the
+# legacy value is read once, here, and consumed only by the v1.0.12 database
+# migration (main.py) that seeds that state. It is never a setting.
+_legacy_startup_inputs: dict = {"paused": False}
+
+
+def legacy_paused_input() -> bool:
+    return bool(_legacy_startup_inputs["paused"])
+
+
 def get_settings() -> AppSettings:
     return _settings
 
 
 def load_settings() -> AppSettings:
+    from integrations.catalog import definitions
+
     loaded: dict = {}
+    legacy_migrated = False
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, dict):
                 raise ValueError("configuration root must be a JSON object")
+            # The one translation boundary: pre-canonical flat keys are folded
+            # into the canonical namespaces here and never seen again.
+            legacy_migrated = migrate_legacy_settings(data, definitions)
+            if "paused" in data:
+                _legacy_startup_inputs["paused"] = bool(data["paused"])
+            for name in clamp_persisted_namespaces(data, definitions):
+                logger.warning("Config [%s]: value out of range - clamped", name)
+                legacy_migrated = True
             loaded = {k: v for k, v in data.items() if k in AppSettings.model_fields}
         except Exception as exc:
             # A missing file is a fresh/default installation. An existing file
@@ -252,25 +224,12 @@ def load_settings() -> AppSettings:
             # silently turn configured authentication into open mode.
             raise RuntimeError("Existing configuration could not be read safely") from exc
 
-    # ── Performance migration: built-in aria2 only ──────────────────────────
-    if loaded.get("aria2_mode", "builtin") == "builtin":
-        _PERF_UPGRADES = {
-            "aria2_split": (4, 8, 16),
-            "aria2_max_connection_per_server": (4, 8, 16),
-        }
-        for field, (old_low, old_mid, new_val) in _PERF_UPGRADES.items():
-            stored = loaded.get(field)
-            if stored in (old_low, old_mid):
-                logger.info(
-                    "Config migration: %s %s → %s (performance upgrade)",
-                    field,
-                    stored,
-                    new_val,
-                )
-                loaded[field] = new_val
-
     password_migrated = _migrate_password_settings(loaded)
-    settings = _build_effective_settings(loaded)
+    try:
+        # Loaded settings always carry complete, validated canonical namespaces.
+        settings = normalize_settings(_build_effective_settings(loaded), definitions)
+    except Exception as exc:
+        raise RuntimeError("Existing configuration could not be read safely") from exc
     if password_migrated:
         try:
             save_settings(settings)
@@ -279,6 +238,16 @@ def load_settings() -> AppSettings:
             # in memory while legacy plaintext remains on persistent storage.
             raise RuntimeError("Password migration could not be persisted safely") from exc
         logger.info("Config migration: local authentication password stored as Argon2id hash")
+    elif legacy_migrated:
+        try:
+            save_settings(settings)
+        except Exception as exc:
+            # The canonical settings are already authoritative in memory and the
+            # next load repeats the same deterministic migration, so a failed
+            # rewrite is recoverable; the flat keys are simply not yet removed.
+            logger.warning("Config migration: canonical settings could not be persisted yet: %s", type(exc).__name__)
+        else:
+            logger.info("Config migration: legacy flat settings folded into canonical namespaces")
     return settings
 
 

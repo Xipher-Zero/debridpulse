@@ -128,7 +128,12 @@
       candidateList(file) + '</div></td></tr>';
   }
 
+  // The Details Files rows are rendered here and only here: app.js provides the
+  // table shell and asks this owner for the rows (single render, from the same
+  // transfer payload it just loaded), and refreshes below re-render through the
+  // same function. Provider names come from the cached canonical settings.
   function rows(files) {
+    try { providerNames = integrationNames(settingsData); } catch (_) { /* names stay as last known */ }
     return files.map(function (file) {
       const artifactId = String(file.id);
       const open = expandedArtifacts.has(artifactId) && Number(file.candidate_count || 0) > 1;
@@ -191,7 +196,7 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
     try {
-      const response = await fetch('/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate', {
+      const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({candidate_id: candidateId}),
@@ -323,13 +328,9 @@
   async function fetchPresentation(id, generation) {
     if (typeof window.api !== 'function') return;
     const transferId = Number(id);
-    const results = await Promise.all([
-      window.api('GET', '/torrents/' + transferId),
-      window.api('GET', '/settings').catch(function () { return null; })
-    ]);
+    const detail = await window.api('GET', '/torrents/' + transferId);
     if (activeTransferId !== transferId || generation !== presentationGeneration) return;
-    latestDetail = results[0];
-    if (results[1]) providerNames = integrationNames(results[1]);
+    latestDetail = detail;
     render(latestDetail);
   }
 
@@ -374,12 +375,11 @@
     if (activeTransferId !== transferId) expandedArtifacts.clear();
     clearRefreshState();
     activeTransferId = transferId;
-    latestDetail = null;
     deferredDetail = null;
-    const generation = presentationGeneration;
-    fetchPresentation(transferId, generation).catch(function (error) {
-      console.error('Details candidate presentation unavailable', error);
-    });
+    const transfer = event.detail.transfer;
+    latestDetail = transfer && Array.isArray(transfer.files) ? transfer : null;
+    // The rows were rendered by rowsMarkup() from this same payload; only bind them.
+    if (latestDetail) bindDisclosures(latestDetail.files);
   }
 
   function onDetailClosed() {
@@ -410,6 +410,8 @@
     document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
   }
+
+  window.DPDetailCandidates = Object.freeze({rowsMarkup: rows});
 
   // Candidate styling is loaded through the canonical style.css @import
   // graph, not injected here, so it has one loaded owner.

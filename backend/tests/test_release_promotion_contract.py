@@ -35,11 +35,12 @@ def test_browser_dependency_graph_is_lockfile_reproducible() -> None:
 def test_fork_image_only_publishes_immutable_sha_tags() -> None:
     workflow = _workflow("fork-image.yml")
 
-    assert "type=sha,prefix=sha-,format=short" in workflow
+    assert "type=raw,value=sha-${{ github.sha }}" in workflow
+    assert "format=short" not in workflow
     assert "type=raw,value=latest" not in workflow
     assert "type=ref,event=tag" not in workflow
     assert "Immutable publication must generate exactly one tag" in workflow
-    assert "Publication tag is not SHA-only" in workflow
+    assert "Publication tag must be exactly" in workflow
 
 
 def test_fork_image_publishes_and_verifies_canonical_index_annotations() -> None:
@@ -69,7 +70,9 @@ def test_fork_image_publishes_and_verifies_canonical_index_annotations() -> None
 def test_security_qualification_consumes_exact_published_platform_digests() -> None:
     workflow = _workflow("container-security.yml")
 
-    assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA:0:7}"' in workflow
+    assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA}"' in workflow
+    assert "GITHUB_SHA:0:7" not in workflow
+    assert 'index_revision" != "$GITHUB_SHA"' in workflow
     assert "docker build --pull" not in workflow
     assert "docker build " not in workflow
     assert "docker/build-push-action" not in workflow
@@ -86,7 +89,9 @@ def test_security_qualification_consumes_exact_published_platform_digests() -> N
 def test_runtime_qualification_consumes_exact_children_without_rebuild() -> None:
     workflow = _workflow("candidate-runtime-qualification.yml")
 
-    assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA:0:7}"' in workflow
+    assert 'source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA}"' in workflow
+    assert "GITHUB_SHA:0:7" not in workflow
+    assert 'index_revision" != "$GITHUB_SHA"' in workflow
     assert "docker build " not in workflow
     assert "docker/build-push-action" not in workflow
     assert 'platform.architecture == "amd64"' in workflow
@@ -119,7 +124,8 @@ def test_mutable_promotion_requires_exact_sha_workflows_and_signed_digest_eviden
     assert ".head_sha == $sha" in workflow
     assert '.status == "completed"' in workflow
     assert '.conclusion == "success"' in workflow
-    assert 'source_tag=sha-${candidate_sha:0:7}' in workflow
+    assert 'source_tag=sha-${candidate_sha}' in workflow
+    assert "candidate_sha:0:7" not in workflow
     assert 'platform.architecture == "amd64"' in workflow
     assert 'platform.architecture == "arm64"' in workflow
     assert 'image_revision" != "$CANDIDATE_SHA"' in workflow

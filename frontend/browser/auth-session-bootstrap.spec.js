@@ -26,7 +26,7 @@ test('unrelated application 401 does not redirect an open-mode browser to login'
 
   const sessionsBeforeProbe = sessionRequests;
   const status = await page.evaluate(async () => {
-    const response = await fetch('/api/bootstrap-401-probe');
+    const response = await window.debridPulseAuth.fetch('/api/bootstrap-401-probe');
     return response.status;
   });
 
@@ -80,7 +80,7 @@ test('application 401 still redirects when canonical session confirmation report
   expect(await page.evaluate(() => window.debridPulseAuth.session().authenticated)).toBe(true);
 
   sessionExpired = true;
-  await page.evaluate(() => fetch('/api/bootstrap-expired-probe'));
+  await page.evaluate(() => window.debridPulseAuth.fetch('/api/bootstrap-expired-probe'));
 
   await expect(page).toHaveURL(/\/login\?next=/);
 });

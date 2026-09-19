@@ -12,7 +12,7 @@ from transfers.errors import Category, Domain, NormalizedError, Recovery, Retrya
 from transfers.models import ExecutionState, IntegrityMetadata, ResolutionResult, ResourceState, SourceIdentity, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
+from transfers.presentation_repository import TransferRepository
 
 
 _SHA256 = "a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211"
@@ -305,11 +305,11 @@ async def test_public_projection_hides_raw_bindings_and_capabilities(details_run
         # ``switch_eligible`` (the same backend-owned _SWITCHABLE_ARTIFACT_STATES
         # rule the host-scoped ``source_candidates`` projection already uses),
         # so the frontend can render per-candidate switch actions without
-        # recreating lifecycle policy in JS. Deliberate, documented shape
-        # change; no other field/behavior here is affected.
+        # recreating lifecycle policy in JS. ``is_active`` is the same overlay's
+        # active-source flag. The single ``presentation()`` owner emits both.
         assert set(candidate) == {
             "candidate_id", "source_label", "provider_id", "relationship",
-            "dispositions", "is_selected", "is_delivering", "switch_eligible",
+            "dispositions", "is_selected", "is_delivering", "is_active", "switch_eligible",
         }
         serialized = repr(candidate).lower()
         assert "http://" not in serialized

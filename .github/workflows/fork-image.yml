@@ -27,6 +27,14 @@ on:
 permissions:
   contents: read
 
+# One publishable candidate exists per full source SHA, and its sha-<40> tag is
+# write-once. Runs for the same source SHA (for example a branch push and a tag
+# push at one commit) are serialized and never cancelled mid-publication, so two
+# runs cannot race through the pre-publish existence check.
+concurrency:
+  group: fork-image-${{ github.sha }}
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -56,7 +64,7 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=sha,prefix=sha-,format=short
+            type=raw,value=sha-${{ github.sha }}
           labels: |
             org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
             org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution
@@ -207,6 +215,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      candidate_ref: ${{ steps.identity.outputs.candidate_ref }}
+      candidate_digest: ${{ steps.candidate.outputs.digest }}
+      candidate_reused: ${{ steps.candidate.outputs.reused }}
 
     steps:
       - name: Checkout
@@ -238,7 +250,7 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=sha,prefix=sha-,format=short
+            type=raw,value=sha-${{ github.sha }}
           labels: |
             org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
             org.opencontainers.image.description=Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution
@@ -248,6 +260,7 @@ jobs:
             org.opencontainers.image.licenses=GPL-2.0-or-later
 
       - name: Verify generated image metadata and immutable tag policy
+        id: identity
         shell: bash
         env:
           METADATA_JSON: ${{ steps.meta.outputs.json }}
@@ -285,8 +298,12 @@ jobs:
             printf 'Immutable publication must generate exactly one tag; got:\n%s\n' "$GENERATED_TAGS"
             exit 1
           fi
-          if [[ "${generated_tags[0]}" != "${IMAGE_NAME}:sha-"* ]]; then
-            echo "Publication tag is not SHA-only: ${generated_tags[0]}"
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Source revision is not a full 40-character SHA: $GITHUB_SHA"
+            exit 1
+          fi
+          if [ "${generated_tags[0]}" != "${IMAGE_NAME}:sha-${GITHUB_SHA}" ]; then
+            echo "Publication tag must be exactly ${IMAGE_NAME}:sha-${GITHUB_SHA}; got ${generated_tags[0]}"
             exit 1
           fi
           if [[ "${generated_tags[0]}" == *":latest" || "${generated_tags[0]}" == *":v"* || "${generated_tags[0]}" == *":internal-v"* ]]; then
@@ -294,8 +311,76 @@ jobs:
             exit 1
           fi
 
+          echo "candidate_ref=${generated_tags[0]}" >> "$GITHUB_OUTPUT"
+
+      # The source-SHA tag is write-once. Decide BEFORE building whether the
+      # candidate already exists; an existing tag is never pushed over. The
+      # concurrency group above serializes runs for the same source SHA.
+      - name: Check for an existing candidate for this source SHA
+        id: existing
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ steps.identity.outputs.candidate_ref }}
+        run: |
+          set -euo pipefail
+
+          state="unknown"
+          digest=""
+          for attempt in $(seq 1 5); do
+            if inspect_output="$(docker buildx imagetools inspect "$CANDIDATE_REF" 2>&1)"; then
+              digest="$(awk '/^Digest:/ {print $2; exit}' <<< "$inspect_output")"
+              state="present"
+              break
+            fi
+            if grep -qiE 'denied|unauthorized|forbidden' <<< "$inspect_output"; then
+              echo "Registry refused the existence check for $CANDIDATE_REF: $inspect_output"
+              exit 1
+            fi
+            if grep -qiE 'not found|manifest unknown|no such manifest|name unknown' <<< "$inspect_output"; then
+              state="absent"
+              break
+            fi
+            echo "Existence check for $CANDIDATE_REF inconclusive on attempt ${attempt}/5: $inspect_output"
+            sleep 5
+          done
+
+          if [ "$state" = "unknown" ]; then
+            echo "Unable to determine whether $CANDIDATE_REF exists; refusing to publish"
+            exit 1
+          fi
+
+          if [ "$state" = "absent" ]; then
+            echo "No candidate exists for $CANDIDATE_REF; it will be published once"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Existing candidate $CANDIDATE_REF has an invalid digest: ${digest:-<empty>}"
+            exit 1
+          fi
+
+          index_json="$(docker buildx imagetools inspect --raw "${IMAGE_NAME}@${digest}")"
+          existing_revision="$(jq -r '.annotations["org.opencontainers.image.revision"] // empty' <<< "$index_json")"
+          if [ "$existing_revision" != "$GITHUB_SHA" ]; then
+            echo "Existing candidate $CANDIDATE_REF records source revision '${existing_revision:-<empty>}', expected $GITHUB_SHA; refusing to reuse or overwrite"
+            exit 1
+          fi
+          for arch in amd64 arm64; do
+            child="$(jq -r --arg arch "$arch" '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest][0] // empty' <<< "$index_json")"
+            if [[ ! "$child" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Existing candidate $CANDIDATE_REF is missing its linux/$arch child"
+              exit 1
+            fi
+          done
+
+          echo "Existing candidate $CANDIDATE_REF is valid for $GITHUB_SHA and will be reused unchanged: $digest"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - name: Build and publish
         id: publish
+        if: steps.existing.outputs.exists != 'true'
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           context: .
@@ -317,11 +402,43 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Verify published digest and OCI identity
+      - name: Select the immutable candidate digest
+        id: candidate
+        shell: bash
+        env:
+          EXISTING: ${{ steps.existing.outputs.exists }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+          PUBLISHED_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ "$EXISTING" = "true" ]; then
+            if [ -n "$PUBLISHED_DIGEST" ]; then
+              echo "An existing candidate was reused but a build also reported a digest; refusing"
+              exit 1
+            fi
+            digest="$EXISTING_DIGEST"
+            reused=true
+          else
+            digest="$PUBLISHED_DIGEST"
+            reused=false
+          fi
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid or missing candidate digest: ${digest:-<empty>}"
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "reused=$reused" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Candidate ${IMAGE_NAME}:sha-${GITHUB_SHA}"
+            echo "- digest: \`$digest\`"
+            echo "- reused existing candidate: $reused"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify candidate digest and OCI identity
         shell: bash
         env:
           GENERATED_TAGS: ${{ steps.meta.outputs.tags }}
-          PUBLISHED_DIGEST: ${{ steps.publish.outputs.digest }}
+          PUBLISHED_DIGEST: ${{ steps.candidate.outputs.digest }}
         run: |
           set -euo pipefail
 
@@ -421,5 +538,5 @@ jobs:
             exit 1
           fi
 
-          echo "Published digest: $digest"
-          printf 'Published tags:\n%s\n' "$GENERATED_TAGS"
+          echo "Candidate digest: $digest"
+          printf 'Candidate tags:\n%s\n' "$GENERATED_TAGS"

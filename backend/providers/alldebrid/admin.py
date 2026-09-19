@@ -1,9 +1,11 @@
 """AllDebrid account administration and provider-specific status truth."""
 from providers.alldebrid.client import AllDebridAPIError, AllDebridService
+from providers.alldebrid.definition import canonical_options
 
 
 async def account_status(settings):
-    client = AllDebridService(settings.alldebrid_api_key, settings.alldebrid_agent)
+    options = canonical_options(settings)
+    client = AllDebridService(options.api_key, options.agent)
     user = await client.get_user()
     value = user.get("user", user)
     return {"ok": True, "username": value.get("username", ""), "isPremium": value.get("isPremium", False),

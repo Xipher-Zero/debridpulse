@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
-RUNTIME = STATIC / "ui-settings-downloads-completion.js"
+RUNTIME = STATIC / "ui-settings-page.js"
 ARCHIVE = STATIC / "ui-settings-archive-passwords.js"
 LAYOUT = STATIC / "ui-settings-form-layout.css"
 LOADER = STATIC / "ui-presentation-loader.js"

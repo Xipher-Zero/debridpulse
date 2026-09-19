@@ -53,10 +53,10 @@ def test_statistics_detail_endpoint_has_one_frontend_io_owner() -> None:
 
 def test_settings_page_is_authoritative_clean_room_owner() -> None:
     settings = read("ui-settings-page.js")
-    completion = read("ui-settings-downloads-completion.js")
+    picker = read("ui-settings-directory-picker.js")
     assert "window.DPSettingsPage = Object.freeze({load});" in settings
     assert "window.DPSettingsModal = Object.freeze({confirm: confirmAction});" in settings
-    assert "const modalApi = window.DPSettingsModal;" in completion
+    assert "const modalApi = window.DPSettingsModal;" in picker
     assert "window.loadSettings = load;" in settings
     assert "view.innerHTML =" in settings
     assert "request('GET', '/settings'" in settings
@@ -119,7 +119,7 @@ def test_canonical_icon_insertions_use_one_lucide_geometry_owner() -> None:
     index = read("index.html")
     app = read("app.js")
     icons = read("operator-title.js")
-    for icon in ("upload", "refresh", "arrowRight", "pause", "play", "trash2", "x"):
+    for icon in ("refresh", "arrowRight", "pause", "play", "trash2", "x"):
         assert f'data-dp-lucide="{icon}"' in index
         assert f"{icon}:" in icons
     assert "window.DPIcons.svg" in app
@@ -135,3 +135,99 @@ def test_archived_runtime_layers_do_not_reappear() -> None:
     ):
         assert retired not in index
         assert retired not in joined
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 final audit, Workstream B: no frontend monkeypatching. Ownership is
+# never taken by replacing another owner's global, a native browser API, or a
+# function another module defined. Each gate below matches the retired *shape*
+# and deliberately allows an owner to publish its own exported namespace.
+# ---------------------------------------------------------------------------
+
+def _source_without_comments(name: str) -> str:
+    text = read(name)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", text)
+
+
+def test_no_frontend_module_replaces_a_native_or_foreign_global() -> None:
+    forbidden = (
+        r"window\.EventSource\s*=(?!=)",
+        r"window\.fetch\s*=(?!=)",
+        r"window\.XMLHttpRequest\s*=(?!=)",
+        r"window\.loadEvents\s*=(?!=)",
+        r"window\.filterEvents\s*=(?!=)",
+        r"window\.updateAria2TopbarBadge\s*=(?!=)",
+        r"(?m)^\s*loadEvents\s*=(?!=)",
+        r"(?m)^\s*filterEvents\s*=(?!=)",
+        r"const\s+originalUpdate\s*=\s*window\.updateAria2TopbarBadge",
+        r"Object\.defineProperty\(\s*window\s*,\s*['\"](?:EventSource|fetch)['\"]",
+    )
+    for path in all_js_files():
+        text = _source_without_comments(path.name)
+        for pattern in forbidden:
+            assert not re.search(pattern, text), f"{path.name} matches retired monkeypatch shape {pattern!r}"
+
+
+def test_app_js_is_the_one_event_source_owner_and_registers_the_consolidation_event() -> None:
+    owners = [p.name for p in all_js_files() if re.search(r"new\s+EventSource\(", _source_without_comments(p.name))]
+    assert owners == ["app.js"]
+    app = _source_without_comments("app.js")
+    assert app.count("new EventSource(") == 1
+    assert "'/api/events/stream'" in app
+    assert "'duplicate_consolidated'" in app
+    assert "window.DPIcons.consolidationToastCopy(" in app
+    assert "window.DPIcons.toast(copy, 'success')" in app
+    assert "EventSource" not in read("operator-title.js")
+    # operator-title.js keeps only the copy and the toast presentation.
+    operator = read("operator-title.js")
+    assert "consolidationToastCopy: consolidationToastCopy" in operator
+    assert "installConsolidationEventConsumer" not in operator
+
+
+def test_activity_log_has_exactly_one_behavior_owner_and_no_compatibility_globals() -> None:
+    app = _source_without_comments("app.js")
+    for retired in ("_allEvents", "function loadEvents", "function filterEvents", "window.loadEvents",
+                    "window.filterEvents"):
+        assert retired not in app
+    assert "window.DPActivityLog.load()" in app
+    owner = _source_without_comments("ui-activity-log-runtime.js")
+    assert "window.DPActivityLog=Object.freeze({load,formatTimestamp});" in owner
+    # The owner assigns nothing but its own namespace to window.
+    assert re.findall(r"window\.([A-Za-z0-9_$]+)\s*=(?!=)", owner) == ["DPActivityLog"]
+    for other in all_js_files():
+        if other.name != "ui-activity-log-runtime.js":
+            assert "DPActivityLog" not in _source_without_comments(other.name) or other.name == "app.js"
+
+
+def test_topbar_concurrency_is_rendered_by_the_canonical_owner_with_no_wrapper_runtime() -> None:
+    assert not (STATIC / "ui-topbar-concurrency.js").exists()
+    assert "ui-topbar-concurrency" not in read("index.html")
+    for path in all_js_files():
+        text = path.read_text(encoding="utf-8")
+        assert "ui-topbar-concurrency" not in text and "DPTopbarConcurrency" not in text, path.name
+        assert "syncConfiguredConcurrency" not in text, path.name
+    app = _source_without_comments("app.js")
+    assert app.count("function updateAria2TopbarBadge(") == 1
+    assert "window.DPProcessingPresentation.configuredMaxConcurrency()" in app
+    processing = _source_without_comments("ui-processing-presentation.js")
+    assert "transfer_policy?.max_concurrent_executions" in processing
+    assert "max_concurrent_downloads" not in processing and "aria2_max_active_downloads" not in processing
+
+
+def test_frontend_reads_only_canonical_settings_fields() -> None:
+    flat_reads = (
+        r"settingsData\.aria2_[A-Za-z_]+", r"settingsData\.max_concurrent_downloads",
+        r"settingsData\.poll_interval_seconds", r"settingsData\.upload_fail_retry_[a-z_]+",
+        r"settingsData\.stuck_download_timeout_hours", r"settingsData\.alldebrid_[A-Za-z_]+",
+        r"cfg\.aria2_[A-Za-z_]+",
+    )
+    for path in all_js_files():
+        text = _source_without_comments(path.name)
+        for pattern in flat_reads:
+            assert not re.search(pattern, text), f"{path.name} reads flat alias {pattern!r}"
+    app = _source_without_comments("app.js")
+    assert "settingsData.integrations && settingsData.integrations.aria2" in app
+    assert "settingsData.execution_runtime_limits = Object.assign({}, settingsData.execution_runtime_limits" in app
+    live = _source_without_comments("ui-settings-aria2-live.js")
+    assert "aria2Mode()" in live and "settingsData.aria2_mode" not in live

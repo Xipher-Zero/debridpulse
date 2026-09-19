@@ -11,7 +11,7 @@ from transfers.contracts import (
     ApplicabilitySource, CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
     RequestApplicabilitySource, ResourceLookup, Manifest,
 )
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
+from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import Capability, TransferCandidate, TransferRequest
 
 
@@ -184,20 +184,20 @@ class IntegrationRegistry:
                 or request.kind not in provider.descriptor.request_types):
             raise TransferError(NormalizedError(
                 Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,
-                retryability=Retryability.NEVER, recovery=Recovery.FAIL, integration_id=provider_id,
+                retryability=Retryability.NEVER, integration_id=provider_id,
             ))
         if not provider.descriptor.enabled:
             # Administrative disablement is an explicit admitted-work hard stop;
             # it never reopens provider competition for an existing route.
             raise TransferError(NormalizedError(
                 Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
-                retryability=Retryability.NEVER, recovery=Recovery.FAIL,
+                retryability=Retryability.NEVER,
                 integration_id=provider_id,
             ))
         if require_health and provider_id in self._unhealthy:
             raise TransferError(NormalizedError(
                 Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
-                retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF,
+                retryability=Retryability.BACKOFF,
                 integration_id=provider_id,
             ))
         return provider

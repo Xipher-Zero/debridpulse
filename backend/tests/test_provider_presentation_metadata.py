@@ -1,4 +1,5 @@
 from core.config import AppSettings
+from integrations.definition import IntegrationSettings
 from integrations.catalog import definitions
 from integrations.configuration import normalize_settings, public_integrations
 
@@ -40,7 +41,7 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
 
 
 def test_persisted_secret_presence_establishes_configuration_without_disclosing_secret():
-    result = public(AppSettings(alldebrid_api_key="private-key"))
+    result = public(AppSettings(integrations={"alldebrid": IntegrationSettings(options={"api_key": "private-key"})}))
     alldebrid = result["alldebrid"]
     assert alldebrid["configured"] is True
     assert alldebrid["options"]["api_key_configured"] is True
@@ -49,7 +50,7 @@ def test_persisted_secret_presence_establishes_configuration_without_disclosing_
 
 
 def test_whitespace_secret_does_not_claim_configured_state():
-    result = public(AppSettings(alldebrid_api_key="   "))
+    result = public(AppSettings(integrations={"alldebrid": IntegrationSettings(options={"api_key": "   "})}))
     assert result["alldebrid"]["configured"] is False
 
 

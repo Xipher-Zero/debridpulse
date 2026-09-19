@@ -129,10 +129,8 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_aria2_global_options_applies_slot_change_to_live_settings(self):
         saved = {}
-        current = routes.AppSettings(
-            max_concurrent_downloads=1,
-            aria2_max_active_downloads=1,
-        )
+        from transfers.settings import TransferSettings
+        current = routes.AppSettings(transfer_policy=TransferSettings(max_concurrent_executions=1))
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock(), apply_memory_tuning=AsyncMock())
         application = SimpleNamespace(integration_admin=lambda _: fake_aria2, definitions=(), application_operation=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
 
@@ -159,9 +157,9 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         # independently persisting the legacy flat alias itself -- so
         # max_concurrent_downloads/aria2_max_active_downloads are neither a
         # second writable authority NOR dual-written by this write.
-        self.assertEqual(saved["cfg"].max_concurrent_downloads, 1)
-        self.assertEqual(saved["cfg"].aria2_max_active_downloads, 1)
-        self.assertEqual(saved["applied"].max_concurrent_downloads, 1)
+        self.assertNotIn("max_concurrent_downloads", saved["cfg"].model_dump())
+        self.assertNotIn("aria2_max_active_downloads", saved["cfg"].model_dump())
+        self.assertEqual(saved["applied"].transfer_policy.max_concurrent_executions, 2)
         reset_services.assert_called_once()
         advance.assert_awaited_once()
         # Gate 9 revision-5 rejection finding 4: the concurrency projection
@@ -185,8 +183,9 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         application = SimpleNamespace(
             integration_admin=lambda _: fake_aria2, definitions=(aria2_definition,),
             application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
-            reconcile_executions=AsyncMock(),
+            reconcile_executions=AsyncMock(), validate_configuration=AsyncMock(),
         )
+        fake_aria2.apply_memory_tuning = AsyncMock()
 
         def fake_save(cfg):
             saved["cfg"] = cfg
@@ -198,7 +197,8 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
              patch("api.routes.load_settings", return_value=current), \
              patch("api.routes.save_settings", side_effect=fake_save), \
              patch("api.routes.apply_settings", side_effect=fake_apply), \
-             patch("api.routes.get_application", return_value=application):
+             patch("api.routes.get_application", return_value=application), \
+             patch("api.routes.aria2_runtime.ensure_started", AsyncMock()):
             result = await routes.aria2_set_global_options({"max_upload_speed": 750_000}, application=application)
 
         self.assertTrue(result["ok"])
@@ -218,10 +218,8 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         as failed. This must never happen: the canonical failure must
         propagate through."""
         saved = {}
-        current = routes.AppSettings(
-            max_concurrent_downloads=1,
-            aria2_max_active_downloads=1,
-        )
+        from transfers.settings import TransferSettings
+        current = routes.AppSettings(transfer_policy=TransferSettings(max_concurrent_executions=1))
         fake_aria2 = SimpleNamespace(
             change_global_options=AsyncMock(),
             apply_memory_tuning=AsyncMock(side_effect=RuntimeError("daemon unreachable")),
@@ -265,8 +263,9 @@ async def _fake_db_context(db):
 
 class ProcessingPauseRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_individual_resume_delegates_to_control_service(self):
-        cfg = routes.AppSettings(paused=False)
-        application = SimpleNamespace(resume=AsyncMock())
+        cfg = routes.AppSettings()
+        application = SimpleNamespace(resume=AsyncMock(),
+            repository=SimpleNamespace(globally_paused=AsyncMock(return_value=False)))
         with patch.object(application, "resume", AsyncMock()) as resume, \
              patch("api.routes.get_settings", return_value=cfg), \
              patch("api.routes.save_settings") as save, \
@@ -355,17 +354,19 @@ class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
 
 class DatabaseMaintenanceRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_database_wipe_requires_feature_toggle(self):
-        cfg = SimpleNamespace(db_wipe_enabled=False, paused=True, db_backup_before_wipe=True)
+        cfg = SimpleNamespace(db_wipe_enabled=False, db_backup_before_wipe=True)
+        application = SimpleNamespace(repository=SimpleNamespace(globally_paused=AsyncMock(return_value=True)))
         with patch("api.routes.get_settings", return_value=cfg):
             with self.assertRaises(routes.HTTPException) as exc:
-                await routes.wipe_database_admin({"confirm": True})
+                await routes.wipe_database_admin({"confirm": True}, application=application)
         self.assertEqual(exc.exception.status_code, 400)
 
     async def test_database_wipe_requires_pause(self):
-        cfg = SimpleNamespace(db_wipe_enabled=True, paused=False, db_backup_before_wipe=True)
+        cfg = SimpleNamespace(db_wipe_enabled=True, db_backup_before_wipe=True)
+        application = SimpleNamespace(repository=SimpleNamespace(globally_paused=AsyncMock(return_value=False)))
         with patch("api.routes.get_settings", return_value=cfg):
             with self.assertRaises(routes.HTTPException) as exc:
-                await routes.wipe_database_admin({"confirm": True})
+                await routes.wipe_database_admin({"confirm": True}, application=application)
         self.assertEqual(exc.exception.status_code, 409)
 
 

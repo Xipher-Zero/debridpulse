@@ -20,7 +20,7 @@ def test_superseded_dashboard_progress_weight_layer_is_not_shipped() -> None:
 
 def test_shared_transfer_contract_is_final_progress_geometry_owner() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
-    dashboard = "/ui-dashboard.css?v=21"
+    dashboard = "/ui-dashboard.css?v=22"
     downloads = "/ui-downloads-page.css?v=30"
     transfer_path = "/ui-transfer-contract.css?v=33"
 

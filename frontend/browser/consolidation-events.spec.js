@@ -7,6 +7,7 @@ async function installEventSourceFixture(page) {
         this.url = url;
         this.listeners = new Map();
         window.__dpFakeEventSource = this;
+        (window.__dpEventSources ||= []).push(url);
       }
 
       addEventListener(type, handler) {
@@ -27,6 +28,7 @@ async function installEventSourceFixture(page) {
     FakeEventSource.OPEN = 1;
     FakeEventSource.CLOSED = 2;
     window.EventSource = FakeEventSource;
+    window.__dpEventSourceFixture = FakeEventSource;
   });
 }
 
@@ -76,6 +78,31 @@ test('consolidation copy is exact for complete one-target, multi-target, singula
     title: 'Duplicate files consolidated',
     body: '5 matching files were merged into existing downloads and retained as failover candidates. 2 new files will download normally.',
   });
+});
+
+test('the application creates exactly one EventSource for /api/events/stream and no module replaces the native constructor', async ({ page }) => {
+  await installEventSourceFixture(page);
+  await page.goto('/');
+  await page.waitForFunction(() => (window.__dpEventSources || []).length > 0);
+  const state = await page.evaluate(() => ({
+    urls: window.__dpEventSources,
+    // operator-title.js used to swap window.EventSource for a wrapper class.
+    untouched: window.EventSource === window.__dpEventSourceFixture,
+    marker: window.EventSource.__dpConsolidationConsumer,
+  }));
+  expect(state.urls).toEqual(['/api/events/stream']);
+  expect(state.untouched).toBe(true);
+  expect(state.marker).toBeUndefined();
+});
+
+test('the native EventSource is never wrapped', async ({ page }) => {
+  await page.goto('/');
+  const native = await page.evaluate(() => ({
+    name: window.EventSource.name,
+    native: /\[native code\]/.test(Function.prototype.toString.call(window.EventSource)),
+    marker: window.EventSource.__dpConsolidationConsumer,
+  }));
+  expect(native).toEqual({name: 'EventSource', native: true, marker: undefined});
 });
 
 test('semantic SSE event produces one structured toast and reload does not replay it client-side', async ({ page }) => {

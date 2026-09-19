@@ -51,12 +51,7 @@ function fixture(base, {adEnabled = true, adConfigured = false, httpEnabled = tr
     options: {},
   };
   Object.assign(result.integrations, clone(extraProviders));
-  result.alldebrid_api_key_configured = adConfigured;
-  result.alldebrid_rate_limit_per_minute ??= 60;
-  result.poll_interval_seconds ??= 30;
   result.full_sync_interval_minutes ??= 5;
-  result.upload_fail_retry_count ??= 3;
-  result.upload_fail_retry_delay_minutes ??= 5;
   return result;
 }
 
@@ -76,22 +71,39 @@ async function installStatefulSettings(page, initial) {
       return route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(current)});
     }
     if (method === 'PUT' || method === 'POST') {
+      // The broad document never writes a provider namespace; it answers with
+      // the current canonical state.
       const body = route.request().postDataJSON() || {};
-      const submitted = body.integrations?.alldebrid || {};
-      const enabled = submitted.enabled == null ? current.integrations.alldebrid.enabled : !!submitted.enabled;
-      const clearSecrets = Array.isArray(submitted.clear_secrets) ? submitted.clear_secrets : [];
-      const submittedKey = String(submitted.options?.api_key || body.alldebrid_api_key || '').trim();
-      let configured = !!current.integrations.alldebrid.configured;
-      if (clearSecrets.includes('api_key')) configured = false;
-      if (submittedKey) configured = true;
-      current = fixture({...current, ...body}, {
-        adEnabled: enabled,
-        adConfigured: configured,
-        httpEnabled: body.integrations?.general_http?.enabled ?? current.integrations.general_http.enabled,
+      const {integrations: _ignored, transfer_policy: _policy, execution_runtime_limits: _limits, ...broad} = body;
+      current = fixture({...current, ...broad}, {
+        adEnabled: current.integrations.alldebrid.enabled,
+        adConfigured: !!current.integrations.alldebrid.configured,
+        httpEnabled: current.integrations.general_http.enabled,
       });
       return route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(current)});
     }
     return route.fallback();
+  });
+
+  // Provider enablement and credentials are written only through each
+  // provider's scoped configuration surface.
+  await page.route(/\/api\/integrations\/(alldebrid|general_http)\/configuration$/, async route => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const identity = new URL(route.request().url()).pathname.split('/integrations/')[1].split('/')[0];
+    const body = route.request().postDataJSON() || {};
+    let adEnabled = current.integrations.alldebrid.enabled;
+    let adConfigured = !!current.integrations.alldebrid.configured;
+    let httpEnabled = current.integrations.general_http.enabled;
+    if (identity === 'alldebrid') {
+      if (body.enabled != null) adEnabled = !!body.enabled;
+      if ((body.clear_secrets || []).includes('api_key')) adConfigured = false;
+      if (String(body.options?.api_key || '').trim()) adConfigured = true;
+    } else if (body.enabled != null) {
+      httpEnabled = !!body.enabled;
+    }
+    current = fixture(current, {adEnabled, adConfigured, httpEnabled});
+    return route.fulfill({status:200, contentType:'application/json',
+      body:JSON.stringify({ok:true, ...current.integrations[identity]})});
   });
 
   await page.route('**/api/integration-status/alldebrid', route => route.fulfill({

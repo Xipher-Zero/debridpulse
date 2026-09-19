@@ -29,6 +29,7 @@ from core.logging_utils import sanitize_exception
 from core.version import read_version
 from providers.alldebrid.admin import runtime_status as alldebrid_runtime_status
 from providers.alldebrid.client import AllDebridService
+from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
 from executors.aria2.client import Aria2Service
 from services.notifications import NotificationService
 from application.dependencies import get_application
@@ -493,16 +494,16 @@ async def get_alldebrid_runtime_status(application: ApplicationService = Depends
 
 @router.post("/settings/validate-alldebrid")
 async def validate_alldebrid(payload: AllDebridValidationRequest):
-    cfg = get_settings()
+    alldebrid = alldebrid_canonical_options(get_settings())
     if payload.clear_api_key:
         api_key = ""
     else:
-        api_key = payload.api_key.strip() or str(cfg.alldebrid_api_key or "").strip()
+        api_key = payload.api_key.strip() or str(alldebrid.api_key or "").strip()
     if not api_key:
         raise HTTPException(400, "No API key configured or entered")
 
     try:
-        service = AllDebridService(api_key, cfg.alldebrid_agent)
+        service = AllDebridService(api_key, alldebrid.agent)
         user = await service.get_user()
         user_data = user.get("user", user)
         return {
@@ -536,10 +537,12 @@ async def validate_aria2(payload: Aria2ValidationRequest, application: Applicati
             secret = "" if payload.clear_secret else (
                 payload.secret.strip() or str(aria2.secret or "").strip()
             )
+            # A draft connection test never mutates the daemon it probes.
             service = Aria2Service(
                 url,
                 secret,
                 aria2.operation_timeout_seconds,
+                owns_daemon=False,
             )
             result = await service.test()
         return {"ok": True, **result}

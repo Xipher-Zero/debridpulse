@@ -26,7 +26,6 @@ from transfers.errors import (
     NormalizedError,
     Origin,
     Permanence,
-    Recovery,
     Retryability,
     Stage,
     TransferError,
@@ -144,7 +143,6 @@ class StorageHealthError(TransferError):
             category,
             Stage.RECONCILIATION,
             retryability=Retryability.AFTER_RESOURCE_CHANGE,
-            recovery=Recovery.BACKOFF,
             origin=Origin.LOCAL_SYSTEM,
             permanence=Permanence.TEMPORARY,
             context={

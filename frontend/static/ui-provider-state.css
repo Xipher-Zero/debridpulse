@@ -1,6 +1,6 @@
 /* Provider Status list/group presentation and premium-provider Settings-card
  * disclosure (the collapsible header, config-status badge, and expand/
- * collapse control that ui-provider-cards.js attaches to any integration
+ * collapse control that ui-settings-page.js renders on any integration
  * whose definition sets presentation.premium -- currently AllDebrid).
  *
  * ui-shell-provider-status.css is a distinct, narrower owner: premium-account
@@ -46,7 +46,7 @@
   width: 100%;
 }
 
-/* ── Premium provider Settings card (ui-provider-cards.js decorate()) ──── */
+/* ── Premium provider Settings card (rendered by ui-settings-page.js providerCard()) ──── */
 /* The disclosure/config-status/header-controls elements are created only for
    an integration with presentation.premium set (AllDebrid today), directly
    under .dp-settings-provider-card's header -- not behind a reflected
@@ -148,7 +148,7 @@
 
 /* The AllDebrid card is currently the only premium-flagged provider; its
    header becomes a 3-column grid (title / config-status / header-controls)
-   at desktop widths once ui-provider-cards.js has inserted the status badge
+   at desktop widths once ui-settings-page.js has rendered the status badge
    and header-controls wrapper described above. */
 @media (min-width: 1181px) {
   #view-settings .dp-settings-provider-card--alldebrid > .card-header {

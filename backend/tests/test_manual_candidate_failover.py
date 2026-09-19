@@ -609,7 +609,7 @@ def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
 
     An earlier version of this test only asserted the three sets were
     ``==``. That would still pass if ``transfers.repository
-    ._SWITCHABLE_ARTIFACT_STATES`` or ``transfers.manual_repository
+    ._SWITCHABLE_ARTIFACT_STATES`` or ``transfers.presentation_repository
     ._SWITCHABLE_STATES`` were independently-declared literals that
     happened, today, to hold the same values -- three separate owners that
     coincidentally agree, each one free to drift the next time someone edits
@@ -617,7 +617,7 @@ def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
     consumer actually IMPORTS and re-exports the one canonical frozenset
     rather than declaring its own copy -- true delegation, the leveling
     requirement, not merely a currently-true equality."""
-    from transfers.manual_repository import _SWITCHABLE_STATES
+    from transfers.presentation_repository import _SWITCHABLE_STATES
     from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
     from api.operational_downloads import _SWITCHABLE_STATES_SQL
 

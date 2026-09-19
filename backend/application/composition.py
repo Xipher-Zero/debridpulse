@@ -1,9 +1,9 @@
 """Production integration composition. Concrete imports terminate here."""
 from dataclasses import replace
 
-from application.consolidation_events import ConsolidationEventCanonical, ConsolidationEvents
+from application.consolidation_events import ConsolidationEvents
 from application.service import ApplicationService
-from core.config import get_settings, save_settings, apply_settings
+from core.config import get_settings, apply_settings
 from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
 from integrations.definition import IntegrationEnvironment
@@ -109,12 +109,10 @@ def compose():
     repository = TransferRepository()
     engine = TransferEngine(repository, IntegrationRegistry(), download_root=settings.download_folder, policy=TransferPolicy())
     consolidation_events = ConsolidationEvents(repository)
-    engine.canonical = ConsolidationEventCanonical(engine.canonical, consolidation_events)
-    def pause_changed(paused):
-        settings = get_settings().model_copy(update={"paused": paused})
-        save_settings(settings)
-        apply_settings(settings)
-    service = ApplicationService(engine, configure=configure, pause_changed=pause_changed)
+    # The canonical owner announces a committed attachment through an injected
+    # callback; nothing wraps or proxies it.
+    engine.canonical.on_attached = consolidation_events.stage
+    service = ApplicationService(engine, configure=configure)
     service.consolidation_events = consolidation_events
     configure(service)
     return service

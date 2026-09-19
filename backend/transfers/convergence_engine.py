@@ -20,7 +20,7 @@ from transfers.candidate_activation import ActivationResult, activate_candidate
 from transfers.contracts import CandidateRefresh, PauseResume, ResourceLookup
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
 from transfers.errors import (
-    Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage, TransferError,
+    Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
     unknown_failure,
 )
 from transfers.filesystem import stable_payload
@@ -552,7 +552,7 @@ class TransferEngine(_QualifiedTransferEngine):
         if not isinstance(provider, CandidateRefresh):
             return False, "refresh_unsupported", self._error(
                 Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
-                retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.REQUIRE_OPERATOR,
+                retryability=Retryability.AFTER_RERESOLUTION,
             )
         origin = await self.canonical.origin_for(current, candidate)
         if origin is None:
@@ -595,7 +595,7 @@ class TransferEngine(_QualifiedTransferEngine):
             if any(item.expires_at is not None and item.expires_at <= self.clock() for item in candidates):
                 return False, "refresh_candidate_expired", self._error(
                     Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
-                    retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.REQUIRE_OPERATOR,
+                    retryability=Retryability.AFTER_RERESOLUTION,
                 )
             replacement_size = candidates[0].expected_bytes
             if (
@@ -655,7 +655,7 @@ class TransferEngine(_QualifiedTransferEngine):
             await self.repository.clear_recovery_refresh_inflight(claim, decision_id)
             return False, "refresh_candidate_expired", self._error(
                 Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
-                retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.REQUIRE_OPERATOR,
+                retryability=Retryability.AFTER_RERESOLUTION,
             )
         replacement_size = result.candidates[0].expected_bytes
         if (
@@ -1713,7 +1713,7 @@ class TransferEngine(_QualifiedTransferEngine):
         if observation.state not in {ResourceState.ABSENT, ResourceState.EXPIRED}:
             return False
         error = self._error(Category.RESOURCE_EXPIRED, Stage.RESOLUTION, domain=Domain.PROVIDER,
-            retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE)
+            retryability=Retryability.AFTER_RERESOLUTION)
         decision = self.policy.retry_resolution(error, 0 if operator else parent.attempts, self.clock())
         if not decision.automatic:
             return False

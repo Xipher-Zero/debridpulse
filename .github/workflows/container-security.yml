@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA:0:7}"
+          source_ref="${IMAGE_NAME}:sha-${GITHUB_SHA}"
           manifest_digest=""
           manifest_json=""
 
@@ -73,6 +73,12 @@ jobs:
             fi
             sleep 5
           done
+
+          index_revision="$(jq -r '.annotations["org.opencontainers.image.revision"] // empty' <<< "$manifest_json")"
+          if [ "$index_revision" != "$GITHUB_SHA" ]; then
+            echo "Candidate $source_ref records source revision '${index_revision:-<empty>}', expected $GITHUB_SHA"
+            exit 1
+          fi
 
           amd64_digest="$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest][0] // empty' <<< "$manifest_json")"
           arm64_digest="$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64") | .digest][0] // empty' <<< "$manifest_json")"

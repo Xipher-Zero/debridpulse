@@ -15,8 +15,9 @@ test('Dashboard source-domain matching is boundary safe and pause presentation i
  await page.setViewportSize({width:1440,height:900});await ready(page);
  const assets=await page.evaluate(()=>({exact:DPTransferSourcePresentation.hostAsset('rapidgator.net'),sub:DPTransferSourcePresentation.hostAsset('cdn.rapidgator.net'),boundary:DPTransferSourcePresentation.hostAsset('notrapidgator.net')}));
  expect(assets).toEqual({exact:'/icons/hosts/rapidgator.png',sub:'/icons/hosts/rapidgator.png',boundary:''});
- await page.evaluate(()=>{settingsData=settingsData||{};settingsData.paused=true;renderTopbarActions();});
+ await page.evaluate(()=>{processingPaused=true;renderTopbarActions();});
  await expect(page.locator('.dp-global-pause-center')).toHaveClass(/is-visible/);await expect(page.locator('.dp-global-pause-center')).toContainText('PROCESSING PAUSED');await expect(page.locator('#btn-import-existing')).toHaveCount(0);
+ expect(await page.evaluate(()=>Object.prototype.hasOwnProperty.call(settingsData,'paused'))).toBe(false);
 });
 
 test('Dashboard Recent Activity keeps fixed row geometry across host artwork and progress states',async({page})=>{
@@ -205,4 +206,40 @@ test('Archive Password owner uses click reveal and line-aware editing',async({pa
 
 test('toast bridge preserves reviewed copy and automatic lifetime',async({page})=>{
  await ready(page);expect(await page.evaluate(()=>DPToastDuration('DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.'))).toBe(3750);await page.evaluate(()=>toast('Line 1: enter an HTTP(S) link or magnet URI','info'));const node=page.locator('#toasts .toast').last();await expect(node).toContainText('DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.');await expect(node.locator('button,.dp-toast-close,.dp-toast-dismiss')).toHaveCount(0);
+});
+
+test('Activity Log has one owner: explicit API, no compatibility globals, controls bound once',async({page})=>{
+ await ready(page);
+ const shape=await page.evaluate(()=>({
+  loadEvents:typeof window.loadEvents,filterEvents:typeof window.filterEvents,
+  api:Object.keys(window.DPActivityLog).sort(),frozen:Object.isFrozen(window.DPActivityLog),
+  inline:['ev-search','ev-level','ev-timeframe'].map(id=>document.getElementById(id)?.getAttribute('oninput')||document.getElementById(id)?.getAttribute('onchange')||null),
+  fields:document.querySelectorAll('#view-events .dp-activity-search-row > *').length,
+ }));
+ expect(shape).toEqual({loadEvents:'undefined',filterEvents:'undefined',api:['formatTimestamp','load'],frozen:true,inline:[null,null,null],fields:4});
+});
+
+test('Activity Log refresh, reset, empty state and single render',async({page})=>{
+ await ready(page);
+ const requests=[];
+ await page.route('**/api/events*',route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams));
+  const filtered=url.searchParams.has('include_meta');
+  const items=filtered&&url.searchParams.get('search')==='nothing'?[]:[{level:'info',message:'Started',torrent_name:'Alpha',created_at:'2026-09-08 17:00:00'},{level:'warn',message:'Slow',created_at:'2026-09-08 17:01:00'}];
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(filtered?{items,truncated:false}:items)});});
+ await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
+ await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
+ expect(requests.at(-1)).toEqual({limit:'500'});
+ await page.evaluate(()=>{window.__renders=0;document.addEventListener('debridpulse:activity-rendered',()=>window.__renders++);});
+ await page.locator('.dp-activity-refresh').click();
+ await expect.poll(()=>page.evaluate(()=>window.__renders)).toBe(1);
+ await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
+ await expect(page.locator('#ev-reset')).toBeHidden();
+ await page.locator('#ev-search').fill('nothing');
+ await expect(page.locator('#event-list .empty')).toHaveText('No events match your filters.');
+ await expect(page.locator('#ev-reset')).toBeVisible();
+ await page.locator('#ev-reset').click();
+ await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
+ await expect(page.locator('#ev-search')).toHaveValue('');
+ await expect(page.locator('#ev-reset')).toBeHidden();
+ expect(await page.evaluate(()=>DPActivityLog.formatTimestamp('2026-09-08 17:00:00'))).toMatch(/Sep 8, 2026/);
 });

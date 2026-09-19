@@ -29,7 +29,7 @@ def test_settings_chrome_is_a_scoped_presentation_layer_after_settings_geometry(
     chrome = read(CHROME)
 
     settings = overlay.index("/ui-settings-page.css?v=3")
-    settings_chrome = overlay.index("/ui-settings-chrome.css?v=3")
+    settings_chrome = overlay.index("/ui-settings-chrome.css?v=4")
     help_page = overlay.index("/ui-help-page.css?v=23")
     feature = overlay.index("/ui-feature-icon-contract.css?v=5")
     assert settings < settings_chrome < help_page < feature
@@ -148,12 +148,12 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
 
     assert 'class="dp-settings-alldebrid-key-row ${configured ? \'is-configured\' : \'\'}"' in key_helper
     assert 'value=""' in key_helper
-    assert "••••••••••••••••" in key_helper
+    assert "CONFIGURED_SECRET_MASK" in key_helper
     assert "Key present" in key_helper
     assert "Clear stored API Key" in key_helper
     assert 'data-clear-secret="${key}"' in key_helper
     assert "configured — blank keeps current value" not in key_helper
-    assert "alldebrid_api_key: valueOf('alldebrid_api_key')" in runtime
+    assert "api_key: valueOf('alldebrid_api_key')" in runtime
 
     assert '<details class="dp-settings-additional">' in sources
     assert '<details class="dp-settings-additional" open' not in sources

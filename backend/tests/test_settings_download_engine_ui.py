@@ -25,8 +25,10 @@ def test_download_engine_header_matches_reviewed_identity_mode_and_copy_contract
 
     assert "card('Download Engine'" in downloads
     assert "aria2 Delivery" not in downloads
-    assert "dp-settings-download-engine-icon" in downloads
-    assert 'src="/icons/dp/download-engine.svg?v=1"' in downloads
+    # The card's icon is its CARD_ICONS entry; no separate legacy icon is emitted.
+    assert "wrapTitle: true" in downloads
+    assert "dp-settings-download-engine-icon" not in downloads
+    assert "'Download Engine': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
     assert "Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server." in downloads
@@ -41,13 +43,7 @@ def test_download_engine_header_matches_reviewed_identity_mode_and_copy_contract
     assert ".dp-settings-card-header-center" in css
     assert "text-align: center;" in css
 
-    assert ".dp-settings-download-engine-icon img" in chrome
-    icon_rule = chrome.split(".dp-settings-download-engine-icon img {", 1)[1].split("}", 1)[0]
-    assert "width: 34px;" in icon_rule
-    assert "height: 34px;" in icon_rule
-    assert icon_rule.count("drop-shadow") == 2
-    light_icon = chrome.split("body.light #view-settings .dp-settings-download-engine-icon img {", 1)[1].split("}", 1)[0]
-    assert light_icon.count("drop-shadow") == 2
+    assert "dp-settings-download-engine-icon" not in chrome
 
 
 def test_download_engine_mode_switch_preserves_contextual_paths_and_builtin_tuning():
@@ -88,9 +84,9 @@ def test_external_mode_uses_one_connection_row_and_alldebrid_style_secret_semant
     assert "dp-settings-external-connection-row" in downloads
     assert "External RPC URL" in downloads
     assert "JSON-RPC endpoint DebridPulse uses to connect to your external aria2 server." in downloads
-    assert "${aria2RpcSecretFields(!!s.aria2_secret_configured)}" in downloads
+    assert "${aria2RpcSecretFields(!!aria2.secret_configured)}" in downloads
     assert "aria2 RPC Secret" in secret_helper
-    assert "••••••••••••••••" in secret_helper
+    assert "CONFIGURED_SECRET_MASK" in secret_helper
     assert "Secret Present" in secret_helper
     assert "Enter a new RPC secret to replace the stored secret when you click Apply Settings. Leave this field blank to keep the current secret." in secret_helper
     assert "Enter the RPC secret used by your external aria2 server. It will be saved only when you click Apply Settings." in secret_helper

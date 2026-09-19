@@ -44,7 +44,7 @@ def test_effective_settings_numeric_limits_match_server_contract():
     snapshots = field("stats_snapshot_interval_minutes")
     assert "min: 0" in snapshots
     assert "max: 1440" in snapshots
-    assert "0 disables automatic statistics snapshots." in snapshots
+    assert "Set how often DebridPulse records a statistics snapshot." in snapshots
 
     retention = field("stats_snapshot_keep_days")
     assert "max: 365" in retention
@@ -55,7 +55,6 @@ def test_effective_settings_numeric_limits_match_server_contract():
 def test_active_settings_runtime_contains_no_retired_file_filter_surface():
     root = Path(__file__).resolve().parents[2]
     page = (root / "frontend/static/ui-settings-page.js").read_text(encoding="utf-8")
-    completion = (root / "frontend/static/ui-settings-downloads-completion.js").read_text(encoding="utf-8")
     completion_css = (root / "frontend/static/ui-settings-downloads-completion.css").read_text(encoding="utf-8")
 
     for token in (
@@ -70,5 +69,5 @@ def test_active_settings_runtime_contains_no_retired_file_filter_surface():
     ):
         assert token not in page
 
-    assert "dp-settings-file-filters-retired" not in completion
+    assert "dp-settings-file-filters-retired" not in page
     assert "dp-settings-file-filters-retired" not in completion_css

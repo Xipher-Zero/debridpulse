@@ -1,8 +1,11 @@
 """aria2 registration and executor-owned settings schema."""
+import logging
 from typing import Literal
 from pydantic import BaseModel, Field
 
 from integrations.definition import IntegrationDefinition
+
+logger = logging.getLogger("debridpulse.config")
 
 
 class Aria2Options(BaseModel):
@@ -11,10 +14,10 @@ class Aria2Options(BaseModel):
     secret: str = Field(default="", repr=False)
     builtin_port: int = Field(default=6800, ge=1, le=65535)
     download_path: str = ""
-    operation_timeout_seconds: int = Field(default=15, ge=1)
-    split: int = Field(default=16, ge=1)
+    operation_timeout_seconds: int = Field(default=15, ge=5, le=300)
+    split: int = Field(default=16, ge=1, le=64)
     min_split_size: str = "10M"
-    max_connection_per_server: int = Field(default=16, ge=1)
+    max_connection_per_server: int = Field(default=16, ge=1, le=32)
     continue_downloads: bool = True
     disk_cache: str = "64M"
     file_allocation: str = "falloc"
@@ -42,15 +45,38 @@ class Aria2Options(BaseModel):
     restart_interval_hours: float = Field(default=0, ge=0)
 
 
+def _upgrade_legacy_options(legacy: dict, existing: dict) -> dict:
+    """Adjust option values taken from pre-canonical flat configuration.
+
+    Applied only to legacy input, never to values the canonical namespace
+    already holds: an unknown mode is treated as ``external`` (the mode that
+    never mutates a daemon DebridPulse does not own), and built-in tuning left
+    at an older default is raised to the current default.
+    """
+    upgraded = dict(legacy)
+    mode = upgraded.get("mode", existing.get("mode", "builtin"))
+    if mode not in ("builtin", "external"):
+        logger.warning("Config migration: unknown aria2 mode %r treated as external", mode)
+        mode = upgraded["mode"] = "external"
+    if mode == "builtin":
+        for option in ("split", "max_connection_per_server"):
+            if upgraded.get(option) in (4, 8):
+                logger.info("Config migration: aria2 %s %s -> 16 (performance upgrade)", option, upgraded[option])
+                upgraded[option] = 16
+    return upgraded
+
+
 def build(options, environment):
     from executors.aria2.client import Aria2Service
     from executors.aria2.executor import Aria2Configuration, Aria2Executor
     from executors.aria2.runtime import _effective_rpc_config
-    # Derived entirely from the injected typed `options` -- never
-    # `core.config.get_settings()` (specification section 9.3): the builtin
-    # RPC URL/secret are a pure function of `options.builtin_port`.
+    # Derived entirely from the injected typed `options` -- never a global
+    # settings lookup (specification section 9.3): the builtin RPC URL/secret
+    # are a pure function of `options.builtin_port`.
     url, secret = _effective_rpc_config(options)
-    client = Aria2Service(url, secret, options.operation_timeout_seconds)
+    # Daemon ownership is decided here, once, from the canonical options and
+    # injected; the client never consults global settings.
+    client = Aria2Service(url, secret, options.operation_timeout_seconds, owns_daemon=options.mode == "builtin")
     configuration = Aria2Configuration(
         environment.download_root, options.download_path if options.mode == "external" else "", options.mode == "external",
         options.split, options.min_split_size, options.max_connection_per_server, options.continue_downloads,
@@ -64,5 +90,6 @@ definition = IntegrationDefinition(
     "aria2", "executor", "aria2", Aria2Options, build,
     secret_fields=frozenset({"secret"}),
     legacy_fields=tuple(("aria2_" + field, field) for field in Aria2Options.model_fields),
+    legacy_upgrade=_upgrade_legacy_options,
     ownership_fields=frozenset({"mode", "url", "builtin_port", "download_path"}),
 )

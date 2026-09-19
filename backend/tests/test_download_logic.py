@@ -3,7 +3,6 @@ from dataclasses import replace
 
 import pytest
 
-from core.config import AppSettings
 from test_universal_lifecycle import core, submit, failure
 from transfers.errors import Category
 from transfers.models import TransferRequest, TransferState, ExecutionState
@@ -69,31 +68,3 @@ class TestPathHelpers:
 
 
 # ── full_sync restartable set ─────────────────────────────────────────────────
-
-
-# ── Config validator integration ──────────────────────────────────────────────
-
-class TestConfigValidatorWithDownloadSettings:
-    def test_max_concurrent_downloads_clamped(self):
-        from core.config_validator import validate_and_sanitise
-        cfg = AppSettings(max_concurrent_downloads=0)
-        result = validate_and_sanitise(cfg)
-        assert result.max_concurrent_downloads == 1
-
-    def test_aria2_max_active_clamped(self):
-        from core.config_validator import validate_and_sanitise
-        cfg = AppSettings(aria2_max_active_downloads=50)
-        result = validate_and_sanitise(cfg)
-        assert result.aria2_max_active_downloads == 20
-
-    def test_stuck_timeout_clamped(self):
-        from core.config_validator import validate_and_sanitise
-        cfg = AppSettings(stuck_download_timeout_hours=200)
-        result = validate_and_sanitise(cfg)
-        assert result.stuck_download_timeout_hours == 168
-
-    def test_poll_interval_minimum(self):
-        from core.config_validator import validate_and_sanitise
-        cfg = AppSettings(poll_interval_seconds=1)
-        result = validate_and_sanitise(cfg)
-        assert result.poll_interval_seconds >= 5

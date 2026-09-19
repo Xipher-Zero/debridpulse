@@ -25,14 +25,13 @@ from transfers.storage import StorageDomain
 
 
 class ApplicationService:
-    def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, pause_changed=None, capacity=None):
+    def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, capacity=None):
         self.engine = engine
         self.repository = engine.repository
         self._configure = configure
         self.lifecycle = tuple(lifecycle)
         self.admins = admins or {}
         self._admission = ApplicationMaintenanceGate()
-        self.pause_changed = pause_changed
         self.capacity = capacity
         self.observability = None
         self.resolution_wakeup = asyncio.Event()
@@ -157,10 +156,6 @@ class ApplicationService:
     async def deliver_events(self):
         if self.observability:
             await self.observability.deliver()
-
-    async def _pause_changed(self):
-        if self.pause_changed:
-            self.pause_changed(await self.repository.globally_paused())
 
     async def check_resources(self):
         if self.capacity is None:
@@ -299,7 +294,6 @@ class ApplicationService:
             errors = await self.engine.resume(transfer_id)
             self.resolution_wakeup.set()
             self.execution_wakeup.set()
-            await self._pause_changed()
             await self._publish(transfer_id)
             return self._control_result(errors)
 
@@ -312,18 +306,16 @@ class ApplicationService:
     async def pause_all(self):
         async with self.application_operation():
             results = await self.engine.pause_all()
-            await self._pause_changed()
             await publish("stats_changed", {})
-            return {"ok": not any(results.values()), "paused": True, "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
+            return {"ok": not any(results.values()), "paused": await self.repository.globally_paused(), "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
 
     async def resume_all(self):
         async with self.application_operation():
             results = await self.engine.resume_all()
             self.resolution_wakeup.set()
             self.execution_wakeup.set()
-            await self._pause_changed()
             await publish("stats_changed", {})
-            return {"ok": not any(results.values()), "paused": False, "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
+            return {"ok": not any(results.values()), "paused": await self.repository.globally_paused(), "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
 
     async def retry(self, transfer_id):
         async with self.application_operation():

@@ -15,12 +15,11 @@ def read(name: str) -> str:
 
 
 def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leakage():
-    runtime = read("ui-settings-downloads-completion.js")
-    match = re.search(r"CONFIGURED_SECRET_MASK = '([^']+)'", runtime)
-    assert match is not None
-    assert match.group(1) == "•" * 48
-    assert "placeholder && /^•+$/u.test(placeholder)" in runtime
-    assert "input[type=\"password\"]" in runtime
+    runtime = read("ui-settings-page.js")
+    # One mask, emitted by the owner directly into every configured-secret field.
+    assert "const CONFIGURED_SECRET_MASK = '•'.repeat(48);" in runtime
+    assert runtime.count("const masked = CONFIGURED_SECRET_MASK;") == 2
+    assert "•••••" not in runtime
 
 
 def test_external_rpc_clear_secret_is_adjacent_to_copy_and_connection_band_is_rebalanced():
@@ -58,23 +57,16 @@ def test_continue_partial_uses_copy_block_with_adjacent_centered_toggle_and_file
 
 
 def test_download_safety_recovery_has_vector_header_artwork_and_established_glow():
-    runtime = read("ui-settings-downloads-completion.js")
-    css = read("ui-settings-downloads-completion.css")
+    runtime = read("ui-settings-page.js")
+    css = read("ui-settings-card-icons.css")
     icon = RECOVERY_ICON.read_text(encoding="utf-8")
 
-    assert "ensureRecoveryIdentity" in runtime
-    assert "dp-settings-download-recovery-icon" in runtime
-    assert "/icons/dp/download-safety-recovery.svg?v=1" in runtime
-    assert "titleNode.prepend(icon);" in runtime
-
-    assert ".dp-settings-download-recovery-icon" in css
-    assert ".dp-settings-download-recovery-icon img" in css
+    # The card's icon is part of its emitted title (CARD_ICONS); nothing prepends it later.
+    assert "'Download Safety & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1']" in runtime
+    assert "ensureRecoveryIdentity" not in runtime and "dp-settings-download-recovery-icon" not in runtime
+    assert ".dp-settings-inner-card-icon" in css
     assert "width: 34px;" in css
     assert "height: 34px;" in css
-    assert "drop-shadow(0 0 4px rgba(184,102,245,.78))" in css
-    assert "drop-shadow(0 0 9px rgba(184,102,245,.34))" in css
-    assert "body.light #view-settings .dp-settings-download-recovery-icon img" in css
-    assert "drop-shadow(0 0 10px rgba(184,102,245,.44))" in css
 
     assert 'viewBox="0 0 256 256"' in icon
     assert icon.count("<path") >= 10
@@ -84,7 +76,6 @@ def test_download_safety_recovery_has_vector_header_artwork_and_established_glow
 
 
 def test_file_filters_are_physically_retired_from_active_settings_runtime():
-    runtime = read("ui-settings-downloads-completion.js")
     css = read("ui-settings-downloads-completion.css")
     page = read("ui-settings-page.js")
 
@@ -100,12 +91,12 @@ def test_file_filters_are_physically_retired_from_active_settings_runtime():
     ):
         assert key not in page
 
-    assert "dp-settings-file-filters-retired" not in runtime
+    assert "dp-settings-file-filters-retired" not in page
     assert ".dp-settings-file-filters-retired" not in css
 
 
 def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
-    runtime = read("ui-settings-downloads-completion.js")
+    runtime = read("ui-settings-page.js")
     expected = (
         "Minimum Free Disk Space (GB)",
         "Stops new downloads from starting when free disk space falls below this amount. Set to 0 to disable the disk-space guard.",

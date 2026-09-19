@@ -19,8 +19,8 @@ Existing coverage this file does not duplicate: scoped API mutation
 """
 from core.config import AppSettings
 from executors.aria2.definition import Aria2Options, definition as aria2_definition
-from executors.aria2.runtime import aria2_global_options
-from integrations.configuration import normalize_settings
+from executors.aria2.runtime import _canonical_aria2_options, build_aria2_global_options
+from integrations.configuration import migrate_legacy_settings, normalize_settings
 from integrations.definition import IntegrationSettings
 from providers.alldebrid.definition import definition as alldebrid_definition
 from providers.general_http.definition import definition as general_http_definition
@@ -29,6 +29,15 @@ from transfers.settings import TransferSettings
 
 
 DEFINITIONS = (alldebrid_definition, general_http_definition, aria2_definition)
+
+
+def aria2_global_options(cfg):
+    """Native option dict for the canonical namespaces of ``cfg``."""
+    return build_aria2_global_options(
+        _canonical_aria2_options(cfg),
+        cfg.transfer_policy.max_concurrent_executions,
+        cfg.execution_runtime_limits.max_download_bytes_per_second,
+    )
 
 
 def test_aria2_options_owns_every_specification_section_5_tuning_field():
@@ -71,23 +80,29 @@ def test_legacy_fields_are_auto_derived_not_hand_maintained():
         assert legacy_map.get("aria2_" + field) == field
 
 
+def _load_legacy(raw):
+    """Translate a raw pre-canonical mapping exactly as ``load_settings`` does."""
+    raw = dict(raw)
+    migrate_legacy_settings(raw, DEFINITIONS)
+    return normalize_settings(AppSettings(**{k: v for k, v in raw.items() if k in AppSettings.model_fields}), DEFINITIONS)
+
+
 def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     """Specification section 9.2: legacy flat settings migrate into the
     canonical ``integrations.aria2`` namespace; canonical tuning values are
     correct, not defaults."""
-    legacy = AppSettings(
-        aria2_split=32, aria2_min_split_size="20M", aria2_max_connection_per_server=4,
-        aria2_continue_downloads=False, aria2_disk_cache="128M", aria2_file_allocation="none",
-        aria2_lowest_speed_limit="10K", aria2_mode="external", aria2_url="http://host:6800/jsonrpc",
-        aria2_secret="s3cr3t", aria2_download_path="/mnt/downloads",
-        aria2_max_upload_limit=1_000_000, aria2_builtin_auto_start=False,
-        aria2_builtin_log_file="/data/aria2/custom.log", aria2_builtin_log_max_mb=50,
-        aria2_builtin_log_backups=7, aria2_builtin_session_file="/data/aria2/custom.session",
-        aria2_purge_interval_minutes=15, aria2_max_download_result=200,
-        aria2_keep_unfinished_download_result=True, aria2_deep_sync_interval_minutes=30,
-        aria2_restart_interval_hours=12,
-    )
-    migrated = normalize_settings(legacy, DEFINITIONS)
+    migrated = _load_legacy({
+        "aria2_split": 32, "aria2_min_split_size": "20M", "aria2_max_connection_per_server": 4,
+        "aria2_continue_downloads": False, "aria2_disk_cache": "128M", "aria2_file_allocation": "none",
+        "aria2_lowest_speed_limit": "10K", "aria2_mode": "external", "aria2_url": "http://host:6800/jsonrpc",
+        "aria2_secret": "s3cr3t", "aria2_download_path": "/mnt/downloads",
+        "aria2_max_upload_limit": 1_000_000, "aria2_builtin_auto_start": False,
+        "aria2_builtin_log_file": "/data/aria2/custom.log", "aria2_builtin_log_max_mb": 50,
+        "aria2_builtin_log_backups": 7, "aria2_builtin_session_file": "/data/aria2/custom.session",
+        "aria2_purge_interval_minutes": 15, "aria2_max_download_result": 200,
+        "aria2_keep_unfinished_download_result": True, "aria2_deep_sync_interval_minutes": 30,
+        "aria2_restart_interval_hours": 12,
+    })
     options = migrated.integrations["aria2"].options
     assert options["split"] == 32
     assert options["min_split_size"] == "20M"
@@ -98,6 +113,7 @@ def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     assert options["lowest_speed_limit"] == "10K"
     assert options["mode"] == "external"
     assert options["url"] == "http://host:6800/jsonrpc"
+    assert options["secret"] == "s3cr3t"
     assert options["max_upload_limit"] == 1_000_000
     assert options["builtin_auto_start"] is False
     assert options["builtin_log_file"] == "/data/aria2/custom.log"
@@ -112,27 +128,35 @@ def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     assert options["download_path"] == "/mnt/downloads"
 
 
+def test_builtin_legacy_tuning_left_at_an_older_default_is_upgraded_but_external_is_not():
+    builtin = _load_legacy({"aria2_mode": "builtin", "aria2_split": 8, "aria2_max_connection_per_server": 4})
+    assert builtin.integrations["aria2"].options["split"] == 16
+    assert builtin.integrations["aria2"].options["max_connection_per_server"] == 16
+    external = _load_legacy({"aria2_mode": "external", "aria2_split": 8})
+    assert external.integrations["aria2"].options["split"] == 8
+
+
+def test_unknown_legacy_aria2_mode_becomes_the_conservative_external_mode():
+    assert _load_legacy({"aria2_mode": "legacy-garbage"}).integrations["aria2"].options["mode"] == "external"
+
+
 def test_migration_is_idempotent():
-    legacy = AppSettings(aria2_split=32, aria2_disk_cache="128M")
-    once = normalize_settings(legacy, DEFINITIONS)
+    once = _load_legacy({"aria2_split": 32, "aria2_disk_cache": "128M"})
     twice = normalize_settings(once, DEFINITIONS, previous=once)
     assert once.integrations["aria2"].options["split"] == 32
     assert twice.integrations["aria2"].options["split"] == 32
     assert once.integrations["aria2"].options == twice.integrations["aria2"].options
 
 
-def test_canonical_save_does_not_regenerate_flat_fields_as_authoritative_input():
-    """Specification section 9.2: once a value has been supplied through the
-    canonical namespace, re-normalizing must not silently pull a DIFFERENT
-    stale value back in from the flat legacy field -- the canonical
-    namespace, not the flat field, is authoritative on every subsequent
-    save."""
-    current = AppSettings(
-        integrations={"aria2": IntegrationSettings(options={"split": 32})},
-        aria2_split=999,  # stale/unrelated flat value that must not win
-    )
-    migrated = normalize_settings(current, DEFINITIONS, previous=current)
-    assert migrated.integrations["aria2"].options["split"] == 32
+def test_settings_model_has_no_flat_aria2_field_to_regenerate():
+    """Specification section 9.2: the canonical namespace is authoritative on
+    every save, and the flat legacy names are not even fields of the settings
+    document, so nothing can regenerate them as a second persisted truth."""
+    assert not [name for name in AppSettings.model_fields if name.startswith("aria2_")]
+    current = AppSettings(integrations={"aria2": IntegrationSettings(options={"split": 32})})
+    saved = normalize_settings(current, DEFINITIONS, previous=current).model_dump()
+    assert saved["integrations"]["aria2"]["options"]["split"] == 32
+    assert not [name for name in saved if name.startswith("aria2_")]
 
 
 def test_aria2_global_options_sources_native_tuning_from_canonical_namespace():
@@ -150,10 +174,6 @@ def test_aria2_global_options_sources_native_tuning_from_canonical_namespace():
         })},
         transfer_policy=TransferSettings(max_concurrent_executions=11),
         execution_runtime_limits=ExecutionRuntimeLimits(max_download_bytes_per_second=4321),
-        # Deliberately stale/disagreeing flat values -- must be ignored.
-        aria2_split=999, aria2_max_active_downloads=999, aria2_max_download_limit=999,
-        aria2_max_download_result=999, aria2_keep_unfinished_download_result=False,
-        aria2_max_upload_limit=999,
     )
     options = aria2_global_options(cfg)
     assert options["split"] == "3"

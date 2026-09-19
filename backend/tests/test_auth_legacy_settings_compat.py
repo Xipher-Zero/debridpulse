@@ -63,11 +63,11 @@ def test_legacy_partial_settings_update_preserves_authentication_state():
         oidc_group_claim="groups",
         public_base_url="https://pulse.example",
     )
-    update = SettingsUpdate(max_concurrent_downloads=7)
+    update = SettingsUpdate(full_sync_interval_minutes=7)
 
     merged = _merge_secret_settings(update, previous)
 
-    assert merged["max_concurrent_downloads"] == 7
+    assert merged["full_sync_interval_minutes"] == 7
     for field in _AUTH_COMPAT_SETTINGS_FIELDS:
         assert merged[field] == getattr(previous, field)
 

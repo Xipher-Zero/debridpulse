@@ -46,16 +46,21 @@ def test_activity_functional_controls_are_unchanged() -> None:
 
     for fragment in (
         'id="ev-search"',
-        'oninput="filterEvents()"',
+        'id="ev-timeframe"',
         'id="ev-level"',
-        'onchange="filterEvents()"',
-        'onclick="loadEvents()"',
+        'id="ev-reset"',
+        'id="dp-activity-result-note"',
+        'onclick="DPActivityLog.load()"',
         'id="event-list"',
     ):
         assert fragment in html
 
-    assert "function filterEvents()" in app
-    assert "async function loadEvents()" in app
+    # The controls are static markup bound once by the Activity Log owner; no
+    # inline handler names a global function, and app.js holds no second
+    # implementation of loading, filtering or rendering.
+    assert "filterEvents" not in html and "loadEvents" not in html
+    assert "function filterEvents" not in app and "function loadEvents" not in app
+    assert "_allEvents" not in app
 
 
 def test_failed_tall_panel_experiment_is_not_consumed_by_operational_pages() -> None:

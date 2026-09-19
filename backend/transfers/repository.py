@@ -271,6 +271,35 @@ class ManifestCommitResult(tuple):
         return instance
 
 
+# DP 1.0.12 leveling remediation (ARCH-001): only CURRENT, policy-relevant
+# fields belong here -- every one of these is read somewhere to gate a
+# fencing/single-flight/traversal decision, or (last_applied_action/
+# last_applied_reason) consumed live by the bounded Downloads/Dashboard
+# projection. Historical-only fields (last_applied_trigger,
+# last_application_outcome, last_execution_attempt/identity,
+# last_reconstruction_reason, last_execution_retirement_reason, durable_target,
+# candidate_generation, last_candidate_id, last_budget_before/after) are NOT
+# defaulted here -- they live solely in the sparse recovery_audit trail and
+# are reconstructed on demand by
+# transfers.repository.TransferRepository._historical_audit_facts /
+# recovery_context(), never carried in this policy-facing snapshot dict.
+_RECOVERY_SNAPSHOT_DEFAULTS = {
+    "recovery_generation": 0,
+    "recovery_claim_token": None,
+    "recovery_claim_trigger": None,
+    "recovery_claim_until": 0.0,
+    "recovery_decision_id": None,
+    "recovery_claim_id": None,
+    "last_failure_identity": None,
+    "last_applied_action": None,
+    "last_applied_reason": None,
+    "last_refresh_decision_id": None,
+    "refresh_inflight_decision_id": None,
+    "refresh_inflight_attempt_id": None,
+    "blocked_retry_at": 0.0,
+}
+
+
 class TransferRepository(_QualifiedTransferRepository):
     @staticmethod
     def _recovery_event_kind(artifact_id: int) -> str:
@@ -325,6 +354,7 @@ class TransferRepository(_QualifiedTransferRepository):
             # it directly gates which candidates transfers._engine_recovery
             # .TransferEngine._next_alternate_index treats as still eligible.
             "candidate_attempt_history": [],
+            **_RECOVERY_SNAPSHOT_DEFAULTS,
         }
         state_row = await db.fetchone(
             "SELECT * FROM artifact_recovery_state WHERE artifact_id=?", (artifact_id,),
@@ -362,6 +392,7 @@ class TransferRepository(_QualifiedTransferRepository):
             int(snapshot.get("candidate_refreshes") or 0),
             int(row.get("recovery_refreshes") or 0),
         )
+        snapshot["version"] = max(3, int(snapshot.get("version") or 0))
         return snapshot
 
     @classmethod
@@ -703,7 +734,7 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.commit()
 
     async def reset_retry_budget(self, artifact_id):
-        """Operator retry clears exhaustion but is not counted as forward progress."""
+        """Reopen bounded recovery without fabricating progress or stale dedupe."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone(
@@ -715,12 +746,34 @@ class TransferRepository(_QualifiedTransferRepository):
                 raise KeyError(artifact_id)
             snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
             await db.execute(
-                "UPDATE download_files SET retry_count=0,recovery_failures=0,recovery_refreshes=0 WHERE id=?",
+                """UPDATE download_files SET retry_count=0,recovery_failures=0,recovery_refreshes=0
+                   WHERE id=?""",
                 (artifact_id,),
             )
             apply_recovery_reset(snapshot, RecoveryResetAuthority.OPERATOR_RETRY)
-            await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
-            await self._append_recovery_audit(db, int(row["torrent_id"]), artifact_id, "operator_retry")
+            snapshot.update({
+                "blocked_retry_at": 0.0,
+                "recovery_decision_id": None,
+                "last_failure_identity": None,
+                # A full budget reset (the live USER_RETRY mechanism,
+                # TriggerAuthority.reset_exhaustion) is the one explicit
+                # "start over" boundary that restores every candidate's
+                # eligibility, including ones already tried.
+                "candidate_attempt_history": [],
+            })
+            await self._save_recovery_snapshot(
+                db, int(row["torrent_id"]), artifact_id, snapshot,
+            )
+            # last_budget_before/after are historical (sparse-audit-only,
+            # never current state in any shape).
+            await self._append_recovery_audit(
+                db, int(row["torrent_id"]), artifact_id, "operator_retry",
+                last_budget_before={
+                    "failures": int(row.get("recovery_failures") or 0),
+                    "refreshes": int(row.get("recovery_refreshes") or 0),
+                },
+                last_budget_after={"failures": 0, "refreshes": 0},
+            )
             await db.commit()
 
     async def execution_idle_seconds(self, observation, now):
@@ -776,15 +829,6 @@ class TransferRepository(_QualifiedTransferRepository):
                 return value or None
             await db.commit()
         return provider_id
-
-    async def bound_route_provider(self, request_id: str) -> str | None:
-        routed = await super().bound_route_provider(request_id)
-        if routed:
-            return routed
-        async with get_db() as db:
-            row = await db.fetchone("""SELECT t.collection_route_provider_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id WHERE r.id=?""", (request_id,))
-        value = str((row or {}).get("collection_route_provider_id") or "").strip()
-        return value or None
 
     async def accept_execution_total(self, artifact_id: int, handle, total_bytes: int) -> bool:
         if (not isinstance(total_bytes, int) or isinstance(total_bytes, bool) or total_bytes <= 0 or handle is None):
@@ -1100,15 +1144,12 @@ class TransferRepository(_QualifiedTransferRepository):
             }
         return result
 
-    async def presentation(self, transfer_id: int, details: bool = False, **_admission_facts):
-        """``**_admission_facts`` (Section 9 live admission facts) are accepted
-        and ignored here -- this repository layer predates and does not
-        itself use them; only transfers.presentation_repository does. Callers
-        (application.service, api.routes) do not need to know which concrete
-        repository is wired in before supplying them."""
-        result = await super().presentation(transfer_id, details=details)
-        if not result or not details:
-            return result
+    async def _overlay_candidate_presentation(self, result: dict, transfer_id: int) -> None:
+        """Annotate every artifact row of a comprehensive (Details) projection
+        with its canonical candidate count and, when it has alternates, the
+        acquisition candidates. Called once, by ``presentation()`` in
+        ``transfers.presentation_repository`` -- the single owner of the
+        assembled projection."""
         candidate_projection = await self._candidate_presentation(transfer_id)
         for file_row in result.get("files", []):
             artifact_id = int(file_row.get("id") or 0)
@@ -1121,7 +1162,6 @@ class TransferRepository(_QualifiedTransferRepository):
                 file_row["source_candidates"] = projection["source_candidates"]
             if projection and projection["candidate_count"] > 1:
                 file_row["acquisition_candidates"] = projection["acquisition_candidates"]
-        return result
 
     # -------------------------------------------------------------------------
     # Universal file-selection manifest overlay (specification sections 13-38).

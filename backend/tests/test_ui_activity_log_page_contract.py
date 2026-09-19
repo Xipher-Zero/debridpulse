@@ -23,8 +23,10 @@ def test_activity_log_keeps_approved_content_with_direct_structural_owners() -> 
     assert "Everything DebridPulse thought was worth mentioning." in view
     assert "Refresh activity log" in view
     assert 'data-dp-lucide="refresh"' in view
-    assert "function loadEvents(" in app
-    assert "function filterEvents(" in app
+    # app.js holds no Activity Log implementation; navigation calls the owner.
+    assert "function loadEvents(" not in app
+    assert "function filterEvents(" not in app
+    assert "window.DPActivityLog.load()" in app
     assert '"document": "document.svg"' in manifest
     required = (".dp-activity-card", ".dp-activity-card-title", ".dp-activity-search-band", ".dp-activity-list", ".dp-activity-row", ".dp-activity-message", ".dp-activity-transfer", ".dp-activity-time")
     missing = [selector for selector in required if selector not in css]
@@ -118,8 +120,8 @@ def test_activity_log_layer_follows_canonical_shell_and_reference_stack() -> Non
     overlay = read("style.css")
 
     shell = overlay.index("/ui-shell-structural.css?v=31")
-    dashboard = overlay.index("/ui-dashboard.css?v=21")
-    controls = overlay.index("/ui-utility-controls.css?v=24")
+    dashboard = overlay.index("/ui-dashboard.css?v=22")
+    controls = overlay.index("/ui-utility-controls.css?v=25")
     stats = overlay.index("/ui-statistics-page.css?v=23")
     activity = overlay.index("/ui-activity-log-page.css?v=31")
     downloads = overlay.index("/ui-downloads-page.css?v=30")

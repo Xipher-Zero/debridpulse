@@ -5,6 +5,11 @@ Checks the loaded AppSettings for common misconfigurations, type errors,
 and stale / dangerous values. Logs warnings for every issue found and
 returns a sanitised copy of the settings.  Never raises — startup must
 not be blocked by a bad config value.
+
+Numeric bounds of the canonical namespaces (``integrations.<id>``,
+``transfer_policy``, ``execution_runtime_limits``) are owned by their pydantic
+schemas and enforced once, at load (``integrations.configuration``); this module
+only carries the cross-field/sanity rules that belong to no single schema.
 """
 from __future__ import annotations
 
@@ -18,6 +23,12 @@ logger = logging.getLogger("debridpulse.config")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+def _options(cfg, integration_id: str) -> dict:
+    """Canonical options of one integration namespace ({} when absent)."""
+    entry = (getattr(cfg, "integrations", None) or {}).get(integration_id)
+    return dict(getattr(entry, "options", None) or {})
+
+
 def _is_valid_url(v: str, require_https: bool = False) -> bool:
     if not v:
         return True  # empty = not configured, not invalid
@@ -36,9 +47,10 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
     def warn(field: str, msg: str, bad, fixed=None):
         issues.append((field, msg, bad, fixed))
 
-    # ── AllDebrid ─────────────────────────────────────────────────────────────
-    if cfg.alldebrid_api_key and len(cfg.alldebrid_api_key.strip()) < 10:
-        warn("alldebrid_api_key", "looks too short to be valid", cfg.alldebrid_api_key)
+    # ── Provider / executor sanity (canonical namespaces) ─────────────────────
+    api_key = str(_options(cfg, "alldebrid").get("api_key") or "")
+    if api_key and len(api_key.strip()) < 10:
+        warn("integrations.alldebrid.api_key", "looks too short to be valid", api_key)
 
     legacy_names = {
         "ACDC",
@@ -46,19 +58,15 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
         "AllDebrid-Client",
         "AllDebrid-Torrent-Client",
     }
-    if getattr(cfg, "alldebrid_agent", "") in legacy_names:
-        warn("alldebrid_agent", "legacy application identity migrated to DebridPulse",
-             cfg.alldebrid_agent, "DebridPulse")
     if getattr(cfg, "discord_username", "") in legacy_names:
         warn("discord_username", "legacy notification identity migrated to DebridPulse",
              cfg.discord_username, "DebridPulse")
 
 
     # ── URLs ──────────────────────────────────────────────────────────────────
-    for field in ("aria2_url",):
-        val = getattr(cfg, field, "")
-        if val and not _is_valid_url(val):
-            warn(field, "not a valid HTTP(S) URL", val)
+    aria2_url = str(_options(cfg, "aria2").get("url") or "")
+    if aria2_url and not _is_valid_url(aria2_url):
+        warn("integrations.aria2.url", "not a valid HTTP(S) URL", aria2_url)
 
     for field in ("discord_webhook_url", "discord_webhook_added",
                   "stats_report_webhook_url"):
@@ -87,25 +95,6 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
 
     # ── Numeric ranges ────────────────────────────────────────────────────────
     numeric_bounds = {
-        "max_concurrent_downloads":       (1, 20),
-        "aria2_max_active_downloads":     (1, 20),
-        "aria2_poll_interval_seconds":    (2, 300),
-        "aria2_operation_timeout_seconds":(5, 300),
-        "aria2_builtin_port":             (1, 65535),
-        "aria2_builtin_log_max_mb":        (1, 1024),
-        "aria2_builtin_log_backups":       (0, 20),
-        "aria2_purge_interval_minutes":   (0, 1440),
-        "aria2_max_download_result":      (10, 5000),
-        "aria2_waiting_window":           (10, 1000),
-        "aria2_stopped_window":           (10, 1000),
-        "aria2_split":                    (1, 64),
-        "aria2_max_connection_per_server":(1, 32),
-        "aria2_error_retry_count":        (0, 20),
-        "aria2_error_retry_delay_seconds":(0, 3600),
-        "aria2_deep_sync_interval_minutes":(0, 1440),
-        "poll_interval_seconds":          (5, 3600),
-        "alldebrid_rate_limit_per_minute":(0, 600),
-        "stuck_download_timeout_hours":   (0, 168),
         "full_sync_interval_minutes":     (0, 1440),
         "backup_keep_days":               (1, 365),
         "backup_interval_hours":          (1, 168),
@@ -132,17 +121,9 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
 
     # ── String sanity ─────────────────────────────────────────────────────────
 
-    if cfg.download_client not in ("aria2",):
-        warn("download_client", f"unknown value '{cfg.download_client}' — reset to aria2",
-             cfg.download_client, "aria2")
-
     if getattr(cfg, "download_folder", "") == "/app/data/downloads":
         warn("download_folder", "legacy Docker default migrated to documented /download mount",
              cfg.download_folder, "/download")
-
-    if getattr(cfg, "aria2_mode", "external") not in ("external", "builtin"):
-        warn("aria2_mode", f"unknown value '{cfg.aria2_mode}' - reset to external",
-             cfg.aria2_mode, "external")
 
     # ── List fields ───────────────────────────────────────────────────────────
     for field in (
@@ -166,7 +147,7 @@ def validate_and_sanitise(cfg) -> Any:
         return cfg
 
     sensitive = {
-        "alldebrid_api_key", "aria2_secret", "discord_webhook_url",
+        "integrations.alldebrid.api_key", "discord_webhook_url",
         "discord_webhook_added", "stats_report_webhook_url",
         "auth_password", "auth_password_hash", "oidc_client_secret",
         "extraction_password",

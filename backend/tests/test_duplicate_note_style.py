@@ -18,6 +18,13 @@ def test_duplicate_mirror_reason_is_subdued_operational_note():
     assert ".badge-duplicate" in shared
     assert "#modal-body tr:has(.badge-duplicate)" in transfer
     assert "color: var(--text3) !important;" in transfer
-    # The default file-reason renderer stays red for genuine non-duplicate failures.
-    assert 'f.block_reason ? `<div style="font-size:10px;color:var(--red)' in app
+    # The default file-reason renderer stays red for genuine non-duplicate
+    # failures. The Details file rows have one renderer -- the candidates owner --
+    # and app.js keeps no row template of its own.
+    owner = (ROOT / "frontend/static/ui-detail-candidates.js").read_text()
+    owner_css = (ROOT / "frontend/static/ui-detail-candidates.css").read_text()
+    assert "'<div class=\"dp-detail-file-block-reason\">'" in owner
+    assert ".dp-detail-file-block-reason{font-size:10px;color:var(--red);margin-top:4px}" in owner_css
+    assert "DPDetailCandidates.rowsMarkup(t.files)" in app
+    assert "f.block_reason" not in app
     assert '<link rel="stylesheet" href="/style.css?v=18">' in index

@@ -216,29 +216,3 @@ class ConsolidationEvents:
             "matched_count": matched_count,
             "unmatched_count": unmatched_count,
         }
-
-
-class ConsolidationEventCanonical:
-    """Decorate canonical ownership with post-commit semantic-event staging."""
-
-    def __init__(self, canonical, events: ConsolidationEvents):
-        object.__setattr__(self, "_canonical", canonical)
-        object.__setattr__(self, "_events", events)
-
-    def __getattr__(self, name):
-        return getattr(self._canonical, name)
-
-    def __setattr__(self, name, value):
-        if name in {"_canonical", "_events"}:
-            object.__setattr__(self, name, value)
-            return
-        setattr(self._canonical, name, value)
-
-    async def attach(self, primary, source, incoming_candidates, size):
-        attached = await self._canonical.attach(primary, source, incoming_candidates, size)
-        if attached:
-            # CanonicalOwnership.attach() returns True only after its durable
-            # transaction commits. A failed/rolled-back attach cannot produce
-            # a success marker or user-facing event.
-            await self._events.stage(source.transfer_id)
-        return attached

@@ -64,7 +64,6 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
         "get_settings",
         lambda: SimpleNamespace(
             db_wipe_enabled=True,
-            paused=True,
             db_backup_before_wipe=False,
         ),
     )
@@ -99,7 +98,7 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", stop_scheduler)
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", start_scheduler)
     from services.maintenance_gate import ApplicationMaintenanceGate
-    application = SimpleNamespace(database_wipe_admission=ApplicationMaintenanceGate().maintenance, quiesce_for_database_wipe=quiesce, release_database_wipe_quiescence=release)
+    application = SimpleNamespace(database_wipe_admission=ApplicationMaintenanceGate().maintenance, quiesce_for_database_wipe=quiesce, release_database_wipe_quiescence=release, repository=SimpleNamespace(globally_paused=AsyncMock(return_value=True)))
     monkeypatch.setattr(routes, "database_maintenance", maintenance)
     monkeypatch.setattr(db_maintenance, "wipe_database", wipe_database)
 
@@ -131,13 +130,13 @@ def test_settings_secret_merge_preserve_replace_clear():
     from api.routes import SettingsUpdate, _merge_secret_settings
     from core.config import AppSettings
 
-    previous = AppSettings(alldebrid_api_key="old-key", auth_username="old-user", auth_password="old-pass")
+    previous = AppSettings(discord_webhook_url="https://old.example/hook", auth_username="old-user", auth_password="old-pass")
 
     payload = previous.model_dump()
-    payload.update(alldebrid_api_key="", auth_password="")
+    payload.update(discord_webhook_url="", auth_password="")
     preserve = SettingsUpdate(**payload)
     merged = _merge_secret_settings(preserve, previous)
-    assert merged["alldebrid_api_key"] == "old-key"
+    assert merged["discord_webhook_url"] == "https://old.example/hook"
     assert merged["auth_password"] == "old-pass"
 
     payload = previous.model_dump()
@@ -280,7 +279,6 @@ async def test_database_wipe_rechecks_pause_after_application_admission_drain(mo
         "get_settings",
         lambda: SimpleNamespace(
             db_wipe_enabled=True,
-            paused=state.paused,
             db_backup_before_wipe=False,
         ),
     )
@@ -296,7 +294,11 @@ async def test_database_wipe_rechecks_pause_after_application_admission_drain(mo
         finally:
             calls.append("app-gate-exit")
 
-    application = SimpleNamespace(database_wipe_admission=application_gate)
+    async def globally_paused():
+        return state.paused
+
+    application = SimpleNamespace(database_wipe_admission=application_gate,
+        repository=SimpleNamespace(globally_paused=globally_paused))
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", AsyncMock())
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", AsyncMock())
 
@@ -329,7 +331,6 @@ async def test_database_wipe_refreshes_disabled_setting_after_admission_drain(mo
         "get_settings",
         lambda: SimpleNamespace(
             db_wipe_enabled=state.enabled,
-            paused=state.paused,
             db_backup_before_wipe=False,
         ),
     )
@@ -340,7 +341,8 @@ async def test_database_wipe_refreshes_disabled_setting_after_admission_drain(mo
         state.enabled = False
         yield
 
-    application = SimpleNamespace(database_wipe_admission=application_gate)
+    application = SimpleNamespace(database_wipe_admission=application_gate,
+        repository=SimpleNamespace(globally_paused=AsyncMock(return_value=True)))
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", AsyncMock())
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", AsyncMock())
 

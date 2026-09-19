@@ -64,7 +64,7 @@ def test_legacy_settings_unrelated_change_does_not_revoke_auth_sessions():
     from api import routes
 
     previous = _settings()
-    current = previous.model_copy(update={"max_concurrent_downloads": previous.max_concurrent_downloads + 1}, deep=True)
+    current = previous.model_copy(update={"full_sync_interval_minutes": previous.full_sync_interval_minutes + 1}, deep=True)
     session_store.clear()
     password_token, _ = session_store.create(
         Principal.password_session("operator"),

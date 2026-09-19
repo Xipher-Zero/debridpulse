@@ -42,32 +42,9 @@
     return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
   }
 
-  function statusHost() {
-    let node = document.getElementById('provider-status-list');
-    if (node) return node;
-    const footer = document.querySelector('.sidebar-footer');
-    if (!footer) return null;
-    node = document.createElement('div');
-    node.id = 'provider-status-list';
-    node.className = 'dp-provider-status-list';
-    node.setAttribute('aria-label', 'Provider Status');
-    const aria2 = document.getElementById('dot-aria2')?.closest('.conn-row');
-    footer.insertBefore(node, aria2 || footer.firstChild);
-    return node;
-  }
-
-  function ensureHeading() {
-    const footer = document.querySelector('.sidebar-footer');
-    if (!footer) return null;
-    let node = footer.querySelector(':scope > .dp-provider-status-heading');
-    if (!node) {
-      node = document.createElement('div');
-      node.className = 'dp-provider-status-heading';
-      node.textContent = 'Provider Status';
-      footer.insertBefore(node, document.getElementById('premium-row') || footer.firstChild);
-    }
-    return node;
-  }
+  // The heading and the list are static shell markup (index.html); this owner
+  // only fills the list.
+  const statusHost = () => document.getElementById('provider-status-list');
 
   function dotClass(state) {
     return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unknown:'check', checking:'check', mixed:'warn', disabled:'error'})[state] || 'check';
@@ -85,7 +62,6 @@
   }
 
   function render(entries, mode = 'ready') {
-    ensureHeading();
     const host = statusHost();
     if (!host) return;
     if (mode === 'loading') {
@@ -147,7 +123,6 @@
   }
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
-  ensureHeading();
   render([], 'loading');
   document.addEventListener('DOMContentLoaded', () => refresh().catch(() => render([], 'unknown')), {once:true});
 })();

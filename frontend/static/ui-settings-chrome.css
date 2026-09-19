@@ -127,34 +127,6 @@ body.light #view-settings .dp-settings-tab-glyph {
 }
 
 /* Download Engine uses the supplied purple artwork directly. The artwork owns
-   its rounded-square frame; CSS adds only the same two-stage omnidirectional
-   glow used by the other custom Settings card header artwork. */
-#view-settings .dp-settings-download-engine-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-}
-
-#view-settings .dp-settings-download-engine-icon img {
-  width: 34px;
-  height: 34px;
-  display: block;
-  object-fit: contain;
-  filter:
-    drop-shadow(0 0 4px rgba(184,102,245,.78))
-    drop-shadow(0 0 9px rgba(184,102,245,.34));
-}
-
-body.light #view-settings .dp-settings-download-engine-icon img {
-  filter:
-    saturate(1.08)
-    contrast(1.04)
-    drop-shadow(0 0 4px rgba(184,102,245,.88))
-    drop-shadow(0 0 10px rgba(184,102,245,.44));
-}
 
 /* Debrid Services is a source-type master group. The supplied artwork already
    owns its rounded-square frame, so CSS adds only layout and the established

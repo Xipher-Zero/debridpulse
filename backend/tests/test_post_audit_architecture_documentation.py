@@ -80,3 +80,30 @@ def test_container_default_identity_contract_is_99_100() -> None:
     assert "# Directories - owned by 99:100 by default" in dockerfile
     assert "65534:100" not in dockerfile
     assert "chown -R 99:100 /app /download" in dockerfile
+
+
+def test_frontend_docs_state_the_single_owner_invariants_with_no_recorded_deviations() -> None:
+    doc = read("docs/UI_FRONTEND_ARCHITECTURE.md")
+    for statement in (
+        "`app.js` is the one Server-Sent Events connection owner",
+        "`operator-title.js` owns toast/icon presentation and the consolidation toast copy only",
+        "Activity Log behavior is owned only by `ui-activity-log-runtime.js`",
+        "no Activity Log compatibility globals (`window.loadEvents`, `window.filterEvents`) exist",
+        "`ui-topbar-concurrency.js` is retired and absent",
+        "No owner reassigns another owner's global",
+        "Canonical settings fields are consumed directly",
+        "`window.debridPulseAuth.fetch`",
+        "Settings markup has one owner",
+        "`processingPaused` projection",
+    ):
+        assert statement in doc, statement
+    # No architecture is documented as "not yet implemented": every recorded
+    # deviation was folded into its owner and its satellite physically deleted.
+    assert "Known deviations" not in doc and "not yet folded" not in doc
+    for retired in ("ui-settings-downloads-completion.js", "ui-settings-notifications.js",
+                    "ui-settings-maintenance-wipe.js", "ui-settings-card-icons.js",
+                    "ui-provider-cards.js", "auth-help.js"):
+        assert retired not in doc, retired
+        assert not (ROOT / "frontend/static" / retired).exists(), retired
+    assert "ui-topbar-concurrency.js`, " not in doc.split("## Runtime ownership map", 1)[1].split("## ", 1)[0]
+    assert (ROOT / "frontend/static/ui-topbar-concurrency.js").exists() is False

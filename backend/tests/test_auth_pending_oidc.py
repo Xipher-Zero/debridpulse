@@ -109,13 +109,13 @@ def test_pending_builder_preserves_replace_and_explicit_clear_secret_intent(monk
 def test_verified_pending_oidc_merge_preserves_newer_live_non_oidc_and_password_state():
     candidate = _settings(
         oidc_client_id="replacement-client",
-        paused=False,
+        db_wipe_enabled=False,
         auth_password_enabled=True,
         auth_username="old-operator",
         auth_password_hash="old-hash",
     )
     live = _settings(
-        paused=True,
+        db_wipe_enabled=True,
         auth_password_enabled=False,
         auth_username="new-operator",
         auth_password_hash="new-hash",
@@ -131,7 +131,7 @@ def test_verified_pending_oidc_merge_preserves_newer_live_non_oidc_and_password_
     merged = _merge_verified_oidc_settings(live, item)
 
     assert merged.oidc_client_id == "replacement-client"
-    assert merged.paused is True
+    assert merged.db_wipe_enabled is True
     assert merged.auth_password_enabled is False
     assert merged.auth_username == "new-operator"
     assert merged.auth_password_hash == "new-hash"

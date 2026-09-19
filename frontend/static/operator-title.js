@@ -452,32 +452,6 @@
     };
   }
 
-  function installConsolidationEventConsumer() {
-    const NativeEventSource = window.EventSource;
-    if (typeof NativeEventSource !== 'function' || NativeEventSource.__dpConsolidationConsumer === true) return;
-
-    function DPEventSource(url, init) {
-      const source = arguments.length > 1 ? new NativeEventSource(url, init) : new NativeEventSource(url);
-      const endpoint = String(url == null ? '' : url);
-      if (endpoint === '/api/events/stream' || endpoint.endsWith('/api/events/stream')) {
-        source.addEventListener('duplicate_consolidated', function (event) {
-          try {
-            const copy = consolidationToastCopy(JSON.parse(event.data));
-            if (copy) canonicalToast(copy, 'success');
-          } catch (_error) {
-            // Invalid public event data is ignored rather than rendered.
-          }
-        });
-      }
-      return source;
-    }
-
-    DPEventSource.prototype = NativeEventSource.prototype;
-    try { Object.setPrototypeOf(DPEventSource, NativeEventSource); } catch (_error) { /* older browsers */ }
-    Object.defineProperty(DPEventSource, '__dpConsolidationConsumer', {value: true});
-    window.EventSource = DPEventSource;
-  }
-
   window.DPIcons = Object.freeze({
     svg: lucideSvg,
     statusBadge: statusBadge,
@@ -495,7 +469,6 @@
   });
 
   ensureToastHost();
-  installConsolidationEventConsumer();
 
   function renderThemeGlyph(isLight) {
     const button = document.getElementById('theme-toggle');

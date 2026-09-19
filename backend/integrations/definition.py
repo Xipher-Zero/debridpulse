@@ -54,7 +54,12 @@ class IntegrationDefinition:
     options_model: type[BaseModel]
     factory: Callable
     secret_fields: frozenset[str] = frozenset()
+    # Pre-canonical flat configuration names -> option names. Migration INPUT
+    # only (``integrations.configuration.migrate_legacy_settings``).
     legacy_fields: tuple[tuple[str, str], ...] = ()
+    # Optional integration-owned adjustment of option values that were taken
+    # from legacy input: ``(legacy_options, existing_options) -> legacy_options``.
+    legacy_upgrade: Optional[Callable[[dict, dict], dict]] = None
     ownership_fields: frozenset[str] = frozenset()
     required_options: frozenset[str] = frozenset()
     presentation: IntegrationPresentation = IntegrationPresentation()

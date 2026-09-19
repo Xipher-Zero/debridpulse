@@ -12,6 +12,7 @@ from test_universal_lifecycle import canonical_core, core, submit  # noqa: F401 
 from test_aria2_executor_contract import execution  # noqa: F401 -- pytest fixture re-export
 from application.service import ApplicationService
 from core.config import AppSettings
+from integrations.definition import IntegrationSettings
 from executors.aria2.executor import Aria2Executor
 from integrations.catalog import definitions
 from integrations.configuration import normalize_settings
@@ -92,8 +93,11 @@ async def test_connection_change_with_live_references_is_rejected_before_save(co
     application = ApplicationService(core.engine)
     application.definitions = definitions
     application.repository.has_integration_references = AsyncMock(return_value=True)
-    before = normalize_settings(AppSettings(aria2_mode="external"), definitions)
-    after = normalize_settings(before.model_copy(update={"aria2_url": "http://other:6800/jsonrpc"}), definitions, previous=before, supplied_fields={"aria2_url"})
+    before = normalize_settings(
+        AppSettings(integrations={"aria2": IntegrationSettings(options={"mode": "external"})}), definitions)
+    after = normalize_settings(
+        before.model_copy(update={"integrations": {"aria2": IntegrationSettings(options={"url": "http://other:6800/jsonrpc"})}}),
+        definitions, previous=before)
     with pytest.raises(ValueError, match="existing aria2 resources"):
         await application.validate_configuration(before, after)
     application.repository.has_integration_references.assert_awaited_once_with("aria2")

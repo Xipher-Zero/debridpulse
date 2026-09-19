@@ -19,12 +19,12 @@ Every visible behavior has one bounded structural/render owner and intentionally
 The bounded presentation owners, in their required load order (each depends only on `app.js` and the owners before it in this list), are:
 
 - `ui-toast-contract.js` — public toast copy/timing bridge to the canonical `operator-title.js` presenter.
-- `ui-processing-presentation.js` — authoritative pause-state projection, scheduler-capacity synchronization, and the canonical pause-eligible presentation-status set (`PAUSEABLE_PRESENTATION`).
+- `ui-processing-presentation.js` — pause-banner/shim visibility (static markup in `index.html`), `configuredMaxConcurrency()` (the one read of scheduler capacity, `transfer_policy.max_concurrent_executions`), and the canonical pause-eligible presentation-status set (`PAUSEABLE_PRESENTATION`). It creates, removes, or relabels no other owner's markup.
 - `ui-transfer-source-presentation.js` — the neutral host/source-icon mapping and markup owner, shared by every surface that renders a transfer row.
 - `ui-file-selection.js` — the universal file-selection modal, browser-local draft state, and list chip; must load before the two owners below because they call `window.DPFileSelection.chipMarkup()` while building row markup.
 - `ui-dashboard-transfer-presentation.js` — Dashboard Recent Activity row presentation. Consumes `window.DPTransferSourcePresentation` for source icons; does not define its own host mapping.
 - `ui-downloads.js` — the sole Downloads controller/renderer owner: list page state, the bounded `/torrents` fetch, final row rendering, filtering/search, pagination, date mode/menu, measured capacity/page sizing, list selection state, bulk actions, and refresh.
-- `ui-activity-log-runtime.js` — Activity Log server-side filtering, timestamps, and filter-control projection.
+- `ui-activity-log-runtime.js` — the sole Activity Log behavior and render owner: it binds the static filter controls in `index.html` once, owns server-side search/severity/timeframe filtering, debounce, reset, timestamps, and row rendering, and exposes only `window.DPActivityLog`.
 - `ui-settings-archive-passwords.js` — Automatic Extraction archive-password editor interaction.
 
 There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrectionP4Repair` runtime contract in the boot graph.
@@ -36,16 +36,17 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 | Surface | Structure/render owner | Behavior owner | Styling owner |
 | --- | --- | --- | --- |
 | Application shell/navigation | `index.html` + `app.js` | `app.js` | shell styles |
-| Provider status | shell target + `ui-provider-status.js` | `ui-provider-status.js` | `ui-provider-state.css` (provider list/group presentation and the AllDebrid Settings-card premium disclosure `ui-provider-cards.js` attaches), `ui-shell-provider-status.css` (premium-account row composition, shell-level aria2/DB exception presentation) |
+| Provider status | shell target + `ui-provider-status.js` | `ui-provider-status.js` | `ui-provider-state.css` (provider list/group presentation and the AllDebrid Settings-card premium disclosure that `ui-settings-page.js` renders), `ui-shell-provider-status.css` (premium-account row composition, shell-level aria2/DB exception presentation) |
 | Dashboard | `index.html` + `app.js` | `ui-dashboard-transfer-presentation.js`, `ui-group-candidates.js` | `ui-dashboard.css`, `ui-dashboard-transfer-presentation.css` |
 | Downloads | `index.html` + `app.js` shell | `ui-downloads.js`, `ui-group-candidates.js` | `ui-downloads-page.css` |
 | Source/provider row presentation | shared across Downloads and Dashboard | `ui-transfer-source-presentation.js` (host mapping/icon markup), `app.js` (`providerChip`, `badge`, `transferDisplayStatus`, `progress`) | `ui-transfer-contract.css` |
-| Processing/topbar projection | shell/app controls | `app.js`, `ui-topbar-concurrency.js`, `ui-processing-presentation.js` | owning shell/page styles |
-| Activity Log | `index.html` + runtime rows | `ui-activity-log-runtime.js` | `ui-activity-log-page.css`, `ui-activity-log-controls.css` |
+| Processing/topbar projection | shell/app controls | `app.js` (`updateAria2TopbarBadge`, the one topbar badge renderer), `ui-processing-presentation.js` (pause visibility from `app.js`'s `processingPaused` projection, capacity read) | owning shell/page styles |
+| Activity Log | `index.html` controls + `ui-activity-log-runtime.js` rows | `ui-activity-log-runtime.js` (called by `app.js` navigation as `window.DPActivityLog.load()`) | `ui-activity-log-page.css`, `ui-activity-log-controls.css` |
 | Details -> Files | `app.js` | `app.js` plus `ui-detail-candidates.js` (per-file), `ui-group-candidates.js` (transfer-level group launcher in the section header), `ui-file-selection.js` (Choose/Change Files entry) | `ui-transfer-contract.css`, `ui-detail-files.css`, `ui-detail-candidates.css`, `ui-group-candidates.css` |
 | File selection | shell modal + `app.js` | `ui-file-selection.js` (mechanics only — no policy) | `ui-file-selection.css` |
 | Statistics | generated page | `ui-statistics.js` | `ui-statistics-page.css` |
-| Settings | generated clean-room markup | `ui-settings-page.js` plus named subfeature owners | Settings styles plus `ui-settings-archive-passwords.css` |
+| Settings | `ui-settings-page.js` (every panel, card, icon, tab and ARIA attribute, rendered once) | `ui-settings-page.js` (tabs, provider disclosure, persistence) plus the bounded feature owners `ui-settings-directory-picker.js` (download/backup folder browser modal), `ui-settings-aria2-live.js` (built-in engine queue polling/actions; behavior only, mounts into a card the page rendered), `ui-settings-archive-passwords.js` (archive-password editor) | `ui-settings-*.css` per-panel stylesheets (page, chrome, form layout, downloads, notifications, maintenance, card icons, authentication, aria2 live, directory browser, archive passwords) |
+| Sidebar session/auth | static `#sidebar-bottom-stack` + `#sidebar-auth-mount` in `index.html` | `auth.js` (populates its own mount; never reparents `.sidebar-footer`) | `auth-ux.css` |
 | Help | generated page | `ui-help-page.js` and legal-document helper | Help styles |
 | Accessibility/dropdowns | owner-page markup | `ui-accessibility-runtime.js` projection only | shared accessibility/dropdown styles |
 | Toasts | shell target | `operator-title.js` presenter; `ui-toast-contract.js` public bridge | `ui-toast-contract.css` |
@@ -69,13 +70,28 @@ The historical base/reset layer that used to live in `style.css` itself (pre-v11
 
 `body.dp-v11-structural` is gone. It was a specificity-boosting scoping class applied unconditionally to `<body>` so a scoped component rule would always beat an unscoped legacy rule regardless of import order; `git grep -n 'dp-v11-structural' -- frontend/static` returns nothing, `<body>` carries no class, and every previously-scoped selector across the ~40 files that used it now stands on its own, unscoped, relying on the canonical import order (legacy content, if any, first; component/page owners after) rather than an inflated specificity to win real cascade ties. The one selector where removing the scoping class actually changed which of two competing files won a shared property — `.aria2-cap-menu`'s `border-color`/`box-shadow`, contested between `ui-shell.css` and `ui-dropdown-contract.css` — was resolved by deleting the losing (superseded) declarations from `ui-shell.css` rather than re-introducing a specificity trick; `ui-dropdown-contract.css` is now the sole, unscoped owner of that popover's surface material. Every other de-scoped selector was verified, file by file, to still resolve to the exact same winning property value it did before removal (source: this pass's own before/after cascade-winner diff over every rule in the import graph).
 
+## Single-owner invariants (DP 1.0.12 final audit)
+
+These are enforced by static tests (`backend/tests/test_ui_runtime_architecture_contract.py`) and by Browser Runtime specs.
+
+- `app.js` is the one Server-Sent Events connection owner. It creates the only `EventSource` (for `/api/events/stream`) and registers `duplicate_consolidated` directly; the handler asks `window.DPIcons.consolidationToastCopy(...)` for the copy and shows it with `window.DPIcons.toast(...)`. The native `window.EventSource` is never replaced or wrapped.
+- `operator-title.js` owns toast/icon presentation and the consolidation toast copy only. It does not create, wrap, proxy, or replace any EventSource.
+- Activity Log behavior is owned only by `ui-activity-log-runtime.js`. `app.js` holds no Activity Log implementation (no `_allEvents`, `loadEvents`, or `filterEvents`), and no Activity Log compatibility globals (`window.loadEvents`, `window.filterEvents`) exist.
+- Topbar concurrency is rendered by `app.js`'s `updateAria2TopbarBadge`. Its denominator is `settingsData.transfer_policy.max_concurrent_executions` and nothing else: a stale or native aria2 value can never replace scheduler capacity. There is no wrapper runtime: `ui-topbar-concurrency.js` is retired and absent.
+- No owner reassigns another owner's global or a native browser API. An owner may publish its own exported namespace and may listen to explicit events another owner emits.
+- The browser session owner (`auth.js`) publishes its authenticated request path as `window.debridPulseAuth.fetch`; every application HTTP call uses it. The native `window.fetch` is not replaced.
+- Settings markup has one owner. `ui-settings-page.js` renders every tab, panel, card, icon and ARIA attribute exactly once; no other script rewrites, reparents, decorates or repairs it after it renders. Bounded feature owners (`ui-settings-directory-picker.js`, `ui-settings-aria2-live.js`, `ui-settings-archive-passwords.js`) add behavior for their own feature, and only through their own mount, on the explicit `debridpulse:settings-rendered` event. The accessibility runtime no longer projects tab semantics onto Settings.
+- The shell provides stable mounts and the session owner populates its own: `index.html` contains `#sidebar-bottom-stack` and `#sidebar-auth-mount`; `auth.js` fills that mount and sets a state attribute on the stack. It does not move `.sidebar-footer` or any other owner's element.
+- Global processing pause is operational state, not a setting. The backend's durable application state is its only authority; `AppSettings` has no `paused` field, nothing is written back into configuration, and the frontend keeps only a non-persisted `processingPaused` projection assigned from `GET /stats` and the pause/resume results (`settingsData` never carries it).
+- Canonical settings fields are consumed directly: aria2 configuration from `settingsData.integrations.aria2.options`, AllDebrid credentials from `integrations.alldebrid.options`, execution policy from `transfer_policy`, the bandwidth cap from `execution_runtime_limits`. No flat alias (`aria2_*`, `max_concurrent_downloads`, `alldebrid_api_key`, ...) is read, mirrored, or written, and the whole-settings write never carries a canonical namespace or the read-only compatibility fields the server names in `compatibility_fields`.
+
 ## Accessibility and cross-cutting runtime
 
 `ui-accessibility-runtime.js` remains a deliberately narrow cross-cutting module for ARIA, keyboard behavior, and universal select/dropdown projection across dynamically rendered controls. Its `MutationObserver` is not a general presentation-repair mechanism.
 
 `operator-title.js` owns canonical icon/toast geometry and is not a runtime loader or DOM-repair layer.
 
-`ui-settings-archive-passwords.js`'s `MutationObserver` on `#view-settings` is a scaffold-repair guard scoped to its own archive-password editor (rebuilding its own DOM under `[data-panel="extraction"]` if Settings re-renders around it) — it does not touch or correct any other owner's markup.
+`ui-settings-archive-passwords.js` fills the archive-password editor rows that `ui-settings-page.js` rendered (label, form-field textarea, editor container, reveal button and hint are all page markup) when the page announces `debridpulse:settings-rendered`; it observes no DOM, creates no scaffold, and hides or rewrites nothing the page rendered.
 
 ## Permanent qualification
 

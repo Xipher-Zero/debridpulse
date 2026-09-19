@@ -37,13 +37,13 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
     index = read("index.html")
     expected = (
         "/ui-toast-contract.js?v=2",
-        "/ui-processing-presentation.js?v=2",
+        "/ui-processing-presentation.js?v=3",
         "/ui-transfer-source-presentation.js?v=1",
         "/ui-file-selection.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-downloads.js?v=1",
-        "/ui-activity-log-runtime.js?v=1",
-        "/ui-settings-archive-passwords.js?v=1",
+        "/ui-activity-log-runtime.js?v=2",
+        "/ui-settings-archive-passwords.js?v=2",
     )
     positions = []
     for src in expected:
@@ -56,7 +56,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
 def test_bounded_runtime_owners_are_present() -> None:
     provider = read("ui-provider-status.js")
     assert "ui-correction" not in provider
-    assert "createElement('script')" not in read("ui-settings-card-icons.js")
+    assert "createElement('script')" not in read("ui-settings-page.js")
     # DP 1.0.12 Gate 9 fix-forward: the module no longer exports an empty
     # window.DPDashboardTransferPresentation marker whose only consumer was
     # a readiness test -- __dpRegisterRecentRenderer is its real, functional
@@ -155,7 +155,7 @@ def test_transfer_level_candidate_control_is_one_shared_group_owner() -> None:
     index = read("index.html")
     # The shared runtime is loaded once, as an ordered defer script (like the
     # per-file candidate owner), not through the bounded presentation loader.
-    assert index.count("/ui-group-candidates.js?v=1") == 1
+    assert index.count("/ui-group-candidates.js?v=2") == 1
     assert "ui-group-candidates.js" not in provider
     style = read("style.css")
     assert style.count("/ui-group-candidates.css") == 1
@@ -181,7 +181,11 @@ def test_import_existing_backend_capability_and_direct_source_metadata_remain() 
     routes = (ROOT / "backend" / "api" / "routes.py").read_text(encoding="utf-8")
     definition = (ROOT / "backend" / "providers" / "general_http" / "definition.py").read_text(encoding="utf-8")
     assert "/torrents/import-existing" in routes
-    assert "btn-import-existing" in read("ui-processing-presentation.js")
+    # The Dashboard no longer offers the retired Import action: its button, its
+    # handler and its styling are gone, and no runtime deletes it after render.
+    assert "btn-import-existing" not in read("index.html")
+    assert "btn-import-existing" not in read("ui-processing-presentation.js")
+    assert "importExisting" not in read("app.js")
     assert 'status_group="direct_sources"' in definition
     assert 'status_group_label="Direct Sources"' in definition
 
@@ -275,12 +279,12 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
     index = read("index.html")
     ordered = (
         "/ui-toast-contract.js?v=2",
-        "/ui-processing-presentation.js?v=2",
+        "/ui-processing-presentation.js?v=3",
         "/ui-file-selection.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-downloads.js?v=1",
-        "/ui-activity-log-runtime.js?v=1",
-        "/ui-settings-archive-passwords.js?v=1",
+        "/ui-activity-log-runtime.js?v=2",
+        "/ui-settings-archive-passwords.js?v=2",
     )
     positions = [index.index(item) for item in ordered]
     assert positions == sorted(positions)

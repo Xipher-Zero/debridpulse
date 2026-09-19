@@ -15,7 +15,7 @@ DOWNLOADS = STATIC / "ui-downloads-page.css"
 def test_universal_language_loads_before_reference_and_page_layers() -> None:
     overlay = STYLE.read_text(encoding="utf-8")
     universal = "/ui-universal-language.css?v=21"
-    dashboard = "/ui-dashboard.css?v=21"
+    dashboard = "/ui-dashboard.css?v=22"
     statistics = "/ui-statistics-page.css?v=23"
     downloads = "/ui-downloads-page.css?v=30"
     for layer in (universal, dashboard, statistics, downloads):

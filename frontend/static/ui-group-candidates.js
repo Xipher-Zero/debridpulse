@@ -958,7 +958,7 @@
   // ── Group switch orchestration ─────────────────────────────────────────
 
   async function switchOne(transferId, artifactId, candidateId) {
-    const response = await fetch(
+    const response = await window.debridPulseAuth.fetch(
       '/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate',
       {
         method: 'POST',

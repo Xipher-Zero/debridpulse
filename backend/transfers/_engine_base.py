@@ -101,10 +101,9 @@ from pathlib import Path
 import time
 from weakref import WeakValueDictionary
 
-from transfers.applicability import ApplicabilityUnresolved
 from transfers.canonical import CanonicalOwnership
 from transfers.contracts import (BatchObservation, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
-    Inventory, Manifest, PauseResume, ProviderInputContinuation, ResourceLookup)
+    Inventory, PauseResume, ProviderInputContinuation)
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
@@ -143,8 +142,16 @@ class TransferEngine:
         self._paths_lock = asyncio.Lock()
         self._postprocess_lock = asyncio.Lock()
         self._resolution_slots = asyncio.Semaphore(max(1, self.policy.resolution_concurrency))
+        # Weak-value lock maps: a caller holding/awaiting a lock keeps the strong
+        # local reference that keeps its entry alive; once every holder/waiter
+        # for a key is gone the entry is collected instead of retaining one
+        # asyncio.Lock per transfer/cohort id for the life of the process. Never
+        # delete-on-release: that can race with a concurrent waiter and hand out
+        # two lock objects for the same active key.
         self._transfer_locks = WeakValueDictionary()
         self._execution_convergence_locks = WeakValueDictionary()
+        self._collection_affinity_locks = WeakValueDictionary()
+        self._cohort_locks = WeakValueDictionary()
         self.dispatch_permitted = True
         # Positive, execution-layer-owned evidence (DP 1.0.12 recovery
         # leveling, Section 9) that the REAL _dispatch() reached the capacity
@@ -182,8 +189,8 @@ class TransferEngine:
         return not admission or (not transfer.paused and not await self.repository.globally_paused())
 
     @staticmethod
-    def _error(category, stage, *, domain=Domain.INTERNAL, retryability=Retryability.UNKNOWN, recovery=Recovery.REQUIRE_OPERATOR):
-        return NormalizedError(domain, category, stage, retryability=retryability, recovery=recovery)
+    def _error(category, stage, *, domain=Domain.INTERNAL, retryability=Retryability.UNKNOWN):
+        return NormalizedError(domain, category, stage, retryability=retryability)
 
     @classmethod
     def _authoritative_provider_result(cls, provider_id: str, result: ResolutionResult) -> ResolutionResult:
@@ -367,7 +374,7 @@ class TransferEngine:
             diagnostic = native.diagnostic
         return NormalizedError(
             Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-            retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE,
+            retryability=Retryability.BACKOFF,
             operator_action_required=False, integration_id=executor_id, diagnostic=diagnostic,
         )
 
@@ -475,7 +482,7 @@ class TransferEngine:
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, observed.paths,
                     NormalizedError(
                         Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-                        retryability=Retryability.BACKOFF, recovery=Recovery.RECONCILE,
+                        retryability=Retryability.BACKOFF,
                         operator_action_required=False, integration_id=executor.descriptor.id,
                     ))
             except Exception as exc:
@@ -525,54 +532,7 @@ class TransferEngine:
         await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
 
     async def _resolve(self, record: RequestRecord):
-        attempt = None
-        provider = None
-        try:
-            if record.resource and record.parent_id is None:
-                previous_provider = self.registry.providers.get(record.resource.provider_id)
-                if not isinstance(previous_provider, ResourceLookup):
-                    raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RECONCILIATION))
-                previous = await previous_provider.observe(record.resource)
-                await self.repository.resource_observation(record.transfer_id, previous.resource, previous.state)
-                restartable = previous.state in {ResourceState.EXPIRED, ResourceState.ABSENT} or (
-                    previous.state == ResourceState.UNAVAILABLE and previous.error is not None
-                    and previous.error.retryability not in {Retryability.NEVER, Retryability.UNKNOWN}
-                    and previous.error.domain != Domain.SECURITY
-                    and previous.error.recovery in {Recovery.RETRY, Recovery.RERESOLVE, Recovery.BACKOFF})
-                if previous.error and not restartable:
-                    raise TransferError(previous.error)
-                if previous.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}:
-                    await self.repository.poll_after(record.id, self.clock(), waiting=True)
-                    return
-                if not restartable:
-                    raise TransferError(self._error(Category.UNMAPPED_PROVIDER_ERROR, Stage.RECONCILIATION, domain=Domain.PROVIDER))
-                if previous.state != ResourceState.ABSENT and record.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
-                    await self.repository.cleanup_intent(record.transfer_id, record.resource.id, CleanupAuthority.OWNED)
-                    await self._cleanup_pending()
-                    if any(resource.id == record.resource.id and pending for resource, _state, pending in await self.repository.resources(record.transfer_id)):
-                        raise TransferError(self._error(Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP))
-            bound_provider_id = await self.repository.bound_route_provider(record.id)
-            provider = (
-                self.registry.provider_for_bound_route(bound_provider_id, record.request)
-                if bound_provider_id else self.registry.provider_for(record.request)
-            )
-            async with self._resolution_slots:
-                if not await self._live(record.transfer_id, admission=True):
-                    return
-                attempt = await self.repository.begin_resolution(record.id, provider.descriptor.id)
-                if attempt is None:
-                    return
-                result = await provider.resolve(record.request)
-            return await self._apply_resolution(record, attempt, provider, result)
-        except ApplicabilityUnresolved:
-            return
-        except Exception as exc:
-            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
-                exc, integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
-                secrets=(str(record.request.payload),))
-            if attempt:
-                await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
-            await self._request_failure(record, error, attempts=record.attempts + (1 if attempt else 0))
+        raise NotImplementedError("_resolve is implemented by transfers.engine.TransferEngine")
 
     async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
                                 *, challenge: InputChallenge | None = None):
@@ -610,15 +570,7 @@ class TransferEngine:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
 
     async def _after_resolution_persisted(self, record: RequestRecord, provider, result: ResolutionResult) -> None:
-        """Neutral seam: the provider resource is now durably known and its
-        initial availability is still known, before an immediately available
-        resource proceeds to executable manifest materialization.
-
-        The qualified base owns no policy here. A public engine may use this to
-        establish a universal file-selection window without teaching this layer
-        any provider-specific behavior.
-        """
-        return None
+        raise NotImplementedError("_after_resolution_persisted is implemented by transfers.engine.TransferEngine")
 
     async def _continue_provider_input(self, challenge: InputChallenge):
         if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
@@ -635,13 +587,13 @@ class TransferEngine:
             if not bound_provider_id or bound_provider_id != challenge.integration_id:
                 raise TransferError(self._error(
                     Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION, domain=Domain.LIFECYCLE,
-                    retryability=Retryability.NEVER, recovery=Recovery.FAIL,
+                    retryability=Retryability.NEVER,
                 ))
             provider = self.registry.provider_for_bound_continuation(bound_provider_id, record.request)
             if not isinstance(provider, ProviderInputContinuation):
                 raise TransferError(self._error(
                     Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
-                    retryability=Retryability.NEVER, recovery=Recovery.FAIL,
+                    retryability=Retryability.NEVER,
                 ))
             async with self._resolution_slots:
                 if not await self._live(challenge.transfer_id, admission=True):
@@ -665,40 +617,7 @@ class TransferEngine:
                 submitted.discard()
 
     async def _observe_resource(self, record: RequestRecord):
-        provider = self.registry.providers.get(record.resource.provider_id) if record.resource else None
-        try:
-            if not isinstance(provider, ResourceLookup):
-                raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RECONCILIATION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
-            observation = await provider.observe(record.resource)
-            await self.repository.resource_observation(record.transfer_id, observation.resource, observation.state)
-            if not await self._live(record.transfer_id, admission=True):
-                return
-            if observation.error:
-                await self._request_failure(record, observation.error, waiting=True)
-            elif observation.state == ResourceState.AVAILABLE:
-                if not isinstance(provider, Manifest):
-                    raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
-                entries = await provider.manifest(record.resource)
-                entries = tuple({codec.dump(entry): entry for entry in entries}.values())
-                if not entries:
-                    raise TransferError(self._error(Category.RESOLUTION_TEMPORARILY_FAILED, Stage.CANDIDATE_PREPARATION,
-                        domain=Domain.RESOLUTION, retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF))
-                paths = [str(destination(self.root, entry.relative_path)).casefold() for entry in entries]
-                if len(paths) != len(set(paths)):
-                    raise TransferError(self._error(Category.PATH_POLICY_VIOLATION, Stage.CANDIDATE_PREPARATION, domain=Domain.SECURITY))
-                await self.repository.manifest(record, entries)
-            elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
-                error = self._error(Category.RESOURCE_EXPIRED if observation.state == ResourceState.EXPIRED else Category.RESOURCE_NOT_FOUND,
-                    Stage.RESOLUTION, domain=Domain.PROVIDER, retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE)
-                await self._request_failure(record, error, waiting=True)
-            elif observation.state in {ResourceState.UNKNOWN, ResourceState.UNAVAILABLE}:
-                raise TransferError(self._error(Category.UNMAPPED_PROVIDER_ERROR, Stage.RECONCILIATION, domain=Domain.PROVIDER))
-            elif observation.state == ResourceState.PREPARING:
-                await self.repository.poll_after(record.id, self.clock() + self.policy.resource_poll_interval)
-        except Exception as exc:
-            error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
-                integration_id=provider.descriptor.id if provider else "", domain=Domain.PROVIDER, stage=Stage.RECONCILIATION)
-            await self._request_failure(record, error, waiting=True)
+        raise NotImplementedError("_observe_resource is implemented by transfers.engine.TransferEngine")
 
     async def _materialize(self, record: RequestRecord, candidates):
         if any(not candidate.endpoints or candidate.expected_bytes < 0 for candidate in candidates):
@@ -850,7 +769,7 @@ class TransferEngine:
                 return
             if candidate.expires_at is not None and candidate.expires_at <= self.clock():
                 error = self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
-                    retryability=Retryability.AFTER_RERESOLUTION, recovery=Recovery.RERESOLVE)
+                    retryability=Retryability.AFTER_RERESOLUTION)
                 await self._schedule_refresh(artifact, error)
                 return
             request = ExecutionRequest(candidate, artifact.target, new_identity())
@@ -1051,7 +970,7 @@ class TransferEngine:
             if confirmed.error or confirmed.state not in {ExecutionState.ABSENT, ExecutionState.CANCELLED}:
                 return
             error = self._error(Category.TRANSFER_STALLED, Stage.EXECUTION, domain=Domain.EXECUTOR,
-                retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)
+                retryability=Retryability.BACKOFF)
             await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.SUCCEEDED:
             validate_target(self.root, artifact.target)
@@ -1081,7 +1000,7 @@ class TransferEngine:
             await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.ABSENT:
             error = self._error(Category.ORPHANED_RESOURCE, Stage.RECONCILIATION, domain=Domain.RECONCILIATION,
-                                retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)
+                                retryability=Retryability.BACKOFF)
             await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.CANCELLED:
             await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.CANCELLED,
@@ -1233,7 +1152,7 @@ class TransferEngine:
                 if not current or current.state != TransferState.CANCELLED:
                     raise TransferError(self._error(
                         Category.RESOURCE_STATE_CONFLICT, Stage.EXECUTION, domain=Domain.LIFECYCLE,
-                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                        retryability=Retryability.NEVER,
                     ))
 
             challenge = await self.challenges.current(transfer_id)
@@ -1251,7 +1170,7 @@ class TransferEngine:
         )
         return NormalizedError(
             Domain.CLEANUP, Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP,
-            retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,
+            retryability=Retryability.BACKOFF,
             integration_id=executor_id, diagnostic=native.diagnostic,
         )
 
@@ -1276,7 +1195,7 @@ class TransferEngine:
             if executor is None:
                 error = self._error(
                     Category.UNSUPPORTED_CAPABILITY, Stage.CLEANUP, domain=Domain.CLEANUP,
-                    retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                    retryability=Retryability.NEVER,
                 )
                 await self.repository.execution_cleanup_retry(handle.attempt_id, error, poll_at)
                 errors.append(error)
@@ -1288,7 +1207,7 @@ class TransferEngine:
                 if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
                     raise TransferError(self._error(
                         Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,
-                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                        retryability=Retryability.NEVER,
                     ))
                 await self.repository.execution(observed)
                 if observed.state in {
@@ -1308,7 +1227,7 @@ class TransferEngine:
                 if not destructive_allowed:
                     error = previous_error or self._error(
                         Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,
-                        retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,
+                        retryability=Retryability.BACKOFF,
                     )
                     await self.repository.execution_cleanup_retry(handle.attempt_id, error, poll_at)
                     continue
@@ -1320,13 +1239,13 @@ class TransferEngine:
                 if not isinstance(outcome, TransferOutcome):
                     raise TransferError(self._error(
                         Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,
-                        retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
+                        retryability=Retryability.NEVER,
                     ))
                 await self.repository.outcome(attempt.transfer_id, outcome, attempt_id=handle.attempt_id)
                 if outcome.kind not in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED, OutcomeKind.SKIPPED}:
                     error = outcome.error or self._error(
                         Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,
-                        retryability=Retryability.BACKOFF, recovery=Recovery.RETRY,
+                        retryability=Retryability.BACKOFF,
                     )
                     raise TransferError(error)
 

@@ -48,8 +48,8 @@ def test_v11_cascade_uses_deliberate_final_ownership_order() -> None:
         "/ui-shell.css?v=22",
         "/ui-shell-structural.css?v=31",
         "/ui-shell-provider-status.css?v=25",
-        "/ui-dashboard.css?v=21",
-        "/ui-utility-controls.css?v=24",
+        "/ui-dashboard.css?v=22",
+        "/ui-utility-controls.css?v=25",
         "/ui-statistics-page.css?v=23",
         "/ui-activity-log-page.css?v=31",
         "/ui-downloads-page.css?v=30",
@@ -99,12 +99,12 @@ def test_v11_cache_generations_remain_targeted() -> None:
         "/ui-shell.css": "22",
         "/ui-shell-structural.css": "31",
         "/ui-shell-provider-status.css": "25",
-        "/ui-utility-controls.css": "24",
+        "/ui-utility-controls.css": "25",
         "/ui-statistics-page.css": "23",
         "/ui-activity-log-page.css": "31",
         "/ui-downloads-page.css": "30",
         "/ui-settings-page.css": "3",
-        "/ui-settings-chrome.css": "3",
+        "/ui-settings-chrome.css": "4",
         "/ui-help-page.css": "23",
         "/ui-feature-icon-contract.css": "5",
         "/ui-panel-surface-treatment.css": "23",
@@ -153,8 +153,8 @@ def test_shell_owns_topbar_navigation_canvas_and_provider_support_geometry() -> 
     # DP 1.0.12 canonical flattening (Gate 9 round 3 fix-forward): the old
     # ::before pseudo-title was always suppressed by a correction layer in
     # the (now-deleted) ui-provider-summary.css and never rendered; the real
-    # heading is the explicit .dp-provider-status-heading element the
-    # runtime creates.
+    # heading is the explicit .dp-provider-status-heading element that the
+    # shell markup (index.html) renders.
     assert ".dp-provider-status-list::before" not in provider_state
     for fragment in (
         ".dp-provider-status-heading",
@@ -196,3 +196,12 @@ def test_shell_pulse_is_registered_true_vector_art() -> None:
     assert "<image" not in raw.lower()
     assert "data:image" not in raw.lower()
     assert manifest["icons"]["shellPulse"] == "shell-pulse.svg"
+
+
+def test_provider_status_heading_and_list_are_static_shell_markup_the_owner_only_fills() -> None:
+    index = (ROOT / "frontend" / "static" / "index.html").read_text(encoding="utf-8")
+    owner = (ROOT / "frontend" / "static" / "ui-provider-status.js").read_text(encoding="utf-8")
+    assert '<div class="dp-provider-status-heading">Provider Status</div>' in index
+    assert 'id="provider-status-list"' in index
+    for created in ("ensureHeading", "createElement", "insertBefore", "dp-provider-status-heading"):
+        assert created not in owner, created

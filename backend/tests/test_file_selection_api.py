@@ -26,7 +26,7 @@ from transfers.errors import TransferError
 from transfers.models import ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
+from transfers.presentation_repository import TransferRepository
 
 FILES6 = [
     ("e01.mkv", "Season 1/e01.mkv", 100), ("e02.mkv", "Season 1/e02.mkv", 200),

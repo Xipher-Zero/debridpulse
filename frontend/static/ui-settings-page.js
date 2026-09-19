@@ -11,8 +11,8 @@
     ['sources', 'Sources & Providers', 'zap'],
     ['downloads', 'Downloads', 'download'],
     ['extraction', 'Extraction', 'package-open'],
-    ['notifications', 'Notifications', 'bell'],
     ['authentication', 'Authentication', 'shield-check'],
+    ['notifications', 'Notifications', 'bell'],
     ['maintenance', 'Data & Maintenance', 'database-backup'],
   ]);
 
@@ -47,6 +47,20 @@
   })[ch]);
   const checked = value => value ? 'checked' : '';
   const selected = (value, expected) => String(value) === String(expected) ? 'selected' : '';
+
+  // The Settings document is rendered from, and saved to, the canonical
+  // namespaces: integrations.<id>.options, transfer_policy. Form controls keep
+  // their local names (data-setting="aria2_mode", ...) but those names never
+  // imply a flat settings field.
+  const aria2Of = s => s?.integrations?.aria2?.options || {};
+  const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
+  const policyOf = s => s?.transfer_policy || {};
+  // A form control whose stored value is an integration-owned secret is
+  // written, and cleared, through that integration's own scoped surface.
+  const INTEGRATION_SECRET_CONTROLS = Object.freeze({
+    alldebrid_api_key: {integration: 'alldebrid', option: 'api_key'},
+    aria2_secret: {integration: 'aria2', option: 'secret'},
+  });
 
   function oidcStatePresentation(auth, available = auth?.oidc_available) {
     if (!auth?.oidc_configured) {
@@ -295,7 +309,7 @@
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
         <input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>
-        ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}
+        ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}${options.after || ''}
       </div>`;
   }
 
@@ -309,10 +323,26 @@
       </div>`;
   }
 
-  function toggle(key, label, detail, value) {
+  // The archive-password field is rendered complete: the form-field textarea that
+  // carries the persisted value (hidden from assistive tech and the tab order), the
+  // editor container the ui-settings-archive-passwords owner fills, its reveal button
+  // and the hint. The owner adds behavior only.
+  function archivePasswordField(configured) {
+    const id = fieldId('extraction_password');
+    const placeholder = configured ? 'Stored password list configured — blank keeps it' : 'Optional archive passwords';
+    return `
+      <div class="dp-settings-field dp-settings-extraction-password-field">
+        <label class="form-label" for="${id}">Archive Passwords (one per line)</label>
+        <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1"></textarea>
+        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-rows"></div><button type="button" class="dp-settings-password-eye"></button></div>
+        <span class="form-hint">One password per line. Entering values replaces the stored list; leaving it blank keeps what is stored. Use the eye to show or hide all passwords.</span>
+      </div>`;
+  }
+
+  function toggle(key, label, detail, value, extraClass = '') {
     const id = fieldId(key);
     return `
-      <label class="toggle-row dp-settings-toggle" for="${id}">
+      <label class="toggle-row dp-settings-toggle${extraClass ? ` ${extraClass}` : ''}" for="${id}">
         <span class="toggle-info">
           <span class="tl">${html(label)}</span>
           ${detail ? `<span class="td">${html(detail)}</span>` : ''}
@@ -336,22 +366,49 @@
       </div>`;
   }
 
+  const CONFIGURED_SECRET_MASK = '•'.repeat(48);
+
+  // Inner-card title icons, keyed by the card's title.
+  const CARD_ICONS = Object.freeze({
+    'Download Engine': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
+    'Download Safety & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
+    'Built-In Download Engine State': ['downloads', '/icons/dp/settings/built-in-download-engine-state.svg?v=1'],
+    'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
+    'Authentication Status': ['authentication', '/icons/dp/settings/authentication-status.svg?v=1'],
+    'Username & Password': ['authentication', '/icons/dp/settings/username-password.svg?v=1'],
+    'OpenID Connect': ['authentication', '/icons/dp/settings/openid-connect.svg?v=1'],
+    'API Access': ['authentication', '/icons/dp/settings/api-access.svg?v=1'],
+    'Discord Notifications': ['notifications', '/icons/dp/settings/discord-notifications.svg?v=1'],
+    'Statistics Reporting': ['notifications', '/icons/dp/settings/statistics-reporting.svg?v=1'],
+    'Backups & Retention': ['maintenance', '/icons/dp/settings/backups-retention.svg?v=1'],
+    'Database Reset Controls': ['maintenance', '/icons/dp/settings/database-reset-controls.svg?v=1'],
+  });
+
   function card(title, body, options = {}) {
-    const titleClass = options.titlePrefix ? 'card-title dp-settings-card-title--with-icon' : 'card-title';
-    const titleMarkup = options.titlePrefix
-      ? `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`
-      : html(title);
+    const icon = CARD_ICONS[title];
+    let titleClass = 'card-title';
+    let titleAttrs = '';
+    let titleMarkup = html(title);
+    if (icon) {
+      titleClass = 'card-title dp-settings-card-title--with-icon dp-settings-inner-card-title';
+      titleAttrs = ` data-dp-settings-icon-section="${icon[0]}"`;
+      titleMarkup = `<span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="${icon[0]}"><img src="${icon[1]}" alt="" decoding="async"></span>${
+        options.wrapTitle ? `<span class="dp-settings-card-title-text">${html(title)}</span>` : html(title)}`;
+    } else if (options.titlePrefix) {
+      titleClass = 'card-title dp-settings-card-title--with-icon';
+      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
+    }
+    const centerClass = ['dp-settings-card-header-center', options.headerCenterClass].filter(Boolean).join(' ');
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
-          <span class="${titleClass}">${titleMarkup}</span>
-          ${options.headerCenter ? `<div class="dp-settings-card-header-center ${options.headerCenterClass || ''}">${options.headerCenter}</div>` : ''}
+          <span class="${titleClass}"${titleAttrs}>${titleMarkup}</span>
+          ${options.headerCenter ? `<div class="${centerClass}">${options.headerCenter}</div>` : ''}
           ${options.action || ''}
         </div>
         <div class="card-body">${body}</div>
       </section>`;
   }
-
   function groupCard(title, body, options = {}) {
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}">
@@ -363,28 +420,41 @@
       </section>`;
   }
 
-  function secretField(key, label, configured, placeholder, hint) {
-    return `
-      ${input(key, label, '', {
-        type: 'password',
-        placeholder: configured ? `${placeholder || label} configured — blank keeps current value` : (placeholder || label),
-        autocomplete: 'off',
-        hint,
-      })}
-      ${configured ? `
-        <label class="dp-settings-clear-secret">
+  function secretField(key, label, configured, placeholder, hint, options = {}) {
+    const clear = configured ? `
+        <label class="dp-settings-clear-secret${options.clearClass ? ` ${options.clearClass}` : ''}">
           <span>
-            <b>Clear stored ${html(label)}</b>
-            <small>Erase the stored value when Settings are saved.</small>
+            <b>${html(options.clearTitle || `Clear stored ${label}`)}</b>
+            <small>${html(options.clearDetail || 'Erase the stored value when Settings are saved.')}</small>
           </span>
           <input type="checkbox" data-clear-secret="${html(key)}">
-        </label>` : ''}`;
+        </label>` : '';
+    const field = input(key, options.label || label, '', {
+      type: 'password',
+      placeholder: configured ? `${placeholder || label} configured — blank keeps current value` : (placeholder || label),
+      autocomplete: 'off',
+      hint,
+      after: options.clearInside ? clear : '',
+    });
+    return options.clearInside ? field : field + clear;
+  }
+
+  // Directory-valued field with its Browse control (the picker itself is owned
+  // by ui-settings-directory-picker.js, opened from the Browse button).
+  function directoryField(key, label, value, {hint, browseAction, browseLabel}) {
+    const id = fieldId(key);
+    return `
+      <div class="dp-settings-field dp-settings-directory-field">
+        <label class="form-label" for="${id}">${html(label)}</label>
+        <div class="dp-settings-directory-field-control"><input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}"><button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button></div>
+        <span class="form-hint">${hint}</span>
+      </div>`;
   }
 
   function allDebridApiKeyField(configured) {
     const key = 'alldebrid_api_key';
     const id = fieldId(key);
-    const masked = '••••••••••••••••';
+    const masked = CONFIGURED_SECRET_MASK;
     const hint = configured
       ? 'Enter a new API key to replace the stored key when you click Apply Settings. Leave this field blank to keep the current key.'
       : 'Enter your AllDebrid API key. It will be saved only when you click Apply Settings.';
@@ -413,7 +483,7 @@
   function aria2RpcSecretFields(configured) {
     const key = 'aria2_secret';
     const id = fieldId(key);
-    const masked = '••••••••••••••••';
+    const masked = CONFIGURED_SECRET_MASK;
     const hint = configured
       ? 'Enter a new RPC secret to replace the stored secret when you click Apply Settings. Leave this field blank to keep the current secret.'
       : 'Enter the RPC secret used by your external aria2 server. It will be saved only when you click Apply Settings.';
@@ -466,6 +536,49 @@
       </label>`;
   }
 
+  // Provider card: the title (with its premium mark), the configuration status,
+  // the collapse control and the Enable toggle are all part of the card's own
+  // markup. Behavior (collapse / status refresh) is bound by bindEvents().
+  function providerStatus(enabled, configured) {
+    if (!enabled && configured) return {text: 'Provider configured', tone: 'info'};
+    if (enabled && !configured) return {text: 'Configuration required', tone: 'warning'};
+    return {text: '', tone: 'none'};
+  }
+
+  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName}) {
+    const enabled = entry.enabled !== false;
+    const configured = !!entry.configured;
+    const premium = !!entry.presentation?.premium;
+    const safe = String(identity).replace(/[^a-z0-9_-]/gi, '-');
+    const enable = integrationHeaderToggle(identity, enabled, displayName, 'dp-settings-provider-header-enable');
+    const crown = premium ? '<span class="dp-provider-premium" role="img" title="Premium provider" aria-label="Premium provider"></span>' : '';
+    const titleMarkup = titlePrefix
+      ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>${crown}</span>`
+      : `<span class="card-title">${html(title)}${crown}</span>`;
+    if (!premium) {
+      return `
+      <section class="card dp-settings-card dp-large-panel-surface ${className}" data-provider-configured="${configured}">
+        <div class="card-header">
+          ${titleMarkup}
+          ${enable}
+        </div>
+        <div class="card-body">${body}</div>
+      </section>`;
+    }
+    const status = providerStatus(enabled, configured);
+    const bodyId = `dp-settings-provider-body-${safe}`;
+    const label = enabled ? 'Collapse provider configuration' : 'Expand provider configuration';
+    return `
+      <section class="card dp-settings-card dp-large-panel-surface ${className}${enabled ? '' : ' dp-settings-provider-card--collapsed'}" data-provider-configured="${configured}">
+        <div class="card-header">
+          ${titleMarkup}
+          <div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>
+          <div class="dp-settings-provider-header-controls"><button type="button" class="dp-settings-provider-disclosure" aria-controls="${bodyId}" aria-expanded="${enabled}" title="${label}" aria-label="${label}"><span aria-hidden="true">›</span></button>${enable}</div>
+        </div>
+        <div class="card-body" id="${bodyId}"${enabled ? '' : ' hidden'}>${body}</div>
+      </section>`;
+  }
+
   function sourcesPanel(s) {
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
@@ -474,17 +587,17 @@
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
         <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
       </span>`;
-    const provider = card('AllDebrid', `
+    const provider = providerCard('alldebrid', 'AllDebrid', `
       <p class="dp-settings-copy">Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.</p>
-      ${allDebridApiKeyField(!!s.alldebrid_api_key_configured)}
+      ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
-          ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', s.alldebrid_rate_limit_per_minute ?? 60, {
+          ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
             type: 'number', min: 0, max: 300,
             hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
           })}
-          ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', s.poll_interval_seconds ?? 30, {
+          ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
             type: 'number', min: 10,
             hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
           })}
@@ -492,73 +605,114 @@
             type: 'number', min: 0, max: 1440,
             hint: 'How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.'
           })}
-          ${input('upload_fail_retry_count', 'Upload Failure Retries', s.upload_fail_retry_count ?? 3, {
+          ${input('upload_fail_retry_count', 'Upload Failure Retries', policyOf(s).resolution_retry_count ?? 3, {
             type: 'number', min: 0, max: 20,
             hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
           })}
-          ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', s.upload_fail_retry_delay_minutes ?? 5, {
+          ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
             type: 'number', min: 0, max: 1440,
             hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
           })}
         </div>
       </details>
-    `, {
+`, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
-      action: integrationHeaderToggle('alldebrid', allDebrid.enabled !== false, 'AllDebrid', 'dp-settings-provider-header-enable'),
+      displayName: 'AllDebrid',
     });
 
-    const generalHttpCard = card('HTTP & HTTPS', `
+    const generalHttpCard = providerCard('general_http', 'HTTP & HTTPS', `
       <p class="dp-settings-copy dp-settings-provider-minimal-copy">Direct downloads from standard HTTP and HTTPS URLs.</p>
-    `, {
+    `, generalHttp, {
       className: 'dp-settings-provider-card dp-settings-provider-card--general-http',
-      action: integrationHeaderToggle('general_http', generalHttp.enabled !== false, 'HTTP & HTTPS', 'dp-settings-provider-header-enable'),
+      displayName: 'HTTP & HTTPS',
     });
 
     const debridServices = groupCard('Debrid Services', provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
-    const generalSources = groupCard('General Sources', generalHttpCard, {
+    const generalSources = groupCard(generalHttp.presentation?.status_group_label || 'Direct Sources', generalHttpCard, {
       className: 'dp-settings-source-group dp-settings-general-sources',
     });
     return debridServices + generalSources;
   }
 
+  const ARIA2_LIVE_FILTERS = Object.freeze([['all', 'All'], ['active', 'Active'], ['waiting', 'Waiting'], ['paused', 'Paused'], ['stopped', 'Stopped']]);
+
+  function aria2LiveCard() {
+    return `
+      <section class="card dp-settings-card dp-settings-aria2-live-card" data-dp-aria2-live-card="1" data-builtin-only-tuning aria-label="Built-In Download Engine State">
+        <div class="card-header">
+          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Built-In Download Engine State'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Built-In Download Engine State</span></span>
+          <div class="dp-settings-card-header-center">
+            <span class="dp-settings-aria2-live-copy">Inspect and control the built-in aria2 engine.</span>
+          </div>
+          <div class="dp-settings-aria2-live-header-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-dp-aria2-live-refresh>Refresh</button>
+          </div>
+        </div>
+        <div class="card-body" data-dp-aria2-live-body>
+          <div class="dp-settings-aria2-live-context">
+            This reflects temporary aria2 runtime state, not transfer history. DebridPulse Downloads remains the historical record.
+          </div>
+          <div class="dp-settings-aria2-live-control-row">
+            <div class="dp-settings-aria2-live-note">
+              <div class="dp-settings-aria2-live-note-title">Direct Engine Controls</div>
+              <div class="dp-settings-aria2-live-note-text">Bypasses normal DebridPulse transfer controls. Use for troubleshooting or recovery.</div>
+            </div>
+            <div class="dp-settings-aria2-live-tools">
+              <div class="dp-settings-aria2-live-metrics" aria-label="Built-in aria2 engine metrics">
+                <span data-dp-aria2-live-speed>0 KB/s</span>
+                <span data-dp-aria2-live-remaining>— Remaining</span>
+              </div>
+              <div class="filter-tabs dp-settings-aria2-live-filters" role="tablist" aria-label="Filter built-in aria2 engine jobs">
+                ${ARIA2_LIVE_FILTERS.map(([id, label]) => `
+                <button type="button" class="ftab${id === 'all' ? ' active' : ''}" role="tab" aria-selected="${id === 'all'}" data-engine-filter="${id}">${label}</button>`).join('')}
+              </div>
+            </div>
+          </div>
+          <div id="dp-settings-aria2-downloads" data-dp-aria2-live-queue="1" class="dp-settings-aria2-live-queue" aria-live="polite">
+            <div class="empty">Loading built-in aria2 engine state…</div>
+          </div>
+        </div>
+      </section>`;
+  }
+
   function downloadsPanel(s) {
-    const builtIn = (s.aria2_mode || 'builtin') === 'builtin';
-    const engineIdentity = `
-      <span class="dp-settings-download-engine-icon" aria-hidden="true">
-        <img src="/icons/dp/download-engine.svg?v=1" alt="">
-      </span>`;
+    const aria2 = aria2Of(s);
+    const policy = policyOf(s);
+    const builtIn = (aria2.mode || 'builtin') === 'builtin';
     const engineCopy = 'Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server.';
     const modeSelection = `
       <div class="dp-settings-download-engine-mode">
-        ${selectField('aria2_mode', 'Mode Selection', s.aria2_mode || 'builtin', [
+        ${selectField('aria2_mode', 'Mode Selection', aria2.mode || 'builtin', [
           ['builtin', 'Built-in aria2'],
           ['external', 'External aria2'],
         ])}
       </div>`;
     const delivery = card('Download Engine', `
-      <div class="dp-settings-mode-external dp-settings-external-connection-row ${s.aria2_secret_configured ? 'is-secret-configured' : ''}" ${builtIn ? 'hidden' : ''}>
-        ${input('aria2_url', 'External RPC URL', s.aria2_url || 'http://127.0.0.1:6800/jsonrpc', {
+      <div class="dp-settings-mode-external dp-settings-external-connection-row ${aria2.secret_configured ? 'is-secret-configured' : ''}" ${builtIn ? 'hidden' : ''}>
+        ${input('aria2_url', 'External RPC URL', aria2.url || 'http://127.0.0.1:6800/jsonrpc', {
           placeholder: 'http://aria2:6800/jsonrpc',
           hint: 'JSON-RPC endpoint DebridPulse uses to connect to your external aria2 server.'
         })}
-        ${aria2RpcSecretFields(!!s.aria2_secret_configured)}
+        ${aria2RpcSecretFields(!!aria2.secret_configured)}
       </div>
       <div class="dp-settings-download-engine-row">
         <div class="dp-settings-download-path-stack" data-download-path-mode="builtin" ${builtIn ? '' : 'hidden'}>
-          ${input('download_folder', 'Built-in Download Folder', s.download_folder || '/download', {
-            hint: 'Where DebridPulse saves downloads.'
+          ${directoryField('download_folder', 'Built-in Download Folder', s.download_folder || '/download', {
+            hint: 'Where DebridPulse saves downloads.',
+            browseAction: 'browse-download-folder',
+            browseLabel: 'Browse server directories for Built-in Download Folder',
           })}
         </div>
         <div class="dp-settings-download-path-stack" data-download-path-mode="external" ${builtIn ? 'hidden' : ''}>
-          ${input('aria2_download_path', 'External aria2 Download Path', s.aria2_download_path || '', {
+          ${input('aria2_download_path', 'External aria2 Download Path', aria2.download_path || '', {
             hint: 'Path your external aria2 server uses for the shared download folder on that server.'
           })}
         </div>
         <div class="dp-settings-download-limit">
-          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', s.transfer_policy?.max_concurrent_executions ?? s.max_concurrent_downloads ?? s.aria2_max_active_downloads ?? 3, {
+          ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', policy.max_concurrent_executions ?? 3, {
             type: 'number', min: 1, max: 20,
             hint: 'Maximum number of downloads DebridPulse can run at the same time.'
           })}
@@ -577,17 +731,17 @@
               'aria2_continue_downloads',
               'Continue Partial Downloads',
               'Resume existing partial files when possible instead of restarting them from the beginning.',
-              s.aria2_continue_downloads !== false
+              aria2.continue_downloads !== false
             )}
-            ${input('aria2_split', 'Segments per File', s.aria2_split ?? 16, {
+            ${input('aria2_split', 'Segments per File', aria2.split ?? 16, {
               type: 'number', min: 1, max: 64,
               hint: 'Controls how many parallel segments aria2 can use for a single file. Actual connections may be limited by the server and split-size settings.'
             })}
-            ${input('aria2_max_connection_per_server', 'Connections per Server', s.aria2_max_connection_per_server ?? 16, {
+            ${input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
               type: 'number', min: 1, max: 32,
               hint: 'Maximum number of connections a single download can open to the same server.'
             })}
-            ${input('aria2_min_split_size', 'Minimum Split Size', s.aria2_min_split_size || '10M', {
+            ${input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
               hint: 'Controls how small file sections can become when aria2 splits a download. Larger values create fewer parallel segments.'
             })}
           </div>
@@ -601,15 +755,15 @@
           <div class="dp-settings-engine-tuning-builtin-only" data-builtin-only-tuning ${builtIn ? '' : 'hidden'}>
             <p class="form-hint dp-settings-builtin-only-label">Built-in aria2 process only -- not applicable to an external aria2 daemon.</p>
             <div class="dp-settings-engine-tuning-grid">
-              ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', s.aria2_lowest_speed_limit || '0', {
+              ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
                 hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
               })}
-              ${input('aria2_disk_cache', 'Disk Cache', s.aria2_disk_cache || '64M', {
+              ${input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
                 hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
               })}
             </div>
             <div class="dp-settings-engine-file-allocation">
-              ${selectField('aria2_file_allocation', 'File Allocation', s.aria2_file_allocation || 'falloc', [
+              ${selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
                 ['trunc', 'Truncate'],
                 ['falloc', 'Fallocate'],
                 ['prealloc', 'Preallocate'],
@@ -621,98 +775,139 @@
       </details>
     `, {
       className: 'dp-settings-download-engine-card',
-      titlePrefix: engineIdentity,
+      wrapTitle: true,
       headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(engineCopy)}</span>`,
       action: modeSelection,
     });
 
     const recovery = card('Download Safety & Recovery', `
       ${input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
-        type: 'number', min: 0, step: 0.5, hint: '0 disables the disk-space dispatch guard.'
+        type: 'number', min: 0, step: 0.5,
+        hint: 'Stops new downloads from starting when free disk space falls below this amount. Set to 0 to disable the disk-space guard.'
       })}
-      ${input('disk_guard_resume_hysteresis_gb', 'Resume Hysteresis (GB)', s.disk_guard_resume_hysteresis_gb ?? 0.5, {
-        type: 'number', min: 0, step: 0.1
+      ${input('disk_guard_resume_hysteresis_gb', 'Resume Free Space Buffer (GB)', s.disk_guard_resume_hysteresis_gb ?? 0.5, {
+        type: 'number', min: 0, step: 0.1,
+        hint: 'Extra free space required above the minimum before DebridPulse starts downloads again. Helps prevent repeated stop/start behavior near the limit.'
       })}
-      ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', s.stuck_download_timeout_hours ?? 6, {
-        type: 'number', min: 0, max: 168, hint: '0 disables automatic stalled-download recovery.'
+      ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {
+        type: 'number', min: 0, max: 168,
+        hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
       })}
-      ${input('aria2_error_retry_count', 'Execution Retry Count', s.transfer_policy?.execution_retry_count ?? s.aria2_error_retry_count ?? 3, {
+      ${input('aria2_error_retry_count', 'Download Error Retries', policy.execution_retry_count ?? 3, {
         type: 'number', min: 0, max: 20,
-        hint: 'Universal retry policy for a failed download execution (specification section 4.1) — not an aria2-specific setting.'
+        hint: 'How many times DebridPulse retries a download after aria2 reports an error. Set to 0 to disable automatic retries.'
       })}
-      ${input('aria2_error_retry_delay_seconds', 'Execution Retry Delay (seconds)', s.transfer_policy?.execution_retry_delay_seconds ?? s.aria2_error_retry_delay_seconds ?? 60, {
-        type: 'number', min: 0, max: 3600
+      ${input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
+        type: 'number', min: 0, max: 3600,
+        hint: 'How long DebridPulse waits before retrying a download after an aria2 error. Set to 0 to retry immediately.'
       })}
-    `);
+    `, {className: 'dp-settings-download-recovery-card'});
 
-    return delivery + recovery;
+    return delivery + recovery + aria2LiveCard();
   }
 
   function extractionPanel(s) {
+    const enableId = fieldId('extract_enabled');
     return card('Automatic Extraction', `
-      <p class="dp-settings-copy">Extract supported archives after the physical download completes.</p>
-      ${toggle('extract_enabled', 'Enable Automatic Extraction', 'Run extraction for supported completed archives.', s.extract_enabled)}
-      ${toggle('extract_delete_archive', 'Delete Archive After Extraction', 'Remove archive files only after successful extraction.', s.extract_delete_archive !== false)}
-      ${input('extract_max_concurrent', 'Concurrent Extractions', s.extract_max_concurrent ?? 1, {
-        type: 'number', min: 1, max: 8
-      })}
-      ${textarea('extraction_password', 'Archive Passwords (one per line)', '', {
-        rows: 4,
-        placeholder: s.extraction_password_configured ? 'Stored password list configured — blank keeps it' : 'Optional archive passwords',
-        hint: 'Entering values replaces the stored password list. Blank preserves the stored value.'
-      })}
+      <div class="dp-settings-extraction-controls-row">
+        ${input('extract_max_concurrent', 'Concurrent Extractions', s.extract_max_concurrent ?? 1, {
+          type: 'number', min: 1, max: 8,
+          hint: 'Maximum number of extraction jobs DebridPulse can run at the same time.'
+        })}
+        ${toggle('extract_delete_archive', 'Delete Archives After Extraction', 'Remove original archive files only after extraction completes successfully.', s.extract_delete_archive !== false, 'dp-settings-extraction-delete')}
+      </div>
+      ${archivePasswordField(s.extraction_password_configured)}
       ${s.extraction_password_configured ? `
         <label class="dp-settings-clear-secret">
           <span><b>Clear stored archive passwords</b><small>Erase the stored extraction password list on Save.</small></span>
           <input type="checkbox" data-clear-secret="extraction_password">
         </label>` : ''}
-    `);
+    `, {
+      className: 'dp-settings-extraction-card',
+      headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
+      action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="form-label">Enable</span><span class="toggle">
+          <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${checked(s.extract_enabled)}>
+          <span class="ttrack"></span>
+        </span></label>`,
+    });
   }
 
   function notificationsPanel(s) {
     const discord = card('Discord Notifications', `
-      ${input('discord_username', 'Display Name', s.discord_username || 'DebridPulse')}
-      ${input('discord_avatar_url', 'Avatar URL', s.discord_avatar_url || '', {
-        placeholder: 'https://example.com/avatar.png'
-      })}
-      <div class="dp-settings-actions">
-        <label class="btn btn-ghost btn-sm dp-settings-file-button">
-          Upload Avatar
-          <input id="dp-settings-avatar-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
-        </label>
-        <button class="btn btn-ghost btn-sm" type="button" data-action="clear-avatar">Clear Avatar</button>
+      <div class="dp-settings-notifications-identity-row">
+        ${input('discord_username', 'Display Name', s.discord_username || 'DebridPulse', {
+          hint: 'Name shown as the sender of Discord notifications.'
+        })}
+        <div class="dp-settings-field">
+          <label class="form-label" for="${fieldId('discord_avatar_url')}">Avatar URL</label>
+          <input class="input" id="${fieldId('discord_avatar_url')}" data-setting="discord_avatar_url" type="text" value="${html(s.discord_avatar_url || '')}" placeholder="https://example.com/avatar.png">
+          <span class="form-hint">Image shown with Discord notifications. Paste a direct image URL or upload one.</span>
+          <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact" ${s.discord_avatar_url ? '' : 'hidden'}>
+            ${s.discord_avatar_url ? `<img src="${html(s.discord_avatar_url)}" alt="Discord avatar preview">` : ''}
+            <span>${s.discord_avatar_url ? html(s.discord_avatar_url) : ''}</span>
+          </div>
+        </div>
+        <div class="dp-settings-actions dp-settings-avatar-actions">
+          <label class="btn btn-ghost btn-sm dp-settings-file-button">
+            Upload Avatar
+            <input id="dp-settings-avatar-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+          </label>
+          <button class="btn btn-ghost btn-sm" type="button" data-action="clear-avatar">Clear Avatar</button>
+        </div>
       </div>
-      <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview" ${s.discord_avatar_url ? '' : 'hidden'}>
-        ${s.discord_avatar_url ? `<img src="${html(s.discord_avatar_url)}" alt="Discord avatar preview">` : ''}
-        <span>${s.discord_avatar_url ? html(s.discord_avatar_url) : ''}</span>
+      <div class="dp-settings-notifications-delivery-row">
+        ${secretField('discord_webhook_url', 'Discord Webhook', !!s.discord_webhook_url_configured, 'Primary Discord webhook', 'Primary Discord destination for enabled notifications.', {
+          clearInside: true, clearClass: 'dp-settings-notifications-clear-secret',
+          clearTitle: 'Clear Stored Webhook', clearDetail: 'Remove the saved primary webhook when Settings are applied.',
+        })}
+        ${secretField('discord_webhook_added', 'Download Added Webhook', !!s.discord_webhook_added_configured, 'Optional added-event webhook', 'Optional destination for new-download notifications. Leave blank to use the primary webhook.', {
+          clearInside: true, clearClass: 'dp-settings-notifications-clear-secret',
+          clearTitle: 'Clear Stored Download Added Webhook', clearDetail: 'Remove the saved Download Added webhook when Settings are applied.',
+        })}
+        ${input('update_check_interval_hours', 'Update Check Interval (Hours Between Checks)', s.update_check_interval_hours ?? 12, {
+          type: 'number', min: 0, max: 168, step: 1,
+          hint: 'Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.'
+        })}
       </div>
-      ${secretField('discord_webhook_url', 'Discord Webhook', !!s.discord_webhook_url_configured, 'Primary Discord webhook', 'Used for normal notification delivery.')}
-      ${secretField('discord_webhook_added', 'Added-event Webhook', !!s.discord_webhook_added_configured, 'Optional added-event webhook', 'Blank falls back according to server notification policy.')}
-      ${toggle('discord_notify_added', 'Download Added', 'Notify when work is accepted.', s.discord_notify_added)}
-      ${toggle('discord_notify_finished', 'Download Completed', 'Notify when a download finishes.', s.discord_notify_finished)}
-      ${toggle('discord_notify_error', 'Download Error', 'Notify on transfer failures.', s.discord_notify_error)}
-      ${toggle('discord_notify_extract', 'Extraction Result', 'Notify when extraction completes or fails.', s.discord_notify_extract)}
-      ${toggle('discord_notify_update', 'Update Available', 'Notify when a DebridPulse update is detected.', s.discord_notify_update)}
-      ${input('update_check_interval_hours', 'Update Check Interval (hours)', s.update_check_interval_hours ?? 12, {
-        type: 'number', min: 1, max: 168
-      })}
-    `);
+      <div class="dp-settings-notifications-toggle-row dp-settings-notifications-toggle-row--primary">
+        ${toggle('discord_notify_added', 'Download Added', 'Send a notification when a new download is accepted.', s.discord_notify_added)}
+        ${toggle('discord_notify_finished', 'Download Completed', 'Send a notification when a download finishes successfully.', s.discord_notify_finished)}
+        ${toggle('discord_notify_error', 'Download Error', 'Send a notification when a download fails.', s.discord_notify_error)}
+      </div>
+      <div class="dp-settings-notifications-toggle-row dp-settings-notifications-toggle-row--secondary">
+        ${toggle('discord_notify_extract', 'Extraction Result', 'Send a notification when archive extraction completes or fails.', s.discord_notify_extract)}
+        ${toggle('discord_notify_update', 'Update Available', 'Send a notification when a newer DebridPulse release is detected.', s.discord_notify_update)}
+      </div>
+    `, {
+      className: 'dp-settings-discord-card',
+      headerCenter: 'Configure notification identity, delivery destinations, and event alerts.',
+      headerCenterClass: 'dp-settings-notifications-header-copy',
+      action: '<div class="dp-settings-notifications-header-spacer" aria-hidden="true"></div>',
+    });
 
-    const reports = card('Statistics Reports', `
-      ${secretField('stats_report_webhook_url', 'Reporting Webhook', !!s.stats_report_webhook_url_configured, 'Optional reporting webhook', 'Blank uses the configured fallback when supported.')}
-      ${input('stats_report_interval_hours', 'Automatic Report Interval (hours)', s.stats_report_interval_hours ?? 0, {
-        type: 'number', min: 0, max: 8760, hint: '0 disables automatic reports.'
-      })}
-      ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
-        [24, '24 hours'],
-        [168, '7 days'],
-        [720, '30 days'],
-        [8760, '1 year'],
-      ])}
-      <div class="dp-settings-actions">
-        <button class="btn btn-ghost btn-sm" type="button" data-action="send-report">Send Test Report</button>
+    const reports = card('Statistics Reporting', `
+      <div class="dp-settings-statistics-reporting-row">
+        ${secretField('stats_report_webhook_url', 'Reporting Webhook', !!s.stats_report_webhook_url_configured, 'Optional reporting webhook', 'Optional destination for statistics reports. Leave blank to use the primary Discord webhook.', {
+          clearInside: true, clearClass: 'dp-settings-notifications-clear-secret',
+          clearTitle: 'Clear Stored Reporting Webhook', clearDetail: 'Remove the saved reporting webhook when Settings are applied.',
+        })}
+        ${input('stats_report_interval_hours', 'Automatic Report Interval (Hours Between Reports)', s.stats_report_interval_hours ?? 0, {
+          type: 'number', min: 0, max: 168, step: 1,
+          hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.'
+        })}
+        ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
+          [24, '24 hours'],
+          [168, '7 days'],
+          [720, '30 days'],
+          [8760, '1 year'],
+        ], 'Choose how much recent activity each statistics report includes.')}
       </div>
-    `);
+    `, {
+      className: 'dp-settings-statistics-reporting-card',
+      headerCenter: 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
+      headerCenterClass: 'dp-settings-statistics-reporting-header-copy',
+      action: '<div class="dp-settings-notifications-header-spacer" aria-hidden="true"></div>',
+    });
 
     return discord + reports;
   }
@@ -1179,32 +1374,59 @@
   }
 
   function maintenancePanel(s) {
-    return card('Backups & Retention', `
-      ${toggle('backup_enabled', 'Enable Backups', 'Automatically back up configuration and database state.', s.backup_enabled !== false)}
-      ${input('backup_folder', 'Backup Folder', s.backup_folder || '/app/data/backups')}
-      ${input('backup_interval_hours', 'Backup Interval (hours)', s.backup_interval_hours ?? 24, {type: 'number', min: 1, max: 168})}
-      ${input('backup_keep_days', 'Keep Backups (days)', s.backup_keep_days ?? 7, {type: 'number', min: 1, max: 90})}
-      ${input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval (minutes)', s.stats_snapshot_interval_minutes ?? 60, {
-        type: 'number', min: 0, max: 1440, hint: '0 disables automatic statistics snapshots.'
-      })}
-      ${input('stats_snapshot_keep_days', 'Keep Statistics Snapshots (days)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1, max: 365})}
-      ${input('events_keep_days', 'Keep Event Log (days)', s.events_keep_days ?? 30, {type: 'number', min: 1})}
-      <div class="dp-settings-actions">
-        <button class="btn btn-ghost btn-sm" type="button" data-action="run-backup">Run Backup Now</button>
+    const backupEnabledId = fieldId('backup_enabled');
+    const backups = card('Backups & Retention', `
+      <div class="dp-settings-backups-field-grid">
+        ${directoryField('backup_folder', 'Backup Folder', s.backup_folder || '/app/data/backups', {
+          hint: 'Choose where DebridPulse stores database and configuration backups.',
+          browseAction: 'browse-backup-folder',
+          browseLabel: 'Browse server directories for Backup Folder',
+        })}
+        ${input('backup_interval_hours', 'Backup Interval (Hours Between Backups)', s.backup_interval_hours ?? 24, {type: 'number', min: 1, max: 168, hint: 'Set how often an automatic backup is created.'})}
+        ${input('backup_keep_days', 'Backup Retention (Days to Keep)', s.backup_keep_days ?? 7, {type: 'number', min: 1, max: 90, hint: 'Delete backup files older than the configured number of days.'})}
+        ${input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval (Minutes Between Snapshots)', s.stats_snapshot_interval_minutes ?? 60, {
+          type: 'number', min: 0, max: 1440, hint: 'Set how often DebridPulse records a statistics snapshot.'
+        })}
+        ${input('stats_snapshot_keep_days', 'Statistics Snapshot Retention (Days to Keep)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1, max: 365, hint: 'Delete statistics snapshots older than the configured number of days.'})}
+        ${input('events_keep_days', 'Event Log Retention (Days to Keep)', s.events_keep_days ?? 30, {type: 'number', min: 1, hint: 'Delete event log entries older than the configured number of days.'})}
+      </div>
+      <div class="dp-settings-actions dp-settings-backups-actions">
+        <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup Now</button>
         <button class="btn btn-ghost btn-sm" type="button" data-action="list-backups">List Backups</button>
       </div>
       <div id="dp-settings-backup-list" class="dp-settings-result-list"></div>
-    `) + card('Database Destructive Actions', `
+    `, {
+      className: 'dp-settings-backups-retention-card',
+      headerCenter: 'Configure automated backups and retention for backups, statistics snapshots, and event logs.',
+      headerCenterClass: 'dp-settings-backups-header-copy',
+      action: `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
+        <span class="toggle-info">
+          <span class="tl">Enable</span>
+        </span>
+        <span class="toggle">
+          <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${checked(s.backup_enabled !== false)}>
+          <span class="ttrack"></span>
+        </span>
+      </label>`,
+    });
+    const reset = card('Database Reset Controls', `
       <div class="dp-settings-caution">
-        <b>Database wipe is destructive</b>
-        <span>Processing must be paused. DebridPulse can require a database backup before rows are removed.</span>
+        <b>Database Reset is Destructive</b>
+        <span>Processing must be paused before the database can be reset. A backup can be created automatically before the reset begins.</span>
       </div>
-      ${toggle('db_wipe_enabled', 'Allow Database Wipe', 'Required before the wipe endpoint will run.', s.db_wipe_enabled)}
-      ${toggle('db_backup_before_wipe', 'Backup Before Wipe', 'Abort the wipe if the required pre-wipe backup fails.', s.db_backup_before_wipe !== false)}
-      <div class="dp-settings-actions">
-        <button class="btn btn-danger btn-sm" type="button" data-action="wipe-database">Wipe Database</button>
+      <div class="dp-settings-database-wipe-row">
+        ${toggle('db_backup_before_wipe', 'Backup Database Before Reset', 'Create a backup before resetting the database. The reset is aborted if the backup fails.', s.db_backup_before_wipe !== false, 'dp-settings-database-wipe-toggle')}
+        ${toggle('db_wipe_enabled', 'Allow Database Reset', 'Unlock the database reset action.', s.db_wipe_enabled, 'dp-settings-database-wipe-toggle')}
+        <div class="dp-settings-actions dp-settings-database-wipe-action">
+          <button class="btn btn-danger btn-sm" type="button" data-action="wipe-database">Reset Database</button>
+        </div>
       </div>
-    `);
+    `, {
+      className: 'dp-settings-database-wipe-card',
+      headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
+      headerCenterClass: 'dp-settings-database-wipe-header-copy',
+    });
+    return backups + reset;
   }
 
   function panel(name, body) {
@@ -1261,7 +1483,7 @@
         </div>
 
         <div class="dp-settings-master-footer" aria-label="Settings actions">
-          <span class="dp-settings-save-hint">Changes are applied after saving.</span>
+          <span class="dp-settings-save-hint">Changes remain unsaved until Apply Settings is selected.</span>
           <div class="dp-settings-context-actions">
             <button class="btn btn-ghost" type="button" data-context-action="sources" data-action="test-alldebrid">
               <span class="dp-settings-action-chip" aria-hidden="true">
@@ -1269,8 +1491,9 @@
               </span>
               <span>Test AllDebrid</span>
             </button>
-            <button class="btn btn-ghost" type="button" data-context-action="downloads" data-action="test-aria2">Test aria2</button>
-            <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord">Test Discord</button>
+            <button class="btn btn-ghost" type="button" data-context-action="downloads" data-action="test-aria2">Test Download Engine</button>
+            <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt=""></span><span>Test Discord</span></button>
+            <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="send-report"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/send.svg" alt=""></span><span>Send Report Now</span></button>
             <button class="btn btn-ghost" type="button" data-context-action="authentication" data-action="verify-oidc">Test OIDC Sign-In</button>
           </div>
           <button class="btn btn-primary" type="button" data-action="save">Apply Settings</button>
@@ -1281,6 +1504,7 @@
     bindEvents(view);
     updateModeState();
     updateOidcCallbackPreview();
+    snapshotProviderControls(view);
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
@@ -1302,6 +1526,55 @@
     root()?.querySelectorAll('[data-context-action]').forEach(button => {
       button.hidden = button.dataset.contextAction !== name;
     });
+  }
+
+  // A collapsed provider card can only be re-collapsed by un-checking Enable
+  // while none of its own fields has been edited; remember the rendered values.
+  const providerBaselines = new WeakMap();
+
+  function controlSignature(el) {
+    return el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? '1' : '0') : String(el.value ?? '');
+  }
+
+  function providerControls(card) {
+    return Array.from(card.querySelectorAll('.card-body input, .card-body select, .card-body textarea'))
+      .filter(el => !el.matches('[data-integration-enabled]'));
+  }
+
+  function snapshotProviderControls(view) {
+    view.querySelectorAll('.dp-settings-provider-disclosure').forEach(button => {
+      const card = button.closest('.dp-settings-provider-card');
+      if (card) providerBaselines.set(card, providerControls(card).map(el => [el, controlSignature(el)]));
+    });
+  }
+
+  function setProviderExpanded(card, expanded) {
+    const body = card.querySelector(':scope > .card-body');
+    const button = card.querySelector('.dp-settings-provider-disclosure');
+    if (!body || !button) return;
+    body.hidden = !expanded;
+    card.classList.toggle('dp-settings-provider-card--collapsed', !expanded);
+    const label = expanded ? 'Collapse provider configuration' : 'Expand provider configuration';
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  }
+
+  function providerEnableChanged(input) {
+    const card = input.closest('.dp-settings-provider-card');
+    if (!card || !card.querySelector('.dp-settings-provider-disclosure')) return;
+    const baseline = providerBaselines.get(card) || [];
+    const dirty = baseline.some(([el, value]) => el.isConnected && controlSignature(el) !== value);
+    if (input.checked) setProviderExpanded(card, true);
+    else if (!dirty) setProviderExpanded(card, false);
+    const entry = state.settings?.integrations?.[input.dataset.integrationEnabled] || {};
+    const status = providerStatus(input.checked, !!entry.configured);
+    const node = card.querySelector('.dp-settings-provider-config-status');
+    if (node) {
+      node.textContent = status.text;
+      node.dataset.tone = status.tone;
+      node.hidden = !status.text;
+    }
   }
 
   function bindEvents(view) {
@@ -1327,6 +1600,7 @@
     });
 
     view.addEventListener('change', event => {
+      if (event.target.matches('[data-integration-enabled]')) providerEnableChanged(event.target);
       if (event.target.matches(`[data-setting="aria2_mode"]`)) updateModeState();
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
@@ -1334,6 +1608,13 @@
     });
 
     view.addEventListener('click', event => {
+      const disclosure = event.target.closest('.dp-settings-provider-disclosure');
+      if (disclosure) {
+        event.preventDefault();
+        const card = disclosure.closest('.dp-settings-provider-card');
+        setProviderExpanded(card, disclosure.getAttribute('aria-expanded') !== 'true');
+        return;
+      }
       const tab = event.target.closest('.dp-settings-tabs [data-tab]');
       if (tab) {
         activateTab(tab.dataset.tab);
@@ -1348,6 +1629,8 @@
       else if (action === 'test-aria2') testConnection('aria2', button);
       else if (action === 'test-discord') testConnection('discord', button);
       else if (action === 'clear-avatar') clearAvatar();
+      else if (action === 'browse-download-folder') window.DPSettingsDirectoryPicker?.open('download');
+      else if (action === 'browse-backup-folder') window.DPSettingsDirectoryPicker?.open('backup');
       else if (action === 'send-report') sendReport(button);
       else if (action === 'run-backup') runBackup(button);
       else if (action === 'list-backups') listBackups(button);
@@ -1440,125 +1723,83 @@
     return checked;
   }
 
-  function integrationPayload(current) {
-    const result = {};
-    const currentIntegrations = current?.integrations || {};
-    for (const [identity, entry] of Object.entries(currentIntegrations)) {
-      // aria2 is written exclusively through its own scoped
-      // PATCH /integrations/aria2/configuration call above -- never echoed
-      // back through this whole-settings snapshot, which could otherwise
-      // silently replace it with a stale pre-save value.
-      if (identity === 'aria2') continue;
-      const options = Object.fromEntries(
-        Object.entries(entry?.options || {}).filter(([key]) => !key.endsWith('_configured'))
-      );
-      result[identity] = {
-        enabled: entry?.enabled !== false,
-        priority: Number(entry?.priority || 0),
-        options,
-      };
-    }
-    for (const identity of ['alldebrid', 'general_http']) {
-      const input = root()?.querySelector(`[data-integration-enabled="${identity}"]`);
-      const previous = result[identity] || {enabled: true, priority: 0, options: {}};
-      result[identity] = {
-        ...previous,
-        enabled: input ? !!input.checked : previous.enabled !== false,
-      };
-    }
-    return result;
+  // Provider, executor, transfer-policy and runtime-limit settings are owned by
+  // their canonical namespaces and are written exclusively through the scoped
+  // surfaces below, never through the whole-settings document, so a stale
+  // snapshot can never undo a concurrently applied scoped write.
+  function scopedClears(integration) {
+    return clearSecrets()
+      .map(control => INTEGRATION_SECRET_CONTROLS[control])
+      .filter(entry => entry && entry.integration === integration)
+      .map(entry => entry.option);
   }
 
-  // Executor/policy/runtime-limit fields are canonically owned by
-  // integrations.aria2 / transfer_policy (specification section 9.5): they
-  // are written exclusively through their scoped PATCH surfaces below, never
-  // through the whole-settings snapshot, which could otherwise silently
-  // replace a concurrently applied scoped write with a stale echoed value.
   function aria2ConfigurationPayload() {
-    const clears = clearSecrets();
+    const current = aria2Of(state.settings);
     return {
       options: {
-        mode: valueOf('aria2_mode', 'builtin'),
-        url: valueOf('aria2_url', 'http://127.0.0.1:6800/jsonrpc'),
+        mode: valueOf('aria2_mode', current.mode || 'builtin'),
+        url: valueOf('aria2_url', current.url || 'http://127.0.0.1:6800/jsonrpc'),
         secret: valueOf('aria2_secret'),
         download_path: valueOf('aria2_download_path'),
-        split: intOf('aria2_split', 16),
-        min_split_size: valueOf('aria2_min_split_size', '10M'),
-        max_connection_per_server: intOf('aria2_max_connection_per_server', 16),
+        split: intOf('aria2_split', current.split ?? 16),
+        min_split_size: valueOf('aria2_min_split_size', current.min_split_size || '10M'),
+        max_connection_per_server: intOf('aria2_max_connection_per_server', current.max_connection_per_server ?? 16),
         continue_downloads: boolOf('aria2_continue_downloads'),
-        disk_cache: valueOf('aria2_disk_cache', '64M'),
-        file_allocation: valueOf('aria2_file_allocation', 'falloc'),
-        lowest_speed_limit: valueOf('aria2_lowest_speed_limit', '0'),
+        disk_cache: valueOf('aria2_disk_cache', current.disk_cache || '64M'),
+        file_allocation: valueOf('aria2_file_allocation', current.file_allocation || 'falloc'),
+        lowest_speed_limit: valueOf('aria2_lowest_speed_limit', current.lowest_speed_limit || '0'),
       },
-      clear_secrets: clears.includes('aria2_secret') ? ['secret'] : [],
+      clear_secrets: scopedClears('aria2'),
     };
+  }
+
+  function allDebridConfigurationPayload() {
+    const current = allDebridOf(state.settings);
+    const enabled = root()?.querySelector('[data-integration-enabled="alldebrid"]');
+    const payload = {
+      options: {
+        api_key: valueOf('alldebrid_api_key'),
+        rate_limit_per_minute: intOf('alldebrid_rate_limit_per_minute', current.rate_limit_per_minute ?? 60),
+      },
+      clear_secrets: scopedClears('alldebrid'),
+    };
+    if (enabled) payload.enabled = !!enabled.checked;
+    return payload;
   }
 
   function transferPolicyPayload() {
-    const current = state.settings || {};
-    const maxDownloads = intOf('aria2_max_active_downloads',
-      Number(current.transfer_policy?.max_concurrent_executions ?? current.max_concurrent_downloads ?? 3));
+    const current = policyOf(state.settings);
     return {
-      max_concurrent_executions: maxDownloads,
-      execution_retry_count: intOf('aria2_error_retry_count', 3),
-      execution_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', 60),
+      max_concurrent_executions: intOf('aria2_max_active_downloads', current.max_concurrent_executions ?? 3),
+      execution_retry_count: intOf('aria2_error_retry_count', current.execution_retry_count ?? 3),
+      execution_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', current.execution_retry_delay_seconds ?? 60),
+      resolution_retry_count: intOf('upload_fail_retry_count', current.resolution_retry_count ?? 3),
+      resolution_retry_delay_minutes: intOf('upload_fail_retry_delay_minutes', current.resolution_retry_delay_minutes ?? 5),
+      provider_poll_interval_seconds: intOf('poll_interval_seconds', current.provider_poll_interval_seconds ?? 30),
+      stalled_timeout_hours: intOf('stuck_download_timeout_hours', current.stalled_timeout_hours ?? 6),
     };
   }
 
-  // Every legacy flat alias of a field now canonically owned by
-  // integrations.aria2 (backend/executors/aria2/definition.py's
-  // Aria2Options.model_fields -- kept in sync with that list by hand, since
-  // there is no runtime source of truth shared with the frontend) or by the
-  // PATCH /transfer-policy surface. Stripped from the whole-settings PUT
-  // body below so GET /settings's read-time compatibility projection
-  // (api/routes.py's _project_legacy_view) can never round-trip a stale
-  // value back through PUT /settings and silently undo a concurrently
-  // applied scoped PATCH.
-  const ARIA2_CANONICAL_LEGACY_FIELDS = [
-    'aria2_mode', 'aria2_url', 'aria2_secret', 'aria2_builtin_port', 'aria2_download_path',
-    'aria2_operation_timeout_seconds', 'aria2_split', 'aria2_min_split_size',
-    'aria2_max_connection_per_server', 'aria2_continue_downloads', 'aria2_disk_cache',
-    'aria2_file_allocation', 'aria2_lowest_speed_limit', 'aria2_waiting_window', 'aria2_stopped_window',
-    'aria2_max_upload_limit', 'aria2_builtin_auto_start', 'aria2_builtin_log_file',
-    'aria2_builtin_log_max_mb', 'aria2_builtin_log_backups', 'aria2_builtin_session_file',
-    'aria2_purge_interval_minutes', 'aria2_max_download_result', 'aria2_keep_unfinished_download_result',
-    'aria2_deep_sync_interval_minutes', 'aria2_restart_interval_hours',
-  ];
-  const TRANSFER_POLICY_CANONICAL_LEGACY_FIELDS = [
-    'max_concurrent_downloads', 'aria2_max_active_downloads',
-    'aria2_error_retry_count', 'aria2_error_retry_delay_seconds',
-  ];
-  // Legacy flat alias of a field now canonically owned by
-  // execution_runtime_limits (backend/transfers/runtime_limits.py's
-  // _LEGACY_FIELDS -- a one-way migration INPUT only). Gate 9 revision-4
-  // rejection finding 3: this was missing from the stripped-field lists
-  // above, so a stale whole-settings snapshot could resurrect an old
-  // download-bandwidth cap over a concurrently applied
-  // PATCH /execution/runtime-limits.
-  const RUNTIME_LIMIT_CANONICAL_LEGACY_FIELDS = ['aria2_max_download_limit'];
-
   function nonAuthPayload() {
     const current = {...(state.settings || {})};
+    // Canonical namespaces are never part of the whole-settings write, and the
+    // read-only compatibility names the server derived from them are never
+    // echoed back (the server lists exactly which names those are).
+    delete current.integrations;
     delete current.transfer_policy;
     delete current.execution_runtime_limits;
-    for (const key of ARIA2_CANONICAL_LEGACY_FIELDS) delete current[key];
-    for (const key of TRANSFER_POLICY_CANONICAL_LEGACY_FIELDS) delete current[key];
-    for (const key of RUNTIME_LIMIT_CANONICAL_LEGACY_FIELDS) delete current[key];
+    for (const name of current.compatibility_fields || []) delete current[name];
+    delete current.compatibility_fields;
     return {
       ...current,
-      integrations: integrationPayload(current),
-      clear_secrets: clearSecrets(),
-      alldebrid_api_key: valueOf('alldebrid_api_key'),
-      alldebrid_rate_limit_per_minute: intOf('alldebrid_rate_limit_per_minute', 60),
-      poll_interval_seconds: intOf('poll_interval_seconds', 30),
+      // Integration-owned secret clears travel with their own scoped request.
+      clear_secrets: clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control]),
       full_sync_interval_minutes: intOf('full_sync_interval_minutes', 5),
-      upload_fail_retry_count: intOf('upload_fail_retry_count', 3),
-      upload_fail_retry_delay_minutes: intOf('upload_fail_retry_delay_minutes', 5),
 
       download_folder: valueOf('download_folder', current.download_folder || '/download'),
       min_free_disk_gb: floatOf('min_free_disk_gb', 0),
       disk_guard_resume_hysteresis_gb: floatOf('disk_guard_resume_hysteresis_gb', 0.5),
-      stuck_download_timeout_hours: intOf('stuck_download_timeout_hours', 6),
       extract_enabled: boolOf('extract_enabled'),
       extract_delete_archive: boolOf('extract_delete_archive'),
       extract_max_concurrent: intOf('extract_max_concurrent', 1),
@@ -1590,10 +1831,28 @@
     };
   }
 
+  // Each scoped surface answers with the canonical namespace it just wrote;
+  // adopt it into the cached document so every later read (and the whole-
+  // settings echo) sees the value the server accepted.
+  function adoptIntegration(identity, result) {
+    const {ok, ...entry} = result || {};
+    state.settings = {...state.settings, integrations: {...state.settings?.integrations, [identity]: entry}};
+  }
+
+  function adoptTransferPolicy(result) {
+    const {ok, last_apply_error, ...policy} = result || {};
+    state.settings = {...state.settings, transfer_policy: policy};
+  }
+
   async function persistNonAuth({renderAfter = true, quiet = false} = {}) {
     const active = state.activeTab;
-    await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000);
-    await request('PATCH', '/transfer-policy', transferPolicyPayload(), 15000);
+    adoptIntegration('aria2', await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000));
+    adoptIntegration('alldebrid', await request('PATCH', '/integrations/alldebrid/configuration', allDebridConfigurationPayload(), 15000));
+    const generalHttp = root()?.querySelector('[data-integration-enabled="general_http"]');
+    if (generalHttp && !!generalHttp.checked !== (state.settings?.integrations?.general_http?.enabled !== false)) {
+      adoptIntegration('general_http', await request('PATCH', '/integrations/general_http/configuration', {enabled: !!generalHttp.checked}, 15000));
+    }
+    adoptTransferPolicy(await request('PATCH', '/transfer-policy', transferPolicyPayload(), 15000));
     const result = await request('PUT', '/settings', nonAuthPayload(), 15000);
     syncGlobalSettings(result);
     if (renderAfter) {
@@ -1694,7 +1953,7 @@
     }
     if (kind === 'aria2') {
       return {
-        mode: valueOf('aria2_mode', state.settings?.aria2_mode || 'builtin'),
+        mode: valueOf('aria2_mode', aria2Of(state.settings).mode || 'builtin'),
         url: valueOf('aria2_url'),
         secret: valueOf('aria2_secret'),
         clear_secret: clears.has('aria2_secret'),
@@ -1704,6 +1963,8 @@
       return {
         webhook_url: valueOf('discord_webhook_url'),
         clear_webhook: clears.has('discord_webhook_url'),
+        username: valueOf('discord_username'),
+        avatar_url: valueOf('discord_avatar_url'),
       };
     }
     throw new Error(`Unsupported connection test: ${kind}`);
@@ -1766,13 +2027,20 @@
     }
   }
 
+  // Sends a report using the webhooks currently in the form, not only the
+  // stored ones, so an unsaved destination can be verified before it is applied.
   async function sendReport(button) {
     setBusy(button, true, 'Sending…');
     try {
-      const hours = intOf('stats_report_window_hours', 24);
-      const result = await request('POST', `/stats/report/send?hours=${hours}`, undefined, 20000);
+      const hours = Math.max(1, intOf('stats_report_window_hours', 24));
+      const result = await request('POST', '/settings/send-stats-report', {
+        hours,
+        stats_report_webhook_url: valueOf('stats_report_webhook_url'),
+        clear_stats_report_webhook: clearSecrets().includes('stats_report_webhook_url'),
+        discord_webhook_url: valueOf('discord_webhook_url'),
+        clear_discord_webhook: clearSecrets().includes('discord_webhook_url'),
+      }, 20000);
       notify(`Report sent (${result.hours || hours}h)`, 'success');
-      renderPreservingViewport();
     } catch (error) {
       notify(error.message, 'error');
     } finally {

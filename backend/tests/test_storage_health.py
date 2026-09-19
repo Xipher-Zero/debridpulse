@@ -190,9 +190,9 @@ def _dummy_application(capacity):
         resolve_pending=AsyncMock(),
         reconcile_executions=AsyncMock(),
         process_postprocessors=AsyncMock(),
+        pause_all=AsyncMock(),
     )
-    pause_changed = Mock()
-    return ApplicationService(engine, capacity=capacity, pause_changed=pause_changed), engine, pause_changed
+    return ApplicationService(engine, capacity=capacity), engine
 
 
 @pytest.mark.asyncio
@@ -200,7 +200,7 @@ async def test_application_storage_blocks_mutation_before_side_effect(tmp_path, 
     capacity, app, download = _capacity(tmp_path)
     _patch_usage(monkeypatch, app, download)
     capacity.check()
-    application, _engine, _pause_changed = _dummy_application(capacity)
+    application, _engine = _dummy_application(capacity)
     capacity.report_application_exception(sqlite3.OperationalError("database or disk is full"))
 
     touched = False
@@ -215,7 +215,7 @@ async def test_application_storage_blocks_mutation_before_side_effect(tmp_path, 
 async def test_application_storage_fault_closes_executor_dispatch(tmp_path, monkeypatch):
     capacity, app, download = _capacity(tmp_path)
     _patch_usage(monkeypatch, app, download, app_free=0, download_free=50)
-    application, engine, _pause_changed = _dummy_application(capacity)
+    application, engine = _dummy_application(capacity)
 
     health = await application.check_resources()
     assert health["application_state"]["state"] == "full"
@@ -228,7 +228,7 @@ async def test_download_fault_allows_route_resolution_but_defers_dispatch_and_po
     capacity, app, download = _capacity(tmp_path)
     _patch_usage(monkeypatch, app, download)
     capacity.check()
-    application, engine, pause_changed = _dummy_application(capacity)
+    application, engine = _dummy_application(capacity)
 
     capacity.report_fault(StorageDomain.DOWNLOAD, OSError(errno.EROFS, "read only"))
     await application.resolve_pending()
@@ -240,7 +240,8 @@ async def test_download_fault_allows_route_resolution_but_defers_dispatch_and_po
     health = await application.check_resources()
     assert health["download"]["state"] == "full"
     assert engine.dispatch_permitted is False
-    pause_changed.assert_not_called()
+    # Storage containment closes dispatch; it never mutates the durable pause authority.
+    engine.pause_all.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -248,7 +249,7 @@ async def test_recovery_clears_containment_without_restart(tmp_path, monkeypatch
     capacity, app, download = _capacity(tmp_path)
     _patch_usage(monkeypatch, app, download, download_free=0)
     capacity.check()
-    application, engine, _pause_changed = _dummy_application(capacity)
+    application, engine = _dummy_application(capacity)
     await application.check_resources()
     assert engine.dispatch_permitted is False
 
@@ -264,7 +265,7 @@ async def test_health_endpoint_is_reachable_without_database_access(tmp_path):
     download = tmp_path / "download"
     download.mkdir()
     capacity = DiskCapacity(download, application_path=missing_app)
-    application, _engine, _pause_changed = _dummy_application(capacity)
+    application, _engine = _dummy_application(capacity)
 
     app = FastAPI()
     app.state.application = application

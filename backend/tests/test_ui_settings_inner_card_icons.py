@@ -20,7 +20,7 @@ EXPECTED = {
 
 
 def test_settings_inner_card_icon_map_covers_reviewed_headers_and_assets():
-    source = (STATIC / 'ui-settings-card-icons.js').read_text()
+    source = (STATIC / 'ui-settings-page.js').read_text()
     for title, (section, filename) in EXPECTED.items():
         assert title in source
         assert section in source

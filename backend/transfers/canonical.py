@@ -34,8 +34,12 @@ class CandidateOrigin:
 class CanonicalOwnership:
     """Canonical ownership, P1 migration, candidate provenance and consolidation."""
 
-    def __init__(self, repository):
+    def __init__(self, repository, *, on_attached=None):
         self.repository = repository
+        # Injected by the composition root: awaited with the source transfer id
+        # only after ``attach`` has durably committed (never on a refusal or a
+        # rollback), so a semantic event can only follow a real consolidation.
+        self.on_attached = on_attached
         self._initialize_lock = asyncio.Lock()
         self._initialized = False
 
@@ -486,6 +490,8 @@ class CanonicalOwnership:
                 )
                 await self._finalize_transfer(db, int(record.transfer_id))
             await db.commit()
+        if self.on_attached is not None:
+            await self.on_attached(record.transfer_id)
         return True
 
     async def _bound_origin(self, db, canonical_artifact_id: int, candidate: TransferCandidate):

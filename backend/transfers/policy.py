@@ -2,8 +2,11 @@
 
 Providers and executors emit factual normalized evidence. This universal owner
 combines those facts with durable transfer context and selects recovery behavior.
-The legacy ``NormalizedError.recovery`` field is populated only as a core-owned
-compatibility projection for older lifecycle paths.
+``NormalizedError.recovery`` is a derived, write-only compatibility projection:
+``recovery_action`` computes the action from canonical facts alone (domain,
+category, stage, retryability, permanence), ``compatibility_error`` stamps that
+value onto the error for serialization, and no decision in the core ever reads
+the field back. ``tests/test_recovery_projection_boundary.py`` proves it.
 """
 from __future__ import annotations
 
@@ -91,10 +94,14 @@ def transition_allowed(current: TransferState, target: TransferState, *, operato
     return target in set(TransferState) - {TransferState.ACCEPTED, TransferState.CONSOLIDATED}
 
 
-def compatibility_recovery(error: NormalizedError) -> Recovery:
-    """Project only context-free facts into the transitional compatibility field."""
-    if error.recovery != Recovery.NONE:
-        return error.recovery
+def recovery_action(error: NormalizedError) -> Recovery:
+    """The recovery action implied by an error's canonical facts.
+
+    A pure function of ``domain``, ``category``, ``stage``, ``retryability`` and
+    ``permanence``. It deliberately never consults ``error.recovery`` or
+    ``error.operator_action_required``: those are the output projection of this
+    function, so an emitter-supplied value can neither select nor veto a decision.
+    """
     if error.domain == Domain.SECURITY:
         return Recovery.FAIL
     if (error.domain == Domain.INTEGRITY or error.permanence == Permanence.PERMANENT
@@ -129,10 +136,9 @@ def compatibility_recovery(error: NormalizedError) -> Recovery:
 
 
 def compatibility_error(error: NormalizedError) -> NormalizedError:
-    action = compatibility_recovery(error)
+    """Stamp the derived projection onto the error for serialization only."""
+    action = recovery_action(error)
     operator = action in {Recovery.REQUIRE_OPERATOR, Recovery.REAUTHENTICATE} or error.domain == Domain.SECURITY
-    if error.recovery == action and error.operator_action_required == operator:
-        return error
     return replace(error, recovery=action, operator_action_required=operator)
 
 
@@ -340,7 +346,7 @@ class TransferPolicy:
 
     def retry(self, error: NormalizedError, attempts: int, now: float, *, can_refresh=False, has_alternate=False) -> RetryDecision:
         """Compatibility retry path for request-resolution callers."""
-        error = compatibility_error(error)
+        action = recovery_action(error)
         if (error.domain == Domain.LOCAL_RESOURCE and self.local_resource_failure_handler is not None
                 and self.local_resource_failure_handler(error)):
             return RetryDecision(Recovery.RETRY, now)
@@ -357,20 +363,20 @@ class TransferPolicy:
                     return RetryDecision(Recovery.TRY_ALTERNATE_CANDIDATE, now)
                 return RetryDecision()
             return RetryDecision(Recovery.RETRY, now + self._delay(error, max(1, attempts)))
-        if error.recovery in {Recovery.REQUIRE_OPERATOR, Recovery.FAIL}:
+        if action in {Recovery.REQUIRE_OPERATOR, Recovery.FAIL}:
             return RetryDecision()
         if attempts >= max(1, self.max_attempts):
-            if (has_alternate and error.recovery in {Recovery.RETRY, Recovery.BACKOFF,
-                                                     Recovery.RERESOLVE, Recovery.TRY_ALTERNATE_CANDIDATE}):
+            if (has_alternate and action in {Recovery.RETRY, Recovery.BACKOFF,
+                                             Recovery.RERESOLVE, Recovery.TRY_ALTERNATE_CANDIDATE}):
                 return RetryDecision(Recovery.TRY_ALTERNATE_CANDIDATE, now)
             return RetryDecision()
         if error.retryability in {Retryability.AFTER_REAUTH, Retryability.AFTER_RESOURCE_CHANGE}:
-            return RetryDecision(error.recovery)
-        if error.recovery == Recovery.TRY_ALTERNATE_CANDIDATE and has_alternate:
+            return RetryDecision(action)
+        if action == Recovery.TRY_ALTERNATE_CANDIDATE and has_alternate:
             return RetryDecision(Recovery.TRY_ALTERNATE_CANDIDATE, now)
-        if error.recovery == Recovery.RECONCILE:
+        if action == Recovery.RECONCILE:
             return RetryDecision(Recovery.RECONCILE, now + self.retry_delay)
-        if error.retryability == Retryability.AFTER_RERESOLUTION or error.recovery == Recovery.RERESOLVE:
+        if error.retryability == Retryability.AFTER_RERESOLUTION or action == Recovery.RERESOLVE:
             return RetryDecision(Recovery.RERESOLVE, now + self.retry_delay) if can_refresh else RetryDecision()
         if error.retryability in {Retryability.IMMEDIATE, Retryability.BACKOFF}:
             return RetryDecision(Recovery.RETRY, now + self._delay(error, max(1, attempts)))

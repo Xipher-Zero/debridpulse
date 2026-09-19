@@ -1,8 +1,15 @@
-/* DebridPulse 1.0.6 authentication/settings UX normalization. */
-
-/* Authenticated sidebar bottom stack. Provider Status and Log Out occupy one
-   bottom-anchored flow so they cannot overlap as independent positioned items. */
+/* Authenticated sidebar session stack.
+ *
+ * #sidebar-bottom-stack is static shell markup that wraps the sidebar footer and
+ * the auth owner's mount. Unauthenticated it is layout-transparent; when the
+ * session owner marks it data-session="authenticated", Provider Status and Log
+ * Out occupy one bottom-anchored flow so they cannot overlap as independent
+ * positioned items.
+ */
 #sidebar .sidebar-bottom-stack {
+  display: contents;
+}
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] {
   position: absolute;
   left: 10px;
   right: 10px;
@@ -12,7 +19,7 @@
   flex-direction: column;
   gap: 6px;
 }
-#sidebar .sidebar-bottom-stack .sidebar-footer {
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] .sidebar-footer {
   position: static !important;
   top: auto !important;
   right: auto !important;
@@ -21,298 +28,14 @@
   width: 100%;
   flex: 0 0 auto;
 }
-#sidebar .sidebar-bottom-stack #sidebar-auth-row {
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
   position: static !important;
   width: 100%;
   min-height: 46px;
   flex: 0 0 auto;
 }
 @media (min-width: 901px) {
-  #sidebar .sidebar-bottom-stack {
+  #sidebar .sidebar-bottom-stack[data-session="authenticated"] {
     bottom: 24px;
-  }
-}
-
-/* The inherited ADC settings renderer artificially capped every settings panel
-   at 1180px while the rest of DebridPulse uses the available workspace. */
-#settings-form .stab-panel.active {
-  width: 100%;
-  max-width: none;
-}
-#settings-form .scard {
-  width: 100%;
-}
-
-#tab-authentication {
-  --auth-info: var(--blue);
-  --auth-ok: var(--green);
-  --auth-bad: var(--red);
-  --auth-warn: var(--yellow);
-}
-
-/* ── Authentication status ──────────────────────────────────────────────── */
-#tab-authentication .auth-status-grid {
-  display: grid !important;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  gap: 10px !important;
-}
-#tab-authentication .auth-status-card {
-  --auth-state: var(--auth-info);
-  min-width: 0;
-  min-height: 86px;
-  padding: 15px 13px 13px !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
-  background: linear-gradient(160deg, var(--surface2), var(--surface)) !important;
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  transition: box-shadow .2s, border-color .2s;
-}
-#tab-authentication .auth-status-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--auth-state);
-}
-#tab-authentication .auth-status-card[data-state="ok"] { --auth-state: var(--auth-ok); }
-#tab-authentication .auth-status-card[data-state="bad"] { --auth-state: var(--auth-bad); }
-#tab-authentication .auth-status-card[data-state="warn"] { --auth-state: var(--auth-warn); }
-#tab-authentication .auth-status-card[data-state="info"] { --auth-state: var(--auth-info); }
-#tab-authentication .auth-status-card:hover {
-  box-shadow: 0 4px 20px rgba(0,0,0,.24);
-  border-color: var(--border2) !important;
-}
-#tab-authentication .auth-status-icon {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--auth-state);
-  opacity: .82;
-}
-#tab-authentication .auth-status-icon svg {
-  width: 23px;
-  height: 23px;
-  display: block;
-}
-#tab-authentication .auth-status-copy {
-  min-width: 0;
-}
-#tab-authentication .auth-status-label {
-  color: var(--text2);
-  font-size: 10px;
-  line-height: 1.15;
-  font-weight: 700;
-  letter-spacing: .07em;
-  text-transform: uppercase;
-  margin-bottom: 5px;
-}
-#tab-authentication .auth-status-value {
-  color: var(--text);
-  font-size: 14px;
-  line-height: 1.2;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-#tab-authentication .auth-status-card[data-state="ok"] .auth-status-value,
-#tab-authentication .auth-status-card[data-state="bad"] .auth-status-value,
-#tab-authentication .auth-status-card[data-state="warn"] .auth-status-value {
-  color: var(--auth-state);
-}
-
-/* ── Canonical external origin prerequisite ────────────────────────────── */
-#tab-authentication .auth-origin-card {
-  border-color: color-mix(in srgb, var(--blue) 32%, var(--border));
-}
-#tab-authentication .auth-origin-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-#tab-authentication .auth-origin-header svg {
-  width: 16px;
-  height: 16px;
-  color: var(--blue);
-}
-#tab-authentication .auth-origin-layout {
-  display: grid;
-  grid-template-columns: minmax(360px, 1.15fr) minmax(320px, .85fr);
-  gap: 22px;
-  align-items: start;
-}
-#tab-authentication .auth-origin-layout .form-group {
-  max-width: none !important;
-}
-#tab-authentication .auth-origin-explainer {
-  border: 1px solid color-mix(in srgb, var(--blue) 30%, var(--border));
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--blue) 7%, var(--surface2));
-  padding: 13px 14px;
-  color: var(--text2);
-  font-size: 12px;
-  line-height: 1.55;
-}
-#tab-authentication .auth-origin-explainer strong {
-  display: block;
-  color: var(--text);
-  font-size: 12px;
-  margin-bottom: 5px;
-}
-#tab-authentication .auth-origin-warning {
-  margin-top: 9px;
-  color: var(--yellow);
-  font-weight: 600;
-}
-#tab-authentication .auth-origin-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 9px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--green) 35%, var(--border));
-  background: color-mix(in srgb, var(--green) 8%, transparent);
-  color: var(--green);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-
-/* ── Compact credential/provider forms ─────────────────────────────────── */
-#tab-authentication .auth-password-card .scard-body,
-#tab-authentication .auth-oidc-card .scard-body,
-#tab-authentication .auth-api-card .scard-body,
-#tab-authentication .auth-session-card .scard-body {
-  gap: 14px;
-}
-#tab-authentication .auth-password-grid {
-  display: grid;
-  grid-template-columns: minmax(220px, .7fr) minmax(340px, 1.3fr);
-  gap: 14px;
-  align-items: start;
-}
-#tab-authentication .auth-password-grid .form-group,
-#tab-authentication .auth-oidc-primary-grid .form-group,
-#tab-authentication .auth-oidc-authz-grid .form-group {
-  max-width: none !important;
-  min-width: 0;
-}
-#tab-authentication .auth-card-actions {
-  display: flex !important;
-  gap: 8px !important;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-top: 2px !important;
-}
-
-/* Grimmory-inspired provider configuration: dense, grouped, and readable. */
-#tab-authentication .auth-oidc-primary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px 16px;
-  align-items: start;
-}
-#tab-authentication .auth-oidc-span-2 { grid-column: span 2; }
-#tab-authentication .auth-oidc-span-3 { grid-column: 1 / -1; }
-#tab-authentication .auth-oidc-authz {
-  margin-top: 4px !important;
-  padding: 16px !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface2) 78%, transparent);
-}
-#tab-authentication .auth-subsection-heading {
-  margin-bottom: 12px;
-}
-#tab-authentication .auth-subsection-title {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 3px;
-}
-#tab-authentication .auth-subsection-copy {
-  color: var(--text3);
-  font-size: 11px;
-  line-height: 1.45;
-}
-#tab-authentication .auth-oidc-authz-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px 16px;
-  margin-top: 12px;
-}
-#tab-authentication .auth-oidc-authz-grid textarea.input {
-  min-height: 86px;
-}
-#tab-authentication .auth-oidc-group-claim {
-  grid-column: 1 / -1;
-  max-width: 420px !important;
-}
-
-/* Session tuning is intentionally subordinate to the canonical-origin prerequisite. */
-#tab-authentication .auth-session-card .scard-body {
-  display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(300px, 1fr);
-  gap: 14px 22px;
-  align-items: end;
-}
-#tab-authentication .auth-session-card .form-group {
-  max-width: none !important;
-}
-#tab-authentication .auth-session-card .form-hint {
-  align-self: center;
-}
-
-body.light #tab-authentication .auth-status-card {
-  background: linear-gradient(180deg, #ffffff, #fbfcfe) !important;
-  box-shadow: var(--shadow-soft);
-}
-body.light #tab-authentication .auth-origin-explainer,
-body.light #tab-authentication .auth-oidc-authz {
-  background: var(--surface2);
-}
-
-@media (max-width: 1400px) {
-  #tab-authentication .auth-status-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-@media (max-width: 1050px) {
-  #tab-authentication .auth-origin-layout,
-  #tab-authentication .auth-password-grid {
-    grid-template-columns: 1fr;
-  }
-  #tab-authentication .auth-oidc-primary-grid,
-  #tab-authentication .auth-oidc-authz-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  #tab-authentication .auth-oidc-span-2,
-  #tab-authentication .auth-oidc-span-3,
-  #tab-authentication .auth-oidc-group-claim {
-    grid-column: 1 / -1;
-    max-width: none !important;
-  }
-}
-@media (max-width: 700px) {
-  #tab-authentication .auth-status-grid,
-  #tab-authentication .auth-oidc-primary-grid,
-  #tab-authentication .auth-oidc-authz-grid,
-  #tab-authentication .auth-session-card .scard-body {
-    grid-template-columns: 1fr !important;
-  }
-  #tab-authentication .auth-origin-layout {
-    grid-template-columns: 1fr;
-  }
-  #tab-authentication .auth-status-card {
-    min-height: 74px;
   }
 }

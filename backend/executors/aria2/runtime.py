@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from core.config import get_settings
 from executors.aria2.client import Aria2Service
 
 logger = logging.getLogger("alldebrid.aria2")
@@ -18,22 +17,14 @@ BUILTIN_ARIA2_SECRET = "debridpulse-internal-aria2-rpc"
 
 
 def _canonical_aria2_options(cfg):
-    """Decode the integration-owned ``integrations.aria2`` namespace (DP 1.0.12
-    canonical architecture correction, Workstream C, specification sections
-    4.3, 9.1, 9.3): native aria2 tuning is rebuilt from this typed, executor-
-    owned schema -- never from flat ``AppSettings.aria2_*`` fields -- so
-    ``integrations.aria2`` remains the single canonical schema owner.
+    """Decode the executor-owned ``integrations.aria2`` namespace of ``cfg``.
 
-    This is the settings-BOUNDARY translation helper: legitimate for callers
-    that already hold ``AppSettings`` and are translating it for an API
-    response or a fresh composition pass (``api/routes.py``,
-    ``executors/aria2/definition.py``'s ``build()``,
-    ``executors/aria2/migration.py``, ``api/settings_validation_routes.py``).
-    ``BuiltinAria2Runtime``/``Aria2Administration`` must NOT call this (or
-    ``core.config.get_settings()``) themselves -- they consume an already-
-    injected ``Aria2RuntimeConfiguration`` instead (specification section
-    9.3: "must not call global application get_settings() to discover its
-    own native tuning at runtime")."""
+    This is the settings-boundary accessor for callers that already hold an
+    ``AppSettings`` (``api/routes.py``, ``api/settings_validation_routes.py``,
+    ``executors/aria2/migration.py``, ``main.py``). ``BuiltinAria2Runtime`` and
+    ``Aria2Administration`` never call it: they consume the already-injected
+    ``Aria2RuntimeConfiguration``. ``integrations.aria2`` is the only
+    authority -- there is no flat-field fallback."""
     from executors.aria2.definition import Aria2Options
 
     entry = (getattr(cfg, "integrations", None) or {}).get("aria2")
@@ -41,61 +32,17 @@ def _canonical_aria2_options(cfg):
     return Aria2Options(**options)
 
 
-def is_builtin_mode(cfg=None) -> bool:
-    cfg = cfg or get_settings()
-    return _canonical_aria2_options(cfg).mode == "builtin"
-
-
-def builtin_rpc_url(cfg=None) -> str:
-    cfg = cfg or get_settings()
-    port = _canonical_aria2_options(cfg).builtin_port
-    return f"http://127.0.0.1:{port}/jsonrpc"
-
-
-def effective_rpc_config(cfg=None) -> tuple[str, str]:
-    cfg = cfg or get_settings()
-    aria2 = _canonical_aria2_options(cfg)
-    return _effective_rpc_config(aria2)
-
-
-def aria2_global_options(cfg=None, *, include_safety: bool = False) -> Dict[str, str]:
-    """Build the native aria2 global-option dict from current settings.
-
-    DP 1.0.12 canonical architecture correction, Workstream C (specification
-    sections 2.5, 4.1, 4.3, 4.4, 9.1, 9.3): every native key here is rebuilt
-    from a canonical typed source -- the ``integrations.aria2`` namespace for
-    every aria2-native tuning/administration field (including log rotation,
-    RPC timeout, and result-history size, which now also live on
-    ``Aria2Options``), ``transfer_policy`` for the universal concurrency
-    authority, ``execution_runtime_limits`` for the neutral bandwidth
-    capability -- never from flat ``AppSettings.aria2_*`` fields. Those flat
-    fields remain only as one-way migration input, translated into the
-    canonical namespaces by ``integrations.configuration.normalize_settings``.
-
-    This is the settings-boundary convenience wrapper around the pure
-    ``build_aria2_global_options()`` -- legitimate for a genuine settings
-    read (an API response, a fresh composition pass). The long-lived
-    ``BuiltinAria2Runtime``/``Aria2Administration`` singletons call
-    ``build_aria2_global_options()`` directly against their injected
-    ``Aria2RuntimeConfiguration`` instead of this function, so they never
-    call ``get_settings()`` themselves.
-    """
-    cfg = cfg or get_settings()
-    aria2 = _canonical_aria2_options(cfg)
-    policy = getattr(cfg, "transfer_policy", None)
-    limits = getattr(cfg, "execution_runtime_limits", None)
-    max_concurrent = int(getattr(policy, "max_concurrent_executions", None) or 3)
-    max_download_bps = int(getattr(limits, "max_download_bytes_per_second", None) or 0)
-    return build_aria2_global_options(aria2, max_concurrent, max_download_bps, include_safety=include_safety)
+def effective_rpc_config(cfg) -> tuple[str, str]:
+    """RPC endpoint and secret for the canonical aria2 options of ``cfg``."""
+    return _effective_rpc_config(_canonical_aria2_options(cfg))
 
 
 def build_aria2_global_options(options, max_concurrent_executions: int, max_download_bytes_per_second: int,
                                 *, include_safety: bool = False) -> Dict[str, str]:
     """Pure translation of already-injected typed configuration into the
-    native aria2 global-option dict -- no settings access of any kind. The
-    single mapping owner ``aria2_global_options()`` (above) and
-    ``BuiltinAria2Runtime``/``Aria2Administration`` (which never hold a
-    ``get_settings()``-backed value at all) both funnel through this."""
+    native aria2 global-option dict -- no settings access of any kind. It is the
+    single mapping owner used by ``BuiltinAria2Runtime`` and
+    ``Aria2Administration``, which only ever hold injected configuration."""
     options_dict: Dict[str, str] = {
         "max-download-result": str(int(options.max_download_result or 50)),
         "keep-unfinished-download-result": "true" if bool(options.keep_unfinished_download_result) else "false",
@@ -151,7 +98,7 @@ class Aria2RuntimeConfiguration:
     ``Aria2Administration`` (DP 1.0.12 canonical architecture correction,
     Workstream C, specification section 9.3). Rebuilt and re-injected by
     ``application.composition.configure()`` on every settings change; the
-    runtime/admin singletons never call ``core.config.get_settings()``
+    runtime/admin singletons never consult global application settings
     themselves to discover their own native tuning, lifecycle mode, or
     application storage root."""
     options: Any = field(default_factory=_default_aria2_options)
@@ -184,7 +131,8 @@ class BuiltinAria2Runtime:
 
     def _service(self) -> Aria2Service:
         url, secret = _effective_rpc_config(self._config.options)
-        return Aria2Service(url, secret, self._config.options.operation_timeout_seconds)
+        options = self._config.options
+        return Aria2Service(url, secret, options.operation_timeout_seconds, owns_daemon=options.mode == "builtin")
 
     def _is_process_alive(self) -> bool:
         return self._process is not None and self._process.returncode is None

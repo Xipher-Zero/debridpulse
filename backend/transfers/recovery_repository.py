@@ -22,53 +22,11 @@ from transfers.manual_repository import TransferRepository as _QualifiedReposito
 from transfers.models import new_identity
 from transfers.policy import failure_signature
 from transfers.recovery_execution import RecoveryClaim, RecoveryTrigger
-from transfers.repository import RecoveryResetAuthority, apply_recovery_reset
-
-
-# DP 1.0.12 leveling remediation (ARCH-001): only CURRENT, policy-relevant
-# fields belong here -- every one of these is read somewhere to gate a
-# fencing/single-flight/traversal decision, or (last_applied_action/
-# last_applied_reason) consumed live by the bounded Downloads/Dashboard
-# projection. Historical-only fields (last_applied_trigger,
-# last_application_outcome, last_execution_attempt/identity,
-# last_reconstruction_reason, last_execution_retirement_reason, durable_target,
-# candidate_generation, last_candidate_id, last_budget_before/after) are NOT
-# defaulted here -- they live solely in the sparse recovery_audit trail and
-# are reconstructed on demand by
-# transfers.repository.TransferRepository._historical_audit_facts /
-# recovery_context(), never carried in this policy-facing snapshot dict.
-_RECOVERY_SNAPSHOT_DEFAULTS = {
-    "recovery_generation": 0,
-    "recovery_claim_token": None,
-    "recovery_claim_trigger": None,
-    "recovery_claim_until": 0.0,
-    "recovery_decision_id": None,
-    "recovery_claim_id": None,
-    "last_failure_identity": None,
-    "last_applied_action": None,
-    "last_applied_reason": None,
-    "last_refresh_decision_id": None,
-    "refresh_inflight_decision_id": None,
-    "refresh_inflight_attempt_id": None,
-    "blocked_retry_at": 0.0,
-}
 
 
 class TransferRepository(_QualifiedRepository):
     """Single production owner for durable recovery claim/fence/quiescence/
     refresh/audit behavior (DP 1.0.12 leveling remediation, ARCH-001)."""
-
-    @classmethod
-    async def _recovery_snapshot(cls, db, artifact_id: int, *, row=None) -> dict:
-        """The base classmethod already reads the single
-        ``artifact_recovery_state`` row once and imports every key it finds
-        (not only its own template's keys), so this layer only needs to seed
-        defaults for keys the base template doesn't already know about."""
-        snapshot = await super()._recovery_snapshot(db, artifact_id, row=row)
-        snapshot["version"] = max(3, int(snapshot.get("version") or 0))
-        for key, default in _RECOVERY_SNAPSHOT_DEFAULTS.items():
-            snapshot.setdefault(key, default)
-        return snapshot
 
     # ------------------------------------------------------------------
     # Durable claim / fence
@@ -205,49 +163,6 @@ class TransferRepository(_QualifiedRepository):
         if now is not None and float(snapshot.get("recovery_claim_until") or 0) <= float(now):
             return False
         return True
-
-    async def reset_retry_budget(self, artifact_id):
-        """Reopen bounded recovery without fabricating progress or stale dedupe."""
-        async with get_db() as db:
-            await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone(
-                "SELECT torrent_id,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",
-                (artifact_id,),
-            )
-            if not row:
-                await db.rollback()
-                raise KeyError(artifact_id)
-            snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
-            await db.execute(
-                """UPDATE download_files SET retry_count=0,recovery_failures=0,recovery_refreshes=0
-                   WHERE id=?""",
-                (artifact_id,),
-            )
-            apply_recovery_reset(snapshot, RecoveryResetAuthority.OPERATOR_RETRY)
-            snapshot.update({
-                "blocked_retry_at": 0.0,
-                "recovery_decision_id": None,
-                "last_failure_identity": None,
-                # A full budget reset (the live USER_RETRY mechanism,
-                # TriggerAuthority.reset_exhaustion) is the one explicit
-                # "start over" boundary that restores every candidate's
-                # eligibility, including ones already tried.
-                "candidate_attempt_history": [],
-            })
-            await self._save_recovery_snapshot(
-                db, int(row["torrent_id"]), artifact_id, snapshot,
-            )
-            # last_budget_before/after are historical (sparse-audit-only,
-            # never current state in any shape).
-            await self._append_recovery_audit(
-                db, int(row["torrent_id"]), artifact_id, "operator_retry",
-                last_budget_before={
-                    "failures": int(row.get("recovery_failures") or 0),
-                    "refreshes": int(row.get("recovery_refreshes") or 0),
-                },
-                last_budget_after={"failures": 0, "refreshes": 0},
-            )
-            await db.commit()
 
     async def finish_recovery_claim(
         self,

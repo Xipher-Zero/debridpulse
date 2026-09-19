@@ -247,14 +247,18 @@ def test_baseline_referrer_policy_preserves_same_origin_form_origin():
 
 
 
-def test_authentication_session_and_help_assets_are_packaged_without_settings_augmentation():
+def test_authentication_session_assets_are_packaged_without_settings_or_help_augmentation():
     static = Path(__file__).resolve().parents[2] / "frontend" / "static"
     bootstrap = (static / "auth.js").read_text()
     settings = (static / "ui-settings-page.js").read_text()
     ux_style = (static / "auth-ux.css").read_text()
 
-    assert "/auth-help.js?v=1" in bootstrap
-    assert "/auth-ux.css?v=2" in bootstrap
+    # No injected Help augmentation: the Help page owns its own content.
+    assert "auth-help" not in bootstrap
+    assert not (static / "auth-help.js").exists()
+    # The sidebar session stylesheet is part of the CSS graph, not injected by script.
+    assert "auth-ux" not in bootstrap and "createElement('link')" not in bootstrap
+    assert "/auth-ux.css?v=3" in (static / "style.css").read_text()
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "sidebar-bottom-stack" in ux_style

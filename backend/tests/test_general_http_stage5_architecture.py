@@ -35,6 +35,6 @@ def test_item10_exposes_general_http_provider_ui_without_transport_tuning():
     general_http = sources_panel.split("const generalHttpCard", 1)[1].split("const debridServices", 1)[0]
     assert "general_http" in general_http
     assert "HTTP & HTTPS" in general_http
-    assert "General Sources" in sources_panel
+    assert "Direct Sources" in sources_panel
     for forbidden in ("User Agent", "Timeout", "Retry", "Proxy"):
         assert forbidden not in general_http

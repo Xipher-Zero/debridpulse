@@ -1,4 +1,4 @@
-"""Universal orchestration settings and the supported flat-config translation."""
+"""Universal orchestration settings: the sole authority for execution/resolution policy."""
 from pydantic import BaseModel, Field
 
 
@@ -14,7 +14,12 @@ class TransferSettings(BaseModel):
     stalled_timeout_hours: int = Field(default=6, ge=0, le=168)
 
 
-_LEGACY_FIELDS = {
+# Migration INPUT only. These pre-canonical flat configuration names are read
+# exclusively by ``integrations.configuration.migrate_legacy_settings`` (the one
+# load-time translation boundary) and by the read-only ``GET /settings``
+# compatibility projection. They are never a runtime or persisted authority:
+# ``transfer_policy`` is.
+LEGACY_INPUT_FIELDS = {
     "max_concurrent_downloads": "max_concurrent_executions",
     "aria2_error_retry_count": "execution_retry_count",
     "aria2_error_retry_delay_seconds": "execution_retry_delay_seconds",
@@ -24,26 +29,3 @@ _LEGACY_FIELDS = {
     "poll_interval_seconds": "provider_poll_interval_seconds",
     "stuck_download_timeout_hours": "stalled_timeout_hours",
 }
-
-
-def normalize_transfer_settings(settings, *, previous=None, supplied_fields=None):
-    older = getattr(previous, "transfer_policy", None)
-    entry = settings.transfer_policy
-    options = older.model_dump() if older is not None else {}
-    if entry is not None:
-        options.update(entry.model_dump(exclude_unset=True))
-    for legacy, canonical in _LEGACY_FIELDS.items():
-        if (entry is None and older is None) or (supplied_fields is not None and legacy in supplied_fields):
-            value = getattr(settings, legacy)
-            # Preserve legacy clamping without weakening the typed new API.
-            for bound in TransferSettings.model_fields[canonical].metadata:
-                if hasattr(bound, "ge"):
-                    value = max(bound.ge, value)
-                if hasattr(bound, "le"):
-                    value = min(bound.le, value)
-            options[canonical] = value
-    policy = TransferSettings(**options)
-    # One-way migration only (specification section 9.2): legacy flat fields
-    # are compatibility INPUT, never a continually regenerated persisted
-    # mirror -- canonical `transfer_policy` is the sole authority on save.
-    return settings.model_copy(update={"transfer_policy": policy})

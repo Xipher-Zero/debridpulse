@@ -206,7 +206,7 @@ The primary supported configuration is available through **Settings**.
 The current qualified development tree exposes:
 
 - **AllDebrid** — enablement, API key, agent identity, and provider maintenance/rate-limit controls;
-- **General Sources → HTTP & HTTPS** — one canonical enable control and no speculative protocol-specific tuning.
+- **Direct Sources → HTTP & HTTPS** — one canonical enable control and no speculative protocol-specific tuning.
 
 Provider enablement is backend-owned configuration. `enabled`, `configured`, provider health, and current host availability are distinct facts.
 

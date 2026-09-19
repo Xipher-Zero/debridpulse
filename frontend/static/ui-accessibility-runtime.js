@@ -121,7 +121,6 @@
 
   function installTabSemantics() {
     syncTablist(document.getElementById('help-tabs'), 'Help sections');
-    syncTablist(document.getElementById('settings-tabs'), 'Settings sections');
   }
 
   function installDashboardErrorCardSemantics() {
@@ -600,9 +599,8 @@
       });
     });
     document.addEventListener('debridpulse:downloads-rendered', installFilterSemantics);
-    document.addEventListener('debridpulse:settings-rendered', installTabSemantics);
     document.addEventListener('click', function (event) {
-      if (!event.target.closest('.filter-tabs .ftab, .dp-help-tabs .stab, .dp-settings-tabs .stab')) return;
+      if (!event.target.closest('.filter-tabs .ftab, .dp-help-tabs .stab')) return;
       queueMicrotask(function () {
         installFilterSemantics();
         installTabSemantics();

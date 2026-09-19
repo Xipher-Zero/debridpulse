@@ -63,9 +63,9 @@ async def test_patch_runtime_limits_never_acquires_configuration_admission():
     assert result["last_apply_error"] is None
     assert saved["cfg"].execution_runtime_limits.max_download_bytes_per_second == 5_000_000
     # aria2_max_download_limit is migration input only -- a canonical save
-    # must not regenerate it as an authoritative persisted mirror
-    # (specification sections 4.4, 9.2).
-    assert saved["cfg"].aria2_max_download_limit == 0
+    # must not regenerate it as a persisted mirror (specification sections
+    # 4.4, 9.2); it is not even a field of the settings model.
+    assert "aria2_max_download_limit" not in saved["cfg"].model_dump()
 
 
 @pytest.mark.asyncio

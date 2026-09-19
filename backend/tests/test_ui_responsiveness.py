@@ -69,6 +69,7 @@ def test_detail_modal_opens_before_detail_request_finishes():
 
 def test_settings_put_response_is_reused_without_followup_get():
     js = (REPO_ROOT / "frontend/static/app.js").read_text()
+    settings = (REPO_ROOT / "frontend/static/ui-settings-page.js").read_text()
     routes = (
         REPO_ROOT / "backend/api/routes.py"
     ).read_text()
@@ -76,18 +77,11 @@ def test_settings_put_response_is_reused_without_followup_get():
     assert "data = _public_settings(clean, application.definitions)" in routes
     assert 'data["ok"] = True' in routes
 
-    settings_put_assignments = re.findall(
-        r"settingsData\s*=\s*await\s+api\(\s*'PUT'\s*,\s*'/settings'",
-        js,
-    )
-
-    assert len(settings_put_assignments) == 5
-
-    assert (
-        "await api('PUT','/settings',d);\n"
-        "    settingsData = await api('GET','/settings');"
-        not in js
-    )
+    # The Settings page is the only writer of the whole-settings document, and
+    # it adopts the PUT response instead of issuing a follow-up GET.
+    assert "const result = await request('PUT', '/settings', nonAuthPayload(), 15000);\n    syncGlobalSettings(result);" in settings
+    assert not re.findall(r"api\(\s*'PUT'\s*,\s*'/settings'", js)
+    assert "getFormSettings" not in js
 
 
 def test_dashboard_unified_add_button_has_its_own_pending_target():
@@ -102,73 +96,37 @@ def test_dashboard_unified_add_button_has_its_own_pending_target():
 
 def test_settings_remote_tests_hold_pending_state_through_remote_test():
     js = (REPO_ROOT / "frontend/static/app.js").read_text()
+    settings = (REPO_ROOT / "frontend/static/ui-settings-page.js").read_text()
 
-    discord = js.split(
-        "async function testDiscord(button)", 1
-    )[1].split(
-        "async function testAD(button)", 1
+    # The superseded app.js connection-test handlers (which called an undefined
+    # form serializer and wrote the whole settings document) are gone.
+    for retired in ("testDiscord", "testAD", "testAria2", "getFormSettings"):
+        assert retired not in js, retired
+
+    test = settings.split("async function testConnection(kind, button)", 1)[1].split(
+        "async function uploadAvatar", 1
     )[0]
-
-    assert discord.index(
-        "'/settings/test-discord'"
-    ) < discord.index(
-        "renderSettings();"
+    assert test.index("setBusy(button, true, 'Testing…')") < test.index(
+        "await request('POST', endpoints[kind]"
     )
-
-    aria2 = js.split(
-        "async function testAria2(button)", 1
-    )[1].split(
-        "function renderAria2Diagnostics", 1
-    )[0]
-
-    assert aria2.index(
-        "'/settings/test-aria2'"
-    ) < aria2.index(
-        "renderSettings();"
-    )
+    assert test.index("await request('POST', endpoints[kind]") < test.index("finally")
+    assert "setBusy(button, false)" in test.split("finally", 1)[1]
 
 
 def test_settings_aria2_queue_refresh_is_coalesced_and_actions_acknowledge():
     js = (REPO_ROOT / "frontend/static/app.js").read_text()
 
-    assert (
-        "loadAria2Downloads =\n"
-        "  coalesceAsync(loadAria2Downloads);"
-        in js
-    )
+    live = (REPO_ROOT / "frontend/static/ui-settings-aria2-live.js").read_text()
 
-    assert (
-        "async function refreshAria2Downloads(button)"
-        in js
-    )
-
-    assert (
-        "async function aria2DownloadAction(gid, action, button)"
-        in js
-    )
-
-    assert "Refreshing…" in js
-    assert "Removing…" in js
-
-    wipe = js.split(
-        "async function wipeDatabase(button)", 1
-    )[1].split(
-        "async function sendStatsReport", 1
-    )[0]
-
-    assert wipe.index(
-        "if (confirmText !== 'WIPE') return;"
-    ) < wipe.index(
-        "'Wiping…'"
-    )
-
-
-
-
-
-
-
-
-
-
-
+    # The queue renderer and its direct engine actions belong to the one live-queue
+    # owner; app.js keeps no copy of them and nothing coalesces a second loader.
+    for retired in ("loadAria2Downloads", "aria2DownloadAction", "renderAria2Downloads", "aria2StatusLabel"):
+        assert retired not in js, retired
+    assert "async function engineAction(gid, action, button)" in live
+    assert "if (refreshRunning) return refreshRunning;" in live
+    assert "remove: 'Removing…'" in live
+    # The superseded Settings handlers that used to live beside the queue
+    # (refresh button, database wipe, stats report) are retired; the clean
+    # Settings runtime owns them.
+    for retired in ("refreshAria2Downloads", "wipeDatabase", "sendStatsReport"):
+        assert retired not in js, retired

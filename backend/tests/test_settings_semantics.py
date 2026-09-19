@@ -55,8 +55,11 @@ class SQLiteOnlySettingsTests(unittest.TestCase):
 
     def test_delivery_is_aria2_only(self):
         cfg = AppSettings()
-        self.assertEqual(cfg.download_client, "aria2")
+        self.assertFalse(hasattr(cfg, "download_client"))
         self.assertFalse(hasattr(cfg, "symlink_path"))
+        self.assertEqual(set(cfg.integrations) - {"aria2"}, set())
+        from executors.aria2.definition import definition
+        self.assertEqual(definition.kind, "executor")
 
 
 class SettingsFrontendContractTests(unittest.TestCase):
@@ -79,7 +82,7 @@ class SettingsFrontendContractTests(unittest.TestCase):
     def test_database_scope_is_sqlite_only(self):
         js = self.settings_js()
         self.assertIn("Data & Maintenance", js)
-        self.assertIn("Database Destructive Actions", js)
+        self.assertIn("Database Reset Controls", js)
         for stale in (
             "postgres_host",
             "postgres_password",

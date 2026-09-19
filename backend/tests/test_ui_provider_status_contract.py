@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 STATUS = (ROOT / "frontend" / "static" / "ui-provider-status.js").read_text()
 ACCOUNT = (ROOT / "frontend" / "static" / "ui-alldebrid-account-status.js").read_text()
-CARDS = (ROOT / "frontend" / "static" / "ui-provider-cards.js").read_text()
-BOOTSTRAP = (ROOT / "frontend" / "static" / "ui-settings-card-icons.js").read_text()
+# The provider card (structure, status, collapse control) belongs to the Settings owner.
+CARDS = (ROOT / "frontend" / "static" / "ui-settings-page.js").read_text()
 APP = (ROOT / "frontend" / "static" / "app.js").read_text()
 INDEX = (ROOT / "frontend" / "static" / "index.html").read_text()
 ALLDEBRID_DEF = (ROOT / "backend" / "providers" / "alldebrid" / "definition.py").read_text()
@@ -56,13 +56,13 @@ def test_presentation_identity_and_direct_source_group_are_provider_owned():
 
 
 def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_disclosure():
-    assert "integration.configured" in CARDS
+    assert "entry.configured" in CARDS
     assert "data-integration-enabled" in CARDS
     assert "dp-settings-provider-disclosure" in CARDS
     assert "Configuration required" in CARDS
     assert "Provider configured" in CARDS
-    assert "const dirty=" in CARDS or "const dirty =" in CARDS
-    assert "signature(" in CARDS
+    assert "const dirty =" in CARDS
+    assert "controlSignature(" in CARDS
 
 
 def test_application_shell_explicitly_loads_the_single_provider_owners():
@@ -72,13 +72,12 @@ def test_application_shell_explicitly_loads_the_single_provider_owners():
     style = (ROOT / "frontend" / "static" / "style.css").read_text()
     assert 'id="provider-status-list"' in INDEX
     assert INDEX.count('id="provider-status-list"') == 1
-    assert '/ui-provider-status.js?v=3' in INDEX
+    assert '/ui-provider-status.js?v=4' in INDEX
     assert '/ui-alldebrid-account-status.js?v=2' in INDEX
-    assert '/ui-provider-cards.js?v=2' in INDEX
+    assert 'ui-provider-cards' not in INDEX
+    assert not (ROOT / "frontend" / "static" / "ui-provider-cards.js").exists()
     assert "ui-provider-state.css" not in INDEX
     assert "@import url('/ui-provider-state.css" in style
-    assert '/ui-provider-status.js' not in BOOTSTRAP
-    assert '/ui-provider-cards.js' not in BOOTSTRAP
 
 
 def test_legacy_alldebrid_provider_status_owner_is_removed():

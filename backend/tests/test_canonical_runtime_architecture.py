@@ -57,28 +57,22 @@ def test_retired_recovery_leveling_layers_are_physically_absent_and_never_import
                 assert not any(alias.name in qualified for alias in node.names), path
 
 
-def test_production_engine_and_repository_mro_is_shallow_and_exact():
+def test_production_engine_and_repository_are_the_composed_classes():
+    """The composed production classes, by identity. The hierarchy itself is not
+    frozen for its own sake: what protects ownership is
+    ``test_engine_and_repository_stacks_have_no_superseded_override_layer``
+    (transfers ownership contract), which fails on any layer whose behavior
+    depends on override order."""
     from transfers.convergence_engine import TransferEngine
     from transfers.recovery_repository import TransferRepository
+    from application import composition
 
-    engine_mro = [f"{cls.__module__}.{cls.__name__}" for cls in TransferEngine.__mro__]
-    assert engine_mro == [
-        "transfers.convergence_engine.TransferEngine",
-        "transfers.engine.TransferEngine",
-        "transfers._engine_recovery.TransferEngine",
-        "transfers._engine_base.TransferEngine",
-        "builtins.object",
-    ]
-
-    repository_mro = [f"{cls.__module__}.{cls.__name__}" for cls in TransferRepository.__mro__]
-    assert repository_mro == [
-        "transfers.recovery_repository.TransferRepository",
-        "transfers.manual_repository.TransferRepository",
-        "transfers.presentation_repository.TransferRepository",
-        "transfers.repository.TransferRepository",
-        "transfers._repository_base.TransferRepository",
-        "builtins.object",
-    ]
+    assert composition.TransferEngine is TransferEngine
+    assert composition.TransferRepository is TransferRepository
+    for cls in (TransferEngine, TransferRepository):
+        retired = [c.__module__ for c in cls.__mro__ if c.__module__.split(".")[-1].startswith(
+            ("_convergence_phase3", "_recovery_repository_"))]
+        assert not retired, retired
 
 
 def test_engine_recovery_no_longer_mutates_another_module_stable_payload():
@@ -226,16 +220,18 @@ def test_bandwidth_and_tuning_routes_never_acquire_application_wide_maintenance(
 
 def test_aria2_runtime_builds_native_options_from_canonical_namespaces_only():
     """Specification sections 4.3, 9.1, 9.3: the native aria2 global-option
-    dict is rebuilt from the integration-owned ``integrations.aria2``
-    namespace, universal ``transfer_policy``, and neutral
-    ``execution_runtime_limits`` -- never reconstructed from flat
-    ``AppSettings.aria2_*`` fields. Every aria2-specific operational field
-    (including log rotation, RPC timeout, and result-history size) now has a
-    canonical home on ``integrations.aria2`` too -- there is no remaining
-    field-by-field justification for reading any of them off ``AppSettings``."""
+    dict is rebuilt only from injected typed configuration -- the
+    ``integrations.aria2`` options, the universal ``transfer_policy``
+    concurrency and the neutral ``execution_runtime_limits`` cap -- never from
+    flat ``AppSettings.aria2_*`` fields and never from a global settings
+    lookup. The former ``get_settings()``-defaulting convenience wrappers had
+    no production caller and are retired."""
     source = (ROOT / "executors/aria2/runtime.py").read_text(encoding="utf-8")
-    start = source.index("def aria2_global_options(")
-    end = source.index("\nclass ", start)
+    for retired in ("def aria2_global_options(", "def is_builtin_mode(", "def builtin_rpc_url("):
+        assert retired not in source, f"{retired!r} is a retired global-settings wrapper"
+    assert "get_settings" not in source
+    start = source.index("def build_aria2_global_options(")
+    end = source.index("\ndef ", start)
     body = source[start:end]
     for forbidden in (
         "aria2_split", "aria2_min_split_size", "aria2_max_connection_per_server",
@@ -243,10 +239,10 @@ def test_aria2_runtime_builds_native_options_from_canonical_namespaces_only():
         "aria2_lowest_speed_limit", "aria2_max_active_downloads", "aria2_max_download_limit",
         "aria2_max_download_result", "aria2_keep_unfinished_download_result", "aria2_max_upload_limit",
     ):
-        assert forbidden not in body, f"aria2_global_options still reads flat field {forbidden!r}"
-    assert "_canonical_aria2_options(cfg)" in body
-    assert "transfer_policy" in body
-    assert "execution_runtime_limits" in body
+        assert forbidden not in body, f"build_aria2_global_options still reads flat field {forbidden!r}"
+    assert "options.max_download_result" in body
+    assert "max_concurrent_executions" in body
+    assert "max_download_bytes_per_second" in body
 
 
 def test_only_composition_and_migration_bind_flat_aria2_tuning_fields():
@@ -283,8 +279,7 @@ def test_builtin_runtime_and_administration_never_call_get_settings():
     typed configuration through injection (``Aria2RuntimeConfiguration``,
     composed by ``application.composition.configure()``) and never call
     ``core.config.get_settings()`` themselves. The settings-boundary
-    translation helpers (``_canonical_aria2_options``, ``is_builtin_mode``,
-    ``builtin_rpc_url``, ``effective_rpc_config``, ``aria2_global_options``)
+    translation helpers (``_canonical_aria2_options``, ``effective_rpc_config``)
     remain legitimate for genuine settings-boundary callers (API routes,
     migration, composition itself) -- this test isolates the two runtime
     CLASSES specifically, not the whole module."""

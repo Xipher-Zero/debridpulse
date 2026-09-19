@@ -109,10 +109,10 @@ async def test_patch_transfer_policy_updates_only_requested_field():
     # Untouched retry policy is preserved, not reset to model defaults.
     assert result["execution_retry_count"] == 3
     assert saved["cfg"].transfer_policy.max_concurrent_executions == 9
-    # Legacy alias is migration/compatibility input only (specification
-    # section 9.2): a canonical save must NOT regenerate it as a persisted
-    # mirror -- it stays at whatever it already held before this write.
-    assert saved["cfg"].max_concurrent_downloads == current.max_concurrent_downloads
+    # The legacy alias is migration input only (specification section 9.2): it
+    # is not a field of the settings document, so a canonical save cannot
+    # regenerate it as a persisted mirror.
+    assert "max_concurrent_downloads" not in saved["cfg"].model_dump()
     # Sibling integration namespaces are untouched.
     assert saved["cfg"].integrations["alldebrid"].options["api_key"] == "secret-key"
     assert saved["cfg"].integrations["aria2"].options["split"] == 16

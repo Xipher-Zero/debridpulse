@@ -10,7 +10,7 @@ def read(path: str) -> str:
 def test_extraction_passwords_keep_backend_secret_boundary() -> None:
     validation = read("backend/api/settings_validation_routes.py")
     routes = read("backend/api/routes.py")
-    completion = read("frontend/static/ui-settings-downloads-completion.js")
+    completion = read("frontend/static/ui-settings-page.js")
     archive = read("frontend/static/ui-settings-archive-passwords.js")
     assert '@router.get("/settings/extraction-passwords")' in validation
     assert 'return {"passwords": str(get_settings().extraction_password or "")}' in validation
@@ -48,7 +48,7 @@ def test_archive_password_editor_uses_click_reveal_and_line_editing() -> None:
 
 
 def test_archive_password_editor_is_the_sole_owner() -> None:
-    completion = read("frontend/static/ui-settings-downloads-completion.js")
+    completion = read("frontend/static/ui-settings-page.js")
     archive = read("frontend/static/ui-settings-archive-passwords.js")
     page = read("frontend/static/ui-settings-page.js")
     app = read("frontend/static/app.js")
@@ -69,11 +69,18 @@ def test_archive_password_editor_is_the_sole_owner() -> None:
     for token in ("_extractionPasswords", "initExtractionPasswordList", "s-extraction_password"):
         assert token not in app
 
-    # The sole owner builds its own editor scaffold and hides the raw textarea.
-    assert "dp-settings-extraction-password-editor" in archive
-    assert "dp-settings-extraction-password-source" in archive
-    assert "dp-settings-password-rows" in archive
-    assert "insertAdjacentElement('afterend'" in archive
+    # The page renders the whole field -- the hidden form-field textarea, the
+    # editor container, the reveal button and the hint. The archive-password
+    # owner adds behavior only: it creates no scaffold, hides nothing the page
+    # rendered and rewrites none of its copy.
+    assert "function archivePasswordField(" in page
+    for token in ("dp-settings-extraction-password-editor", "dp-settings-extraction-password-source",
+                  "dp-settings-password-rows", "dp-settings-password-eye", 'aria-hidden="true" tabindex="-1"'):
+        assert token in page, token
+    for token in ("scaffold", "insertAdjacentElement", "hint.textContent", "classList.add('dp-settings-extraction",
+                  "cloneNode", "replaceWith"):
+        assert token not in archive, token
+    assert "dp-settings-password-rows" in archive  # its own row host, filled by the owner
 
     # The serializer reads the field through the hydration gate and the visible
     # clear checkbox is the only clear-secret control for archive passwords.

@@ -74,12 +74,7 @@ function integratedSettings(base) {
     },
     options: {},
   };
-  settings.alldebrid_api_key_configured = true;
-  settings.alldebrid_rate_limit_per_minute ??= 60;
-  settings.poll_interval_seconds ??= 30;
   settings.full_sync_interval_minutes ??= 5;
-  settings.upload_fail_retry_count ??= 3;
-  settings.upload_fail_retry_delay_minutes ??= 5;
   return settings;
 }
 

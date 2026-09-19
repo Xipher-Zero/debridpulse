@@ -21,7 +21,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import aiohttp
-from core.config import get_settings
 from core.logging_utils import sanitize_log_value
 
 logger = logging.getLogger("alldebrid.aria2")
@@ -33,11 +32,6 @@ _CLOSING_TRANSPORT_MSGS = frozenset({
     "ServerDisconnectedError",
     "Cannot connect to host",
 })
-
-
-def _is_builtin_mode() -> bool:
-    """Return whether DebridPulse exclusively owns the aria2 daemon."""
-    return getattr(get_settings(), "aria2_mode", "external") == "builtin"
 
 
 def _is_transient_connection_error(exc: Exception) -> bool:
@@ -120,7 +114,17 @@ def aria2_download_to_dict(download: Aria2DownloadStatus) -> Dict[str, Any]:
 
 
 class Aria2Service:
-    def __init__(self, url: str, secret: str = "", timeout_seconds: int = 15):
+    """JSON-RPC client for one aria2 daemon.
+
+    ``owns_daemon`` is injected by whoever constructs the client from the
+    canonical ``Aria2Options.mode``: it is ``True`` only when DebridPulse
+    exclusively owns the daemon. It defaults to ``False`` so a client that was
+    not told it owns the daemon can never mutate shared state. The client never
+    looks up application settings itself.
+    """
+
+    def __init__(self, url: str, secret: str = "", timeout_seconds: int = 15, *, owns_daemon: bool = False):
+        self.owns_daemon = bool(owns_daemon)
         self.url = url.strip()
         self.secret = secret.strip()
         self.timeout = aiohttp.ClientTimeout(total=max(5, int(timeout_seconds or 15)))
@@ -166,14 +170,14 @@ class Aria2Service:
         return await self._call("aria2.getGlobalOption")
 
     async def change_global_options(self, options: Dict[str, Any]) -> Any:
-        if not _is_builtin_mode():
+        if not self.owns_daemon:
             logger.warning("Blocked aria2.changeGlobalOption for shared external daemon")
             return {"skipped": True, "reason": "external aria2 policy is read-only"}
         return await self._call("aria2.changeGlobalOption", [options])
 
     async def purge_download_results(self, *, force: bool = False) -> Any:
         """Preserve bounded built-in result state unless an explicit purge is requested."""
-        if not _is_builtin_mode():
+        if not self.owns_daemon:
             logger.warning("Blocked aria2.purgeDownloadResult for shared external daemon")
             return {"skipped": True, "reason": "external aria2 result history is daemon-owned"}
         if not force:
@@ -264,7 +268,7 @@ class Aria2Service:
 
     async def remove(self, gid: str):
         await self._best_effort("aria2.forceRemove", [gid])
-        if _is_builtin_mode():
+        if self.owns_daemon:
             await self._best_effort("aria2.removeDownloadResult", [gid])
 
     def rpc_metrics(self) -> Dict[str, Any]:
