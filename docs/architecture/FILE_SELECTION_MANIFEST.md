@@ -253,27 +253,36 @@ test.
 
 ## Engine integration — `_engine_base.py` + `engine.py`
 
-`_engine_base._after_resolution_persisted(record, provider, result)` is an inert
-neutral seam (`return None`). The public engine overrides it — this is the
-**only** place a selection generation is created. It opens a generation for the
-`(request, provider-resource binding)` when the request is a root request routed
-to a `FILE_MANIFEST` provider (`_file_manifest_root`) **and** either the durable
-submission intent is `selection_mode == "interactive"` **or** the transfer
-already owns a selection generation
-(`repository.transfer_has_selection_generation`). The second clause keeps a
-transfer interactive across a re-resolution onto a new provider resource and
-across a database that predates `selection_mode`. It persists
-`initially_available` + `available_at` and records an inline manifest if
-present.
+`_engine_base._secure_root_selection(record, provider, observation)` is the
+**only** engine entry that establishes a selection generation, and
+`TransferRepository.ensure_selection_generation` is the **only** place one is
+created. Every path that binds a provider resource to a root funnels through that
+one entry: normal resolution (`_apply_resolution`), inventory adoption
+(`reconcile_inventory`) and — as the fail-closed materialization guard —
+`_observe_resource`, which every restart-reconciliation / recovery / failover /
+reuse / future-provider binding must pass before a manifest can expand. It opens
+a generation for the `(request, provider-resource binding)` when the request is a
+root request routed to a `FILE_MANIFEST` provider (`_file_manifest_root`, the
+capability boundary — never a request kind) **and** the repository's single
+policy (`_selection_required`) says selection is required: the durable submission
+intent is `selection_mode == "interactive"` **or** the transfer already owns a
+selection generation. The second clause keeps a transfer interactive across a
+re-resolution onto a new provider resource and across a database that predates
+`selection_mode`. It persists `initially_available` + `available_at` and records
+an inline manifest if present. The result is a `SelectionAuthority`:
+not-required (genuine ALL), governed (a generation exists for this binding), or
+**held** (required but not establishable) — a missing generation is never read as
+ALL, and `commit_selected_manifest` independently refuses to return the full list
+for a request that requires selection but has no generation.
 
 **`selection_mode` gates generation creation only.** Once a durable generation
 exists for a `(request, binding)`, that generation — never the request's
 current/defaulted policy field — governs manifest recording, selection gating,
 Confirm/Close/timeout, and executable-manifest filtering until it is terminal
-(upgrade-boundary invariant). Every engine step past creation checks
-`repository.selection_generation_exists(request_id, binding_id)`: in
+(upgrade-boundary invariant). Every engine step past creation follows the
+`SelectionAuthority` returned by `ensure_selection_generation`: in
 `_observe_resource`, `record_file_manifest` / `file_selection_gate` /
-`commit_selected_manifest` are engaged iff a generation exists, so a
+`commit_selected_manifest` are engaged iff a generation governs the binding, so a
 pre-`selection_mode` database whose root request now deserializes as
 `selection_mode="all"` still has its durable PENDING hold, EXPLICIT subset, and
 PREPARING selection opportunity honored. A genuinely new `selection_mode=all`
@@ -317,9 +326,9 @@ magnet / bulk-magnet / torrent-file path; direct-link submission
 (`POST /api/links/add`) is unchanged and sends nothing.
 
 A pre-`selection_mode` `TransferRequest` payload deserializes with the default
-`selection_mode="all"`. This is safe: it is consulted only at generation
-creation (`_after_resolution_persisted`), and a transfer that already owns a
-generation is engaged regardless (`transfer_has_selection_generation`). An
+`selection_mode="all"`. This is safe: it is consulted only by the repository's
+single `_selection_required` policy, and a transfer that already owns a
+generation is engaged regardless. An
 already-existing durable generation is authoritative — the new gate can never
 invalidate or bypass it (upgrade-boundary invariant;
 `test_file_selection_upgrade_boundary.py`).

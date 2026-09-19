@@ -640,3 +640,96 @@ async def test_conflicting_confirm_never_rewrites_retry_at(repo):
         seed.transfer_id, canonical.manifest_id, [canonical.entries[1].entry_id], now=1002.0)
     assert superseded.outcome == fs.SelectionOutcome.CONFLICT
     assert dict(await _request_row(seed.request_id)) == before    # no rewrite by the loser
+
+
+# --------------------------------------------------------------------------- #
+# The one selection-generation owner: idempotent, isolated per (transfer,
+# binding), never inherited, durable across restart (same-object resubmission)
+# --------------------------------------------------------------------------- #
+
+def _as_interactive(record):
+    from dataclasses import replace
+    return replace(record, request=replace(record.request, selection_mode="interactive"))
+
+
+async def _selection_rows(transfer_id):
+    async with database.get_db() as db:
+        return await db.fetchall("SELECT * FROM transfer_file_selections WHERE transfer_id=?", (transfer_id,))
+
+
+@pytest.mark.asyncio
+async def test_ensure_selection_generation_is_idempotent_and_survives_restart(repo):
+    clock = Clock(1000.0)
+    seed = await seed_window(transfer_hash="e" * 40)
+    record = _as_interactive(seed.record)
+    tree = file_manifest(("f1", "s/f1", 10), ("f2", "s/f2", 20))
+
+    first = await repo.ensure_selection_generation(
+        record, seed.provider_id, seed.resource, available=True, file_manifest=tree, now=clock())
+    assert first.governed and first.binding_id == seed.provider_resource_id
+    view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+    confirmed = await repo.confirm_file_selection(
+        seed.transfer_id, view["manifest_id"], [view["entries"][0]["entry_id"]], now=clock())
+    assert confirmed.outcome == fs.SelectionOutcome.CONFIRMED
+
+    clock.advance(500)
+    restarted = TransferRepository()                                    # a fresh process on the same database
+    again = await restarted.ensure_selection_generation(
+        record, seed.provider_id, seed.resource, available=False, file_manifest=tree, now=clock())
+    assert again == first
+    rows = await _selection_rows(seed.transfer_id)
+    assert len(rows) == 1 and rows[0]["decision"] == "explicit"         # never reset to a fresh pending decision
+    assert rows[0]["initially_available"] == 1                          # first factual observation is kept
+
+
+@pytest.mark.asyncio
+async def test_generation_is_isolated_per_transfer_and_binding_for_an_identical_resource(repo):
+    from transfers import codec
+    from transfers.models import RequestRecord, ResourceState
+
+    clock = Clock(1000.0)
+    a = await seed_window(transfer_hash="a" * 40, provider_id="parcel-lab")
+    tree = file_manifest(("f1", "s/f1", 10), ("f2", "s/f2", 20), ("f3", "s/f3", 30))
+    auth_a = await repo.ensure_selection_generation(
+        _as_interactive(a.record), a.provider_id, a.resource, available=True, file_manifest=tree, now=clock())
+    view_a = await repo.file_selection_presentation(a.transfer_id, now=clock())
+    await repo.confirm_file_selection(a.transfer_id, view_a["manifest_id"], [view_a["entries"][0]["entry_id"]], now=clock())
+
+    # A is deleted; the SAME canonical resource is re-bound to a fresh transfer B.
+    async with database.get_db() as db:
+        await db.execute("UPDATE torrents SET status='deleted' WHERE id=?", (a.transfer_id,))
+        b_id = await db.execute_returning_id(
+            "INSERT INTO torrents(hash,name,status) VALUES(?,?,?)", ("b" * 40, "payload", "processing"))
+        await db.execute(
+            "INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state) VALUES('req-b',?,0,?,'waiting')",
+            (b_id, codec.dump(a.record.request)))
+        await TransferRepository._resource(db, b_id, a.resource, ResourceState.AVAILABLE)
+        await db.commit()
+    record_b = RequestRecord("req-b", b_id, a.record.request, "waiting", None, a.resource, 0, 0.0, None, None)
+
+    auth_b = await repo.ensure_selection_generation(
+        _as_interactive(record_b), a.provider_id, a.resource, available=True, file_manifest=tree, now=clock())
+    assert auth_a.binding_id != auth_b.binding_id                       # distinct binding generations
+    view_b = await repo.file_selection_presentation(b_id, now=clock())
+    assert view_b["selection_id"] != view_a["selection_id"] and view_b["manifest_id"] != view_a["manifest_id"]
+    assert view_b["decision"] == "pending" and view_b["selected_entry_ids"] == []   # A's subset never inherited
+    assert (await _selection_rows(a.transfer_id))[0]["decision"] == "explicit"       # and A is untouched
+
+
+@pytest.mark.asyncio
+async def test_selection_policy_has_one_reader_a_default_all_request_with_no_generation_is_ungoverned(repo):
+    seed = await seed_window(transfer_hash="d" * 40)
+    ungoverned = await repo.ensure_selection_generation(
+        seed.record, seed.provider_id, seed.resource, available=True, file_manifest=None, now=1000.0)
+    assert not ungoverned.required and not ungoverned.governed and not ungoverned.held
+    assert await _selection_rows(seed.transfer_id) == []
+
+    governed = await repo.ensure_selection_generation(
+        _as_interactive(seed.record), seed.provider_id, seed.resource, available=True, file_manifest=None, now=1000.0)
+    assert governed.governed
+    # Once the transfer owns a generation it keeps selecting even for a request whose
+    # policy field deserializes as ALL (databases that predate ``selection_mode``).
+    legacy = await repo.ensure_selection_generation(
+        seed.record, seed.provider_id, seed.resource, available=True, file_manifest=None, now=1001.0)
+    assert legacy.governed and legacy.binding_id == governed.binding_id
+    assert len(await _selection_rows(seed.transfer_id)) == 1

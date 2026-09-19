@@ -117,14 +117,25 @@ cleanup is still outstanding. Before the fresh generation's first
 `Recovery failed`, never `INPUT_REQUIRED`, no new scheduler — while any provider
 resource of a retired same-fingerprint predecessor still has
 `cleanup_authority` set and is not `cleanup_abandoned`. That predicate blocks
-pending, claimed-in-flight *and* scheduled-retry cleanup alike; it never infers
-"finished" from the transient `cleanup_blocked` claim flag. `cleanup_abandoned`
-is set only *after* a `provider.cleanup()` call has returned and retry policy has
-permanently given up — so no operation is in flight at that moment — and it
-releases the fence, so a fresh transfer is never deadlocked. A cleanup claim that
-a restart interrupted (`cleanup_blocked=1`, not abandoned) cannot have an
-operation still running; `engine.initialize()` releases it for the ordinary
-cadence to re-drive to completion or terminal abandonment. Old executor cleanup
+pending, leased-in-flight, expired-claim *and* scheduled-retry cleanup alike; it
+never infers "finished" from a claim. `cleanup_abandoned` is set only *after* a
+`provider.cleanup()` call has returned and retry policy has permanently given up
+— so no operation is in flight at that moment — and it releases the fence, as do
+completion (authority cleared) and an ABSENT resource, so a fresh transfer is
+never deadlocked. The cleanup claim is one durable **lease/token**
+(`cleanup_claim_token` + `cleanup_claim_until`, acquired atomically by
+`claim_cleanup`, finalized only by the current token via `cleanup_complete` /
+`cleanup_retry`). The lease means **live ownership**, not elapsed time: while
+its `provider.cleanup()` call runs, the owner renews the lease with the same
+token (`renew_cleanup_claim`, driven by a heartbeat that lives and dies with that
+one call), so a live owner is never reclaimed and at most one remote cleanup is
+ever in flight per binding. A heartbeat that finds the claim was lost aborts its
+own call and finalizes nothing. A claim whose owner is cancelled, crashes, or
+fails between acquisition and finalization stops being renewed, expires after
+`CLEANUP_CLAIM_LEASE_SECONDS`, the ordinary cleanup cadence (`_cleanup_pending`)
+then re-claims it, and the stale owner's late outcome is rejected. No restart, no
+operator action and no second scheduler is involved; the retired boolean `cleanup_blocked` is zeroed on upgrade
+and never used again. Old executor cleanup
 likewise stays bound to the predecessor's execution attempts, and the fresh
 generation's provider-resource row is always its own — never re-homed from the
 predecessor.

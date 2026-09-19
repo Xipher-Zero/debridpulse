@@ -103,8 +103,9 @@ dimensions:
   current/defaulted `selection_mode` — governs manifest recording, gating,
   Confirm/Close/timeout and executable-manifest filtering. A pre-`selection_mode`
   database keeps every existing PENDING hold, EXPLICIT subset and PREPARING
-  selection opportunity; every engine step past creation checks
-  `repository.selection_generation_exists`, never the policy field.
+  selection opportunity; every engine step past creation follows the
+  `SelectionAuthority` from `repository.ensure_selection_generation`, never the
+  policy field.
 
 The 120-second hold is a **maximum unanswered-decision window, not a minimum
 delay**. Confirm (`→ explicit`) and an active-hold Close (`→ all/closed`) settle

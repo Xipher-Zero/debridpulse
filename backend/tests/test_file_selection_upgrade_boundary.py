@@ -9,11 +9,11 @@ NEW selection generation is created; it may NEVER invalidate or bypass a durable
 selection generation that already exists.
 
 Implementation rule under test: ``selection_mode`` gates generation *creation*
-only (``engine._after_resolution_persisted``). Every engine step past that point
+only (``repository.ensure_selection_generation``, reached through
+``engine._secure_root_selection``). Every engine step past that point
 — manifest recording, selection gating, Confirm/Close/timeout, executable
-manifest filtering — checks generation EXISTENCE
-(``repository.selection_generation_exists``), never the request's
-current/defaulted policy field.
+manifest filtering — follows the generation that governs the binding
+(``SelectionAuthority``), never the request's current/defaulted policy field.
 
 Each test constructs a *genuinely pre-existing* generation: created, then the
 owning request's stored payload is stripped of ``selection_mode`` and the
@@ -319,7 +319,7 @@ async def test_new_submission_without_selection_mode_is_plain_all_no_generation(
 
 # --------------------------------------------------------------------------- #
 # Case 5 — a legacy transfer re-resolved onto a new provider resource stays
-# interactive (transfer_has_selection_generation), never inheriting the subset
+# interactive (the transfer already owns a generation), never inheriting the subset
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
@@ -346,7 +346,7 @@ async def test_legacy_transfer_reresolution_opens_a_fresh_generation_for_the_new
     core.clock.advance(50)
     await fresh.engine.resolve_pending()
 
-    # transfer_has_selection_generation() is true, so the re-resolution opens a
+    # The transfer already owns a generation, so the re-resolution opens a
     # fresh generation for the new binding even though the request now
     # deserializes as selection_mode="all".
     async with database.get_db() as db:

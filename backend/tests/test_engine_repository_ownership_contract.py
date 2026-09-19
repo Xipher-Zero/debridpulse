@@ -43,7 +43,6 @@ SPECIALIZATIONS = {
 # Concrete implementations of abstract hooks declared in the base.
 HOOK_IMPLEMENTATIONS = {
     ("engine", "_resolve"),
-    ("engine", "_after_resolution_persisted"),
     ("engine", "_observe_resource"),
 }
 
@@ -144,6 +143,178 @@ def test_snapshot_reader_seeds_the_claim_and_fence_fields_at_the_one_reader():
     source = inspect.getsource(TransferRepository._recovery_snapshot)
     assert "**_RECOVERY_SNAPSHOT_DEFAULTS" in source
     assert 'max(3, int(snapshot.get("version") or 0))' in source
+
+
+# -- cleanup-claim and selection-generation ownership ------------------------------
+#
+# Same-object resubmission correction: exactly ONE owner for the provider-cleanup
+# claim (a lease/token in ``_repository_base``, driven by ONE engine cadence) and
+# exactly ONE owner for the file-selection generation guarantee
+# (``TransferRepository.ensure_selection_generation``, reached through the ONE
+# engine entry ``_secure_root_selection``). These are source-level contracts so a
+# resurrected duplicate helper, a second writer, or a request-kind special case
+# fails here instead of resurfacing as a lifecycle bug.
+
+import re
+from pathlib import Path
+
+_BACKEND = Path(__file__).resolve().parents[1]
+_CLEANUP_STATE_WRITERS = {"cleanup_intent", "claim_cleanup", "renew_cleanup_claim", "cleanup_complete", "cleanup_retry"}
+
+
+def _production_files():
+    for path in sorted(_BACKEND.rglob("*.py")):
+        rel = path.relative_to(_BACKEND).as_posix()
+        if rel.startswith(("tests/", ".venv/")) or "/__pycache__/" in rel:
+            continue
+        yield rel, path
+
+
+def _functions(tree):
+    """(qualified function name, node) for every function, innermost owner first."""
+    def walk(node, owner):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                yield child.name, child
+                yield from walk(child, child.name)
+            else:
+                yield from walk(child, owner)
+    yield from walk(tree, None)
+
+
+def _string_owners(pattern):
+    """{(relative file, enclosing function)} for every string literal matching ``pattern``."""
+    found = set()
+    regex = re.compile(pattern, re.S)
+    for rel, path in _production_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for name, fn in _functions(tree):
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and regex.search(node.value):
+                    found.add((rel, name))
+    return found
+
+
+def _call_owners(attr):
+    found = set()
+    for rel, path in _production_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for name, fn in _functions(tree):
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == attr):
+                    found.add((rel, name))
+    return found
+
+
+def _defined(name):
+    return {rel for rel, path in _production_files()
+            if any(fn == name for fn, _ in _functions(ast.parse(path.read_text(encoding="utf-8"))))}
+
+
+def test_provider_cleanup_state_has_exactly_one_writer_set_in_the_repository_base():
+    writers = _string_owners(
+        r"UPDATE provider_resources SET[^;]*\b(cleanup_claim_token|cleanup_claim_until|cleanup_authority|"
+        r"cleanup_abandoned|cleanup_retry_at|cleanup_attempts|cleanup_blocked)\b")
+    # The repository owns every live transition. The single other writer is the one-way
+    # upgrade step that zeroes the RETIRED boolean marker; it never touches a lease.
+    assert writers == {("transfers/_repository_base.py", name) for name in _CLEANUP_STATE_WRITERS} | {
+        ("db/database.py", "_normalize_legacy_cleanup_claims")}
+
+
+def test_the_cleanup_claim_is_driven_by_exactly_one_engine_cadence():
+    for attr in ("claim_cleanup", "cleanup_complete", "cleanup_retry"):
+        assert _call_owners(attr) == {("transfers/_engine_base.py", "_cleanup_pending")}, attr
+    # Lease renewal is part of the same owner: only the heartbeat that lives and dies with
+    # the one provider call may renew, and only the cadence starts that call.
+    assert _call_owners("renew_cleanup_claim") == {("transfers/_engine_base.py", "_hold_cleanup_lease")}
+    assert _call_owners("_run_owned_cleanup") == {("transfers/_engine_base.py", "_cleanup_pending")}
+    assert _call_owners("_hold_cleanup_lease") == {("transfers/_engine_base.py", "_run_owned_cleanup")}
+    # No second cleanup scheduler/loop: the cadence is only ever entered by the engine's own drains.
+    assert {rel for rel, _ in _call_owners("pending_cleanup")} == {"transfers/_engine_base.py"}
+
+
+def test_the_retired_boolean_claim_marker_is_only_ever_normalized_never_used():
+    assert {rel for rel, _ in _string_owners(r"\bcleanup_blocked\b")} == {"db/database.py"}
+
+
+def test_superseded_cleanup_selection_and_adoption_helpers_are_physically_removed():
+    for name in ("reclaim_stale_cleanup_claims", "attach_inventory", "_after_resolution_persisted",
+                 "selection_generation_exists", "transfer_has_selection_generation"):
+        assert _defined(name) == set(), name
+        assert _call_owners(name) == set(), name
+
+
+def test_one_owner_creates_the_selection_generation_and_one_engine_entry_reaches_it():
+    assert _call_owners("begin_file_selection_window") == {("transfers/repository.py", "ensure_selection_generation")}
+    assert _call_owners("ensure_selection_generation") == {("transfers/_engine_base.py", "_secure_root_selection")}
+    assert _call_owners("_secure_root_selection") == {
+        ("transfers/_engine_base.py", "_apply_resolution"),
+        ("transfers/_engine_base.py", "reconcile_inventory"),
+        ("transfers/engine.py", "_observe_resource"),           # the fail-closed materialization boundary
+    }
+    assert _defined("_secure_root_selection") == {"transfers/_engine_base.py"}
+
+
+def test_the_interactive_policy_is_read_in_one_place_and_the_engine_never_reads_it():
+    readers = _string_owners(r"^interactive$") | {
+        (rel, name) for rel, path in _production_files()
+        for name, fn in _functions(ast.parse(path.read_text(encoding="utf-8")))
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Attribute) and node.attr == "SELECTION_MODE_INTERACTIVE"}
+    assert {rel for rel, _ in readers} <= {"transfers/repository.py", "transfers/file_selection.py",
+                                            "transfers/models.py", "api/routes.py", "application/service.py"}
+    repo_readers = {name for rel, name in readers if rel == "transfers/repository.py"}
+    assert repo_readers == {"_selection_required"}
+    for engine_file in ("transfers/_engine_base.py", "transfers/engine.py"):
+        tree = ast.parse((_BACKEND / engine_file).read_text(encoding="utf-8"))
+        touched = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+        assert not touched & {"selection_mode", "SELECTION_MODE_INTERACTIVE", "SELECTION_MODE_ALL"}, engine_file
+
+
+_KIND_LITERALS = {"magnet", "torrent", "torrent_file"}
+_KIND_CONSTANTS = {"BITTORRENT_REQUEST_KINDS", "TORRENT_FILE_REQUEST_KINDS"}
+
+
+def _request_kind_branches(node):
+    """Request-kind special-casing: a literal magnet/torrent kind or the BitTorrent
+    kind-set constants, as code (never as prose in a docstring)."""
+    hits = []
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and child.value in _KIND_LITERALS:
+            hits.append(child.value)
+        elif isinstance(child, ast.Name) and child.id in _KIND_CONSTANTS:
+            hits.append(child.id)
+    return hits
+
+
+def test_no_request_kind_special_case_in_the_cleanup_selection_or_adoption_owners():
+    """Torrent/magnet is the reproducer, never the abstraction boundary: only the
+    real capability (``Capability.FILE_MANIFEST``) may condition the guarantee."""
+    for rel in ("transfers/_engine_base.py", "transfers/engine.py", "transfers/repository.py"):
+        tree = ast.parse((_BACKEND / rel).read_text(encoding="utf-8"))
+        assert _request_kind_branches(tree) == [], rel
+    owners = _CLEANUP_STATE_WRITERS | {"_predecessor_cleanup_blocks", "predecessor_cleanup_barrier",
+                                       "pending_cleanup", "adopt_inventory_resource"}
+    tree = ast.parse((_BACKEND / "transfers/_repository_base.py").read_text(encoding="utf-8"))
+    checked = set()
+    for name, fn in _functions(tree):
+        if name in owners:
+            checked.add(name)
+            assert _request_kind_branches(fn) == [], name
+    assert checked == owners
+    engine_base = ast.parse((_BACKEND / "transfers/_engine_base.py").read_text(encoding="utf-8"))
+    guard = next(fn for name, fn in _functions(engine_base) if name == "_file_manifest_root")
+    assert any(isinstance(n, ast.Attribute) and n.attr == "FILE_MANIFEST" for n in ast.walk(guard))
+
+
+def test_the_selection_guard_is_capability_conditioned_and_fails_closed_at_the_boundary():
+    engine = (_BACKEND / "transfers/engine.py").read_text(encoding="utf-8")
+    body = engine[engine.index("async def _observe_resource"):]
+    guard, manifest = body.index("_secure_root_selection"), body.index("provider.manifest(")
+    assert guard < manifest                                           # decided BEFORE any manifest can expand
+    assert "authority.held" in body[guard:manifest]                   # and a HOLD never falls through to ALL
 
 
 # -- the detector itself -------------------------------------------------------

@@ -22,7 +22,7 @@ from transfers.errors import (
 )
 from transfers.policy import recovery_action
 from transfers.models import (
-    Capability, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
+    CleanupAuthority, Ownership, ResolutionResult, ResourceState,
 )
 
 
@@ -57,59 +57,6 @@ class TransferEngine(_RecoveryTransferEngine):
             ):
                 return None
             raise
-
-    @staticmethod
-    def _file_manifest_root(record, provider) -> bool:
-        """A root request routed to a provider DP trusts for a neutral file
-        manifest. This is capability only — it says nothing about whether the
-        interactive lifecycle is engaged (that is generation existence, not
-        policy; see ``repository.selection_generation_exists``).
-        """
-        return (
-            record.parent_id is None
-            and Capability.FILE_MANIFEST in provider.descriptor.capabilities
-        )
-
-    async def _after_resolution_persisted(self, record, provider, result):
-        """Open a file-selection generation for this (request, provider resource)
-        binding, once the resource is durably known and its initial availability
-        is still observable.
-
-        ``selection_mode`` gates ONLY this creation step. A new generation is
-        opened when the submitter explicitly opted into interactive selection
-        (``selection_mode == "interactive"``) OR when the transfer already owns a
-        durable selection generation (an earlier interactive submission, or a
-        database that predates ``selection_mode``) — in which case a
-        re-resolution onto a new provider resource stays interactive and opens a
-        fresh generation for the new binding, never inheriting the prior subset
-        (specification section 13). It is never inferred from browser presence
-        (correction section 6). Every engine step past this point checks
-        generation existence, not the request's policy field.
-        """
-        if not self._file_manifest_root(record, provider):
-            return
-        observation = result.observation
-        if observation is None or observation.resource is None:
-            return
-        wants_new = getattr(record.request, "selection_mode", fs.SELECTION_MODE_ALL) == fs.SELECTION_MODE_INTERACTIVE
-        if not wants_new and not await self.repository.transfer_has_selection_generation(record.transfer_id):
-            return
-        now = self.clock()
-        # File-selection state is keyed on the durable (transfer, resource)
-        # binding-generation id, never the transfer-independent canonical resource
-        # id, so an identical native resource on another transfer can never alias
-        # into this generation's manifest/selection rows.
-        binding_id = await self.repository.resource_binding_id(
-            record.transfer_id, observation.resource.id,
-        )
-        await self.repository.begin_file_selection_window(
-            record.id, record.transfer_id, binding_id, provider.descriptor.id,
-            initially_available=(observation.state == ResourceState.AVAILABLE), now=now,
-        )
-        if observation.file_manifest is not None:
-            await self.repository.record_file_manifest(
-                record.id, binding_id, observation.file_manifest, now=now,
-            )
 
     async def _resolve(self, record):
         attempt = None
@@ -233,26 +180,25 @@ class TransferEngine(_RecoveryTransferEngine):
             )
             if not await self._live(record.transfer_id, admission=True):
                 return first_commitment
-            file_manifest_capable = self._file_manifest_root(record, provider)
-            binding_id = (
-                await self.repository.resource_binding_id(record.transfer_id, record.resource.id)
-                if file_manifest_capable else None
+            # Fail-closed materialization guard. Whatever path bound this
+            # resource (resolution, adoption, reuse, restart reconciliation,
+            # recovery, failover, a future provider), the canonical selection owner
+            # decides here, before any manifest can expand, whether a generation
+            # governs this (request, binding): it creates the current one if the
+            # request needs selection and none exists, and reports ``held`` if it
+            # cannot. A missing generation is therefore never read as ALL -- only a
+            # request that genuinely never needed selection reaches the executable
+            # manifest ungoverned.
+            authority = await self._secure_root_selection(
+                record, provider, observation, resource=record.resource,
             )
-            # ``selection_mode`` decided whether a generation was created in
-            # ``_after_resolution_persisted``. From here on the engine is bound
-            # by generation EXISTENCE, never the request's current/defaulted
-            # policy field: a pre-``selection_mode`` database whose request now
-            # deserializes as ``selection_mode="all"`` must still have its
-            # durable PENDING hold / EXPLICIT subset / PREPARING selection
-            # opportunity honored. ``selection_mode=all`` with no generation
-            # skips straight to the executable manifest.
-            selecting = bool(binding_id) and await self.repository.selection_generation_exists(
-                record.id, binding_id,
-            )
-            if selecting and observation.file_manifest is not None:
-                await self.repository.record_file_manifest(
-                    record.id, binding_id, observation.file_manifest, now=self.clock(),
+            if authority.held:
+                await self.repository.poll_after(
+                    record.id, self.clock() + self.policy.resource_poll_interval,
                 )
+                return first_commitment
+            binding_id = authority.binding_id
+            selecting = authority.governed
 
             if observation.error:
                 await self._request_failure(record, observation.error, waiting=True)

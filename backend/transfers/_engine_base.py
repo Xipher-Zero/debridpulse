@@ -112,15 +112,21 @@ from transfers.errors import (
 from transfers.filesystem import destination, payload_matches, safe_name, size_knowledge, stable_payload, validate_target
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
-    Artifact, CancellationInitiator, CleanupAuthority, CleanupDirective,
+    Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
-    MaterializationAdmissionKind, OutcomeKind, Ownership, RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState,
+    MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation, RequestRecord, ResolutionAttempt,
+    ResolutionResult, ResourceState,
     SizeKnowledge, TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
-from transfers.repository import TransferRepository
+from transfers.repository import SelectionAuthority, TransferRepository
+
+
+class _CleanupOwnershipLost(Exception):
+    """The cleanup claim this worker held was taken over while its provider call
+    was running; the call has been aborted and nothing may be finalized."""
 
 
 class TransferEngine:
@@ -168,12 +174,6 @@ class TransferEngine:
 
     async def initialize(self):
         await self.repository.initialize()
-        # A provider-cleanup claim (cleanup_blocked=1) that a restart interrupted
-        # cannot have an operation still in flight; release it for the ordinary
-        # cadence so it is re-driven to completion or terminal abandonment. The
-        # deleted-transfer re-add fence depends on this so a crashed claim never
-        # permanently blocks a fresh transfer.
-        await self.repository.reclaim_stale_cleanup_claims()
         await self.canonical.initialize()
         await self.challenges.initialize()
 
@@ -556,7 +556,7 @@ class TransferEngine:
             if await self.repository.delete_remote_requested(record.transfer_id):
                 await self._cleanup_resources(record.transfer_id, explicit=True)
             return
-        await self._after_resolution_persisted(record, provider, result)
+        await self._secure_root_selection(record, provider, result.observation)
         if result.error:
             await self._request_failure(record, result.error, attempts=record.attempts + 1)
         elif result.candidates:
@@ -569,8 +569,42 @@ class TransferEngine:
         else:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
 
-    async def _after_resolution_persisted(self, record: RequestRecord, provider, result: ResolutionResult) -> None:
-        raise NotImplementedError("_after_resolution_persisted is implemented by transfers.engine.TransferEngine")
+    @staticmethod
+    def _file_manifest_root(record: RequestRecord, provider) -> bool:
+        """A root request routed to a provider DP trusts for a neutral file
+        manifest. This is the capability boundary only -- it says nothing about
+        whether the interactive lifecycle is engaged; that policy has exactly one
+        owner (``TransferRepository.ensure_selection_generation``)."""
+        return (
+            record.parent_id is None
+            and Capability.FILE_MANIFEST in provider.descriptor.capabilities
+        )
+
+    async def _secure_root_selection(self, record: RequestRecord, provider, observation: ProviderObservation | None,
+                                     *, resource=None):
+        """THE post-binding lifecycle owner for a manifest-capable root: guarantee
+        that a root which needs interactive file selection has its own current
+        selection generation before anything can expand its manifest.
+
+        Every path that binds a provider resource to a root funnels through this
+        one method -- normal resolution (``_apply_resolution``), inventory
+        adoption (``reconcile_inventory``) and, as the fail-closed materialization
+        guard, every observation that could fan children out
+        (``TransferEngine._observe_resource``: it is where restart reconciliation,
+        provider recovery, failover, reuse and any future binding path all
+        converge). The policy itself lives in the repository; this method only
+        adds the capability boundary and never reads ``selection_mode``.
+        """
+        if observation is None or not self._file_manifest_root(record, provider):
+            return SelectionAuthority()
+        resource = resource or observation.resource
+        if resource is None:
+            return SelectionAuthority()
+        return await self.repository.ensure_selection_generation(
+            record, provider.descriptor.id, resource,
+            available=(observation.state == ResourceState.AVAILABLE),
+            file_manifest=observation.file_manifest, now=self.clock(),
+        )
 
     async def _continue_provider_input(self, challenge: InputChallenge):
         if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
@@ -1281,27 +1315,120 @@ class TransferEngine:
             await self.repository.cleanup_intent(transfer_id, resource.id, authority)
         await self._cleanup_pending()
 
+    # Upper bound on how long a DEAD cleanup owner (cancelled task, crash, an
+    # exception between claim and finalization) can hold a claim: its heartbeat
+    # stops with it, so the lease runs out and the ordinary cadence reclaims it.
+    # Short enough that a fresh same-object transfer fenced behind it resumes
+    # within a couple of minutes, with no restart and no operator action.
+    CLEANUP_CLAIM_LEASE_SECONDS = 120.0
+    # A LIVE owner is never reclaimed however long its provider call legitimately
+    # runs: it renews the lease with its own token once a third of it has elapsed.
+    # The renewal decision is taken on the engine clock; this is only how often
+    # the running call's heartbeat looks at it.
+    CLEANUP_HEARTBEAT_POLL_SECONDS = 1.0
+
     async def _cleanup_pending(self):
-        for transfer_id, resource, authority, attempts, binding_id in await self.repository.pending_cleanup(self.clock()):
+        """The ONE cleanup cadence. Every path that owes provider cleanup (delete,
+        completion cleanup, restartable re-resolution, the scheduler tick) drains
+        through here, and every outcome after a claim is acquired is finalized
+        conditionally on that claim's token (see ``repository.claim_cleanup``)."""
+        scan_now = self.clock()
+        for transfer_id, resource, authority, attempts, binding_id in await self.repository.pending_cleanup(scan_now):
             provider = self.registry.providers.get(resource.provider_id)
-            if not isinstance(provider, Cleanup):
+            if provider is None:
                 continue
-            if not await self.repository.claim_cleanup(binding_id):
+            # The scan is one snapshot, but bindings are worked serially and an
+            # earlier provider call may legitimately run longer than a whole lease.
+            # Every lease therefore begins at the instant ITS claim is taken; a lease
+            # dated from the scan could already be expired at birth and be reclaimed
+            # by a competing worker before its first heartbeat.
+            claim_now = self.clock()
+            lease_until = claim_now + self.CLEANUP_CLAIM_LEASE_SECONDS
+            token = await self.repository.claim_cleanup(binding_id, now=claim_now, lease_until=lease_until)
+            if token is None:
+                continue
+            if not isinstance(provider, Cleanup):
+                # No cleanup operation can ever act on this resource, so the
+                # obligation is permanently unactionable: abandon it (evidence and
+                # reason kept) rather than let the predecessor fence wait forever.
+                await self.repository.cleanup_retry(binding_id, token, self._error(
+                    Category.UNSUPPORTED_CAPABILITY, Stage.CLEANUP, domain=Domain.CLEANUP,
+                    retryability=Retryability.NEVER,
+                ), None)
                 continue
             try:
-                outcome = await provider.cleanup(CleanupDirective(resource, CleanupAuthority(authority)))
+                outcome = await self._run_owned_cleanup(
+                    provider.cleanup(CleanupDirective(resource, CleanupAuthority(authority))),
+                    binding_id, token, lease_until,
+                )
+            except _CleanupOwnershipLost:
+                continue                    # the new owner drives it; this one finalizes nothing
             except Exception as exc:
                 outcome = TransferOutcome(OutcomeKind.FAILURE, unknown_failure(exc,
                     integration_id=provider.descriptor.id, domain=Domain.CLEANUP, stage=Stage.CLEANUP))
+            else:
+                if not isinstance(outcome, TransferOutcome):
+                    outcome = TransferOutcome(OutcomeKind.FAILURE, self._error(
+                        Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.PROVIDER,
+                        retryability=Retryability.NEVER,
+                    ))
             await self.repository.outcome(transfer_id, outcome)
             if outcome.kind in {OutcomeKind.SUCCESS, OutcomeKind.SKIPPED}:
-                await self.repository.cleanup_intent(transfer_id, resource.id, None)
-                if outcome.kind == OutcomeKind.SUCCESS:
-                    await self.repository.resource_observation(transfer_id, resource, ResourceState.ABSENT)
+                await self.repository.cleanup_complete(
+                    binding_id, token, absent=resource if outcome.kind == OutcomeKind.SUCCESS else None,
+                )
             else:
                 error = outcome.error or self._error(Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP)
                 decision = self.policy.retry(error, attempts + 1, self.clock())
-                await self.repository.cleanup_retry(binding_id, error, decision.retry_at)
+                await self.repository.cleanup_retry(binding_id, token, error, decision.retry_at)
+
+    async def _run_owned_cleanup(self, operation, binding_id: str, token: str, held_until: float):
+        """Run one provider cleanup call while its owner heartbeats the lease, so
+        the claim represents live ownership: at most ONE cleanup call is ever in
+        flight for a binding. If the owner is cancelled the heartbeat stops with
+        it (the lease then expires and the cadence reclaims); if the heartbeat
+        finds the claim was lost, the call is aborted and ``_CleanupOwnershipLost``
+        is raised instead of returning an outcome."""
+        state = {"lost": False}
+        call = asyncio.ensure_future(operation)
+        beat = asyncio.ensure_future(self._hold_cleanup_lease(binding_id, token, held_until, call, state))
+        try:
+            result = await call
+            if state["lost"]:
+                # The heartbeat aborted this call, but the provider swallowed the
+                # cancellation and returned anyway. Ownership already moved on, so
+                # that outcome must never be recorded.
+                raise _CleanupOwnershipLost()
+            return result
+        except asyncio.CancelledError:
+            if state["lost"]:
+                raise _CleanupOwnershipLost() from None
+            raise
+        finally:
+            beat.cancel()
+            await asyncio.gather(beat, return_exceptions=True)
+
+    async def _hold_cleanup_lease(self, binding_id: str, token: str, held_until: float, call, state) -> None:
+        lease = self.CLEANUP_CLAIM_LEASE_SECONDS
+        while True:
+            await asyncio.sleep(self.CLEANUP_HEARTBEAT_POLL_SECONDS)
+            now = self.clock()
+            if now < held_until - lease * 2 / 3:
+                continue
+            try:
+                renewed = await self.repository.renew_cleanup_claim(
+                    binding_id, token, now=now, lease_until=now + lease,
+                )
+            except Exception:
+                renewed = None                     # transient store failure: retry on the next beat
+            if renewed:
+                held_until = now + lease
+            elif renewed is False or now >= held_until:
+                # Ownership is lost (taken over, or the lease ran out unrenewed): stop
+                # acting on the resource rather than run beside the new owner.
+                state["lost"] = True
+                call.cancel()
+                return
 
     async def cleanup_pending(self):
         """Retry durable cleanup intents; this never invents cleanup authority."""
@@ -1328,6 +1455,14 @@ class TransferEngine:
                     await self.repository.resource_observation(known[item.resource.id], item.resource, item.state)
                 elif item.request:
                     transfer = await self.submit((item.request,), name=item.name, source="inventory", reacquire=False)
-                    await self.repository.resource_observation(transfer.id, item.resource, item.state)
-                    await self.repository.attach_inventory(transfer.id, item.resource)
+                    # Adoption is the one binding path that never passes through a
+                    # resolution attempt, so it is owned end to end by the
+                    # repository transition (inventory-created imports only,
+                    # fence-honouring) and then normalized by the same post-binding
+                    # selection owner as every other binding.
+                    if await self.repository.adopt_inventory_resource(transfer.id, item.resource, item.state):
+                        root = next((record for record in await self.repository.requests(transfer.id)
+                                     if record.parent_id is None), None)
+                        if root is not None:
+                            await self._secure_root_selection(root, provider, item)
         return tuple(reports)

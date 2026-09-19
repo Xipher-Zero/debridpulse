@@ -1161,6 +1161,28 @@ class TransferRepository:
             (original, cls._tombstone_hash(transfer_id, original), transfer_id),
         )
 
+    @staticmethod
+    async def _predecessor_cleanup_blocks(db, transfer_id: int) -> bool:
+        """The ONE predecessor-cleanup fence predicate, evaluated inside the
+        caller's transaction/session so every same-object resource creation or
+        reuse decision (a fresh root's first resolution, an inventory adoption)
+        reads the same fact."""
+        row = await db.fetchone("SELECT source_fingerprint FROM torrents WHERE id=?", (transfer_id,))
+        fingerprint = row["source_fingerprint"] if row else None
+        if not fingerprint:
+            return False
+        blocker = await db.fetchone(
+            """SELECT 1 FROM provider_resources r
+               JOIN torrents t ON t.id=r.transfer_id
+               WHERE t.id != ? AND t.status='deleted' AND t.source_fingerprint=?
+                 AND r.cleanup_authority IS NOT NULL
+                 AND COALESCE(r.cleanup_abandoned, 0) = 0
+                 AND r.state != 'absent'
+               LIMIT 1""",
+            (transfer_id, fingerprint),
+        )
+        return blocker is not None
+
     async def predecessor_cleanup_barrier(self, transfer_id: int) -> bool:
         """True while a retired (deleted) predecessor generation sharing this
         transfer's ``source_fingerprint`` still owns a provider resource whose
@@ -1171,46 +1193,17 @@ class TransferRepository:
         conflicting provider-resource creation/reuse until no cleanup operation
         belonging to the predecessor can subsequently act on the shared native
         resource. The predicate deliberately does not distinguish
-        pending / claimed-in-flight / scheduled-retry — every one of those blocks.
-        ``cleanup_abandoned`` (set only after the provider cleanup call returned
-        and policy gave up) releases the block, so a fresh transfer is never
-        deadlocked; a crashed claim is re-driven by startup reclaim, not left
-        permanently blocking.
+        pending / leased-in-flight / expired-claim / scheduled-retry — every one
+        of those can still act, so every one blocks. Completion (authority
+        cleared), an ABSENT resource, and terminal abandonment
+        (``cleanup_abandoned``, set only after the provider cleanup call returned
+        and policy gave up) release the block, so a fresh transfer is never
+        deadlocked. A claim whose owner is lost is not a permanent block: its
+        lease expires and the ordinary cleanup cadence re-claims it (see
+        :meth:`claim_cleanup`).
         """
         async with get_db() as db:
-            row = await db.fetchone("SELECT source_fingerprint FROM torrents WHERE id=?", (transfer_id,))
-            fingerprint = row["source_fingerprint"] if row else None
-            if not fingerprint:
-                return False
-            blocker = await db.fetchone(
-                """SELECT 1 FROM provider_resources r
-                   JOIN torrents t ON t.id=r.transfer_id
-                   WHERE t.id != ? AND t.status='deleted' AND t.source_fingerprint=?
-                     AND r.cleanup_authority IS NOT NULL
-                     AND COALESCE(r.cleanup_abandoned, 0) = 0
-                     AND r.state != 'absent'
-                   LIMIT 1""",
-                (transfer_id, fingerprint),
-            )
-        return blocker is not None
-
-    async def reclaim_stale_cleanup_claims(self) -> None:
-        """Re-drive provider-cleanup claims that a restart interrupted.
-
-        ``claim_cleanup`` sets ``cleanup_blocked=1`` for the duration of a single
-        ``provider.cleanup()`` call. A process that dies during that call cannot
-        have an operation still in flight, so the claim is released for the
-        ordinary cleanup cadence to pick up again. A permanently abandoned
-        cleanup (``cleanup_abandoned=1``) is left as-is.
-        """
-        async with get_db() as db:
-            await db.execute("BEGIN IMMEDIATE")
-            await db.execute(
-                "UPDATE provider_resources SET cleanup_blocked=0, updated_at=CURRENT_TIMESTAMP "
-                "WHERE cleanup_blocked=1 AND COALESCE(cleanup_abandoned, 0) = 0 "
-                "AND cleanup_authority IS NOT NULL",
-            )
-            await db.commit()
+            return await self._predecessor_cleanup_blocks(db, transfer_id)
 
     async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=0, deduplicate=True) -> tuple[Transfer, bool]:
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
@@ -1895,24 +1888,49 @@ class TransferRepository:
     async def cleanup_intent(self, transfer_id: int, resource_key: str, authority: str | None, *, error=None):
         """Set/clear cleanup responsibility for the (transfer, canonical resource)
         binding. A fresh non-null intent also clears any prior terminal-abandon
-        marker so the fence and the cleanup cadence treat it as live again."""
+        marker so the fence and the cleanup cadence treat it as live again.
+        Clearing responsibility (``authority is None``) also withdraws any claim
+        lease: with nothing left to clean, no owner token can still be current."""
         async with get_db() as db:
             await db.execute(
                 "UPDATE provider_resources SET cleanup_authority=?, cleanup_error=?, "
                 "cleanup_abandoned=CASE WHEN ? IS NOT NULL THEN 0 ELSE cleanup_abandoned END, "
+                "cleanup_claim_token=CASE WHEN ? IS NULL THEN NULL ELSE cleanup_claim_token END, "
+                "cleanup_claim_until=CASE WHEN ? IS NULL THEN 0 ELSE cleanup_claim_until END, "
                 "updated_at=CURRENT_TIMESTAMP "
                 "WHERE transfer_id=? AND (resource_key=? OR (resource_key IS NULL AND id=?))",
-                (authority, codec.dump(error) if error else None, authority,
+                (authority, codec.dump(error) if error else None, authority, authority, authority,
                  transfer_id, resource_key, resource_key),
             )
             await db.commit()
 
+    # -------------------------------------------------------------------------
+    # Provider-cleanup claim: the ONE lease/token owner.
+    #
+    # A claim is (``cleanup_claim_token``, ``cleanup_claim_until``). It is current
+    # while the token is set and the absolute engine-clock expiry has not passed;
+    # nothing else (no boolean, no generic timestamp) means "claimed". Every
+    # outcome converges: COMPLETED (authority cleared), RETRYABLE at
+    # ``cleanup_retry_at`` (claim released), PERMANENTLY ABANDONED (claim
+    # released), or LEASED until the bounded expiry. The lease tracks LIVE
+    # ownership: an owner whose provider call is still running renews it with its
+    # own token (``renew_cleanup_claim``), so a live owner is never reclaimed. An
+    # owner that is cancelled, crashes, or fails between acquisition and
+    # finalization stops renewing and therefore cannot strand the row: once the
+    # lease expires the same ordinary cadence (``pending_cleanup`` ->
+    # ``claim_cleanup``) takes it over atomically, and the loser's late
+    # finalization is rejected because its token is no longer current.
+    # -------------------------------------------------------------------------
+
     async def pending_cleanup(self, now):
+        """Rows the cleanup cadence may claim now: cleanup owed, not abandoned,
+        retry time reached, and no *current* claim (unclaimed, or claim expired)."""
         async with get_db() as db:
             rows = await db.fetchall(
                 "SELECT * FROM provider_resources WHERE cleanup_authority IS NOT NULL "
-                "AND cleanup_blocked=0 AND COALESCE(cleanup_abandoned, 0) = 0 AND cleanup_retry_at<=?",
-                (now,),
+                "AND COALESCE(cleanup_abandoned, 0) = 0 AND cleanup_retry_at<=? "
+                "AND (cleanup_claim_token IS NULL OR cleanup_claim_until<=?)",
+                (now, now),
             )
         return tuple(
             (row["transfer_id"], codec.resource(codec.load(row["payload"])),
@@ -1920,29 +1938,83 @@ class TransferRepository:
             for row in rows
         )
 
-    async def claim_cleanup(self, binding_id: str):
+    async def claim_cleanup(self, binding_id: str, *, now: float, lease_until: float) -> str | None:
+        """Atomically acquire the cleanup claim; returns the new owner token, or
+        ``None`` when another current claim owns it (or nothing is owed). The
+        conditional UPDATE is the sole arbiter, so two workers can never both
+        hold a current claim; an expired claim is taken over here."""
+        token = new_identity()
         async with get_db() as db:
             result = await db.execute(
-                "UPDATE provider_resources SET cleanup_attempts=cleanup_attempts+1, cleanup_blocked=1 "
-                "WHERE id=? AND cleanup_blocked=0",
-                (binding_id,),
+                "UPDATE provider_resources SET cleanup_attempts=cleanup_attempts+1, "
+                "cleanup_claim_token=?, cleanup_claim_until=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND cleanup_authority IS NOT NULL AND COALESCE(cleanup_abandoned, 0) = 0 "
+                "AND cleanup_retry_at<=? AND (cleanup_claim_token IS NULL OR cleanup_claim_until<=?)",
+                (token, float(lease_until), binding_id, now, now),
+            )
+            await db.commit()
+        return token if result.rowcount == 1 else None
+
+    async def renew_cleanup_claim(self, binding_id: str, token: str, *, now: float, lease_until: float) -> bool:
+        """Owner heartbeat: extend the lease of the claim ``token`` currently holds.
+
+        The lease means LIVE ownership, not merely elapsed time: while its
+        ``provider.cleanup()`` call runs, the owner renews with the SAME token, so
+        no other worker can reclaim (and start a second simultaneous remote
+        cleanup on) the same native resource. Conditional on the current token, so
+        an owner that has already lost the claim gets ``False`` -- and must stand
+        down -- rather than resurrect it. The expiry only ever moves forward. A
+        dead owner stops renewing, its lease runs out, and the ordinary cadence
+        reclaims it (:meth:`claim_cleanup`)."""
+        async with get_db() as db:
+            result = await db.execute(
+                "UPDATE provider_resources SET cleanup_claim_until=MAX(cleanup_claim_until, ?), "
+                "updated_at=CURRENT_TIMESTAMP WHERE id=? AND cleanup_claim_token=? "
+                "AND cleanup_authority IS NOT NULL AND COALESCE(cleanup_abandoned, 0) = 0",
+                (float(lease_until), binding_id, token),
             )
             await db.commit()
         return result.rowcount == 1
 
-    async def cleanup_retry(self, binding_id: str, error, retry_at):
-        """Record the outcome of a completed provider cleanup call. ``retry_at is
-        None`` means policy has permanently given up: mark ``cleanup_abandoned``
-        so the fence releases and the cadence stops re-driving it. This runs only
-        after ``provider.cleanup()`` has returned, so no operation is in flight."""
+    async def cleanup_complete(self, binding_id: str, token: str, *, absent: ProviderResource | None = None) -> bool:
+        """Token-conditional completion (SUCCESS / SKIPPED): clear the cleanup
+        responsibility and the claim in one transaction; a SUCCESS also records the
+        binding ABSENT. Returns ``False`` (and changes nothing) when ``token`` is no
+        longer the current claim -- a stale worker never overwrites a newer owner."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                "SELECT transfer_id FROM provider_resources WHERE id=? AND cleanup_claim_token=?",
+                (binding_id, token),
+            )
+            if not row:
+                await db.rollback()
+                return False
+            await db.execute(
+                "UPDATE provider_resources SET cleanup_authority=NULL, cleanup_error=NULL, cleanup_retry_at=0, "
+                "cleanup_claim_token=NULL, cleanup_claim_until=0, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (binding_id,),
+            )
+            if absent is not None:
+                await self._resource(db, row["transfer_id"], absent, ResourceState.ABSENT)
+            await db.commit()
+        return True
+
+    async def cleanup_retry(self, binding_id: str, token: str, error, retry_at) -> bool:
+        """Token-conditional record of a failed provider cleanup call, releasing
+        the claim. ``retry_at is None`` means policy has permanently given up: mark
+        ``cleanup_abandoned`` so the fence releases and the cadence stops
+        re-driving it. Returns ``False`` (and changes nothing) for a stale token."""
         terminal = retry_at is None
         async with get_db() as db:
-            await db.execute(
-                "UPDATE provider_resources SET cleanup_error=?, cleanup_blocked=?, "
-                "cleanup_retry_at=?, cleanup_abandoned=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (codec.dump(error) if error else None, int(terminal), retry_at or 0, int(terminal), binding_id),
+            result = await db.execute(
+                "UPDATE provider_resources SET cleanup_error=?, cleanup_retry_at=?, cleanup_abandoned=?, "
+                "cleanup_claim_token=NULL, cleanup_claim_until=0, updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND cleanup_claim_token=?",
+                (codec.dump(error) if error else None, retry_at or 0, int(terminal), binding_id, token),
             )
             await db.commit()
+        return result.rowcount == 1
 
     async def outcome(self, transfer_id: int, outcome, *, attempt_id=None):
         async with get_db() as db:
@@ -2063,13 +2135,44 @@ class TransferRepository:
             await db.execute("UPDATE torrents SET name=? WHERE id=? AND status!='deleted'", (name, transfer_id))
             await db.commit()
 
-    async def attach_inventory(self, transfer_id: int, resource: ProviderResource):
+    async def adopt_inventory_resource(self, transfer_id: int, resource: ProviderResource, state: ResourceState) -> bool:
+        """The ONE inventory-adoption transition: bind an observed provider
+        resource to the root request of a transfer that INVENTORY ITSELF created
+        (``torrents.source = 'inventory'``), in one transaction.
+
+        Adoption is a binding that happens outside a resolution attempt, so it
+        deliberately records no ``resolution_attempts`` / ``route_attempt_provenance``
+        row (fabricating an attempt for something that never resolved would be
+        untruthful). Its provenance is instead the durable, queryable pair
+        ``transfers.source = 'inventory'`` + binding ``ownership = observed``.
+
+        Only such an inventory-created import may be bound this way. A transfer
+        that a user submitted owns its own resolution lifecycle (attempt, route
+        provenance, cleanup fence, file-selection generation); silently rebinding
+        it to whatever the provider happens to list is an unowned transition and is
+        refused here, leaving that transfer to resolve through its own route. The
+        predecessor-cleanup fence is honoured too: an adoption is a same-object
+        provider-resource reuse, so it must wait exactly as a first resolution
+        does. Returns whether the resource was adopted.
+        """
         async with get_db() as db:
-            await db.execute("""UPDATE transfer_requests SET state='waiting',resource=?,error=NULL
-                WHERE transfer_id=? AND parent_id IS NULL AND state IN ('pending','resolving','failed')
-                AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('completed','consolidated','deleted'))""",
-                (codec.dump(resource), transfer_id))
+            await db.execute("BEGIN IMMEDIATE")
+            root = await db.fetchone(
+                """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                   WHERE r.transfer_id=? AND r.parent_id IS NULL AND r.state IN ('pending','resolving','failed')
+                   AND t.source='inventory' AND t.status NOT IN ('completed','consolidated','deleted')""",
+                (transfer_id,),
+            )
+            if not root or await self._predecessor_cleanup_blocks(db, transfer_id):
+                await db.rollback()
+                return False
+            await self._resource(db, transfer_id, resource, state)
+            await db.execute(
+                "UPDATE transfer_requests SET state='waiting',resource=?,error=NULL WHERE id=?",
+                (codec.dump(resource), root["id"]),
+            )
             await db.commit()
+        return True
 
     async def begin_refresh(self, record: RequestRecord, provider_id: str):
         identity = new_identity()

@@ -303,6 +303,32 @@ async def _backfill_provider_resource_bindings(db: aiosqlite.Connection) -> None
         raise RuntimeError("provider_resources binding backfill failed") from exc
 
 
+async def _normalize_legacy_cleanup_claims(db: aiosqlite.Connection) -> None:
+    """Idempotent upgrade step for the boolean-claim -> leased-claim model.
+
+    Before the lease model a provider-cleanup claim was the boolean
+    ``cleanup_blocked=1``. It was set on claim, never cleared on success/skip, and
+    set again as a "terminal marker", so upgraded databases can hold (a) genuinely
+    stranded claims that no owner will ever finalize, (b) misleading markers on
+    completed/absent/abandoned rows. Neither carries a lease token, so under the
+    lease model none is a current claim: the ordinary cleanup cadence claims any
+    still-owed row on its next pass, and terminal rows simply stop being
+    enumerated. This step only retires the misleading marker itself; it never
+    touches ``cleanup_claim_token``/``cleanup_claim_until``, so an active new-format
+    lease is never stolen. Repeated initialization is a no-op.
+    """
+    try:
+        cur = await db.execute("PRAGMA table_info(provider_resources)")
+        columns = {row[1] for row in await cur.fetchall()}
+        if "cleanup_blocked" not in columns:
+            return
+        await db.execute("UPDATE provider_resources SET cleanup_blocked=0 WHERE cleanup_blocked!=0")
+        await db.commit()
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        logger.error("legacy cleanup-claim normalization failed: %s", exc)
+        raise RuntimeError("legacy cleanup-claim normalization failed") from exc
+
+
 async def _migrate_recovery_state_from_events(db: aiosqlite.Connection) -> None:
     """Idempotent additive backfill for DP 1.0.12 recovery leveling, Section 19.
 
@@ -752,13 +778,25 @@ TRANSFER_REPOSITORY_COLUMNS = {
     },
     'provider_resources': {
         'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
+        # RETIRED legacy boolean claim marker. It is never read or written by the
+        # cleanup lifecycle any more (a boolean cannot expire, which is how a
+        # cancelled claim stranded a same-object re-add forever); the column is
+        # only kept so existing databases stay structurally compatible, and
+        # ``_normalize_legacy_cleanup_claims`` zeroes it on every initialization.
         'cleanup_blocked': 'INTEGER NOT NULL DEFAULT 0',
         # Canonical, transfer-independent DP resource identity (== ProviderResource.id).
         # provider_resources.id is the (transfer, resource) binding-generation id.
         'resource_key': 'TEXT',
         # Set only after a provider cleanup call has returned and policy has given
-        # up permanently — distinct from the transient cleanup_blocked claim state.
+        # up permanently.
         'cleanup_abandoned': 'INTEGER NOT NULL DEFAULT 0',
+        # The ONE durable cleanup-claim lease: a unique owner token plus an absolute
+        # (engine clock) expiry. A claim is current while the token is set and the
+        # expiry has not passed; an expired claim is claimable by the ordinary
+        # cleanup cadence, and finalization is conditional on the current token so
+        # a stale claimant can never overwrite a newer owner.
+        'cleanup_claim_token': 'TEXT',
+        'cleanup_claim_until': 'REAL NOT NULL DEFAULT 0',
     },
     'resolution_attempts': {'result': 'TEXT'},
     'execution_attempts': {'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT'},
@@ -791,7 +829,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'transfer_id', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
-    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
+    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
     'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
@@ -979,6 +1017,7 @@ async def _init_db_sqlite():
                 await _ensure_column(db, table, column, definition)
         await _retire_and_backfill_source_fingerprints(db)
         await _backfill_provider_resource_bindings(db)
+        await _normalize_legacy_cleanup_claims(db)
         await _migrate_recovery_state_from_events(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()

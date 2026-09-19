@@ -50,6 +50,7 @@ attempted in the artifact's current recovery episode. Only ever grows
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 from db.database import get_db
@@ -269,6 +270,34 @@ class ManifestCommitResult(tuple):
         instance.first_commitment = first_commitment
         instance.selection_id = selection_id
         return instance
+
+
+@dataclass(frozen=True)
+class SelectionAuthority:
+    """The answer to "does a current file-selection generation govern this root's
+    resource binding?", produced only by
+    ``TransferRepository.ensure_selection_generation``.
+
+    * ``required=False`` -- the request is genuinely ALL (never opted into
+      interactive selection and the transfer owns no generation): executable
+      fan-out may proceed unfiltered. The default value.
+    * ``required=True, binding_id=<id>`` -- a generation exists for the current
+      (request, binding): that generation's gate/decision governs fan-out.
+    * ``required=True, binding_id=None`` -- selection is required but the
+      generation could not be established (the transfer or binding is gone /
+      settled): fan-out must HOLD. Absence of a generation is never ALL.
+    """
+
+    required: bool = False
+    binding_id: str | None = None
+
+    @property
+    def governed(self) -> bool:
+        return self.required and self.binding_id is not None
+
+    @property
+    def held(self) -> bool:
+        return self.required and self.binding_id is None
 
 
 # DP 1.0.12 leveling remediation (ARCH-001): only CURRENT, policy-relevant
@@ -1189,38 +1218,60 @@ class TransferRepository(_QualifiedTransferRepository):
             (request_id, provider_resource_id),
         )
 
-    async def selection_generation_exists(self, request_id: str, provider_resource_id: str) -> bool:
-        """Whether a durable selection generation already exists for this
-        (request, provider-resource binding).
+    @staticmethod
+    async def _selection_required(db, record) -> bool:
+        """THE policy: does this root request need a file-selection generation?
 
-        ``selection_mode`` gates only whether a NEW generation is *created*. Once
-        a generation exists — including one persisted on a database that predates
-        ``selection_mode``, whose owning request now deserializes with the
-        default ``selection_mode="all"`` — that generation, not the request's
-        current policy field, governs manifest recording, selection gating,
-        Confirm/Close/timeout, and executable-manifest filtering. Every engine
-        step past generation creation checks existence here, never the policy.
+        Yes when the submitter explicitly opted into interactive selection
+        (``selection_mode == "interactive"``, never inferred from browser
+        presence), OR when the transfer already owns a durable generation on any
+        binding -- an earlier interactive submission, or a database that predates
+        ``selection_mode`` whose request now deserializes with the default
+        ``"all"``. In that second case a re-resolution onto a new provider
+        resource stays interactive and opens a fresh generation for the new
+        binding, never inheriting the prior subset (specification section 13).
         """
-        async with get_db() as db:
-            row = await db.fetchone(
-                "SELECT 1 FROM transfer_file_selections WHERE request_id=? AND provider_resource_id=?",
-                (request_id, provider_resource_id),
-            )
+        if getattr(record.request, "selection_mode", fs.SELECTION_MODE_ALL) == fs.SELECTION_MODE_INTERACTIVE:
+            return True
+        row = await db.fetchone(
+            "SELECT 1 FROM transfer_file_selections WHERE transfer_id=? LIMIT 1", (record.transfer_id,))
         return row is not None
 
-    async def transfer_has_selection_generation(self, transfer_id: int) -> bool:
-        """Whether the transfer owns any selection generation (any binding).
+    async def ensure_selection_generation(
+        self, record, provider_id: str, resource, *, available: bool, file_manifest, now: float,
+    ) -> SelectionAuthority:
+        """THE one owner of "a manifest-capable root that needs interactive
+        selection has its own current generation".
 
-        A transfer that already owns one was interactive; a re-resolution onto a
-        new provider resource stays interactive and opens a fresh generation for
-        the new binding (never inheriting the prior subset — specification
-        section 13), regardless of the request's current/defaulted
-        ``selection_mode``.
+        Called by the engine for every root resource binding and, as the
+        fail-closed materialization guard, before every executable fan-out, so no
+        way of obtaining a binding (resolution, adoption, reuse, restart
+        reconciliation, recovery, failover, any future provider) can reach a
+        manifest without passing here. Idempotent: an existing generation is
+        preserved, never reset, and never inherited from another transfer (the
+        generation is keyed on this request and this transfer's binding id).
+
+        Selection state is read from generation EXISTENCE only once one exists --
+        a settled ALL/EXPLICIT generation on a database that predates
+        ``selection_mode`` keeps governing regardless of the request's current
+        policy field. When selection is required but no generation exists, it is
+        created here (never inferred ALL); when it cannot be created the result is
+        ``held``, which callers must treat as "do not materialize".
         """
+        binding_id = await self.resource_binding_id(record.transfer_id, resource.id)
         async with get_db() as db:
-            row = await db.fetchone(
-                "SELECT 1 FROM transfer_file_selections WHERE transfer_id=? LIMIT 1", (transfer_id,))
-        return row is not None
+            exists = await self._selection_generation(db, record.id, binding_id) is not None
+            required = exists or await self._selection_required(db, record)
+        if not required:
+            return SelectionAuthority()
+        if not exists and await self.begin_file_selection_window(
+            record.id, record.transfer_id, binding_id, provider_id,
+            initially_available=available, now=now,
+        ) is None:
+            return SelectionAuthority(required=True)
+        if file_manifest is not None:
+            await self.record_file_manifest(record.id, binding_id, file_manifest, now=now)
+        return SelectionAuthority(required=True, binding_id=binding_id)
 
     @staticmethod
     async def _current_generation(db, transfer_id: int):
@@ -1710,8 +1761,11 @@ class TransferRepository(_QualifiedTransferRepository):
         consume a prior resource's selection rows. Returns the authorized
         ``tuple[SourceEntry, ...]``:
 
-        * no selection generation for this resource, or a settled ALL /
-          still-pending decision -> the full provider list;
+        * no selection generation for this resource, on a request that never
+          needed one (``_selection_required`` is false), or a settled ALL /
+          still-pending decision -> the full provider list. A request that DOES
+          require selection but has no generation for this binding fails closed
+          with ``RESOURCE_STATE_CONFLICT`` -- absence of a generation is never ALL;
         * a confirmed EXPLICIT subset -> only the members proven to match the
           executable manifest by normalized relative path and compatible size.
 
@@ -1743,7 +1797,11 @@ class TransferRepository(_QualifiedTransferRepository):
                 if binding_id else None
             )
             if not row:
+                required = await self._selection_required(db, record)
                 await db.rollback()
+                if required:
+                    raise TransferError(NormalizedError(
+                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
                 return ManifestCommitResult(full_entries, first_commitment=False)
             selection_id = row["id"]
             already = row["manifest_committed_at"] is not None

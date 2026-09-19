@@ -1240,3 +1240,134 @@ async def test_confirm_loses_race_to_timeout_and_never_rewrites_retry_at(hold_co
         transfer.id, view["manifest_id"], [view["entries"][0]["entry_id"]], now=core.clock())
     assert late.outcome == fs.SelectionOutcome.CONFLICT
     assert dict(await _root_request_row(transfer.id)) == row_before   # no scheduler-state rewrite
+
+
+# --------------------------------------------------------------------------- #
+# Same-object resubmission + alternate resource-binding paths
+#
+# The interactive lifecycle must never depend on HOW a provider resource got
+# bound to a root: ``interactive`` + no selection generation is not ``all``.
+# --------------------------------------------------------------------------- #
+
+async def _children_of(transfer_id):
+    async with database.get_db() as db:
+        return await db.fetchall(
+            "SELECT * FROM transfer_requests WHERE transfer_id=? AND parent_id IS NOT NULL", (transfer_id,))
+
+
+async def _generations_of(transfer_id):
+    async with database.get_db() as db:
+        return await db.fetchall(
+            "SELECT * FROM transfer_file_selections WHERE transfer_id=? ORDER BY created_at, id", (transfer_id,))
+
+
+async def _bind_without_resolution(core, transfer, native="A", *, state=ResourceState.AVAILABLE):
+    """Bind an observed provider resource to the root the way a non-resolution
+    path would: a binding row + ``state='waiting'`` + ``resource`` set, with NO
+    resolution attempt and NO selection generation (the durable shape of the
+    production transfer that expanded every file)."""
+    from transfers import codec
+
+    observation = core.provider.parcel(native, state=state, files=FILES6).observation
+    async with database.get_db() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        await TransferRepository._resource(db, transfer.id, observation.resource, state)
+        await db.execute("UPDATE transfer_requests SET state='waiting', resource=? WHERE transfer_id=?",
+                         (codec.dump(observation.resource), transfer.id))
+        await db.commit()
+    return observation.resource
+
+
+@pytest.mark.asyncio
+async def test_interactive_readd_after_a_completed_subset_opens_a_fresh_pending_generation(hold_core):
+    core = hold_core
+    a, view_a = await _cached_multi_gated(core)
+    keep = [view_a["entries"][0]["entry_id"]]
+    await core.repository.confirm_file_selection(a.id, view_a["manifest_id"], keep, now=core.clock())
+    await core.engine.resolve_pending()
+    assert [r.entry.relative_path for r in await core.repository.requests(a.id) if r.parent_id] == ["S1/e1.mkv"]
+
+    await core.engine.delete(a.id, remote=False)
+    core.provider.responses.append(core.provider.parcel("A", state=ResourceState.AVAILABLE, files=FILES6))
+    b = await core.engine.submit(
+        (TransferRequest("parcel", "show", name="show", selection_mode="interactive"),), deduplicate=False)
+    await core.engine.resolve_pending()
+
+    view_b = await core.repository.file_selection_presentation(b.id, now=core.clock())
+    assert view_b["selection_id"] != view_a["selection_id"] and view_b["manifest_id"] != view_a["manifest_id"]
+    assert view_b["decision"] == "pending" and view_b["selected_entry_ids"] == []
+    assert await _children_of(b.id) == []                                # zero children before any decision
+    assert core.executor.started == []                                   # zero execution before any decision
+
+    other = [view_b["entries"][3]["entry_id"]]
+    await core.repository.confirm_file_selection(b.id, view_b["manifest_id"], other, now=core.clock())
+    await core.engine.resolve_pending()
+    assert [r.entry.relative_path for r in await core.repository.requests(b.id) if r.parent_id] == ["S1/e4.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_a_root_bound_by_a_non_resolution_path_gets_its_generation_and_holds(hold_core):
+    core = hold_core
+    b = await _engine_submit(core)                                        # interactive, never resolved
+    resource = await _bind_without_resolution(core, b)
+    assert await _generations_of(b.id) == []
+
+    for _ in range(3):
+        await core.engine.resolve_pending()
+        core.clock.advance(1)
+    gens = await _generations_of(b.id)
+    assert len(gens) == 1 and gens[0]["decision"] == "pending"            # created, never inferred "all"
+    assert gens[0]["provider_resource_id"] == await core.repository.resource_binding_id(b.id, resource.id)
+    assert await _children_of(b.id) == [] and await core.repository.artifacts(b.id) == ()
+    assert core.executor.started == []
+
+    view = await core.repository.file_selection_presentation(b.id, now=core.clock())
+    await core.repository.confirm_file_selection(
+        b.id, view["manifest_id"], [view["entries"][1]["entry_id"]], now=core.clock())
+    await core.engine.resolve_pending()
+    assert [r.entry.relative_path for r in await core.repository.requests(b.id) if r.parent_id] == ["S1/e2.mkv"]
+
+
+@pytest.mark.asyncio
+async def test_an_alternate_binding_never_inherits_a_predecessor_transfers_subset(hold_core):
+    core = hold_core
+    a, view_a = await _cached_multi_gated(core)
+    await core.repository.confirm_file_selection(
+        a.id, view_a["manifest_id"], [view_a["entries"][0]["entry_id"]], now=core.clock())
+    await core.engine.resolve_pending()
+    await core.engine.delete(a.id, remote=False)
+
+    b = await _engine_submit(core, payload="again")
+    await _bind_without_resolution(core, b)                               # same canonical resource as A
+    await core.engine.resolve_pending()
+    gens = await _generations_of(b.id)
+    assert len(gens) == 1 and gens[0]["id"] != view_a["selection_id"] and gens[0]["decision"] == "pending"
+    assert await _children_of(b.id) == []
+
+
+@pytest.mark.asyncio
+async def test_all_mode_bound_by_an_alternate_path_still_materializes_everything(hold_core):
+    """Control: explicit ALL is untouched -- no generation, full fan-out."""
+    core = hold_core
+    b = await _engine_submit(core, selection_mode="all")
+    await _bind_without_resolution(core, b)
+    await core.engine.resolve_pending()
+    assert await _generations_of(b.id) == []
+    assert len(await _children_of(b.id)) == len(FILES6)
+
+
+@pytest.mark.asyncio
+async def test_a_transfer_that_already_owns_a_generation_stays_interactive_when_its_policy_field_says_all(hold_core):
+    """Legacy databases: a generation persisted before ``selection_mode`` existed
+    still governs a re-binding, even though the request now deserializes as ALL."""
+    core = hold_core
+    a, view_a = await _cached_multi_gated(core)
+    async with database.get_db() as db:
+        await db.execute("UPDATE transfer_requests SET payload=REPLACE(payload,'interactive','all') "
+                         "WHERE transfer_id=?", (a.id,))
+        await db.commit()
+    root = (await core.repository.requests(a.id))[0]
+    assert root.request.selection_mode == "all"
+    authority = await core.repository.ensure_selection_generation(
+        root, core.provider.descriptor.id, root.resource, available=True, file_manifest=None, now=core.clock())
+    assert authority.governed and len(await _generations_of(a.id)) == 1   # preserved, not recreated

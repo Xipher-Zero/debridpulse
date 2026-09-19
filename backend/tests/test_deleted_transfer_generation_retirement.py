@@ -13,8 +13,10 @@ provider returns the identical native resource.
 * A fresh re-add is admitted immediately even while predecessor provider cleanup
   is outstanding; a fence holds the fresh generation's first provider-resource
   creation until no predecessor cleanup operation can execute (pending /
-  claimed-in-flight / scheduled-retry all block; completion or terminal
-  abandonment releases; a crashed claim is re-driven by startup reclaim).
+  leased-in-flight / scheduled-retry all block; completion or terminal
+  abandonment releases). The cleanup claim is a bounded lease/token, so an owner
+  that is cancelled or crashes never strands the fence: the lease expires and the
+  ordinary cleanup cadence re-claims it -- no restart, no manual action.
 
 Regression matrix: specification section 22 (A-H) plus the operator-mandated
 binding-isolation and fence-race regressions.
@@ -530,28 +532,144 @@ async def test_restart_during_the_cleanup_fence_preserves_the_block(core):
     assert await restarted.repository.resources(b.id) == ()     # still fenced after restart
 
 
+LEASE = TransferEngine.CLEANUP_CLAIM_LEASE_SECONDS
+
+
+async def _cleanup_binding(transfer_id):
+    return (await _provider_resource_rows(transfer_id))[0]
+
+
+async def _owed_cleanup(core, *, fingerprint="btih-abc"):
+    """A resolved, deleted predecessor whose remote cleanup is owed but has not run."""
+    a = await _resolve_transfer(core, fingerprint=fingerprint, name="A")
+    resource = (await core.repository.resources(a.id))[0][0]
+    await core.repository.delete(a.id, remote=True, now=core.clock())
+    await core.repository.cleanup_intent(a.id, resource.id, "user_request")
+    return a, (await _cleanup_binding(a.id))["id"]
+
+
 @pytest.mark.asyncio
-async def test_crashed_cleanup_claim_is_reclaimed_on_restart_and_fence_still_holds(core):
+async def test_cleanup_claim_is_a_bounded_lease_that_expiry_makes_reclaimable(core):
+    a, binding_id = await _owed_cleanup(core)
+    now = core.clock()
+    token = await core.repository.claim_cleanup(binding_id, now=now, lease_until=now + LEASE)
+    row = await _cleanup_binding(a.id)
+    assert token and row["cleanup_claim_token"] == token and row["cleanup_claim_until"] == now + LEASE
+    assert row["cleanup_blocked"] == 0                                  # the retired boolean is never set again
+
+    b = await core.engine.submit((_magnet(),), name="B")
+    assert await core.repository.predecessor_cleanup_barrier(b.id) is True      # leased -> still fenced
+    assert await core.repository.pending_cleanup(now + LEASE - 1) == ()         # a live lease is never stolen
+    assert [item[4] for item in await core.repository.pending_cleanup(now + LEASE)] == [binding_id]
+    assert await core.repository.predecessor_cleanup_barrier(b.id) is True      # expired but unfinished -> STILL fenced
+
+
+@pytest.mark.asyncio
+async def test_cancelled_cleanup_claim_recovers_without_restart_and_the_readd_proceeds(core):
     a = await _resolve_transfer(core, fingerprint="btih-abc", name="A")
-    core.provider.cleanup_response = _transient_cleanup_failure()   # cleanup stays owed
-    await core.engine.delete(a.id, remote=True)
+    entered, release = asyncio.Event(), asyncio.Event()
+    original_cleanup = core.provider.cleanup
+
+    async def blocking_cleanup(directive):
+        entered.set()
+        await release.wait()
+        return await original_cleanup(directive)
+
+    core.provider.cleanup = blocking_cleanup
+    await core.repository.delete(a.id, remote=True, now=core.clock())
+    task = asyncio.create_task(core.engine._cleanup_resources(a.id, explicit=True))
+    await entered.wait()
+    task.cancel()                                                        # the owner is lost mid-call
+    await asyncio.gather(task, return_exceptions=True)
+    core.provider.cleanup = original_cleanup
+
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_claim_token"] and row["cleanup_authority"] == "user_request"
+
+    b = await core.engine.submit((_magnet(),), name="B")
+    core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE))
+    for _ in range(3):
+        await core.engine.resolve_pending()
+        core.clock.advance(6)
+    assert await core.repository.resources(b.id) == ()                   # conservatively fenced while leased
+
+    core.clock.advance(LEASE)
+    await core.engine.cleanup_pending()                                  # ordinary cadence: no restart
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_authority"] is None and row["cleanup_claim_token"] is None
+    core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE))
+    await core.engine.resolve_pending()
+    assert await core.repository.resources(b.id)                         # B proceeds by itself
+    assert (await core.repository.get(b.id)).error is None
+
+
+@pytest.mark.asyncio
+async def test_crashed_cleanup_claim_survives_restart_then_expires_into_the_ordinary_cadence(core):
+    a, binding_id = await _owed_cleanup(core)
+    now = core.clock()
+    assert await core.repository.claim_cleanup(binding_id, now=now, lease_until=now + LEASE)   # then the process dies
     b = await core.engine.submit((_magnet(),), name="B")
 
-    # Simulate a claim that a crash interrupted: blocked=1, not abandoned.
+    restarted = await _build_core(core.tmp_path)
+    restarted.clock.value = core.clock()
+    assert await restarted.repository.predecessor_cleanup_barrier(b.id) is True   # a live lease is never stolen
+    await restarted.engine.cleanup_pending()
+    assert (await _cleanup_binding(a.id))["cleanup_authority"] == "user_request"  # not re-driven early
+
+    restarted.clock.advance(LEASE + 1)
+    await restarted.engine.cleanup_pending()
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_authority"] is None and row["cleanup_claim_token"] is None
+    assert await restarted.repository.predecessor_cleanup_barrier(b.id) is False   # released after real completion
+
+
+@pytest.mark.asyncio
+async def test_stale_claim_owner_cannot_finalize_over_the_newer_owner(core):
+    a, binding_id = await _owed_cleanup(core)
+    now = core.clock()
+    stale = await core.repository.claim_cleanup(binding_id, now=now, lease_until=now + 10)
+    fresh = await core.repository.claim_cleanup(binding_id, now=now + 10, lease_until=now + 20)
+    assert stale and fresh and stale != fresh
+    assert await core.repository.cleanup_complete(binding_id, stale) is False
+    assert await core.repository.cleanup_retry(binding_id, stale, _transient_cleanup_failure().error, None) is False
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_claim_token"] == fresh and row["cleanup_abandoned"] == 0
+    assert row["cleanup_authority"] == "user_request"
+    assert await core.repository.cleanup_retry(binding_id, fresh, _transient_cleanup_failure().error, now + 99)
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_claim_token"] is None and row["cleanup_retry_at"] == now + 99
+
+
+@pytest.mark.asyncio
+async def test_clearing_cleanup_authority_also_clears_the_claim(core):
+    a, binding_id = await _owed_cleanup(core)
+    assert await core.repository.claim_cleanup(binding_id, now=core.clock(), lease_until=core.clock() + LEASE)
+    resource = (await core.repository.resources(a.id))[0][0]
+    await core.repository.cleanup_intent(a.id, resource.id, None)
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_authority"] is None
+    assert row["cleanup_claim_token"] is None and row["cleanup_claim_until"] == 0
+
+
+@pytest.mark.asyncio
+async def test_legacy_boolean_claim_row_heals_on_upgrade_and_the_fence_still_holds_until_real_completion(core):
+    a, binding_id = await _owed_cleanup(core)
+    core.provider.cleanup_response = _transient_cleanup_failure()        # cleanup stays owed
+    b = await core.engine.submit((_magnet(),), name="B")
+
+    # Old-format equivalent of the stuck production row: owed, claimed by the boolean, no lease.
     async with database.get_db() as db:
         await db.execute(
-            "UPDATE provider_resources SET cleanup_blocked=1 WHERE transfer_id=?", (a.id,))
+            "UPDATE provider_resources SET cleanup_blocked=1, cleanup_attempts=1 WHERE transfer_id=?", (a.id,))
         await db.commit()
     assert await core.repository.predecessor_cleanup_barrier(b.id) is True   # blocks, conservatively
 
-    restarted = await _build_core(core.tmp_path)                # initialize() runs reclaim
-    async with database.get_db() as db:
-        row = await db.fetchone(
-            "SELECT cleanup_blocked, cleanup_abandoned, cleanup_authority FROM provider_resources WHERE transfer_id=?",
-            (a.id,))
-    assert row["cleanup_blocked"] == 0 and row["cleanup_abandoned"] == 0     # claim released for re-drive
-    assert row["cleanup_authority"] is not None
-    assert await restarted.repository.predecessor_cleanup_barrier(b.id) is True   # still owed → still fenced
+    await database.init_db()                                             # first normal initialization after upgrade
+    restarted = await _build_core(core.tmp_path)
+    row = await _cleanup_binding(a.id)
+    assert row["cleanup_blocked"] == 0 and row["cleanup_abandoned"] == 0
+    assert row["cleanup_authority"] is not None and row["cleanup_claim_token"] is None
+    assert await restarted.repository.predecessor_cleanup_barrier(b.id) is True   # still owed -> still fenced
 
     restarted.provider.cleanup_response = TransferOutcome(OutcomeKind.SUCCESS)
     for _ in range(6):
@@ -562,17 +680,17 @@ async def test_crashed_cleanup_claim_is_reclaimed_on_restart_and_fence_still_hol
 
 @pytest.mark.asyncio
 async def test_terminally_abandoned_predecessor_cleanup_releases_the_fence(core):
-    a = await _resolve_transfer(core, fingerprint="btih-abc", name="A")
-    binding_a = (await _provider_resource_rows(a.id))[0]["id"]
-    core.provider.cleanup_response = _transient_cleanup_failure()    # cleanup stays owed
-    await core.engine.delete(a.id, remote=True)
+    a, binding_a = await _owed_cleanup(core)
 
-    # Terminal give-up is recorded only after a cleanup call returns.
-    await core.repository.cleanup_retry(binding_a, _transient_cleanup_failure().error, None)
+    # Terminal give-up is recorded only by the current claim owner, after a call returned.
+    token = await core.repository.claim_cleanup(binding_a, now=core.clock(), lease_until=core.clock() + LEASE)
+    assert await core.repository.cleanup_retry(binding_a, token, _transient_cleanup_failure().error, None)
     async with database.get_db() as db:
         row = await db.fetchone(
-            "SELECT cleanup_abandoned, cleanup_authority FROM provider_resources WHERE id=?", (binding_a,))
+            "SELECT cleanup_abandoned, cleanup_authority, cleanup_claim_token FROM provider_resources WHERE id=?",
+            (binding_a,))
     assert row["cleanup_abandoned"] == 1 and row["cleanup_authority"] is not None
+    assert row["cleanup_claim_token"] is None                            # abandonment releases the claim too
 
     b = await core.engine.submit((_magnet(),), name="B")
     assert await core.repository.predecessor_cleanup_barrier(b.id) is False
