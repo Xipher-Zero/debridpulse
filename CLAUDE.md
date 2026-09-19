@@ -2,7 +2,7 @@
 
 Reference notes for future sessions. Verify against the live tree before relying on
 specifics — line numbers and counts drift. Branch of record for active work: **`1.0.12`**
-(`main` lags behind it). Last substantive update: 2026-09-09.
+(`main` lags behind it). Last substantive update: 2026-09-19.
 
 ---
 
@@ -41,6 +41,7 @@ neutral applicability facts; executors execute; the classifier is provider-neutr
 | `Dockerfile`, `entrypoint.sh`, `docker-compose.yml` | Packaging (see §5). |
 | `release.py`, `CHANGELOG.md` (~257 KB), `licenses/` + `LICENSES/` + `NOTICE` | Release + dependency-license bookkeeping (enforced in CI). |
 | `.github/workflows/` | 8 workflows (see §7). |
+| `.github/qualification/` | The one failure classifier (`failure_classifier.py`) and the one known-flake registry (`known_flakes.json`). Policy: `docs/QUALIFICATION_DETERMINISM.md` (see §6a). |
 
 ### Backend packages (`backend/`)
 
@@ -274,6 +275,29 @@ strings (`test_settings_*`, `test_ui_*`) will break on refactors and must be upd
 the same change; some are inside `post_audit_qualification.txt` and `two_provider_…txt`
 (frozen), so a manifest-covered contract change should be deliberate.
 
+### 6a. Qualification determinism (read `docs/QUALIFICATION_DETERMINISM.md`)
+
+`Tests` and `Browser Runtime` run their full suite **once**; a failure is classified
+candidate-vs-anchor by the single classifier, `.github/qualification/failure_classifier.py`
+(`PASS` / `KNOWN_FLAKE` pass; `CANDIDATE_REGRESSION`, `ANCHOR_REPRODUCED_FLAKE`,
+`INCONCLUSIVE`, `INFRASTRUCTURE_FAILURE` fail). Every run names `CANDIDATE_SHA` and
+`QUALIFICATION_ANCHOR_SHA`; an anchor that cannot be resolved unambiguously fails closed (never
+`main`). The diagnostic budget (3 cases, 8 isolated runs per ref + one bounded 16-run discriminator stage, 15 min, 0 automatic full-suite
+reruns) has one owner, the classifier. `.github/qualification/known_flakes.json` has zero active
+entries and is not a skip list. Enforced by `backend/tests/test_qualification_infrastructure_contract.py`.
+
+CANDIDATE_REGRESSION is an evidence-backed discrimination,
+not merely "candidate happened to fail and anchor happened not to fail
+in a small sample." A candidate failure the anchor did not reproduce in its bounded sample gets
+one bounded second stage (`discriminate`), and INCONCLUSIVE is the required classification when bounded evidence
+cannot distinguish a rare candidate regression from low-rate
+pre-existing nondeterminism. Agents must not alter production source solely because an isolated candidate sample contains a failure while a small anchor sample happens to contain none.
+
+**Do not repeatedly rerun full qualification to chase green. Use candidate-vs-anchor classification.**
+A flaky test is fixed at its oracle (replace the nondeterministic assumption with the real
+invariant), never retried, slept around, or registered. Lifecycle/concurrency/ownership changes
+require the adversarial preflight in that document *before* production edits.
+
 ---
 
 ## 7. GitHub Actions workflows (`.github/workflows/`)
@@ -283,8 +307,8 @@ All gate on: `main`, `1.0.11`, `1.0.12`, `staging/**`, some `audit/**`, plus `v*
 
 | Workflow | What it does |
 |---|---|
-| **tests.yml** (`Tests`) | Job `test`: Python 3.12; `ruff check … --select F821,F822,F823` (undefined names) over the backend packages; run `post_audit_qualification.txt`, then `two_provider_checkpoint_qualification.txt`, then full `pytest tests/`; `python -m compileall -q .`; `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Installs `aria2`+`openssl` for downloader regression tests. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
-| **browser-runtime.yml** (`Browser Runtime`) | Builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite and asserts `discovered == running == passed`. Uploads traces + `checkpoint-*.png`. |
+| **tests.yml** (`Tests`) | Job `test`: resolves + publishes `QUALIFICATION_ANCHOR_SHA` (checkout `fetch-depth: 0`); Python 3.12; `ruff check … --select F821,F822,F823` (undefined names) over the backend packages; run `post_audit_qualification.txt`, then `two_provider_checkpoint_qualification.txt`, then full `pytest tests/` exactly once (junit XML captured), then the classifier decides the gate (bounded isolated candidate + anchor runs of only the failing node ids, anchor in its own venv); `python -m compileall -q .`; `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Installs `aria2`+`openssl` for downloader regression tests. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
+| **browser-runtime.yml** (`Browser Runtime`) | Builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite exactly once (`retries: 0`, JSON + line reporters); on failure the classifier drives bounded failing-case runs on a fresh candidate pair and on the anchor's own image/specs (ports 8082/8083); inventory must reconcile (`discovered == running == passed + failed`). Uploads traces, classification evidence + `checkpoint-*.png`. |
 | **codeql.yml** (`CodeQL`) | `security-and-quality` queries for `python`, `javascript-typescript`, `actions`. Weekly cron (Thu 20:17 UTC). |
 | **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.12` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
 | **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<full-sha>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |
@@ -378,7 +402,6 @@ mutating the same DOM — could recur in other settings panels. Check
 - For local verification, prefer building/pulling a Docker image (or running
   `uvicorn main:app` from a 3.12 venv with a temp `CONFIG_PATH`/`DB_PATH`) before pushing
   and triggering the full GitHub image pipeline.
-- `test_universal_lifecycle.py::test_mirrors_share_one_artifact_and_failover_retires_partial_bytes`
-  is intermittently flaky in the full suite (nondeterministic candidate-UUID ordering);
-  passes in isolation, and CI's `Tests` job has been green through it. A one-off failure
-  there is not a regression signal.
+- Known-flaky-test folklore is retired: the mirror-failover test and the WS1-P2 / WS2-P1 /
+  Details-refresh browser cases were made deterministic (2026-09-19). A failure there is a
+  real signal; classify it per §6a instead of rerunning.

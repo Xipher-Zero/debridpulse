@@ -123,6 +123,15 @@ async function openSources(page) {
   await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-disclosure')).toHaveCount(1);
 }
 
+async function applySettings(page) {
+  const apply = page.locator('#view-settings [data-action="save"]');
+  await apply.click();
+  // The click handler marks the Apply control busy synchronously; the settings owner replaces it
+  // with a fresh, enabled control only after the persisted state is adopted and re-rendered. Wait
+  // for that boundary so no later staged edit races the save-completion render.
+  await expect(apply).toBeEnabled();
+}
+
 async function setProviderEnabled(card, enabled) {
   const input = card.locator('input[data-integration-enabled="alldebrid"]');
   if ((await input.isChecked()) !== enabled) {
@@ -250,7 +259,7 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
   await disclosure.press('Enter');
   await expect(body).toBeVisible();
   await setProviderEnabled(card, true);
-  await page.locator('#view-settings [data-action="save"]').click();
+  await applySettings(page);
 
   card = page.locator('.dp-settings-provider-card--alldebrid');
   body = card.locator(':scope > .card-body');
@@ -262,7 +271,7 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
   await expect(body).toBeHidden();
   await expect(status).toHaveText('Provider configured');
 
-  await page.locator('#view-settings [data-action="save"]').click();
+  await applySettings(page);
   card = page.locator('.dp-settings-provider-card--alldebrid');
   body = card.locator(':scope > .card-body');
   status = card.locator('.dp-settings-provider-config-status');

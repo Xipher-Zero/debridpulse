@@ -310,6 +310,20 @@ test('Dashboard Recent Activity requests priority ordering and reports a truthfu
 });
 
 const DASH_WIDE_WIDTHS=[1440,1600,1920,2200];
+// The Dashboard Recent owner replaces #dash-tbody after every read (its startup refresh, its own fit
+// re-check, resize/SSE/polling refreshes), so rows injected for a geometry probe can be swept away by
+// a late render. Refreshes are coalesced and run one fetch+render at a time: once the owner's next
+// read is parked at the network boundary every earlier render has finished and none can run until the
+// returned release() is called, so the probe measures a DOM no render can replace.
+async function parkDashboardRecent(page){
+ let markParked,open;const parked=new Promise(resolve=>{markParked=resolve;}),gate=new Promise(resolve=>{open=resolve;});
+ const isRecentRead=url=>url.pathname==='/api/torrents'&&url.searchParams.get('order')==='activity';
+ const hold=async route=>{markParked();await gate;await route.continue().catch(()=>{});};
+ await page.route(isRecentRead,hold);
+ await page.evaluate(()=>{loadRecent().catch(()=>{});});
+ await parked;
+ return async()=>{open();await page.unroute(isRecentRead,hold).catch(()=>{});};
+}
 const DASH_ROW_HTML='<tr data-torrent-id="1" data-status="downloading"><td>Name</td><td>Status</td><td>Progress</td><td>1MB</td><td>today</td><td><div class="actions"><button class="btn btn-blue btn-sm">Pause</button></div></td></tr>';
 
 test('Dashboard shares one action centerline across Recover All, Add, and the row action button',async({page})=>{
@@ -317,6 +331,7 @@ test('Dashboard shares one action centerline across Recover All, Add, and the ro
   for(const width of DASH_WIDE_WIDTHS){
    await page.setViewportSize({width,height:900});
    await ready(page);
+   const release=await parkDashboardRecent(page);
    if(theme==='light')await page.evaluate(()=>document.body.classList.add('light'));
    await page.evaluate(html=>{document.getElementById('dash-tbody').innerHTML=html;},DASH_ROW_HTML);
    const centers=await page.evaluate(()=>{
@@ -327,6 +342,7 @@ test('Dashboard shares one action centerline across Recover All, Add, and the ro
      action:centerOf(document.querySelector('#dash-tbody .actions .btn')),
     };
    });
+   await release();
    expect(Math.abs(centers.recover-centers.add)).toBeLessThanOrEqual(1);
    expect(Math.abs(centers.recover-centers.action)).toBeLessThanOrEqual(1);
   }
@@ -338,6 +354,7 @@ test('Dashboard Recent Activity table/rows reach the card\'s full right content 
   for(const width of DASH_WIDE_WIDTHS){
    await page.setViewportSize({width,height:900});
    await ready(page);
+   const release=await parkDashboardRecent(page);
    if(theme==='light')await page.evaluate(()=>document.body.classList.add('light'));
    await page.evaluate(html=>{document.getElementById('dash-tbody').innerHTML=html;},DASH_ROW_HTML);
    const geometry=await page.evaluate(()=>{
@@ -355,6 +372,7 @@ test('Dashboard Recent Activity table/rows reach the card\'s full right content 
      nameCell:rect(nameCell),actionCell:rect(actionCell),track,inset,
     };
    });
+   await release();
    // The dead strip this test guards against: table/row painting must reach
    // the wrapper's own right content edge, not stop `inset` short of it.
    expect(Math.abs(geometry.table.right-geometry.wrap.right)).toBeLessThanOrEqual(1);
@@ -515,14 +533,31 @@ test('Downloads common-source group launcher joins the first line for 2+ common 
 test('Details candidate switch remains available after comprehensive presentation refresh',async({page})=>{
  const candidate=(id,source,active)=>({candidate_id:id,source_label:source,provider_id:'alldebrid',relationship:'Original',dispositions:active?['Active']:[],is_selected:active,is_active:active,is_delivering:false,switch_eligible:!active});
  const detail={id:990,name:'Candidate review fixture',status:'downloading',progress:42,size_bytes:1024,source:'direct_link',label:'',hash:'',created_at:'2026-09-06T10:00:00Z',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',route_attempts:[],execution_attempts:[],executors:['aria2'],source_outcomes:[],events:[],files:[{id:502,filename:'fixture.rar',size_bytes:1024,status:'downloading',blocked:false,block_reason:null,candidate_count:2,acquisition_candidates:[candidate('a','rapidgator.net',true),candidate('b','megaup.net',false)]}]};
- let detailReads=0;await page.route(url=>url.pathname==='/api/torrents/990',async route=>{detailReads+=1;if(detailReads>1)await new Promise(resolve=>setTimeout(resolve,150));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(detail)});});
+ // Every detail read is stamped with a monotonically increasing revision that the owner renders into
+ // the file row, so the test synchronizes on the presentation boundary itself (the owner re-rendering
+ // its rows from a fresh read) instead of on how many reads the live app happened to issue. Once
+ // armed, refresh reads are parked on a test-owned gate rather than delayed by wall-clock time.
+ let revision=0,gate=null,parked=null;
+ await page.route(url=>url.pathname==='/api/torrents/990',async route=>{
+  const stamp=++revision;
+  if(gate){parked.resolve();await gate.promise;}
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...detail,files:[{...detail.files[0],filename:`fixture-r${stamp}.rar`}]})});
+ });
+ const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};};
+ const renderedRevision=()=>page.locator('tr[data-dp-artifact-id="502"] .dp-detail-filename-copy').textContent().then(text=>Number((/^fixture-r(\d+)\.rar$/.exec(text.trim())||[])[1]||0));
  await ready(page);await page.evaluate(()=>showDetail(990));await page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure').click();
- // The rows are rendered once from the payload showDetail loaded (one read). A comprehensive
- // list refresh then makes the owner re-read and re-render its own rows; the open source panel
- // and its Switch action must survive that refresh.
+ // The open source panel and its Switch action must survive a comprehensive list refresh: the owner
+ // re-reads the transfer and re-renders its own rows.
  const panel=page.locator('tr[data-dp-candidate-owner="502"]');await expect(panel).toBeVisible();await expect(panel.locator('.dp-detail-candidate-switch')).toHaveCount(1);
- expect(detailReads).toBe(1);
+ const before=await renderedRevision();expect(before).toBeGreaterThanOrEqual(1);
+ gate=deferred();parked=deferred();
  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered')));
- await expect.poll(()=>detailReads).toBeGreaterThanOrEqual(2);
+ // The owner's refresh read is now in flight: the panel must stay open and actionable meanwhile.
+ await parked.promise;
+ await expect(panel).toBeVisible();await expect(panel.locator('.dp-detail-candidate-switch')).toHaveCount(1);
+ gate.resolve();gate=null;
+ // Release, then wait for the owner to re-render its rows from a read newer than the one rendered before.
+ await expect.poll(renderedRevision).toBeGreaterThan(before);
  await expect(panel).toBeVisible();await expect(panel.locator('.dp-detail-candidate-switch')).toHaveCount(1);await expect(panel.locator('.dp-detail-candidate-switch')).toHaveText('Switch to this source');
+ await expect(page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure')).toHaveAttribute('aria-expanded','true');
 });

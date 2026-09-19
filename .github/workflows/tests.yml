@@ -19,6 +19,11 @@ on:
       - '1.0.12'
       - 'staging/**'
   workflow_dispatch:
+    inputs:
+      anchor_sha:
+        description: 'Optional qualification anchor commit SHA (defaults to the candidate first parent)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -32,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -42,6 +49,50 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
             backend/requirements-qa.txt
+
+      - name: Resolve qualification anchor and publish identity
+        env:
+          QUALIFICATION_EVENT: ${{ github.event_name }}
+          QUALIFICATION_BEFORE: ${{ github.event.before }}
+          QUALIFICATION_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          QUALIFICATION_INPUT_ANCHOR: ${{ inputs.anchor_sha }}
+        run: |
+          set -euo pipefail
+          classifier=.github/qualification/failure_classifier.py
+          mkdir -p "$RUNNER_TEMP/qualification"
+          python "$classifier" budget >> "$GITHUB_ENV"
+          set +e
+          resolved="$(python "$classifier" resolve-anchor \
+            --event "$QUALIFICATION_EVENT" \
+            --candidate-sha "$GITHUB_SHA" \
+            --before "$QUALIFICATION_BEFORE" \
+            --pr-base-sha "$QUALIFICATION_PR_BASE_SHA" \
+            --input-anchor "$QUALIFICATION_INPUT_ANCHOR")"
+          set -e
+          anchor_sha="$(printf '%s\n' "$resolved" | sed -n 's/^QUALIFICATION_ANCHOR_SHA=//p')"
+          anchor_reason="$(printf '%s\n' "$resolved" | sed -n 's/^QUALIFICATION_ANCHOR_REASON=//p')"
+          {
+            echo "CANDIDATE_SHA=$GITHUB_SHA"
+            echo "QUALIFICATION_ANCHOR_SHA=$anchor_sha"
+            echo "QUALIFICATION_ANCHOR_REASON=$anchor_reason"
+          } >> "$GITHUB_ENV"
+          python "$classifier" metadata \
+            --candidate-sha "$GITHUB_SHA" \
+            --anchor-sha "$anchor_sha" \
+            --anchor-reason "$anchor_reason" \
+            --event "$QUALIFICATION_EVENT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --workflow Tests \
+            --output-json "$RUNNER_TEMP/qualification/qualification-metadata.json" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload qualification metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tests-qualification-metadata-${{ github.sha }}
+          path: ${{ runner.temp }}/qualification/qualification-metadata.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Install downloader regression dependencies
         run: |
@@ -93,10 +144,112 @@ jobs:
           retention-days: 14
 
       - name: Run all tests
+        id: full_pytest
         run: |
-          set -o pipefail
+          set -uo pipefail
+          full="$RUNNER_TEMP/qualification/candidate/full"
+          mkdir -p "$full"
           cd backend
-          python -m pytest tests/ -v --tb=short 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+          set +e
+          python -m pytest tests/ -v --tb=short -o junit_family=xunit1 --junitxml="$full/results.xml" 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "$status" > "$full/exit_code.txt"
+          cp "$RUNNER_TEMP/pytest.log" "$full/pytest.log"
+          echo "full pytest run exited with status $status; the classification step decides the gate"
+
+      - name: Classify full pytest run (candidate vs anchor)
+        id: classify_pytest
+        run: |
+          set -uo pipefail
+          set +e
+          classifier="$GITHUB_WORKSPACE/.github/qualification/failure_classifier.py"
+          q="$RUNNER_TEMP/qualification"
+          cand="$q/candidate"
+          anch="$q/anchor"
+          anchor_src="$q/anchor-src"
+          mkdir -p "$cand/isolated" "$anch/isolated" "$anchor_src"
+          deadline=$(( $(date +%s) + MAX_CLASSIFICATION_WALL_TIME_SECONDS ))
+
+          python "$classifier" plan --domain pytest --candidate-results "$cand" \
+            --output-json "$cand/plan.json" --output-tsv "$cand/plan.tsv"
+          plan_rc=$?
+
+          # run_nodes <backend-dir> <python> <results-dir> <plan.tsv> <stage>
+          # Runs ONLY the failing node id(s): stage 1 is ISOLATED_RUNS_PER_REF runs each; stage d is
+          # the single bounded discriminator stage of DISCRIMINATOR_RUNS_PER_REF runs each.
+          run_nodes() {
+            local dir="$1" py="$2" out="$3" plan="$4" stage="$5" slug nodeid i count tag remaining
+            if [ "$stage" = d ]; then count="$DISCRIMINATOR_RUNS_PER_REF"; tag=d; else count="$ISOLATED_RUNS_PER_REF"; tag=; fi
+            while IFS=$'\t' read -r slug nodeid; do
+              for i in $(seq 1 "$count"); do
+                remaining=$(( deadline - $(date +%s) ))
+                if [ "$remaining" -le 0 ]; then
+                  echo "wall-time budget exhausted" > "$out/budget_exhausted.txt"
+                  return 0
+                fi
+                (
+                  cd "$dir" || exit 1
+                  timeout "$remaining" "$py" -m pytest "$nodeid" -q --tb=short -p no:cacheprovider \
+                    -o junit_family=xunit1 --junitxml="$out/$slug.$tag$i.xml" \
+                    < /dev/null > "$out/$slug.$tag$i.log" 2>&1
+                )
+              done
+            done < "$plan"
+          }
+
+          if [ "$plan_rc" -eq 11 ]; then
+            # Bounded isolated runs of ONLY the failing node ids on the candidate.
+            run_nodes "$GITHUB_WORKSPACE/backend" python "$cand/isolated" "$cand/plan.tsv" 1
+
+            # The anchor: an isolated snapshot of the exact anchor commit, its own
+            # dependency manifests in its own environment, and its own tests.
+            anchor_infra() { printf '%s\n' "$1" > "$anch/isolated/infrastructure_failure.txt"; }
+            install_budget=$(( deadline - $(date +%s) ))
+            [ "$install_budget" -ge 1 ] || install_budget=1
+            if ! git -C "$GITHUB_WORKSPACE" archive "$QUALIFICATION_ANCHOR_SHA" | tar -x -C "$anchor_src"; then
+              anchor_infra "could not check out anchor $QUALIFICATION_ANCHOR_SHA"
+            elif ! python -m venv "$q/anchor-venv"; then
+              anchor_infra "could not create the anchor virtual environment"
+            elif ! timeout "$install_budget" "$q/anchor-venv/bin/pip" install --quiet \
+                -r "$anchor_src/backend/requirements-dev.txt" > "$anch/pip-install.log" 2>&1; then
+              anchor_infra "could not install the anchor dependency manifest (see pip-install.log)"
+            else
+              run_nodes "$anchor_src/backend" "$q/anchor-venv/bin/python" "$anch/isolated" "$cand/plan.tsv" 1
+            fi
+
+            # Single bounded second stage. Only when the first stage could not discriminate candidate
+            # from anchor, and only for the affected node id(s); the classifier owns that decision.
+            python "$classifier" discriminate --domain pytest \
+              --candidate-sha "$CANDIDATE_SHA" --anchor-sha "$QUALIFICATION_ANCHOR_SHA" \
+              --candidate-results "$cand" --anchor-results "$anch" \
+              --registry .github/qualification/known_flakes.json --output-tsv "$q/discriminate.tsv"
+            if [ "$?" -eq 14 ]; then
+              run_nodes "$GITHUB_WORKSPACE/backend" python "$cand/isolated" "$q/discriminate.tsv" d
+              run_nodes "$anchor_src/backend" "$q/anchor-venv/bin/python" "$anch/isolated" "$q/discriminate.tsv" d
+            fi
+          fi
+
+          python "$classifier" classify --domain pytest \
+            --candidate-sha "$CANDIDATE_SHA" --anchor-sha "$QUALIFICATION_ANCHOR_SHA" \
+            --candidate-results "$cand" --anchor-results "$anch" \
+            --registry .github/qualification/known_flakes.json \
+            --output-json "$q/pytest-classification.json" --output-summary "$q/pytest-classification.md"
+          rc=$?
+          cat "$q/pytest-classification.md" >> "$GITHUB_STEP_SUMMARY"
+          classification="$(jq -r .classification "$q/pytest-classification.json")"
+          echo "pytest classification: $classification (exit $rc)"
+          case "$rc" in
+            0) exit 0 ;;
+            10)
+              echo "::warning title=KNOWN_FLAKE::Non-blocking known flake matched an active registry entry and reproduced on the anchor. See the step summary."
+              exit 0
+              ;;
+            *)
+              echo "::error title=Backend qualification::$classification (classifier exit $rc). See the step summary and the pytest classification artifact."
+              exit "$rc"
+              ;;
+          esac
 
       - name: Upload pytest qualification output
         if: always()
@@ -105,6 +258,19 @@ jobs:
           name: pytest-qualification-${{ github.sha }}
           path: ${{ runner.temp }}/pytest.log
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload pytest classification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pytest-classification-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/qualification/candidate
+            ${{ runner.temp }}/qualification/anchor
+            ${{ runner.temp }}/qualification/pytest-classification.json
+            ${{ runner.temp }}/qualification/pytest-classification.md
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Check Python syntax

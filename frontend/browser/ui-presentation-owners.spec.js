@@ -2,6 +2,20 @@ const { test, expect } = require('@playwright/test');
 
 const MARKERS=['DPToastContract','DPDownloads','DPProcessingPresentation','DPActivityLog','DPArchivePasswords'];
 async function ready(page){await page.goto('/');await page.waitForFunction(markers=>markers.every(marker=>Boolean(window[marker])),MARKERS);}
+// The Downloads owner replaces its rows after every list read (navigation, its measured-capacity
+// re-checks, SSE/polling refreshes), which detaches any element a probe has already resolved and
+// makes its rect read as zero. Refreshes are coalesced and run one fetch+render at a time, so once
+// the owner's next list read (the only one carrying `offset`) is parked at the network boundary
+// every earlier render has finished and none can run until the returned release() is called.
+async function parkDownloadsList(page){
+ let markParked,open;const parked=new Promise(resolve=>{markParked=resolve;}),gate=new Promise(resolve=>{open=resolve;});
+ const isListRead=url=>url.pathname==='/api/torrents'&&url.searchParams.has('offset');
+ const hold=async route=>{markParked();await gate;await route.fallback().catch(()=>{});};
+ await page.route(isListRead,hold);
+ await page.evaluate(()=>{loadTorrents().catch(()=>{});});
+ await parked;
+ return async()=>{open();await page.unroute(isListRead,hold).catch(()=>{});};
+}
 
 test('bounded presentation graph loads without retired correction requests',async({page})=>{
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));await ready(page);
@@ -48,9 +62,11 @@ test('Downloads provider/source block adds host artwork and centers its two line
  const item={id:77,name:'Rapidgator layout transfer',status:'paused',presentation_status:'paused',progress:18,size_bytes:7340032,created_at:'2026-09-08 18:00:00',source:'direct_link',hash:'request:layout',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:null,delivering_provider_name:null,provider_provenance_status:'known'};
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[item],total:1,page:1,page_size:1})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
+ const release=await parkDownloadsList(page);
  const row=page.locator('#t-tbody tr[data-torrent-id="77"]');await expect(row).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-block')).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-line .dp-source-host-logo')).toHaveCount(1);await expect(row.locator('.dp-downloads-provider-line .dp-provider-chip')).toContainText('AllDebrid');await expect(row.locator('.dp-downloads-provider-block > .dp-transfer-source-label')).toHaveText('Direct link');
  await expect.poll(()=>row.locator('.dp-source-host-logo').evaluate(node=>node.complete&&node.naturalWidth>0)).toBe(true);
  const geometry=await row.locator('.dp-downloads-provider-cell').evaluate(cell=>{const block=cell.querySelector('.dp-downloads-provider-block'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector('.dp-transfer-source-label'),icon=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip'),cellStyle=getComputedStyle(cell),rect=node=>node.getBoundingClientRect(),center=node=>{const r=rect(node);return r.left+r.width/2;};return{cellLeft:rect(cell).left,paddingLeft:Number.parseFloat(cellStyle.paddingLeft)||0,blockLeft:rect(block).left,lineCenter:center(line),labelCenter:center(label),iconHeight:rect(icon).height,chipHeight:rect(chip).height};});
+ await release();
  expect(Math.abs(geometry.blockLeft-(geometry.cellLeft+geometry.paddingLeft))).toBeLessThanOrEqual(1.5);expect(Math.abs(geometry.lineCenter-geometry.labelCenter)).toBeLessThanOrEqual(1.5);expect(geometry.iconHeight).toBeCloseTo(20,1);expect(geometry.chipHeight).toBeGreaterThanOrEqual(19.5);
 });
 
@@ -65,7 +81,8 @@ test('Downloads owner exposes fixed three-slot pager and date options',async({pa
  await page.locator('#torrent-page-btns .dp-pager-btn[aria-label="Next page"]').click();
  await expect(page.locator('#torrent-page-btns .dp-pager-btn')).toHaveCount(2);await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveCount(1);
  await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
- const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();expect(Math.abs(group.width-116)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
+ const release=await parkDownloadsList(page);
+ const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();await release();expect(Math.abs(group.width-116)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
  const trigger=page.locator('.dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.getByRole('menuitemradio',{name})).toBeVisible();
 });
 

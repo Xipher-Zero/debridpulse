@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Sole known-flake registry. It is not a skip list: an active, unexpired entry only permits KNOWN_FLAKE when the exact case and exact normalized failure signature also reproduce on the current qualification anchor. See docs/QUALIFICATION_DETERMINISM.md.",
+  "entries": []
+}

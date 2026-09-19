@@ -38,6 +38,7 @@ async function installDownloadsFixture(page, initialDownloads) {
   let downloads = clone(initialDownloads);
   let bulkFailIds = new Set();
   let singleFailIds = new Set();
+  let listHold = null;
   const requests = {bulk: [], singleDelete: []};
 
   await page.route('**/api/torrents**', async route => {
@@ -96,6 +97,10 @@ async function installDownloadsFixture(page, initialDownloads) {
     }
 
     if (url.pathname === '/api/torrents' && method === 'GET') {
+      if (listHold && url.searchParams.has('offset')) {
+        listHold.markParked();
+        await listHold.promise;
+      }
       const status = String(url.searchParams.get('status') || '').trim();
       const search = String(url.searchParams.get('search') || '').trim().toLowerCase();
       const limit = Math.max(1, Number(url.searchParams.get('limit')) || 25);
@@ -117,6 +122,27 @@ async function installDownloadsFixture(page, initialDownloads) {
     setBulkFailures(ids) { bulkFailIds = new Set(ids.map(Number)); },
     setSingleFailures(ids) { singleFailIds = new Set(ids.map(Number)); },
     snapshot() { return {downloads: clone(downloads), requests: clone(requests)}; },
+    // Parks every Downloads-owned bounded list read (the only one carrying `offset`) while held.
+    // `parked` resolves when the first such read is parked; the owner's coalesced refresh runs one
+    // fetch+render at a time, so a parked read proves every earlier refresh has already rendered
+    // and none can render again until `release()` is called.
+    holdListReads() {
+      let release;
+      let markParked;
+      const hold = {
+        promise: new Promise(resolve => { release = resolve; }),
+        parked: new Promise(resolve => { markParked = resolve; }),
+        markParked: () => markParked(),
+      };
+      listHold = hold;
+      return {
+        parked: hold.parked,
+        release: () => {
+          if (listHold === hold) listHold = null;
+          release();
+        },
+      };
+    },
   };
 }
 
@@ -329,11 +355,21 @@ test('WS2-P1 single-row Remove uses the same canonical modal and existing DELETE
   await openDownloads(page);
 
   const remove = row(page, 1).locator('button.btn-danger');
-  await remove.click();
-  await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
-  await cancel(page).click();
-  expect(fixture.snapshot().requests.singleDelete).toEqual([]);
-  await expect(remove).toBeFocused();
+  // Cancelling the confirmation restores focus to the row's own control, so no Downloads refresh may
+  // replace that control while the dialog is open. Park the owner's next refresh read: once it is
+  // parked the DOM is settled (earlier refreshes have rendered) and cannot change until released.
+  const listReads = fixture.holdListReads();
+  try {
+    await page.evaluate(() => { loadTorrents(); });
+    await listReads.parked;
+    await remove.click();
+    await expect(page.locator('.dp-settings-confirm-overlay')).toBeVisible();
+    await cancel(page).click();
+    expect(fixture.snapshot().requests.singleDelete).toEqual([]);
+    await expect(remove).toBeFocused();
+  } finally {
+    listReads.release();
+  }
 
   await remove.click();
   await accept(page).click();

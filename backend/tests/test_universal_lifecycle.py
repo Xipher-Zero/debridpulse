@@ -804,6 +804,16 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(can
     artifact = artifacts[0]
     assert len(artifact.candidates) == 2
     assert len([item for item in core.executor.calls if item[0] == "start"]) == 1
+    # Candidate identities and their bound order are not a product contract:
+    # both mirrors are equivalent and their UUIDs are random. Derive the
+    # actually-selected candidate and its one alternate by ID from the
+    # converged artifact instead of assuming ``first`` is index 0.
+    bound_ids = [candidate.id for candidate in artifact.candidates]
+    assert set(bound_ids) == {first.id, second.id} and len(set(bound_ids)) == 2
+    active_index = artifact.selected
+    active_id = bound_ids[active_index]
+    (alternate_id,) = set(bound_ids) - {active_id}
+    assert alternate_id != active_id
     target = Path(artifact.target)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"part")
@@ -817,7 +827,8 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(can
     )
     await core.engine.tick()
     first_retry = (await core.repository.artifacts(transfer.id))[0]
-    assert first_retry.selected == 0 and first_retry.state == "recovery_wait"
+    assert first_retry.selected == active_index and first_retry.state == "recovery_wait"
+    assert first_retry.candidates[first_retry.selected].id == active_id
     assert target.exists() and sidecar.exists()
 
     # DP 1.0.12 canonical lifecycle/recovery/completion rework (CANON-001
@@ -830,13 +841,17 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(can
     core.now[0] += 1
     await core.engine.tick()
     refreshed = (await core.repository.artifacts(transfer.id))[0]
-    assert refreshed.selected == 0 and refreshed.state == "queued"
+    assert refreshed.selected == active_index and refreshed.state == "queued"
+    assert refreshed.candidates[refreshed.selected].id == active_id
     assert target.exists() and sidecar.exists()
     core.executor.start_errors = [error]
     await core.engine.tick()
     switched = (await core.repository.artifacts(transfer.id))[0]
     assert switched.id == artifact.id and switched.target == artifact.target
-    assert switched.selected == 1 and switched.execution is None
+    assert switched.execution is None
+    assert [candidate.id for candidate in switched.candidates] == bound_ids
+    assert switched.selected != active_index
+    assert switched.candidates[switched.selected].id == alternate_id
     # DP 1.0.12 recovery leveling, Section 28: automatic and operator
     # candidate activation now share ONE partial/resume policy
     # (transfers.candidate_activation.activate_candidate) -- partial bytes
@@ -848,11 +863,15 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(can
 
     await core.engine.tick()
     retried = (await core.repository.artifacts(transfer.id))[0]
-    assert retried.selected == 1 and retried.execution is not None
+    assert retried.selected == switched.selected and retried.execution is not None
+    assert retried.id == artifact.id and retried.target == artifact.target
     attempts = await core.repository.executions(transfer.id)
     assert len(attempts) == 4
-    assert {item.candidate.id for item in attempts} == {first.id, second.id}
-    assert attempts[-1].candidate.id == second.id
+    assert {item.candidate.id for item in attempts} == {active_id, alternate_id}
+    # Every attempt before the failover ran on the originally active
+    # candidate; the final execution is the actual alternate candidate.
+    assert [item.candidate.id for item in attempts] == [active_id] * 3 + [alternate_id]
+    assert retried.execution.attempt_id == attempts[-1].handle.attempt_id
 
 
 @pytest.mark.asyncio

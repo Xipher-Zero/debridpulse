@@ -260,6 +260,11 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   await save.click();
   await expect.poll(() => putCount).toBe(1);
   expect(lastPut.download_folder).toBe('/download/Alpha');
+  // The PUT is the last request of the save chain, not its completion. The Settings owner marks
+  // Apply busy synchronously on click and replaces it with a fresh, enabled control only after it
+  // has adopted the saved state and re-rendered the form (which restores the saved folder). Wait
+  // for that boundary so the next edit cannot race the save-completion render.
+  await expect(save).toBeEnabled();
 
   await field.fill('/download');
   await browse.click();
@@ -268,6 +273,8 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   rejectSave = true;
   await save.click();
   await expect.poll(() => putCount).toBe(2);
+  // A rejected save has finished only when Apply returns to idle; the form must be unchanged then.
+  await expect(save).toBeEnabled();
   await expect(field).toHaveValue('/download/Alpha');
 });
 

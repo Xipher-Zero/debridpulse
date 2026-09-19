@@ -18,6 +18,11 @@ on:
       - '1.0.12'
       - 'staging/**'
   workflow_dispatch:
+    inputs:
+      anchor_sha:
+        description: 'Optional qualification anchor commit SHA (defaults to the candidate first parent)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -34,6 +39,57 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Resolve qualification anchor and publish identity
+        env:
+          QUALIFICATION_EVENT: ${{ github.event_name }}
+          QUALIFICATION_BEFORE: ${{ github.event.before }}
+          QUALIFICATION_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          QUALIFICATION_INPUT_ANCHOR: ${{ inputs.anchor_sha }}
+        run: |
+          set -euo pipefail
+          classifier=.github/qualification/failure_classifier.py
+          mkdir -p "$RUNNER_TEMP/qualification"
+          python "$classifier" budget >> "$GITHUB_ENV"
+          set +e
+          resolved="$(python "$classifier" resolve-anchor \
+            --event "$QUALIFICATION_EVENT" \
+            --candidate-sha "$GITHUB_SHA" \
+            --before "$QUALIFICATION_BEFORE" \
+            --pr-base-sha "$QUALIFICATION_PR_BASE_SHA" \
+            --input-anchor "$QUALIFICATION_INPUT_ANCHOR")"
+          set -e
+          anchor_sha="$(printf '%s\n' "$resolved" | sed -n 's/^QUALIFICATION_ANCHOR_SHA=//p')"
+          anchor_reason="$(printf '%s\n' "$resolved" | sed -n 's/^QUALIFICATION_ANCHOR_REASON=//p')"
+          {
+            echo "CANDIDATE_SHA=$GITHUB_SHA"
+            echo "QUALIFICATION_ANCHOR_SHA=$anchor_sha"
+            echo "QUALIFICATION_ANCHOR_REASON=$anchor_reason"
+          } >> "$GITHUB_ENV"
+          python "$classifier" metadata \
+            --candidate-sha "$GITHUB_SHA" \
+            --anchor-sha "$anchor_sha" \
+            --anchor-reason "$anchor_reason" \
+            --event "$QUALIFICATION_EVENT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --workflow "Browser Runtime" \
+            --output-json "$RUNNER_TEMP/qualification/qualification-metadata.json" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload qualification metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-qualification-metadata-${{ github.sha }}
+          path: ${{ runner.temp }}/qualification/qualification-metadata.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Build exact candidate container
         run: |
@@ -46,12 +102,15 @@ jobs:
       - name: Start open and password-authenticated candidates
         run: |
           set -euo pipefail
-          docker run -d --name dp-browser-open \
-            -p 127.0.0.1:8080:8080 \
-            "$IMAGE"
+          # One definition of "start the open + password-authenticated runtime pair",
+          # reused by the candidate, the fresh candidate for bounded runs, and the anchor.
+          cat > "$RUNNER_TEMP/qualification/runtime.sh" <<'RUNTIME'
+          start_runtime() {
+            local image="$1" open_name="$2" auth_name="$3" open_port="$4" auth_port="$5" auth_dir="$6" port ready
+            docker run -d --name "$open_name" -p "127.0.0.1:${open_port}:8080" "$image" || return 1
 
-          mkdir -p "$RUNNER_TEMP/dp-browser-auth-config"
-          docker run --rm --entrypoint python "$IMAGE" -c '
+            mkdir -p "$auth_dir"
+            docker run --rm --entrypoint python "$image" -c '
           import json
           from auth.passwords import hash_password
           print(json.dumps({
@@ -60,28 +119,29 @@ jobs:
               "auth_password_hash": hash_password("browser-secret"),
               "auth_oidc_enabled": False,
           }))
-          ' > "$RUNNER_TEMP/dp-browser-auth-config/config.json"
+          ' > "$auth_dir/config.json" || return 1
 
-          docker run -d --name dp-browser-auth \
-            -p 127.0.0.1:8081:8080 \
-            -v "$RUNNER_TEMP/dp-browser-auth-config:/app/config" \
-            "$IMAGE"
+            docker run -d --name "$auth_name" -p "127.0.0.1:${auth_port}:8080" -v "$auth_dir:/app/config" "$image" || return 1
 
-          for port in 8080 8081; do
-            ready=0
-            for _ in $(seq 1 90); do
-              if curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null; then
-                ready=1
-                break
+            for port in "$open_port" "$auth_port"; do
+              ready=0
+              for _ in $(seq 1 90); do
+                if curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null; then
+                  ready=1
+                  break
+                fi
+                sleep 1
+              done
+              if [ "$ready" -ne 1 ]; then
+                docker logs "$open_name" || true
+                docker logs "$auth_name" || true
+                return 1
               fi
-              sleep 1
             done
-            if [ "$ready" -ne 1 ]; then
-              docker logs dp-browser-open || true
-              docker logs dp-browser-auth || true
-              exit 1
-            fi
-          done
+          }
+          RUNTIME
+          . "$RUNNER_TEMP/qualification/runtime.sh"
+          start_runtime "$IMAGE" dp-browser-open dp-browser-auth 8080 8081 "$RUNNER_TEMP/dp-browser-auth-config"
 
       - name: Install and audit locked Playwright Chromium
         working-directory: frontend/browser
@@ -92,16 +152,25 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Inventory and run browser runtime contract
+        id: full_browser
         working-directory: frontend/browser
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          full="$RUNNER_TEMP/qualification/candidate/full"
+          mkdir -p "$full"
           NO_COLOR=1 npx playwright test --config=playwright.config.js --list 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
           discovered="$(sed -nE 's/.*Total: ([0-9]+) tests? in .*/\1/p' "$RUNNER_TEMP/playwright-list.log" | tail -n1)"
 
+          # The full suite runs exactly once. Its exit status is evidence, not the gate:
+          # the classification step decides, so evidence is always generated first.
           set +e
-          NO_COLOR=1 npm test 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
           test_status=${PIPESTATUS[0]}
           set -e
+          echo "$test_status" > "$full/exit_code.txt"
+          cp "$RUNNER_TEMP/playwright.log" "$full/playwright.log"
+          # Preserve the original traces before any later Playwright run can clean test-results.
+          if [ -d test-results ]; then cp -a test-results "$full/test-results"; fi
 
           running="$(sed -nE 's/.*Running ([0-9]+) tests? using .*/\1/p' "$RUNNER_TEMP/playwright.log" | tail -n1)"
           passed="$(sed -nE 's/^[[:space:]]*([0-9]+) passed.*/\1/p' "$RUNNER_TEMP/playwright.log" | tail -n1)"
@@ -111,13 +180,144 @@ jobs:
             echo
             cat "$RUNNER_TEMP/playwright-counts.txt"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "full browser run exited with status $test_status; the classification step decides the gate"
 
-          test "$test_status" -eq 0
-          test -n "$discovered"
-          test -n "$running"
-          test -n "$passed"
-          test "$discovered" -eq "$running"
-          test "$running" -eq "$passed"
+      - name: Classify full browser run (candidate vs anchor)
+        id: classify_browser
+        run: |
+          set -uo pipefail
+          set +e
+          classifier="$GITHUB_WORKSPACE/.github/qualification/failure_classifier.py"
+          q="$RUNNER_TEMP/qualification"
+          cand="$q/candidate"
+          anch="$q/anchor"
+          anchor_src="$q/anchor-src"
+          mkdir -p "$cand/isolated" "$anch/isolated" "$anchor_src"
+          deadline=$(( $(date +%s) + MAX_CLASSIFICATION_WALL_TIME_SECONDS ))
+
+          python "$classifier" plan --domain browser --candidate-results "$cand" \
+            --output-json "$cand/plan.json" --output-tsv "$cand/plan.tsv"
+          plan_rc=$?
+
+          # run_cases <browser-dir> <results-dir> <base-url> <auth-url> <playwright-output-root> <plan.tsv> <stage>
+          # Runs ONLY the failing case(s) from the plan: stage 1 is ISOLATED_RUNS_PER_REF runs each;
+          # stage d is the single bounded discriminator stage of DISCRIMINATOR_RUNS_PER_REF runs each.
+          run_cases() {
+            local dir="$1" out="$2" base="$3" auth="$4" pwout="$5" plan="$6" stage="$7" slug file pattern i count tag remaining
+            if [ "$stage" = d ]; then count="$DISCRIMINATOR_RUNS_PER_REF"; tag=d; else count="$ISOLATED_RUNS_PER_REF"; tag=; fi
+            while IFS=$'\t' read -r slug file pattern; do
+              for i in $(seq 1 "$count"); do
+                remaining=$(( deadline - $(date +%s) ))
+                if [ "$remaining" -le 0 ]; then
+                  echo "wall-time budget exhausted" > "$out/budget_exhausted.txt"
+                  return 0
+                fi
+                (
+                  cd "$dir" || exit 1
+                  DP_BASE_URL="$base" DP_AUTH_BASE_URL="$auth" NO_COLOR=1 \
+                    PLAYWRIGHT_JSON_OUTPUT_NAME="$out/$slug.$tag$i.json" \
+                    timeout "$remaining" npx playwright test --config=playwright.config.js --workers=1 \
+                      --reporter=json --output="$pwout/$slug.$tag$i" "$file" -g "$pattern" \
+                      < /dev/null > "$out/$slug.$tag$i.log" 2>&1
+                )
+              done
+            done < "$plan"
+          }
+
+          if [ "$plan_rc" -eq 11 ]; then
+            . "$q/runtime.sh"
+
+            # Candidate: fresh runtime pair, the candidate's own frontend, bounded runs. The
+            # container entrypoint re-owns its mounted config, so each pair gets its own config dir.
+            docker rm -f dp-browser-open dp-browser-auth >/dev/null 2>&1
+            if start_runtime "$IMAGE" dp-browser-open dp-browser-auth 8080 8081 "$RUNNER_TEMP/dp-browser-auth-config-bounded"; then
+              run_cases "$GITHUB_WORKSPACE/frontend/browser" "$cand/isolated" \
+                http://127.0.0.1:8080 http://127.0.0.1:8081 "$cand/pw-output" "$cand/plan.tsv" 1
+            else
+              printf '%s\n' "candidate runtime pair did not become healthy for the bounded runs" > "$cand/isolated/infrastructure_failure.txt"
+            fi
+
+            # Anchor: its own tree, its own image, its own locked browser dependencies and
+            # specs, on separate ports. Nothing from the candidate is mixed in.
+            anchor_infra() { printf '%s\n' "$1" > "$anch/isolated/infrastructure_failure.txt"; }
+            anchor_image="debridpulse-browser-anchor:$QUALIFICATION_ANCHOR_SHA"
+            build_budget=$(( deadline - $(date +%s) ))
+            [ "$build_budget" -ge 1 ] || build_budget=1
+            if ! git -C "$GITHUB_WORKSPACE" archive "$QUALIFICATION_ANCHOR_SHA" | tar -x -C "$anchor_src"; then
+              anchor_infra "could not check out anchor $QUALIFICATION_ANCHOR_SHA"
+            elif ! timeout "$build_budget" docker build \
+                --build-arg APP_VERSION="$(cat "$anchor_src/VERSION")" \
+                --build-arg VCS_REF="$QUALIFICATION_ANCHOR_SHA" \
+                -t "$anchor_image" "$anchor_src" > "$anch/docker-build.log" 2>&1; then
+              anchor_infra "could not build the anchor image from its own tree (see docker-build.log)"
+            elif ! start_runtime "$anchor_image" dp-anchor-open dp-anchor-auth 8082 8083 "$RUNNER_TEMP/dp-anchor-auth-config"; then
+              anchor_infra "anchor runtime pair did not become healthy"
+            elif ! ( cd "$anchor_src/frontend/browser" && npm ci --ignore-scripts && npx playwright install chromium ) \
+                > "$anch/playwright-install.log" 2>&1; then
+              anchor_infra "anchor browser dependencies could not be installed from its own lockfile (see playwright-install.log)"
+            else
+              run_cases "$anchor_src/frontend/browser" "$anch/isolated" \
+                http://127.0.0.1:8082 http://127.0.0.1:8083 "$anch/pw-output" "$cand/plan.tsv" 1
+            fi
+
+            # Single bounded second stage. Only when the first stage could not discriminate candidate
+            # from anchor, and only for the affected case(s); the classifier owns that decision.
+            python "$classifier" discriminate --domain browser \
+              --candidate-sha "$CANDIDATE_SHA" --anchor-sha "$QUALIFICATION_ANCHOR_SHA" \
+              --candidate-results "$cand" --anchor-results "$anch" \
+              --registry .github/qualification/known_flakes.json --output-tsv "$q/discriminate.tsv"
+            if [ "$?" -eq 14 ]; then
+              run_cases "$GITHUB_WORKSPACE/frontend/browser" "$cand/isolated" \
+                http://127.0.0.1:8080 http://127.0.0.1:8081 "$cand/pw-output" "$q/discriminate.tsv" d
+              run_cases "$anchor_src/frontend/browser" "$anch/isolated" \
+                http://127.0.0.1:8082 http://127.0.0.1:8083 "$anch/pw-output" "$q/discriminate.tsv" d
+            fi
+            docker logs dp-anchor-open > "$anch/anchor-open.log" 2>&1
+            docker logs dp-anchor-auth > "$anch/anchor-auth.log" 2>&1
+            docker rm -f dp-anchor-open dp-anchor-auth >/dev/null 2>&1
+          fi
+
+          python "$classifier" classify --domain browser \
+            --candidate-sha "$CANDIDATE_SHA" --anchor-sha "$QUALIFICATION_ANCHOR_SHA" \
+            --candidate-results "$cand" --anchor-results "$anch" \
+            --registry .github/qualification/known_flakes.json \
+            --output-json "$q/browser-classification.json" --output-summary "$q/browser-classification.md"
+          rc=$?
+          cat "$q/browser-classification.md" >> "$GITHUB_STEP_SUMMARY"
+          classification="$(jq -r .classification "$q/browser-classification.json")"
+          echo "browser classification: $classification (exit $rc)"
+
+          # Inventory invariant: every discovered test ran, and every test that ran either
+          # passed or is one of the failing cases the classifier just accounted for.
+          discovered="" running="" passed=""
+          . "$RUNNER_TEMP/playwright-counts.txt"
+          failed="$(jq -r '.failed // 0' "$cand/plan.json")"
+          inventory_ok=1
+          test -n "$discovered" && test -n "$running" && test -n "$passed" || inventory_ok=0
+          [ "$inventory_ok" -eq 1 ] && [ "$discovered" -eq "$running" ] || inventory_ok=0
+          [ "$inventory_ok" -eq 1 ] && [ "$running" -eq $(( passed + failed )) ] || inventory_ok=0
+
+          case "$rc" in
+            0)
+              if [ "$inventory_ok" -ne 1 ] || [ "$failed" -ne 0 ]; then
+                echo "::error title=Browser inventory::discovered=$discovered running=$running passed=$passed failed=$failed do not reconcile"
+                exit 1
+              fi
+              exit 0
+              ;;
+            10)
+              if [ "$inventory_ok" -ne 1 ]; then
+                echo "::error title=Browser inventory::discovered=$discovered running=$running passed=$passed failed=$failed do not reconcile"
+                exit 1
+              fi
+              echo "::warning title=KNOWN_FLAKE::Non-blocking known flake matched an active registry entry and reproduced on the anchor. See the step summary."
+              exit 0
+              ;;
+            *)
+              echo "::error title=Browser qualification::$classification (classifier exit $rc). See the step summary and the browser classification artifact."
+              exit "$rc"
+              ;;
+          esac
 
       - name: Upload browser qualification diagnostics
         if: always()
@@ -129,6 +329,19 @@ jobs:
             ${{ runner.temp }}/playwright.log
             ${{ runner.temp }}/playwright-counts.txt
             frontend/browser/test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload browser classification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-classification-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/qualification/candidate
+            ${{ runner.temp }}/qualification/anchor
+            ${{ runner.temp }}/qualification/browser-classification.json
+            ${{ runner.temp }}/qualification/browser-classification.md
           if-no-files-found: warn
           retention-days: 14
 
@@ -147,7 +360,7 @@ jobs:
           docker logs dp-browser-open || true
           docker logs dp-browser-auth || true
 
-      - name: Stop candidate containers
+      - name: Stop candidate and anchor containers
         if: always()
         run: |
-          docker rm -f dp-browser-open dp-browser-auth >/dev/null 2>&1 || true
+          docker rm -f dp-browser-open dp-browser-auth dp-anchor-open dp-anchor-auth >/dev/null 2>&1 || true

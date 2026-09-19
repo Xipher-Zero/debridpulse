@@ -503,6 +503,25 @@ test('Downloads: clicking the group launcher opens only the chooser, never Detai
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
 });
 
+// Focus-then-key interactions need the focused control to survive until the key arrives, but a list
+// owner replaces its rows after every read (startup, fit re-checks, capacity refreshes, SSE/polling).
+// Owner refreshes are coalesced and run one fetch+render at a time, so once the owner's next read is
+// parked at the network boundary every earlier render has finished and none can run until the
+// returned release() is called.
+async function parkOwnerRead(page, isOwnerRead, refresh) {
+  let markParked;
+  let open;
+  const parked = new Promise(resolve => { markParked = resolve; });
+  const gate = new Promise(resolve => { open = resolve; });
+  const hold = async route => { markParked(); await gate; await route.fallback().catch(() => {}); };
+  await page.route(isOwnerRead, hold);
+  await page.evaluate(refresh);
+  await parked;
+  return async () => { open(); await page.unroute(isOwnerRead, hold).catch(() => {}); };
+}
+const isDashboardRecentRead = url => url.pathname === '/api/torrents' && url.searchParams.get('order') === 'activity';
+const isDownloadsListRead = url => url.pathname === '/api/torrents' && url.searchParams.has('offset');
+
 test('keyboard: Enter on either list launcher opens only the chooser, never Details; Enter on the Downloads row itself still opens Details', async ({ page }) => {
   const items = [listItem(95, 2)];
   await page.route('**/api/torrents*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: items.length }) }));
@@ -510,13 +529,16 @@ test('keyboard: Enter on either list launcher opens only the chooser, never Deta
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(95, [file(951, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible: true })])])) }));
   await ready(page);
 
+  let release = await parkOwnerRead(page, isDashboardRecentRead, () => { loadRecent().catch(() => {}); });
   await page.locator('#dash-tbody tr[data-torrent-id="95"] .dp-group-candidate-launcher').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.dp-group-candidate-menu')).toBeVisible();
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
   await page.keyboard.press('Escape');
+  await release();
 
   await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
+  release = await parkOwnerRead(page, isDownloadsListRead, () => { loadTorrents().catch(() => {}); });
   await page.locator('#t-tbody tr[data-torrent-id="95"] .dp-group-candidate-launcher').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.dp-group-candidate-menu')).toBeVisible();
@@ -529,6 +551,7 @@ test('keyboard: Enter on either list launcher opens only the chooser, never Deta
   await page.locator('#t-tbody tr[data-torrent-id="95"]').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  await release();
 });
 
 // ── Completed files never veto remaining-work actionability (Defect 4, §8, §14 Case E/F/G) ──
@@ -860,6 +883,8 @@ test('Recent: the chooser opens adjacent to the launcher, not at the viewport or
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(230, [file(2301, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible: true })])])) }));
   await ready(page);
 
+  // The launcher and the chooser are measured in a Dashboard DOM that no render can replace.
+  const release = await parkOwnerRead(page, isDashboardRecentRead, () => { loadRecent().catch(() => {}); });
   const launcher = page.locator('#dash-tbody tr[data-torrent-id="230"] .dp-group-candidate-launcher');
   const triggerBox = await launcher.boundingBox();
   await launcher.click();
@@ -869,6 +894,7 @@ test('Recent: the chooser opens adjacent to the launcher, not at the viewport or
   expect(menuBox.y).toBeGreaterThan(20);
   expect(Math.abs(menuBox.x - triggerBox.x)).toBeLessThan(400);
   expect(menuBox.y).toBeGreaterThanOrEqual(triggerBox.y - 10);
+  await release();
 });
 
 test('Downloads: the chooser opens adjacent to the launcher, not at the viewport origin', async ({ page }) => {
