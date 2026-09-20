@@ -284,6 +284,16 @@ class TransferEngine(_QualifiedTransferEngine):
             executor_ready=False if force_executor_not_ready else context.executor_ready,
             storage_ready=False if force_storage_not_ready else context.storage_ready,
             input_required=current.state == "input_required",
+            # A fact, not a decision: only bytes the executor itself reported
+            # for this attempt. A missing observation, or one synthesized
+            # because the executor could not report (UNKNOWN/ABSENT), carries a
+            # default zero that is NOT an observed zero.
+            observed_completed_bytes=(
+                observed.progress.completed_bytes
+                if observed is not None
+                and observed.state not in {ExecutionState.UNKNOWN, ExecutionState.ABSENT}
+                else None
+            ),
         )
         decision = self.policy.recover(error, context, self.clock())
         decision_id = f"{current.id}:{context.recovery_epoch}:{failure_identity}:{decision.action.value}"

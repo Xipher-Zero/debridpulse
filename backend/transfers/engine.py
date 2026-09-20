@@ -131,7 +131,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 self.registry.provider_for_bound_route(bound_provider_id, record.request)
                 if bound_provider_id else self.registry.provider_for(record.request)
             )
-            async with self._resolution_slots:
+            async with self._resolution_slot():
                 if not await self._live(record.transfer_id, admission=True):
                     return
                 attempt = await self.repository.begin_resolution(

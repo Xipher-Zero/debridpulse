@@ -55,6 +55,13 @@ _RECONCILE_CATEGORIES = frozenset({
     Category.RESOURCE_STATE_CONFLICT,
 })
 
+# Facts that make waiting (or an operator/resource change) mandatory: an
+# immediately available refresh never outranks them.
+_MANDATORY_WAIT_CATEGORIES = frozenset({Category.RATE_LIMITED, Category.CONCURRENCY_LIMITED})
+_MANDATORY_WAIT_RETRYABILITY = frozenset({
+    Retryability.BACKOFF, Retryability.AFTER_REAUTH, Retryability.AFTER_RESOURCE_CHANGE,
+})
+
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024
 MEANINGFUL_PROGRESS_DIVISOR = 100
@@ -169,6 +176,9 @@ class RecoveryContext:
     executor_ready: bool = True
     storage_ready: bool = True
     input_required: bool = False
+    # Bytes the executor itself reported for the failed attempt. ``None`` means
+    # no authoritative observation exists; unknown progress is never zero.
+    observed_completed_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -227,6 +237,30 @@ class TransferPolicy:
         if error.retry_after_seconds is not None:
             delay = max(delay, float(error.retry_after_seconds))
         return max(0.0, delay)
+
+    @staticmethod
+    def _zero_progress_without_mandatory_wait(error: NormalizedError, context: RecoveryContext) -> bool:
+        """An execution attempt the executor itself reported at exactly zero
+        completed bytes, with no fact that requires waiting instead.
+
+        The boundary is the exact observed zero: unknown progress (``None``)
+        and any positive byte count keep the existing recovery. Security,
+        integrity, permanent, nonretryable, input, provider and executor
+        readiness facts have already decided before ``recover`` asks this.
+        """
+        return (
+            error.stage == Stage.EXECUTION
+            and context.observed_completed_bytes == 0
+            and context.storage_ready
+            and error.domain != Domain.LOCAL_RESOURCE
+            and error.category not in _MANDATORY_WAIT_CATEGORIES
+            and error.retryability not in _MANDATORY_WAIT_RETRYABILITY
+            and error.retry_after_seconds is None
+            and recovery_action(error) not in {
+                Recovery.FAIL, Recovery.BACKOFF, Recovery.REAUTHENTICATE,
+                Recovery.REQUIRE_OPERATOR, Recovery.RECONCILE,
+            }
+        )
 
     def recover(self, error: NormalizedError, context: RecoveryContext, now: float) -> RecoveryDecision:
         """Choose from normalized evidence, durable accounting and readiness."""
@@ -302,6 +336,13 @@ class TransferPolicy:
             )
 
         if no_progress < max(1, self.same_candidate_no_progress_limit):
+            # Nothing was transferred and the same logical candidate can be
+            # refreshed right now within budget: do that instead of sleeping
+            # through a timed retry of the endpoint that just failed.
+            if can_refresh and self._zero_progress_without_mandatory_wait(error, context):
+                return RecoveryDecision(
+                    RecoveryAction.REFRESH_CANDIDATE, "zero_progress_refresh", retry_at=now,
+                )
             if error.category == Category.RATE_LIMITED:
                 action = RecoveryAction.BACKOFF
                 reason = "rate_limited_backoff"

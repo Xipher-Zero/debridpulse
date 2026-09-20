@@ -20,8 +20,9 @@ where the table says so). A claim here that is not also proven by a named
 regression test is not a claim this module makes.
 
 1. **Per-transfer asyncio lock** (``self._transfer_locks``, initialized here,
-   this class): used by ``resolve_pending()`` (this base class, per active
-   transfer) and ``cancel()`` (this base class; production has no override).
+   this class): used by ``resolve_pending()`` (this base class; held for a
+   transfer exactly while that cycle has admitted resolution units of it in
+   flight) and ``cancel()`` (this base class; production has no override).
    ``convergence_engine.TransferEngine`` -- the sole owner of every
    recovery/control decision, per CANON-001 -- also reaches into this same
    shared dict from its own ``retry()`` (both the operator-retry branch and
@@ -96,6 +97,7 @@ aggregation) safe against every other writer.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 import time
@@ -129,6 +131,46 @@ class _CleanupOwnershipLost(Exception):
     was running; the call has been aborted and nothing may be finalized."""
 
 
+# Request states the resolution scheduler may admit; every other state is
+# owned by a later lifecycle stage (or is terminal) and is never resolution work.
+_SCHEDULABLE_REQUEST_STATES = frozenset({"pending", "waiting", "materializing", "resolving"})
+
+
+class _ResolutionCycle:
+    """Admission bookkeeping of ONE ``resolve_pending()`` cycle.
+
+    Ephemeral by construction: created when a cycle starts, dropped when it
+    ends, never persisted and never read by anything but the resolution
+    scheduler. It records what this cycle already admitted; it holds no
+    capacity truth (``_resolution_slots`` does) and no lifecycle truth (the
+    repository does).
+    """
+
+    def __init__(self):
+        # Set whenever an admission boundary opens: a provider slot was
+        # released, an admitted unit finished, or a transfer was submitted.
+        self.opportunity = asyncio.Event()
+        self.units: dict[asyncio.Task, int] = {}
+        # Admitted units that may still claim a provider-resolution slot.
+        self.slot_bound: set[asyncio.Task] = set()
+        # Per entered transfer: the requests that existed when it entered this
+        # cycle and were not admitted yet. A request created by this cycle's
+        # own work (e.g. a manifest child) is the next cycle's work.
+        self.remaining: dict[int, list[RequestRecord]] = {}
+        self.retired: set[int] = set()
+        self.locks: dict[int, asyncio.Lock] = {}
+        self.served: dict[int, int] = {}
+        # The current bootstrap round: the pathless transfers that were
+        # runnable when it started and are still owed their one turn. ``None``
+        # means no round is populated; membership never grows mid-round.
+        self.round: set[int] | None = None
+        self.changed: set[int] = set()
+        self.failure: BaseException | None = None
+
+    def in_flight(self, transfer_id: int) -> int:
+        return sum(owner == transfer_id for owner in self.units.values())
+
+
 class TransferEngine:
     def __init__(self, repository: TransferRepository, registry: IntegrationRegistry, *,
                  download_root: str, policy: TransferPolicy | None = None, postprocessors=(), clock=time.time):
@@ -148,6 +190,7 @@ class TransferEngine:
         self._paths_lock = asyncio.Lock()
         self._postprocess_lock = asyncio.Lock()
         self._resolution_slots = asyncio.Semaphore(max(1, self.policy.resolution_concurrency))
+        self._resolution_cycle: _ResolutionCycle | None = None
         # Weak-value lock maps: a caller holding/awaiting a lock keeps the strong
         # local reference that keeps its entry alive; once every holder/waiter
         # for a key is gone the entry is collected instead of retaining one
@@ -241,6 +284,9 @@ class TransferEngine:
                 raise TransferError(self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION))
         elif await self.repository.globally_paused():
             await self.repository.state(transfer.id, TransferState.PAUSED)
+        # A running resolution cycle reassesses at once; it never makes a new
+        # transfer wait for previously admitted work to drain.
+        self._resolution_opportunity()
         return await self.repository.get(transfer.id)
 
     async def tick(self):
@@ -253,6 +299,13 @@ class TransferEngine:
     async def resolve_pending(self):
         """Provider cadence can run independently of fast execution observation.
 
+        One cycle admits resolution work a single fair unit at a time and
+        reassesses current durable truth at every admission boundary (a
+        provider slot was released, an admitted unit finished, a transfer was
+        submitted) -- never a whole request set up front. Work already in
+        flight is never preempted; ``_resolution_slots`` alone bounds provider
+        I/O, and no lock of this scheduler is held while admitted work runs.
+
         Returns the exact set of transfer ids whose canonical selected-manifest
         commitment changed THIS cycle (empty when none did), so a caller can
         target the existing semantic publication at exactly those transfers
@@ -260,36 +313,236 @@ class TransferEngine:
         """
         async with self._resolution_cycle_lock:
             await self._cleanup_pending()
-            transfers = await self.repository.active()
-            changed: set[int] = set()
-            async def resolve_transfer(transfer):
-                lock = self._transfer_locks.setdefault(transfer.id, asyncio.Lock())
-                async with lock:
-                    if not await self._live(transfer.id, admission=True):
-                        return
-                    challenge = await self.challenges.current(transfer.id)
-                    if challenge:
-                        if challenge.origin == InputOrigin.PROVIDER:
-                            if await self._continue_provider_input(challenge):
-                                changed.add(transfer.id)
-                        return
-                    records = await self.repository.requests(transfer.id)
-                    results = await asyncio.gather(*(self._process_request(record) for record in records))
-                    if any(results):
-                        changed.add(transfer.id)
-            await asyncio.gather(*(resolve_transfer(transfer) for transfer in transfers))
-            return frozenset(changed)
+            cycle = self._resolution_cycle = _ResolutionCycle()
+            try:
+                while cycle.failure is None:
+                    cycle.opportunity.clear()
+                    while await self._admit_resolution_unit(cycle):
+                        pass
+                    if cycle.opportunity.is_set():
+                        continue
+                    if not cycle.units:
+                        break
+                    await cycle.opportunity.wait()
+            finally:
+                self._resolution_cycle = None
+                await self._drain_resolution_units(cycle)
+            if cycle.failure is not None:
+                raise cycle.failure
+            return frozenset(cycle.changed)
+
+    def _resolution_opportunity(self) -> None:
+        cycle = self._resolution_cycle
+        if cycle is not None:
+            cycle.opportunity.set()
+
+    def _resolution_slot_released(self) -> None:
+        """The calling admitted unit no longer claims provider-resolution
+        capacity (it left the slot, or never needs one); its remaining
+        post-resolution work must not keep that capacity from other work."""
+        cycle = self._resolution_cycle
+        if cycle is not None:
+            cycle.slot_bound.discard(asyncio.current_task())
+            cycle.opportunity.set()
+
+    @asynccontextmanager
+    async def _resolution_slot(self):
+        """The one way provider-resolution I/O takes ``_resolution_slots``."""
+        try:
+            async with self._resolution_slots:
+                yield
+        finally:
+            self._resolution_slot_released()
+
+    def _resolution_ready(self, record: RequestRecord) -> bool:
+        return record.state in _SCHEDULABLE_REQUEST_STATES and record.retry_at <= self.clock()
+
+    async def _has_viable_path(self, transfer_id: int) -> bool:
+        """The one bootstrap-critical vs enrichment classification.
+
+        Derived from current canonical artifact/candidate/execution facts on
+        every call and never stored: a transfer is ENRICHMENT once any of its
+        artifacts is materialized, is held by a live execution attempt, or is
+        queued and dispatchable right now through its selected candidate, an
+        eligible executor and the canonical materialization authorization.
+        Everything else -- no artifact, HOLD/STALE, no eligible executor, a
+        recovery wait, an error -- is still BOOTSTRAP-CRITICAL.
+        """
+        now = self.clock()
+        for artifact in await self.repository.artifacts(transfer_id):
+            if artifact.state == "completed":
+                return True
+            if artifact.execution is not None:
+                if artifact.state in {"queued", "downloading", "verifying"}:
+                    return True
+                continue
+            if (artifact.state != "queued" or artifact.retry_at > now
+                    or not 0 <= artifact.selected < len(artifact.candidates)
+                    or not self.registry.eligible_executors(artifact.candidates[artifact.selected])):
+                continue
+            admission = await self.repository.materialization_authorization(artifact)
+            if admission.kind == MaterializationAdmissionKind.PROCEED:
+                return True
+        return False
+
+    async def _resolution_work(self, cycle: _ResolutionCycle, transfer, capacity: int):
+        """This transfer's next admissible unit right now.
+
+        Liveness, the input challenge and the request set are read once, when
+        the transfer enters the cycle (as one cycle always did); readiness is
+        re-evaluated against the clock at every boundary, and the admitted
+        request is re-read before it runs.
+        """
+        if transfer.id in cycle.retired:
+            return None
+        in_flight = cycle.in_flight(transfer.id)
+        # One concurrency width may resolve while one more waits behind the
+        # transfer's own serialized post-resolution stage; a large multilink
+        # never parks one coroutine per request anywhere.
+        if in_flight >= 2 * capacity:
+            return None
+        if not in_flight and self._transfer_locks.setdefault(transfer.id, asyncio.Lock()).locked():
+            return None
+        if transfer.id not in cycle.remaining:
+            if not await self._live(transfer.id, admission=True):
+                cycle.retired.add(transfer.id)
+                return None
+            challenge = await self.challenges.current(transfer.id)
+            if challenge:
+                # A challenged transfer resolves nothing else this cycle; only
+                # a provider-origin challenge has a continuation to admit.
+                if challenge.origin == InputOrigin.PROVIDER:
+                    return challenge
+                cycle.retired.add(transfer.id)
+                return None
+            cycle.remaining[transfer.id] = list(await self.repository.requests(transfer.id))
+        for record in cycle.remaining[transfer.id]:
+            if self._resolution_ready(record):
+                return record
+        if not in_flight:
+            cycle.retired.add(transfer.id)
+        return None
+
+    async def _fair_resolution_choice(self, cycle: _ResolutionCycle, runnable):
+        """Explicit priority, then bootstrap-critical before enrichment, then
+        the least recently served transfer.
+
+        Bootstrap preference is a turn, not ownership. A bootstrap round's
+        membership is fixed when it starts -- the pathless transfers runnable
+        at that boundary, from current truth -- and each member is owed one
+        turn. A pathless transfer that appears later never extends the round
+        in progress; it joins the next one. Once the members are served, one
+        enrichment opportunity is granted if any is runnable, and the next
+        round starts from current truth (at once, when there is no enrichment:
+        no capacity is ever left idle). Enrichment therefore receives a
+        bounded opportunity however long pathless transfers keep arriving,
+        while a new pathless transfer that meets no populated round is next.
+        """
+        top = max(transfer.priority for transfer, _work in runnable)
+        tier = [item for item in runnable if item[0].priority == top]
+        if len(tier) == 1:
+            choice = tier[0]
+            if not cycle.round:
+                # Uncontended work is whatever turn an already-served round
+                # still owed; the next contended boundary starts a new round.
+                cycle.round = None
+        else:
+            pathless = {item[0].id for item in tier if not await self._has_viable_path(item[0].id)}
+            if cycle.round is None:
+                cycle.round = set(pathless)
+            pool = [item for item in tier if item[0].id in cycle.round & pathless]
+            if not pool:
+                pool = [item for item in tier if item[0].id not in pathless]
+                cycle.round = None if pool else set(pathless)
+                pool = pool or tier
+            choice = min(pool, key=lambda item: cycle.served.get(item[0].id, 0))
+        if cycle.round is not None:
+            cycle.round.discard(choice[0].id)
+        return choice
+
+    async def _admit_resolution_unit(self, cycle: _ResolutionCycle) -> bool:
+        """Admit at most one unit; False when nothing can be admitted now."""
+        capacity = max(1, self.policy.resolution_concurrency)
+        if cycle.failure is not None or len(cycle.slot_bound) >= capacity:
+            return False
+        runnable = []
+        for transfer in await self.repository.active():
+            work = await self._resolution_work(cycle, transfer, capacity)
+            if work is not None:
+                runnable.append((transfer, work))
+        if not runnable:
+            return False
+        transfer, work = await self._fair_resolution_choice(cycle, runnable)
+        if transfer.id not in cycle.locks:
+            lock = self._transfer_locks.setdefault(transfer.id, asyncio.Lock())
+            if lock.locked():
+                return True
+            await lock.acquire()
+            cycle.locks[transfer.id] = lock
+        if isinstance(work, RequestRecord):
+            cycle.remaining[transfer.id].remove(work)
+            # Entry-time facts chose the transfer; the admitted unit itself
+            # always runs on the request's current durable state.
+            work = next((record for record in await self.repository.requests(transfer.id)
+                         if record.id == work.id), None)
+            if work is None or not self._resolution_ready(work):
+                self._release_resolution_transfer(cycle, transfer.id)
+                return True
+            unit = self._process_request(work)
+        else:
+            cycle.retired.add(transfer.id)
+            unit = self._continue_provider_input(work)
+        cycle.served[transfer.id] = max(cycle.served.values(), default=0) + 1
+        task = asyncio.create_task(unit)
+        cycle.units[task] = transfer.id
+        cycle.slot_bound.add(task)
+        task.add_done_callback(lambda done: self._resolution_unit_done(cycle, done))
+        return True
+
+    @staticmethod
+    def _release_resolution_transfer(cycle: _ResolutionCycle, transfer_id: int) -> None:
+        """The per-transfer lock is held only while units of it are in flight."""
+        if not cycle.in_flight(transfer_id) and transfer_id in cycle.locks:
+            cycle.locks.pop(transfer_id).release()
+
+    @staticmethod
+    def _resolution_unit_done(cycle: _ResolutionCycle, task: asyncio.Task) -> None:
+        transfer_id = cycle.units.pop(task, None)
+        if transfer_id is None:
+            return
+        cycle.slot_bound.discard(task)
+        TransferEngine._release_resolution_transfer(cycle, transfer_id)
+        if not task.cancelled():
+            if task.exception() is not None:
+                cycle.failure = cycle.failure or task.exception()
+            elif task.result():
+                cycle.changed.add(transfer_id)
+        cycle.opportunity.set()
+
+    async def _drain_resolution_units(self, cycle: _ResolutionCycle) -> None:
+        """A cycle that ends early (failure/cancellation) leaves no unit behind."""
+        pending = tuple(cycle.units)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        for task in pending:
+            self._resolution_unit_done(cycle, task)
+        for transfer_id in tuple(cycle.locks):
+            self._release_resolution_transfer(cycle, transfer_id)
 
     async def _process_request(self, record: RequestRecord):
-        if record.retry_at > self.clock() or not await self._live(record.transfer_id, admission=True):
+        if not self._resolution_ready(record) or not await self._live(record.transfer_id, admission=True):
             return
         try:
             if record.state == "pending":
                 return await self._resolve(record)
             elif record.state == "waiting":
-                async with self._resolution_slots:
+                async with self._resolution_slot():
                     return await self._observe_resource(record)
-            elif record.state == "materializing":
+            # Neither remaining state performs provider-resolution I/O.
+            self._resolution_slot_released()
+            if record.state == "materializing":
                 candidates = await self.repository.resolved_candidates(record.id)
                 if candidates:
                     await self._materialize(record, candidates)
@@ -629,7 +882,7 @@ class TransferEngine:
                     Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
                     retryability=Retryability.NEVER,
                 ))
-            async with self._resolution_slots:
+            async with self._resolution_slot():
                 if not await self._live(challenge.transfer_id, admission=True):
                     return
                 submitted = await self.inputs.take(challenge)
