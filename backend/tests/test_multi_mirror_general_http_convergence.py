@@ -2220,3 +2220,78 @@ async def test_completion_preserves_consolidation_and_hides_dead_switch_controls
     candidate_rows = view["files"][0]["acquisition_candidates"]
     assert len(candidate_rows) == 3  # candidate history remains available.
     assert all(row["switch_eligible"] is False for row in candidate_rows)  # no dead interactive controls.
+
+
+async def test_transfer_291_exhausted_incomplete_representation_bootstrap_progresses_with_one_verified_writer(
+    tmp_path, monkeypatch,
+):
+    """Production transfer 291, small real-runtime form: the bounded sampler
+    reaches every mirror but answers ``UNAVAILABLE / incomplete_representation``
+    (a short response it cannot trust), so no candidate can prove identity and
+    no canonical exists. Bounded self-proof exhaustion must not strand the
+    transfer waiting for another source: exactly ONE candidate becomes the
+    provisional writer, downloads through the real scheduler + real aria2, and
+    completes through the ordinary strict material verification (real bytes on
+    disk, executor-observed size). Only the sampler seam is pinned -- the
+    General HTTP provider never reports a size, so the real sampler cannot emit
+    this reason here; everything else is real."""
+    runtime = await _build_runtime(tmp_path, monkeypatch)
+    path = "/" + MIRROR_FILENAME
+    runtime.server.route(path, PAYLOAD, behavior="normal")
+    executor = next(iter(runtime.engine.registry.executors.values()))
+    probes = {"count": 0}
+
+    async def incomplete_representation(_candidate):
+        probes["count"] += 1
+        return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="incomplete_representation")
+
+    monkeypatch.setattr(executor, "fingerprint", incomplete_representation)
+    try:
+        urls = (runtime.server.url(1, path), runtime.server.url(2, path))
+        transfer = await runtime.engine.submit(
+            tuple(TransferRequest("http", url, name=direct_link_filename(url, index))
+                  for index, url in enumerate(urls, 1)),
+            source="direct_link", deduplicate=False,
+        )
+        records = await runtime.repository.requests(transfer.id)
+        assert len(records) == 2
+
+        async def transfer_completed():
+            current = await runtime.repository.get(transfer.id)
+            assert current.state != TransferState.FAILED
+            return current if current.state == TransferState.COMPLETED else None
+
+        await runtime.until(transfer_completed, label="exhausted-bootstrap transfer completes without waiting for a peer")
+        for _ in range(10):  # extra scheduler cycles: nothing more is sampled or started.
+            await runtime.engine.tick()
+            await asyncio.sleep(0.02)
+        probes_after_completion = probes["count"]
+        for _ in range(5):
+            await runtime.engine.tick()
+            await asyncio.sleep(0.02)
+        assert probes["count"] == probes_after_completion  # no proof hot loop.
+
+        # --- Exactly one writer: one artifact, one execution, one file.
+        artifacts = await runtime.repository.artifacts(transfer.id)
+        assert len(artifacts) == 1
+        artifact = artifacts[0]
+        assert artifact.state == "completed"
+        assert artifact.expected_bytes == len(PAYLOAD)  # strict verification against the observed size.
+        assert Path(artifact.target).read_bytes() == PAYLOAD
+        async with database.get_db() as db:
+            executions = await db.fetchone("SELECT COUNT(*) AS n FROM execution_attempts")
+            dispositions = {
+                row["id"]: str(row["equivalence_disposition"] or "")
+                for row in await db.fetchall(
+                    "SELECT id,equivalence_disposition FROM transfer_requests WHERE transfer_id=?", (transfer.id,),
+                )
+            }
+        assert int(executions["n"]) == 1
+        assert list(dispositions.values()).count("provisional") == 1  # one provisional writer, honestly labelled...
+        assert artifact.request_id in {rid for rid, value in dispositions.items() if value == "provisional"}
+        assert not set(dispositions.values()) & {"independent", "contradictory", "released"}  # ...never independent.
+        files = [item for item in runtime.downloads.rglob("*") if item.is_file() and item.suffix != ".aria2"]
+        assert [item.name for item in files] == [Path(artifact.target).name]
+        assert [item.name for item in files if re.search(r" \(\d+\)", item.name)] == []
+    finally:
+        await runtime.close()

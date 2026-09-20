@@ -36,7 +36,6 @@ SPECIALIZATIONS = {
     ("_engine_recovery", "resolve_pending"): "collection-affinity serialization and post-resolution aggregation",
     ("_engine_recovery", "_process_request"): "collection-affinity precondition",
     ("_engine_recovery", "_materialize"): "cohort lock, collection coordination, candidate provenance",
-    ("_engine_recovery", "_execution_result"): "refine an unknown expected size from a verified final total",
     # repository stack
     ("presentation_repository", "presentation"): "the one assembled read model over the base rows",
 }

@@ -5,7 +5,6 @@ import pytest
 from transfers.mirrors import (
     EvidenceKind,
     pairing_failure,
-    reported_sizes_compatible,
     shared_evidence,
 )
 from transfers.models import (
@@ -16,6 +15,7 @@ from transfers.models import (
     SourceIdentity,
     TransferCandidate,
 )
+from transfers.size_evidence import reported_sizes_compatible
 
 
 GIB = 1024 ** 3
@@ -71,6 +71,13 @@ class Registry:
         (1_000_000_000, 998_999_999, False),
         (512_000 * GIB, 512_000 * GIB - 512 * MIB, True),
         (512_000 * GIB, 512_000 * GIB - 512 * MIB - 1, False),
+        # Transfer 291: the provider's report vs the size aria2 actually
+        # completed with (~0.0256 % apart) is compatible; the delta that is
+        # exactly 0.1 % of the larger report is the last compatible size, and
+        # one byte further is incompatible.
+        (11_038_065_950, 11_035_235_262, True),
+        (11_038_065_950, 11_027_027_885, True),
+        (11_038_065_950, 11_027_027_884, False),
         (0, 100, False),
         (100, 0, False),
     ],

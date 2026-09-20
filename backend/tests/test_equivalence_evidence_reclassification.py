@@ -90,6 +90,46 @@ def test_usable_evidence_is_never_structurally_unavailable():
     assert EquivalenceEvidence(EvidenceKind.PREFIX_CONTENT_SAMPLE, 4, "sampler_unsupported").proof_structurally_unavailable is False
 
 
+# --- Transfer 291: once bounded proof has exhausted with no canonical writer,
+# the evidence owner -- never the cohort consumer, by reason string -- says
+# whether the exhausted evidence belongs to the narrow "proof unavailable but
+# ordinary execution may still succeed" class: the sampler reached a material
+# endpoint and got an ordinary response it could not trust as a complete
+# representation. It is a boundary, not a broadening of what proves identity.
+def test_incomplete_representation_is_eligible_for_a_provisional_writer_after_exhaustion():
+    evidence = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="incomplete_representation")
+    assert evidence.eligible_for_provisional_writer_after_exhaustion is True
+    # Eligibility never implies identity, independence or a contradiction.
+    assert evidence.proves_collection_member is False
+    assert evidence.unresolved_pairing is True
+    assert evidence.failure_class == EvidenceFailureClass.TRANSIENT
+
+
+@pytest.mark.parametrize("reason", [
+    "range_ignored",           # Transfer 286: HTTP 200 / Content-Length 0 -- degenerate, never a writer.
+    "range_unsupported",       # the sampler emits it for ANY non-200/206 status, HTTP errors included.
+    "invalid_content_range", "destination_rejected",  # security/policy rejection is never eligible.
+    "sampler_unavailable", "timeout", "dns_failure",
+    "sampler_unsupported", "ambiguous_mapping",
+    "size_disagreement", "sample_mismatch", "integrity_mismatch",
+    "", "pairing_mismatch", "no_unique_mapping",
+])
+def test_no_other_unavailable_reason_is_eligible_for_a_provisional_writer(reason):
+    assert EquivalenceEvidence(
+        EvidenceKind.UNAVAILABLE, reason=reason,
+    ).eligible_for_provisional_writer_after_exhaustion is False
+
+
+@pytest.mark.parametrize("kind", [
+    EvidenceKind.STRONG_INTEGRITY, EvidenceKind.FULL_CONTENT_SAMPLE, EvidenceKind.PREFIX_CONTENT_SAMPLE,
+    EvidenceKind.RESOLVER_ATTESTED,
+])
+def test_usable_evidence_is_never_reported_as_eligible_for_a_provisional_writer(kind):
+    assert EquivalenceEvidence(
+        kind, 4, "incomplete_representation",
+    ).eligible_for_provisional_writer_after_exhaustion is False
+
+
 @pytest_asyncio.fixture
 async def evidence_pair(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")

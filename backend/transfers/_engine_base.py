@@ -109,14 +109,14 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.filesystem import destination, payload_matches, safe_name, size_knowledge, stable_payload, validate_target
+from transfers.filesystem import destination, payload_matches, safe_name, stable_material_size, stable_payload, validate_target
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
     MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation, RequestRecord, ResolutionAttempt,
     ResolutionResult, ResourceState,
-    SizeKnowledge, TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
+    TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
@@ -1016,13 +1016,22 @@ class TransferEngine:
             # affirmative zero-byte completion -- route it through the same
             # verification-failure/recovery path an ordinary payload mismatch
             # already uses instead of inventing a second outcome.
-            knowledge, size = size_knowledge(artifact.expected_bytes, observed.progress.total_bytes)
-            valid = knowledge != SizeKnowledge.UNKNOWN and await stable_payload(
-                artifact.target, size, sidecars=executor.resumable_paths(artifact.target),
+            #
+            # Three distinct facts, none trusted over another: what the
+            # selected candidate's provider reported (0 = no report), what the
+            # executor finally measured, and the artifact's own recorded size
+            # (bookkeeping -- never an upstream report, and never grounds to
+            # reject the executor's final total). ``stable_material_size``
+            # reconciles them against the stable local payload and returns the
+            # size that payload actually proves, which becomes the artifact's
+            # accepted material size (the provider's original report stays in
+            # the durable candidate/resolution history).
+            size = await stable_material_size(
+                artifact.target, candidate.expected_bytes if candidate else 0, observed.progress.total_bytes,
+                recorded_bytes=artifact.expected_bytes, sidecars=executor.resumable_paths(artifact.target),
                 integrity=candidate.integrity if candidate else (), delay=self.policy.adoption_stability_seconds,
-                allow_empty=knowledge == SizeKnowledge.KNOWN_ZERO,
             )
-            if valid:
+            if size is not None:
                 await self.repository.artifact_state(artifact.id, "completed", expected_bytes=size)
             else:
                 error = self._error(Category.MATERIALIZATION_FAILED, Stage.VERIFICATION, domain=Domain.INTEGRITY,

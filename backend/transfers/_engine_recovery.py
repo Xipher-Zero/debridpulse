@@ -17,8 +17,11 @@ What remains here are facts and mechanics every composition needs regardless
 of which recovery-decision owner sits above it, none of which independently
 decide or persist a recovery/lifecycle transition: collection affinity,
 cohort-locked materialization, recovery-context assembly,
-next-alternate-candidate traversal, and the completion-total refinement guard
-in ``_execution_result``.
+and next-alternate-candidate traversal. Completion is deliberately absent:
+what a SUCCEEDED observation proves about the payload -- including which
+compatible size is materially real -- has exactly one owner
+(``_engine_base._execution_result`` over ``transfers.filesystem`` and
+``transfers.size_evidence``), never a layer above it.
 """
 from __future__ import annotations
 
@@ -27,8 +30,7 @@ import asyncio
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.cohorts import coordinate_collection
-from transfers.filesystem import stable_payload
-from transfers.models import Artifact, ExecutionObservation, ExecutionState
+from transfers.models import Artifact
 from transfers.policy import RecoveryContext
 
 
@@ -160,39 +162,3 @@ class TransferEngine(_QualifiedTransferEngine):
             executor_ready=executor_ready,
             storage_ready=bool(self.dispatch_permitted),
         )
-
-    async def _execution_result(self, artifact, executor, observed):
-        if (isinstance(observed, ExecutionObservation)
-                and artifact.execution is not None
-                and observed.handle == artifact.execution
-                and observed.state == ExecutionState.SUCCEEDED
-                and artifact.candidates):
-            candidate = artifact.candidates[artifact.selected]
-            final_total = observed.progress.total_bytes
-            # DP 1.0.12 canonical lifecycle/recovery/completion rework,
-            # Section 5: `final_total` only ever refines this artifact's
-            # already-known-positive expected size when it is ITSELF a
-            # genuinely known positive total. An executor-reported 0 here is
-            # absence of size knowledge, never affirmative evidence that the
-            # already-known-positive size was wrong -- falling through to
-            # ``super()._execution_result`` lets the base completion check
-            # (``transfers.filesystem.known_positive_size``) verify the
-            # SUCCEEDED report against the real known size, which correctly
-            # fails it into ordinary recovery instead of silently regressing
-            # the artifact to a zero-byte "completed" row.
-            if (candidate.expected_bytes <= 0 and artifact.expected_bytes > 0
-                    and isinstance(final_total, int) and not isinstance(final_total, bool)
-                    and final_total > 0 and final_total != artifact.expected_bytes):
-                valid = await stable_payload(
-                    artifact.target, final_total,
-                    sidecars=executor.resumable_paths(artifact.target),
-                    integrity=candidate.integrity,
-                    delay=self.policy.adoption_stability_seconds,
-                )
-                if valid:
-                    await self.repository.execution(observed)
-                    if await self.repository.refine_execution_total(artifact.id, observed.handle, final_total):
-                        await self.repository.artifact_state(artifact.id, "completed", expected_bytes=final_total)
-                        return
-        return await super()._execution_result(artifact, executor, observed)
-

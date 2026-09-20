@@ -24,13 +24,13 @@ from transfers.errors import (
     unknown_failure,
 )
 from transfers.filesystem import stable_payload
-from transfers.mirrors import reported_sizes_compatible
 from transfers.models import (
     Artifact, CleanupAuthority, ExecutionObservation, ExecutionState, MaterializationAdmissionKind, Ownership,
     OutcomeKind, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferState,
 )
 from transfers.policy import RecoveryAction, TERMINAL_TRANSFER_STATES, failure_signature
 from transfers.recovery_execution import RecoveryClaim, RecoveryTrigger, trigger_authority
+from transfers.size_evidence import reported_sizes_compatible
 
 
 _INFRASTRUCTURE_CATEGORIES = frozenset({

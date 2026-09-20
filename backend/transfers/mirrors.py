@@ -8,6 +8,7 @@ import socket
 
 from transfers.contracts import CandidateSampling
 from transfers.models import FingerprintKind
+from transfers import size_evidence
 
 
 logger = logging.getLogger(__name__)
@@ -35,8 +36,21 @@ _NONPAIRING_REASONS = frozenset({
     "same_candidate", "non_independent_source", "logical_pairing_mismatch",
     "size_disagreement", "sample_mismatch", "integrity_mismatch",
 })
-_REPORTED_SIZE_RELATIVE_SCALE = 1000
-_REPORTED_SIZE_MAX_DELTA_BYTES = 512 * 1024 * 1024
+# Unresolved-proof reasons for which the bounded sampler DID reach a material
+# endpoint and received an ordinary response, yet could not establish
+# trustworthy identity or completeness (e.g. a short 200 that is implausible as
+# the whole declared representation). Proof is unavailable; the material is not
+# thereby known to be unusable, so once bounded proof has exhausted with no
+# canonical writer anywhere, one provisional writer may still make progress and
+# final material verification remains the arbiter. Deliberately narrow:
+#   * ``range_ignored`` (e.g. a 200 with Content-Length 0) is a degenerate
+#     response, not a usable representation -- never eligible (transfer 286);
+#   * ``range_unsupported`` is emitted by the sampler for ANY non-200/206
+#     status, HTTP errors included, so it does not show a usable endpoint was
+#     reached -- not eligible;
+#   * security/policy rejections (``destination_rejected``, ...) and every
+#     contradictory or structural reason are never eligible.
+_PROVISIONAL_WRITER_REASONS = frozenset({"incomplete_representation"})
 
 
 class EvidenceKind(str):
@@ -109,6 +123,16 @@ class EquivalenceEvidence:
         )
 
     @property
+    def eligible_for_provisional_writer_after_exhaustion(self) -> bool:
+        """True when this failed proof says "identity cannot be proven
+        automatically" about a candidate whose endpoint the sampler did reach
+        (``_PROVISIONAL_WRITER_REASONS``), rather than "this source is not a
+        usable writer". Only meaningful once bounded proof has exhausted; the
+        consumer additionally requires that no canonical writer exists. Never
+        implies identity or independence."""
+        return self.kind == EvidenceKind.UNAVAILABLE and self.reason in _PROVISIONAL_WRITER_REASONS
+
+    @property
     def proof_structurally_unavailable(self) -> bool:
         """True when no proof can be established for this candidate by
         construction (no sampling capability, or no unique mapping is
@@ -151,32 +175,6 @@ def _source_key(candidate):
     return "candidate", str(candidate.id)
 
 
-def _known_positive_size(value) -> int | None:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
-
-
-def reported_sizes_compatible(left_size, right_size) -> bool:
-    """Return whether two known positive reported sizes are plausibly equivalent.
-
-    This is deliberately only a pairing/plausibility rule. Identity still
-    requires canonical strong integrity or bounded content evidence.
-    """
-    left = _known_positive_size(left_size)
-    right = _known_positive_size(right_size)
-    if left is None or right is None:
-        return False
-    delta = abs(left - right)
-    larger = max(left, right)
-    return (
-        delta * _REPORTED_SIZE_RELATIVE_SCALE <= larger
-        and delta <= _REPORTED_SIZE_MAX_DELTA_BYTES
-    )
-
-
 def _sample_size_compatible_with_reports(actual_size, left, right) -> bool:
     """A discovered actual size must respect every *known* advance report.
 
@@ -184,12 +182,12 @@ def _sample_size_compatible_with_reports(actual_size, left, right) -> bool:
     its own -- it is "unknown, not proof of difference" (DP 1.0.12 Section 9),
     never a reason to treat otherwise-agreeing sampled content as mismatched.
     """
-    actual = _known_positive_size(actual_size)
+    actual = size_evidence.positive_size(actual_size)
     if actual is None:
         return False
     for reported in (left.expected_bytes, right.expected_bytes):
-        known = _known_positive_size(reported)
-        if known is not None and not reported_sizes_compatible(actual, known):
+        known = size_evidence.positive_size(reported)
+        if known is not None and not size_evidence.reported_sizes_compatible(actual, known):
             return False
     return True
 
@@ -202,14 +200,14 @@ def pairing_failure(left, right) -> str:
         return "non_independent_source"
     if not logical_key(left) or logical_key(left) != logical_key(right):
         return "logical_pairing_mismatch"
-    left_size = _known_positive_size(left.expected_bytes)
-    right_size = _known_positive_size(right.expected_bytes)
+    left_size = size_evidence.positive_size(left.expected_bytes)
+    right_size = size_evidence.positive_size(right.expected_bytes)
     # An unknown reported size (common for ordinary General HTTP candidates,
     # which never populate expected_bytes) is unknown, not proof of
     # difference -- it must not permanently block a pair from ever reaching
     # bounded content evidence. Only two *known* positive reports that are
     # themselves incompatible are cheap, structural negative evidence.
-    if left_size is not None and right_size is not None and not reported_sizes_compatible(left_size, right_size):
+    if left_size is not None and right_size is not None and not size_evidence.reported_sizes_compatible(left_size, right_size):
         return "size_disagreement"
     return ""
 
@@ -248,8 +246,8 @@ def _resolver_attested_evidence(left, right) -> EquivalenceEvidence | None:
     right_name = _normalized_resolver_name(right_evidence.resolved_name)
     if not left_name or left_name != right_name:
         return None
-    left_bytes = _known_positive_size(left_evidence.exact_bytes)
-    right_bytes = _known_positive_size(right_evidence.exact_bytes)
+    left_bytes = size_evidence.positive_size(left_evidence.exact_bytes)
+    right_bytes = size_evidence.positive_size(right_evidence.exact_bytes)
     if left_bytes is None or right_bytes is None or left_bytes != right_bytes:
         return None
     return EquivalenceEvidence(EvidenceKind.RESOLVER_ATTESTED, left_bytes)

@@ -1,5 +1,6 @@
 """Bounded real-world equivalence proof retry and diagnostic remediation tests."""
 from dataclasses import replace
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -7,7 +8,7 @@ import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
-from transfers import codec
+from transfers import codec, cohorts
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.mirrors import EquivalenceEvidence, EvidenceFailureClass, EvidenceKind, shared_evidence
@@ -947,3 +948,165 @@ async def test_quiescent_equivalence_hold_with_no_artifacts_is_queued_not_perpet
         )
     assert held["equivalence_disposition"] == "exhausted"
     assert int(held["equivalence_retry_count"]) == 2
+
+
+# --- Transfer 291: bootstrap (no canonical anywhere yet) proof exhaustion ---
+#
+# Everything above proves the STEADY-STATE rule: once a canonical writer
+# exists, an unresolved sibling is held and never handed a competing writer.
+# The tests below cover the different, bootstrap-only situation in which no
+# canonical exists yet: bounded self-proof exhaustion means "identity cannot be
+# proven automatically", which must not strand every usable candidate forever
+# when one safe provisional writer can make progress.
+
+async def _submit_bootstrap_cohort(pair):
+    """One transfer, two same-named sibling requests: a multi-member cohort, so
+    the bootstrap admission barrier applies."""
+    transfer = await pair.engine.submit(
+        (
+            TransferRequest("parcel", "a1", name="same.bin", preferred_provider=pair.a.descriptor.id),
+            TransferRequest("parcel", "b1", name="same.bin", preferred_provider=pair.b.descriptor.id),
+        ),
+        name="bootstrap-cohort", deduplicate=False,
+    )
+    by_payload = {record.request.payload: record for record in await pair.repository.requests(transfer.id)}
+    return transfer, by_payload["a1"], by_payload["b1"]
+
+
+async def _refreshed(pair, transfer_id, request_id):
+    return next(item for item in await pair.repository.requests(transfer_id) if item.id == request_id)
+
+
+async def _drive(pair, transfer_id, request_id, passes):
+    """``passes`` further scheduler passes over one request, each after its
+    proof-retry timer has come due."""
+    for _ in range(passes):
+        pair.now[0] += 1.1
+        await pair.engine._process_request(await _refreshed(pair, transfer_id, request_id))
+
+
+def _starts(pair):
+    return len([call for call in pair.executor.calls if call[0] == "start"])
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_incomplete_representation_exhaustion_admits_exactly_one_provisional_writer(
+    retry_pair, monkeypatch,
+):
+    pair = retry_pair
+    calls = {"count": 0}
+
+    async def incomplete(_candidate):
+        calls["count"] += 1
+        return _unavailable("incomplete_representation")
+
+    monkeypatch.setattr(pair.executor, "fingerprint", incomplete)
+    transfer, record_a, record_b = await _submit_bootstrap_cohort(pair)
+
+    # Candidate A resolves first and its own self-proof keeps coming back
+    # UNAVAILABLE / incomplete_representation: two bounded retries, then the
+    # budget exhausts with no canonical anywhere.
+    await pair.engine._resolve(record_a)
+    assert await pair.repository.artifacts(transfer.id) == ()  # still within the bounded proof budget.
+    assert _starts(pair) == 0
+    await _drive(pair, transfer.id, record_a.id, 2)
+    await pair.engine.reconcile_executions()  # ordinary dispatch of the admitted writer.
+
+    artifacts = await pair.repository.artifacts(transfer.id)
+    assert [item.request_id for item in artifacts] == [record_a.id]  # exactly one artifact...
+    assert _starts(pair) == 1  # ...and exactly one execution start.
+    row = next(item for item in await _proof_rows(transfer.id) if item["id"] == record_a.id)
+    assert row["equivalence_disposition"] == "provisional"  # honest: identity remains unknown,
+    assert row["equivalence_disposition"] not in {"independent", "released", "contradictory", "recovered"}
+    assert row["equivalence_reason"] == "incomplete_representation"
+    assert int(row["equivalence_retry_count"]) == 2
+    assert float(row["retry_at"] or 0) == 0
+    assert calls["count"] == 3  # 1 + 2 bounded retries, never more.
+
+    # No proof hot-loop once admitted.
+    await _drive(pair, transfer.id, record_a.id, 3)
+    assert calls["count"] == 3
+    assert len(await pair.repository.artifacts(transfer.id)) == 1 and _starts(pair) == 1
+
+    # The sibling is an ordinary later candidate: it maps against the existing
+    # writer's artifact and its own unresolved proof is HELD -- never a second
+    # provisional/independent writer.
+    await pair.engine._resolve(record_b)
+    await _drive(pair, transfer.id, record_b.id, 3)
+    row_b = next(item for item in await _proof_rows(transfer.id) if item["id"] == record_b.id)
+    assert row_b["equivalence_disposition"] == "exhausted"
+    assert await _artifact_rows_for_request(record_b.id) == []
+    assert len(await pair.repository.artifacts(transfer.id)) == 1 and _starts(pair) == 1
+    held_calls = calls["count"]
+    await _drive(pair, transfer.id, record_b.id, 3)
+    assert calls["count"] == held_calls  # quiescent once held.
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_provisional_writer_is_never_a_second_writer_after_the_first_completes(
+    retry_pair, monkeypatch,
+):
+    """A completed provisional artifact leaves the canonical-artifact set, so a
+    later sibling reaches the bootstrap barrier with "no canonical" again. It
+    must still not become a SECOND provisional writer: the cohort's provisional
+    role is a durable fact, not a function of what is currently in flight."""
+    pair = retry_pair
+
+    async def incomplete(_candidate):
+        return _unavailable("incomplete_representation")
+
+    monkeypatch.setattr(pair.executor, "fingerprint", incomplete)
+    transfer, record_a, record_b = await _submit_bootstrap_cohort(pair)
+    await pair.engine._resolve(record_a)
+    await _drive(pair, transfer.id, record_a.id, 2)
+    await pair.engine.reconcile_executions()
+    artifact = (await pair.repository.artifacts(transfer.id))[0]
+    pair.executor.finish(artifact.execution)
+    await pair.engine.reconcile_executions()
+    assert _starts(pair) == 1
+
+    await pair.engine._resolve(record_b)
+    await _drive(pair, transfer.id, record_b.id, 3)
+    rows = {item["id"]: item for item in await _proof_rows(transfer.id)}
+    assert rows[record_a.id]["equivalence_disposition"] == "provisional"
+    assert rows[record_b.id]["equivalence_disposition"] != "provisional"
+    assert rows[record_b.id]["equivalence_disposition"] not in {"independent", "released", "contradictory"}
+    assert await _artifact_rows_for_request(record_b.id) == []
+    assert _starts(pair) == 1
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_zero_byte_range_ignored_still_gets_no_artifact_and_no_execution(retry_pair, monkeypatch):
+    """Transfer 286 control: ``UNAVAILABLE / range_ignored`` (a real HTTP 200 /
+    Content-Length: 0 empty body) is proof-unavailable evidence that is NOT in
+    the provisional-writer class -- no matter how many scheduler passes go by,
+    it gets zero artifacts and zero executions (hence no ``(2)`` duplicate path
+    and no late ``materialization_failed``)."""
+    pair = retry_pair
+    calls = {"count": 0}
+
+    async def zero_byte(_candidate):
+        calls["count"] += 1
+        return _unavailable("range_ignored")
+
+    monkeypatch.setattr(pair.executor, "fingerprint", zero_byte)
+    transfer, record_a, _record_b = await _submit_bootstrap_cohort(pair)
+    await pair.engine._resolve(record_a)
+    await _drive(pair, transfer.id, record_a.id, 6)
+
+    assert await pair.repository.artifacts(transfer.id) == ()
+    assert await _artifact_rows_for_request(record_a.id) == []
+    assert _starts(pair) == 0
+    row = next(item for item in await _proof_rows(transfer.id) if item["id"] == record_a.id)
+    assert row["equivalence_disposition"] not in {"provisional", "independent", "released", "contradictory"}
+    assert row["state"] == "materializing"
+    assert calls["count"] == 1  # no proof hot-loop either.
+
+
+def test_cohorts_admits_the_provisional_writer_from_the_semantic_fact_not_a_reason_string():
+    source = inspect.getsource(cohorts)
+    assert "eligible_for_provisional_writer_after_exhaustion" in source
+    for reason in ("incomplete_representation", "range_unsupported", "range_ignored"):
+        assert f'"{reason}"' not in source and f"'{reason}'" not in source
+    assert "provisional" not in cohorts._INDEPENDENT_DISPOSITIONS  # identity is never read as independence.
+    assert "provisional" not in cohorts._HELD_DISPOSITIONS

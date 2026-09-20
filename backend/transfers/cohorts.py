@@ -36,6 +36,16 @@ _INDEPENDENT_DISPOSITIONS = frozenset({"released", "independent", "contradictory
 # request stays in durable MATERIALIZING state; only later affirmative
 # evidence (recovered) or an explicit release event can move it forward.
 _HELD_DISPOSITIONS = frozenset({"exhausted"})
+# "provisional" is the honest disposition of the ONE bootstrap writer admitted
+# when bounded self-proof exhausted with no canonical writer anywhere and the
+# evidence class is eligible (``EquivalenceEvidence
+# .eligible_for_provisional_writer_after_exhaustion``). It authorizes exactly
+# that request's own physical writer and nothing else: identity stays UNKNOWN
+# (it is deliberately not an ``_INDEPENDENT_DISPOSITIONS`` member, so it never
+# reads as proven independence and never releases a cohort), and every later
+# sibling still goes through the ordinary mapping/attach/hold machinery against
+# the artifact it created.
+_PROVISIONAL_DISPOSITION = "provisional"
 
 
 @dataclass(frozen=True)
@@ -197,8 +207,14 @@ async def _proof_disposition(request_id: str, disposition: str, reason: str, *,
         await db.commit()
 
 
-async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_cardinality: int) -> bool:
-    """Persist one bounded future proof opportunity; False means budget exhausted."""
+async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_cardinality: int,
+                                exhaustion_disposition: str = "exhausted") -> bool:
+    """Persist one bounded future proof opportunity; False means budget exhausted.
+
+    ``exhaustion_disposition`` is what an exhausted budget durably becomes,
+    written in the same transaction that observes the exhaustion. Only the
+    bootstrap barrier passes anything but the default (``provisional``), so a
+    crash can never strand an admitted request in a held state."""
     now = float(engine.clock())
     async with get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
@@ -219,9 +235,9 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
             return True
         if retries >= _PROOF_RETRY_BUDGET:
             await db.execute(
-                """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition='exhausted',retry_at=0
+                """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition=?,retry_at=0
                     WHERE id=?""",
-                (evidence.reason or "sampler_unavailable", record.id),
+                (evidence.reason or "sampler_unavailable", exhaustion_disposition, record.id),
             )
             await db.commit()
             _decision(record, incoming, "proof_retry_exhausted", evidence.reason or "sampler_unavailable",
@@ -282,7 +298,7 @@ async def _release_cohort(records, reason: str) -> None:
             await db.execute(
                 """UPDATE transfer_requests SET retry_at=0,
                     equivalence_disposition=CASE
-                        WHEN equivalence_disposition IN ('recovered','exhausted','contradictory','independent')
+                        WHEN equivalence_disposition IN ('recovered','exhausted','contradictory','independent','provisional')
                             THEN equivalence_disposition
                         ELSE 'released' END,
                     equivalence_reason=CASE
@@ -392,6 +408,30 @@ async def _bootstrap_capable_siblings(engine, record, material, record_key: str)
     ]
 
 
+async def _may_admit_provisional_writer(engine, record, incoming, evidence, material, record_key: str) -> bool:
+    """Whether bounded self-proof exhaustion may admit ``record`` as the
+    cohort's one provisional writer: the evidence must be in the explicit
+    eligible class, at least one of the record's own candidates must be
+    execution-capable, and no competing sibling may already hold the
+    provisional writer role. Called only from the no-canonical bootstrap
+    barrier, under the per-transfer cohort lock, so the durable sibling check
+    cannot race another admission."""
+    if not evidence.eligible_for_provisional_writer_after_exhaustion:
+        return False
+    if not any(engine.registry.eligible_executors(candidate) for candidate in incoming):
+        return False
+    for sibling in material:
+        if sibling.id == record.id or await _disposition(sibling.id) != _PROVISIONAL_DISPOSITION:
+            continue
+        sibling_candidates = _normalized_candidates(sibling, await engine.repository.resolved_candidates(sibling.id))
+        if not sibling_candidates:
+            if _could_compete(_prospective_logical_key(sibling), record_key):
+                return False
+        elif any(_could_compete(logical_key(candidate), record_key) for candidate in sibling_candidates):
+            return False
+    return True
+
+
 async def _bootstrap_admission(engine, record, incoming, disposition: str) -> bool:
     """DP 1.0.12 CANON-001 follow-up bootstrap barrier.
 
@@ -441,11 +481,26 @@ async def _bootstrap_admission(engine, record, incoming, disposition: str) -> bo
     evidence = await _bootstrap_self_evidence(incoming, engine.registry)
     if evidence.kind == EvidenceKind.UNAVAILABLE:
         if evidence.retryable:
-            if await _schedule_proof_retry(engine, record, incoming, evidence, mapping_cardinality=0):
+            provisional = await _may_admit_provisional_writer(
+                engine, record, incoming, evidence, material, logical_key(incoming[0]),
+            )
+            if await _schedule_proof_retry(
+                engine, record, incoming, evidence, mapping_cardinality=0,
+                exhaustion_disposition=_PROVISIONAL_DISPOSITION if provisional else "exhausted",
+            ):
                 return True
-            # Bounded self-proof budget exhausted. Identity/viability remains
-            # unresolved -- absence of proof is not proof of independence --
-            # so this request stays held rather than ever becoming a writer.
+            # Bounded self-proof budget exhausted. Identity remains unresolved
+            # -- absence of proof is not proof of independence -- so it is
+            # never recorded as such. Exhaustion answers "identity cannot be
+            # proven automatically", not "no candidate may ever make progress":
+            # when no canonical writer exists and this evidence is in the
+            # eligible class, the exhaustion transaction has already durably
+            # recorded this request as the cohort's one PROVISIONAL writer.
+            # Otherwise it stays held rather than ever becoming a writer.
+            if provisional:
+                _decision(record, incoming, "provisional_writer", evidence.reason,
+                          evidence=evidence, mapping_cardinality=0)
+                return False
             _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
                       evidence=evidence, mapping_cardinality=0)
             return True
@@ -514,9 +569,11 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     # dispositions (an affirmative prior decision) authorize materialization
     # immediately; held-class dispositions ("exhausted": identity remains
     # unresolved) keep the writer barrier up without doing any further proof
-    # work this tick.
+    # work this tick. "provisional" (the one bootstrap writer admitted after
+    # eligible proof exhaustion) likewise authorizes its own request's writer
+    # without re-litigating proof, while identity stays unresolved.
     disposition = await _disposition(record.id)
-    if disposition in _INDEPENDENT_DISPOSITIONS:
+    if disposition in _INDEPENDENT_DISPOSITIONS or disposition == _PROVISIONAL_DISPOSITION:
         return False
     if disposition in _HELD_DISPOSITIONS:
         return True

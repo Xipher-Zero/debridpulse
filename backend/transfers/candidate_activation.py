@@ -36,9 +36,9 @@ from dataclasses import dataclass, replace
 
 from transfers.errors import TransferError
 from transfers.filesystem import retire_partial
-from transfers.mirrors import reported_sizes_compatible
 from transfers.models import ExecutionState, TransferCandidate
 from transfers.recovery_execution import RecoveryClaim
+from transfers.size_evidence import reported_sizes_compatible
 
 _TERMINAL_EXECUTION_STATES = frozenset({
     ExecutionState.FAILED, ExecutionState.ABSENT, ExecutionState.CANCELLED, ExecutionState.SUCCEEDED,

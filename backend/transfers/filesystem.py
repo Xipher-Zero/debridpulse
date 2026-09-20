@@ -10,6 +10,7 @@ import stat
 
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import IntegrityMetadata, SizeKnowledge
+from transfers.size_evidence import SizeEvidenceKind, classify_size_evidence
 
 
 def safe_name(value: str) -> str:
@@ -45,57 +46,47 @@ def directory_contains(path: Path) -> bool:
         return False
 
 
-def known_positive_size(expected_bytes: int, observed_total: int) -> int | None:
-    """Canonical size-knowledge fact for completion verification (DP 1.0.12
-    canonical lifecycle/recovery/completion rework, Section 5.2/3.3).
-
-    Returns the one affirmative positive size this engine currently has
-    grounds to trust -- a known expected size, else an authoritative
-    executor-reported total -- or ``None`` when neither is positive. ``0``
-    from either source is never returned: a candidate that defaulted to 0 or
-    an executor that reported ``totalLength=0`` is absence of size
-    knowledge, never affirmative evidence of an intentionally empty payload
-    (SIZE_UNKNOWN, distinct from SIZE_KNOWN(0)). Callers must not attempt
-    completion verification when this returns ``None``.
-    """
-    if isinstance(expected_bytes, int) and not isinstance(expected_bytes, bool) and expected_bytes > 0:
-        return expected_bytes
-    if isinstance(observed_total, int) and not isinstance(observed_total, bool) and observed_total > 0:
-        return observed_total
-    return None
-
-
 def size_knowledge(
-    expected_bytes: int, observed_total: int, *, affirmative_zero: bool = False,
-) -> tuple[SizeKnowledge, int]:
-    """The one canonical resolver producing the three-state size-knowledge
-    fact (DP 1.0.12 canonical lifecycle/recovery/completion rework, Section
-    3.3/5.2): ``SizeKnowledge.UNKNOWN``, ``SizeKnowledge.KNOWN_ZERO``, or
-    ``SizeKnowledge.KNOWN_POSITIVE``, paired with the size to verify against
-    (``0`` for ``UNKNOWN``, meaningless -- callers must not verify).
+    reported_bytes: int, observed_total: int, *, recorded_bytes: int = 0, affirmative_zero: bool = False,
+) -> tuple[SizeKnowledge, tuple[int, ...]]:
+    """The one canonical projection of size evidence onto the three-state
+    size-knowledge fact (DP 1.0.12 canonical lifecycle/recovery/completion
+    rework, Section 3.3/5.2): ``SizeKnowledge.UNKNOWN``,
+    ``SizeKnowledge.KNOWN_ZERO`` or ``SizeKnowledge.KNOWN_POSITIVE``, paired
+    with the sizes a stable local payload may be verified against.
 
-    ``affirmative_zero`` is the ONLY channel through which a caller may
-    assert genuine known-zero evidence: a positive, explicit confirmation
-    that a resource is intentionally zero bytes (e.g. an HTTP response that
-    itself carried ``Content-Length: 0``), never merely the absence of a
-    positive report. No provider or executor currently wired into this
-    codebase produces that evidence -- every one of them resolves a reported
-    size through a ``value or 0``-shaped fallback that cannot distinguish an
-    explicitly reported zero from a missing/omitted field, so every real
-    caller today passes ``affirmative_zero=False`` and can only ever observe
-    UNKNOWN or KNOWN_POSITIVE. This is a factual limitation of the current
-    evidence sources, not a policy choice to forbid zero-byte payloads: the
-    parameter exists so a future provider/executor with a genuine
-    affirmative-zero signal has one canonical place to report it, without a
-    second completion-truth rework. Do not set it from a default, an omitted
-    header, or an executor's unknown-size report.
+    How a provider-reported size, an executor-observed total and the
+    artifact's recorded (bookkeeping) size relate is decided once, by
+    ``transfers.size_evidence.classify_size_evidence`` -- no source is preferred
+    here, and recorded bookkeeping never overrides a final total. The size tuple holds one size, or both
+    asserted sizes for a bounded (compatible but unequal) conflict, which the
+    stable local payload then decides between (``stable_material_size``). It is
+    empty for ``UNKNOWN`` and for an incompatible conflict: callers must not
+    verify against a size then, and never pick one of the conflicting numbers.
+
+    ``0`` from either source is absence of size knowledge, never affirmative
+    evidence of an intentionally empty payload (SIZE_UNKNOWN, distinct from
+    SIZE_KNOWN(0)). ``affirmative_zero`` is the ONLY channel through which a
+    caller may assert genuine known-zero evidence: a positive, explicit
+    confirmation that a resource is intentionally zero bytes (e.g. an HTTP
+    response that itself carried ``Content-Length: 0``), never merely the
+    absence of a positive report. No provider or executor currently wired into
+    this codebase produces that evidence -- every one of them resolves a
+    reported size through a ``value or 0``-shaped fallback that cannot
+    distinguish an explicitly reported zero from a missing/omitted field, so
+    every real caller today passes ``affirmative_zero=False`` and can only ever
+    observe UNKNOWN or KNOWN_POSITIVE. This is a factual limitation of the
+    current evidence sources, not a policy choice to forbid zero-byte
+    payloads: the parameter exists so a future provider/executor with a genuine
+    affirmative-zero signal has one canonical place to report it. Do not set it
+    from a default, an omitted header, or an executor's unknown-size report.
     """
-    positive = known_positive_size(expected_bytes, observed_total)
-    if positive is not None:
-        return SizeKnowledge.KNOWN_POSITIVE, positive
-    if affirmative_zero:
-        return SizeKnowledge.KNOWN_ZERO, 0
-    return SizeKnowledge.UNKNOWN, 0
+    evidence = classify_size_evidence(reported_bytes, observed_total, recorded_bytes)
+    if evidence.kind == SizeEvidenceKind.UNKNOWN:
+        if affirmative_zero:
+            return SizeKnowledge.KNOWN_ZERO, (0,)
+        return SizeKnowledge.UNKNOWN, ()
+    return SizeKnowledge.KNOWN_POSITIVE, evidence.verifiable_sizes
 
 
 def payload_matches(path: str, expected_size: int, sidecars=(), integrity: tuple[IntegrityMetadata, ...] = (), *, allow_empty=False) -> bool:
@@ -137,6 +128,37 @@ async def stable_payload(path: str, expected_size: int, *, sidecars=(), integrit
         return False
     await asyncio.sleep(delay)
     return await asyncio.to_thread(payload_matches, path, expected_size, sidecars, integrity, allow_empty=allow_empty)
+
+
+async def stable_material_size(
+    path: str, reported_bytes: int, observed_total: int, *, recorded_bytes: int = 0, sidecars=(), integrity=(),
+    delay=3.25, affirmative_zero=False,
+) -> int | None:
+    """The one canonical material-verification operation: the size the stable
+    local payload proves, or ``None`` when nothing is verified.
+
+    Provider-reported, executor-observed and recorded sizes are reconciled by
+    ``size_knowledge``; no source is trusted over another. When the reported
+    and observed sizes agree, or only one is known, that single size is
+    verified; with no reported or observed size, the recorded size is. When they are
+    unequal but compatible (a bounded conflict), the hardened stable-file
+    verification decides which asserted size is real -- at most one can match
+    the payload -- and that size is the accepted material size. An
+    incompatible conflict, unknown size, and any integrity/sidecar/path/
+    stability failure verify nothing. Every candidate size goes through the
+    identical ``stable_payload`` checks (``O_NOFOLLOW``, regular file,
+    first/last byte readability, sidecar exclusion, stable inode/mtime/size,
+    strong integrity); a size that does not match the file fails fast before
+    any hashing or stability delay.
+    """
+    knowledge, sizes = size_knowledge(
+        reported_bytes, observed_total, recorded_bytes=recorded_bytes, affirmative_zero=affirmative_zero,
+    )
+    for size in sizes:
+        if await stable_payload(path, size, sidecars=sidecars, integrity=integrity, delay=delay,
+                                allow_empty=knowledge == SizeKnowledge.KNOWN_ZERO):
+            return size
+    return None
 
 
 def retire_partial(root: str, target: str, sidecars=()) -> None:

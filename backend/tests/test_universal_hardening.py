@@ -144,7 +144,14 @@ async def test_real_zip_postprocessing_preserves_transfer_success_and_retention(
     target = Path(artifact.target)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(payload)
-    core.executor.finish(artifact.execution, materialize=False)
+    # The executor observation must be truthful about the payload it "downloaded":
+    # ``finish()`` reports a fixed 4-byte total, which is an incompatible size
+    # conflict against this real zip's length (and is no longer silently
+    # resolved in favour of the provider's report).
+    job = core.executor.jobs[artifact.execution.attempt_id]
+    core.executor.jobs[artifact.execution.attempt_id] = replace(
+        job, state=ExecutionState.SUCCEEDED, progress=TransferProgress(len(payload), len(payload)),
+    )
     await core.engine.tick()
     view = await core.repository.presentation(transfer.id, details=True)
     assert view["status"] == "completed"
@@ -253,12 +260,12 @@ async def test_unknown_size_zero_byte_success_never_completes(core):
 
 @pytest.mark.asyncio
 async def test_payload_disappearing_after_member_verification_blocks_final_completion(core, monkeypatch):
-    # DP 1.0.12 leveling remediation (ARCH-001): the true owner of the
-    # stable_payload() call site exercised here is transfers._engine_base
-    # (a direct import from transfers.filesystem, never proxied through
-    # another module now that the transitional cross-module monkeypatch
-    # seam is gone).
-    import transfers._engine_base as module
+    # DP 1.0.12 leveling remediation (ARCH-001) + Transfer 291 correction: the
+    # true owner of the stable_payload() call exercised here is
+    # transfers.filesystem -- completion verification is the one canonical
+    # ``stable_material_size`` operation there (never proxied through another
+    # module now that the transitional cross-module monkeypatch seam is gone).
+    import transfers.filesystem as module
     result = core.provider.parcel(state=ResourceState.AVAILABLE)
     resource = result.observation.resource
     core.provider.members[resource.id] = tuple(SourceEntry(f"{name}.bin", 4, f"{name}.bin", TransferRequest("parcel-member", name)) for name in ("first", "second"))
