@@ -10,7 +10,7 @@ from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers import codec
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
-from transfers.mirrors import EvidenceFailureClass, EvidenceKind, shared_evidence
+from transfers.mirrors import EquivalenceEvidence, EvidenceFailureClass, EvidenceKind, shared_evidence
 from transfers.models import (
     ArtifactFingerprint, ExecutionState, FingerprintKind, ResolutionResult, ResourceState, TransferRequest, TransferState,
 )
@@ -452,6 +452,205 @@ async def test_affirmative_size_contradiction_still_permits_independent_material
     row = (await _proof_rows(second.id))[0]
     assert row["equivalence_disposition"] == "contradictory"
     assert row["equivalence_reason"] == "size_disagreement"
+
+
+async def _artifact_rows_for_request(request_id):
+    async with database.get_db() as db:
+        return await db.fetchall("SELECT id FROM download_files WHERE request_id=?", (request_id,))
+
+
+@pytest.mark.asyncio
+async def test_non_retryable_unresolved_pairing_holds_and_never_becomes_independent(retry_pair, monkeypatch):
+    """Transfer 286: ``range_ignored`` (a real HTTP 200 / Content-Length: 0
+    answer to the bounded Range probe) is unresolved pairing evidence that is
+    NOT retryable. Retryability decides only whether another automatic proof
+    attempt is scheduled; it must never decide whether unresolved identity
+    becomes independence. Against an existing canonical artifact the incoming
+    same-slot request must therefore be durably held (the existing
+    ``exhausted`` disposition), never released as ``independent`` with its own
+    physical writer -- and repeated scheduler ticks must stay quiescent."""
+    precondition = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="range_ignored")
+    assert precondition.unresolved_pairing and not precondition.retryable  # the shape under test.
+
+    first = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "a1", name="same.bin", preferred_provider=retry_pair.a.descriptor.id),),
+        name="a", deduplicate=False,
+    )
+    await retry_pair.engine.tick()
+    canonical = (await retry_pair.repository.artifacts(first.id))[0]
+
+    calls = {"count": 0}
+
+    async def range_ignored(candidate):
+        if candidate.provider_id == retry_pair.b.descriptor.id:
+            calls["count"] += 1
+            return _unavailable("range_ignored")
+        return _prefix(candidate)
+
+    monkeypatch.setattr(retry_pair.executor, "fingerprint", range_ignored)
+    second = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "b1", name="same.bin", preferred_provider=retry_pair.b.descriptor.id),),
+        name="b", deduplicate=False,
+    )
+    await retry_pair.engine.resolve_pending()
+    await retry_pair.engine.reconcile_executions()
+
+    row = (await _proof_rows(second.id))[0]
+    assert row["equivalence_disposition"] == "exhausted"  # held, never "independent".
+    assert row["equivalence_reason"] == "range_ignored"
+    assert float(row["retry_at"] or 0) == 0
+    assert row["state"] == "materializing"
+    assert await _artifact_rows_for_request(row["id"]) == []  # no independent download_files artifact.
+    assert len(await retry_pair.repository.artifacts(second.id)) == 0
+    assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1  # no executor writer.
+
+    held_calls = calls["count"]
+    for _ in range(3):
+        retry_pair.now[0] += 1.1
+        await retry_pair.engine.resolve_pending()
+        await retry_pair.engine.reconcile_executions()
+    row_after = (await _proof_rows(second.id))[0]
+    assert row_after["equivalence_disposition"] == "exhausted"
+    assert row_after["equivalence_reason"] == "range_ignored"
+    assert float(row_after["retry_at"] or 0) == 0
+    assert calls["count"] == held_calls  # no proof-acquisition hot loop while held.
+    assert await _artifact_rows_for_request(row["id"]) == []
+    assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1
+
+    canonicals = await retry_pair.repository.artifacts(first.id)
+    assert [item.id for item in canonicals] == [canonical.id]  # canonical stays the only physical writer.
+    assert len(canonicals[0].candidates) == 1
+
+
+@pytest.mark.asyncio
+async def test_sampled_content_contradiction_still_releases_independent_writer(retry_pair, monkeypatch):
+    """Adjacent control for the transfer-286 hold: a genuine sampled-content
+    contradiction (two full samples that disagree) is AFFIRMATIVE non-pairing
+    evidence, not unresolved -- it must keep releasing an independent writer."""
+    contradiction = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="sample_mismatch")
+    assert contradiction.failure_class == EvidenceFailureClass.CONTRADICTORY
+    assert not contradiction.unresolved_pairing
+
+    first = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "a1", name="same.bin", preferred_provider=retry_pair.a.descriptor.id),),
+        name="a", deduplicate=False,
+    )
+    await retry_pair.engine.tick()
+
+    async def different(candidate):
+        signature = f"full:{candidate.provider_id}"
+        return ArtifactFingerprint(
+            candidate.expected_bytes, signature, FingerprintKind.FULL_CONTENT_SAMPLE, "", signature,
+        )
+
+    monkeypatch.setattr(retry_pair.executor, "fingerprint", different)
+    second = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "b1", name="same.bin", preferred_provider=retry_pair.b.descriptor.id),),
+        name="b", deduplicate=False,
+    )
+    await retry_pair.engine.resolve_pending()
+    await retry_pair.engine.reconcile_executions()
+
+    row = (await _proof_rows(second.id))[0]
+    assert row["equivalence_disposition"] == "contradictory"
+    assert row["equivalence_reason"] == "sample_mismatch"
+    assert len(await retry_pair.repository.artifacts(second.id)) == 1  # independent artifact allowed.
+    assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 2  # second writer allowed.
+
+
+@pytest.mark.asyncio
+async def test_candidate_with_no_possible_proof_still_uses_degraded_fallback(retry_pair, monkeypatch):
+    """Adjacent control for the transfer-286 hold: a candidate whose sampler
+    reports no fingerprint at all (proof structurally unavailable -- nothing
+    was sampled) is NOT the same as a sampler that ran and returned unusable
+    evidence. It keeps the existing structurally-unprovable degraded fallback
+    and still receives an independent writer."""
+    first = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "a1", name="same.bin", preferred_provider=retry_pair.a.descriptor.id),),
+        name="a", deduplicate=False,
+    )
+    await retry_pair.engine.tick()
+
+    async def no_capability(_candidate):
+        return None
+
+    monkeypatch.setattr(retry_pair.executor, "fingerprint", no_capability)
+    second = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "b1", name="same.bin", preferred_provider=retry_pair.b.descriptor.id),),
+        name="b", deduplicate=False,
+    )
+    await retry_pair.engine.resolve_pending()
+    await retry_pair.engine.reconcile_executions()
+
+    row = (await _proof_rows(second.id))[0]
+    assert row["equivalence_disposition"] == "independent"
+    assert row["equivalence_reason"] == "sampler_unsupported"
+    assert len(await retry_pair.repository.artifacts(second.id)) == 1
+    assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_sibling_walk_non_retryable_unresolved_member_holds_whole_cohort(retry_pair, monkeypatch):
+    """Transfer 286, materializing-cohort walk: a weak-evidence sibling whose
+    own proof first failed transiently (a bounded retry is scheduled) and
+    whose retried proof then comes back ``range_ignored`` (unresolved, NOT
+    retryable) is evaluated during ANOTHER member's collection walk. That
+    unresolved sibling must be durably held (``exhausted``) and keep the
+    cohort's writer barrier up -- it must never be promoted to
+    ``independent`` and release the whole cohort to independent
+    materialization (a second physical writer for every member)."""
+    third = BatchProvider("provider-c")
+    retry_pair.registry.register_provider(third)
+    first = await retry_pair.engine.submit(
+        (TransferRequest("parcel", "a1", name="same.bin", preferred_provider=retry_pair.a.descriptor.id),),
+        name="a", deduplicate=False,
+    )
+    await retry_pair.engine.tick()
+    assert len(await retry_pair.repository.artifacts(first.id)) == 1
+
+    mode = {"third": "timeout"}
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == third.descriptor.id:
+            return _unavailable(mode["third"])
+        return _prefix(candidate)
+
+    monkeypatch.setattr(retry_pair.executor, "fingerprint", fingerprint)
+    second = await retry_pair.engine.submit(
+        (
+            TransferRequest("parcel", "b1", name="same.bin", preferred_provider=retry_pair.b.descriptor.id),
+            TransferRequest("parcel", "c1", name="same.bin", preferred_provider=third.descriptor.id),
+        ),
+        name="mixed", deduplicate=False,
+    )
+    await retry_pair.engine.resolve_pending()
+    rows = {row["id"]: row for row in await _proof_rows(second.id)}
+    unresolved = next(row for row in rows.values() if row["equivalence_reason"] == "timeout")
+    assert unresolved["equivalence_disposition"] == "pending"  # bounded retry scheduled for the third-provider member.
+    assert len(await retry_pair.repository.artifacts(second.id)) == 0
+
+    # The retried proof now reports the non-retryable unresolved shape.
+    # Evaluate the OTHER member first so the unresolved one is met inside its
+    # collection walk (not by its own turn).
+    mode["third"] = "range_ignored"
+    retry_pair.now[0] += 1.1
+    other = next(
+        item for item in await retry_pair.repository.requests(second.id)
+        if item.id != unresolved["id"] and item.state == "materializing"
+    )
+    await retry_pair.engine._process_request(other)
+    await retry_pair.engine.reconcile_executions()
+
+    rows_after = {row["id"]: row for row in await _proof_rows(second.id)}
+    assert rows_after[unresolved["id"]]["equivalence_disposition"] == "exhausted"
+    assert rows_after[unresolved["id"]]["equivalence_reason"] == "range_ignored"
+    assert float(rows_after[unresolved["id"]]["retry_at"] or 0) == 0
+    assert not {row["equivalence_disposition"] for row in rows_after.values()} & {
+        "independent", "contradictory", "released",
+    }  # nobody in the cohort was released to independence.
+    assert all(row["state"] == "materializing" for row in rows_after.values())
+    assert len(await retry_pair.repository.artifacts(second.id)) == 0  # no second writer for any member.
+    assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1
 
 
 @pytest.mark.asyncio

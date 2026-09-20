@@ -49,6 +49,47 @@ def test_case3_genuine_contradictions_remain_non_retryable(reason):
     assert not evidence.unresolved_pairing
 
 
+# --- Transfer 286: a bounded sample that reports ``range_ignored`` (a real
+# HTTP 200 / Content-Length: 0 answer to the Range probe) is UNRESOLVED
+# pairing evidence -- it neither proves collection membership nor affirmatively
+# rules the pair out. The cohort owner (transfers.cohorts) consumes exactly
+# this fact to keep the physical-writer barrier up; the evidence owner must
+# keep reporting it as unresolved, never as a contradiction, so that "cannot
+# prove identity" is never mistaken for "proven independent".
+def test_range_ignored_is_unresolved_pairing_not_a_contradiction():
+    evidence = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="range_ignored")
+    assert evidence.proves_collection_member is False
+    assert evidence.unresolved_pairing is True
+    assert evidence.failure_class != EvidenceFailureClass.CONTRADICTORY
+
+
+# --- The evidence owner exposes ONE semantic fact separating a proof attempt
+# that ran and yielded unusable material evidence (hold: never an independent
+# writer) from a candidate for which no proof can be established by
+# construction (the existing structurally-unprovable degraded fallback may
+# apply). It is orthogonal to ``retryable``/``unresolved_pairing`` and is not a
+# per-reason policy property.
+@pytest.mark.parametrize("reason", ["sampler_unsupported", "ambiguous_mapping"])
+def test_no_possible_proof_is_structurally_unavailable_but_still_unresolved(reason):
+    evidence = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason=reason)
+    assert evidence.proof_structurally_unavailable is True
+    assert evidence.unresolved_pairing is True
+    assert not evidence.retryable
+
+
+@pytest.mark.parametrize("reason", [
+    "range_ignored", "invalid_content_range", "destination_rejected",  # sampler ran, unusable material evidence.
+    "range_unsupported", "incomplete_representation", "sampler_unavailable", "timeout", "dns_failure",
+    "size_disagreement", "sample_mismatch", "integrity_mismatch",  # affirmative contradictions.
+])
+def test_attempted_proof_is_never_structurally_unavailable(reason):
+    assert EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason=reason).proof_structurally_unavailable is False
+
+
+def test_usable_evidence_is_never_structurally_unavailable():
+    assert EquivalenceEvidence(EvidenceKind.PREFIX_CONTENT_SAMPLE, 4, "sampler_unsupported").proof_structurally_unavailable is False
+
+
 @pytest_asyncio.fixture
 async def evidence_pair(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")

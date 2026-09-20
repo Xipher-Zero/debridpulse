@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from pathlib import Path
+import re
 import shutil
 import socket
 from dataclasses import replace
@@ -36,6 +37,7 @@ from transfers.models import ArtifactFingerprint, FingerprintKind, SourceIdentit
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from transfers.requests import direct_link_filename
 
 pytestmark = pytest.mark.asyncio
 
@@ -480,6 +482,173 @@ async def test_real_aria2_zero_byte_success_never_completes_or_delivers(tmp_path
         assert final_transfer.state != TransferState.CONSOLIDATED
         assert final_transfer.state != TransferState.COMPLETED  # the unsatisfied sibling still votes (Section 5.2/6.4).
     finally:
+        await runtime.close()
+
+
+async def _durable_tables_mentioning(needle: str) -> list[str]:
+    """Every durable table holding ``needle`` in any column."""
+    tables_with_hits = []
+    async with database.get_db() as db:
+        for table in [row["name"] for row in await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'")]:
+            columns = [column["name"] for column in await db.fetchall(f'PRAGMA table_info("{table}")')]
+            if not columns:
+                continue
+            clause = " OR ".join(f'CAST("{column}" AS TEXT) LIKE ?' for column in columns)
+            row = await db.fetchone(
+                f'SELECT COUNT(*) AS n FROM "{table}" WHERE {clause}', tuple(f"%{needle}%" for _ in columns),
+            )
+            if int(row["n"]):
+                tables_with_hits.append(table)
+    return tables_with_hits
+
+
+async def test_transfer_286_unresolved_alternate_never_gets_a_writer_and_does_not_poison_parent(tmp_path, monkeypatch):
+    """Production transfer 286, end to end through the REAL runtime: one
+    transfer, ten sibling General HTTP requests for the same logical file --
+    nine mirrors serve one identical positive payload, one serves a real HTTP
+    200 with ``Content-Length: 0`` and an empty body. The real bounded sampler
+    reports that mirror as ``UNAVAILABLE / range_ignored`` (unresolved pairing
+    evidence, not retryable). Nothing is monkeypatched below the file's shared
+    loopback fixture: real ``GeneralHttpProvider``, real sampler, real
+    ``Aria2Executor``, real cohort/lifecycle/repository path.
+
+    Retryability must not decide identity: the unresolved alternate has to be
+    durably HELD (``exhausted``) and never receive an independent physical
+    writer -- no actionable artifact, no execution, no zero-byte / collision-
+    renamed ``(2)`` file on disk, no ``materialization_failed`` outcome -- while
+    the good canonical downloads normally and the parent reaches the ordinary
+    successful terminal state through the existing completion policy. (The
+    late zero-byte verification backstop is proven separately by
+    ``test_real_aria2_zero_byte_success_never_completes_or_delivers``; this is
+    the stricter, earlier invariant.)"""
+    runtime = await _build_runtime(tmp_path, monkeypatch)
+    path = "/" + MIRROR_FILENAME
+    runtime.server.route(path, PAYLOAD, behavior="normal")
+    bad_server = MirrorFixtureServer()
+    try:
+        await bad_server.start()
+        bad_server.route(path, b"", behavior="zero_byte_success")
+        good_urls = tuple(runtime.server.url(index, path) for index in range(1, 10))
+        bad_url = bad_server.url(10, path)
+        submitted = (*good_urls[:4], bad_url, *good_urls[4:])  # the faulty mirror is mid-batch, not first/last.
+        # Production Quick Add shape (application/service.py submit_links): every
+        # request declares its logical filename through the one real
+        # ``direct_link_filename`` derivation.
+        transfer = await runtime.engine.submit(
+            tuple(TransferRequest("http", url, name=direct_link_filename(url, index))
+                  for index, url in enumerate(submitted, 1)),
+            source="direct_link", deduplicate=False,
+        )
+        records = await runtime.repository.requests(transfer.id)
+        assert len(records) == 10
+        bad_record = next(record for record in records if record.request.payload == bad_url)  # by source, not ordinal.
+        good_ids = {record.id for record in records if record.id != bad_record.id}
+        assert len(good_ids) == 9
+
+        observed_dispositions = set()
+
+        async def bad_request_held():
+            async with database.get_db() as db:
+                row = await db.fetchone(
+                    """SELECT state,equivalence_disposition,equivalence_reason,retry_at
+                        FROM transfer_requests WHERE id=?""",
+                    (bad_record.id,),
+                )
+            observed_dispositions.add(str(row["equivalence_disposition"] or ""))
+            assert row["equivalence_disposition"] not in {"independent", "contradictory", "released"}, (
+                f"unresolved alternate was released to an independent writer: "
+                f"{row['equivalence_disposition']}/{row['equivalence_reason']}"
+            )
+            return row if row["equivalence_disposition"] == "exhausted" else None
+
+        # The bad alternate becomes durably held/unresolved -- never independent.
+        held = await runtime.until(bad_request_held, label="faulty alternate durably held as unresolved")
+        assert held["equivalence_reason"] == "range_ignored"  # the real sampler's factual shape.
+        assert float(held["retry_at"] or 0) == 0
+        assert bad_server.hits  # the real bounded sampler genuinely probed the faulty mirror.
+        hits_when_held = len(bad_server.hits)
+
+        async def transfer_completed():
+            async with database.get_db() as db:
+                row = await db.fetchone(
+                    "SELECT equivalence_disposition FROM transfer_requests WHERE id=?", (bad_record.id,),
+                )
+            observed_dispositions.add(str(row["equivalence_disposition"] or ""))
+            current = await runtime.repository.get(transfer.id)
+            assert current.state != TransferState.FAILED  # never poisoned by the bad alternate.
+            return current if current.state == TransferState.COMPLETED else None
+
+        final_transfer = await runtime.until(transfer_completed, label="parent reaches the normal completed state")
+        assert final_transfer.state == TransferState.COMPLETED
+        assert observed_dispositions <= {"", "pending", "bootstrap_unprovable", "exhausted"}
+        assert not observed_dispositions & {"independent", "contradictory", "released"}
+
+        for _ in range(10):  # extra scheduler cycles: the held request stays quiescent.
+            await runtime.engine.tick()
+            await asyncio.sleep(0.02)
+        assert len(bad_server.hits) == hits_when_held  # no proof-acquisition hot loop.
+
+        # --- Good canonical path: exactly one physical artifact, all nine good mirrors attached.
+        artifacts = await runtime.repository.artifacts(transfer.id)
+        assert len(artifacts) == 1
+        canonical = artifacts[0]
+        assert canonical.state == "completed"
+        assert canonical.expected_bytes == len(PAYLOAD) > 0
+        assert Path(canonical.target).read_bytes() == PAYLOAD
+        bindings = await runtime.engine.canonical.bindings(canonical.id)
+        assert len(bindings) == 9
+        assert {str(origin["request_id"]) for binding in bindings for origin in binding["origins"]} == good_ids
+
+        # --- Bad alternate: preserved history, zero physical writer.
+        async with database.get_db() as db:
+            bad_row = await db.fetchone(
+                "SELECT state,equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
+                (bad_record.id,),
+            )
+            bad_artifacts = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (bad_record.id,),
+            )
+            bad_executions = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM execution_attempts WHERE artifact_id IN "
+                "(SELECT id FROM download_files WHERE request_id=?)", (bad_record.id,),
+            )
+            executed_artifacts = {
+                int(row["artifact_id"]) for row in await db.fetchall("SELECT artifact_id FROM execution_attempts")
+            }
+            provenance_artifacts = {
+                int(row["artifact_id"])
+                for row in await db.fetchall("SELECT artifact_id FROM execution_attempt_provenance")
+            }
+            bad_origins = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM canonical_candidate_origins WHERE request_id=?", (bad_record.id,),
+            )
+            delivered = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM execution_attempt_provenance WHERE artifact_id=? AND delivered=1",
+                (canonical.id,),
+            )
+        assert bad_row["state"] == "materializing"  # history kept; the request was not silently deleted.
+        assert bad_row["equivalence_disposition"] == "exhausted"
+        assert bad_row["equivalence_reason"] == "range_ignored"
+        assert float(bad_row["retry_at"] or 0) == 0
+        assert await runtime.repository.resolved_candidates(bad_record.id)  # resolution history preserved.
+        assert int(bad_artifacts["n"]) == 0  # no actionable download_files row for the bad request.
+        assert int(bad_executions["n"]) == 0  # no execution attempt for a bad-source artifact.
+        assert executed_artifacts == {canonical.id}  # the canonical is the only artifact ever executed...
+        assert provenance_artifacts == {canonical.id}  # ...and the only one with execution provenance.
+        assert int(bad_origins["n"]) == 0
+        assert int(delivered["n"]) >= 1  # the good canonical is delivered.
+
+        # --- No downstream poisoning by a late materialization_failed outcome.
+        assert await _durable_tables_mentioning("materialization_failed") == []
+
+        # --- Filesystem truth: the original defect was externally visible on disk.
+        files = [item for item in runtime.downloads.rglob("*") if item.is_file()]
+        payload_files = [item for item in files if item.suffix != ".aria2"]
+        assert [item.name for item in payload_files] == [Path(canonical.target).name]
+        assert [item for item in files if item.stat().st_size == 0] == []  # no zero-byte target.
+        assert [item.name for item in files if re.search(r" \(\d+\)", item.name)] == []  # no "(2)" collision target.
+    finally:
+        await bad_server.stop()
         await runtime.close()
 
 
@@ -1524,6 +1693,94 @@ async def test_resolved_sibling_reverify_bounds_retry_without_hot_loop(tmp_path,
     assert len(await engine.repository.artifacts(record_c.transfer_id)) == 1
 
 
+async def test_resolved_sibling_reverify_non_retryable_unresolved_holds_without_releasing_cohort(tmp_path, monkeypatch):
+    """Transfer 286, resolved-sibling re-verification: during C's collection
+    walk an already-attached sibling (B) re-verifies as ``range_ignored`` --
+    unresolved pairing evidence that is NOT retryable. That must hold C
+    (durable ``exhausted``, writer barrier up, no proof hot loop); it must
+    never release the whole cohort to independent materialization and hand C
+    a second physical writer."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "resolved-sibling-reverify-unresolved.sqlite3")
+    await database.init_db()
+    now = [1000.0]
+    providers = tuple(_UnknownSizeProvider(f"reverify-unresolved-{label}") for label in "abcd")
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, providers, now=lambda: now[0],
+    )
+    await engine.initialize()
+
+    call_counts = {"a": 0, "b": 0, "c": 0, "d": 0}
+    label_by_provider = {provider.descriptor.id: label for provider, label in zip(providers, "abcd")}
+    phase = ["bootstrap"]
+
+    async def fingerprint(candidate):
+        label = label_by_provider[candidate.provider_id]
+        call_counts[label] += 1
+        if phase[0] == "reverify" and label == "b":
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        if phase[0] == "attach_full":
+            return ArtifactFingerprint(4, "full-shared-content", FingerprintKind.FULL_CONTENT_SAMPLE)
+        return ArtifactFingerprint(4, "prefix-shared-content", FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                    "range_ignored", "prefix-shared-content")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    requests = tuple(
+        TransferRequest("parcel", f"reverify-unresolved-{label}", name="mirror.iso",
+                        preferred_provider=provider.descriptor.id)
+        for label, provider in zip("abcd", providers)
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    record_a, record_b = by_payload["reverify-unresolved-a"], by_payload["reverify-unresolved-b"]
+    record_c, record_d = by_payload["reverify-unresolved-c"], by_payload["reverify-unresolved-d"]
+
+    await engine._resolve(record_a)  # A bootstrap-seeds the sole canonical.
+    phase[0] = "attach_full"
+    await engine._resolve(record_b)  # B and D attach through the immediate FULL fast path,
+    await engine._resolve(record_d)  # so the canonical's candidate order is A, B, D.
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1
+    canonical = artifacts[0]
+    assert len(canonical.candidates) == 3
+
+    phase[0] = "reverify"  # C still matches via A/D (PREFIX); B now re-verifies range_ignored.
+    await engine._resolve(record_c)
+    for _ in range(2):
+        refreshed_c = next(item for item in await engine.repository.requests(transfer.id) if item.id == record_c.id)
+        now[0] = max(now[0], refreshed_c.retry_at) + 0.01
+        await engine._process_request(refreshed_c)
+
+    async with database.get_db() as db:
+        rows = {
+            row["id"]: row for row in await db.fetchall(
+                "SELECT id,state,equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE transfer_id=?",
+                (transfer.id,),
+            )
+        }
+        c_artifacts = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (record_c.id,),
+        )
+    assert rows[record_c.id]["equivalence_disposition"] == "exhausted"  # held, never "independent".
+    assert rows[record_c.id]["equivalence_reason"] == "range_ignored"
+    assert float(rows[record_c.id]["retry_at"] or 0) == 0
+    assert rows[record_c.id]["state"] == "materializing"
+    assert int(c_artifacts["n"]) == 0  # no independent artifact for C.
+    assert not {row["equivalence_disposition"] for row in rows.values()} & {
+        "independent", "contradictory", "released",
+    }  # the attached siblings were not released to independence either.
+
+    calls_at_hold = dict(call_counts)
+    for _ in range(3):
+        refreshed_c = next(item for item in await engine.repository.requests(transfer.id) if item.id == record_c.id)
+        await engine._process_request(refreshed_c)
+    assert call_counts == calls_at_hold  # quiescent: no proof hot loop while held.
+
+    artifacts_final = await engine.repository.artifacts(transfer.id)
+    assert [item.id for item in artifacts_final] == [canonical.id]
+    assert len(artifacts_final[0].candidates) == 3
+
+
 async def test_bad_first_structural_bootstrap_waits_for_capable_sibling(tmp_path, monkeypatch):
     """Gate 9 review follow-up (Finding 1, revision 2): a candidate whose own
     self-evidence is structurally, permanently unobtainable (its sampler
@@ -1650,6 +1907,62 @@ async def test_all_structurally_unprovable_cohort_reaches_degraded_fallback_with
     artifacts_final = await engine.repository.artifacts(transfer.id)
     assert len(artifacts_final) == 3  # every member ends up its own independent writer -- no deadlock.
     assert {item.request_id for item in artifacts_final} == {record.id for record in records}
+
+
+async def test_transfer_286_bad_source_first_is_held_once_a_canonical_exists(tmp_path, monkeypatch):
+    """Transfer 286, deterministic bad-source-FIRST ordering (the real runtime
+    reproducer's arrival order is scheduler-dependent, so this pins the order
+    that reaches the empty-canonical bootstrap decision first). A source whose
+    sampler RAN and returned unusable evidence (``range_ignored``: degenerate
+    material evidence) waits during bootstrap exactly like any unprovable
+    source; but once a good sibling seeds the canonical it must be HELD
+    (``exhausted``) -- never handed an independent writer. Contrast
+    ``test_bad_first_structural_bootstrap_waits_for_capable_sibling``: a
+    sampler that reports NO capability at all keeps the degraded fallback."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "bad-first-range-ignored.sqlite3")
+    await database.init_db()
+    providers = (_UnknownSizeProvider("range-ignored-bad"), _UnknownSizeProvider("range-ignored-good"))
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == providers[0].descriptor.id:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        return ArtifactFingerprint(4, "prefix-sig", FingerprintKind.PREFIX_CONTENT_SAMPLE,
+                                    "range_ignored", "prefix-sig")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    requests = (
+        TransferRequest("parcel", "range-ignored-bad", name="mirror.iso", preferred_provider=providers[0].descriptor.id),
+        TransferRequest("parcel", "range-ignored-good", name="mirror.iso", preferred_provider=providers[1].descriptor.id),
+    )
+    transfer = await engine.submit(requests, name="mirror.iso", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await engine.repository.requests(transfer.id)}
+    bad_record, good_record = by_payload["range-ignored-bad"], by_payload["range-ignored-good"]
+
+    await engine._resolve(bad_record)  # bad reaches the empty-canonical bootstrap decision first.
+    assert len(await engine.repository.artifacts(transfer.id)) == 0
+    await engine._resolve(good_record)  # the capable source seeds.
+    artifacts = await engine.repository.artifacts(transfer.id)
+    assert len(artifacts) == 1 and artifacts[0].request_id == good_record.id
+
+    refreshed_bad = next(item for item in await engine.repository.requests(transfer.id) if item.id == bad_record.id)
+    for _ in range(3):
+        await engine._process_request(refreshed_bad)
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT state,equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
+            (bad_record.id,),
+        )
+        bad_artifacts = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (bad_record.id,),
+        )
+    assert row["state"] == "materializing"
+    assert row["equivalence_disposition"] == "exhausted"  # held, never "independent".
+    assert row["equivalence_reason"] == "range_ignored"
+    assert float(row["retry_at"] or 0) == 0
+    assert int(bad_artifacts["n"]) == 0
+    assert [item.id for item in await engine.repository.artifacts(transfer.id)] == [artifacts[0].id]
 
 
 async def test_bad_first_structural_bootstrap_treats_unnamed_sibling_as_unknown(tmp_path, monkeypatch):

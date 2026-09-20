@@ -23,6 +23,14 @@ _TRANSIENT_REASONS = frozenset({
     "range_unsupported", "incomplete_representation",
 })
 _CONTRADICTORY_REASONS = frozenset({"size_disagreement", "sample_mismatch", "integrity_mismatch"})
+# No proof can be established for this candidate by construction, as opposed
+# to a proof attempt that ran and yielded unusable material evidence:
+#   * ``sampler_unsupported`` -- no sampling capability exists at all (no
+#     capable executor, or a sampler that reports no fingerprint for this
+#     route); nothing was sampled, so it says nothing about the material;
+#   * ``ambiguous_mapping`` -- the candidate matches more than one canonical
+#     target, so no unique mapping can ever be proven (never guess).
+_PROOF_UNAVAILABLE_REASONS = frozenset({"sampler_unsupported", "ambiguous_mapping"})
 _NONPAIRING_REASONS = frozenset({
     "same_candidate", "non_independent_source", "logical_pairing_mismatch",
     "size_disagreement", "sample_mismatch", "integrity_mismatch",
@@ -99,6 +107,16 @@ class EquivalenceEvidence:
             and self.reason not in _NONPAIRING_REASONS
             and self.failure_class != EvidenceFailureClass.CONTRADICTORY
         )
+
+    @property
+    def proof_structurally_unavailable(self) -> bool:
+        """True when no proof can be established for this candidate by
+        construction (no sampling capability, or no unique mapping is
+        possible), as opposed to a proof attempt that ran and yielded unusable
+        material evidence. Orthogonal to ``retryable`` and to
+        ``unresolved_pairing``: the consumer decides what structural absence
+        of proof permits."""
+        return self.kind == EvidenceKind.UNAVAILABLE and self.reason in _PROOF_UNAVAILABLE_REASONS
 
 
 def _normalized_algorithm(value: str) -> str:

@@ -527,7 +527,13 @@ test('keyboard: Enter on either list launcher opens only the chooser, never Deta
   await page.route('**/api/torrents*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: items.length }) }));
   await page.route(url => /\/api\/torrents\/\d+$/.test(url.pathname), route =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(95, [file(951, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible: true })])])) }));
+  // ready() does not imply the first Recent render (the startup read is chained behind the boot's /api/stats), so park the
+  // owner's NEXT read only after the authoritative first render has completed and the launcher exists (see the Recent
+  // anchoring case below); parking earlier can park the FIRST read and leave the table at "Loading…".
+  await page.addInitScript(() => { window.__recentEvents = 0; document.addEventListener('debridpulse:dashboard-recent-rendered', () => { window.__recentEvents += 1; }); });
   await ready(page);
+  await page.waitForFunction(() => window.__recentEvents > 0);
+  await expect(page.locator('#dash-tbody tr[data-torrent-id="95"] .dp-group-candidate-launcher')).toHaveCount(1);
 
   let release = await parkOwnerRead(page, isDashboardRecentRead, () => { loadRecent().catch(() => {}); });
   await page.locator('#dash-tbody tr[data-torrent-id="95"] .dp-group-candidate-launcher').focus();
@@ -881,11 +887,18 @@ test('Recent: the chooser opens adjacent to the launcher, not at the viewport or
   await page.route('**/api/torrents*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: items.length }) }));
   await page.route(url => /\/api\/torrents\/\d+$/.test(url.pathname), route =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(230, [file(2301, [sc('rapidgator.net', 'a1', { selected: true }), sc('mega.nz', 'b1', { eligible: true })])])) }));
+  // The startup Recent read is chained behind the boot's /api/stats (app.js init), so ready() does not imply the first Recent
+  // render. Count the authoritative render event from the first document on (the ui-regression-restoration.spec.js pattern) and
+  // park the owner's NEXT read only once that first render has completed; parking earlier can park the FIRST read and leave the
+  // table at "Loading…" with no launcher to measure.
+  await page.addInitScript(() => { window.__recentEvents = 0; document.addEventListener('debridpulse:dashboard-recent-rendered', () => { window.__recentEvents += 1; }); });
   await ready(page);
+  await page.waitForFunction(() => window.__recentEvents > 0);
+  const launcher = page.locator('#dash-tbody tr[data-torrent-id="230"] .dp-group-candidate-launcher');
+  await expect(launcher).toHaveCount(1);
 
   // The launcher and the chooser are measured in a Dashboard DOM that no render can replace.
   const release = await parkOwnerRead(page, isDashboardRecentRead, () => { loadRecent().catch(() => {}); });
-  const launcher = page.locator('#dash-tbody tr[data-torrent-id="230"] .dp-group-candidate-launcher');
   const triggerBox = await launcher.boundingBox();
   await launcher.click();
   const menu = page.locator('.dp-group-candidate-menu');
@@ -905,7 +918,13 @@ test('Downloads: the chooser opens adjacent to the launcher, not at the viewport
   await ready(page);
   await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
 
+  // Every Downloads list read replaces all rows (tb.innerHTML = ...) and detaches the launcher node, and fit re-checks keep
+  // issuing reads after the first render. Measuring a launcher that was resolved before such a read lands returns null. So the
+  // authoritative render must have produced the launcher first, then the owner's NEXT list read is parked (the same barrier the
+  // Recent case uses) and only then is the LIVE launcher measured.
   const launcher = page.locator('#t-tbody tr[data-torrent-id="231"] .dp-group-candidate-launcher');
+  await expect(launcher).toHaveCount(1);
+  const release = await parkOwnerRead(page, isDownloadsListRead, () => { loadTorrents().catch(() => {}); });
   const triggerBox = await launcher.boundingBox();
   await launcher.click();
   const menu = page.locator('.dp-group-candidate-menu');
@@ -914,6 +933,7 @@ test('Downloads: the chooser opens adjacent to the launcher, not at the viewport
   expect(menuBox.y).toBeGreaterThan(20);
   expect(Math.abs(menuBox.x - triggerBox.x)).toBeLessThan(400);
   expect(menuBox.y).toBeGreaterThanOrEqual(triggerBox.y - 10);
+  await release();
 });
 
 test('Recent: the chooser survives a full row re-render without jumping to the origin or another surface', async ({ page }) => {

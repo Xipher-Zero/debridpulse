@@ -240,6 +240,39 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
     return True
 
 
+def _must_hold(evidence: EquivalenceEvidence) -> bool:
+    """Unresolved evidence from a proof that was actually attempted never
+    authorizes an independent writer, whether or not it is retryable. The one
+    exception is structural absence of any possible proof
+    (``proof_structurally_unavailable``: no sampling capability, or no unique
+    mapping): it says nothing about the material, and independence is then
+    authorized by the
+    existing structurally-unprovable degraded fallback (``_bootstrap_admission``
+    and the steady-state precedent below) -- never inferred from
+    ``retryable`` or ``unresolved_pairing``."""
+    return evidence.unresolved_pairing and not evidence.proof_structurally_unavailable
+
+
+async def _hold_unresolved(engine, record, incoming, evidence, *, mapping_cardinality: int) -> bool:
+    """Consume unresolved-pairing evidence without ever releasing independence.
+
+    Retryability decides only whether another automatic proof attempt is
+    scheduled; it never decides whether unresolved identity becomes
+    independence. True means a bounded proof retry is scheduled. False means
+    automatic proof acquisition has stopped -- the retry budget is spent
+    (``_schedule_proof_retry`` persisted it) or the evidence is not retryable
+    at all -- and ``record`` is durably held (``exhausted``, timer cleared).
+    The writer barrier stays up either way."""
+    if evidence.retryable:
+        return await _schedule_proof_retry(
+            engine, record, incoming, evidence, mapping_cardinality=mapping_cardinality,
+        )
+    await _proof_disposition(record.id, "exhausted", evidence.reason or "sampler_unavailable", clear_retry=True)
+    _decision(record, incoming, "hold_non_retryable", evidence.reason or "sampler_unavailable",
+              evidence=evidence, mapping_cardinality=mapping_cardinality)
+    return False
+
+
 async def _release_cohort(records, reason: str) -> None:
     """Release proof timers without erasing a more specific stored reason."""
     if not records:
@@ -498,22 +531,24 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     current_mapping = await _mapping(canonicals, incoming, engine.registry)
     if not current_mapping.matched:
         evidence = current_mapping.evidence
-        if evidence.retryable:
-            if await _schedule_proof_retry(
+        if _must_hold(evidence):
+            if await _hold_unresolved(
                 engine, record, incoming, evidence, mapping_cardinality=current_mapping.cardinality,
             ):
                 return True
-            # Automatic proof retry budget exhausted (_schedule_proof_retry
-            # already persisted equivalence_disposition='exhausted' and
-            # cleared retry_at). Identity remains unresolved -- absence of
-            # proof is not proof of non-equivalence (DP 1.0.12 Section 4.1) --
-            # so this request stays held rather than authorizing a writer.
+            # Automatic proof acquisition has stopped (retry budget spent, or
+            # the evidence is not retryable) and _hold_unresolved persisted
+            # equivalence_disposition='exhausted' and cleared retry_at.
+            # Identity remains unresolved -- absence of proof is not proof of
+            # non-equivalence (DP 1.0.12 Section 4.1) -- so this request stays
+            # held rather than authorizing a writer.
             _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
                       evidence=evidence, mapping_cardinality=current_mapping.cardinality)
             return True
-        # Non-retryable: either affirmatively contradictory (proven distinct)
-        # or structurally non-pairing. Both are affirmative grounds for
-        # independent materialization.
+        # Affirmatively contradictory (proven distinct), structurally
+        # non-pairing (a cheap pairing rejection), or structurally unprovable
+        # (the existing degraded fallback). Unresolved evidence from an
+        # attempted proof is never one of them.
         disposition = "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else "independent"
         await _proof_disposition(record.id, disposition, evidence.reason, clear_retry=True)
         _decision(record, incoming, "independent", evidence.reason or "no_unique_mapping",
@@ -601,19 +636,20 @@ async def coordinate_collection(engine, record, candidates) -> bool:
                 verification = await _mapping(verification_pool, resolved_sibling_candidates, engine.registry)
                 if not verification.matched:
                     evidence = verification.evidence
-                    if evidence.retryable:
+                    if _must_hold(evidence):
                         # Bound this re-probe on the CURRENT record's own
                         # existing retry budget/timer (this sibling is
                         # already durably 'resolved', not 'materializing',
                         # so _schedule_proof_retry cannot persist a budget
                         # against ITS row -- see _schedule_proof_retry's
                         # state=='materializing' guard). Once the current
-                        # record's own budget exhausts, its disposition
+                        # record's own budget exhausts -- or immediately, for
+                        # evidence that is not retryable -- its disposition
                         # becomes 'exhausted' and the top-of-function
                         # quiescence check short-circuits all future ticks
                         # without further sampling -- never an unbounded
                         # hot-loop against an already-resolved sibling.
-                        if await _schedule_proof_retry(
+                        if await _hold_unresolved(
                             engine, record, resolved_sibling_candidates, evidence,
                             mapping_cardinality=verification.cardinality,
                         ):
@@ -680,26 +716,27 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         )
         if not match.matched:
             evidence = match.evidence
-            if evidence.retryable:
-                if await _schedule_proof_retry(
+            if _must_hold(evidence):
+                # A bounded retry is scheduled, or -- once the retry budget is
+                # spent, or for evidence that is not retryable -- this ONE
+                # sibling is durably held (_hold_unresolved). Identity remains
+                # unresolved for it -- that alone must never release the rest
+                # of the cohort to independence (Section 8.1.6): a sibling
+                # that merely could not acquire fresh proof is not affirmative
+                # evidence of anything. Hold the whole collection decision
+                # instead; a genuinely distinct/contradictory sibling
+                # (handled below) is the only thing that still releases the
+                # cohort.
+                await _hold_unresolved(
                     engine, sibling, sibling_candidates, evidence, mapping_cardinality=match.cardinality,
-                ):
-                    pending = True
-                    continue
-                # Automatic proof retry budget exhausted for this ONE sibling.
-                # Identity remains unresolved for it -- that alone must never
-                # release the rest of the cohort to independence (Section
-                # 8.1.6): a sibling that merely could not acquire fresh proof
-                # is not affirmative evidence of anything. Hold the whole
-                # collection decision instead; a genuinely distinct/
-                # contradictory sibling (handled below) is the only thing
-                # that still releases the cohort.
+                )
                 pending = True
                 continue
-            # Non-retryable: affirmatively contradictory (proven distinct) or
-            # structurally non-pairing. This sibling really is independent,
-            # so the weak-evidence collection hypothesis for the WHOLE cohort
-            # is disproven -- release every member to independent
+            # Affirmatively contradictory (proven distinct), structurally
+            # non-pairing, or structurally unprovable (existing degraded
+            # fallback). This sibling really is independent, so the
+            # weak-evidence collection hypothesis for the WHOLE cohort is
+            # disproven -- release every member to independent
             # materialization (existing, unchanged behavior).
             await _proof_disposition(
                 sibling.id,
