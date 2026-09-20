@@ -15,9 +15,11 @@
 
 ## What is DebridPulse?
 
-**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. The current `1.0.12` development architecture has two production providers: **AllDebrid** for magnets, `.torrent` files, and dynamically supported HTTP(S) hosts; and **HTTP & HTTPS** for ordinary direct HTTP(S) acquisition. The independent aria2 executor performs physical HTTP(S) delivery. Identity, lifecycle, retry, ownership, recovery, authentication continuation, and post-processing belong to the Universal Transfer Core rather than either provider or executor.
+**DebridPulse** is a self-hosted transfer manager with a provider-independent orchestration core. `1.0.12` is the **Universal Transfer Core** release: it has two production providers — **AllDebrid** for magnets, `.torrent` files, and dynamically supported HTTP(S) hosts, and **HTTP & HTTPS** for ordinary direct HTTP(S) acquisition — and one production executor, aria2, which performs physical HTTP(S) delivery. Identity, lifecycle, retry, ownership, recovery, canonicalization, provenance, authentication continuation, and post-processing belong to the Universal Transfer Core rather than to either provider or executor.
 
-The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries. The [current two-provider architecture](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) records the implemented and qualified development support matrix. Version `1.0.12` is developed on the `1.0.12` branch; it is **not yet a released v1.0.12 baseline**. Production image examples below therefore retain the published `1.0.11.1` tag until an explicit release promotion.
+The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record for the two-provider slice. Further transports and providers (FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executors) are `1.0.13` expansion work, not unfinished `1.0.12` work.
+
+> **Source state vs. published image state.** The `1.0.12` branch carries the finalized 1.0.12 architecture. Tag promotion is a separate, explicit step, so the published release tag is still `v1.0.11.1` and the image examples below use it. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the currently published tags.
 
 The current workflow is intentionally deterministic:
 
@@ -98,18 +100,20 @@ The local aria2 daemon does **not** need to participate in BitTorrent swarms. Al
 
 ---
 
-## Current v1.0.12 development support matrix
+## v1.0.12 provider and executor support matrix
 
-This matrix describes the **implemented and qualified current two-provider development architecture**, not a released or final v1.0.12 provider/protocol set.
+This matrix is the **implemented and qualified v1.0.12 provider/executor set**. Anything not listed here is not supported today.
 
-| Integration / source | Current support | Notes |
+| Integration / source | Support in 1.0.12 | Notes |
 |---|---|---|
 | **AllDebrid** | Magnets, `.torrent` files, and HTTP(S) resources currently claimed by AllDebrid's validated dynamic supported-host state | Provider owns native host inventory, aliases/regex interpretation, availability and LKG/freshness semantics |
 | **HTTP & HTTPS** | Generic direct `http` and `https` resources | Produces direct candidates for aria2; conventional HTTP resource username/password authentication is supported after a genuine challenge |
-| **aria2** | Current HTTP(S) executor | Executes/observes native work; does not own universal provider routing, logical lifecycle, or universal retry policy |
-| **Deferred Items 12–16** | FTP, SCP, SFTP/SSH, rsync, additional providers/executors/dependencies, and richer routing/failover work where later roadmap decisions require them | Not implemented by this checkpoint; their final design and dependency set remain future work |
+| **aria2** | HTTP(S) executor | Executes/observes native work; does not own universal provider routing, logical lifecycle, or universal retry policy |
+| **1.0.13 expansion** | FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executor implementations, and the executor/settings UI expansion that several real executor shapes would justify | Future work. Not implemented in 1.0.12, and not an unmet 1.0.12 requirement. No implementation order is promised |
 
 The generic Authentication Required component can represent `username_private_key` plus an optional passphrase, but that neutral UI capability is **not a claim that SSH/SFTP/SCP production support exists today**.
+
+`STAGED-MATERIALIZATION-001` is likewise deferred to 1.0.13: 1.0.12 rejects and retires unproven zero-byte material rather than preventing its materialization, and does not implement staged execution-owned materialization with atomic promotion.
 
 ---
 
@@ -167,9 +171,9 @@ Go to **Settings → Sources & Providers**. Enable the sources you intend to use
 
 ### Docker image
 
-Fork-owned images are published to GHCR.
+Fork-owned images are published to GHCR. Every image is built once immutably and tagged by its full source SHA, then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
 
-Versioned V1 images use the release tag:
+Versioned V1 images use the release tag. The currently published release tag is:
 
 ```text
 ghcr.io/xipher-zero/debridpulse:v1.0.11.1
@@ -203,7 +207,7 @@ The primary supported configuration is available through **Settings**.
 
 ### Sources & Providers
 
-The current qualified development tree exposes:
+Sources & Providers exposes:
 
 - **AllDebrid** — enablement, API key, API request rate limit, provider poll and full-sync intervals, and upload-failure retry and delay controls;
 - **Direct Sources → HTTP & HTTPS** — one canonical enable control and no speculative protocol-specific tuning.
@@ -406,7 +410,7 @@ DebridPulse favors a focused responsibility:
 
 > **Resolve sources, transfer files reliably, and make delivery observable and recoverable.**
 
-Features that improve that workflow belong naturally in DebridPulse. Providers and executors are independent implementations of canonical contracts. AllDebrid and aria2 are the production implementations included today.
+Features that improve that workflow belong naturally in DebridPulse. Providers and executors are independent implementations of canonical contracts. AllDebrid and General HTTP(S) are the providers included today, and aria2 is the executor; further providers and executors are `1.0.13` expansion work.
 
 Recreating an entire media-management or indexer ecosystem inside the download client does not.
 

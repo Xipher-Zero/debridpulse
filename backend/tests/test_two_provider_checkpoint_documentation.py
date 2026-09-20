@@ -9,12 +9,21 @@ def _text(path: str) -> str:
     return (ROOT / path).read_text()
 
 
-def test_readme_describes_current_two_provider_development_state_without_release_promotion():
+def test_readme_describes_final_two_provider_state_without_claiming_release_promotion():
     readme = _text("README.md")
     assert "AllDebrid + General HTTP(S) providers" in readme
     assert "SPECIALIZED" in readme and "GENERIC" in readme
-    assert "not yet a released v1.0.12 baseline" in readme
+    # Source state: 1.0.12 is finalized, not an unfinished development checkpoint.
+    assert "not yet a released v1.0.12 baseline" not in readme
+    assert "development architecture" not in readme
+    assert "development support matrix" not in readme
+    # Publication state: stated separately and truthfully, never conflated with
+    # the source state, and never claiming a promotion that has not happened.
+    assert "Source state vs. published image state" in readme
     assert "ghcr.io/xipher-zero/debridpulse:v1.0.11.1" in readme
+    # Deferred expansion belongs to 1.0.13, not to an unmet 1.0.12 requirement.
+    assert "1.0.13" in readme
+    assert "Deferred Items 12–16" not in readme
     assert "Settings → General" not in readme
 
 
@@ -59,10 +68,13 @@ def test_oci_metadata_describes_current_two_provider_architecture_and_retains_li
     assert "Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution" not in dockerfile
 
 
-def test_dependency_license_inventory_explicitly_requires_reaudit_after_deferred_integrations():
+def test_dependency_license_inventory_is_final_1_0_12_closure_and_requires_reaudit_in_1_0_13():
     licenses = _text("docs/DEPENDENCY_LICENSES.md")
-    assert "current qualified v1.0.12 **two-provider development tree**" in licenses
-    assert "Deferred Items 12–16 must trigger a fresh third-party/license audit" in licenses
+    assert "inventory for **final v1.0.12**" in licenses
+    assert "v1.0.12 dependency/license closure" in licenses
+    assert "not the final eventual v1.0.12 dependency/license closure" not in licenses
+    assert "`1.0.13` expansion work" in licenses
+    assert "must trigger a fresh third-party/license review" in licenses
 
 
 def test_notice_preserves_legal_attribution_without_obsolete_single_provider_product_framing():

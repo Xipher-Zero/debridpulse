@@ -1,6 +1,6 @@
 # Runtime dependency license inventory
 
-> **Checkpoint scope:** This dependency/license inventory applies to the current qualified v1.0.12 **two-provider development tree**. It is not the final eventual v1.0.12 dependency/license closure. Deferred Items 12–16 must trigger a fresh third-party/license audit if they add libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
+> **Scope:** This is the dependency/license inventory for **final v1.0.12** — the Universal Transfer Core release with the AllDebrid and General HTTP(S) providers and the aria2 executor. It is the v1.0.12 dependency/license closure. The `1.0.13` expansion work (FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executor implementations) must trigger a fresh third-party/license review if it adds libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
 This inventory covers every Python package pinned in
 `backend/requirements.txt`. Package names and versions are enforced by
 `backend/tests/test_license_policy.py`; a dependency change must update both

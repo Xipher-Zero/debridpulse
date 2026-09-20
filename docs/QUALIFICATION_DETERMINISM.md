@@ -279,9 +279,37 @@ loss. A change that skips this preflight is incomplete regardless of green CI.
 
 ## 10. Findings carried by this workstream
 
-There are no unresolved test-infrastructure findings: every qualification flake known when
-this workstream was frozen has been corrected at its oracle, which is why the registry has
-zero active entries.
+**There are no accepted or registered known flakes.** `known_flakes.json` has zero active
+entries, every qualification flake known when this workstream was frozen was corrected at its
+oracle, and no waiver was granted for anything below. An empty registry means nothing has been
+excused — not that nothing is outstanding.
+
+### 10.1 Deferred determinism finding — Browser Runtime load sensitivity
+
+One test-infrastructure finding **is** outstanding and is deliberately carried rather than
+excused: a family of Browser Runtime specs is sensitive to runner load rather than to the
+tree under test.
+
+* **Observed cases.** `provider-status-generation.spec.js` (several cases),
+  `stage10-provenance.spec.js`, `details-candidates.spec.js`, `ui-fix-ws2-p1.spec.js`.
+* **Why it is not a candidate regression.** The same failures reproduce on untouched anchor
+  trees. In the bounded classification that recorded this, the candidate failed 2 of 3 full
+  runs and the anchor 1 of 3, on differing cases — Fisher two-sided p = 1.0, far above the
+  classifier's threshold, so the recorded verdict was `INCONCLUSIVE`, the classification this
+  policy requires when bounded evidence cannot separate a rare candidate regression from
+  pre-existing nondeterminism. A later A/B pass that always ran the candidate first produced
+  an apparent 3/7-vs-0/7 "regression" that disappeared once the order was alternated
+  (final: candidate 5/12, anchor 2/12, differing cases).
+* **What is known about the mechanism.** These specs run against an empty database, where the
+  changed paths of the commits that surfaced them are no-ops. They pass 3/3 in isolation on a
+  fresh container pair, they have not been observed on CI's 2-worker runner (a 16-core
+  developer machine defaults to 8 workers and adds the load), and re-running specs against
+  already-used containers makes it worse because some of them mutate real settings.
+* **Status.** Open. It has **not** been fixed at its oracle and **must not** be registered,
+  waived, retried or slept around. Until it is fixed, a failure in this family is classified
+  by the ordinary rules like any other — it is never pre-excused, and it still fails the gate.
+
+### 10.2 Resolved product finding
 
 One **product** finding was carried here while it was deliberately left unfixed, and is now
 **resolved** by the Canonical Release Remediation: *focus restoration across a background list

@@ -23,10 +23,15 @@ def test_release_container_metadata_uses_authoritative_version_file() -> None:
     assert 'ARG APP_VERSION=unknown' in dockerfile
     assert 'org.opencontainers.image.version="${APP_VERSION}"' in dockerfile
 
-    release_branch = "1.0.11"
+    # The release branch is derived from the one authoritative version owner
+    # (VERSION), never restated here, so this stays correct across releases and
+    # actually guards the branch the current release is developed on.
+    release_branch = read(ROOT / "VERSION").strip()
     for workflow_name in ("tests.yml", "container-security.yml", "fork-image.yml", "codeql.yml"):
         workflow_text = read(ROOT / ".github" / "workflows" / workflow_name)
-        assert release_branch in workflow_text
+        assert f"'{release_branch}'" in workflow_text, (
+            f"{workflow_name} does not gate the current release branch {release_branch}"
+        )
 
     # Fork Image is now immutable-only. Mutable aliases are owned by the
     # exact-SHA Release Promotion gate after all independent qualifiers pass.
