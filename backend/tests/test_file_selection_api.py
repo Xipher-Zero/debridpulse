@@ -276,24 +276,46 @@ async def test_mutable_file_selection_and_materialized_artifacts_are_temporally_
 
     # The following engine cycle is where commit_selected_manifest sets
     # manifest_committed_at (freezing mutability) and fans out the per-file
-    # CHILD REQUESTS -- the artifacts themselves materialize only once each
-    # child request resolves its own candidate, a further cycle away. So the
-    # gap between "no longer mutable" and "artifact actually exists" is not
-    # even zero -- it is strictly positive, making coexistence impossible by
-    # an even wider margin than a single atomic step.
+    # CHILD REQUESTS. Those children are that same cycle's work: each resolves
+    # its own candidate and materializes without waiting for a later cycle.
+    # The exclusivity is therefore observed INSIDE the cycle, at the earliest
+    # instant an artifact could begin to exist -- the first child is held in
+    # the provider, after fan-out and before anything has materialized.
+    import asyncio
+
+    async def observe():
+        view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
+        artifacts = await api.repository.artifacts(transfer_id)
+        assert not (view["mutable"] and artifacts), "mutable selection coexists with a materialized artifact"
+        return view, artifacts
+
+    view, artifacts = await observe()
+    assert view["mutable"] is True and artifacts == ()  # before the commit: mutable, nothing materialized
+
+    api.provider.entered, api.provider.release = asyncio.Event(), asyncio.Event()
     api.clock.advance(5)
-    await api.engine.resolve_pending()
+    cycle = asyncio.create_task(api.engine.resolve_pending())
+    try:
+        await asyncio.wait_for(api.provider.entered.wait(), 10)
+        # Mutability froze strictly BEFORE the first artifact: the manifest is
+        # committed and fanned out, a child is resolving, nothing exists yet.
+        view, artifacts = await observe()
+        assert view["mutable"] is False and artifacts == ()
+        children = [r for r in await api.repository.requests(transfer_id) if r.parent_id is not None]
+        assert len(children) == 2  # exactly the 2 confirmed entries
+    finally:
+        api.provider.release.set()
+    await asyncio.wait_for(cycle, 10)
 
-    after_first_cycle_view = (await api.client.get(f"/api/torrents/{transfer_id}/file-selection")).json()
-    assert after_first_cycle_view["mutable"] is False
-    assert await api.repository.artifacts(transfer_id) == ()  # still nothing to attach() to
-    children = [r for r in await api.repository.requests(transfer_id) if r.parent_id is not None]
-    assert len(children) == 2  # child requests exist, not yet materialized into artifacts
+    # Same-cycle child materialization: the artifacts exist when the cycle that
+    # committed the manifest returns, and selection is no longer mutable.
+    view, materialized = await observe()
+    assert view["mutable"] is False
+    assert sorted(a.request_id for a in materialized) == sorted(r.id for r in children)
 
-    await api.engine.resolve_pending()  # children resolve their own candidates -> materialize
-
-    materialized = await api.repository.artifacts(transfer_id)
-    assert len(materialized) == 2  # exactly the 2 confirmed entries
+    await api.engine.resolve_pending()  # nothing left to resolve; nothing is duplicated
+    view, again = await observe()
+    assert view["mutable"] is False and again == materialized
 
     # Selection stays non-mutable now that artifacts exist -- the two facts
     # are never simultaneously true at any observed point in this drive.

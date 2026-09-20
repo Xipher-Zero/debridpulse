@@ -837,7 +837,21 @@ async def test_a_different_object_is_not_fenced_by_an_orphaned_claim(core):
     assert await core.repository.predecessor_cleanup_barrier(c.id) is False
     await core.engine.resolve_pending()
     assert await core.repository.resources(c.id)
-    assert await attempts(c.id) == 1
+    # Not fenced: C's ROOT reached the provider -- exactly once, never twice.
+    # The member its AVAILABLE resource fanned out is that same cycle's work
+    # and owns its own attempt, so attempts are counted per request identity.
+    records = await core.repository.requests(c.id)
+    root = next(item for item in records if item.parent_id is None)
+    members = [item for item in records if item.parent_id == root.id]
+    per_request = {row["request_id"]: row["n"] for row in await rows(
+        "SELECT a.request_id, COUNT(*) AS n FROM resolution_attempts a JOIN transfer_requests r "
+        "ON r.id=a.request_id WHERE r.transfer_id=? GROUP BY a.request_id", (c.id,))}
+    assert per_request.pop(root.id) == 1
+    assert members and set(per_request) <= {item.id for item in members}
+    assert all(count == 1 for count in per_request.values())
+    # Every provider resolve for C is backed by exactly one of those durable
+    # attempts (root + members): no unrecorded second contact for the root.
+    assert len([call for call in core.provider.calls if call == ("resolve", "box-c")]) == 1 + len(per_request)
 
 
 # --------------------------------------------------------------------------- #

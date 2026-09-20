@@ -6,6 +6,13 @@ every admission boundary: a transfer that already owns a viable
 executable/materialization path keeps enriching, but never stands an entire
 sibling list ahead of an independent transfer that has no path at all.
 
+A cycle boundary is never latency policy (reactive resolution closeout): a
+request the cycle's own work created (a manifest child) and a request an
+operator Retry / Resume / Resume All made runnable are admitted by the SAME
+running cycle through the same bounded fair admission -- while a request the
+cycle already admitted is never admitted twice merely because current truth
+is re-read.
+
 Every scenario is driven by an explicit fake provider whose ``resolve()`` calls
 are individually gated with ``asyncio.Event`` -- no network, no production
 monkeypatching, no sleep used as an assertion. ``_until`` only waits for a
@@ -14,6 +21,7 @@ durable fact that has no event of its own and fails the test on timeout.
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 import pytest
 import pytest_asyncio
@@ -22,6 +30,7 @@ import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage
+from transfers.input_required import auth_required, username_password
 from transfers.models import ResolutionResult, ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
@@ -42,6 +51,16 @@ class GatedProvider(ParcelProvider):
         self.max_active = 0
         self.gates: dict[str, asyncio.Event] = {}
         self.failing: set[str] = set()
+        # Payloads whose failure is permanent: the request is durably
+        # ``failed`` and only an operator Retry requeues it.
+        self.terminal: set[str] = set()
+        # Root payloads that resolve to an AVAILABLE resource whose manifest
+        # fans out into child requests (``_members``) instead of a candidate.
+        self.parcels: dict[str, tuple] = {}
+        # Root payloads that first demand provider input. Their continuation
+        # is gated and recorded like a resolve() call, under ``input:<payload>``;
+        # a submitted password of ``rejected`` is challenged again.
+        self.auth: set[str] = set()
         self._entry = asyncio.Condition()
 
     def hold(self, *payloads: str) -> None:
@@ -68,31 +87,78 @@ class GatedProvider(ParcelProvider):
             await asyncio.wait_for(self._entry.wait_for(lambda: self.active >= count), GUARD_SECONDS)
 
     async def resolve(self, request):
+        if request.payload in self.auth:
+            self.entered.append(request.payload)
+            self.finished.append(request.payload)
+            return ResolutionResult(ResourceState.UNKNOWN, input_required=auth_required(username_password()))
+        return await self._call(request, request.payload)
+
+    async def resolve_with_input(self, request, submitted):
+        if submitted.value("password") == "rejected":
+            self.entered.append(f"input:{request.payload}")
+            self.finished.append(f"input:{request.payload}")
+            return ResolutionResult(ResourceState.UNKNOWN, input_required=auth_required(username_password()))
+        return await self._call(request, f"input:{request.payload}")
+
+    async def _call(self, request, key: str):
         payload = request.payload
-        self.entered.append(payload)
+        self.entered.append(key)
         self.active += 1
         self.max_active = max(self.max_active, self.active)
         async with self._entry:
             self._entry.notify_all()
         try:
-            gate = self.gates.get(payload)
+            gate = self.gates.get(key)
             if gate is not None:
                 await gate.wait()
         except asyncio.CancelledError:
-            self.cancelled.append(payload)
+            self.cancelled.append(key)
             raise
         finally:
             self.active -= 1
-        self.finished.append(payload)
+        self.finished.append(key)
+        if payload in self.terminal:
+            return ResolutionResult(ResourceState.UNKNOWN, error=NormalizedError(
+                Domain.PROVIDER, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION,
+                retryability=Retryability.NEVER, origin=Origin.REMOTE_SOURCE,
+                integration_id=self.descriptor.id,
+            ))
         if payload in self.failing:
             return ResolutionResult(ResourceState.UNKNOWN, error=NormalizedError(
                 Domain.NETWORK, Category.CONNECTION_FAILED, Stage.RESOLUTION,
                 retryability=Retryability.BACKOFF, origin=Origin.REMOTE_SOURCE,
                 integration_id=self.descriptor.id,
             ))
+        if payload in self.parcels:
+            return self.parcel(payload, state=ResourceState.AVAILABLE, files=self.parcels[payload])
         return ResolutionResult(
             ResourceState.AVAILABLE, (self.candidate(request.name or payload, payload=payload),),
         )
+
+
+class GatedExecutor(MemoryExecutor):
+    """Memory executor whose native resume() the test can hold open."""
+
+    def __init__(self, authorize):
+        super().__init__(authorize)
+        self.resume_gate: asyncio.Event | None = None
+        self.resuming = asyncio.Event()
+
+    async def resume(self, handle):
+        if self.resume_gate is not None:
+            self.resuming.set()
+            await self.resume_gate.wait()
+        return await super().resume(handle)
+
+
+def _members(payload: str, count: int) -> tuple:
+    """Manifest of a parcel root: ``count`` files, one child request each."""
+    return tuple((f"{payload}-m{index}.bin", f"{payload}/m{index}.bin", 4) for index in range(count))
+
+
+def _member(payload: str, index: int) -> str:
+    """Provider payload of the ``index``-th child of parcel root ``payload``."""
+    return f"{payload}:{payload}/m{index}.bin"
 
 
 class Runtime:
@@ -115,13 +181,17 @@ class Runtime:
 
     async def settled(self, payloads) -> bool:
         """Every named provider call's outcome is durable: a materialized
-        artifact, or a request failure parked for a later retry."""
+        artifact, a root whose manifest fan-out is committed, or a request
+        failure parked for a later retry."""
         artifacts, parked = set(), set()
         for transfer in await self.repository.active():
             artifacts |= await self.artifact_payloads(transfer.id)
-            parked |= {item.request.payload for item in await self.repository.requests(transfer.id)
+            requests = await self.repository.requests(transfer.id)
+            artifacts |= {item.request.payload for item in requests
+                          if item.state == "resolved" and any(child.parent_id == item.id for child in requests)}
+            parked |= {item.request.payload for item in requests
                        if item.state == "pending" and item.error is not None and item.retry_at > self.now[0]}
-        return all(item in artifacts or item in parked for item in payloads)
+        return all(item.removeprefix("input:") in artifacts or item in parked for item in payloads)
 
     async def artifact_payloads(self, transfer_id: int) -> set[str]:
         requests = {item.id: item.request.payload for item in await self.repository.requests(transfer_id)}
@@ -142,7 +212,7 @@ async def _build(tmp_path, monkeypatch, *, concurrency: int) -> Runtime:
     repository = TransferRepository()
     registry = IntegrationRegistry()
     provider = GatedProvider()
-    executor = MemoryExecutor(repository.authorize_execution)
+    executor = GatedExecutor(repository.authorize_execution)
     registry.register_provider(provider)
     registry.register_executor(executor)
     now = [9000.0]
@@ -568,3 +638,561 @@ async def test_paused_and_cancelled_work_is_never_admitted(build):
     await runtime.engine.resolve_pending()
 
     assert provider.entered == ["l-0", "l-1"]
+
+
+# ---------------------------------------------------------------------------
+# Reactive resolution: work that becomes runnable DURING a running cycle.
+# ---------------------------------------------------------------------------
+
+
+async def _fan_out_is_durable(runtime: Runtime, transfer_id: int, root: str) -> None:
+    """The root's manifest fan-out is committed: its children are durable."""
+    async def committed():
+        records = await runtime.repository.requests(transfer_id)
+        return any(item.request.payload == root and item.state == "resolved" for item in records) and any(
+            item.parent_id for item in records)
+    await _until(committed)
+
+
+@pytest.mark.asyncio
+async def test_manifest_child_is_admitted_by_the_cycle_that_created_it(build):
+    """A root resolves inside a running cycle and its manifest fan-out makes a
+    child durably runnable while ``x-0`` keeps that one cycle alive with a
+    provider slot idle. On BASE the child is "the next cycle's work" and never
+    reaches the provider before this cycle returns; the root is never
+    re-admitted by re-reading current truth."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    provider.parcels["a-0"] = _members("a-0", 1)
+    child = _member("a-0", 0)
+    provider.hold("x-0", child)
+    await runtime.submit("x", 1)
+    a = await runtime.submit("a", 1)
+    cycle = _cycle(build, runtime)
+
+    await provider.wait_entered("x-0")
+    await _fan_out_is_durable(runtime, a.id, "a-0")
+    await provider.wait_entered(child)
+    assert not cycle.done(), "the child was admitted by the cycle that created it"
+    assert "x-0" not in provider.finished and provider.cancelled == []
+    assert provider.entered.count("a-0") == 1
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered.count("a-0") == 1 and provider.entered.count(child) == 1
+    assert await runtime.artifact_payloads(a.id) == {child}
+    assert set((await runtime.request_states(a.id)).values()) == {"resolved"}
+
+
+@pytest.mark.asyncio
+async def test_manifest_children_join_bounded_admission(build):
+    """A root that fans out into 40 children parks nothing: the children are
+    admitted through the same bounded machinery -- ``resolution_concurrency``
+    units in the provider, never one coroutine per child -- and a new
+    independent transfer still receives the next opportunity."""
+    runtime = await build(concurrency=3)
+    provider = runtime.provider
+    provider.parcels["a-0"] = _members("a-0", 40)
+    children = [_member("a-0", index) for index in range(40)]
+    provider.hold(*children)
+    a = await runtime.submit("a", 1)
+    baseline = len(asyncio.all_tasks())
+    cycle = _cycle(build, runtime)
+
+    await provider.wait_active(3)
+    assert provider.active == 3 and len(provider.entered) == 1 + 3
+    states = await runtime.request_states(a.id)
+    assert sum(states[child] == "resolving" for child in children) == 3
+    assert sum(states[child] == "pending" for child in children) == 37
+    # The cycle itself plus one admitted unit per configured slot.
+    assert len(asyncio.all_tasks()) - baseline <= 1 + 3
+
+    b = await runtime.submit("b", 1)
+    provider.open(provider.entered[1])
+    await provider.wait_entered("b-0")
+    assert len(provider.entered) == 1 + 3 + 1
+    assert len(asyncio.all_tasks()) - baseline <= 1 + 3 + 1
+
+    provider.open()
+    await asyncio.wait_for(cycle, 60)
+    assert provider.max_active == 3 and provider.cancelled == []
+    assert sorted(provider.entered) == sorted(["a-0", "b-0", *children])
+    assert await runtime.artifact_payloads(a.id) == set(children)
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+
+
+@pytest.mark.asyncio
+async def test_manifest_children_take_no_fast_lane(build):
+    """Children are ordinary work of their transfer. A's root used A's turn of
+    the bootstrap round, so its first child waits for pathless B and for the
+    one enrichment turn owed to productive P; once that child gives A a path
+    the second child is enrichment and again follows pathless B and P."""
+    runtime = await build(concurrency=1)
+    provider = runtime.provider
+    productive = await runtime.submit("p", 3)
+    provider.failing = {"p-1", "p-2"}
+    await runtime.engine.resolve_pending()
+    assert await runtime.artifact_payloads(productive.id) == {"p-0"}
+
+    provider.parcels["a-0"] = _members("a-0", 2)
+    first, second = _member("a-0", 0), _member("a-0", 1)
+    a = await runtime.submit("a", 1)
+    await runtime.submit("b", 2)
+    provider.failing = {"b-0", "b-1"}
+    provider.hold("p-1", "p-2", "a-0", first, second, "b-0", "b-1")
+    provider.entered.clear()
+    runtime.now[0] += 60
+
+    await _drive(runtime, _cycle(build, runtime), ["a-0", "b-0", "p-1", first, "b-1", "p-2", second])
+    assert await runtime.artifact_payloads(a.id) == {first, second}
+    assert await runtime.artifact_payloads(productive.id) == {"p-0", "p-1", "p-2"}
+
+
+@pytest.mark.parametrize("command", ["delete", "cancel"])
+@pytest.mark.asyncio
+async def test_child_of_a_transfer_retired_before_its_admission_never_executes(build, command):
+    """Section 23. A's children become durable while B owns the only slot; A
+    is then deleted/cancelled. Same-cycle discovery never resurrects them."""
+    runtime = await build(concurrency=1)
+    provider = runtime.provider
+    provider.parcels["a-0"] = _members("a-0", 3)
+    provider.hold("a-0", "b-0", *(_member("a-0", index) for index in range(3)))
+    a = await runtime.submit("a", 1)
+    b = await runtime.submit("b", 1)
+    cycle = _cycle(build, runtime)
+
+    await provider.wait_entered("a-0")
+    provider.open("a-0")
+    await provider.wait_entered("b-0")
+    await _fan_out_is_durable(runtime, a.id, "a-0")
+    if command == "delete":
+        await runtime.engine.delete(a.id, remote=False)
+    else:
+        await runtime.engine.cancel(a.id)
+
+    provider.open("b-0")
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-0"]
+    assert provider.cancelled == []
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+
+
+@pytest.mark.asyncio
+async def test_paused_child_is_not_admitted_until_resume_wakes_the_same_cycle(build):
+    """Section 23 + 8.1. A is paused after its child became durable: the child
+    makes no provider contact while paused, and Resume hands it to the SAME
+    running cycle -- exactly once."""
+    runtime = await build(concurrency=1)
+    provider = runtime.provider
+    provider.parcels["a-0"] = _members("a-0", 1)
+    child = _member("a-0", 0)
+    provider.hold("a-0", child, "b-0", "b-1")
+    a = await runtime.submit("a", 1)
+    await runtime.submit("b", 2)
+    cycle = _cycle(build, runtime)
+
+    await provider.wait_entered("a-0")
+    provider.open("a-0")
+    await provider.wait_entered("b-0")
+    await _fan_out_is_durable(runtime, a.id, "a-0")
+    await runtime.engine.pause(a.id)
+    provider.open("b-0")
+    await provider.wait_entered("b-1")
+    assert child not in provider.entered
+
+    assert await runtime.engine.resume(a.id) == ()
+    provider.open("b-1")
+    await provider.wait_entered(child)
+    assert not cycle.done()
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-0", "b-1", child]
+    assert await runtime.artifact_payloads(a.id) == {child}
+
+
+async def _terminally_failed(runtime: Runtime, prefix: str, count: int, *, terminal, failing=()):
+    """A transfer whose named requests failed in an EARLIER cycle: ``terminal``
+    ones are durably ``failed`` (only an operator Retry requeues them)."""
+    provider = runtime.provider
+    transfer = await runtime.submit(prefix, count)
+    provider.terminal, provider.failing = set(terminal), set(failing)
+    await runtime.engine.resolve_pending()
+    states = await runtime.request_states(transfer.id)
+    assert all(states[payload] == "failed" for payload in terminal)
+    provider.terminal = set()
+    provider.entered.clear()
+    runtime.now[0] += 60
+    return transfer
+
+
+@pytest.mark.asyncio
+async def test_operator_retry_wakes_the_running_cycle(build):
+    """Section 7. B's request failed permanently before this cycle, so the
+    cycle passed B over. Operator Retry durably requeues it while A still owns
+    the cycle and a slot is idle; on BASE the requeued request waits for the
+    cycle to end."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    b = await _terminally_failed(runtime, "b", 1, terminal={"b-0"})
+    provider.hold("a-0", "b-0")
+    await runtime.submit("a", 1)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0")
+    assert provider.entered == ["a-0"]
+
+    assert await runtime.engine.retry(b.id) is True
+    assert (await runtime.request_states(b.id))["b-0"] in {"pending", "resolving"}
+    await provider.wait_entered("b-0")
+    assert not cycle.done(), "Retry was served by the running cycle"
+    assert "a-0" not in provider.finished and provider.cancelled == []
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-0"]
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+
+
+@pytest.mark.asyncio
+async def test_retry_racing_in_flight_work_requeues_without_duplicating_it(build):
+    """Section 7.3. ``b-1`` is inside the provider when Retry arrives. Retry
+    serializes behind that in-flight unit, only the permanently failed ``b-0``
+    is a new incarnation, and ``b-1`` is never admitted a second time."""
+    runtime = await build(concurrency=3)
+    provider = runtime.provider
+    b = await _terminally_failed(runtime, "b", 2, terminal={"b-0"}, failing={"b-1"})
+    provider.hold("a-0", "b-0", "b-1")
+    await runtime.submit("a", 1)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0", "b-1")
+
+    retry = asyncio.create_task(runtime.engine.retry(b.id))
+    build.cycles.append(retry)
+    await asyncio.sleep(0)
+    assert not retry.done()
+    assert (await runtime.request_states(b.id)) == {"b-0": "failed", "b-1": "resolving"}
+
+    provider.open("b-1")
+    assert await asyncio.wait_for(retry, GUARD_SECONDS) is True
+    await provider.wait_entered("b-0")
+    assert not cycle.done() and "a-0" not in provider.finished
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert sorted(provider.entered) == ["a-0", "b-0", "b-1"]
+    assert provider.cancelled == []
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+
+
+@pytest.mark.asyncio
+async def test_reconsidering_a_transfer_never_readmits_its_in_flight_requests(build):
+    """Sections 5.3, 9.C. Resume names B while both of its requests are inside
+    the provider and durably ``resolving`` -- a state that looks schedulable
+    when current truth is re-read. With a slot idle neither is admitted again;
+    ``c-0``, submitted afterwards, proves the scheduler did reassess."""
+    runtime = await build(concurrency=4)
+    provider = runtime.provider
+    provider.hold("a-0", "b-0", "b-1")
+    await runtime.submit("a", 1)
+    b = await runtime.submit("b", 2)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0", "b-0", "b-1")
+
+    await runtime.engine.pause(b.id)
+    assert await runtime.engine.resume(b.id) == ()
+    await runtime.submit("c", 1)
+    await provider.wait_entered("c-0")
+    assert sorted(provider.entered) == ["a-0", "b-0", "b-1", "c-0"]
+    assert await runtime.request_states(b.id) == {"b-0": "resolving", "b-1": "resolving"}
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert sorted(provider.entered) == ["a-0", "b-0", "b-1", "c-0"]
+    assert await runtime.artifact_payloads(b.id) == {"b-0", "b-1"}
+
+
+@pytest.mark.asyncio
+async def test_resume_wakes_the_running_cycle_and_leaves_paused_siblings_paused(build):
+    """Sections 8.1, 18.3. B and S are paused before the cycle, which passes
+    both over. Resume(B) makes B admissible while A still owns the cycle; on
+    BASE B waits for the cycle to end. S stays paused and untouched."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    provider.hold("a-0", "b-0")
+    await runtime.submit("a", 1)
+    b = await runtime.submit("b", 1)
+    s = await runtime.submit("s", 1)
+    await runtime.engine.pause(b.id)
+    await runtime.engine.pause(s.id)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0")
+
+    assert await runtime.engine.resume(b.id) == ()
+    await provider.wait_entered("b-0")
+    assert not cycle.done(), "Resume was served by the running cycle"
+    assert "a-0" not in provider.finished and provider.cancelled == []
+    assert (await runtime.repository.get(s.id)).paused
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-0"]
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+    assert (await runtime.repository.get(s.id)).paused
+
+
+@pytest.mark.asyncio
+async def test_resume_one_under_global_pause_admits_only_that_transfer(build):
+    """Section 8.3. Resume of one transfer while globally paused keeps the
+    existing contract -- every sibling becomes individually paused, the global
+    pause ends -- and only the resumed transfer reaches the provider."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    provider.hold("a-0", "b-0")
+    a = await runtime.submit("a", 1)
+    b = await runtime.submit("b", 1)
+    s = await runtime.submit("s", 1)
+    await runtime.engine.pause(b.id)
+    await runtime.engine.pause(s.id)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0")
+    await runtime.engine.pause_all()
+    assert provider.entered == ["a-0"]
+
+    assert await runtime.engine.resume(b.id) == ()
+    await provider.wait_entered("b-0")
+    assert not cycle.done()
+    assert not await runtime.repository.globally_paused()
+    assert (await runtime.repository.get(a.id)).paused and (await runtime.repository.get(s.id)).paused
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-0"]
+
+
+@pytest.mark.asyncio
+async def test_resume_reaches_the_scheduler_before_artifact_recovery_returns(build):
+    """Section 21.3 boundary. ``resume()`` holds no transfer lock, and its
+    durable unpause is complete before it starts artifact recovery, so that is
+    where the scheduler is told: B's parked request reaches the provider while
+    ``resume()`` is still blocked inside the executor's native resume."""
+    runtime = await build(concurrency=2)
+    provider, executor = runtime.provider, runtime.executor
+    b = await runtime.submit("b", 2)
+    provider.failing = {"b-1"}
+    await runtime.engine.resolve_pending()
+    await runtime.engine.reconcile_executions()
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+    assert [call[0] for call in executor.calls].count("start") == 1
+    await runtime.engine.pause(b.id)
+
+    provider.failing = set()
+    provider.entered.clear()
+    runtime.now[0] += 60
+    provider.hold("a-0", "b-1")
+    await runtime.submit("a", 1)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0")
+
+    executor.resume_gate = asyncio.Event()
+    resume = asyncio.create_task(runtime.engine.resume(b.id))
+    build.cycles.append(resume)
+    await asyncio.wait_for(executor.resuming.wait(), GUARD_SECONDS)
+    await provider.wait_entered("b-1")
+    assert not resume.done() and not cycle.done()
+
+    executor.resume_gate.set()
+    assert await asyncio.wait_for(resume, GUARD_SECONDS) == ()
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-1"]
+    assert await runtime.artifact_payloads(b.id) == {"b-0", "b-1"}
+
+
+@pytest.mark.asyncio
+async def test_resume_all_wakes_the_running_cycle_for_every_resumed_transfer(build):
+    """Sections 8.2, 18.2. B and C are paused before the cycle. Resume All
+    makes both admissible; the running cycle admits them through ordinary fair
+    bounded admission -- one free slot, one unit -- with no cycle restart."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    provider.hold("a-0", "b-0", "c-0")
+    a = await runtime.submit("a", 1)
+    b = await runtime.submit("b", 1)
+    c = await runtime.submit("c", 1)
+    await runtime.engine.pause(b.id)
+    await runtime.engine.pause(c.id)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("a-0")
+
+    results = await runtime.engine.resume_all()
+    assert results == {a.id: (), b.id: (), c.id: ()}
+    assert not (await runtime.repository.get(b.id)).paused and not (await runtime.repository.get(c.id)).paused
+    await provider.wait_entered("b-0")
+    assert provider.entered == ["a-0", "b-0"]
+
+    provider.open("b-0")
+    await provider.wait_entered("c-0")
+    assert not cycle.done(), "Resume All was served by the running cycle"
+    assert "a-0" not in provider.finished and provider.cancelled == []
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert provider.entered == ["a-0", "b-0", "c-0"]
+    assert await runtime.artifact_payloads(b.id) == {"b-0"}
+    assert await runtime.artifact_payloads(c.id) == {"c-0"}
+
+
+def test_operator_triggers_signal_the_one_scheduler_wake_and_nothing_else():
+    """Sections 2.3, 21. Retry / Resume / Resume All only tell the existing
+    scheduler owner that work may be runnable: one wake call each (Resume All
+    once per batch, outside its per-transfer loop), and no scheduling policy."""
+    for command in (TransferEngine.retry, TransferEngine.resume, TransferEngine.resume_all):
+        source = inspect.getsource(command)
+        assert source.count("self._resolution_opportunity(") == 1, command.__name__
+        for policy in ("_ResolutionCycle", "_resolution_cycle", "_admit_resolution_unit", "_resolution_work",
+                       "_fair_resolution_choice", "create_task", "asyncio.Event"):
+            assert policy not in source, (command.__name__, policy)
+    batch = inspect.getsource(TransferEngine.resume_all)
+    wake = next(line for line in batch.splitlines() if "self._resolution_opportunity(" in line)
+    loop = next(line for line in batch.splitlines() if line.lstrip().startswith("for transfer in"))
+    assert len(wake) - len(wake.lstrip()) <= len(loop) - len(loop.lstrip())
+
+
+async def _challenged(runtime: Runtime, prefix: str, *, password: str = "accepted", members: int = 1):
+    """Transfer whose root ``<prefix>-0`` demanded provider input in an EARLIER
+    cycle; the operator's submission is waiting for the next continuation,
+    which -- when accepted -- fans out into ``members`` child requests."""
+    provider = runtime.provider
+    root = f"{prefix}-0"
+    provider.auth.add(root)
+    provider.parcels[root] = _members(root, members)
+    transfer = await runtime.submit(prefix, 1)
+    await runtime.engine.resolve_pending()
+    challenge = await runtime.engine.challenges.current(transfer.id)
+    assert challenge is not None and provider.entered == [root]
+    await runtime.engine.submit_input(transfer.id, challenge.id, "username_password",
+                                      {"username": "operator", "password": password})
+    provider.entered.clear()
+    return transfer, challenge
+
+
+@pytest.mark.asyncio
+async def test_provider_input_continuation_children_are_admitted_by_the_same_cycle(build):
+    """A provider-input continuation is admitted by a running cycle, satisfies
+    the challenge and fans out a durable child while ``x-0`` keeps that cycle
+    alive with a slot idle. The continuation is applied exactly once, the root
+    is never resolved again, and the child is this cycle's work."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    a, challenge = await _challenged(runtime, "a")
+    child = _member("a-0", 0)
+    provider.hold("x-0", child)
+    await runtime.submit("x", 1)
+    cycle = _cycle(build, runtime)
+
+    await provider.wait_entered("x-0", "input:a-0")
+    await _fan_out_is_durable(runtime, a.id, "a-0")
+    assert await runtime.engine.challenges.current(a.id) is None
+    await provider.wait_entered(child)
+    assert not cycle.done(), "the continuation's child was admitted by the same cycle"
+    assert "x-0" not in provider.finished and provider.cancelled == []
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert sorted(provider.entered) == sorted(["x-0", "input:a-0", child])
+    assert await runtime.artifact_payloads(a.id) == {child}
+    assert await runtime.engine.challenges.current(a.id) is None
+
+
+@pytest.mark.asyncio
+async def test_provider_input_challenge_that_persists_still_blocks_the_transfer(build):
+    """The continuation is rejected and the provider challenges again. Current
+    challenge truth stays authoritative: A's other request is pending and
+    ready, yet it makes no provider contact, and neither the old nor the
+    replacement challenge is continued a second time."""
+    runtime = await build(concurrency=2)
+    provider = runtime.provider
+    provider.auth.add("a-0")
+    a = await runtime.submit("a", 2)
+    provider.failing = {"a-1"}
+    await runtime.engine.resolve_pending()
+    first = await runtime.engine.challenges.current(a.id)
+    assert first is not None and sorted(provider.entered) == ["a-0", "a-1"]
+    await runtime.engine.submit_input(a.id, first.id, "username_password",
+                                      {"username": "operator", "password": "rejected"})
+    provider.failing = set()
+    provider.entered.clear()
+    runtime.now[0] += 60
+    assert (await runtime.request_states(a.id))["a-1"] == "pending"
+
+    provider.hold("x-0")
+    await runtime.submit("x", 1)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("x-0", "input:a-0")
+
+    async def replaced():
+        current = await runtime.engine.challenges.current(a.id)
+        return current is not None and current.id != first.id
+    await _until(replaced)
+    # ``y-0`` is submitted afterwards: once it has been admitted the scheduler
+    # has reassessed A under the replacement challenge as well.
+    await runtime.submit("y", 1)
+    await provider.wait_entered("y-0")
+    assert not cycle.done()
+    assert sorted(provider.entered) == ["input:a-0", "x-0", "y-0"]
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert sorted(provider.entered) == ["input:a-0", "x-0", "y-0"]
+    assert (await runtime.request_states(a.id))["a-1"] == "pending"
+    assert await runtime.artifact_payloads(a.id) == set()
+
+
+@pytest.mark.asyncio
+async def test_provider_input_children_take_no_fast_lane(build):
+    """A child a continuation created is ordinary work of its transfer: the
+    continuation used A's turn of the bootstrap round, so the child waits for
+    pathless B and for the one enrichment turn owed to productive P."""
+    runtime = await build(concurrency=1)
+    provider = runtime.provider
+    productive = await runtime.submit("p", 3)
+    provider.failing = {"p-1", "p-2"}
+    await runtime.engine.resolve_pending()
+    assert await runtime.artifact_payloads(productive.id) == {"p-0"}
+    provider.entered.clear()
+
+    a, _challenge = await _challenged(runtime, "a", members=2)
+    first, second = _member("a-0", 0), _member("a-0", 1)
+    await runtime.submit("b", 2)
+    provider.failing = {"b-0", "b-1"}
+    provider.hold("p-1", "p-2", "input:a-0", first, second, "b-0", "b-1")
+    runtime.now[0] += 60
+
+    await _drive(runtime, _cycle(build, runtime), ["input:a-0", "b-0", "p-1", first, "b-1", "p-2", second])
+    assert await runtime.artifact_payloads(a.id) == {first, second}
+
+
+@pytest.mark.asyncio
+async def test_provider_input_children_join_bounded_admission(build):
+    """A continuation that fans out into 30 children parks nothing: they join
+    the same bounded admission, never one coroutine per child."""
+    runtime = await build(concurrency=3)
+    provider = runtime.provider
+    a, _challenge = await _challenged(runtime, "a", members=30)
+    children = [_member("a-0", index) for index in range(30)]
+    provider.hold(*children)
+    baseline = len(asyncio.all_tasks())
+    cycle = _cycle(build, runtime)
+
+    await provider.wait_active(3)
+    assert provider.active == 3 and len(provider.entered) == 1 + 3
+    states = await runtime.request_states(a.id)
+    assert sum(states[child] == "resolving" for child in children) == 3
+    assert sum(states[child] == "pending" for child in children) == 27
+    assert len(asyncio.all_tasks()) - baseline <= 1 + 3
+
+    provider.open()
+    await asyncio.wait_for(cycle, 60)
+    assert provider.max_active == 3 and provider.cancelled == []
+    assert sorted(provider.entered) == sorted(["input:a-0", *children])
+    assert await runtime.artifact_payloads(a.id) == set(children)

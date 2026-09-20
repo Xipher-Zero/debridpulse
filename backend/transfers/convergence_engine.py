@@ -1528,10 +1528,6 @@ class TransferEngine(_QualifiedTransferEngine):
             ):
                 return False
 
-            if not artifacts:
-                await self.repository.retry_requests(transfer_id, reset_budget=True)
-                return True
-
             ok = True
             for artifact in artifacts:
                 if artifact.state == "completed":
@@ -1554,8 +1550,14 @@ class TransferEngine(_QualifiedTransferEngine):
                     if current is None or await self._retry_actionable((current,)):
                         ok = False
             await self.repository.retry_requests(transfer_id, reset_budget=True)
-            await self._aggregate(transfer_id)
-            return ok
+            if artifacts:
+                await self._aggregate(transfer_id)
+        # Requests were durably requeued, and the transfer lock -- which a
+        # running resolution cycle will not admit this transfer past -- is
+        # released: the scheduler reconsiders the transfer now. Every earlier
+        # return changed no resolution eligibility and wakes nothing.
+        self._resolution_opportunity(transfer_id)
+        return ok
 
     async def _reacquire_transfer(self, transfer_id: int) -> bool:
         """Resume tracking a transfer a duplicate submission found already
@@ -2167,6 +2169,10 @@ class TransferEngine(_QualifiedTransferEngine):
         transfer = await self.repository.get(transfer_id)
         if transfer and transfer.state == TransferState.PAUSED:
             await self.repository.state(transfer_id, TransferState.QUEUED)
+        # The transfer is durably admissible and this method holds no transfer
+        # lock, so its request-level work need not wait for the artifact
+        # recovery below: a running resolution cycle reconsiders it now.
+        self._resolution_opportunity(transfer_id)
         errors = []
         for artifact in await self.repository.artifacts(transfer_id):
             if artifact.state == "completed":
@@ -2200,4 +2206,7 @@ class TransferEngine(_QualifiedTransferEngine):
                         errors.append(current.error)
             await self._aggregate(transfer.id)
             results[transfer.id] = tuple(errors)
+        # One wake for the batch: every transfer above is durably admissible,
+        # and a running resolution cycle reconsiders them all now.
+        self._resolution_opportunity(*results)
         return results

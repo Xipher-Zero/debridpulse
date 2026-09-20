@@ -600,16 +600,41 @@ async def test_unknown_cleanup_failure_is_retained_without_retry_storm(core):
 
 @pytest.mark.asyncio
 async def test_observed_inventory_resource_is_not_resubmitted_or_owned(core):
-    result = core.provider.parcel(state=ResourceState.AVAILABLE, ownership=Ownership.OBSERVED)
+    # The observed root and its manifest member carry distinct provider
+    # payloads, so a provider resolve of the ROOT (a resubmission of the
+    # already-observed resource as a new source) is distinguishable from the
+    # member's own legitimate resolution.
+    result = core.provider.parcel(state=ResourceState.AVAILABLE, ownership=Ownership.OBSERVED,
+                                  files=(("payload.bin", "folder/payload.bin", 4),))
     core.provider.inventory_items = (result.observation,)
     await core.engine.reconcile_inventory()
     await core.engine.tick()
-    assert not [item for item in core.provider.calls if item[0] == "resolve"]
     transfer = (await core.repository.active())[0]
-    resource = (await core.repository.resources(transfer.id))[0][0]
-    assert resource.ownership == Ownership.OBSERVED
+    records = await core.repository.requests(transfer.id)
+    root = next(item for item in records if item.parent_id is None)
+    members = [item for item in records if item.parent_id == root.id]
+    assert root.request.payload == "parcel" and [item.request.payload for item in members] == ["parcel:folder/payload.bin"]
+
+    # The root is never resubmitted: no provider resolve, no durable
+    # resolution attempt. Its member IS this cycle's work -- resolved exactly
+    # once and materialized without waiting for a later cycle.
+    resolved = [item[1] for item in core.provider.calls if item[0] == "resolve"]
+    assert root.request.payload not in resolved
+    async with database.get_db() as db:
+        attempted = {row["request_id"] for row in await db.fetchall("SELECT request_id FROM resolution_attempts")}
+    assert root.id not in attempted and root.state == "resolved"
+    assert resolved == [item.request.payload for item in members]
+    assert [item.state for item in members] == ["resolved"]
+    assert [item.request_id for item in await core.repository.artifacts(transfer.id)] == [members[0].id]
+
+    # Member resolution promoted nothing: the one resource is still OBSERVED,
+    # so cleanup neither claims it nor contacts the provider.
+    resources = await core.repository.resources(transfer.id)
+    assert [(item.id, item.ownership) for item, _state, _pending in resources] == [
+        (result.observation.resource.id, Ownership.OBSERVED)]
     await core.engine._cleanup_resources(transfer.id)
     assert not [item for item in core.provider.calls if item[0] == "cleanup"]
+    assert not any(pending for _resource, _state, pending in await core.repository.resources(transfer.id))
 
 
 @pytest.mark.asyncio

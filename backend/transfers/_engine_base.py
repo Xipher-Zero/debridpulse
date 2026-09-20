@@ -148,16 +148,33 @@ class _ResolutionCycle:
 
     def __init__(self):
         # Set whenever an admission boundary opens: a provider slot was
-        # released, an admitted unit finished, or a transfer was submitted.
+        # released, an admitted unit finished, or a durable mutation made
+        # resolution work runnable (``_resolution_opportunity``).
         self.opportunity = asyncio.Event()
         self.units: dict[asyncio.Task, int] = {}
         # Admitted units that may still claim a provider-resolution slot.
         self.slot_bound: set[asyncio.Task] = set()
-        # Per entered transfer: the requests that existed when it entered this
-        # cycle and were not admitted yet. A request created by this cycle's
-        # own work (e.g. a manifest child) is the next cycle's work.
+        # Per entered transfer: its schedulable requests this cycle has not
+        # served, as of the transfer's latest census of current durable truth
+        # (``_resolution_census``). A request created by this cycle's own
+        # work (e.g. a manifest child) is THIS cycle's work: the unit that
+        # created it takes the census that finds it.
         self.remaining: dict[int, list[RequestRecord]] = {}
+        # Request id -> the durable scheduling incarnation this cycle already
+        # served (``None`` while that unit is still in flight). Re-reading
+        # current truth therefore never admits an in-flight request twice and
+        # never hot-loops a served request that still looks schedulable; only
+        # a request this cycle has not seen, or one whose durable facts were
+        # rewritten since it was served (a requeue), is work again.
+        # A provider-input challenge id is recorded here too and stays
+        # ``None``: one continuation per challenge identity per cycle.
+        self.admitted: dict[str, tuple | None] = {}
         self.retired: set[int] = set()
+        # Transfers ``_resolution_opportunity`` named since the scheduler last
+        # re-entered them. Consumed by the scheduler at its own boundary, so a
+        # census or liveness read that was already in progress when the
+        # mutation landed can never overwrite the request to look again.
+        self.reconsider: set[int] = set()
         self.locks: dict[int, asyncio.Lock] = {}
         self.served: dict[int, int] = {}
         # The current bootstrap round: the pathless transfers that were
@@ -286,7 +303,7 @@ class TransferEngine:
             await self.repository.state(transfer.id, TransferState.PAUSED)
         # A running resolution cycle reassesses at once; it never makes a new
         # transfer wait for previously admitted work to drain.
-        self._resolution_opportunity()
+        self._resolution_opportunity(transfer.id)
         return await self.repository.get(transfer.id)
 
     async def tick(self):
@@ -301,10 +318,14 @@ class TransferEngine:
 
         One cycle admits resolution work a single fair unit at a time and
         reassesses current durable truth at every admission boundary (a
-        provider slot was released, an admitted unit finished, a transfer was
-        submitted) -- never a whole request set up front. Work already in
-        flight is never preempted; ``_resolution_slots`` alone bounds provider
-        I/O, and no lock of this scheduler is held while admitted work runs.
+        provider slot was released, an admitted unit finished, or
+        ``_resolution_opportunity`` reported a durable mutation: a submission,
+        an operator requeue, an unpause) -- never a whole request set up
+        front. A cycle boundary is an implementation detail, never latency
+        policy: work that becomes runnable while the cycle runs is this
+        cycle's work. Work already in flight is never preempted or admitted
+        twice; ``_resolution_slots`` alone bounds provider I/O, and no lock of
+        this scheduler is held while admitted work runs.
 
         Returns the exact set of transfer ids whose canonical selected-manifest
         commitment changed THIS cycle (empty when none did), so a caller can
@@ -331,9 +352,20 @@ class TransferEngine:
                 raise cycle.failure
             return frozenset(cycle.changed)
 
-    def _resolution_opportunity(self) -> None:
+    def _resolution_opportunity(self, *transfer_ids: int) -> None:
+        """The one scheduler wake: canonical resolution work may be runnable
+        now, so a running cycle reassesses at once.
+
+        A caller names the transfers whose durable state it just changed (a
+        submission, an operator requeue, an unpause). The cycle re-enters
+        those from current truth at its next admission boundary; it forgets
+        only its cached view of them, never what it already admitted
+        (``_ResolutionCycle.admitted``). The caller decides nothing else:
+        priority, fairness and capacity stay with the scheduler.
+        """
         cycle = self._resolution_cycle
         if cycle is not None:
+            cycle.reconsider.update(transfer_ids)
             cycle.opportunity.set()
 
     def _resolution_slot_released(self) -> None:
@@ -385,14 +417,45 @@ class TransferEngine:
                 return True
         return False
 
+    @staticmethod
+    def _resolution_incarnation(record: RequestRecord) -> tuple:
+        """The durable facts every requeue rewrites; derived, never stored."""
+        return record.state, record.attempts, record.retry_at, record.error
+
+    async def _resolution_census(self, cycle: _ResolutionCycle, transfer_id: int, *, served: str | None = None) -> None:
+        """Rebuild this transfer's unserved schedulable requests from current
+        durable truth -- the only place the cycle learns of a request created
+        or requeued after the transfer entered it.
+
+        ``served`` is the request whose admitted unit is finishing: its
+        current incarnation is recorded as served. That unit still runs under
+        the transfer lock the cycle holds, so an operator requeue -- which
+        takes the same lock -- always lands after the record and is seen as
+        the new incarnation it is.
+        """
+        remaining = []
+        for record in await self.repository.requests(transfer_id):
+            incarnation = self._resolution_incarnation(record)
+            if record.id == served:
+                cycle.admitted[record.id] = incarnation
+            elif record.state in _SCHEDULABLE_REQUEST_STATES and (
+                    record.id not in cycle.admitted or cycle.admitted[record.id] not in (None, incarnation)):
+                remaining.append(record)
+        cycle.remaining[transfer_id] = remaining
+
     async def _resolution_work(self, cycle: _ResolutionCycle, transfer, capacity: int):
         """This transfer's next admissible unit right now.
 
-        Liveness, the input challenge and the request set are read once, when
-        the transfer enters the cycle (as one cycle always did); readiness is
-        re-evaluated against the clock at every boundary, and the admitted
-        request is re-read before it runs.
+        Liveness and the input challenge are read when the transfer enters
+        the cycle, and again only when ``_resolution_opportunity`` names it;
+        its request census is also retaken whenever its admitted work
+        finishes. Readiness is re-evaluated against the clock at every
+        boundary, and the admitted request is re-read before it runs.
         """
+        if transfer.id in cycle.reconsider:
+            cycle.reconsider.discard(transfer.id)
+            cycle.retired.discard(transfer.id)
+            cycle.remaining.pop(transfer.id, None)
         if transfer.id in cycle.retired:
             return None
         in_flight = cycle.in_flight(transfer.id)
@@ -410,12 +473,15 @@ class TransferEngine:
             challenge = await self.challenges.current(transfer.id)
             if challenge:
                 # A challenged transfer resolves nothing else this cycle; only
-                # a provider-origin challenge has a continuation to admit.
-                if challenge.origin == InputOrigin.PROVIDER:
+                # a provider-origin challenge has a continuation to admit, and
+                # never beside work of the transfer that is still in flight.
+                if in_flight:
+                    return None
+                if challenge.origin == InputOrigin.PROVIDER and challenge.id not in cycle.admitted:
                     return challenge
                 cycle.retired.add(transfer.id)
                 return None
-            cycle.remaining[transfer.id] = list(await self.repository.requests(transfer.id))
+            await self._resolution_census(cycle, transfer.id)
         for record in cycle.remaining[transfer.id]:
             if self._resolution_ready(record):
                 return record
@@ -480,24 +546,51 @@ class TransferEngine:
             await lock.acquire()
             cycle.locks[transfer.id] = lock
         if isinstance(work, RequestRecord):
-            cycle.remaining[transfer.id].remove(work)
-            # Entry-time facts chose the transfer; the admitted unit itself
-            # always runs on the request's current durable state.
-            work = next((record for record in await self.repository.requests(transfer.id)
-                         if record.id == work.id), None)
+            # The census chose the transfer; the admitted unit itself always
+            # runs on the request's current durable state.
+            await self._resolution_census(cycle, transfer.id)
+            work = next((record for record in cycle.remaining[transfer.id] if record.id == work.id), None)
             if work is None or not self._resolution_ready(work):
                 self._release_resolution_transfer(cycle, transfer.id)
                 return True
-            unit = self._process_request(work)
+            cycle.remaining[transfer.id].remove(work)
+            cycle.admitted[work.id] = None
+            unit = self._serve_resolution_request(cycle, work)
         else:
             cycle.retired.add(transfer.id)
-            unit = self._continue_provider_input(work)
+            cycle.admitted[work.id] = None
+            unit = self._serve_provider_input(work)
         cycle.served[transfer.id] = max(cycle.served.values(), default=0) + 1
         task = asyncio.create_task(unit)
         cycle.units[task] = transfer.id
         cycle.slot_bound.add(task)
         task.add_done_callback(lambda done: self._resolution_unit_done(cycle, done))
         return True
+
+    async def _serve_resolution_request(self, cycle: _ResolutionCycle, record: RequestRecord):
+        """One admitted request unit: admissibility, the work, then the census
+        that records it as served and discovers what it made runnable."""
+        if not await self._live(record.transfer_id, admission=True):
+            # Paused or retired after it entered the cycle. Nothing was
+            # served: the request keeps its incarnation, and the transfer is
+            # out of this cycle until ``_resolution_opportunity`` names it.
+            del cycle.admitted[record.id]
+            cycle.retired.add(record.transfer_id)
+            return None
+        changed = await self._process_request(record)
+        await self._resolution_census(cycle, record.transfer_id, served=record.id)
+        return changed
+
+    async def _serve_provider_input(self, challenge: InputChallenge):
+        """One admitted provider-input continuation. Whatever it changed --
+        the challenge cleared or replaced, requests created -- the scheduler
+        re-enters the transfer from current truth through its ordinary entry
+        path: liveness, the CURRENT challenge, then the census. A challenge
+        that is still current keeps blocking the transfer, and its identity
+        is never continued twice in one cycle."""
+        changed = await self._continue_provider_input(challenge)
+        self._resolution_opportunity(challenge.transfer_id)
+        return changed
 
     @staticmethod
     def _release_resolution_transfer(cycle: _ResolutionCycle, transfer_id: int) -> None:
