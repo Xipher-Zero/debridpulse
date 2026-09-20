@@ -17,6 +17,7 @@ import contextlib
 from dataclasses import dataclass, replace
 
 from transfers.candidate_activation import ActivationResult, activate_candidate
+from transfers.cohorts import reopen_unverified_associations, unverified_association_count
 from transfers.contracts import CandidateRefresh, PauseResume, ResourceLookup
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
 from transfers.errors import (
@@ -1504,7 +1505,9 @@ class TransferEngine(_QualifiedTransferEngine):
             transfer = await self.repository.get(transfer_id)
             if transfer is None:
                 raise KeyError(transfer_id)
-            if transfer.state in {TransferState.CONSOLIDATED, TransferState.DELETED}:
+            if transfer.state == TransferState.CONSOLIDATED:
+                return await self._reconsider_unverified_associations(transfer)
+            if transfer.state == TransferState.DELETED:
                 return False
             if await self.challenges.current(transfer_id):
                 return False
@@ -1558,6 +1561,55 @@ class TransferEngine(_QualifiedTransferEngine):
         # return changed no resolution eligibility and wakes nothing.
         self._resolution_opportunity(transfer_id)
         return ok
+
+    async def _reconsider_unverified_associations(self, transfer) -> bool:
+        """DP 1.0.12 consolidation corrective, Round 3: the operator-retry
+        branch for a transfer that settled CONSOLIDATED while holding at least
+        one terminal UNVERIFIED association.
+
+        Remediation 4 made UNVERIFIED terminal for ORDINARY SCHEDULING -- no
+        writer, no failover membership, parent may settle -- but never a
+        permanent proof lockout: explicit operator reconsideration was always
+        part of the contract (only AUTOMATIC/background reconsideration is
+        deferred). Once the parent settled, every path back to the ordinary
+        equivalence machinery was closed (``TransferRepository.active()``,
+        ``_live()``, ``CanonicalOwnership.attach()``'s incoming guard and this
+        method's own former blanket refusal), so an operator-reopened request
+        could never address the canonical artifact it was already associated
+        with.
+
+        Rather than punching an exception into each of those owners -- which
+        would also strand a source that turns out to be genuinely DISTINCT,
+        since materializing it needs a live parent -- this returns the
+        transfer to the ordinary lifecycle exactly once, through the SAME
+        epoch-fenced canonical transition owner ``_reacquire_transfer`` uses
+        for its own (equally exceptional) terminal reopening. Everything
+        afterwards is unchanged, unexceptional machinery: the scheduler sees
+        the transfer again, ``coordinate_collection`` re-runs ordinary proof,
+        and settlement is re-established by the existing
+        ``_finalize_transfer``/aggregation owners -- back to CONSOLIDATED once
+        the reconsidered leaf attaches or settles UNVERIFIED again, or by
+        ordinary completion if it proves distinct and materializes.
+
+        Settled transfers are NOT broadly reopened: an ordinary consolidated
+        transfer holds no such association, is refused here before any
+        transition is attempted, and keeps the previous behaviour exactly.
+        Nothing autonomous can reach this -- only the operator action can.
+        """
+        if not await unverified_association_count(transfer.id):
+            return False
+        if await self.challenges.current(transfer.id):
+            return False
+        if not await reopen_unverified_associations(transfer.id):
+            return False
+        if not await self.repository.state(
+            transfer.id, TransferState.QUEUED, operator=True, expected_epoch=transfer.epoch,
+        ):
+            return False
+        # The requests are durably reopened and the transfer is live again:
+        # wake resolution exactly as the ordinary operator-retry path does.
+        self._resolution_opportunity(transfer.id)
+        return True
 
     async def _reacquire_transfer(self, transfer_id: int) -> bool:
         """Resume tracking a transfer a duplicate submission found already

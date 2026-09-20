@@ -143,6 +143,50 @@ class EquivalenceEvidence:
         return self.kind == EvidenceKind.UNAVAILABLE and self.reason in _PROOF_UNAVAILABLE_REASONS
 
 
+class EvidenceContext:
+    """Fingerprint acquisitions already made within ONE cohort coordination
+    decision (``transfers.cohorts.coordinate_collection`` creates exactly one
+    per call and drops it on return).
+
+    It only avoids asking the same executor for the same candidate's
+    fingerprint twice inside that decision; what a fingerprint MEANS is still
+    decided, every time, by ``shared_evidence`` / ``self_evidence`` below, so
+    classification is identical with or without it. It is not a truth
+    authority: it is never persisted, never module-level, never shared between
+    decisions, and nothing reads lifecycle state from it -- the next scheduler
+    decision starts empty and re-acquires evidence normally.
+
+    Entries are keyed by the candidate's immutable durable identity together
+    with the byte size the sampler is given for it (the two inputs that select
+    a sample) -- never by a name, host or other display string. A failed
+    acquisition is remembered for the decision exactly like a successful one,
+    so one decision observes each candidate once; whether another attempt is
+    made at all remains the bounded proof-retry policy's decision."""
+
+    __slots__ = ("_fingerprints",)
+
+    def __init__(self):
+        self._fingerprints = {}
+
+    async def fingerprint(self, executor, candidate):
+        key = (str(candidate.id), max(0, int(candidate.expected_bytes or 0)))
+        if key not in self._fingerprints:
+            try:
+                self._fingerprints[key] = (await executor.fingerprint(candidate), None)
+            except Exception as exc:
+                self._fingerprints[key] = (None, exc)
+        sample, error = self._fingerprints[key]
+        if error is not None:
+            raise error
+        return sample
+
+
+async def _fingerprint(executor, candidate, context: EvidenceContext | None):
+    if context is None:
+        return await executor.fingerprint(candidate)
+    return await context.fingerprint(executor, candidate)
+
+
 def _normalized_algorithm(value: str) -> str:
     return "".join(ch for ch in str(value).strip().lower() if ch.isalnum())
 
@@ -277,8 +321,11 @@ def _diagnose(left, right, evidence: EquivalenceEvidence, pair_reason: str = "")
     return evidence
 
 
-async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
-    """Return structured provider-neutral evidence without speculative merging."""
+async def shared_evidence(left, right, registry, context: EvidenceContext | None = None) -> EquivalenceEvidence:
+    """Return structured provider-neutral evidence without speculative merging.
+
+    ``context`` only lets one coordination decision reuse a fingerprint it has
+    already acquired; it never alters the evidence returned."""
     pair_reason = pairing_failure(left, right)
     if pair_reason:
         return _diagnose(left, right, _unavailable(pair_reason), pair_reason)
@@ -308,7 +355,7 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
         first, second = registry.executor_for(left), registry.executor_for(right)
         if not isinstance(first, CandidateSampling) or not isinstance(second, CandidateSampling):
             return _diagnose(left, right, _unavailable("sampler_unsupported"))
-        a, b = await asyncio.gather(first.fingerprint(left), second.fingerprint(right))
+        a, b = await asyncio.gather(_fingerprint(first, left, context), _fingerprint(second, right, context))
         # A sampler returning None has no proof capability for this candidate.
         # Temporary acquisition failures must cross the contract explicitly as
         # UNAVAILABLE with a retryable reason such as timeout/dns_failure.
@@ -364,7 +411,7 @@ async def shared_evidence(left, right, registry) -> EquivalenceEvidence:
         return _diagnose(left, right, _unavailable("sampler_unavailable"))
 
 
-async def self_evidence(candidate, registry) -> EquivalenceEvidence:
+async def self_evidence(candidate, registry, context: EvidenceContext | None = None) -> EquivalenceEvidence:
     """DP 1.0.12 CANON-001 follow-up: sample ONE candidate alone, with no peer
     to pair against yet, through the identical sampler/executor contract
     ``shared_evidence`` uses for every pairwise comparison. This module is the
@@ -378,7 +425,7 @@ async def self_evidence(candidate, registry) -> EquivalenceEvidence:
         executor = registry.executor_for(candidate)
         if not isinstance(executor, CandidateSampling):
             return _unavailable("sampler_unsupported")
-        sample = await executor.fingerprint(candidate)
+        sample = await _fingerprint(executor, candidate, context)
         if sample is None:
             return _unavailable("sampler_unsupported")
         kind = _fingerprint_kind(sample)

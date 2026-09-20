@@ -108,7 +108,12 @@ def test_route_history_renderer_is_a_thin_projector_of_backend_route_fields():
     the renderer or anywhere else in first-party JS."""
     body = _render_route_history_source()
     assert set(re.findall(r"\battempt\??\.(\w+)", body)) <= {
-        "provider_name", "outcome", "route_identity", "route_location", "ordinal"}
+        "provider_name", "outcome", "route_identity", "route_location", "ordinal",
+        # DP 1.0.12 consolidation corrective, Remediation 5: canonical-object
+        # Route History. These are backend-projected presentation facts (which
+        # transfer contributed a source, and whether it is a verified member or
+        # an unverified association) -- still nothing the renderer derives.
+        "presentation_ordinal", "relation", "contributing_transfer_id", "verification_state", "unverified_reason"}
     for forbidden in ("alldebrid", "debrid", "cache", "torrent", "magnet", "general_http",
                       "route_origin", "provider_id", "source_identity", "delivery", "hostname",
                       "endsWith", "new URL", "URL("):

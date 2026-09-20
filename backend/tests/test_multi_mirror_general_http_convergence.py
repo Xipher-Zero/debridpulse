@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import itertools
 from pathlib import Path
 import re
 import shutil
@@ -27,13 +28,21 @@ from aiohttp import web
 
 import db.database as database
 import executors.aria2.executor as aria2_executor_module
+import transfers._engine_base as engine_base_module
 import services.network_safety as network_safety
 from executors.aria2.client import Aria2Service
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from fake_integrations import MemoryExecutor, ParcelProvider
 from providers.general_http.provider import GeneralHttpProvider
+from test_route_provider_provenance import _canonical_history_runtime
+from transfers import cohorts
+from transfers.mirrors import EvidenceContext
 from transfers.convergence_engine import TransferEngine
-from transfers.models import ArtifactFingerprint, FingerprintKind, SourceIdentity, TransferRequest, TransferState
+from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.models import (
+    ArtifactFingerprint, ExecutionState, FingerprintKind, SourceIdentity, TransferProgress, TransferRequest,
+    TransferState,
+)
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
@@ -469,6 +478,13 @@ async def test_real_aria2_zero_byte_success_never_completes_or_delivers(tmp_path
         zero_byte_artifact = next(item for item in artifacts_by_target.values() if item.id != completed.id)
         assert zero_byte_artifact.state != "completed"
         assert zero_byte_artifact.expected_bytes == 0
+        # Consolidation corrective, Remediation 2: the target did not exist
+        # before this execution's native start, so the real zero-byte file the
+        # real aria2 wrote is execution-owned invalid residue and is retired;
+        # the verified sibling's payload is untouched.
+        assert not Path(zero_byte_artifact.target).exists()
+        assert [item for item in runtime.downloads.rglob("*") if item.is_file() and item.stat().st_size == 0] == []
+        assert Path(completed.target).read_bytes() == PAYLOAD
 
         async with database.get_db() as db:
             delivered = await db.fetchone(
@@ -559,7 +575,7 @@ async def test_transfer_286_unresolved_alternate_never_gets_a_writer_and_does_no
                 f"unresolved alternate was released to an independent writer: "
                 f"{row['equivalence_disposition']}/{row['equivalence_reason']}"
             )
-            return row if row["equivalence_disposition"] == "exhausted" else None
+            return row if row["equivalence_disposition"] == "unverified" else None
 
         # The bad alternate becomes durably held/unresolved -- never independent.
         held = await runtime.until(bad_request_held, label="faulty alternate durably held as unresolved")
@@ -580,7 +596,7 @@ async def test_transfer_286_unresolved_alternate_never_gets_a_writer_and_does_no
 
         final_transfer = await runtime.until(transfer_completed, label="parent reaches the normal completed state")
         assert final_transfer.state == TransferState.COMPLETED
-        assert observed_dispositions <= {"", "pending", "bootstrap_unprovable", "exhausted"}
+        assert observed_dispositions <= {"", "pending", "bootstrap_unprovable", "unverified"}
         assert not observed_dispositions & {"independent", "contradictory", "released"}
 
         for _ in range(10):  # extra scheduler cycles: the held request stays quiescent.
@@ -627,7 +643,7 @@ async def test_transfer_286_unresolved_alternate_never_gets_a_writer_and_does_no
                 (canonical.id,),
             )
         assert bad_row["state"] == "materializing"  # history kept; the request was not silently deleted.
-        assert bad_row["equivalence_disposition"] == "exhausted"
+        assert bad_row["equivalence_disposition"] == "unverified"
         assert bad_row["equivalence_reason"] == "range_ignored"
         assert float(bad_row["retry_at"] or 0) == 0
         assert await runtime.repository.resolved_candidates(bad_record.id)  # resolution history preserved.
@@ -866,7 +882,7 @@ async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_pa
                 "SELECT equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
                 (record.id,),
             )
-            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_disposition"] == "unverified"
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
             assert float(row["retry_at"] or 0) == 0
 
@@ -891,7 +907,7 @@ async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_pa
                 (record.id,),
             )
             assert int(row["equivalence_retry_count"]) == 2
-            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_disposition"] == "unverified"
     assert len(await engine.repository.artifacts(transfer.id)) == 1
 
     async with database.get_db() as db:
@@ -987,7 +1003,7 @@ async def test_five_mirror_production_263_regression(tmp_path, monkeypatch):
                     FROM transfer_requests WHERE id=?""",
                 (record.id,),
             )
-            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_disposition"] == "unverified"
             assert int(row["equivalence_retry_count"]) == 2  # proof counters stop at the budget.
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
             assert float(row["retry_at"] or 0) == 0
@@ -1094,7 +1110,7 @@ async def test_production_266_empty_bootstrap_bad_source_first(tmp_path, monkeyp
                     FROM transfer_requests WHERE id=?""",
                 (record.id,),
             )
-            assert row["equivalence_disposition"] == "exhausted"
+            assert row["equivalence_disposition"] == "unverified"
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
             assert float(row["retry_at"] or 0) == 0
 
@@ -1185,7 +1201,7 @@ async def test_production_270_exhausted_identity_satisfied_by_completed_canonica
             "SELECT equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
             (e_record.id,),
         )
-    assert held_row["equivalence_disposition"] == "exhausted"
+    assert held_row["equivalence_disposition"] == "unverified"
     assert held_row["equivalence_reason"] == "dns_failure"
     assert float(held_row["retry_at"] or 0) == 0
 
@@ -1234,7 +1250,7 @@ async def test_production_270_exhausted_identity_satisfied_by_completed_canonica
             "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_request_id=?", (e_record.id,),
         )
     assert final_e_row["state"] == "materializing"
-    assert final_e_row["equivalence_disposition"] == "exhausted"
+    assert final_e_row["equivalence_disposition"] == "unverified"
     assert final_e_row["equivalence_reason"] == "dns_failure"
     assert int(final_e_row["equivalence_retry_count"]) == 2
     assert float(final_e_row["retry_at"] or 0) == 0
@@ -1340,7 +1356,7 @@ async def test_one_viable_one_transient_bootstrap_does_not_deadlock(tmp_path, mo
             "SELECT equivalence_disposition,equivalence_reason FROM transfer_requests WHERE id=?",
             (transient_record.id,),
         )
-    assert row["equivalence_disposition"] == "exhausted"
+    assert row["equivalence_disposition"] == "unverified"
     assert row["equivalence_reason"] == "dns_failure"
 
     artifacts_after = await engine.repository.artifacts(transfer.id)
@@ -1575,7 +1591,7 @@ async def test_bootstrap_restart_reentry_no_duplicate_writer(tmp_path, monkeypat
             "SELECT equivalence_disposition,equivalence_retry_count FROM transfer_requests WHERE id=?",
             (transient_record.id,),
         )
-    assert row["equivalence_disposition"] == "exhausted"
+    assert row["equivalence_disposition"] == "unverified"
     assert int(row["equivalence_retry_count"]) == 2  # bounded retry counter survives restart, stays idempotent.
 
     artifacts_after = await repository2.artifacts(transfer.id)
@@ -1958,7 +1974,7 @@ async def test_transfer_286_bad_source_first_is_held_once_a_canonical_exists(tmp
             "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (bad_record.id,),
         )
     assert row["state"] == "materializing"
-    assert row["equivalence_disposition"] == "exhausted"  # held, never "independent".
+    assert row["equivalence_disposition"] == "unverified"  # held, never "independent".
     assert row["equivalence_reason"] == "range_ignored"
     assert float(row["retry_at"] or 0) == 0
     assert int(bad_artifacts["n"]) == 0
@@ -2295,3 +2311,1444 @@ async def test_transfer_291_exhausted_incomplete_representation_bootstrap_progre
         assert [item.name for item in files if re.search(r" \(\d+\)", item.name)] == []
     finally:
         await runtime.close()
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Remediation 1 (production 298/299/300):
+# an unrelated canonical's cheap ``logical_pairing_mismatch`` must never mask a
+# plausible canonical whose proof was attempted and remains unresolved.
+# ---------------------------------------------------------------------------
+
+_WRITER_AUTHORIZING_DISPOSITIONS = {"independent", "contradictory", "released", "provisional"}
+
+
+class _NamedUnknownSizeProvider(_UnknownSizeProvider):
+    """``_UnknownSizeProvider`` whose candidate content key follows the logical
+    name, so differently named transfers are genuinely unrelated objects."""
+
+    def candidate(self, name="ubuntu.iso", *, payload="parcel"):
+        return replace(super().candidate(name, payload=payload), name=name)
+
+
+async def _masking_runtime(tmp_path, monkeypatch, *, unrelated: int, incoming_reason: str, db_name: str):
+    """One plausible canonical (``ubuntu.iso``) plus ``unrelated`` canonicals
+    for other logical objects, all established BEFORE the plausible one so the
+    repository's natural canonical order lists the unrelated ones first -- the
+    exact ordering that let production USTC escape the writer barrier. The
+    incoming source's own proof attempt answers ``incoming_reason``."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"{db_name}.sqlite3")
+    await database.init_db()
+    unrelated_providers = tuple(_NamedUnknownSizeProvider(f"unrelated-{index}") for index in range(unrelated))
+    canonical_provider = _NamedUnknownSizeProvider("plausible-canonical")
+    incoming_provider = _NamedUnknownSizeProvider("incoming-source")
+    providers = (*unrelated_providers, canonical_provider, incoming_provider)
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
+    await engine.initialize()
+    probes = {"incoming": 0}
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == incoming_provider.descriptor.id:
+            probes["incoming"] += 1
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason=incoming_reason)
+        return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+
+    async def establish(provider, name):
+        transfer = await engine.submit(
+            (TransferRequest("parcel", f"{provider.descriptor.id}:{name}", name=name,
+                             preferred_provider=provider.descriptor.id),),
+            name=name, deduplicate=False,
+        )
+        (record,) = await repository.requests(transfer.id)
+        await engine._resolve(record)
+        (artifact,) = await repository.artifacts(transfer.id)
+        return transfer, artifact
+
+    unrelated_artifacts = [
+        (await establish(provider, f"unrelated-object-{index}.bin"))[1]
+        for index, provider in enumerate(unrelated_providers)
+    ]
+    _canonical_transfer, plausible = await establish(canonical_provider, MIRROR_FILENAME)
+    incoming_transfer = await engine.submit(
+        (TransferRequest("parcel", "incoming-ubuntu", name=MIRROR_FILENAME,
+                         preferred_provider=incoming_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (incoming_record,) = await repository.requests(incoming_transfer.id)
+    return SimpleNamespace(
+        repository=repository, engine=engine, executor=executor, probes=probes, plausible=plausible,
+        unrelated=tuple(unrelated_artifacts), incoming_transfer=incoming_transfer, incoming_record=incoming_record,
+    )
+
+
+async def _assert_no_writer(runtime, *, starts_before: int) -> dict:
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT state,equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
+            (runtime.incoming_record.id,),
+        )
+        artifacts = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (runtime.incoming_record.id,),
+        )
+        executions = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM execution_attempts WHERE transfer_id=?", (runtime.incoming_transfer.id,),
+        )
+        targets = await db.fetchone(
+            "SELECT COUNT(*) AS n FROM download_files WHERE torrent_id=? AND COALESCE(local_path,'')!=''",
+            (runtime.incoming_transfer.id,),
+        )
+    assert row["equivalence_disposition"] not in _WRITER_AUTHORIZING_DISPOSITIONS, (
+        f"unrelated canonical masked the plausible unresolved target: "
+        f"{row['equivalence_disposition']}/{row['equivalence_reason']}"
+    )
+    assert row["state"] == "materializing"  # HOLD / unresolved: the request is never resolved or failed.
+    assert int(artifacts["n"]) == 0  # no independent download_files row,
+    assert int(targets["n"]) == 0  # no target allocation,
+    assert int(executions["n"]) == 0  # no execution attempt,
+    assert len([call for call in runtime.executor.calls if call[0] == "start"]) == starts_before  # no materialization.
+    return row
+
+
+@pytest.mark.parametrize("unrelated", [1, 2, 3])
+@pytest.mark.parametrize("incoming_reason", ["range_ignored", "range_unsupported"])
+async def test_unrelated_pairing_mismatch_never_masks_plausible_unresolved_canonical(
+    tmp_path, monkeypatch, unrelated, incoming_reason,
+):
+    """Production USTC defect class. Canonical A (``ubuntu.iso``) is a
+    plausible pairing whose proof is ATTEMPTED and stays unresolved
+    (``range_ignored`` / ``range_unsupported``); every other canonical is an
+    unrelated object answering only ``logical_pairing_mismatch``. The unrelated
+    canonicals precede A in repository order. No number of them may authorize
+    an independent writer."""
+    runtime = await _masking_runtime(
+        tmp_path, monkeypatch, unrelated=unrelated, incoming_reason=incoming_reason,
+        db_name=f"masking-{unrelated}-{incoming_reason}",
+    )
+    starts_before = len([call for call in runtime.executor.calls if call[0] == "start"])
+    await runtime.engine._resolve(runtime.incoming_record)
+    assert runtime.probes["incoming"] >= 1  # proof against the plausible canonical was genuinely attempted.
+    row = await _assert_no_writer(runtime, starts_before=starts_before)
+    assert row["equivalence_reason"] == incoming_reason  # the plausible target's factual reason, never the mismatch.
+    assert row["equivalence_reason"] != "logical_pairing_mismatch"
+
+
+async def test_writer_barrier_is_independent_of_canonical_iteration_order(tmp_path, monkeypatch):
+    """Arrival/iteration order must not change identity outcome: every
+    permutation of {plausible-unresolved A, unrelated B, unrelated C} holds."""
+    runtime = await _masking_runtime(
+        tmp_path, monkeypatch, unrelated=2, incoming_reason="range_ignored", db_name="masking-permutations",
+    )
+    canonicals = await runtime.engine.canonical.canonical_artifacts()
+    assert {item.id for item in canonicals} == {runtime.plausible.id, *(item.id for item in runtime.unrelated)}
+    starts_before = len([call for call in runtime.executor.calls if call[0] == "start"])
+    await runtime.engine._resolve(runtime.incoming_record)  # durable resolution history; natural order first.
+    natural = await _assert_no_writer(runtime, starts_before=starts_before)
+    observed = {(natural["equivalence_disposition"], natural["equivalence_reason"])}
+    for ordering in itertools.permutations(canonicals):
+        async def permuted(ordering=ordering):
+            return tuple(ordering)
+
+        monkeypatch.setattr(runtime.engine.canonical, "canonical_artifacts", permuted)
+        async with database.get_db() as db:
+            await db.execute(
+                """UPDATE transfer_requests SET equivalence_disposition='',equivalence_reason=NULL,
+                    equivalence_retry_count=0,retry_at=0 WHERE id=?""",
+                (runtime.incoming_record.id,),
+            )
+            await db.commit()
+        (record,) = await runtime.repository.requests(runtime.incoming_transfer.id)
+        assert await cohorts.coordinate_collection(
+            runtime.engine, record, await runtime.repository.resolved_candidates(record.id),
+        ) is True  # HOLD for this ordering.
+        row = await _assert_no_writer(runtime, starts_before=starts_before)
+        observed.add((row["equivalence_disposition"], row["equivalence_reason"]))
+    assert len(observed) == 1  # identical durable outcome for all six orderings.
+    assert next(iter(observed))[1] == "range_ignored"
+
+
+_MAPPING_TABLE = [
+    # (per-canonical behaviours, expected outcome, matched label, held, single plausible label)
+    (("unresolved", "mismatch", "mismatch"), "plausible_unresolved", None, True, "unresolved-0"),
+    (("unresolved_transient", "mismatch"), "plausible_unresolved", None, True, "unresolved_transient-0"),
+    (("match", "mismatch", "mismatch"), "match", "match-0", False, None),
+    (("match", "unresolved"), "plausible_unresolved", None, True, "unresolved-1"),
+    (("match", "match"), "ambiguous", None, False, None),
+    (("contradictory", "mismatch"), "contradictory", None, False, None),
+    (("contradictory", "unresolved"), "plausible_unresolved", None, True, "unresolved-1"),
+    (("contradictory", "unprovable"), "contradictory", None, False, None),
+    (("unprovable", "mismatch"), "structurally_unprovable", None, False, None),
+    (("match", "unprovable"), "structurally_unprovable", None, False, None),
+    (("unprovable", "unresolved"), "plausible_unresolved", None, True, "unresolved-1"),
+    (("mismatch", "mismatch"), "nonpairing", None, False, None),
+    (("unresolved", "unresolved", "mismatch"), "plausible_unresolved", None, True, None),
+]
+
+
+@pytest.mark.parametrize("behaviours,outcome,matched,held,single_plausible", _MAPPING_TABLE)
+async def test_mapping_decision_table_is_order_independent(
+    tmp_path, monkeypatch, behaviours, outcome, matched, held, single_plausible,
+):
+    """The full Remediation 1 decision table, through the real ``_mapping`` +
+    ``transfers.mirrors.shared_evidence`` path, for EVERY iteration order of
+    the canonical set: same matched target, same HOLD / INDEPENDENT /
+    CONTRADICTORY reading, same single plausible (unverified) target."""
+    labels = tuple(f"{behaviour}-{index}" for index, behaviour in enumerate(behaviours))
+    providers = {label: _NamedUnknownSizeProvider(label) for label in labels}
+    incoming_provider = _NamedUnknownSizeProvider("incoming")
+    _repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (*providers.values(), incoming_provider),
+    )
+
+    async def fingerprint(candidate):
+        behaviour = candidate.provider_id.rsplit("-", 1)[0]
+        if behaviour == "unresolved":
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        if behaviour == "unresolved_transient":
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
+        if behaviour == "unprovable":
+            return None  # no proof capability for this route: sampler_unsupported.
+        signature = "other-content" if behaviour == "contradictory" else "shared-content"
+        return ArtifactFingerprint(4, signature, FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    canonicals = tuple(
+        SimpleNamespace(
+            id=index + 1, expected_bytes=0, label=label,
+            candidates=(providers[label].candidate(
+                "unrelated.bin" if label.startswith("mismatch") else MIRROR_FILENAME),),
+        )
+        for index, label in enumerate(labels)
+    )
+    incoming = (incoming_provider.candidate(MIRROR_FILENAME),)
+
+    readings = set()
+    for ordering in itertools.permutations(canonicals):
+        result = await cohorts._mapping(ordering, incoming, engine.registry)
+        readings.add((
+            result.outcome,
+            result.primary.label if result.matched else None,
+            cohorts._must_hold(result),
+            cohorts._released_disposition(result) if not result.matched and not cohorts._must_hold(result) else None,
+            tuple(item.label for item in result.plausible),
+            result.evidence.reason,
+        ))
+    assert len(readings) == 1  # identical for every canonical iteration order.
+    (got_outcome, got_matched, got_held, released, plausible, _reason), = readings
+    assert (got_outcome, got_matched, got_held) == (outcome, matched, held)
+    if outcome == "contradictory":
+        assert released == "contradictory"  # the verified-distinct path is preserved.
+    elif not held and matched is None:
+        assert released == "independent"  # non-pairing / structurally unprovable / ambiguous degraded fallback.
+    assert (plausible[0] if len(plausible) == 1 else None) == single_plausible
+    if held:
+        assert plausible  # a HOLD always names the plausible target(s) it is holding for.
+
+
+async def test_candidate_order_within_a_canonical_never_masks_unresolved_proof(tmp_path, monkeypatch):
+    """Candidate order, like canonical order, must not change the outcome: a
+    cheap ``non_independent_source`` rejection against one member of a
+    canonical cannot mask the attempted-but-unresolved proof against another
+    member of that SAME canonical, in either candidate order."""
+    member = _NamedUnknownSizeProvider("unresolved-member")
+    incoming_provider = _NamedUnknownSizeProvider("incoming")
+    unrelated = _NamedUnknownSizeProvider("mismatch-0")
+    _repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (member, incoming_provider, unrelated),
+    )
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == member.descriptor.id:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        return ArtifactFingerprint(4, "shared-content", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    same_source = incoming_provider.candidate(MIRROR_FILENAME)  # same source scope as the incoming route.
+    unresolved = member.candidate(MIRROR_FILENAME)
+    incoming = (incoming_provider.candidate(MIRROR_FILENAME),)
+    other = SimpleNamespace(id=2, expected_bytes=0, candidates=(unrelated.candidate("unrelated.bin"),))
+
+    readings = set()
+    for members in itertools.permutations((same_source, unresolved)):
+        plausible = SimpleNamespace(id=1, expected_bytes=0, candidates=tuple(members))
+        for ordering in itertools.permutations((plausible, other)):
+            result = await cohorts._mapping(ordering, incoming, engine.registry)
+            readings.add((result.outcome, cohorts._must_hold(result), result.evidence.reason,
+                          tuple(item.id for item in result.plausible)))
+    assert readings == {("plausible_unresolved", True, "range_ignored", (1,))}
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Remediation 2: invalid material left by a
+# nominally successful execution is retired ONLY under positive, durable
+# execution ownership of the exact target -- never because verification failed.
+# ---------------------------------------------------------------------------
+
+async def _nominal_success_runtime(tmp_path, monkeypatch, *, db_name: str, before_start=None):
+    """One request materialized and dispatched through the real engine; the
+    fake executor then reports ``SUCCEEDED`` for whatever the test left on disk.
+    ``before_start(target, sidecar)`` runs after the canonical target is
+    allocated and BEFORE native start authority -- i.e. pre-existing material."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"{db_name}.sqlite3")
+    await database.init_db()
+    provider = _NamedUnknownSizeProvider("nominal-success")
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, (provider,))
+    await engine.initialize()
+    transfer = await engine.submit(
+        (TransferRequest("parcel", "nominal-success", name=MIRROR_FILENAME,
+                         preferred_provider=provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (record,) = await repository.requests(transfer.id)
+    await engine._resolve(record)
+    (artifact,) = await repository.artifacts(transfer.id)
+    target = Path(artifact.target)
+    (sidecar,) = (Path(item) for item in executor.resumable_paths(artifact.target))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if before_start is not None:
+        before_start(target, sidecar)
+    await engine.reconcile_executions()  # final execution admission + native start.
+    (artifact,) = await repository.artifacts(transfer.id)
+    assert artifact.execution is not None
+    return SimpleNamespace(repository=repository, engine=engine, executor=executor, transfer=transfer,
+                           artifact=artifact, target=target, sidecar=sidecar)
+
+
+async def _report_success(runtime, *, total: int):
+    handle = runtime.artifact.execution
+    runtime.executor.jobs[handle.attempt_id] = replace(
+        runtime.executor.jobs[handle.attempt_id], state=ExecutionState.SUCCEEDED,
+        progress=TransferProgress(total, total),
+    )
+    await runtime.engine.reconcile_executions()
+    (artifact,) = await runtime.repository.artifacts(runtime.transfer.id)
+    async with database.get_db() as db:
+        attempt = await db.fetchone("SELECT * FROM execution_attempts WHERE id=?", (handle.attempt_id,))
+        outcomes = await db.fetchall(
+            "SELECT kind,payload FROM transfer_outcomes WHERE transfer_id=? AND attempt_id=?",
+            (runtime.transfer.id, handle.attempt_id),
+        )
+    return artifact, attempt, outcomes
+
+
+def _assert_verification_failure_recorded(artifact, outcomes):
+    assert artifact.state != "completed"  # nominal success never completes.
+    assert artifact.state == "error"
+    assert artifact.error is not None
+    assert (artifact.error.domain, artifact.error.category, artifact.error.stage) == (
+        Domain.INTEGRITY, Category.MATERIALIZATION_FAILED, Stage.VERIFICATION,
+    )
+    assert [row["kind"] for row in outcomes] == ["failure"]  # failure provenance is kept.
+    assert "materialization_failed" in outcomes[0]["payload"]
+
+
+def _adjacent_unrelated_files(target: Path) -> dict[Path, bytes]:
+    """Legitimately unrelated files at colliding / adjacent paths."""
+    files = {
+        target.with_name(f"{target.stem} (2){target.suffix}"): b"someone else's (2) payload",
+        target.with_name(target.name + ".bak"): b"operator backup",
+        target.with_name(target.name + ".other-progress"): b"another tool's sidecar",
+        target.with_name("." + target.name): b"hidden neighbour",
+        target.parent / "unrelated.bin": b"unrelated payload",
+    }
+    for path, content in files.items():
+        path.write_bytes(content)
+    return files
+
+
+async def test_execution_owned_zero_byte_success_is_retired_with_its_sidecar(tmp_path, monkeypatch):
+    runtime = await _nominal_success_runtime(tmp_path, monkeypatch, db_name="owned-zero-byte")
+    neighbours = _adjacent_unrelated_files(runtime.target)
+    runtime.target.write_bytes(b"")  # the production USTC shape: a real zero-byte "success".
+    runtime.sidecar.write_bytes(b"resume-state")
+    artifact, attempt, outcomes = await _report_success(runtime, total=0)
+    _assert_verification_failure_recorded(artifact, outcomes)
+    assert not runtime.target.exists()  # the execution-owned invalid target is removed,
+    assert not runtime.sidecar.exists()  # and so is its execution-owned resumable sidecar.
+    assert int(attempt["target_initially_absent"]) == 1  # durable fact, captured at execution admission.
+    for path, content in neighbours.items():  # colliding / adjacent unrelated files are never touched.
+        assert path.read_bytes() == content
+
+
+@pytest.mark.parametrize("preexisting", ["target", "sidecar", "both"])
+async def test_preexisting_target_material_is_never_deleted_on_verification_failure(tmp_path, monkeypatch, preexisting):
+    def before_start(target, sidecar):
+        if preexisting in {"target", "both"}:
+            target.write_bytes(b"")  # present before native start -- even though it is zero bytes.
+        if preexisting in {"sidecar", "both"}:
+            sidecar.write_bytes(b"legitimate prior resume state")
+
+    runtime = await _nominal_success_runtime(
+        tmp_path, monkeypatch, db_name=f"preexisting-{preexisting}", before_start=before_start,
+    )
+    neighbours = _adjacent_unrelated_files(runtime.target)
+    existed = {path: path.read_bytes() for path in (runtime.target, runtime.sidecar) if path.exists()}
+    artifact, attempt, outcomes = await _report_success(runtime, total=0)
+    _assert_verification_failure_recorded(artifact, outcomes)
+    assert int(attempt["target_initially_absent"]) == 0  # no ownership authority: fail closed, delete nothing.
+    for path, content in {**existed, **neighbours}.items():
+        assert path.read_bytes() == content
+
+
+async def test_historical_attempt_without_ownership_fact_never_deletes(tmp_path, monkeypatch):
+    """A pre-change execution row carries NULL: ownership is unknown, so the
+    invalid material is left exactly where it is."""
+    runtime = await _nominal_success_runtime(tmp_path, monkeypatch, db_name="historical-null")
+    async with database.get_db() as db:
+        await db.execute(
+            "UPDATE execution_attempts SET target_initially_absent=NULL WHERE id=?",
+            (runtime.artifact.execution.attempt_id,),
+        )
+        await db.commit()
+    runtime.target.write_bytes(b"")
+    runtime.sidecar.write_bytes(b"resume-state")
+    artifact, _attempt, outcomes = await _report_success(runtime, total=0)
+    _assert_verification_failure_recorded(artifact, outcomes)
+    assert runtime.target.read_bytes() == b"" and runtime.sidecar.read_bytes() == b"resume-state"
+
+
+async def test_verified_success_is_unchanged_by_ownership_cleanup(tmp_path, monkeypatch):
+    runtime = await _nominal_success_runtime(tmp_path, monkeypatch, db_name="verified-success")
+    neighbours = _adjacent_unrelated_files(runtime.target)
+    runtime.target.write_bytes(b"done")
+    artifact, attempt, outcomes = await _report_success(runtime, total=4)
+    assert artifact.state == "completed" and artifact.expected_bytes == 4
+    assert runtime.target.read_bytes() == b"done"
+    assert int(attempt["target_initially_absent"]) == 1
+    assert [row["kind"] for row in outcomes if row["kind"] == "failure"] == []
+    for path, content in neighbours.items():
+        assert path.read_bytes() == content
+
+
+async def test_cleanup_failure_never_rewrites_verification_history(tmp_path, monkeypatch):
+    runtime = await _nominal_success_runtime(tmp_path, monkeypatch, db_name="cleanup-failure")
+    runtime.target.write_bytes(b"")
+
+    retired = []
+
+    def failing_retire(root, target, sidecars=()):
+        retired.append((str(target), tuple(str(item) for item in sidecars)))
+        raise TransferError(NormalizedError(Domain.LOCAL_RESOURCE, Category.LOCAL_CLEANUP_FAILED, Stage.CLEANUP))
+
+    monkeypatch.setattr(engine_base_module, "retire_partial", failing_retire)
+    artifact, _attempt, outcomes = await _report_success(runtime, total=0)
+    _assert_verification_failure_recorded(artifact, outcomes)  # still MATERIALIZATION_FAILED, never completed.
+    # The one hardened primitive was asked for exactly this execution's target and declared sidecar -- nothing else.
+    assert retired == [(str(runtime.target), (str(runtime.sidecar),))]
+    assert runtime.target.exists()
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Remediation 3: one coordination decision
+# never re-acquires evidence it already holds, stops at decisive proof, and
+# keeps nothing for the next decision. Deterministic call counts only.
+# ---------------------------------------------------------------------------
+
+async def _established_canonical(tmp_path, monkeypatch, *, members: int, db_name: str, incoming_behaviour):
+    """A canonical with ``members`` verified candidates, plus one not-yet
+    coordinated incoming request. ``incoming_behaviour(candidate)`` answers the
+    incoming route's fingerprint once the canonical is established."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"{db_name}.sqlite3")
+    await database.init_db()
+    member_providers = tuple(_NamedUnknownSizeProvider(f"member-{index}") for index in range(members))
+    incoming_provider = _NamedUnknownSizeProvider("incoming-source")
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (*member_providers, incoming_provider),
+    )
+    await engine.initialize()
+    calls = []
+    phase = ["establish"]
+
+    async def fingerprint(candidate):
+        if phase[0] == "count":
+            calls.append(candidate.provider_id)
+        if candidate.provider_id == incoming_provider.descriptor.id:
+            return incoming_behaviour(candidate)
+        return ArtifactFingerprint(4, "shared-content", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    transfer = await engine.submit(
+        tuple(TransferRequest("parcel", f"member-{index}", name=MIRROR_FILENAME,
+                              preferred_provider=provider.descriptor.id)
+              for index, provider in enumerate(member_providers)),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    for record in await repository.requests(transfer.id):
+        await engine._resolve(record)
+    (canonical,) = await repository.artifacts(transfer.id)
+    assert len(canonical.candidates) == members
+    incoming_transfer = await engine.submit(
+        (TransferRequest("parcel", "incoming", name=MIRROR_FILENAME,
+                         preferred_provider=incoming_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (incoming_record,) = await repository.requests(incoming_transfer.id)
+    phase[0] = "count"
+    return SimpleNamespace(repository=repository, engine=engine, executor=executor, calls=calls,
+                           canonical=canonical, incoming_transfer=incoming_transfer,
+                           incoming_record=incoming_record, incoming_id=incoming_provider.descriptor.id)
+
+
+async def test_decisive_proof_stops_traversal_and_acquires_each_fingerprint_once(tmp_path, monkeypatch):
+    runtime = await _established_canonical(
+        tmp_path, monkeypatch, members=5, db_name="decisive-early-stop",
+        incoming_behaviour=lambda candidate: ArtifactFingerprint(4, "shared-content", FingerprintKind.FULL_CONTENT_SAMPLE),
+    )
+    await runtime.engine._resolve(runtime.incoming_record)
+    info = await runtime.engine.canonical.consolidation(runtime.incoming_transfer.id)
+    assert info["state"] == "complete"  # same semantics: consolidated on the first decisive proof.
+    assert len(await runtime.engine.canonical.bindings(runtime.canonical.id)) == 6
+    # One full proof against the first verified member is decisive: the incoming route and that one member are
+    # each fingerprinted exactly once; the other four members are never sampled (was 5 + 5 acquisitions).
+    assert sorted(runtime.calls) == sorted([runtime.incoming_id, "member-0"])
+
+
+async def test_undecisive_decision_acquires_each_candidate_once_and_next_decision_reacquires(tmp_path, monkeypatch):
+    runtime = await _established_canonical(
+        tmp_path, monkeypatch, members=5, db_name="memoized-unresolved",
+        incoming_behaviour=lambda candidate: ArtifactFingerprint(
+            0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported"),
+    )
+    await runtime.engine._resolve(runtime.incoming_record)  # decision 1: unresolved against all five members.
+    first = list(runtime.calls)
+    assert first.count(runtime.incoming_id) == 1  # not once per canonical member (was 5).
+    assert sorted(first) == sorted([runtime.incoming_id, *(f"member-{index}" for index in range(5))])
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT equivalence_disposition,equivalence_reason,retry_at FROM transfer_requests WHERE id=?",
+            (runtime.incoming_record.id,),
+        )
+    assert (row["equivalence_disposition"], row["equivalence_reason"]) == ("pending", "range_unsupported")
+
+    # A later, independent scheduler decision starts with no remembered evidence.
+    (record,) = await runtime.repository.requests(runtime.incoming_transfer.id)
+    runtime.engine.clock = lambda: float(row["retry_at"]) + 0.01
+    await runtime.engine._process_request(record)
+    second = runtime.calls[len(first):]
+    assert sorted(second) == sorted(first)  # the same acquisitions again: nothing survived the first decision.
+
+
+@pytest.mark.parametrize("behaviours,outcome,matched,held,single_plausible", _MAPPING_TABLE)
+async def test_evidence_context_never_changes_mapping_semantics(
+    tmp_path, monkeypatch, behaviours, outcome, matched, held, single_plausible,
+):
+    """The memoized model and the uncached model read identically for the
+    whole decision table -- the context changes acquisition cost only."""
+    labels = tuple(f"{behaviour}-{index}" for index, behaviour in enumerate(behaviours))
+    providers = {label: _NamedUnknownSizeProvider(label) for label in labels}
+    incoming_provider = _NamedUnknownSizeProvider("incoming")
+    _repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (*providers.values(), incoming_provider),
+    )
+    acquisitions = []
+
+    async def fingerprint(candidate):
+        acquisitions.append(str(candidate.id))
+        behaviour = candidate.provider_id.rsplit("-", 1)[0]
+        if behaviour == "unresolved":
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        if behaviour == "unresolved_transient":
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
+        if behaviour == "unprovable":
+            return None
+        signature = "other-content" if behaviour == "contradictory" else "shared-content"
+        return ArtifactFingerprint(4, signature, FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    canonicals = tuple(
+        SimpleNamespace(id=index + 1, expected_bytes=0, label=label, candidates=(providers[label].candidate(
+            "unrelated.bin" if label.startswith("mismatch") else MIRROR_FILENAME),))
+        for index, label in enumerate(labels)
+    )
+    incoming = (incoming_provider.candidate(MIRROR_FILENAME),)
+
+    def reading(result):
+        return (result.outcome, result.primary.label if result.matched else None, cohorts._must_hold(result),
+                tuple(item.label for item in result.plausible), result.evidence.kind, result.evidence.reason,
+                result.cardinality)
+
+    uncached = reading(await cohorts._mapping(canonicals, incoming, engine.registry))
+    uncached_acquisitions = len(acquisitions)
+    acquisitions.clear()
+    memoized = reading(await cohorts._mapping(canonicals, incoming, engine.registry, EvidenceContext()))
+    assert memoized == uncached
+    assert (memoized[0], memoized[1], memoized[2]) == (outcome, matched, held)
+    assert len(acquisitions) == len(set(acquisitions))  # no candidate fingerprinted twice in one decision.
+    assert len(acquisitions) <= uncached_acquisitions
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Remediation 4: a terminal ``unverified``
+# association is a non-writer lifecycle/presentation fact -- never membership.
+# ---------------------------------------------------------------------------
+
+async def _request_row(request_id):
+    async with database.get_db() as db:
+        return await db.fetchone(
+            """SELECT state,equivalence_disposition,equivalence_reason,equivalence_retry_count,
+                equivalence_target_artifact_id,retry_at FROM transfer_requests WHERE id=?""",
+            (request_id,),
+        )
+
+
+async def _membership_counts(request_id, transfer_id) -> dict:
+    async with database.get_db() as db:
+        counts = {}
+        for label, sql, params in (
+            ("download_files", "SELECT COUNT(*) AS n FROM download_files WHERE request_id=?", (request_id,)),
+            ("execution_attempts", "SELECT COUNT(*) AS n FROM execution_attempts WHERE transfer_id=?", (transfer_id,)),
+            ("origins", "SELECT COUNT(*) AS n FROM canonical_candidate_origins WHERE request_id=?", (request_id,)),
+            ("bindings", """SELECT COUNT(*) AS n FROM canonical_candidate_bindings b
+                JOIN canonical_candidate_origins o ON o.binding_id=b.id WHERE o.request_id=?""", (request_id,)),
+            ("consolidations", "SELECT COUNT(*) AS n FROM artifact_consolidations WHERE source_request_id=?",
+             (request_id,)),
+        ):
+            counts[label] = int((await db.fetchone(sql, params))["n"])
+    return counts
+
+
+@pytest.mark.parametrize("incoming_reason", ["range_ignored", "range_unsupported"])
+async def test_exhausted_single_plausible_target_settles_unverified_without_membership(
+    tmp_path, monkeypatch, incoming_reason,
+):
+    """Non-retryable evidence is unverified at once; retryable evidence only
+    after the bounded budget. Either way: one plausible target, no writer, no
+    membership of any kind, and the single-leaf parent settles."""
+    runtime = await _masking_runtime(
+        tmp_path, monkeypatch, unrelated=2, incoming_reason=incoming_reason, db_name=f"unverified-{incoming_reason}",
+    )
+    now = [1000.0]
+    runtime.engine.clock = lambda: now[0]
+    bindings_before = await runtime.engine.canonical.bindings(runtime.plausible.id)
+    starts_before = len([call for call in runtime.executor.calls if call[0] == "start"])
+    await runtime.engine._resolve(runtime.incoming_record)
+    for _ in range(3):  # the bounded proof-retry budget for retryable evidence.
+        (record,) = await runtime.repository.requests(runtime.incoming_transfer.id)
+        now[0] = max(now[0], record.retry_at) + 0.01
+        await runtime.engine._process_request(record)
+
+    row = await _request_row(runtime.incoming_record.id)
+    assert row["equivalence_disposition"] == "unverified"
+    assert row["equivalence_reason"] == incoming_reason  # the factual unresolved reason.
+    assert int(row["equivalence_target_artifact_id"]) == runtime.plausible.id  # the ONE plausible canonical.
+    assert row["state"] == "materializing" and float(row["retry_at"] or 0) == 0
+    assert "unverified" in cohorts._HELD_DISPOSITIONS
+    assert "unverified" not in cohorts._INDEPENDENT_DISPOSITIONS  # never authorizes a writer.
+    assert await _membership_counts(runtime.incoming_record.id, runtime.incoming_transfer.id) == {
+        "download_files": 0, "execution_attempts": 0, "origins": 0, "bindings": 0, "consolidations": 0,
+    }
+    assert len([call for call in runtime.executor.calls if call[0] == "start"]) == starts_before
+
+    # Candidate count / failover selection see verified candidates only.
+    assert await runtime.engine.canonical.bindings(runtime.plausible.id) == bindings_before
+    (canonical,) = [item for item in await runtime.engine.canonical.canonical_artifacts()
+                    if item.id == runtime.plausible.id]
+    assert len(canonical.candidates) == 1
+    incoming_candidate_ids = {str(item.id) for item in await runtime.repository.resolved_candidates(
+        runtime.incoming_record.id)}
+    assert not incoming_candidate_ids & {str(item.id) for item in canonical.candidates}
+
+    # The parent has no writer-capable work left: it settles instead of staying materializing forever.
+    parent = await runtime.repository.get(runtime.incoming_transfer.id)
+    assert parent.state == TransferState.CONSOLIDATED
+    info = await runtime.engine.canonical.consolidation(runtime.incoming_transfer.id)
+    assert info["artifact_mappings"] == []  # settled, yet never recorded as a verified consolidation.
+
+    probes = runtime.probes["incoming"]
+    for _ in range(3):  # terminal: no proof hot loop afterwards.
+        await runtime.engine.tick()
+    assert runtime.probes["incoming"] == probes
+    assert (await _request_row(runtime.incoming_record.id))["equivalence_disposition"] == "unverified"
+
+
+async def test_several_plausible_targets_are_never_guessed_as_unverified(tmp_path, monkeypatch):
+    """Two distinct canonical objects share the incoming logical name and both
+    stay unresolved: no target may be guessed, so the hold remains
+    ``exhausted`` with no association and the parent does not settle."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "several-plausible.sqlite3")
+    await database.init_db()
+    first, second, incoming_provider = (_NamedUnknownSizeProvider(name) for name in ("object-one", "object-two", "incoming"))
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, (first, second, incoming_provider))
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == incoming_provider.descriptor.id:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        return ArtifactFingerprint(4, f"content:{candidate.provider_id}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    for provider in (first, second):  # same name, proven-different content: two canonical objects.
+        transfer = await engine.submit(
+            (TransferRequest("parcel", provider.descriptor.id, name=MIRROR_FILENAME,
+                             preferred_provider=provider.descriptor.id),), name=MIRROR_FILENAME, deduplicate=False)
+        (record,) = await repository.requests(transfer.id)
+        await engine._resolve(record)
+    assert len(await engine.canonical.canonical_artifacts()) == 2
+    incoming = await engine.submit(
+        (TransferRequest("parcel", "incoming", name=MIRROR_FILENAME,
+                         preferred_provider=incoming_provider.descriptor.id),), name=MIRROR_FILENAME, deduplicate=False)
+    (record,) = await repository.requests(incoming.id)
+    await engine._resolve(record)
+    row = await _request_row(record.id)
+    assert row["equivalence_disposition"] == "exhausted"  # held, but not associated with a guessed target.
+    assert row["equivalence_target_artifact_id"] is None
+    assert (await _membership_counts(record.id, incoming.id))["download_files"] == 0
+    assert (await repository.get(incoming.id)).state != TransferState.CONSOLIDATED
+
+
+@pytest.mark.parametrize("later,disposition,writer", [
+    ("equivalent", "recovered", False),
+    ("distinct", "contradictory", True),
+    ("unresolved", "unverified", False),
+])
+async def test_reconsidered_unverified_request_transitions_through_the_ordinary_paths(
+    tmp_path, monkeypatch, later, disposition, writer,
+):
+    """While its parent is still unsettled an ``unverified`` request may be
+    reconsidered. Affirmative proof takes the ordinary attach / independent
+    path and the association target is cleared in the same disposition write;
+    still-unresolved proof leaves it unverified."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"reconsidered-{later}.sqlite3")
+    await database.init_db()
+    canonical_provider, incoming_provider, other_provider = (
+        _NamedUnknownSizeProvider(name) for name in ("canonical", "incoming", "other"))
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (canonical_provider, incoming_provider, other_provider))
+    await engine.initialize()
+    phase = ["unresolved"]
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == incoming_provider.descriptor.id:
+            if phase[0] == "unresolved":
+                return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+            signature = f"full:{candidate.name}" if phase[0] == "equivalent" else "different-content"
+            return ArtifactFingerprint(4, signature, FingerprintKind.FULL_CONTENT_SAMPLE)
+        return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    owner = await engine.submit(
+        (TransferRequest("parcel", "canonical", name=MIRROR_FILENAME,
+                         preferred_provider=canonical_provider.descriptor.id),), name=MIRROR_FILENAME, deduplicate=False)
+    (owner_record,) = await repository.requests(owner.id)
+    await engine._resolve(owner_record)
+    (canonical,) = await repository.artifacts(owner.id)
+
+    # A second, unrelated leaf keeps the submitting parent unsettled.
+    submitted = await engine.submit(
+        (TransferRequest("parcel", "incoming", name=MIRROR_FILENAME, preferred_provider=incoming_provider.descriptor.id),
+         TransferRequest("parcel", "other", name="unrelated-object.bin", preferred_provider=other_provider.descriptor.id)),
+        name="submitted", deduplicate=False)
+    by_payload = {item.request.payload: item for item in await repository.requests(submitted.id)}
+    await engine._resolve(by_payload["other"])
+    await engine._resolve(by_payload["incoming"])
+    held = await _request_row(by_payload["incoming"].id)
+    assert held["equivalence_disposition"] == "unverified"
+    assert int(held["equivalence_target_artifact_id"]) == canonical.id
+    assert (await repository.get(submitted.id)).state != TransferState.CONSOLIDATED
+
+    phase[0] = later
+    async with database.get_db() as db:  # the request is reconsidered (the established reset shape).
+        await db.execute(
+            "UPDATE transfer_requests SET equivalence_disposition='',equivalence_retry_count=0,retry_at=0 WHERE id=?",
+            (by_payload["incoming"].id,),
+        )
+        await db.commit()
+    record = next(item for item in await repository.requests(submitted.id) if item.id == by_payload["incoming"].id)
+    await engine._process_request(record)
+
+    row = await _request_row(record.id)
+    assert row["equivalence_disposition"] == disposition
+    counts = await _membership_counts(record.id, submitted.id)
+    if later == "equivalent":
+        assert row["state"] == "resolved" and row["equivalence_target_artifact_id"] is None
+        assert counts["consolidations"] == 1 and counts["origins"] == 1  # ordinary canonical attach.
+        assert len(await engine.canonical.bindings(canonical.id)) == 2
+    elif later == "distinct":
+        assert row["equivalence_target_artifact_id"] is None  # association cleared with the transition.
+        assert counts["consolidations"] == 0 and counts["origins"] == 0
+    else:
+        assert int(row["equivalence_target_artifact_id"]) == canonical.id
+        assert counts["consolidations"] == 0 and counts["origins"] == 0
+    own_artifact = [item for item in await repository.artifacts(submitted.id) if item.request_id == record.id]
+    assert bool(own_artifact) is writer  # a writer exists only for the proven-distinct object.
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Gate 6: the production 298/299/300 shape,
+# integrated, with an unrelated canonical object present so the original
+# false-independent masking bug is genuinely exercised.
+# ---------------------------------------------------------------------------
+
+async def test_production_298_299_300_shape_consolidates_with_unverified_sources_and_one_writer(tmp_path, monkeypatch):
+    a_hosts = ("releases.ubuntu.com", "mirrors.mit.edu", "mirror.pilotfiber.com")
+    b_hosts = ("mirrors.tuna.tsinghua.edu.cn", "ubuntu-releases.mirrorservice.org", "mirror.sg.gs")
+    c_good = ("mirror.serversaustralia.com.au", "mirrors.163.com")
+    ustc, aliyun = "mirrors.ustc.edu.cn", "mirrors.aliyun.com"
+    runtime = await _canonical_history_runtime(
+        tmp_path, monkeypatch, ("unrelated.example", *a_hosts, *b_hosts, *c_good, ustc, aliyun),
+        # USTC: attempted, non-retryable unresolved. Aliyun: attempted, retryable, exhausts the bounded budget.
+        unresolved={ustc: "range_ignored", aliyun: "range_unsupported"},
+    )
+    repository, engine, executor = runtime.repository, runtime.engine, runtime.executor
+
+    async def decide(record):
+        """One coordination decision; returns the fingerprint acquisitions it made."""
+        before = len(runtime.probes)
+        await engine._process_request(record)
+        return runtime.probes[before:]
+
+    # An unrelated canonical object is established FIRST: it precedes the Ubuntu canonical in repository
+    # order, which is exactly what let ``logical_pairing_mismatch`` mask the plausible unresolved target.
+    unrelated = await runtime.submit("unrelated.example", name="unrelated-object.bin")
+    transfer_a = await runtime.submit(*a_hosts)
+    (canonical,) = await repository.artifacts(transfer_a.id)
+    transfer_b = await runtime.submit(*b_hosts)
+
+    transfer_c = await engine.submit(
+        tuple(TransferRequest("parcel", f"{host}/{MIRROR_FILENAME}", name=MIRROR_FILENAME,
+                              preferred_provider=f"mirror:{host}") for host in (*c_good, ustc, aliyun)),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    by_host = {record.request.payload.split("/", 1)[0]: record for record in await repository.requests(transfer_c.id)}
+    decisions = {}
+    for host, record in by_host.items():
+        before = len(runtime.probes)
+        await engine._resolve(record)
+        decisions[host] = [runtime.probes[before:]]
+    for _ in range(3):  # Aliyun's bounded proof-retry budget.
+        refreshed = next(item for item in await repository.requests(transfer_c.id) if item.id == by_host[aliyun].id)
+        runtime.now[0] = max(runtime.now[0], refreshed.retry_at) + 0.01
+        decisions[aliyun].append(await decide(refreshed))
+
+    # --- Gate 3 bounded proof-call behaviour (no wall clock): a decisive full proof costs exactly one
+    # acquisition of the incoming route and one of the first verified member; an unresolved decision acquires
+    # each candidate at most once, however many verified candidates the canonical already holds.
+    for host in c_good:
+        assert decisions[host] == [[a_hosts[0], host]] or decisions[host] == [[host, a_hosts[0]]]
+    for host in (ustc, aliyun):
+        for acquisitions in decisions[host]:
+            if acquisitions:  # a quiescent (already terminal) decision acquires nothing.
+                assert acquisitions.count(host) == 1
+                assert len(acquisitions) == len(set(acquisitions)) <= 1 + len(a_hosts) + len(b_hosts) + len(c_good)
+    assert runtime.probes.count(ustc) == 1  # non-retryable: one attempted proof, then terminal.
+    assert runtime.probes.count(aliyun) == 3  # initial attempt + the two bounded retries, never more.
+
+    # --- B and C settle consolidated; A remains the one canonical material transfer.
+    assert (await repository.get(transfer_b.id)).state == TransferState.CONSOLIDATED
+    assert (await repository.get(transfer_c.id)).state == TransferState.CONSOLIDATED
+    assert (await repository.get(transfer_a.id)).state not in {TransferState.CONSOLIDATED, TransferState.FAILED}
+    assert await repository.artifacts(transfer_b.id) == ()
+    assert await repository.artifacts(transfer_c.id) == ()
+
+    # --- A holds ALL verified candidate bindings, and only those.
+    bindings = await engine.canonical.bindings(canonical.id)
+    assert {binding["source_identity"]["key"] for binding in bindings} == {*a_hosts, *b_hosts, *c_good}
+    assert len(bindings) == 8
+
+    # --- The unverified C sources: associated, never members, never writers, never failover candidates.
+    for host, reason in ((ustc, "range_ignored"), (aliyun, "range_unsupported")):
+        row = await _request_row(by_host[host].id)
+        assert (row["equivalence_disposition"], row["equivalence_reason"]) == ("unverified", reason)
+        assert int(row["equivalence_target_artifact_id"]) == canonical.id
+        assert await _membership_counts(by_host[host].id, transfer_c.id) == {
+            "download_files": 0, "execution_attempts": 0, "origins": 0, "bindings": 0, "consolidations": 0,
+        }
+    (current,) = [item for item in await engine.canonical.canonical_artifacts() if item.id == canonical.id]
+    assert len(current.candidates) == 8  # failover selection sees verified candidates only.
+
+    # --- A is the only material writer for this object; the payload completes and nothing else is written.
+    await engine.reconcile_executions()
+    async with database.get_db() as db:
+        executed = {int(row["artifact_id"]) for row in await db.fetchall("SELECT artifact_id FROM execution_attempts")}
+    (unrelated_artifact,) = await repository.artifacts(unrelated.id)
+    assert executed == {canonical.id, unrelated_artifact.id}
+    for artifact in (await repository.artifacts(transfer_a.id))[0], (await repository.artifacts(unrelated.id))[0]:
+        executor.finish(artifact.execution)
+    await engine.reconcile_executions()
+    await engine.tick()
+    (completed,) = await repository.artifacts(transfer_a.id)
+    assert completed.state == "completed"
+    files = sorted(item for item in (tmp_path / "payloads").rglob("*") if item.is_file())
+    assert [item.name for item in files] == sorted([MIRROR_FILENAME, "unrelated-object.bin"])
+    assert [item for item in files if item.stat().st_size == 0] == []  # no zero-byte invalid payload.
+    assert [item.name for item in files if re.search(r" \(\d+\)", item.name)] == []  # no duplicate payload.
+    assert len([call for call in executor.calls if call[0] == "start"]) == 2  # one writer per object, ever.
+
+    # --- Details for A: original + consolidated + unverified source history, verified count unchanged.
+    presentation = await repository.presentation(transfer_a.id, details=True)
+    assert [(row["route_identity"], row["relation"], row["verification_state"], row["contributing_transfer_id"])
+            for row in presentation["route_attempts"]] == [
+        *((f"https://{host}", "original", "verified", transfer_a.id) for host in a_hosts),
+        *((f"https://{host}", "consolidated", "verified", transfer_b.id) for host in b_hosts),
+        *((f"https://{host}", "consolidated", "verified", transfer_c.id) for host in c_good),
+        (f"https://{ustc}", "unverified", "unverified", transfer_c.id),
+        (f"https://{aliyun}", "unverified", "unverified", transfer_c.id),
+    ]
+    assert len(presentation["candidate_bindings"]) == 8  # "8 Candidates": verified only.
+    assert "unrelated.example" not in str(presentation["route_attempts"])
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective: both schema additions are additive-only,
+# nullable, idempotent, and need no backfill against an existing 1.0.12 database.
+# ---------------------------------------------------------------------------
+
+_NEW_COLUMNS = (("transfer_requests", "equivalence_target_artifact_id"), ("execution_attempts", "target_initially_absent"))
+
+
+async def _table_snapshot(db) -> dict:
+    """Every table's rows (by rowid) restricted to the pre-change columns, plus the schema object inventory."""
+    snapshot = {}
+    names = [row["name"] for row in await db.fetchall(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    for table in names:
+        columns = [row["name"] for row in await db.fetchall(f'PRAGMA table_info("{table}")')
+                   if (table, row["name"]) not in _NEW_COLUMNS]
+        listed = ",".join(f'"{column}"' for column in columns)
+        rows = await db.fetchall(f'SELECT rowid AS _rowid,{listed} FROM "{table}" ORDER BY rowid')
+        snapshot[table] = [tuple(row[key] for key in ("_rowid", *columns)) for row in rows]
+    snapshot["__objects__"] = sorted(
+        (row["type"], row["name"]) for row in await db.fetchall("SELECT type,name FROM sqlite_master"))
+    return snapshot
+
+
+async def test_schema_additions_upgrade_a_pre_change_database_idempotently_without_data_loss(tmp_path, monkeypatch):
+    """A faithful pre-change ``1.0.12`` database -- populated through the real
+    engine with requests, artifacts, executions and a held ``exhausted``
+    request, then stripped of exactly the two new columns -- is initialized by
+    the corrected code TWICE. Both fields appear; nothing is lost, rebuilt,
+    backfilled or migrated twice; startup validation passes each time."""
+    runtime = await _nominal_success_runtime(tmp_path, monkeypatch, db_name="schema-upgrade")
+    runtime.target.write_bytes(b"done")
+    await _report_success(runtime, total=4)  # a completed historical execution.
+    async with database.get_db() as db:
+        await db.execute(
+            """UPDATE transfer_requests SET equivalence_disposition='exhausted',equivalence_reason='dns_failure',
+                equivalence_retry_count=2""")
+        await db.commit()
+        # Reproduce the deployed schema: the two additions are the ONLY schema difference.
+        for table, column in _NEW_COLUMNS:
+            await db.execute(f'ALTER TABLE "{table}" DROP COLUMN "{column}"')
+        await db.commit()
+        for table, column in _NEW_COLUMNS:
+            assert column not in {row["name"] for row in await db.fetchall(f'PRAGMA table_info("{table}")')}
+        before = await _table_snapshot(db)
+    assert before["execution_attempts"] and before["transfer_requests"] and before["download_files"]
+    with pytest.raises(RuntimeError):  # the corrected runtime refuses the pre-change schema until bootstrap runs.
+        await database.validate_transfer_repository_schema()
+
+    for _ in range(2):  # repeated startup/initialization.
+        await database.init_db()
+        await database.validate_transfer_repository_schema()
+        async with database.get_db() as db:
+            assert await _table_snapshot(db) == before  # no data loss, no destructive rebuild, no new/lost objects.
+            for table, column in _NEW_COLUMNS:
+                info = [row for row in await db.fetchall(f'PRAGMA table_info("{table}")') if row["name"] == column]
+                assert len(info) == 1  # present exactly once: a repeated migration neither fails nor duplicates.
+                assert int(info[0]["notnull"]) == 0 and info[0]["dflt_value"] is None  # nullable, no default.
+                values = await db.fetchall(f'SELECT DISTINCT "{column}" AS value FROM "{table}"')
+                assert [row["value"] for row in values] == [None]  # historical rows stay NULL: no backfill.
+
+    # Historical NULLs read safely: the held request is still simply held, and an old execution owns nothing.
+    assert (await _request_row((await runtime.repository.requests(runtime.transfer.id))[0].id))[
+        "equivalence_disposition"] == "exhausted"
+    assert await runtime.repository.execution_owns_target(runtime.artifact.execution) is False
+    assert (await runtime.repository.presentation(runtime.transfer.id, details=True))["route_attempts"]
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Gate 9 continuation: existing lifecycle /
+# cohort consumers of the terminal UNVERIFIED state introduced by Remediation 4.
+# ---------------------------------------------------------------------------
+
+async def _mixed_parent_runtime(tmp_path, monkeypatch, *, db_name, unresolved_reason="range_ignored"):
+    """A parent that owns ordinary material of its own AND one leaf that is a
+    terminal UNVERIFIED association to a canonical artifact owned by a
+    DIFFERENT transfer -- the mixed topology the all-cross-transfer integrated
+    regression does not cover."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"{db_name}.sqlite3")
+    await database.init_db()
+    external = _NamedUnknownSizeProvider("external-canonical")
+    associated = _NamedUnknownSizeProvider("associated-source")
+    local = _NamedUnknownSizeProvider("local-material")
+    repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, (external, associated, local))
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == associated.descriptor.id:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason=unresolved_reason)
+        return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    owner = await engine.submit(
+        (TransferRequest("parcel", "external", name=MIRROR_FILENAME, preferred_provider=external.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (owner_record,) = await repository.requests(owner.id)
+    await engine._resolve(owner_record)
+    (canonical,) = await repository.artifacts(owner.id)
+
+    parent = await engine.submit(
+        (TransferRequest("parcel", "associated", name=MIRROR_FILENAME, preferred_provider=associated.descriptor.id),
+         TransferRequest("parcel", "local", name="local-object.bin", preferred_provider=local.descriptor.id)),
+        name="mixed-parent", deduplicate=False,
+    )
+    by_payload = {record.request.payload: record for record in await repository.requests(parent.id)}
+    for payload in ("local", "associated"):
+        await engine._resolve(by_payload[payload])
+    return SimpleNamespace(repository=repository, engine=engine, executor=executor, canonical=canonical,
+                           owner=owner, parent=parent, by_payload=by_payload)
+
+
+async def _complete_local_material(runtime):
+    """Drive the parent's own ordinary artifact to a real verified completion."""
+    await runtime.engine.reconcile_executions()
+    (local_artifact,) = await runtime.repository.artifacts(runtime.parent.id)
+    runtime.executor.finish(local_artifact.execution)
+    for _ in range(3):
+        await runtime.engine.reconcile_executions()
+        await runtime.engine.tick()
+    return next(item for item in await runtime.repository.artifacts(runtime.parent.id) if item.id == local_artifact.id)
+
+
+async def test_mixed_parent_with_terminal_unverified_leaf_settles(tmp_path, monkeypatch):
+    """Gate 9 continuation, Finding 1. A parent that owns one ordinary material
+    artifact AND one terminal UNVERIFIED association must reach its terminal
+    lifecycle state: the unverified leaf is settled, writer-forbidden truth,
+    not an outstanding materialization obligation. RED before the correction:
+    the parent stays QUEUED forever because the held leaf's logical slot is
+    only excused by a completed canonical in its OWN transfer."""
+    runtime = await _mixed_parent_runtime(tmp_path, monkeypatch, db_name="mixed-parent-settles")
+    associated = runtime.by_payload["associated"]
+    held = await _request_row(associated.id)
+    assert held["equivalence_disposition"] == "unverified"
+    assert int(held["equivalence_target_artifact_id"]) == runtime.canonical.id
+
+    local_artifact = await _complete_local_material(runtime)
+    assert local_artifact.state == "completed"  # the parent's own material is delivered normally.
+    assert Path(local_artifact.target).read_bytes() == b"done"
+
+    parent = await runtime.repository.get(runtime.parent.id)
+    assert parent.state == TransferState.COMPLETED, (
+        f"mixed parent did not settle: {parent.state} -- a terminal UNVERIFIED leaf is not an outstanding obligation"
+    )
+    assert await _membership_counts(associated.id, runtime.parent.id) == {
+        "download_files": 0, "execution_attempts": 1, "origins": 0, "bindings": 0, "consolidations": 0,
+    }  # the one execution is the parent's OWN local material; the unverified leaf has no writer.
+    assert (await _request_row(associated.id))["equivalence_disposition"] == "unverified"
+    assert len((await runtime.engine.canonical.bindings(runtime.canonical.id))) <= 1  # never a canonical member.
+
+
+async def test_mixed_parent_with_nonterminal_unresolved_leaf_still_blocks(tmp_path, monkeypatch):
+    """The control: an unresolved leaf that is NOT terminal (no single
+    plausible target, so it stays ``exhausted`` with no association) keeps the
+    same mixed parent unsettled. Terminality is what settles, never mere
+    absence of proof."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "mixed-parent-blocks.sqlite3")
+    await database.init_db()
+    first, second = (_NamedUnknownSizeProvider(name) for name in ("object-one", "object-two"))
+    associated = _NamedUnknownSizeProvider("associated-source")
+    local = _NamedUnknownSizeProvider("local-material")
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (first, second, associated, local))
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == associated.descriptor.id:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        return ArtifactFingerprint(4, f"content:{candidate.provider_id}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    for provider in (first, second):  # two distinct canonical objects sharing the incoming logical name.
+        transfer = await engine.submit(
+            (TransferRequest("parcel", provider.descriptor.id, name=MIRROR_FILENAME,
+                             preferred_provider=provider.descriptor.id),), name=MIRROR_FILENAME, deduplicate=False)
+        (record,) = await repository.requests(transfer.id)
+        await engine._resolve(record)
+    parent = await engine.submit(
+        (TransferRequest("parcel", "associated", name=MIRROR_FILENAME, preferred_provider=associated.descriptor.id),
+         TransferRequest("parcel", "local", name="local-object.bin", preferred_provider=local.descriptor.id)),
+        name="mixed-parent-blocks", deduplicate=False)
+    by_payload = {record.request.payload: record for record in await repository.requests(parent.id)}
+    for payload in ("local", "associated"):
+        await engine._resolve(by_payload[payload])
+    held = await _request_row(by_payload["associated"].id)
+    assert held["equivalence_disposition"] == "exhausted"  # no single plausible target: nonterminal.
+    assert held["equivalence_target_artifact_id"] is None
+
+    await engine.reconcile_executions()
+    (local_artifact,) = await repository.artifacts(parent.id)
+    executor.finish(local_artifact.execution)
+    for _ in range(3):
+        await engine.reconcile_executions()
+        await engine.tick()
+    assert (await repository.get(parent.id)).state not in {
+        TransferState.COMPLETED, TransferState.CONSOLIDATED,
+    }  # unresolved-but-nonterminal identity still blocks settlement.
+
+
+async def _prefix_cohort_runtime(tmp_path, monkeypatch, *, db_name, decidable_unresolved=False):
+    """A canonical artifact owned by another transfer, plus a two-member
+    same-transfer cohort whose evidence against it is WEAK PREFIX -- the
+    collection-walk topology the FULL-evidence production regression never
+    exercises. Sibling ``held`` always answers unresolved; sibling
+    ``decidable`` answers weak PREFIX unless ``decidable_unresolved``."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"{db_name}.sqlite3")
+    await database.init_db()
+    canonical_provider = _NamedUnknownSizeProvider("prefix-canonical")
+    decidable = _NamedUnknownSizeProvider("prefix-decidable")
+    held = _NamedUnknownSizeProvider("prefix-held")
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (canonical_provider, decidable, held))
+    await engine.initialize()
+    phase = ["seed"]
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == held.descriptor.id:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        if candidate.provider_id == decidable.descriptor.id and decidable_unresolved:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+        if phase[0] == "seed" and candidate.provider_id == canonical_provider.descriptor.id:
+            # The canonical seeds itself through ordinary self-evidence.
+            return ArtifactFingerprint(4, "full:seed", FingerprintKind.FULL_CONTENT_SAMPLE)
+        # Weak, collection-grade evidence only: a prefix sample both sides share.
+        return ArtifactFingerprint(4, "prefix-shared", FingerprintKind.PREFIX_CONTENT_SAMPLE, "range_ignored",
+                                   "prefix-shared")
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    owner = await engine.submit(
+        (TransferRequest("parcel", "canonical", name=MIRROR_FILENAME,
+                         preferred_provider=canonical_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (owner_record,) = await repository.requests(owner.id)
+    await engine._resolve(owner_record)
+    (canonical,) = await repository.artifacts(owner.id)
+    phase[0] = "cohort"
+    cohort = await engine.submit(
+        (TransferRequest("parcel", "decidable", name=MIRROR_FILENAME, preferred_provider=decidable.descriptor.id),
+         TransferRequest("parcel", "held", name=MIRROR_FILENAME, preferred_provider=held.descriptor.id)),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    by_payload = {record.request.payload: record for record in await repository.requests(cohort.id)}
+    return SimpleNamespace(repository=repository, engine=engine, executor=executor, canonical=canonical,
+                           owner=owner, cohort=cohort, by_payload=by_payload)
+
+
+async def _drive_prefix_cohort(runtime, order):
+    """Resolve the cohort in ``order``, then run further bounded scheduler
+    cycles so any pending proof retry has its chance."""
+    for payload in order:
+        await runtime.engine._resolve(runtime.by_payload[payload])
+    now = [1000.0]
+    runtime.engine.clock = lambda: now[0]
+    for _ in range(4):
+        for record in await runtime.repository.requests(runtime.cohort.id):
+            now[0] = max(now[0], record.retry_at) + 0.01
+            await runtime.engine._process_request(record)
+    return {payload: await _request_row(record.id) for payload, record in runtime.by_payload.items()}
+
+
+@pytest.mark.parametrize("order", [("held", "decidable"), ("decidable", "held")])
+async def test_terminal_unverified_sibling_does_not_poison_a_decidable_prefix_sibling(tmp_path, monkeypatch, order):
+    """Gate 9 continuation, Finding 2, Case A + Case C (order independence).
+    A weak-PREFIX cohort in which one sibling reaches terminal UNVERIFIED must
+    still let its decidable sibling complete the existing collection/attach
+    path. RED before the correction: the held sibling is counted as a pending
+    proof opportunity forever, so the decidable sibling never attaches."""
+    runtime = await _prefix_cohort_runtime(tmp_path, monkeypatch, db_name=f"prefix-cohort-{'-'.join(order)}")
+    starts_before = len([call for call in runtime.executor.calls if call[0] == "start"])
+    rows = await _drive_prefix_cohort(runtime, order)
+
+    assert rows["held"]["equivalence_disposition"] == "unverified"  # terminal, non-writer.
+    assert int(rows["held"]["equivalence_target_artifact_id"]) == runtime.canonical.id
+    assert rows["decidable"]["state"] == "resolved", (
+        "decidable sibling never attached: it stayed pending only because its sibling is terminally held"
+    )
+    assert rows["decidable"]["equivalence_disposition"] == "recovered"
+    bindings = await runtime.engine.canonical.bindings(runtime.canonical.id)
+    assert len(bindings) == 2  # the canonical's own candidate plus the decidable sibling: no duplicate writer.
+    assert await _membership_counts(runtime.by_payload["held"].id, runtime.cohort.id) == {
+        "download_files": 0, "execution_attempts": 0, "origins": 0, "bindings": 0, "consolidations": 0,
+    }  # the terminally-held sibling is never a canonical member and never a writer.
+    assert await _membership_counts(runtime.by_payload["decidable"].id, runtime.cohort.id) == {
+        "download_files": 1, "execution_attempts": 0, "origins": 1, "bindings": 1, "consolidations": 1,
+    }  # the decidable sibling is a standby contribution, never an independent writer.
+    assert len([call for call in runtime.executor.calls if call[0] == "start"]) == starts_before
+    assert not {rows[payload]["equivalence_disposition"] for payload in rows} & {
+        "independent", "contradictory", "released",
+    }  # no cohort-wide release.
+
+
+async def test_terminal_unverified_sibling_never_lets_an_unresolved_sibling_guess(tmp_path, monkeypatch):
+    """Gate 9 continuation, Finding 2, Case B. When the other sibling's own
+    identity is also genuinely unresolved, excluding the terminally-held
+    sibling must not convert that into permission to materialize: it holds on
+    its own evidence."""
+    runtime = await _prefix_cohort_runtime(
+        tmp_path, monkeypatch, db_name="prefix-cohort-ambiguous", decidable_unresolved=True)
+    starts_before = len([call for call in runtime.executor.calls if call[0] == "start"])
+    rows = await _drive_prefix_cohort(runtime, ("held", "decidable"))
+
+    for payload in ("held", "decidable"):
+        assert rows[payload]["equivalence_disposition"] not in {"independent", "contradictory", "released", "provisional"}
+        assert rows[payload]["state"] == "materializing"
+        assert (await _membership_counts(runtime.by_payload[payload].id, runtime.cohort.id))["download_files"] == 0
+    assert len([call for call in runtime.executor.calls if call[0] == "start"]) == starts_before
+    # Nothing attached and nothing guessed: neither cohort member contributed candidate provenance.
+    assert [origin for binding in await runtime.engine.canonical.bindings(runtime.canonical.id)
+            for origin in binding["origins"]
+            if origin["request_id"] in {record.id for record in runtime.by_payload.values()}] == []
+
+
+# ---------------------------------------------------------------------------
+# DP 1.0.12 consolidation corrective, Round 3: explicit OPERATOR-DRIVEN
+# reconsideration of a terminal UNVERIFIED association whose source parent has
+# already settled. Remediation 4 always promised this path; only AUTOMATIC
+# background reconsideration was deferred.
+# ---------------------------------------------------------------------------
+
+async def _settled_unverified_runtime(tmp_path, monkeypatch, *, db_name):
+    """Canonical artifact A owned by a healthy transfer, plus a single-leaf
+    source transfer whose only leaf is a terminal UNVERIFIED association to A
+    -- so that source parent settles CONSOLIDATED, exactly the shape Round 2
+    introduced."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / f"{db_name}.sqlite3")
+    await database.init_db()
+    owner_provider = _NamedUnknownSizeProvider("canonical-owner")
+    source_provider = _NamedUnknownSizeProvider("associated-source")
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (owner_provider, source_provider))
+    await engine.initialize()
+    phase = ["unresolved"]
+
+    async def fingerprint(candidate):
+        if candidate.provider_id == source_provider.descriptor.id:
+            if phase[0] == "unresolved":
+                return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
+            if phase[0] == "distinct":
+                return ArtifactFingerprint(4, "different-content", FingerprintKind.FULL_CONTENT_SAMPLE)
+            return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+        return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    owner = await engine.submit(
+        (TransferRequest("parcel", "canonical", name=MIRROR_FILENAME,
+                         preferred_provider=owner_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (owner_record,) = await repository.requests(owner.id)
+    await engine._resolve(owner_record)
+    (canonical,) = await repository.artifacts(owner.id)
+
+    source = await engine.submit(
+        (TransferRequest("parcel", "associated", name=MIRROR_FILENAME,
+                         preferred_provider=source_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False,
+    )
+    (record,) = await repository.requests(source.id)
+    await engine._resolve(record)
+
+    held = await _request_row(record.id)
+    assert held["equivalence_disposition"] == "unverified"
+    assert int(held["equivalence_target_artifact_id"]) == canonical.id
+    assert (await repository.get(source.id)).state == TransferState.CONSOLIDATED
+    return SimpleNamespace(repository=repository, engine=engine, executor=executor, canonical=canonical,
+                           owner=owner, source=source, record=record, phase=phase)
+
+
+async def _canonical_facts(runtime):
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            """SELECT (SELECT COUNT(*) FROM canonical_candidate_bindings WHERE canonical_artifact_id=?) AS bindings,
+                (SELECT COUNT(*) FROM canonical_candidate_origins o
+                    JOIN canonical_candidate_bindings b ON b.id=o.binding_id
+                    WHERE b.canonical_artifact_id=?) AS origins,
+                (SELECT COUNT(*) FROM canonical_candidate_origins WHERE request_id=?) AS own_origins,
+                (SELECT COUNT(DISTINCT b.id) FROM canonical_candidate_bindings b
+                    JOIN canonical_candidate_origins o ON o.binding_id=b.id
+                    WHERE b.canonical_artifact_id=? AND o.request_id=?) AS own_bindings,
+                (SELECT COUNT(*) FROM download_files WHERE request_id=?) AS own_artifacts,
+                (SELECT COUNT(*) FROM execution_attempts WHERE transfer_id=?) AS own_executions,
+                (SELECT COUNT(*) FROM artifact_consolidations WHERE source_request_id=?) AS own_consolidations""",
+            (runtime.canonical.id, runtime.canonical.id, runtime.record.id,
+             runtime.canonical.id, runtime.record.id, runtime.record.id,
+             runtime.source.id, runtime.record.id),
+        )
+    facts = dict(row)
+    (current,) = [item for item in await runtime.engine.canonical.canonical_artifacts()
+                  if item.id == runtime.canonical.id] or [None]
+    facts["candidate_count"] = len(current.candidates) if current is not None else None
+    return facts
+
+
+async def _operator_reconsider(runtime, *, ticks=4):
+    """The one existing operator-facing action (POST /torrents/{id}/retry ->
+    ApplicationService.retry -> TransferEngine.retry)."""
+    accepted = await runtime.engine.retry(runtime.source.id)
+    now = [2000.0]
+    runtime.engine.clock = lambda: now[0]
+    for _ in range(ticks):
+        for item in await runtime.repository.requests(runtime.source.id):
+            now[0] = max(now[0], item.retry_at) + 0.01
+        await runtime.engine.tick()
+    return accepted
+
+
+async def test_operator_reconsideration_after_settlement_attaches_proven_equivalent_source(tmp_path, monkeypatch):
+    """Round 3 RED/GREEN, Case 1. A terminal UNVERIFIED association whose
+    parent has settled must still be reconsiderable by the EXISTING operator
+    action, and later affirmative proof must traverse the ordinary canonical
+    attach path. Remediation 4 promised exactly this; only automatic
+    background reconsideration was deferred."""
+    runtime = await _settled_unverified_runtime(tmp_path, monkeypatch, db_name="reconsider-equivalent")
+    before = await _canonical_facts(runtime)
+    assert before["candidate_count"] == 1 and before["own_origins"] == 0
+
+    runtime.phase[0] = "equivalent"  # later evidence now proves equivalence.
+    accepted = await _operator_reconsider(runtime)
+    assert accepted is True, "the existing operator action refused to reconsider a settled UNVERIFIED association"
+
+    row = await _request_row(runtime.record.id)
+    after = await _canonical_facts(runtime)
+    assert row["equivalence_disposition"] == "recovered"  # ordinary canonical attach path.
+    assert row["equivalence_target_artifact_id"] is None  # no stale UNVERIFIED association remains.
+    assert row["state"] == "resolved"
+    assert after["candidate_count"] == before["candidate_count"] + 1  # N -> N+1, only after proof.
+    assert (before["own_bindings"], after["own_bindings"]) == (0, 1)  # exactly one binding for this source...
+    assert (before["own_origins"], after["own_origins"]) == (0, 1)  # ...with exactly one origin, never duplicated.
+    # The canonical now carries its own candidate plus this one, and nothing else.
+    assert after["bindings"] == after["candidate_count"] == 2
+    assert after["own_consolidations"] == 1  # ordinary cross-transfer consolidation provenance.
+    assert after["own_artifacts"] == 1  # the standby contribution row, never an independent writer.
+    assert after["own_executions"] == 0  # no execution, no duplicate payload.
+    assert len([call for call in runtime.executor.calls if call[0] == "start"]) == 1  # only the canonical owner ever wrote.
+
+
+async def test_operator_reconsideration_after_settlement_releases_a_proven_distinct_source(tmp_path, monkeypatch):
+    """Round 3, Case 2: prior association was uncertainty, never membership."""
+    runtime = await _settled_unverified_runtime(tmp_path, monkeypatch, db_name="reconsider-distinct")
+    before = await _canonical_facts(runtime)
+    runtime.phase[0] = "distinct"
+    await _operator_reconsider(runtime)
+
+    row = await _request_row(runtime.record.id)
+    after = await _canonical_facts(runtime)
+    assert row["equivalence_disposition"] not in {"unverified", "recovered"}
+    assert row["equivalence_target_artifact_id"] is None  # the old association is cleared.
+    assert after["bindings"] == before["bindings"]  # no binding to the old artifact was invented.
+    assert after["own_origins"] == 0 and after["own_consolidations"] == 0
+
+
+async def test_operator_reconsideration_that_stays_unresolved_returns_to_unverified(tmp_path, monkeypatch):
+    """Round 3, Case 3: still unresolved goes back to terminal UNVERIFIED --
+    non-writer, non-member, no hot loop."""
+    runtime = await _settled_unverified_runtime(tmp_path, monkeypatch, db_name="reconsider-unresolved")
+    before = await _canonical_facts(runtime)
+    await _operator_reconsider(runtime)  # phase stays "unresolved".
+
+    row = await _request_row(runtime.record.id)
+    after = await _canonical_facts(runtime)
+    assert row["equivalence_disposition"] == "unverified"
+    assert int(row["equivalence_target_artifact_id"]) == runtime.canonical.id  # one plausible target retained.
+    assert after["bindings"] == before["bindings"]
+    assert after["own_origins"] == 0 and after["own_consolidations"] == 0 and after["own_executions"] == 0
+    assert len([call for call in runtime.executor.calls if call[0] == "start"]) == 1
+
+
+async def test_settled_unverified_association_is_quiescent_without_operator_action(tmp_path, monkeypatch):
+    """Round 3, Case 4: no automatic reconsideration. Restart the engine and
+    run ordinary ticks -- nothing is sampled, nothing changes."""
+    runtime = await _settled_unverified_runtime(tmp_path, monkeypatch, db_name="reconsider-quiescent")
+    probes = {"count": 0}
+    inner = runtime.executor.fingerprint
+
+    async def counting(candidate):
+        probes["count"] += 1
+        return await inner(candidate)
+
+    monkeypatch.setattr(runtime.executor, "fingerprint", counting)
+    runtime.phase[0] = "equivalent"  # even though proof WOULD now succeed, nothing may ask for it.
+    before = await _canonical_facts(runtime)
+    restarted = TransferEngine(
+        runtime.repository, runtime.engine.registry, download_root=runtime.engine.root,
+        policy=runtime.engine.policy, clock=lambda: 3000.0,
+    )
+    await restarted.initialize()
+    for _ in range(5):
+        await restarted.tick()
+
+    assert probes["count"] == 0  # no automatic proof acquisition,
+    row = await _request_row(runtime.record.id)
+    assert row["equivalence_disposition"] == "unverified"  # no scheduler-driven reopening,
+    assert int(row["equivalence_target_artifact_id"]) == runtime.canonical.id
+    after = await _canonical_facts(runtime)
+    # Nothing about THIS association changes: no membership, no writer, no
+    # execution. (The canonical owner's own candidate binding may be
+    # formalized by the ordinary P1 provenance scan any engine start runs --
+    # long-standing behaviour unrelated to this association, so the
+    # association-scoped facts are what quiescence is asserted on.)
+    assert {key: after[key] for key in ("own_origins", "own_artifacts", "own_executions", "own_consolidations")} == {
+        "own_origins": 0, "own_artifacts": 0, "own_executions": 0, "own_consolidations": 0,
+    }
+    assert after["candidate_count"] == before["candidate_count"]  # no new verified candidate appears.
+    assert (await runtime.repository.get(runtime.source.id)).state == TransferState.CONSOLIDATED
+
+
+async def test_operator_retry_still_refuses_an_ordinary_consolidated_transfer(tmp_path, monkeypatch):
+    """Round 3, Regression E: settled transfers are NOT broadly reopened. A
+    consolidated transfer whose leaves are all VERIFIED canonical members
+    holds no terminal UNVERIFIED association, so the operator action keeps
+    refusing exactly as before and nothing about it is mutated."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "ordinary-consolidated.sqlite3")
+    await database.init_db()
+    owner_provider = _NamedUnknownSizeProvider("canonical-owner")
+    source_provider = _NamedUnknownSizeProvider("verified-source")
+    repository, engine, executor = _build_unknown_size_runtime(
+        tmp_path, monkeypatch, (owner_provider, source_provider))
+    await engine.initialize()
+
+    async def fingerprint(candidate):
+        return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    owner = await engine.submit(
+        (TransferRequest("parcel", "canonical", name=MIRROR_FILENAME,
+                         preferred_provider=owner_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False)
+    (owner_record,) = await repository.requests(owner.id)
+    await engine._resolve(owner_record)
+    source = await engine.submit(
+        (TransferRequest("parcel", "verified", name=MIRROR_FILENAME,
+                         preferred_provider=source_provider.descriptor.id),),
+        name=MIRROR_FILENAME, deduplicate=False)
+    (record,) = await repository.requests(source.id)
+    await engine._resolve(record)
+
+    transfer = await repository.get(source.id)
+    assert transfer.state == TransferState.CONSOLIDATED  # ordinary verified consolidation.
+    row_before = await _request_row(record.id)
+    assert row_before["equivalence_disposition"] == "recovered"
+
+    assert await engine.retry(source.id) is False  # unchanged refusal.
+    assert (await repository.get(source.id)).state == TransferState.CONSOLIDATED
+    assert (await repository.get(source.id)).epoch == transfer.epoch  # no lifecycle transition occurred.
+    assert await _request_row(record.id) == row_before  # nothing about the settled transfer was mutated.
+
+
+async def test_operator_reconsideration_resettles_the_parent_through_the_existing_owner(tmp_path, monkeypatch):
+    """Round 3: after an explicit reconsideration the parent is live again
+    only until the ordinary machinery settles it once more -- through the
+    existing ``_finalize_transfer``/aggregation owners, with no second
+    settlement path."""
+    runtime = await _settled_unverified_runtime(tmp_path, monkeypatch, db_name="reconsider-resettle")
+    runtime.phase[0] = "equivalent"
+    assert await _operator_reconsider(runtime) is True
+    assert (await runtime.repository.get(runtime.source.id)).state == TransferState.CONSOLIDATED
+    assert (await _request_row(runtime.record.id))["equivalence_disposition"] == "recovered"
+
+    # A reconsideration that stays unresolved likewise returns to settlement.
+    other = await _settled_unverified_runtime(tmp_path, monkeypatch, db_name="reconsider-resettle-unresolved")
+    assert await _operator_reconsider(other) is True  # phase stays "unresolved".
+    assert (await other.repository.get(other.source.id)).state == TransferState.CONSOLIDATED
+    assert (await _request_row(other.record.id))["equivalence_disposition"] == "unverified"

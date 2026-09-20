@@ -13,7 +13,8 @@ from types import SimpleNamespace
 
 from db.database import get_db
 from transfers.mirrors import (
-    EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, self_evidence, shared_evidence,
+    EvidenceContext, EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, self_evidence,
+    shared_evidence,
 )
 
 
@@ -35,7 +36,18 @@ _INDEPENDENT_DISPOSITIONS = frozenset({"released", "independent", "contradictory
 # UNRESOLVED -- it must never be read as permission to materialize. A held
 # request stays in durable MATERIALIZING state; only later affirmative
 # evidence (recovered) or an explicit release event can move it forward.
-_HELD_DISPOSITIONS = frozenset({"exhausted"})
+#
+# "unverified" is the terminal form of the same hold when the unresolved proof
+# was attempted against EXACTLY ONE plausible canonical artifact: automatic
+# proof acquisition is finished, equivalence remains unproven, an independent
+# writer stays forbidden, and the request is durably associated with that one
+# artifact (``equivalence_target_artifact_id``) for lifecycle/presentation
+# only. It is NOT canonical membership: it never creates a candidate binding,
+# a canonical origin, a consolidation row, a writer, or failover eligibility.
+# With no single plausible target (none, or several) the hold stays
+# "exhausted" -- a target is never guessed.
+_UNVERIFIED_DISPOSITION = "unverified"
+_HELD_DISPOSITIONS = frozenset({"exhausted", _UNVERIFIED_DISPOSITION})
 # "provisional" is the honest disposition of the ONE bootstrap writer admitted
 # when bounded self-proof exhausted with no canonical writer anywhere and the
 # evidence class is eligible (``EquivalenceEvidence
@@ -48,15 +60,68 @@ _HELD_DISPOSITIONS = frozenset({"exhausted"})
 _PROVISIONAL_DISPOSITION = "provisional"
 
 
+class MappingOutcome(str):
+    """What one incoming request's proof established against the canonical set.
+
+    These are qualitatively different facts, kept as distinct states and
+    consumed independently by the writer barrier -- never weights competing
+    inside one scalar "best failure". Each is read off the existing
+    ``transfers.mirrors.EquivalenceEvidence`` semantics (``_pair_outcome``);
+    this is not a second reason taxonomy."""
+    MATCH = "match"
+    # Pairing with this canonical is plausible, proof was actually attempted,
+    # and the evidence has not resolved either way.
+    PLAUSIBLE_UNRESOLVED = "plausible_unresolved"
+    # This canonical is not a candidate at all (a cheap pairing rejection).
+    NONPAIRING = "nonpairing"
+    CONTRADICTORY = "contradictory"
+    STRUCTURALLY_UNPROVABLE = "structurally_unprovable"
+    AMBIGUOUS = "ambiguous"
+
+
+@dataclass(frozen=True)
+class CanonicalOutcome:
+    """The proof outcome against ONE canonical artifact."""
+    primary: object
+    outcome: str
+    evidence: EquivalenceEvidence
+
+
 @dataclass(frozen=True)
 class MappingResult:
     primary: object | None
     evidence: EquivalenceEvidence
     cardinality: int = 0
+    outcome: str = MappingOutcome.NONPAIRING
+    # Every canonical whose pairing is plausible and whose attempted proof is
+    # still unresolved. Unrelated/non-pairing canonicals never appear here and
+    # can never remove an entry from it.
+    plausible: tuple = ()
 
     @property
     def matched(self) -> bool:
-        return self.primary is not None and self.evidence.proves_collection_member
+        return (
+            self.outcome == MappingOutcome.MATCH
+            and self.primary is not None
+            and self.evidence.proves_collection_member
+        )
+
+    @property
+    def unverified_target(self):
+        """The one canonical artifact an exhausted hold may be associated with:
+        zero proven matches and exactly one plausible unresolved target. Any
+        other shape (a proven match beside it, or several plausible targets)
+        names nothing -- a target is never guessed."""
+        if self.outcome != MappingOutcome.PLAUSIBLE_UNRESOLVED or self.cardinality or len(self.plausible) != 1:
+            return None
+        return self.plausible[0]
+
+    @property
+    def must_hold(self) -> bool:
+        """The writer barrier: at least one plausible canonical pairing remains
+        unresolved after proof was actually attempted, so nothing else in the
+        canonical set can grant permission to materialize independently."""
+        return self.outcome == MappingOutcome.PLAUSIBLE_UNRESOLVED
 
 
 def _normalized_candidates(record, candidates):
@@ -105,50 +170,115 @@ def _better(left: EquivalenceEvidence, right: EquivalenceEvidence) -> Equivalenc
     return right if _evidence_score(right) > _evidence_score(left) else left
 
 
-async def _proof_against_primary(primary, incoming, registry):
-    """Return the best proof/failure against one canonical artifact."""
-    best = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="pairing_mismatch")
+def _pair_outcome(evidence: EquivalenceEvidence) -> str:
+    """Classify one pairwise evidence through the existing
+    ``EquivalenceEvidence`` semantics alone."""
+    if evidence.proves_collection_member:
+        return MappingOutcome.MATCH
+    if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY:
+        return MappingOutcome.CONTRADICTORY
+    if evidence.proof_structurally_unavailable:
+        return MappingOutcome.STRUCTURALLY_UNPROVABLE
+    if evidence.unresolved_pairing:
+        return MappingOutcome.PLAUSIBLE_UNRESOLVED
+    return MappingOutcome.NONPAIRING
+
+
+def _representative(evidences) -> EquivalenceEvidence:
+    """One evidence standing for a set that ALL share one outcome, chosen
+    independently of iteration order. Only ever applied within a single
+    outcome class -- it never decides between classes."""
+    return min(evidences, key=lambda item: (
+        tuple(-rank for rank in _evidence_score(item)), str(item.reason), int(item.total_bytes),
+    ))
+
+
+# Within ONE canonical artifact every candidate is a verified route to the same
+# object, so its pairwise facts combine about that one object: any proof is a
+# match; otherwise an affirmative contradiction with a verified member
+# distinguishes the object; otherwise an attempted-but-unresolved proof keeps
+# it plausible; otherwise a plausible pair for which no proof can exist; and
+# only when every pair is a cheap pairing rejection is it not a candidate.
+_CANONICAL_OUTCOME_PRECEDENCE = (
+    MappingOutcome.MATCH, MappingOutcome.CONTRADICTORY, MappingOutcome.PLAUSIBLE_UNRESOLVED,
+    MappingOutcome.STRUCTURALLY_UNPROVABLE, MappingOutcome.NONPAIRING,
+)
+
+
+async def _proof_against_primary(primary, incoming, registry, context=None) -> CanonicalOutcome:
+    """The proof outcome against one canonical artifact.
+
+    Traversal stops at the first evidence that already ``proves_individual``:
+    that is the strongest requirement any consumer of a match has, so sampling
+    the artifact's remaining candidates could not change the outcome."""
+    by_outcome = {}
     for left in primary.candidates:
         left = _with_known_size(left, primary.expected_bytes)
         for right in incoming:
-            evidence = await shared_evidence(left, right, registry)
-            best = _better(best, evidence)
-            if evidence.kind == EvidenceKind.STRONG_INTEGRITY:
-                return evidence
-    return best
+            evidence = await shared_evidence(left, right, registry, context)
+            if evidence.proves_individual:
+                return CanonicalOutcome(primary, MappingOutcome.MATCH, evidence)
+            by_outcome.setdefault(_pair_outcome(evidence), []).append(evidence)
+    for outcome in _CANONICAL_OUTCOME_PRECEDENCE:
+        if outcome in by_outcome:
+            return CanonicalOutcome(primary, outcome, _representative(by_outcome[outcome]))
+    return CanonicalOutcome(
+        primary, MappingOutcome.NONPAIRING, EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="pairing_mismatch"),
+    )
 
 
-async def _mapping(canonicals, incoming, registry):
-    """Require one and only one canonical target; never guess around unproven peers."""
-    matches = []
-    failures = []
-    for primary in canonicals:
-        evidence = await _proof_against_primary(primary, incoming, registry)
-        if evidence.proves_collection_member:
-            matches.append((primary, evidence))
-        else:
-            failures.append(evidence)
+def _mapping_decision(outcomes) -> MappingResult:
+    """Combine per-canonical outcomes. Pure, and independent of the order in
+    which the canonicals were evaluated."""
+    grouped = {}
+    for item in outcomes:
+        grouped.setdefault(item.outcome, []).append(item)
 
+    def evidence_of(outcome):
+        return _representative([item.evidence for item in grouped[outcome]])
+
+    matches = grouped.get(MappingOutcome.MATCH, [])
+    plausible = tuple(sorted(
+        (item.primary for item in grouped.get(MappingOutcome.PLAUSIBLE_UNRESOLVED, [])),
+        key=lambda primary: primary.id,
+    ))
     if len(matches) > 1:
         return MappingResult(
             None, EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="ambiguous_mapping"), len(matches),
+            MappingOutcome.AMBIGUOUS, plausible,
         )
+    cardinality = len(matches)
+    if plausible:
+        # A plausible target whose attempted proof is unresolved holds the
+        # writer barrier whatever the other canonicals answered: beside one
+        # proven match it forbids guessing, and with none it forbids an
+        # independent writer. Non-pairing canonicals are not consulted.
+        return MappingResult(
+            None, evidence_of(MappingOutcome.PLAUSIBLE_UNRESOLVED), cardinality,
+            MappingOutcome.PLAUSIBLE_UNRESOLVED, plausible,
+        )
+    if matches:
+        if MappingOutcome.STRUCTURALLY_UNPROVABLE in grouped:
+            # Existing ambiguity protection: a second pairable canonical for
+            # which no proof can exist keeps the one proven match from being
+            # guessed as unique (the degraded fallback, never a HOLD).
+            return MappingResult(
+                None, evidence_of(MappingOutcome.STRUCTURALLY_UNPROVABLE), cardinality,
+                MappingOutcome.STRUCTURALLY_UNPROVABLE,
+            )
+        return MappingResult(matches[0].primary, matches[0].evidence, cardinality, MappingOutcome.MATCH)
+    for outcome in (MappingOutcome.CONTRADICTORY, MappingOutcome.STRUCTURALLY_UNPROVABLE, MappingOutcome.NONPAIRING):
+        if outcome in grouped:
+            return MappingResult(None, evidence_of(outcome), 0, outcome)
+    fallback = EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="no_unique_mapping")
+    return MappingResult(None, fallback, 0, _pair_outcome(fallback))
 
-    unresolved = [item for item in failures if item.unresolved_pairing]
-    if len(matches) == 1:
-        if unresolved:
-            best = unresolved[0]
-            for item in unresolved[1:]:
-                best = _better(best, item)
-            return MappingResult(None, best, 1)
-        return MappingResult(matches[0][0], matches[0][1], 1)
 
-    if failures:
-        best = failures[0]
-        for item in failures[1:]:
-            best = _better(best, item)
-        return MappingResult(None, best, 0)
-    return MappingResult(None, EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason="no_unique_mapping"), 0)
+async def _mapping(canonicals, incoming, registry, context=None) -> MappingResult:
+    """Require one and only one canonical target; never guess around unproven peers."""
+    return _mapping_decision([
+        await _proof_against_primary(primary, incoming, registry, context) for primary in canonicals
+    ])
 
 
 async def _durable_mapping(engine, request_id: str) -> int | None:
@@ -192,29 +322,88 @@ async def _disposition(request_id: str) -> str:
     return str(row.get("equivalence_disposition") or "") if row else ""
 
 
+def _held_disposition(target) -> tuple[str, int | None]:
+    """The durable (disposition, target) pair for a hold whose automatic proof
+    acquisition has stopped."""
+    if target is None:
+        return "exhausted", None
+    return _UNVERIFIED_DISPOSITION, int(target.id)
+
+
 async def _proof_disposition(request_id: str, disposition: str, reason: str, *,
-                             clear_retry=False, preserve_reason=False) -> None:
+                             clear_retry=False, preserve_reason=False, target_artifact_id: int | None = None) -> None:
+    """The one disposition writer. The associated target is written with every
+    disposition, so it exists only beside ``unverified`` and any transition
+    away from it clears it in the same statement."""
     async with get_db() as db:
         await db.execute(
             """UPDATE transfer_requests SET
                 equivalence_reason=CASE
                     WHEN ? AND COALESCE(equivalence_reason,'')!='' THEN equivalence_reason
                     ELSE ? END,
-                equivalence_disposition=?,retry_at=CASE WHEN ? THEN 0 ELSE retry_at END
+                equivalence_disposition=?,equivalence_target_artifact_id=?,
+                retry_at=CASE WHEN ? THEN 0 ELSE retry_at END
                 WHERE id=?""",
-            (int(preserve_reason), str(reason or ""), disposition, int(clear_retry), request_id),
+            (int(preserve_reason), str(reason or ""), disposition,
+             target_artifact_id if disposition == _UNVERIFIED_DISPOSITION else None, int(clear_retry), request_id),
         )
         await db.commit()
 
 
+async def reopen_unverified_associations(transfer_id: int) -> int:
+    """Clear the terminal UNVERIFIED equivalence state of ``transfer_id``'s
+    own requests so ordinary proof may run again; returns how many were
+    reopened.
+
+    The equivalence owner reopening its OWN durable state -- never a second
+    reconsideration service, and never a membership mutation: a reopened
+    request has no binding, origin or consolidation row to undo (an
+    UNVERIFIED association never created any), so this only restores the
+    request to the pre-decision state the ordinary
+    ``coordinate_collection`` path already knows how to evaluate. The
+    bounded retry budget is reset because this is an explicit operator
+    reconsideration, exactly the wake source Section 4.3 always named; no
+    scheduler tick can reach this function, so it can never become automatic
+    reconsideration.
+
+    Deliberately narrow: only ``unverified`` rows still in MATERIALIZING are
+    touched, so a request that has since become a verified member, been
+    proven distinct, or failed is left alone.
+    """
+    async with get_db() as db:
+        cursor = await db.execute(
+            """UPDATE transfer_requests SET equivalence_disposition='',equivalence_reason=NULL,
+                equivalence_target_artifact_id=NULL,equivalence_retry_count=0,retry_at=0
+                WHERE transfer_id=? AND state='materializing' AND equivalence_disposition=?""",
+            (int(transfer_id), _UNVERIFIED_DISPOSITION),
+        )
+        await db.commit()
+    return int(cursor.rowcount or 0)
+
+
+async def unverified_association_count(transfer_id: int) -> int:
+    """How many of ``transfer_id``'s requests are terminal UNVERIFIED
+    associations -- the one fact an operator-reconsideration trigger needs to
+    decide whether there is anything to reconsider at all."""
+    async with get_db() as db:
+        row = await db.fetchone(
+            """SELECT COUNT(*) AS n FROM transfer_requests
+                WHERE transfer_id=? AND state='materializing' AND equivalence_disposition=?""",
+            (int(transfer_id), _UNVERIFIED_DISPOSITION),
+        )
+    return int((row or {}).get("n") or 0)
+
+
 async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_cardinality: int,
-                                exhaustion_disposition: str = "exhausted") -> bool:
+                                exhaustion_disposition: str = "exhausted",
+                                exhaustion_target_artifact_id: int | None = None) -> bool:
     """Persist one bounded future proof opportunity; False means budget exhausted.
 
-    ``exhaustion_disposition`` is what an exhausted budget durably becomes,
-    written in the same transaction that observes the exhaustion. Only the
-    bootstrap barrier passes anything but the default (``provisional``), so a
-    crash can never strand an admitted request in a held state."""
+    ``exhaustion_disposition`` (with its ``unverified`` target, if any) is what
+    an exhausted budget durably becomes, written in the same transaction that
+    observes the exhaustion. Only the bootstrap barrier passes ``provisional``
+    and only a single-plausible-target hold passes ``unverified``, so a crash
+    can never strand an admitted request in a held state."""
     now = float(engine.clock())
     async with get_db() as db:
         await db.execute("BEGIN IMMEDIATE")
@@ -235,9 +424,11 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
             return True
         if retries >= _PROOF_RETRY_BUDGET:
             await db.execute(
-                """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition=?,retry_at=0
-                    WHERE id=?""",
-                (evidence.reason or "sampler_unavailable", exhaustion_disposition, record.id),
+                """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition=?,
+                    equivalence_target_artifact_id=?,retry_at=0 WHERE id=?""",
+                (evidence.reason or "sampler_unavailable", exhaustion_disposition,
+                 exhaustion_target_artifact_id if exhaustion_disposition == _UNVERIFIED_DISPOSITION else None,
+                 record.id),
             )
             await db.commit()
             _decision(record, incoming, "proof_retry_exhausted", evidence.reason or "sampler_unavailable",
@@ -247,7 +438,8 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
         retry_at = now + _retry_delay(engine)
         await db.execute(
             """UPDATE transfer_requests SET equivalence_retry_count=?,equivalence_reason=?,
-                equivalence_disposition='pending',retry_at=? WHERE id=? AND state='materializing'""",
+                equivalence_disposition='pending',equivalence_target_artifact_id=NULL,retry_at=?
+                WHERE id=? AND state='materializing'""",
             (retries, evidence.reason or "sampler_unavailable", retry_at, record.id),
         )
         await db.commit()
@@ -256,20 +448,26 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
     return True
 
 
-def _must_hold(evidence: EquivalenceEvidence) -> bool:
+def _must_hold(mapping: MappingResult) -> bool:
     """Unresolved evidence from a proof that was actually attempted never
-    authorizes an independent writer, whether or not it is retryable. The one
-    exception is structural absence of any possible proof
-    (``proof_structurally_unavailable``: no sampling capability, or no unique
-    mapping): it says nothing about the material, and independence is then
-    authorized by the
-    existing structurally-unprovable degraded fallback (``_bootstrap_admission``
-    and the steady-state precedent below) -- never inferred from
-    ``retryable`` or ``unresolved_pairing``."""
-    return evidence.unresolved_pairing and not evidence.proof_structurally_unavailable
+    authorizes an independent writer, whether or not it is retryable, and
+    whatever any OTHER canonical answered: the decision reads the mapping's own
+    ``PLAUSIBLE_UNRESOLVED`` state, never one evidence that happened to win a
+    reduction. The one exception is structural absence of any possible proof
+    (``STRUCTURALLY_UNPROVABLE`` / ``AMBIGUOUS``: no sampling capability, or no
+    unique mapping): it says nothing about the material, and independence is
+    then authorized by the existing structurally-unprovable degraded fallback
+    (``_bootstrap_admission`` and the steady-state precedent below) -- never
+    inferred from ``retryable`` or ``unresolved_pairing``."""
+    return mapping.must_hold
 
 
-async def _hold_unresolved(engine, record, incoming, evidence, *, mapping_cardinality: int) -> bool:
+def _released_disposition(mapping: MappingResult) -> str:
+    """The durable disposition of a mapping that does NOT hold the barrier."""
+    return "contradictory" if mapping.outcome == MappingOutcome.CONTRADICTORY else "independent"
+
+
+async def _hold_unresolved(engine, record, incoming, evidence, *, mapping_cardinality: int, target=None) -> bool:
     """Consume unresolved-pairing evidence without ever releasing independence.
 
     Retryability decides only whether another automatic proof attempt is
@@ -277,15 +475,29 @@ async def _hold_unresolved(engine, record, incoming, evidence, *, mapping_cardin
     independence. True means a bounded proof retry is scheduled. False means
     automatic proof acquisition has stopped -- the retry budget is spent
     (``_schedule_proof_retry`` persisted it) or the evidence is not retryable
-    at all -- and ``record`` is durably held (``exhausted``, timer cleared).
-    The writer barrier stays up either way."""
+    at all -- and ``record`` is durably held with its timer cleared:
+    ``unverified`` when ``target`` names the one plausible canonical artifact
+    that proof was attempted against (``MappingResult.unverified_target`` of
+    ``record``'s OWN mapping), otherwise ``exhausted``. The writer barrier
+    stays up either way; when the hold became ``unverified`` the canonical
+    settlement owner is asked whether the parent now has any writer-capable
+    work left."""
+    disposition, target_artifact_id = _held_disposition(target)
     if evidence.retryable:
-        return await _schedule_proof_retry(
+        if await _schedule_proof_retry(
             engine, record, incoming, evidence, mapping_cardinality=mapping_cardinality,
+            exhaustion_disposition=disposition, exhaustion_target_artifact_id=target_artifact_id,
+        ):
+            return True
+    else:
+        await _proof_disposition(
+            record.id, disposition, evidence.reason or "sampler_unavailable", clear_retry=True,
+            target_artifact_id=target_artifact_id,
         )
-    await _proof_disposition(record.id, "exhausted", evidence.reason or "sampler_unavailable", clear_retry=True)
-    _decision(record, incoming, "hold_non_retryable", evidence.reason or "sampler_unavailable",
-              evidence=evidence, mapping_cardinality=mapping_cardinality)
+        _decision(record, incoming, "hold_non_retryable", evidence.reason or "sampler_unavailable",
+                  evidence=evidence, mapping_cardinality=mapping_cardinality)
+    if disposition == _UNVERIFIED_DISPOSITION:
+        await engine.canonical.settle(record.transfer_id)
     return False
 
 
@@ -298,7 +510,7 @@ async def _release_cohort(records, reason: str) -> None:
             await db.execute(
                 """UPDATE transfer_requests SET retry_at=0,
                     equivalence_disposition=CASE
-                        WHEN equivalence_disposition IN ('recovered','exhausted','contradictory','independent','provisional')
+                        WHEN equivalence_disposition IN ('recovered','exhausted','unverified','contradictory','independent','provisional')
                             THEN equivalence_disposition
                         ELSE 'released' END,
                     equivalence_reason=CASE
@@ -322,7 +534,7 @@ def _same_transfer_material_cohort(records, record):
     return tuple(item for item in cohort if item.state != "skipped")
 
 
-async def _bootstrap_self_evidence(incoming, registry) -> EquivalenceEvidence:
+async def _bootstrap_self_evidence(incoming, registry, context=None) -> EquivalenceEvidence:
     """Best self-evidence across ``incoming``'s own candidate routes, acquired
     through ``transfers.mirrors.self_evidence`` -- the sole evidence-owner
     module, never a parallel sampler classifier maintained here. Any one
@@ -332,7 +544,7 @@ async def _bootstrap_self_evidence(incoming, registry) -> EquivalenceEvidence:
     (and potentially winning) via ``_better``'s scoring."""
     best = None
     for candidate in incoming:
-        evidence = await self_evidence(candidate, registry)
+        evidence = await self_evidence(candidate, registry, context)
         if evidence.kind != EvidenceKind.UNAVAILABLE:
             return evidence
         best = evidence if best is None else _better(best, evidence)
@@ -432,7 +644,7 @@ async def _may_admit_provisional_writer(engine, record, incoming, evidence, mate
     return True
 
 
-async def _bootstrap_admission(engine, record, incoming, disposition: str) -> bool:
+async def _bootstrap_admission(engine, record, incoming, disposition: str, context=None) -> bool:
     """DP 1.0.12 CANON-001 follow-up bootstrap barrier.
 
     Gates physical-writer admission for the FIRST request of a same-transfer
@@ -478,7 +690,7 @@ async def _bootstrap_admission(engine, record, incoming, disposition: str) -> bo
         _decision(record, incoming, "independent", "bootstrap_unprovable_fallback", mapping_cardinality=0)
         return False
 
-    evidence = await _bootstrap_self_evidence(incoming, engine.registry)
+    evidence = await _bootstrap_self_evidence(incoming, engine.registry, context)
     if evidence.kind == EvidenceKind.UNAVAILABLE:
         if evidence.retryable:
             provisional = await _may_admit_provisional_writer(
@@ -578,27 +790,34 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     if disposition in _HELD_DISPOSITIONS:
         return True
 
+    # One evidence context for THIS decision only: the primary mapping, the
+    # resolved-sibling re-verification, the collection walk and the bootstrap
+    # self-proof below all reuse what this call has already acquired. It goes
+    # out of scope on return, so the next scheduler decision re-acquires.
+    context = EvidenceContext()
     canonicals = tuple(
         item for item in await engine.canonical.canonical_artifacts()
         if item.request_id != record.id and item.candidates
     )
     if not canonicals:
-        return await _bootstrap_admission(engine, record, incoming, disposition)
+        return await _bootstrap_admission(engine, record, incoming, disposition, context)
 
-    current_mapping = await _mapping(canonicals, incoming, engine.registry)
+    current_mapping = await _mapping(canonicals, incoming, engine.registry, context)
     if not current_mapping.matched:
         evidence = current_mapping.evidence
-        if _must_hold(evidence):
+        if _must_hold(current_mapping):
             if await _hold_unresolved(
                 engine, record, incoming, evidence, mapping_cardinality=current_mapping.cardinality,
+                target=current_mapping.unverified_target,
             ):
                 return True
             # Automatic proof acquisition has stopped (retry budget spent, or
-            # the evidence is not retryable) and _hold_unresolved persisted
-            # equivalence_disposition='exhausted' and cleared retry_at.
-            # Identity remains unresolved -- absence of proof is not proof of
-            # non-equivalence (DP 1.0.12 Section 4.1) -- so this request stays
-            # held rather than authorizing a writer.
+            # the evidence is not retryable) and _hold_unresolved persisted a
+            # held disposition ('unverified' beside its one plausible target,
+            # otherwise 'exhausted') and cleared retry_at. Identity remains
+            # unresolved -- absence of proof is not proof of non-equivalence
+            # (DP 1.0.12 Section 4.1) -- so this request stays held rather
+            # than authorizing a writer.
             _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
                       evidence=evidence, mapping_cardinality=current_mapping.cardinality)
             return True
@@ -606,7 +825,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         # non-pairing (a cheap pairing rejection), or structurally unprovable
         # (the existing degraded fallback). Unresolved evidence from an
         # attempted proof is never one of them.
-        disposition = "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else "independent"
+        disposition = _released_disposition(current_mapping)
         await _proof_disposition(record.id, disposition, evidence.reason, clear_retry=True)
         _decision(record, incoming, "independent", evidence.reason or "no_unique_mapping",
                   evidence=evidence, mapping_cardinality=current_mapping.cardinality)
@@ -649,9 +868,31 @@ async def coordinate_collection(engine, record, candidates) -> bool:
                   evidence=current_evidence, mapping_cardinality=1)
         return False
 
+    # DP 1.0.12 consolidation corrective, Remediation 4 integration: a sibling
+    # the equivalence owner has already settled as a terminal UNVERIFIED
+    # association has durably LEFT this collection hypothesis. It can never
+    # become a writer, it owes no material work, and no further automatic
+    # proof will ever be acquired for it -- so it is neither a pending proof
+    # opportunity (which would hold every decidable sibling forever) nor a
+    # member of the denominator below (dropping it from the walk alone would
+    # make the cohort look permanently "incomplete" and release everyone to
+    # independence -- a cohort-wide release, which is exactly what must not
+    # happen). Whether this transfer is a multi-member cohort at all is still
+    # judged on the full ``material`` set above, so a genuine cohort never
+    # collapses into the single-member path because a sibling settled.
+    # Every remaining member still decides on its OWN evidence through the
+    # unchanged mapping/attach machinery: the completeness and distinctness
+    # checks below are unchanged, so genuine ambiguity still HOLDs and nothing
+    # here makes weak PREFIX evidence stronger than it is.
+    settled = set()
+    for sibling in material:
+        if sibling.id != record.id and await _disposition(sibling.id) == _UNVERIFIED_DISPOSITION:
+            settled.add(sibling.id)
+    cohort = tuple(sibling for sibling in material if sibling.id not in settled)
+
     mappings = {}
     pending = False
-    for sibling in material:
+    for sibling in cohort:
         if sibling.state in _PENDING_STATES:
             pending = True
             continue
@@ -690,10 +931,12 @@ async def coordinate_collection(engine, record, candidates) -> bool:
                 if not (len(item.candidates) == 1 and item.candidates[0].id in own_ids)
             )
             if resolved_sibling_candidates and verification_pool:
-                verification = await _mapping(verification_pool, resolved_sibling_candidates, engine.registry)
+                verification = await _mapping(
+                    verification_pool, resolved_sibling_candidates, engine.registry, context,
+                )
                 if not verification.matched:
                     evidence = verification.evidence
-                    if _must_hold(evidence):
+                    if _must_hold(verification):
                         # Bound this re-probe on the CURRENT record's own
                         # existing retry budget/timer (this sibling is
                         # already durably 'resolved', not 'materializing',
@@ -769,11 +1012,11 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             pending = True
             continue
         match = current_mapping if sibling.id == record.id else await _mapping(
-            canonicals, sibling_candidates, engine.registry,
+            canonicals, sibling_candidates, engine.registry, context,
         )
         if not match.matched:
             evidence = match.evidence
-            if _must_hold(evidence):
+            if _must_hold(match):
                 # A bounded retry is scheduled, or -- once the retry budget is
                 # spent, or for evidence that is not retryable -- this ONE
                 # sibling is durably held (_hold_unresolved). Identity remains
@@ -786,6 +1029,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
                 # cohort.
                 await _hold_unresolved(
                     engine, sibling, sibling_candidates, evidence, mapping_cardinality=match.cardinality,
+                    target=match.unverified_target,
                 )
                 pending = True
                 continue
@@ -795,12 +1039,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             # weak-evidence collection hypothesis for the WHOLE cohort is
             # disproven -- release every member to independent
             # materialization (existing, unchanged behavior).
-            await _proof_disposition(
-                sibling.id,
-                "contradictory" if evidence.failure_class == EvidenceFailureClass.CONTRADICTORY else "independent",
-                evidence.reason,
-                clear_retry=True,
-            )
+            await _proof_disposition(sibling.id, _released_disposition(match), evidence.reason, clear_retry=True)
             await _release_cohort(material, evidence.reason or "collection_mapping_incomplete")
             _decision(record, incoming, "independent", evidence.reason or "collection_mapping_incomplete",
                       evidence=evidence, mapping_cardinality=match.cardinality)
@@ -815,7 +1054,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         _decision(record, incoming, "pending_collection", "sibling_or_proof_pending",
                   evidence=current_evidence, mapping_cardinality=len(mappings))
         return True
-    if len(mappings) != len(material):
+    if len(mappings) != len(cohort):
         await _release_cohort(material, "collection_incomplete")
         _decision(record, incoming, "independent", "collection_incomplete", evidence=current_evidence)
         return False
@@ -829,7 +1068,7 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         return False
 
     attached_current = False
-    for sibling in material:
+    for sibling in cohort:
         canonical_id, primary, evidence, sibling_candidates = mappings[sibling.id]
         if evidence is None:
             if sibling.id == record.id:
@@ -854,6 +1093,6 @@ async def coordinate_collection(engine, record, candidates) -> bool:
             attached_current = attached
 
     _decision(record, incoming, "consolidated_by_collection" if attached_current else "revalidate_retry",
-              f"{len(mappings)}/{len(material)}", evidence=current_evidence,
+              f"{len(mappings)}/{len(cohort)}", evidence=current_evidence,
               mapping_cardinality=len(mappings))
     return attached_current

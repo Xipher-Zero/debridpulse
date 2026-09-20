@@ -14,7 +14,10 @@ from dataclasses import dataclass, replace
 
 from db.database import get_db
 from transfers import codec
-from transfers._repository_base import _durable_canonical_targets_for_request, _retire_transfer_auxiliary_state_in_db
+from transfers._repository_base import (
+    _durable_canonical_targets_for_request, _retire_transfer_auxiliary_state_in_db,
+    terminal_unverified_association,
+)
 from transfers.models import Artifact, RequestRecord, TransferCandidate
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
@@ -183,10 +186,19 @@ class CanonicalOwnership:
             if artifact and bool(artifact.get("blocked")):
                 continue
             material += 1
-            if not await db.fetchone(
+            if await db.fetchone(
                 "SELECT contributing_artifact_id FROM artifact_consolidations WHERE source_request_id=?",
                 (request["id"],),
             ):
+                continue
+            # A terminal UNVERIFIED association (``transfers.cohorts``) to a
+            # canonical artifact owned by ANOTHER transfer leaves this leaf
+            # with no writer-capable work: no writer may ever be created for
+            # it, and the object it plausibly is already has its one canonical
+            # writer elsewhere. That settles the leaf; it does not make it a
+            # canonical member -- nothing here (or anywhere) derives a binding,
+            # origin or consolidation row from it.
+            if not await terminal_unverified_association(db, request["id"]):
                 return False
         return material > 0
 
@@ -219,6 +231,19 @@ class CanonicalOwnership:
             (transfer_id,),
         )
         return True
+
+    async def settle(self, transfer_id: int) -> bool:
+        """Re-evaluate transfer settlement after a leaf reached a terminal
+        non-writer disposition outside ``attach`` (a terminal ``unverified``
+        association). The same ``_finalize_transfer`` decision ``attach`` runs,
+        in its own short ownership transaction; True when the transfer is
+        settled CONSOLIDATED."""
+        await self.initialize()
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            settled = await self._finalize_transfer(db, int(transfer_id))
+            await db.commit()
+        return settled
 
     async def initialize(self) -> None:
         """Losslessly formalize the Phase-1 durable origin handoff."""

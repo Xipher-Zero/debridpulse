@@ -14,6 +14,10 @@ from db.database import get_db
 
 _PENDING_KIND = "duplicate_consolidation_pending"
 _EVENT_KIND = "duplicate_consolidated"
+# The one terminal, non-writer association disposition owned by
+# ``transfers.cohorts`` (Remediation 4). Named here only to READ that durable
+# fact; this module never writes or interprets equivalence state.
+_UNVERIFIED_DISPOSITION = "unverified"
 
 
 def _positive_int(value: Any) -> int | None:
@@ -104,11 +108,13 @@ class ConsolidationEvents:
         rows = await db.fetchall(
             """SELECT r.id AS request_id,
                       r.state AS request_state,
+                      COALESCE(r.equivalence_disposition, '') AS equivalence_disposition,
                       f.id AS artifact_id,
                       COALESCE(f.blocked, 0) AS blocked,
                       COALESCE(f.mirror_state, '') AS mirror_state,
                       ac.canonical_artifact_id AS canonical_artifact_id,
-                      canonical.torrent_id AS canonical_transfer_id
+                      canonical.torrent_id AS canonical_transfer_id,
+                      associated.torrent_id AS associated_transfer_id
                FROM transfer_requests r
                LEFT JOIN transfer_requests child ON child.parent_id = r.id
                LEFT JOIN download_files f ON f.request_id = r.id
@@ -116,6 +122,9 @@ class ConsolidationEvents:
                  ON ac.source_transfer_id = r.transfer_id
                 AND ac.source_request_id = r.id
                LEFT JOIN download_files canonical ON canonical.id = ac.canonical_artifact_id
+               LEFT JOIN download_files associated
+                 ON associated.id = r.equivalence_target_artifact_id
+                AND associated.torrent_id != r.transfer_id
                WHERE r.transfer_id = ? AND child.id IS NULL
                ORDER BY r.ordinal, r.id""",
             (source_transfer_id,),
@@ -124,10 +133,30 @@ class ConsolidationEvents:
         material = 0
         matched = 0
         unmatched = 0
+        unverified = 0
         canonical_transfer_ids: set[int] = set()
         for row in rows:
             request_state = str(row.get("request_state") or "").lower()
             if request_state == "skipped":
+                continue
+            # DP 1.0.12 consolidation corrective, Remediation 4: a terminal
+            # UNVERIFIED association is a SETTLED leaf disposition, exactly
+            # like a verified consolidated contribution -- proof was genuinely
+            # attempted against one canonical artifact owned by another
+            # transfer, automatic acquisition is finished, and no writer may
+            # ever exist for it. Recognizing only RESOLVED would be the old
+            # state vocabulary: the transfer would settle CONSOLIDATED and
+            # canonical Details would show the association while this
+            # projection reported no disposition at all. It is counted on its
+            # own axis and never folded into ``matched`` (which means proven
+            # canonical membership) nor into ``unmatched`` (which means
+            # material that will still download normally) -- both of those
+            # would be untrue of it.
+            associated_transfer_id = _positive_int(row.get("associated_transfer_id"))
+            if (str(row.get("equivalence_disposition") or "").lower() == _UNVERIFIED_DISPOSITION
+                    and associated_transfer_id is not None):
+                material += 1
+                unverified += 1
                 continue
             # Both canonical attach and ordinary materialization transition the
             # leaf request from MATERIALIZING to RESOLVED as their final durable
@@ -156,7 +185,7 @@ class ConsolidationEvents:
 
         if material <= 0 or matched <= 0 or not canonical_transfer_ids:
             return None
-        if matched + unmatched != material:
+        if matched + unmatched + unverified != material:
             return None
 
         status = str(transfer.get("status") or "").lower()
@@ -168,12 +197,19 @@ class ConsolidationEvents:
         elif status == "consolidated":
             return None
 
-        return {
+        payload = {
             "source_transfer_id": source_transfer_id,
             "canonical_transfer_ids": sorted(canonical_transfer_ids),
             "matched_count": matched,
             "unmatched_count": unmatched,
         }
+        if unverified:
+            # Reported only when there is an association to report, so an
+            # ordinary all-resolved consolidation summary keeps exactly the
+            # shape it has always had; a consumer that predates this field
+            # reads its absence as "none", which is what absence means.
+            payload["unverified_count"] = unverified
+        return payload
 
     @staticmethod
     def public_payload(detail: Any) -> dict[str, Any] | None:
@@ -190,11 +226,15 @@ class ConsolidationEvents:
         source_transfer_id = _positive_int(raw.get("source_transfer_id"))
         matched_count = _positive_int(raw.get("matched_count"))
         unmatched_count = _nonnegative_int(raw.get("unmatched_count"))
+        # Absent in events staged before this field existed: unknown reads as
+        # zero, never as a fabricated association.
+        unverified_count = _nonnegative_int(raw.get("unverified_count") or 0)
         raw_targets = raw.get("canonical_transfer_ids")
         if (
             source_transfer_id is None
             or matched_count is None
             or unmatched_count is None
+            or unverified_count is None
             or not isinstance(raw_targets, list)
         ):
             return None
@@ -210,9 +250,12 @@ class ConsolidationEvents:
         # Deliberately reconstruct rather than forward the stored JSON.  Even
         # malformed or future detail fields cannot leak URLs, headers, tokens,
         # cookies, provider payloads, or other capability material over SSE.
-        return {
+        safe = {
             "source_transfer_id": source_transfer_id,
             "canonical_transfer_ids": sorted(targets),
             "matched_count": matched_count,
             "unmatched_count": unmatched_count,
         }
+        if unverified_count:
+            safe["unverified_count"] = unverified_count
+        return safe

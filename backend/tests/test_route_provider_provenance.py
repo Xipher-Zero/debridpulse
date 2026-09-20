@@ -2,22 +2,29 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 import db.database as database
+from fake_integrations import MemoryExecutor, ParcelProvider
 from providers.alldebrid.provider import AllDebridProvider
 from providers.general_http.provider import GeneralHttpProvider
 from transfers import codec
+from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
 from transfers.models import (
+    ArtifactFingerprint,
     CachePresence,
+    Capability,
     DeliveryKind,
     Endpoint,
     ExecutionHandle,
     ExecutionObservation,
     ExecutionState,
+    FingerprintKind,
+    IntegrationDescriptor,
     Ownership,
     ProviderObservation,
     ProviderResource,
@@ -29,7 +36,10 @@ from transfers.models import (
     TransferProgress,
     TransferRequest,
 )
+from transfers.policy import TransferPolicy
 from transfers.presentation_repository import TransferRepository as PresentationTransferRepository
+from transfers.recovery_repository import TransferRepository as RecoveryTransferRepository
+from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
 
 pytestmark = pytest.mark.asyncio
@@ -1143,3 +1153,171 @@ async def test_provider_configuration_changes_never_rewrite_historical_labels(tm
                      await repository.presentation(hoster_transfer.id, details=True))
     assert after == before
     assert hit.id == before[0][0][0]
+
+
+# --------------------------------------------------------------------------- #
+# DP 1.0.12 consolidation corrective, Remediation 5: canonical-object Route
+# History -- original + verified consolidated + unverified associated sources,
+# each with its real contributing transfer, projected from durable provenance.
+# --------------------------------------------------------------------------- #
+
+_ISO = "ubuntu-24.04.3-desktop-amd64.iso"
+_SECRET = "SECRET-SIGNED-TOKEN"
+
+
+class _HttpsExecutor(MemoryExecutor):
+    descriptor = IntegrationDescriptor(
+        "memory-copy", "Memory copy", frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
+        schemes=frozenset({"https"}),
+    )
+
+
+class _MirrorProvider(ParcelProvider):
+    """One independent mirror host per provider: a real HTTPS route whose URL
+    carries a credential-bearing query the projection must never expose."""
+
+    def __init__(self, host):
+        super().__init__(f"mirror:{host}")
+        self.host = host
+
+    def candidate(self, name=_ISO, *, payload="parcel"):
+        return replace(
+            super().candidate(name, payload=payload), expected_bytes=0,
+            endpoints=(Endpoint("https", f"https://{self.host}/releases/{name}?token={_SECRET}"),),
+            source_identity=SourceIdentity("host", self.host),
+        )
+
+
+async def _canonical_history_runtime(tmp_path, monkeypatch, hosts, *, unresolved=()):
+    """``unresolved`` is either hosts (answering ``range_ignored``) or a
+    ``{host: reason}`` mapping. Every fingerprint acquisition is logged by
+    host in ``runtime.probes``; ``runtime.now`` is the engine clock."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "canonical-route-history.sqlite3")
+    await database.init_db()
+    repository = RecoveryTransferRepository()
+    registry = IntegrationRegistry()
+    executor = _HttpsExecutor(repository.authorize_execution)
+    providers = {host: _MirrorProvider(host) for host in hosts}
+    reasons = dict(unresolved) if isinstance(unresolved, dict) else {host: "range_ignored" for host in unresolved}
+    host_of = {provider.descriptor.id: host for host, provider in providers.items()}
+    probes, now = [], [1000.0]
+
+    async def fingerprint(candidate):
+        host = host_of[candidate.provider_id]
+        probes.append(host)
+        if host in reasons:
+            return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason=reasons[host])
+        return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
+
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    for provider in providers.values():
+        registry.register_provider(provider)
+    registry.register_executor(executor)
+    engine = TransferEngine(
+        repository, registry, download_root=str(tmp_path / "payloads"),
+        policy=TransferPolicy(retry_delay=1, adoption_stability_seconds=0, max_active_executions=8,
+                              resolution_concurrency=8),
+        clock=lambda: now[0],
+    )
+    await engine.initialize()
+
+    async def submit(*batch, name=_ISO):
+        transfer = await engine.submit(
+            tuple(TransferRequest("parcel", f"{host}/{name}", name=name,
+                                  preferred_provider=providers[host].descriptor.id) for host in batch),
+            name=name, deduplicate=False,
+        )
+        for record in await repository.requests(transfer.id):
+            await engine._resolve(record)
+        return transfer
+
+    return SimpleNamespace(repository=repository, engine=engine, executor=executor, submit=submit, probes=probes, now=now)
+
+
+
+async def test_canonical_object_route_history_projects_original_consolidated_and_unverified(tmp_path, monkeypatch):
+    originals = ("releases.ubuntu.com", "mirrors.mit.edu", "mirror.pilotfiber.com")
+    consolidated = ("mirrors.tuna.tsinghua.edu.cn", "mirror.sg.gs")
+    runtime = await _canonical_history_runtime(
+        tmp_path, monkeypatch, (*originals, *consolidated, "mirrors.163.com", "mirrors.aliyun.com", "unrelated.example"),
+        unresolved=("mirrors.aliyun.com",),
+    )
+    unrelated = await runtime.submit("unrelated.example", name="unrelated-object.bin")  # an unrelated canonical object.
+    owner = await runtime.submit(*originals)
+    second = await runtime.submit(*consolidated)
+    third = await runtime.submit("mirrors.163.com", "mirrors.aliyun.com")
+    assert (await runtime.repository.get(second.id)).state.value == "consolidated"
+    assert (await runtime.repository.get(third.id)).state.value == "consolidated"
+
+    presentation = await runtime.repository.presentation(owner.id, details=True)
+    rows = presentation["route_attempts"]
+    assert [(row["route_identity"], row["relation"], row["verification_state"], row["contributing_transfer_id"])
+            for row in rows] == [
+        ("https://releases.ubuntu.com", "original", "verified", owner.id),
+        ("https://mirrors.mit.edu", "original", "verified", owner.id),
+        ("https://mirror.pilotfiber.com", "original", "verified", owner.id),
+        ("https://mirrors.tuna.tsinghua.edu.cn", "consolidated", "verified", second.id),
+        ("https://mirror.sg.gs", "consolidated", "verified", second.id),
+        ("https://mirrors.163.com", "consolidated", "verified", third.id),
+        ("https://mirrors.aliyun.com", "unverified", "unverified", third.id),
+    ]
+    assert len({row["id"] for row in rows}) == len(rows)  # every source exactly once: no duplicate rows.
+    assert [row["unverified_reason"] for row in rows] == [None] * 6 + ["range_ignored"]  # the factual reason.
+    # Durable ordinals are never renumbered: each row keeps its OWN transfer's ordinal; only the dedicated
+    # presentation ordinal sequences the combined history.
+    assert [row["ordinal"] for row in rows] == [1, 2, 3, 1, 2, 1, 2]
+    assert [row["presentation_ordinal"] for row in rows] == [1, 2, 3, 4, 5, 6, 7]
+    assert _SECRET not in str(rows) and "token=" not in str(rows)  # existing safety projection still applies.
+    assert "unrelated.example" not in str(rows)  # an unrelated canonical object contributes nothing.
+
+    # "N Candidates" still means VERIFIED candidates: the unverified source is not one of them.
+    bindings = presentation["candidate_bindings"]
+    assert len(bindings) == 6
+    assert {binding["source_identity"]["key"] for binding in bindings} == {*originals, *consolidated, "mirrors.163.com"}
+
+    # A contributing transfer's own Details still shows ITS routes as its own (never rewritten onto the owner),
+    # with the unverified one marked as such.
+    third_rows = (await runtime.repository.presentation(third.id, details=True))["route_attempts"]
+    assert [(row["route_identity"], row["relation"], row["contributing_transfer_id"]) for row in third_rows] == [
+        ("https://mirrors.163.com", "original", third.id),
+        ("https://mirrors.aliyun.com", "unverified", third.id),
+    ]
+    unrelated_rows = (await runtime.repository.presentation(unrelated.id, details=True))["route_attempts"]
+    assert [(row["relation"], row["contributing_transfer_id"]) for row in unrelated_rows] == [("original", unrelated.id)]
+
+    # The list path never pays for any of this.
+    assert "route_attempts" not in await runtime.repository.presentation(owner.id, details=False)
+
+
+async def test_contributed_route_provenance_follows_durable_origin_not_current_candidates(tmp_path, monkeypatch):
+    """The projection reads ``canonical_candidate_origins`` / the durable
+    ``unverified`` association -- never the canonical artifact's CURRENT
+    candidate URLs. Rewriting every current candidate to a misleading host
+    changes nothing; removing the durable origin removes the row."""
+    runtime = await _canonical_history_runtime(
+        tmp_path, monkeypatch, ("releases.ubuntu.com", "mirrors.tuna.tsinghua.edu.cn"),
+    )
+    owner = await runtime.submit("releases.ubuntu.com")
+    second = await runtime.submit("mirrors.tuna.tsinghua.edu.cn")
+    expected = [("https://releases.ubuntu.com", "original", owner.id),
+                ("https://mirrors.tuna.tsinghua.edu.cn", "consolidated", second.id)]
+
+    def reading(presentation):
+        return [(row["route_identity"], row["relation"], row["contributing_transfer_id"])
+                for row in presentation["route_attempts"]]
+
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == expected
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT id,candidates FROM download_files WHERE torrent_id=?", (owner.id,))
+        await db.execute(
+            "UPDATE download_files SET candidates=? WHERE id=?",
+            (row["candidates"].replace("mirrors.tuna.tsinghua.edu.cn", "misleading.example")
+                              .replace("releases.ubuntu.com", "misleading.example"), row["id"]),
+        )
+        await db.commit()
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == expected
+
+    async with database.get_db() as db:
+        await db.execute("DELETE FROM canonical_candidate_origins WHERE contributing_transfer_id=?", (second.id,))
+        await db.commit()
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == expected[:1]

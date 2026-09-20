@@ -251,16 +251,34 @@ function renderRouteHistory(t) {
       : 'No provider route has been established yet.';
     return `<div class="dp-detail-route-empty">${esc(message)}</div>`;
   }
+  // Relationship is the backend's projection (relation + contributing_transfer_id):
+  // which transfer contributed each source. Nothing is derived from an address,
+  // a file name, the candidate list or a neighbouring transfer.
+  const relationOf = (attempt) => {
+    const state = String(attempt.relation || '').trim().toLowerCase();
+    const contributor = Number(attempt.contributing_transfer_id);
+    const contributed = Number.isInteger(contributor) && contributor > 0 && contributor !== Number(t?.id);
+    if (state === 'consolidated' && contributed) return {state, label: `Consolidated from #${contributor}`};
+    if (state === 'unverified') return {state, label: contributed ? `From #${contributor}` : 'Original'};
+    if (state === 'original') return {state, label: 'Original'};
+    return {state: '', label: ''};
+  };
   return `<div class="dp-detail-route-list">${attempts.map((attempt) => {
     const provider = attempt.provider_name || 'Unknown';
-    const outcome = routeOutcomePresentation(attempt.outcome);
+    // An unverified association is the backend's statement about this source; it
+    // replaces the route's own outcome label and never reads as a verified candidate.
+    const unverified = attempt.verification_state === 'unverified';
+    const outcome = unverified ? {label: 'Unverified', state: 'unverified'} : routeOutcomePresentation(attempt.outcome);
+    const outcomeTitle = unverified && attempt.unverified_reason ? `Equivalence unproven: ${attempt.unverified_reason}` : '';
+    const relation = relationOf(attempt);
     const identity = attempt.route_identity || '—';
     const identityTitle = attempt.route_location || attempt.route_identity || '';
-    return `<div class="dp-detail-route-row">
-      <span class="dp-detail-route-order">${esc(attempt.ordinal ?? '')}</span>
+    return `<div class="dp-detail-route-row" data-route-relation="${esc(relation.state)}">
+      <span class="dp-detail-route-order">${esc(attempt.presentation_ordinal ?? attempt.ordinal ?? '')}</span>
       <span class="dp-detail-route-provider">${esc(provider)}</span>
       <span class="dp-detail-route-identity" title="${esc(identityTitle)}">${esc(identity)}</span>
-      <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}">${esc(outcome.label)}</span>
+      <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}" title="${esc(outcomeTitle)}">${esc(outcome.label)}</span>
+      <span class="dp-detail-route-relation">${esc(relation.label)}</span>
     </div>`;
   }).join('')}</div>`;
 }

@@ -186,6 +186,115 @@ test('Route History projects backend route_identity verbatim and never reconstru
   await expect(page.locator('.dp-detail-route-list')).not.toContainText('debrid.it');
 });
 
+test('Route History shows the canonical object source story: original, consolidated and unverified, from backend truth only', async ({ page }) => {
+  await isolateExternalFonts(page);
+  // Production 298/299/300 shape. Everything about relationship comes from the backend's relation /
+  // verification_state / contributing_transfer_id / presentation_ordinal. The fixture is deliberately
+  // adversarial toward client-side inference: durable ordinals restart per contributing transfer, a
+  // "consolidated" row shares its host family with an original, and the candidate list names none of these hosts.
+  const route = (presentation_ordinal, ordinal, host, relation, contributing_transfer_id, extra = {}) => ({
+    ordinal, presentation_ordinal, provider_id:'general_http', provider_name:'HTTP & HTTPS', outcome:'resolved',
+    route_origin:`https://${host}`, route_location:`https://${host}/releases/ubuntu.iso`, route_identity:`https://${host}`,
+    relation, verification_state: relation === 'unverified' ? 'unverified' : 'verified', unverified_reason:null,
+    contributing_transfer_id, ...extra});
+  const verifiedCandidates = Array.from({length:8}, (_, index) => ({candidate_id:`c${index}`, source_label:`candidate-${index}.example`,
+    provider_id:'general_http', relationship:index < 3 ? 'Original' : 'Consolidated', dispositions:index === 0 ? ['Active'] : [],
+    is_selected:index === 0, is_active:index === 0, is_delivering:false, switch_eligible:index !== 0}));
+  const detail = {...listFixture({id:298, name:'ubuntu-24.04.3-desktop-amd64.iso', status:'downloading', progress:40}),
+    original_resource:'https://releases.ubuntu.com/…', executors:['aria2'], source_outcomes:[], events:[], execution_attempts:[],
+    files:[{id:17419, filename:'ubuntu-24.04.3-desktop-amd64.iso', size_bytes:1024, status:'downloading', blocked:false,
+      block_reason:null, candidate_count:8, acquisition_candidates:verifiedCandidates}],
+    route_attempts:[
+      route(1, 1, 'releases.ubuntu.com', 'original', 298),
+      route(2, 2, 'mirrors.mit.edu', 'original', 298),
+      route(3, 3, 'mirror.pilotfiber.com', 'original', 298),
+      route(4, 1, 'mirrors.tuna.tsinghua.edu.cn', 'consolidated', 299),
+      route(5, 2, 'ubuntu-releases.mirrorservice.org', 'consolidated', 299),
+      route(6, 3, 'mirror.sg.gs', 'consolidated', 299),
+      route(7, 1, 'mirror.serversaustralia.com.au', 'consolidated', 300),
+      route(8, 2, 'mirrors.163.com', 'consolidated', 300),
+      route(9, 3, 'mirrors.ustc.edu.cn', 'unverified', 300, {unverified_reason:'range_ignored'}),
+      route(10, 4, 'mirrors.aliyun.com', 'unverified', 300, {unverified_reason:'range_unsupported'}),
+    ]};
+  await page.route(url => url.pathname === '/api/torrents/298', r => r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(detail)}));
+  await page.route(url => url.pathname === '/api/torrents', r => r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[detail],total:1})}));
+  await page.goto('/'); await page.evaluate(() => showDetail(298));
+
+  const rows = page.locator('.dp-detail-route-row');
+  await expect(rows).toHaveCount(10);  // every backend row exactly once: nothing duplicated, nothing synthesized.
+  await expect(page.locator('.dp-detail-route-row .dp-detail-route-order')).toHaveText(['1','2','3','4','5','6','7','8','9','10']);
+  await expect(page.locator('.dp-detail-route-row .dp-detail-route-relation')).toHaveText([
+    'Original', 'Original', 'Original',
+    'Consolidated from #299', 'Consolidated from #299', 'Consolidated from #299',
+    'Consolidated from #300', 'Consolidated from #300',
+    'From #300', 'From #300',
+  ]);
+  await expect(page.locator('.dp-detail-route-row .dp-detail-route-outcome')).toHaveText([
+    ...Array(8).fill('Resolved'), 'Unverified', 'Unverified',
+  ]);
+  // Provider + safe route identity are still the backend's own projection.
+  await expect(rows.nth(3)).toContainText('HTTP & HTTPS');
+  await expect(rows.nth(3).locator('.dp-detail-route-identity')).toHaveText('https://mirrors.tuna.tsinghua.edu.cn');
+  await expect(rows.nth(3).locator('.dp-detail-route-identity')).toHaveAttribute('title', 'https://mirrors.tuna.tsinghua.edu.cn/releases/ubuntu.iso');
+
+  // Unverified sources are visibly distinct from verified ones, and say why.
+  const unverified = page.locator('.dp-detail-route-row[data-route-relation="unverified"]');
+  await expect(unverified).toHaveCount(2);
+  await expect(unverified.nth(0).locator('.dp-detail-route-outcome')).toHaveAttribute('data-route-outcome', 'unverified');
+  await expect(unverified.nth(0).locator('.dp-detail-route-outcome')).toHaveAttribute('title', 'Equivalence unproven: range_ignored');
+  const colors = await page.evaluate(() => {
+    const color = selector => getComputedStyle(document.querySelector(selector)).color;
+    return {verified: color('.dp-detail-route-row[data-route-relation="consolidated"] .dp-detail-route-outcome'),
+            unverified: color('.dp-detail-route-row[data-route-relation="unverified"] .dp-detail-route-outcome')};
+  });
+  expect(colors.unverified).not.toBe(colors.verified);
+
+  // "8 Candidates" still means eight VERIFIED candidates: ten history rows never inflate it.
+  const disclosure = page.locator('tr[data-dp-artifact-id="17419"] .dp-detail-candidate-disclosure');
+  await expect(disclosure.locator('.dp-candidate-chip-count')).toHaveText('8');
+  await expect(disclosure).toHaveAttribute('aria-label', /^Show 8 Candidates for/);
+  await page.screenshot({path:'test-results/checkpoint-details-canonical-history-dark-desktop.png', fullPage:true});
+
+  // Light theme + narrow layout: the relation stays readable and the row never overflows the card.
+  // (The open Details modal covers the toolbar, so the page's own toggle is invoked directly.)
+  await page.evaluate(() => toggleTheme());
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
+  await page.setViewportSize({width:680, height:900});
+  const relation = rows.nth(8).locator('.dp-detail-route-relation');
+  await expect(relation).toBeVisible();
+  const [rowBox, relationBox] = [await rows.nth(8).boundingBox(), await relation.boundingBox()];
+  expect(relationBox.x).toBeGreaterThanOrEqual(rowBox.x);
+  expect(relationBox.x + relationBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+  await page.screenshot({path:'test-results/checkpoint-details-canonical-history-light-narrow.png', fullPage:true});
+});
+
+test('Route History never infers a relationship the backend did not project', async ({ page }) => {
+  await isolateExternalFonts(page);
+  // No relation fields at all (a legacy-shaped payload), yet hosts and candidate summaries that LOOK like another
+  // transfer's mirrors: the renderer must label nothing, and must keep showing the durable ordinal as given.
+  const bare = (ordinal, host) => ({ordinal, provider_id:'general_http', provider_name:'HTTP & HTTPS', outcome:'resolved',
+    route_origin:`https://${host}`, route_location:`https://${host}/ubuntu.iso`, route_identity:`https://${host}`,
+    candidates:[{candidate_id:'x', source:{scope:'host', key:'mirrors.aliyun.com'}}]});
+  const detail = {...listFixture({id:908, name:'No projected relation'}), executors:[], files:[], source_outcomes:[], events:[],
+    route_attempts:[bare(5, 'mirrors.aliyun.com'), bare(9, 'mirrors.ustc.edu.cn'),
+      // An unverified own-transfer source: backend says unverified, contributed by this same transfer.
+      {...bare(11, 'mirror.example'), relation:'unverified', verification_state:'unverified', unverified_reason:'range_ignored',
+       contributing_transfer_id:908, presentation_ordinal:11}]};
+  await page.route(url => url.pathname === '/api/torrents/908', r => r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(detail)}));
+  await page.route(url => url.pathname === '/api/torrents', r => r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[detail],total:1})}));
+  await page.goto('/'); await page.evaluate(() => showDetail(908));
+  const rows = page.locator('.dp-detail-route-row'); await expect(rows).toHaveCount(3);
+  await expect(page.locator('.dp-detail-route-row .dp-detail-route-order')).toHaveText(['5', '9', '11']);
+  await expect(rows.nth(0).locator('.dp-detail-route-relation')).toHaveText('');
+  await expect(rows.nth(0).locator('.dp-detail-route-relation')).toBeHidden();
+  await expect(rows.nth(0).locator('.dp-detail-route-outcome')).toHaveText('Resolved');
+  await expect(rows.nth(0)).toHaveAttribute('data-route-relation', '');
+  await expect(rows.nth(2).locator('.dp-detail-route-outcome')).toHaveText('Unverified');
+  await expect(rows.nth(2).locator('.dp-detail-route-relation')).toHaveText('Original');  // its own source: no "From #".
+  await expect(page.locator('.dp-detail-route-list')).not.toContainText('From #');
+  await expect(page.locator('.dp-detail-route-list')).not.toContainText('Consolidated');
+});
+
 test('provider controls remain readable in light theme and narrow layout', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
   await page.locator('#theme-toggle').click();

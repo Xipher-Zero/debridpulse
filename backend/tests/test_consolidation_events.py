@@ -237,3 +237,115 @@ async def test_observability_delivers_safe_event_once(monkeypatch):
         "unmatched_count": 0,
     }]
     assert "secret" not in json.dumps(summaries).lower()
+
+
+async def _unverified_leaf(db, source_id, canonical_artifact_id, request_id, ordinal):
+    """A terminal UNVERIFIED association: durable non-writer truth owned by
+    ``transfers.cohorts`` -- materializing, no artifact, no consolidation row,
+    associated with a canonical artifact owned by another transfer."""
+    await db.execute(
+        """INSERT INTO transfer_requests(id, transfer_id, ordinal, payload, state,
+               equivalence_disposition, equivalence_reason, equivalence_target_artifact_id)
+           VALUES(?, ?, ?, '{}', 'materializing', 'unverified', 'range_ignored', ?)""",
+        (request_id, source_id, ordinal, canonical_artifact_id),
+    )
+
+
+async def _source_with_unverified_leaf(db, *, matched=2, unverified=1, status="consolidated"):
+    source_id = await _transfer(db, "source", status)
+    canonical_id = await _transfer(db, "canonical-0")
+    await _request(db, canonical_id, "canonical-request-0", 0)
+    canonical_artifact = await _artifact(db, canonical_id, "canonical-request-0", "canonical-0")
+    for index in range(matched):
+        request_id = f"source-request-{index}"
+        await _request(db, source_id, request_id, index)
+        contributing = await _artifact(db, source_id, request_id, f"source-{index}", mirror_state="standby")
+        await db.execute(
+            """INSERT INTO artifact_consolidations(
+                   contributing_artifact_id, source_transfer_id, source_request_id, canonical_artifact_id)
+               VALUES(?, ?, ?, ?)""",
+            (contributing, source_id, request_id, canonical_artifact),
+        )
+    for offset in range(unverified):
+        await _unverified_leaf(db, source_id, canonical_artifact, f"source-unverified-{offset}", matched + offset)
+    await db.commit()
+    return source_id, canonical_id
+
+
+@pytest.mark.asyncio
+async def test_consolidation_event_recognizes_terminal_unverified_leaves(isolated_db):
+    """DP 1.0.12 consolidation corrective, Gate 9 continuation, Finding 3: a
+    transfer that correctly reaches CONSOLIDATED while holding a terminal
+    UNVERIFIED association must still produce its consolidation disposition.
+    RED before the correction: ``_disposition`` recognizes only ``resolved``
+    leaves, so the operator saw a CONSOLIDATED transfer, an UNVERIFIED source
+    in canonical Details, and no consolidation notice at all."""
+    async with database.get_db() as db:
+        source_id, canonical_id = await _source_with_unverified_leaf(db, matched=2, unverified=1)
+
+    events = ConsolidationEvents(repository=None)
+    await events.stage(source_id)
+    assert await events.finalize_pending() == 1
+    assert await events.finalize_pending() == 0
+
+    async with database.get_db() as db:
+        rows = await db.fetchall(
+            "SELECT detail FROM application_events WHERE transfer_id = ? AND kind = 'duplicate_consolidated'",
+            (source_id,),
+        )
+    assert len(rows) == 1
+    detail = json.loads(rows[0]["detail"])
+    assert detail == {
+        "source_transfer_id": source_id,
+        "canonical_transfer_ids": [canonical_id],
+        "matched_count": 2,
+        "unmatched_count": 0,
+        "unverified_count": 1,
+    }
+    # UNVERIFIED is its own settled state: never counted as a verified member,
+    # and never counted as material that will still download normally.
+    assert detail["matched_count"] == 2 and detail["unmatched_count"] == 0
+    public = ConsolidationEvents.public_payload(rows[0]["detail"])
+    assert public["unverified_count"] == 1
+    assert public["matched_count"] == 2 and public["unmatched_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_unverified_leaf_never_alone_produces_a_consolidation_event(isolated_db):
+    """A transfer whose ONLY settled leaves are unverified associations has no
+    verified contribution to announce -- consolidation means a real canonical
+    relationship was established."""
+    async with database.get_db() as db:
+        source_id, _canonical_id = await _source_with_unverified_leaf(db, matched=0, unverified=2)
+
+    events = ConsolidationEvents(repository=None)
+    await events.stage(source_id)
+    assert await events.finalize_pending() == 0
+
+    async with database.get_db() as db:
+        rows = await db.fetchall(
+            "SELECT kind FROM application_events WHERE transfer_id = ? AND kind = 'duplicate_consolidated'",
+            (source_id,),
+        )
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_nonterminal_unresolved_leaf_still_withholds_the_consolidation_event(isolated_db):
+    """The control: an unresolved leaf that is NOT terminal (``exhausted``,
+    no durable association) is not a stable disposition, so the summary must
+    still wait rather than announce a half-decided submission."""
+    async with database.get_db() as db:
+        source_id, _canonical_id = await _source_with_unverified_leaf(
+            db, matched=2, unverified=0, status="downloading")
+        await db.execute(
+            """INSERT INTO transfer_requests(id, transfer_id, ordinal, payload, state,
+                   equivalence_disposition, equivalence_reason)
+               VALUES('source-exhausted', ?, 9, '{}', 'materializing', 'exhausted', 'range_ignored')""",
+            (source_id,),
+        )
+        await db.commit()
+
+    events = ConsolidationEvents(repository=None)
+    await events.stage(source_id)
+    assert await events.finalize_pending() == 0

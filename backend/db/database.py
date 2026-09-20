@@ -766,6 +766,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'equivalence_retry_count': 'INTEGER NOT NULL DEFAULT 0',
         'equivalence_reason': 'TEXT',
         'equivalence_disposition': "TEXT NOT NULL DEFAULT ''",
+        # The one canonical artifact (``download_files.id``) an ``unverified``
+        # request is durably associated with for lifecycle/presentation only --
+        # never a canonical membership (no binding, origin or consolidation row
+        # is ever derived from it). Owned by the same equivalence authority as
+        # the three columns above (``transfers.cohorts``). Additive and
+        # nullable: every existing request is correctly NULL; no backfill.
+        'equivalence_target_artifact_id': 'INTEGER',
         # DP 1.0.12 canonical architecture correction, Workstream A: the
         # ``transfer_file_selections.id`` generation that authorized this
         # file-selection CHILD row's materialization (set once, at
@@ -799,7 +806,17 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'cleanup_claim_until': 'REAL NOT NULL DEFAULT 0',
     },
     'resolution_attempts': {'result': 'TEXT'},
-    'execution_attempts': {'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT'},
+    'execution_attempts': {
+        'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT',
+        # Execution-owned target authority, recorded once at final execution
+        # admission: 1 = immediately before this execution received native
+        # start authority the validated target (and its executor-declared
+        # resumable sidecars) held no pre-existing material; 0 = material was
+        # already there. Additive and nullable: a row written before this
+        # column existed stays NULL, which reads as "ownership unknown" and
+        # therefore never authorizes cleanup. No backfill exists or is needed.
+        'target_initially_absent': 'INTEGER',
+    },
     # Additive nullable column for databases created before the Torrent/Magnet
     # File-Selection Lifecycle Correction. A metadata-only ALTER: every existing
     # row is left NULL, which is exactly the correct "resource not yet observed
@@ -827,7 +844,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
-    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'transfer_id', 'updated_at'},
+    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
@@ -845,6 +862,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_requests': {
         'attempts', 'error', 'id', 'metadata', 'ordinal', 'parent_id', 'payload', 'resource', 'retry_at', 'state',
         'transfer_id', 'equivalence_retry_count', 'equivalence_reason', 'equivalence_disposition',
+        'equivalence_target_artifact_id',
     },
     'artifact_recovery_state': {
         'artifact_id', 'transfer_id', 'version', 'recovery_epoch', 'progress_anchor',

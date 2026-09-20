@@ -99,6 +99,8 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
+import logging
+import os
 from pathlib import Path
 import time
 from weakref import WeakValueDictionary
@@ -111,7 +113,9 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.filesystem import destination, payload_matches, safe_name, stable_material_size, stable_payload, validate_target
+from transfers.filesystem import (
+    destination, payload_matches, retire_partial, safe_name, stable_material_size, stable_payload, validate_target,
+)
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
@@ -124,6 +128,9 @@ from transfers.mirrors import shared_size
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 class _CleanupOwnershipLost(Exception):
@@ -1122,6 +1129,18 @@ class TransferEngine:
         await self.repository.artifact_state(artifact.id, "unresolved", release=True)
         await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
 
+    @staticmethod
+    def _target_initially_absent(target: str, sidecars) -> bool:
+        """Observed at the final execution-admission boundary, immediately
+        before the attempt is durably prepared and handed native start
+        authority: does the artifact's canonical target -- or any resumable
+        sidecar the executor declares for it -- already hold material? Anything
+        present now (legitimate prior partial bytes, an operator's file, a
+        symlink) pre-dates this execution and is never this execution's to
+        retire. ``lexists`` so a dangling symlink still counts as present. A
+        pure observation: it adds no admission rule of its own."""
+        return not any(os.path.lexists(item) for item in (target, *sidecars))
+
     async def _dispatch(self, artifact: Artifact):
         try:
             # Universal execution-admission invariant (DP 1.0.12 canonical
@@ -1189,7 +1208,8 @@ class TransferEngine:
                     # reason this artifact did not dispatch this attempt.
                     self._capacity_only_blocked.add(artifact.id)
                     return
-                if not await self.repository.prepare_execution(artifact, handle):
+                if not await self.repository.prepare_execution(
+                        artifact, handle, target_initially_absent=self._target_initially_absent(artifact.target, sidecars)):
                     return
             try:
                 observed = await executor.start(request, handle)
@@ -1294,7 +1314,10 @@ class TransferEngine:
                     return
                 if not isinstance(prepared, ExecutionHandle) or prepared.executor_id != challenge.integration_id or prepared.attempt_id != challenge.operation_id:
                     raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
-                if not await self.repository.prepare_execution(artifact, prepared, from_input_required=True):
+                if not await self.repository.prepare_execution(
+                        artifact, prepared, from_input_required=True,
+                        target_initially_absent=self._target_initially_absent(
+                            artifact.target, executor.resumable_paths(artifact.target))):
                     return
                 handle = prepared
             await self.challenges.clear(challenge)
@@ -1382,8 +1405,14 @@ class TransferEngine:
             else:
                 error = self._error(Category.MATERIALIZATION_FAILED, Stage.VERIFICATION, domain=Domain.INTEGRITY,
                                     retryability=Retryability.AFTER_RESOURCE_CHANGE)
+                # Read before the failure is recorded: ownership belongs to the
+                # still-current execution, and is a durable admission-time fact
+                # -- never inferred here from size, name, mtime or the executor.
+                owned = await self.repository.execution_owns_target(observed.handle)
                 await self.repository.artifact_state(artifact.id, "error", error=error)
                 await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error), attempt_id=observed.handle.attempt_id)
+                if owned:
+                    await self._retire_execution_owned_material(artifact, executor)
         elif observed.state == ExecutionState.FAILED:
             error = observed.error or self._error(Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION, domain=Domain.EXECUTOR)
             await self._recover_artifact(artifact, error)
@@ -1395,6 +1424,22 @@ class TransferEngine:
             await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.CANCELLED,
                 cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
 
+
+    async def _retire_execution_owned_material(self, artifact, executor) -> None:
+        """Retire the invalid material a rejected execution itself created:
+        exactly the artifact's canonical target and the executor-declared
+        resumable sidecars for it, through the existing hardened
+        ``retire_partial`` primitive. Verification failure is not the
+        authority -- the caller has already proven positive execution
+        ownership. The verification failure is already durable; a cleanup
+        failure is logged and changes nothing about it."""
+        try:
+            await asyncio.to_thread(retire_partial, self.root, artifact.target, executor.resumable_paths(artifact.target))
+        except (TransferError, OSError) as exc:
+            logger.warning(
+                "execution-owned invalid material could not be retired transfer=%s artifact=%s: %s",
+                artifact.transfer_id, artifact.id, type(exc).__name__,
+            )
 
     async def _aggregate(self, transfer_id: int):
         """DP 1.0.12 recovery leveling, Sections 21-22: the decision and the

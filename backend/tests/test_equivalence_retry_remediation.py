@@ -195,23 +195,31 @@ async def test_persistent_transient_failure_exhausts_bound_and_holds_unresolved(
     await retry_pair.engine.resolve_pending()
     await retry_pair.engine.reconcile_executions()
 
-    assert (await retry_pair.repository.get(second.id)).state.value != "consolidated"
+    # DP 1.0.12 consolidation corrective, Gate 9 continuation (Findings 1/2):
+    # the six prefix-matched siblings each attach to their OWN distinct
+    # canonical part, and the seventh -- terminally UNVERIFIED against exactly
+    # one canonical target -- is settled, writer-forbidden truth rather than
+    # an outstanding obligation, so this submission has no writer-capable work
+    # left and settles. It previously stayed materializing forever, which is
+    # the zombie shape Remediation 4 exists to end. What must NOT change is
+    # the writer count: still zero competing writers for this submission.
     assert len(await retry_pair.repository.artifacts(first.id)) == 7
-    # Zero competing writers for the whole unresolved submission -- neither
-    # the permanently-unresolved member nor its otherwise-provable siblings.
     assert len(await retry_pair.repository.artifacts(second.id)) == 0
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 7
 
     rows = await _proof_rows(second.id)
     failed = next(row for row in rows if row["equivalence_reason"] == "timeout")
     assert int(failed["equivalence_retry_count"]) == 2
-    assert failed["equivalence_disposition"] == "exhausted"
+    assert failed["equivalence_disposition"] == "unverified"
     assert float(failed["retry_at"] or 0) == 0
-    assert sum(row["equivalence_disposition"] == "exhausted" for row in rows) == 1
+    assert sum(row["equivalence_disposition"] == "unverified" for row in rows) == 1
     # No sibling is released to independence merely because one member
-    # exhausted proof acquisition (Section 8.1.6) -- every one of the 7
-    # durable requests for this submission stays held, unresolved.
-    assert all(row["state"] == "materializing" for row in rows)
+    # exhausted proof acquisition (Section 8.1.6).
+    assert not {row["equivalence_disposition"] for row in rows} & {"independent", "contradictory", "released", "provisional"}
+    # The unresolved member itself never materializes; its six siblings are
+    # verified canonical contributions, never independent writers.
+    assert failed["state"] == "materializing"
+    assert all(row["state"] == "resolved" for row in rows if row["id"] != failed["id"])
 
     exhausted_calls = fingerprint_calls["part1.rar"]
     retry_pair.now[0] += 1.1
@@ -224,26 +232,41 @@ async def test_persistent_transient_failure_exhausts_bound_and_holds_unresolved(
     # Repeated scheduler ticks after exhaustion never hot-loop proof
     # acquisition or grow the retry counter past the budget.
     assert int(failed_after["equivalence_retry_count"]) == 2
-    assert failed_after["equivalence_disposition"] == "exhausted"
+    assert failed_after["equivalence_disposition"] == "unverified"
     assert fingerprint_calls["part1.rar"] == exhausted_calls
 
 
 @pytest.mark.asyncio
-async def test_restart_after_exhaustion_stays_quiescent_and_can_still_recover(retry_pair, monkeypatch):
+async def test_restart_after_exhaustion_stays_quiescent_and_never_duplicates_a_writer(retry_pair, monkeypatch):
     """DP 1.0.12 Section 11.8: persist unresolved proof with the retry budget
     already exhausted (no physical artifact), restart a fresh production
     engine/repository instance against the same durable state, and assert:
     the proof counter is preserved, there is no automatic re-materialization,
-    no duplicate writer is allocated, restart does not itself consume a proof
-    attempt (no hot loop), and the request remains unresolved/quiescent until
-    a later valid wake (here, an explicit operator retry) recovers it."""
+    no duplicate writer is allocated, and restart does not itself consume a
+    proof attempt (no hot loop).
+
+    Revised by the consolidation corrective, Gate 9 continuation. This test
+    previously also asserted that the submission stayed non-consolidated so
+    that a later operator retry could still upgrade the unresolved member to
+    a verified canonical member. Under Findings 1/2 the six prefix-matched
+    siblings attach to their own distinct canonical parts and the seventh is
+    terminal UNVERIFIED, so the submission has no writer-capable material
+    work left and settles -- which is the whole point of Remediation 4. A
+    settled parent is not reconsidered by existing lifecycle machinery, so
+    the operator-retry UPGRADE path is only available while the parent is
+    still unsettled; that case is owned by
+    ``test_multi_mirror_general_http_convergence
+    .test_reconsidered_unverified_request_transitions_through_the_ordinary_paths``
+    (proven equivalent / distinct / still unresolved). Reconsideration policy
+    for an ALREADY-settled parent is deliberately out of scope here (Gate 9
+    DEFERRED_FINDINGS #5) -- the object itself is fully delivered by the
+    canonical transfer either way, so what is foregone is a provenance
+    upgrade, never delivery."""
     await _submit_batch(retry_pair, retry_pair.a, "rapidgator")
     await retry_pair.engine.tick()
 
-    unavailable_forever = {"active": True}
-
     async def persistent(candidate):
-        if candidate.provider_id == retry_pair.b.descriptor.id and candidate.name == "part1.rar" and unavailable_forever["active"]:
+        if candidate.provider_id == retry_pair.b.descriptor.id and candidate.name == "part1.rar":
             return _unavailable("timeout")
         return _prefix(candidate)
 
@@ -256,7 +279,7 @@ async def test_restart_after_exhaustion_stays_quiescent_and_can_still_recover(re
 
     before = await _proof_rows(second.id)
     failed_before = next(row for row in before if row["equivalence_reason"] == "timeout")
-    assert failed_before["equivalence_disposition"] == "exhausted"
+    assert failed_before["equivalence_disposition"] == "unverified"
     assert int(failed_before["equivalence_retry_count"]) == 2
     assert len(await retry_pair.repository.artifacts(second.id)) == 0
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 7
@@ -280,28 +303,20 @@ async def test_restart_after_exhaustion_stays_quiescent_and_can_still_recover(re
     after = await _proof_rows(second.id)
     failed_after = next(row for row in after if row["equivalence_reason"] == "timeout")
     assert int(failed_after["equivalence_retry_count"]) == 2  # proof counter preserved, not reset.
-    assert failed_after["equivalence_disposition"] == "exhausted"  # no automatic re-materialization.
+    assert failed_after["equivalence_disposition"] == "unverified"  # no automatic re-materialization.
+    assert failed_after["state"] == "materializing"  # never a writer, never a canonical member.
     assert len(await retry_pair.repository.artifacts(second.id)) == 0  # no duplicate writer.
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 7
-    assert (await retry_pair.repository.get(second.id)).state.value != "consolidated"
-
-    # A later valid wake (explicit operator retry) can still recover it.
     async with database.get_db() as db:
-        await db.execute(
-            "UPDATE transfer_requests SET equivalence_disposition='',equivalence_retry_count=0,retry_at=0 WHERE id=?",
-            (failed_after["id"],),
+        membership = await db.fetchone(
+            """SELECT (SELECT COUNT(*) FROM canonical_candidate_origins WHERE request_id=?) AS origins,
+                (SELECT COUNT(*) FROM artifact_consolidations WHERE source_request_id=?) AS consolidations,
+                (SELECT COUNT(*) FROM download_files WHERE request_id=?) AS artifacts""",
+            (failed_after["id"], failed_after["id"], failed_after["id"]),
         )
-        await db.commit()
-    unavailable_forever["active"] = False
-    retry_pair.now[0] += 1.1
-    await restarted.resolve_pending()
-    await restarted.reconcile_executions()
-
-    assert (await retry_pair.repository.get(second.id)).state.value == "consolidated"
-    assert len(await retry_pair.repository.artifacts(second.id)) == 0
-    assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 7
-    recovered = next(row for row in await _proof_rows(second.id) if row["id"] == failed_after["id"])
-    assert recovered["equivalence_disposition"] == "recovered"
+    assert dict(membership) == {"origins": 0, "consolidations": 0, "artifacts": 0}
+    # The six provable siblings are ordinary verified canonical contributions.
+    assert sum(row["state"] == "resolved" for row in after) == 6
 
 
 @pytest.mark.asyncio
@@ -398,7 +413,7 @@ async def test_each_transient_reason_exhausts_without_materializing_or_hot_loopi
 
     row = (await _proof_rows(second.id))[0]
     assert row["equivalence_reason"] == reason
-    assert row["equivalence_disposition"] == "exhausted"
+    assert row["equivalence_disposition"] == "unverified"
     assert int(row["equivalence_retry_count"]) == 2
     assert row["state"] == "materializing"  # identity remains unresolved, held.
     calls_after_exhaustion = calls["count"]
@@ -408,7 +423,7 @@ async def test_each_transient_reason_exhausts_without_materializing_or_hot_loopi
         await retry_pair.engine.resolve_pending()
     row_after = (await _proof_rows(second.id))[0]
     assert int(row_after["equivalence_retry_count"]) == 2  # no unbounded proof attempts.
-    assert row_after["equivalence_disposition"] == "exhausted"
+    assert row_after["equivalence_disposition"] == "unverified"
     assert calls["count"] == calls_after_exhaustion  # no hot loop of automatic proof sampling.
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1
 
@@ -497,7 +512,7 @@ async def test_non_retryable_unresolved_pairing_holds_and_never_becomes_independ
     await retry_pair.engine.reconcile_executions()
 
     row = (await _proof_rows(second.id))[0]
-    assert row["equivalence_disposition"] == "exhausted"  # held, never "independent".
+    assert row["equivalence_disposition"] == "unverified"  # held, never "independent".
     assert row["equivalence_reason"] == "range_ignored"
     assert float(row["retry_at"] or 0) == 0
     assert row["state"] == "materializing"
@@ -511,7 +526,7 @@ async def test_non_retryable_unresolved_pairing_holds_and_never_becomes_independ
         await retry_pair.engine.resolve_pending()
         await retry_pair.engine.reconcile_executions()
     row_after = (await _proof_rows(second.id))[0]
-    assert row_after["equivalence_disposition"] == "exhausted"
+    assert row_after["equivalence_disposition"] == "unverified"
     assert row_after["equivalence_reason"] == "range_ignored"
     assert float(row_after["retry_at"] or 0) == 0
     assert calls["count"] == held_calls  # no proof-acquisition hot loop while held.
@@ -643,7 +658,7 @@ async def test_sibling_walk_non_retryable_unresolved_member_holds_whole_cohort(r
     await retry_pair.engine.reconcile_executions()
 
     rows_after = {row["id"]: row for row in await _proof_rows(second.id)}
-    assert rows_after[unresolved["id"]]["equivalence_disposition"] == "exhausted"
+    assert rows_after[unresolved["id"]]["equivalence_disposition"] == "unverified"
     assert rows_after[unresolved["id"]]["equivalence_reason"] == "range_ignored"
     assert float(rows_after[unresolved["id"]]["retry_at"] or 0) == 0
     assert not {row["equivalence_disposition"] for row in rows_after.values()} & {
@@ -655,36 +670,36 @@ async def test_sibling_walk_non_retryable_unresolved_member_holds_whole_cohort(r
 
 
 @pytest.mark.asyncio
-async def test_later_evidence_recovers_after_exhaustion(retry_pair, monkeypatch):
-    """DP 1.0.12 Section 11.4: initial sampler unavailable, retry budget
-    exhausted, request held -- then later evidence becomes available (an
-    explicit operator retry, one of Section 4.3's valid wake sources, resets
-    the bounded proof-retry disposition so another proof opportunity exists)
-    and proves equivalence. Required: the request attaches to the existing
-    canonical, no competing writer was EVER started in between (not even
-    while held), and the durable disposition transitions from
-    unresolved/exhausted to recovered."""
+async def test_single_target_exhaustion_settles_unverified_and_never_starts_a_writer(retry_pair, monkeypatch):
+    """DP 1.0.12 Section 11.4, revised by the consolidation corrective
+    (Remediation 4). This test used to be ``test_later_evidence_recovers_
+    after_exhaustion``: it held a single-leaf transfer in ``exhausted`` /
+    ``materializing`` indefinitely so that a later manual reset of the
+    disposition could still attach it. That indefinite hold is the zombie
+    shape production transfer 300 showed, and is no longer the contract.
+
+    Proof against exactly ONE plausible canonical artifact was genuinely
+    attempted, the bounded budget is spent and equivalence is still unproven:
+    the request becomes a terminal ``unverified`` association to that artifact
+    and -- having no writer-capable work left -- its single-leaf transfer
+    settles CONSOLIDATED. Required: no competing writer is EVER started, and
+    the unverified source never becomes a canonical member. A settled parent
+    is not reconsidered by any existing lifecycle machinery; recovery of a
+    held request whose parent is still unsettled stays covered by
+    ``test_restart_after_exhaustion_stays_quiescent_and_can_still_recover``."""
     first = await retry_pair.engine.submit(
         (TransferRequest("parcel", "a1", name="same.bin", preferred_provider=retry_pair.a.descriptor.id),),
         name="a", deduplicate=False,
     )
     await retry_pair.engine.tick()
 
-    unavailable_forever = {"active": True}
-
-    def _full(candidate):
+    async def unavailable(candidate):
+        if candidate.provider_id == retry_pair.b.descriptor.id:
+            return _unavailable("dns_failure")
         signature = f"full:{candidate.name.casefold()}"
         return ArtifactFingerprint(candidate.expected_bytes, signature, FingerprintKind.FULL_CONTENT_SAMPLE, "", signature)
 
-    async def flaky(candidate):
-        if candidate.provider_id == retry_pair.b.descriptor.id and unavailable_forever["active"]:
-            return _unavailable("dns_failure")
-        # A lone request (no sibling cohort to corroborate weak prefix
-        # evidence) needs individual-proving evidence to attach at all --
-        # full-content proof, exactly like the strong-evidence fast path.
-        return _full(candidate)
-
-    monkeypatch.setattr(retry_pair.executor, "fingerprint", flaky)
+    monkeypatch.setattr(retry_pair.executor, "fingerprint", unavailable)
     second = await retry_pair.engine.submit(
         (TransferRequest("parcel", "b1", name="same.bin", preferred_provider=retry_pair.b.descriptor.id),),
         name="b", deduplicate=False,
@@ -693,34 +708,31 @@ async def test_later_evidence_recovers_after_exhaustion(retry_pair, monkeypatch)
         await retry_pair.engine.resolve_pending()
         retry_pair.now[0] += 1.1
 
-    exhausted = (await _proof_rows(second.id))[0]
-    assert exhausted["equivalence_disposition"] == "exhausted"
+    (canonical,) = await retry_pair.repository.artifacts(first.id)
+    held = (await _proof_rows(second.id))[0]
+    assert held["equivalence_disposition"] == "unverified"
+    assert held["equivalence_reason"] == "dns_failure"
+    assert held["state"] == "materializing" and float(held["retry_at"] or 0) == 0
+    async with database.get_db() as db:
+        target = await db.fetchone(
+            "SELECT equivalence_target_artifact_id FROM transfer_requests WHERE id=?", (held["id"],),
+        )
+    assert int(target["equivalence_target_artifact_id"]) == canonical.id
     assert len(await retry_pair.repository.artifacts(second.id)) == 0
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1  # never a competing writer.
+    assert (await retry_pair.repository.get(second.id)).state.value == "consolidated"  # settled, not a zombie.
 
-    # Explicit operator retry (Section 4.3's valid wake source): reset the
-    # bounded proof-retry disposition so another proof opportunity exists.
-    # No executor-side retry mechanism is invented for this.
-    async with database.get_db() as db:
-        await db.execute(
-            "UPDATE transfer_requests SET equivalence_disposition='',equivalence_retry_count=0,retry_at=0 WHERE id=?",
-            (exhausted["id"],),
-        )
-        await db.commit()
-    unavailable_forever["active"] = False  # later proof becomes available.
-
-    await retry_pair.engine.resolve_pending()
-    await retry_pair.engine.reconcile_executions()
-
+    for _ in range(3):  # further scheduler cycles change nothing.
+        retry_pair.now[0] += 1.1
+        await retry_pair.engine.resolve_pending()
+        await retry_pair.engine.reconcile_executions()
     assert (await retry_pair.repository.get(second.id)).state.value == "consolidated"
-    assert len(await retry_pair.repository.artifacts(second.id)) == 0  # still no competing writer.
+    assert len(await retry_pair.repository.artifacts(second.id)) == 0
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1
     canonicals = await retry_pair.repository.artifacts(first.id)
     assert len(canonicals) == 1
-    assert len(canonicals[0].candidates) == 2  # attached to the existing canonical; origin preserved.
-
-    recovered = (await _proof_rows(second.id))[0]
-    assert recovered["equivalence_disposition"] == "recovered"
+    assert len(canonicals[0].candidates) == 1  # the unverified source never became a canonical member.
+    assert (await _proof_rows(second.id))[0]["equivalence_disposition"] == "unverified"
 
 
 @pytest.mark.asyncio
@@ -1034,7 +1046,7 @@ async def test_bootstrap_incomplete_representation_exhaustion_admits_exactly_one
     await pair.engine._resolve(record_b)
     await _drive(pair, transfer.id, record_b.id, 3)
     row_b = next(item for item in await _proof_rows(transfer.id) if item["id"] == record_b.id)
-    assert row_b["equivalence_disposition"] == "exhausted"
+    assert row_b["equivalence_disposition"] == "unverified"
     assert await _artifact_rows_for_request(record_b.id) == []
     assert len(await pair.repository.artifacts(transfer.id)) == 1 and _starts(pair) == 1
     held_calls = calls["count"]

@@ -196,10 +196,17 @@ async def test_three_source_arrival_order_converges_on_one_canonical_after_bound
     for _ in range(4):
         await ctx.engine.resolve_pending()
 
-    # Give B's bounded retry window a chance to fire and converge.
-    ctx.now[0] += 1.1
-    for _ in range(4):
-        await ctx.engine.resolve_pending()
+    # Give B's bounded retry windows a chance to fire and converge. One
+    # coordination decision observes each candidate once (DP 1.0.12
+    # consolidation corrective, Remediation 3), so a decision whose single
+    # probe of B is still degraded stays unresolved and B converges on its
+    # NEXT bounded retry -- it no longer recovers inside that same decision
+    # merely because B was re-sampled once per canonical candidate. Both
+    # windows are within the bounded proof-retry budget.
+    for _ in range(2):
+        ctx.now[0] += 1.1
+        for _ in range(4):
+            await ctx.engine.resolve_pending()
 
     ids = await _canonical_ids((source_a.id, source_b.id, source_c.id))
     assert len(ids) == 3, "every source must reach a resolved artifact identity"

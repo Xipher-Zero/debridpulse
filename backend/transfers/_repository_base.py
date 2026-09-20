@@ -197,26 +197,65 @@ def _logical_slot_key_for_artifact(artifact) -> str:
     return next(iter(keys)) if len(keys) == 1 else ""
 
 
+async def terminal_unverified_association(db, request_id) -> bool:
+    """DP 1.0.12 consolidation corrective, Remediation 4: True when the one
+    equivalence owner (``transfers.cohorts``) has durably settled this request
+    as a terminal UNVERIFIED association to a canonical artifact owned by a
+    DIFFERENT transfer.
+
+    That pair of durable facts -- the terminal, writer-forbidden disposition
+    and the artifact it is associated with -- is the whole statement: no
+    writer may ever be created for this request, and the object it plausibly
+    is already has its one canonical writer elsewhere. It is NOT membership,
+    and nothing anywhere derives a binding, origin or consolidation row from
+    it. The single reader-side definition, shared by the lifecycle/completion
+    owner below and by ``transfers.canonical.CanonicalOwnership`` -- never two
+    independently-maintained copies of the same predicate."""
+    row = await db.fetchone(
+        """SELECT r.id FROM transfer_requests r
+            JOIN download_files c ON c.id=r.equivalence_target_artifact_id
+            WHERE r.id=? AND r.equivalence_disposition='unverified' AND c.torrent_id!=r.transfer_id""",
+        (request_id,),
+    )
+    return row is not None
+
+
 async def _completion_obligation_satisfied(db, record, completed_canonical_keys) -> bool:
     """DP 1.0.12 CANON-001 exhausted-identity completion policy, Sections 6.2/
     8/9/10: True only when ``record`` -- a quiescently-held (``_HELD_
-    DISPOSITIONS``), proof-exhausted request -- has its logical delivery
-    obligation ALREADY durably satisfied by a different, completed canonical
-    artifact in the SAME transfer.
+    DISPOSITIONS``) request whose automatic proof acquisition has stopped --
+    owes this transfer no remaining material work, on ONE of two durable
+    grounds:
+
+    * its logical delivery obligation is ALREADY satisfied by a different,
+      completed canonical artifact in the SAME transfer (the original
+      CANON-001 ground); or
+    * the equivalence owner has durably settled it as a terminal UNVERIFIED
+      association to a canonical artifact owned by ANOTHER transfer (DP
+      1.0.12 consolidation corrective, Remediation 4:
+      ``terminal_unverified_association``). The association is terminal and
+      writer-forbidden, so no independent writer obligation can remain --
+      which is exactly what this predicate asks. It is deliberately the SAME
+      question and the SAME predicate, generalized from "already delivered
+      here" to "no material work is owed by this transfer for this leaf";
+      the completion-blocking-hold model it feeds is unchanged.
 
     This is a one-directional delivery-truth read only (Section 9): it never
     creates a canonical binding, never proves source equivalence, never
-    merges artifacts, and never touches ``record``'s own equivalence
-    disposition -- identity for this alternate source remains genuinely
-    unresolved. Conservative by construction (Section 10): a request with no
-    derivable logical key never matches (unknown blocks completion), and a
-    request that ever produced its own ``download_files`` row -- any status,
-    not only a currently-voting one; a real materialized artifact/writer of
-    its own is conclusive evidence this is NOT a mere identity-unproven
-    alternate for someone else's already-delivered slot -- is never excused
-    this way either."""
+    merges artifacts, never makes UNVERIFIED mean completed or verified
+    membership, and never touches ``record``'s own equivalence disposition --
+    identity for this alternate source remains genuinely unresolved.
+    Conservative by construction (Section 10): an unresolved request that is
+    NOT terminal (``exhausted`` with no durable association -- several
+    plausible targets, or none) still blocks; a request with no derivable
+    logical key never matches the first ground (unknown blocks completion);
+    and a request that ever produced its own ``download_files`` row -- any
+    status, not only a currently-voting one; a real materialized artifact/
+    writer of its own is conclusive evidence this is NOT a mere
+    identity-unproven alternate for someone else's already-delivered slot --
+    is never excused on EITHER ground."""
     key = _logical_slot_key_for_request(record)
-    if not key or key not in completed_canonical_keys:
+    if (not key or key not in completed_canonical_keys) and not await terminal_unverified_association(db, record.id):
         return False
     own_artifact = await db.fetchone(
         "SELECT 1 AS ok FROM download_files WHERE request_id=? LIMIT 1", (record.id,),
@@ -397,22 +436,36 @@ def _assign_route_identities(route_attempts):
             item["route_identity"] = origin
 
 
-def _project_route_history(route_attempts, requests):
+def _project_route_history(route_attempts, requests, *, lineage_attempts=()):
     """The one Route History presentation owner: sets ``route_origin``,
     ``route_location`` and ``route_identity`` on every historical route row.
 
     Everything derives from the exact historical ``resolution_attempts.result``
     (carried on each row as ``resolution_result`` and consumed here) plus the
-    transfer's durable request lineage -- never from current provider
+    durable request lineage -- never from current provider
     enablement/applicability, current cache contents, current artifact binding,
     or current execution state. A logical-identity row (see
     ``_logical_route_identity``) carries no endpoint origin/location, so a
     provider-issued capability path can never reach the browser or its tooltip;
     ordinary rows keep the endpoint projection and same-origin disambiguation
-    exactly."""
-    payloads = [_decode_resolution_result(row.pop("resolution_result", None)) for row in route_attempts]
+    exactly.
+
+    ``route_attempts`` are the rows being presented. ``lineage_attempts`` are
+    further historical attempts, in durable order, that are NOT presented but
+    belong to the lineage of a presented row contributed by another transfer:
+    they only establish that lineage's first authoritative cache fact, exactly
+    as they do in the contributing transfer's own Details. ``requests`` must
+    cover the lineage of every presented row."""
+    displayed = {row["id"] for row in route_attempts}
+    lineage = [row for row in lineage_attempts if row["id"] not in displayed]
+    history = [*route_attempts, *lineage]
+    decoded = [_decode_resolution_result(row.pop("resolution_result", None)) for row in history]
     roots = _request_roots(requests)
-    root_cache = _root_cache_presence(route_attempts, payloads, roots)
+    # Roots never span transfers, so ordering only matters within one
+    # transfer's own durable ordinal sequence, which both inputs preserve.
+    ordered = sorted(zip(history, decoded), key=lambda pair: (int(pair[0].get("transfer_id") or 0), int(pair[0]["ordinal"])))
+    root_cache = _root_cache_presence([row for row, _ in ordered], [payload for _, payload in ordered], roots)
+    payloads = decoded[:len(route_attempts)]
     ordinary = []
     for row, payload in zip(route_attempts, payloads):
         candidate = _single_route_candidate(payload)
@@ -675,7 +728,8 @@ class TransferRepository:
                 f.blocked,f.block_reason,f.retry_count,f.mirror_group_id,f.mirror_state,f.updated_at,f.normalized_error,
                 e.progress AS execution_progress FROM download_files f
                 LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id WHERE f.torrent_id=? ORDER BY f.id""", (transfer_id,))
-            requests = await db.fetchall("""SELECT id,parent_id,state,error,payload,metadata FROM transfer_requests
+            requests = await db.fetchall("""SELECT id,parent_id,state,error,payload,metadata,equivalence_disposition,
+                equivalence_reason FROM transfer_requests
                 WHERE transfer_id=? ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,ordinal,id""", (transfer_id,))
             resources = await db.fetchall("SELECT id,provider_id,state FROM provider_resources WHERE transfer_id=?", (transfer_id,))
             providers = await db.fetchall("SELECT DISTINCT a.provider_id FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=?", (transfer_id,))
@@ -715,6 +769,9 @@ class TransferRepository:
                 JOIN download_files f ON f.id=b.canonical_artifact_id
                 WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
                 ORDER BY b.canonical_artifact_id,b.candidate_order,o.id""", (transfer_id,)) if details else []
+            contributed_routes, lineage_routes, lineage_requests = (
+                await self._canonical_object_routes(db, transfer_id) if details else ((), (), ())
+            )
             events = await db.fetchall("SELECT id,torrent_id,level,message,created_at FROM events WHERE torrent_id=? ORDER BY id DESC LIMIT 50", (transfer_id,)) if details else []
             input_challenge = await db.fetchone("SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
         def normalized(item, field="normalized_error"):
@@ -767,12 +824,41 @@ class TransferRepository:
                     error = codec.error(item["error"])
                     result["source_outcomes"].append({"id": item["id"], "name": request.name or "Source request", "status": "error",
                         "error": error.as_dict() if error else None, "error_message": error.message if error else None})
+            # Canonical-object Route History. Native rows are this transfer's
+            # own route attempts, unchanged and in their durable order. Rows
+            # contributed by OTHER transfers follow, each carrying its real
+            # contributing transfer -- they are never rewritten as though this
+            # transfer had performed them, and their durable ``ordinal`` stays
+            # the contributing transfer's own. ``presentation_ordinal`` is the
+            # display sequence only: a native row keeps its durable ordinal and
+            # contributed rows continue after the last native one.
+            unverified_requests = {
+                item["id"]: item for item in requests if item.get("equivalence_disposition") == "unverified"
+            }
             result["route_attempts"] = []
             for row in route_attempts:
                 item = dict(row)
                 item["candidates"] = codec.load(item.pop("candidate_summary"), [])
+                held = unverified_requests.get(item["request_id"])
+                item["relation"] = "unverified" if held else "original"
+                item["verification_state"] = "unverified" if held else "verified"
+                item["unverified_reason"] = (held.get("equivalence_reason") or None) if held else None
+                item["contributing_transfer_id"] = transfer_id
+                item["presentation_ordinal"] = int(item["ordinal"])
                 result["route_attempts"].append(item)
-            _project_route_history(result["route_attempts"], requests)
+            next_ordinal = max((int(item["ordinal"]) for item in result["route_attempts"]), default=0)
+            for row in contributed_routes:
+                item = dict(row)
+                item["candidates"] = codec.load(item.pop("candidate_summary"), [])
+                next_ordinal += 1
+                item["presentation_ordinal"] = next_ordinal
+                result["route_attempts"].append(item)
+            _project_route_history(
+                result["route_attempts"], (*requests, *lineage_requests),
+                lineage_attempts=[dict(row) for row in lineage_routes],
+            )
+            for item in result["route_attempts"]:
+                item.pop("transfer_id", None)
             result["execution_attempts"] = []
             for row in execution_history:
                 item = dict(row)
@@ -804,6 +890,86 @@ class TransferRepository:
                 })
             result["events"] = [dict(item) for item in events]
         return result
+
+    @staticmethod
+    async def _canonical_object_routes(db, transfer_id: int):
+        """Route provenance other transfers contributed to the canonical
+        artifacts ``transfer_id`` owns: ``(contributed, lineage, requests)``.
+
+        * ``consolidated`` -- each ``canonical_candidate_origins`` row of a
+          binding on an owned canonical artifact names the exact
+          ``resolution_attempt_id`` / ``request_id`` / contributing transfer
+          that discovered a VERIFIED candidate. That exact route attempt is
+          projected, once, in durable binding/origin order.
+        * ``unverified`` -- a request the equivalence owner durably associated
+          with an owned canonical artifact (``equivalence_disposition=
+          'unverified'``, ``equivalence_target_artifact_id``). It has no
+          binding; its own most recent successful resolution -- the route
+          proof was attempted through -- is projected, in durable
+          request/resolution order, with its factual unresolved reason.
+
+        Nothing is inferred from a current candidate, URL, host, filename or
+        transfer adjacency. ``lineage`` / ``requests`` are the contributing
+        transfers' own durable history, which ``_project_route_history`` needs
+        to read a contributed row's identity exactly as that transfer's own
+        Details does."""
+        verified = await db.fetchall("""SELECT o.resolution_attempt_id,o.request_id,o.contributing_transfer_id
+            FROM canonical_candidate_bindings b
+            JOIN download_files f ON f.id=b.canonical_artifact_id
+            JOIN canonical_candidate_origins o ON o.binding_id=b.id
+            WHERE f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby' AND o.contributing_transfer_id!=?
+            ORDER BY b.canonical_artifact_id,b.candidate_order,o.id""", (transfer_id, transfer_id))
+        unverified = await db.fetchall("""SELECT r.id AS request_id,r.transfer_id AS contributing_transfer_id,
+            r.equivalence_reason FROM transfer_requests r
+            JOIN download_files f ON f.id=r.equivalence_target_artifact_id
+            WHERE r.equivalence_disposition='unverified' AND r.transfer_id!=?
+            AND f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+            ORDER BY r.transfer_id,r.ordinal,r.id""", (transfer_id, transfer_id))
+        if not verified and not unverified:
+            # The ordinary transfer: nothing was contributed, so the native
+            # route query stays the only route-provenance read Details makes.
+            return (), (), ()
+        # The contributing transfers' own durable history, one bounded read per
+        # contributor (there are at most as many as contributed sources).
+        history, lineage_requests = [], []
+        for contributor in sorted({int(row["contributing_transfer_id"]) for row in (*verified, *unverified)}):
+            history.extend(await db.fetchall("""SELECT p.resolution_attempt_id AS id,p.transfer_id,p.request_id,p.ordinal,
+                p.operation,p.previous_attempt_id,p.transition_kind,p.transition_reason,p.candidate_summary,p.outcome,
+                p.history_quality,a.provider_id,a.state AS resolution_state,a.result AS resolution_result,
+                a.created_at,a.updated_at
+                FROM route_attempt_provenance p JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                WHERE p.transfer_id=? ORDER BY p.ordinal,p.resolution_attempt_id""", (contributor,)))
+            lineage_requests.extend(await db.fetchall(
+                "SELECT id,parent_id,payload FROM transfer_requests WHERE transfer_id=?", (contributor,),
+            ))
+        by_id = {row["id"]: row for row in history}
+        selected = {}
+        for row in verified:
+            selected.setdefault(row["resolution_attempt_id"], {
+                "request_id": row["request_id"], "relation": "consolidated", "verification_state": "verified",
+                "unverified_reason": None, "contributing_transfer_id": int(row["contributing_transfer_id"]),
+            })
+        for row in unverified:
+            # ``history`` is in durable ordinal order: the last successful
+            # attempt of this request is the route its proof was attempted through.
+            attempt_id = next((item["id"] for item in reversed(history)
+                               if item["request_id"] == row["request_id"] and item["resolution_state"] == "succeeded"), None)
+            if attempt_id is not None:
+                selected.setdefault(attempt_id, {
+                    "request_id": row["request_id"], "relation": "unverified", "verification_state": "unverified",
+                    "unverified_reason": row["equivalence_reason"] or None,
+                    "contributing_transfer_id": int(row["contributing_transfer_id"]),
+                })
+        contributed = []
+        for attempt_id, facts in selected.items():
+            row = by_id.get(attempt_id)
+            # The origin names an exact (attempt, request, transfer); a row that
+            # does not match all three is not that provenance and is not shown.
+            if (row is None or row["request_id"] != facts["request_id"]
+                    or int(row["transfer_id"]) != facts["contributing_transfer_id"]):
+                continue
+            contributed.append({**dict(row), **{key: value for key, value in facts.items() if key != "request_id"}})
+        return tuple(contributed), tuple(history), tuple(lineage_requests)
 
     async def aggregate_lifecycle(self, transfer_id: int, *, input_required: bool) -> AggregateLifecycleOutcome | None:
         """DP 1.0.12 recovery leveling, Sections 21-22: one atomic read-decide-
@@ -971,12 +1137,18 @@ class TransferRepository:
                         _logical_slot_key_for_artifact(item) for item in artifacts if item.state == "completed"
                     ) if key
                 }
-                if completed_canonical_keys:
-                    completion_blocking_hold = False
-                    for _, held_record in held_pairs:
-                        if not await _completion_obligation_satisfied(db, held_record, completed_canonical_keys):
-                            completion_blocking_hold = True
-                            break
+                # Asked of every held request, on the one predicate. The
+                # earlier "no completed canonical here, so nothing can be
+                # satisfied" short-circuit no longer holds: a terminal
+                # UNVERIFIED association is satisfied by a canonical artifact
+                # in ANOTHER transfer (Remediation 4), so the question must
+                # actually be asked. The conservative default is unchanged --
+                # any held request this predicate cannot satisfy still blocks.
+                completion_blocking_hold = False
+                for _, held_record in held_pairs:
+                    if not await _completion_obligation_satisfied(db, held_record, completed_canonical_keys):
+                        completion_blocking_hold = True
+                        break
             total = sum(item.expected_bytes for item in artifacts)
             # DP 1.0.12 canonical transfer-detail materialized-path
             # correction: the durable "current materialized target"
@@ -1712,7 +1884,12 @@ class TransferRepository:
                         AND e.state IN ('prepared','queued','transferring','paused','unknown')))""")
         return {str(row["local_path"]).casefold() for row in rows}
 
-    async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False) -> bool:
+    async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False,
+                                target_initially_absent: bool | None = None) -> bool:
+        """``target_initially_absent`` is the caller's direct observation, made
+        at this same final admission boundary, of whether the validated target
+        held any pre-existing material. It is stored with the attempt and never
+        recomputed; ``None`` (no observation) persists as NULL."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
@@ -1728,9 +1905,11 @@ class TransferRepository:
             )
             ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (artifact.id,))
             ordinal = int(ordinal_row["n"] or 0) + 1
-            await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate)
-                VALUES(?,?,?,?,?,'prepared',?)""", (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
-                codec.dump(candidate) if candidate else None))
+            await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate,
+                target_initially_absent) VALUES(?,?,?,?,?,'prepared',?,?)""",
+                (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
+                 codec.dump(candidate) if candidate else None,
+                 None if target_initially_absent is None else int(bool(target_initially_absent))))
             await db.execute("""INSERT INTO execution_attempt_provenance(
                 execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
                 outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?, 'prepared',0,'recorded')""",
@@ -1766,6 +1945,21 @@ class TransferRepository:
                     break
             await db.commit()
         return True
+
+    async def execution_owns_target(self, handle: ExecutionHandle) -> bool:
+        """Positive target-ownership authority for ``handle``: True only when
+        this exact attempt durably recorded that its target was initially
+        absent AND it is still the artifact's current execution. Unknown
+        (NULL, a pre-change row), false, superseded, or missing all answer
+        False -- ownership is never inferred from the file itself."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT e.target_initially_absent FROM execution_attempts e
+                    JOIN download_files f ON f.id=e.artifact_id AND f.execution_attempt_id=e.id
+                    WHERE e.id=? AND e.executor_id=?""",
+                (handle.attempt_id, handle.executor_id),
+            )
+        return bool(row) and row["target_initially_absent"] is not None and int(row["target_initially_absent"]) == 1
 
     async def authorize_execution(self, handle: ExecutionHandle, action: str) -> bool:
         async with get_db() as db:

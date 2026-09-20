@@ -89,7 +89,24 @@ def transition_allowed(current: TransferState, target: TransferState, *, operato
     if current == TransferState.DELETED:
         return operator and target == TransferState.ACCEPTED
     if current == TransferState.CONSOLIDATED:
-        return target == TransferState.DELETED
+        # DP 1.0.12 consolidation corrective, Round 3. CONSOLIDATED was the
+        # only terminal state with no operator escape hatch, which predates
+        # Remediation 4: a transfer may now settle CONSOLIDATED while holding
+        # a terminal UNVERIFIED association -- identity that is deliberately
+        # unproven, not delivered material. Remediation 4 always promised that
+        # an EXPLICIT operator reconsideration of such an association could
+        # still run ordinary equivalence proof (only AUTOMATIC/background
+        # reconsideration was deferred), and that is impossible while every
+        # path out of this state is closed. This grants exactly the hatch
+        # COMPLETED and CANCELLED already have -- ``operator=True`` only, so
+        # nothing autonomous can take it -- and its sole caller
+        # (``convergence_engine.TransferEngine.retry``) additionally requires
+        # a durable terminal UNVERIFIED association to exist. Settled
+        # transfers are therefore not broadly reopened: an ordinary
+        # consolidated transfer has no such association and is refused before
+        # any transition is attempted.
+        return target == TransferState.DELETED or (
+            operator and target in {TransferState.ACCEPTED, TransferState.QUEUED})
     if current == TransferState.COMPLETED:
         return target == TransferState.DELETED or (operator and target in {TransferState.ACCEPTED, TransferState.QUEUED})
     if current == TransferState.CANCELLED:
