@@ -8,9 +8,6 @@
   [![Image](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/fork-image.yml?style=flat-square&label=image)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/fork-image.yml)
 </div>
 
-> [!IMPORTANT]
-> **License and attribution:** DebridPulse modifications are Copyright © 2026 Chris Moore and are licensed under **GPL-2.0-or-later**. DebridPulse is derived from [`kroeberd/alldebrid-client` v1.9.9](https://github.com/kroeberd/alldebrid-client/tree/c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c), Copyright © 2026 kroeberd, originally licensed under MIT. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [LICENSES/MIT.txt](LICENSES/MIT.txt).
-
 ---
 
 ## What is DebridPulse?
@@ -19,7 +16,7 @@
 
 The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record for the two-provider slice. Further transports and providers (FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executors) are `1.0.13` expansion work, not unfinished `1.0.12` work.
 
-> **Source state vs. published image state.** The `1.0.12` branch carries the finalized 1.0.12 architecture. Tag promotion is a separate, explicit step, so the published release tag is still `v1.0.11.1` and the image examples below use it. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the currently published tags.
+The current release is `v1.0.12`. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the currently published image tags.
 
 The current workflow is intentionally deterministic:
 
@@ -171,12 +168,12 @@ Go to **Settings → Sources & Providers**. Enable the sources you intend to use
 
 ### Docker image
 
-Fork-owned images are published to GHCR. Every image is built once immutably and tagged by its full source SHA, then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
+Images are published to GHCR. Every image is built once immutably and tagged by its full source SHA, then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
 
-Versioned V1 images use the release tag. The currently published release tag is:
+Versioned V1 images use the release tag:
 
 ```text
-ghcr.io/xipher-zero/debridpulse:v1.0.11.1
+ghcr.io/xipher-zero/debridpulse:v1.0.12
 ```
 
 Example:
@@ -194,7 +191,7 @@ docker run -d \
   -v /path/to/debridpulse/config:/app/config \
   -v /path/to/debridpulse/data:/app/data \
   -v /path/to/downloads:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.11.1
+  ghcr.io/xipher-zero/debridpulse:v1.0.12
 ```
 
 Adjust the paths and UID/GID for your system.
@@ -341,7 +338,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 
 ## V1 scope boundary
 
-DebridPulse began as a fork of `kroeberd/alldebrid-client` v1.9.9. V1 removes the inherited media-automation and indexer surface, including:
+V1 deliberately excludes the media-automation and indexer surface, including:
 
 - qBittorrent API emulation;
 - Sonarr/Radarr integration;
@@ -350,22 +347,6 @@ DebridPulse began as a fork of `kroeberd/alldebrid-client` v1.9.9. V1 removes th
 - saved-search and automation systems.
 
 Their routes, services, scheduler jobs, configuration, UI, database tables, and dependencies are not part of the V1 application. DebridPulse is a **debrid download manager**, not an all-in-one media automation suite.
-
----
-
-## Upstream provenance
-
-DebridPulse is derived from upstream [`kroeberd/alldebrid-client`](https://github.com/kroeberd/alldebrid-client) release **v1.9.9**, commit:
-
-```text
-c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c
-```
-
-The fork initially preserved production corrections around AllDebrid processing and shared external aria2 operation, then added tracked direct-link downloading and began simplifying the user interface around the actual AllDebrid download workflow.
-
-See [`INTERNAL_FORK.md`](INTERNAL_FORK.md) for historical notes about the initial divergence and [`NOTICE`](NOTICE) for the retained upstream attribution.
-
-See [`CHANGELOG.md`](CHANGELOG.md) for current DebridPulse changes.
 
 ---
 
@@ -402,6 +383,8 @@ The primary implementation areas are:
 
 Runtime dependencies are exactly pinned through `backend/requirements.in` → `backend/requirements.txt`. Python runtime license metadata is checked against `licenses/python-runtime.json`; published images also carry BuildKit provenance and SBOM attestations. See [`docs/DEPENDENCY_LICENSES.md`](docs/DEPENDENCY_LICENSES.md).
 
+Release notes for every version are in [`CHANGELOG.md`](CHANGELOG.md); the release operations runbook is [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md).
+
 ---
 
 ## Project direction
@@ -418,9 +401,9 @@ Recreating an entire media-management or indexer ecosystem inside the download c
 
 ## License
 
-DebridPulse modifications are copyright © 2026 Chris Moore and are distributed under
-[`GPL-2.0-or-later`](LICENSE). The upstream MIT copyright and permission notice
-are preserved in [`NOTICE`](NOTICE) and [`LICENSES/MIT.txt`](LICENSES/MIT.txt).
+DebridPulse is copyright © 2026 Chris Moore and is distributed under
+[`GPL-2.0-or-later`](LICENSE). Third-party and inherited copyright and permission
+notices are preserved in [`NOTICE`](NOTICE) and [`LICENSES/`](LICENSES).
 Runtime dependency licensing is inventoried in
 [`docs/DEPENDENCY_LICENSES.md`](docs/DEPENDENCY_LICENSES.md). The container source
 offer is documented in [`SOURCE_OFFER.md`](SOURCE_OFFER.md).

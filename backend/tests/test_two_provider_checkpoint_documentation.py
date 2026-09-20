@@ -9,22 +9,45 @@ def _text(path: str) -> str:
     return (ROOT / path).read_text()
 
 
-def test_readme_describes_final_two_provider_state_without_claiming_release_promotion():
+def test_readme_describes_final_two_provider_state_and_current_release_examples():
     readme = _text("README.md")
+    version = _text("VERSION").strip()
     assert "AllDebrid + General HTTP(S) providers" in readme
     assert "SPECIALIZED" in readme and "GENERIC" in readme
     # Source state: 1.0.12 is finalized, not an unfinished development checkpoint.
     assert "not yet a released v1.0.12 baseline" not in readme
     assert "development architecture" not in readme
     assert "development support matrix" not in readme
-    # Publication state: stated separately and truthfully, never conflated with
-    # the source state, and never claiming a promotion that has not happened.
-    assert "Source state vs. published image state" in readme
-    assert "ghcr.io/xipher-zero/debridpulse:v1.0.11.1" in readme
+    # Install examples name the current release, derived from VERSION.
+    assert f"ghcr.io/xipher-zero/debridpulse:v{version}" in readme
+    assert "ghcr.io/xipher-zero/debridpulse:v1.0.11.1" not in readme
     # Deferred expansion belongs to 1.0.13, not to an unmet 1.0.12 requirement.
     assert "1.0.13" in readme
     assert "Deferred Items 12–16" not in readme
     assert "Settings → General" not in readme
+
+
+def test_public_project_surfaces_do_not_advertise_upstream_fork_origin():
+    """The public surfaces describe DebridPulse; provenance lives in legal files."""
+    readme = _text("README.md")
+    landing_page = _text("index.html")
+
+    for surface_name, surface in (("README.md", readme), ("index.html", landing_page)):
+        for marker in ("kroeberd", "alldebrid-client", "v1.9.9", "Derived from"):
+            assert marker not in surface, (
+                f"{surface_name} still advertises the upstream project: {marker}"
+            )
+    assert "Upstream provenance" not in readme
+
+    # Both public surfaces still state DebridPulse's own license identity.
+    assert "GPL-2.0-or-later" in readme
+    assert "DebridPulse · GPL-2.0-or-later" in landing_page
+
+    # Legal provenance remains preserved in its canonical legal surfaces.
+    notice = _text("NOTICE")
+    assert "kroeberd/alldebrid-client release" in notice
+    assert "GNU General Public License" in notice
+    assert "MIT" in _text("LICENSES/MIT.txt")
 
 
 def test_runtime_state_and_input_required_docs_name_current_consumers_truthfully():

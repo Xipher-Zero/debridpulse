@@ -4,26 +4,57 @@ This document is the authoritative operational runbook for DebridPulse source pr
 
 ## Source-of-truth boundary
 
-**There is no assistant-controlled local Git development workspace for DebridPulse.**
+Source changes, branch management, promotion and release preparation are performed against the source repository — either through the connected GitHub tooling or in a clone of the repository dedicated to development.
 
-Source changes, branch management, pull requests, merge operations, and release preparation are performed against the GitHub repository through the connected GitHub tooling.
-
-The deployment/validation host may have a Compose project directory (historically `/home/xipher/alldebrid-client`), but that directory is a **runtime/deployment surface**, not the development source-of-truth. Do not ask the operator to run `git tag`, `git push`, branch-management commands, or source-development commands there merely because a shell is available.
+**The deployment/validation host is not that workspace.** It may have a Compose project directory (historically `/home/xipher/alldebrid-client`), but that directory is a **runtime/deployment surface**, not the development source-of-truth. Do not run `git tag`, `git push`, branch-management commands, or source-development commands there merely because a shell is available.
 
 Use shell commands on the deployment host only for things that actually require the running installation: pulling a candidate image, changing the Compose image reference, recreating the service, querying health, controlled failure injection, filesystem inspection, and other local acceptance tests.
 
-## Normal development flow
+## Normal release flow — exact-SHA promotion
 
-1. Perform source edits through the GitHub connector on the active staging/feature branch.
+Releases are promoted by **exact SHA**, not by merging a pull request. `main` is
+fast-forwarded to the exact commit that hosted CI already qualified, so the commit,
+the tree, the tag and the published image all name the same artifact.
+
+1. Develop and qualify on the release branch (for example `1.0.12`).
 2. Re-read changed files/diffs after writes. Verify that only intended files changed.
-3. Run the permanent CI matrix (Tests, CodeQL, Container Security, Fork Image) on the candidate SHA.
-4. Prefer immutable candidate images (`sha-<full-git-sha>`) for local runtime validation.
-5. Before replacing the deployed image, verify the OCI label `org.opencontainers.image.revision` exactly matches the expected full candidate SHA.
-6. Perform local behavioral acceptance against that exact image.
-7. Freeze the accepted SHA. Do not make opportunistic changes after acceptance; any source change creates a new candidate and requires requalification.
-8. Merge the PR using expected-head protection so GitHub rejects the merge if the accepted PR head moved.
-9. Verify `main` points to the expected merge commit and that the accepted candidate is the intended merge parent.
-10. Publish the release and retire the staging branch only after the merge and release preconditions are verified.
+3. Freeze and approve an exact source tree/SHA. Any later source change creates a new
+   candidate and requires requalification from zero.
+4. Push the exact approved release-branch commit.
+5. Let the required hosted workflows qualify **that exact SHA**: Tests, Browser Runtime,
+   CodeQL, Fork Image, Container Security, Candidate Runtime Qualification (and
+   WS3 Adversarial on branches that run it). Do not rerun until green; classify a failure
+   with the candidate-vs-anchor policy in `docs/QUALIFICATION_DETERMINISM.md`.
+6. Prefer the immutable candidate image (`sha-<full-git-sha>`) for local runtime validation,
+   and verify the OCI label `org.opencontainers.image.revision` exactly equals the expected
+   full candidate SHA before replacing a deployed image.
+7. Perform the final audit against the frozen branch state.
+8. When the candidate is accepted as DONE, promote that exact release commit/tree to `main`
+   by fast-forward:
+
+   ```bash
+   git push origin <FULL_RELEASE_SHA>:refs/heads/main
+   ```
+
+   **Promotion must not introduce source changes.** No merge commit, no squash, no rebase,
+   no edit — anything that changes the tree produces a SHA that nothing has qualified, and
+   the promotion gate will refuse it. `main`'s resulting tree must equal the accepted
+   release tree exactly.
+9. `latest` is promoted from the already-qualified immutable `sha-<full-git-sha>` digest by
+   the Release Promotion workflow. It is **never rebuilt** as a separate release artifact.
+10. Create the version tag so it resolves to the exact final release commit, and verify the
+    version image tag resolves to the same qualified immutable manifest digest.
+11. Create the GitHub Release from the canonical bracketed changelog entry for that version.
+12. The release is closed only after every identity check agrees (see *Release identity*).
+
+### Why not a PR merge
+
+`release-promotion.yml` resolves the candidate as `$GITHUB_SHA` on a push to `main` and
+requires every required workflow to be **completed and successful for that exact SHA**,
+polling and then failing closed. A merge commit is a new SHA that nothing has qualified,
+so it would either fail the gate or force a requalification that promotes a *different*
+image digest than the one that passed every gate. Expected-head PR merging is therefore no
+longer the canonical release path.
 
 ## Release identity
 
@@ -43,9 +74,9 @@ Do not reuse an existing historical Git tag. If inherited/upstream tags occupy t
 
 Use direct connector primitives whenever they exist:
 
-- file/source writes: GitHub contents operations
-- PR metadata: GitHub PR operations
-- merge: merge PR with `expected_head_sha`
+- file/source writes: GitHub contents operations, or ordinary commits in a local clone of the source repository
+- promotion: fast-forward push of the exact qualified release SHA to `main`
+- tag/release: annotated tag at the exact release commit, then a GitHub Release built from the canonical changelog entry
 - CI inspection: commit workflow runs / job logs
 - branch/ref inspection: repository/branch/ref operations
 
@@ -143,14 +174,13 @@ Behavioral acceptance should exercise the subsystems materially changed by the r
 
 After release publication:
 
-- PR merged and closed;
-- `main` verified at the intended merge commit;
-- release tag verified at the intended commit;
-- GitHub Release published;
+- `main` verified at the exact qualified release SHA, with a tree identical to the accepted release tree;
+- release tag verified at that same commit;
+- GitHub Release published from the canonical changelog entry;
 - GHCR version image published and OCI revision verified;
-- staging branch deleted;
+- `latest` and the version tag resolve to the same immutable qualified manifest digest;
 - temporary release-operations branch/workflow changes absent;
 - final local deployment moved from candidate SHA tag to the public version tag when appropriate;
-- acceptance evidence preserved in the merged PR/release record.
+- acceptance evidence preserved in the release record.
 
 If a future session cannot remember how a repository-side operation was performed, **read this document before asking the operator to perform GitHub administration manually**.

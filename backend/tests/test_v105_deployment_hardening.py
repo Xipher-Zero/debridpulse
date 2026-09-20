@@ -11,8 +11,9 @@ def _mode(path: Path) -> int:
 
 def test_install_surfaces_preserve_published_image_and_public_health_endpoint():
     root = Path(__file__).resolve().parents[2]
-    # The development candidate is not a published production release.
-    expected_image = "ghcr.io/xipher-zero/debridpulse:v1.0.11.1"
+    # Install surfaces name the current release, derived from the one version owner.
+    version = (root / "VERSION").read_text().strip()
+    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"
     compose = (root / "docker-compose.yml").read_text()
     readme = (root / "README.md").read_text()
     project_page = (root / "index.html").read_text()

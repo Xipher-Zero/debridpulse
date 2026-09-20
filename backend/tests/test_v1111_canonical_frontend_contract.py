@@ -391,10 +391,10 @@ def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
     # the unified backend machinery, not a second frontend entry point.
     assert 'function runRecovery(' not in app
 
-def test_v112_candidate_preserves_v1111_production_install_references() -> None:
+def test_install_references_track_the_authoritative_version_file() -> None:
     version = read(VERSION).strip()
     assert version == "1.0.12"
-    tag = "ghcr.io/xipher-zero/debridpulse:v1.0.11.1"
+    tag = f"ghcr.io/xipher-zero/debridpulse:v{version}"
     assert tag in read(COMPOSE)
     assert read(README).count(tag) >= 2
 
