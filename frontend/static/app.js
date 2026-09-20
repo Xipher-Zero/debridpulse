@@ -263,6 +263,10 @@ function renderRouteHistory(t) {
     if (state === 'original') return {state, label: 'Original'};
     return {state: '', label: ''};
   };
+  // Where the source came from reads as a parenthetical aside beside the URL;
+  // what happened to that route keeps the plain status wording to its right.
+  // Parentheses are the only change to the label text.
+  const originLabel = (label) => label ? `(${label})` : '';
   return `<div class="dp-detail-route-list">${attempts.map((attempt) => {
     const provider = attempt.provider_name || 'Unknown';
     // An unverified association is the backend's statement about this source; it
@@ -277,8 +281,8 @@ function renderRouteHistory(t) {
       <span class="dp-detail-route-order">${esc(attempt.presentation_ordinal ?? attempt.ordinal ?? '')}</span>
       <span class="dp-detail-route-provider">${esc(provider)}</span>
       <span class="dp-detail-route-identity" title="${esc(identityTitle)}">${esc(identity)}</span>
+      <span class="dp-detail-route-relation">${esc(originLabel(relation.label))}</span>
       <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}" title="${esc(outcomeTitle)}">${esc(outcome.label)}</span>
-      <span class="dp-detail-route-relation">${esc(relation.label)}</span>
     </div>`;
   }).join('')}</div>`;
 }
@@ -1492,7 +1496,11 @@ async function showDetail(id) {
     // never on filename shape or provider identity.
     const dpMayHaveFileSelection = ['magnet', 'torrent_file'].includes(
       String(t.current_source_identity && t.current_source_identity.kind || '').toLowerCase());
-    const dpShowFilesCard = Boolean((t.files && t.files.length) || dpMayHaveFileSelection);
+    // Which collection the Files card shows is decided by its one row owner:
+    // the canonical-object presentation when the backend projects it, the
+    // physical collection otherwise. The title and the rows read the same list.
+    const dpDisplayFiles = window.DPDetailCandidates.displayRows(t);
+    const dpShowFilesCard = Boolean(dpDisplayFiles.length || dpMayHaveFileSelection);
     if (modalBody) modalBody.innerHTML = `
       <div class="detail-grid">
         <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
@@ -1525,17 +1533,17 @@ async function showDetail(id) {
       ${dpShowFilesCard?`
         <div class="card dp-detail-section-card dp-detail-files-card">
           <div class="card-header dp-detail-files-header">
-            <span class="card-title">Files${t.files&&t.files.length?` (${t.files.length})`:''}</span>
+            <span class="card-title">Files${dpDisplayFiles.length?` (${dpDisplayFiles.length})`:''}</span>
             <span class="dp-detail-files-header-actions">
               <span class="dp-detail-files-group-slot" data-dp-group-candidates-mount data-dp-transfer-id="${t.id}"></span>
               <span class="dp-detail-files-selection-slot" data-dp-file-selection-mount data-dp-transfer-id="${t.id}"></span>
             </span>
           </div>
-          ${t.files&&t.files.length?`
+          ${dpDisplayFiles.length?`
           <div class="dp-detail-table-wrap">
             <table class="t-table">
               <thead><tr><th>Filename</th><th>Size</th><th>Status</th></tr></thead>
-              <tbody>${window.DPDetailCandidates.rowsMarkup(t.files)}</tbody>
+              <tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles)}</tbody>
             </table>
           </div>
           `:''}

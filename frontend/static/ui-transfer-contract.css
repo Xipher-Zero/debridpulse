@@ -261,11 +261,14 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   color:var(--dp-text-muted, var(--text3)); font-size:10px;
 }
-.dp-detail-route-outcome { color:var(--dp-text-muted, var(--text3)); font-size:10px; font-weight:650; }
+.dp-detail-route-outcome { color:var(--dp-text-muted, var(--text3)); font-size:10px; font-weight:650; text-align:right; white-space:nowrap; }
 .dp-detail-route-outcome[data-route-outcome="completed"], .dp-detail-route-outcome[data-route-outcome="succeeded"] { color:var(--dp-state-success, var(--green)); }
 .dp-detail-route-outcome[data-route-outcome="failed"] { color:var(--dp-state-error, var(--red)); }
 .dp-detail-route-outcome[data-route-outcome="cancelled"], .dp-detail-route-outcome[data-route-outcome="unverified"] { color:var(--dp-state-caution, var(--yellow)); }
-.dp-detail-route-relation { color:var(--dp-text-muted, var(--text3)); font-size:10px; text-align:right; white-space:nowrap; }
+/* Column 4 of "# | Provider | URL | Origin | Status". Origin sits between the
+   URL and the route outcome, so it reads as provenance rather than as part of
+   the status; the gap keeps the two from visually merging. */
+.dp-detail-route-relation { color:var(--dp-text-muted, var(--text3)); font-size:10px; text-align:left; white-space:nowrap; }
 .dp-detail-route-relation:empty { display:none; }
 .dp-detail-route-empty { color:var(--dp-text-muted, var(--text3)); font-size:11px; line-height:1.45; }
 .dp-detail-advanced { margin-top:10px; border-top:1px solid var(--dp-divider, var(--border)); }

@@ -42,10 +42,15 @@ def test_frontend_never_adjusts_a_server_derived_count_locally():
 def test_details_files_rows_have_exactly_one_renderer():
     app = read("app.js")
     owner = read("ui-detail-candidates.js")
-    # app.js provides the table shell and asks the owner for the rows.
-    assert "<tbody>${window.DPDetailCandidates.rowsMarkup(t.files)}</tbody>" in app
+    # app.js provides the table shell and asks the owner for the rows -- and for
+    # WHICH collection those rows come from (the canonical-object presentation
+    # when the backend projects one, the physical collection otherwise), so the
+    # card title and the rows can never disagree about what is on screen.
+    assert "const dpDisplayFiles = window.DPDetailCandidates.displayRows(t);" in app
+    assert "<tbody>${window.DPDetailCandidates.rowsMarkup(dpDisplayFiles)}</tbody>" in app
     assert "t.files.map(" not in app
-    assert "window.DPDetailCandidates = Object.freeze({rowsMarkup: rows});" in owner
+    assert "t.file_presentations.map(" not in app
+    assert "window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows});" in owner
     # The owner does not re-fetch or re-render what app.js just rendered from
     # the same payload; it only binds its own disclosures.
     handler = owner.split("function onDetailRendered(event) {", 1)[1].split("function onDetailClosed()", 1)[0]

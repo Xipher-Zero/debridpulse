@@ -1321,3 +1321,197 @@ async def test_contributed_route_provenance_follows_durable_origin_not_current_c
         await db.execute("DELETE FROM canonical_candidate_origins WHERE contributing_transfer_id=?", (second.id,))
         await db.commit()
     assert reading(await runtime.repository.presentation(owner.id, details=True)) == expected[:1]
+
+
+# --------------------------------------------------------------------------- #
+# DP 1.0.12 Details Files canonical-object presentation leveling: the Details
+# Files card presents the whole canonical-object source/file story -- this
+# transfer's own physical artifacts, the verified artifacts other transfers
+# contributed to the canonical object, and the terminal UNVERIFIED associations
+# that have no artifact at all -- while ``files[]``/``file_count`` stay exactly
+# what they have always been: physical transfer-local artifact truth.
+# --------------------------------------------------------------------------- #
+
+
+async def _settle_unverified(runtime, transfer_id, *, expected, budget=8):
+    """Drive the REAL resolution cycle until every held proof retry of
+    ``transfer_id`` has durably exhausted into its terminal disposition.
+
+    Bounded and deterministic: the proof retry budget is finite, so a fixed
+    number of cycles is an upper bound, never a retry-until-green loop. The
+    terminal state is asserted, not hoped for.
+    """
+    for _ in range(budget):
+        async with database.get_db() as db:
+            held = await db.fetchall(
+                """SELECT id FROM transfer_requests
+                    WHERE transfer_id=? AND state='materializing' AND equivalence_disposition='pending'""",
+                (transfer_id,),
+            )
+        if not held:
+            break
+        runtime.now[0] += 60
+        await runtime.engine.resolve_pending()
+    async with database.get_db() as db:
+        rows = await db.fetchall(
+            """SELECT id,equivalence_reason FROM transfer_requests
+                WHERE transfer_id=? AND equivalence_disposition='unverified'
+                ORDER BY ordinal,id""",
+            (transfer_id,),
+        )
+    assert [row["equivalence_reason"] for row in rows] == list(expected)
+    return [row["id"] for row in rows]
+
+
+async def _canonical_object_runtime(tmp_path, monkeypatch):
+    """The production 303/304/305 shape, built only by the real engine.
+
+    owner: 3 native physical artifacts, owns the canonical artifact.
+    second: 3 verified contributed artifacts.
+    third: 2 verified contributed artifacts + 2 terminal UNVERIFIED associations.
+    """
+    originals = ("releases.ubuntu.com", "mirrors.mit.edu", "mirror.pilotfiber.com")
+    second_hosts = ("mirrors.tuna.tsinghua.edu.cn", "mirror.sg.gs", "mirrors.kernel.org")
+    third_hosts = ("mirrors.163.com", "mirror.rackspace.com", "held-a.example", "held-b.example")
+    runtime = await _canonical_history_runtime(
+        tmp_path, monkeypatch, (*originals, *second_hosts, *third_hosts),
+        unresolved={"held-a.example": "range_ignored", "held-b.example": "range_unsupported"},
+    )
+    runtime.owner = await runtime.submit(*originals)
+    runtime.second = await runtime.submit(*second_hosts)
+    runtime.third = await runtime.submit(*third_hosts)
+    runtime.held = await _settle_unverified(
+        runtime, runtime.third.id, expected=("range_ignored", "range_unsupported"),
+    )
+    return runtime
+
+
+async def test_details_files_present_the_canonical_object_not_only_physical_artifacts(tmp_path, monkeypatch):
+    runtime = await _canonical_object_runtime(tmp_path, monkeypatch)
+    owner, second, third = runtime.owner, runtime.second, runtime.third
+    presentation = await runtime.repository.presentation(owner.id, details=True)
+
+    # --- Physical artifact truth is untouched ------------------------------- #
+    assert presentation["file_count"] == 3
+    assert len(presentation["files"]) == 3
+    physical = [int(item["id"]) for item in presentation["files"]]
+    canonical_id = physical[0]
+    assert [item["candidate_count"] for item in presentation["files"]] == [8, 0, 0]
+    assert len(presentation["route_attempts"]) == 10
+
+    # --- The Details-only canonical-object Files presentation --------------- #
+    rows = presentation["file_presentations"]
+    assert len(rows) == 10
+    assert [row["relationship"] for row in rows] == ["original"] * 3 + ["consolidated"] * 5 + ["unverified"] * 2
+    assert [row["verification_state"] for row in rows] == ["verified"] * 8 + ["unverified"] * 2
+    assert [row["contributing_transfer_id"] for row in rows] == (
+        [owner.id] * 3 + [second.id] * 3 + [third.id] * 2 + [third.id] * 2
+    )
+    # Deterministic, backend-owned ordering and identity: native artifacts in durable
+    # artifact order, contributed artifacts in durable binding/origin order, terminal
+    # associations in durable request order.
+    assert [row["presentation_id"] for row in rows] == (
+        [f"artifact:{artifact_id}" for artifact_id in physical]
+        + [f"artifact:{row['artifact_id']}" for row in rows[3:8]]
+        + [f"request:{request_id}" for request_id in runtime.held]
+    )
+    assert len({row["presentation_id"] for row in rows}) == 10
+
+    # --- Only the canonical actionable row owns the candidate surface -------- #
+    native, contributed, unverified = rows[:3], rows[3:8], rows[8:]
+    assert native[0]["artifact_id"] == canonical_id
+    assert native[0]["candidate_count"] == 8
+    assert len(native[0]["acquisition_candidates"]) == 8
+    for row in (*contributed, *unverified):
+        assert not row.get("candidate_count")
+        assert not row.get("acquisition_candidates")
+        assert not row.get("source_candidates")
+
+    # --- Verified contributed rows are REAL foreign artifacts ---------------- #
+    async with database.get_db() as db:
+        foreign = {
+            int(item["id"]): item for item in await db.fetchall(
+                "SELECT id,torrent_id,filename,size_bytes,status FROM download_files WHERE torrent_id IN (?,?)",
+                (second.id, third.id),
+            )
+        }
+    for row in contributed:
+        artifact = foreign[int(row["artifact_id"])]
+        assert (row["filename"], row["size_bytes"], row["status"]) == (
+            artifact["filename"], artifact["size_bytes"], artifact["status"])
+        assert int(artifact["torrent_id"]) == row["contributing_transfer_id"]
+        # Rendered exactly like a native duplicate: the one presentation owner, not a literal.
+        assert row["presentation_label"] == "Duplicate"
+
+    # --- Terminal UNVERIFIED associations: no artifact, no borrowed size ----- #
+    assert [row["artifact_id"] for row in unverified] == [None, None]
+    assert [row["unverified_reason"] for row in unverified] == ["range_ignored", "range_unsupported"]
+    assert [row["size_bytes"] for row in unverified] == [None, None]
+    assert [row["presentation_label"] for row in unverified] == ["Unverified", "Unverified"]
+    # The canonical artifact has a real size; an unverified association must never borrow it.
+    assert int(presentation["files"][0]["size_bytes"]) > 0
+    # Its name is the durable request's own name, never a URL, host or filename guess.
+    assert {row["filename"] for row in unverified} == {_ISO}
+
+    # --- The list path never pays for any of this ---------------------------- #
+    assert "file_presentations" not in await runtime.repository.presentation(owner.id, details=False)
+
+
+async def test_details_files_presentation_follows_durable_provenance_only(tmp_path, monkeypatch):
+    """Contributed rows come from canonical_candidate_bindings/origins and the
+    terminal association from the durable equivalence record -- never from Route
+    History, a current candidate URL, a host or a filename."""
+    runtime = await _canonical_object_runtime(tmp_path, monkeypatch)
+    owner, second, third = runtime.owner, runtime.second, runtime.third
+
+    def reading(presentation):
+        return [(row["relationship"], row["contributing_transfer_id"]) for row in presentation["file_presentations"]]
+
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == (
+        [("original", owner.id)] * 3 + [("consolidated", second.id)] * 3
+        + [("consolidated", third.id)] * 2 + [("unverified", third.id)] * 2
+    )
+
+    # Rewriting every current candidate to a misleading host changes nothing.
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT id,candidates FROM download_files WHERE torrent_id=?", (owner.id,))
+        await db.execute(
+            "UPDATE download_files SET candidates=? WHERE id=?",
+            (str(row["candidates"]).replace("mirrors.tuna.tsinghua.edu.cn", "misleading.example"), row["id"]),
+        )
+        await db.commit()
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == (
+        [("original", owner.id)] * 3 + [("consolidated", second.id)] * 3
+        + [("consolidated", third.id)] * 2 + [("unverified", third.id)] * 2
+    )
+
+    # Removing the durable origin removes exactly those contributed rows; the
+    # terminal associations, which have no binding at all, are unaffected.
+    async with database.get_db() as db:
+        await db.execute("DELETE FROM canonical_candidate_origins WHERE contributing_transfer_id=?", (second.id,))
+        await db.commit()
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == (
+        [("original", owner.id)] * 3 + [("consolidated", third.id)] * 2 + [("unverified", third.id)] * 2
+    )
+
+    # Removing the durable equivalence association removes exactly the terminal rows.
+    async with database.get_db() as db:
+        await db.execute(
+            "UPDATE transfer_requests SET equivalence_target_artifact_id=NULL WHERE transfer_id=?", (third.id,))
+        await db.commit()
+    assert reading(await runtime.repository.presentation(owner.id, details=True)) == (
+        [("original", owner.id)] * 3 + [("consolidated", third.id)] * 2
+    )
+
+
+async def test_ordinary_transfer_details_files_presentation_is_just_its_own_artifacts(tmp_path, monkeypatch):
+    """No contribution, no association: the canonical presentation is exactly the
+    physical collection, so an ordinary transfer's Details is unchanged."""
+    runtime = await _canonical_history_runtime(tmp_path, monkeypatch, ("releases.ubuntu.com",))
+    transfer = await runtime.submit("releases.ubuntu.com")
+    presentation = await runtime.repository.presentation(transfer.id, details=True)
+    rows = presentation["file_presentations"]
+    assert len(rows) == len(presentation["files"]) == presentation["file_count"] == 1
+    assert [row["relationship"] for row in rows] == ["original"]
+    assert rows[0]["artifact_id"] == presentation["files"][0]["id"]
+    assert rows[0]["presentation_id"] == f"artifact:{presentation['files'][0]['id']}"

@@ -25,6 +25,6 @@ def test_duplicate_mirror_reason_is_subdued_operational_note():
     owner_css = (ROOT / "frontend/static/ui-detail-candidates.css").read_text()
     assert "'<div class=\"dp-detail-file-block-reason\">'" in owner
     assert ".dp-detail-file-block-reason{font-size:10px;color:var(--red);margin-top:4px}" in owner_css
-    assert "DPDetailCandidates.rowsMarkup(t.files)" in app
+    assert "DPDetailCandidates.rowsMarkup(dpDisplayFiles)" in app
     assert "f.block_reason" not in app
     assert '<link rel="stylesheet" href="/style.css?v=18">' in index

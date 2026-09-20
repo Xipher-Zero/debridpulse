@@ -224,14 +224,28 @@ test('Route History shows the canonical object source story: original, consolida
   await expect(rows).toHaveCount(10);  // every backend row exactly once: nothing duplicated, nothing synthesized.
   await expect(page.locator('.dp-detail-route-row .dp-detail-route-order')).toHaveText(['1','2','3','4','5','6','7','8','9','10']);
   await expect(page.locator('.dp-detail-route-row .dp-detail-route-relation')).toHaveText([
-    'Original', 'Original', 'Original',
-    'Consolidated from #299', 'Consolidated from #299', 'Consolidated from #299',
-    'Consolidated from #300', 'Consolidated from #300',
-    'From #300', 'From #300',
+    '(Original)', '(Original)', '(Original)',
+    '(Consolidated from #299)', '(Consolidated from #299)', '(Consolidated from #299)',
+    '(Consolidated from #300)', '(Consolidated from #300)',
+    '(From #300)', '(From #300)',
   ]);
   await expect(page.locator('.dp-detail-route-row .dp-detail-route-outcome')).toHaveText([
     ...Array(8).fill('Resolved'), 'Unverified', 'Unverified',
   ]);
+  // Where a source came from is read before what happened to that route:
+  // # | Provider | URL | Origin | Status, as DOM order, not as a visual hack.
+  const columnOrder = await rows.nth(3).evaluate(row => Array.from(row.children)
+    .map(cell => cell.className.replace('dp-detail-route-', '')));
+  expect(columnOrder).toEqual(['order', 'provider', 'identity', 'relation', 'outcome']);
+  const placement = await rows.nth(3).evaluate(row => {
+    const box = selector => row.querySelector(selector).getBoundingClientRect();
+    const [identity, relation, outcome] = ['.dp-detail-route-identity', '.dp-detail-route-relation',
+      '.dp-detail-route-outcome'].map(box);
+    return {identityRight: identity.right, relationLeft: relation.left, relationRight: relation.right,
+            outcomeLeft: outcome.left};
+  });
+  expect(placement.relationLeft).toBeGreaterThanOrEqual(placement.identityRight - 1);
+  expect(placement.outcomeLeft).toBeGreaterThanOrEqual(placement.relationRight - 1);
   // Provider + safe route identity are still the backend's own projection.
   await expect(rows.nth(3)).toContainText('HTTP & HTTPS');
   await expect(rows.nth(3).locator('.dp-detail-route-identity')).toHaveText('https://mirrors.tuna.tsinghua.edu.cn');
@@ -290,7 +304,7 @@ test('Route History never infers a relationship the backend did not project', as
   await expect(rows.nth(0).locator('.dp-detail-route-outcome')).toHaveText('Resolved');
   await expect(rows.nth(0)).toHaveAttribute('data-route-relation', '');
   await expect(rows.nth(2).locator('.dp-detail-route-outcome')).toHaveText('Unverified');
-  await expect(rows.nth(2).locator('.dp-detail-route-relation')).toHaveText('Original');  // its own source: no "From #".
+  await expect(rows.nth(2).locator('.dp-detail-route-relation')).toHaveText('(Original)');  // its own source: no "From #".
   await expect(page.locator('.dp-detail-route-list')).not.toContainText('From #');
   await expect(page.locator('.dp-detail-route-list')).not.toContainText('Consolidated');
 });
@@ -304,4 +318,188 @@ test('provider controls remain readable in light theme and narrow layout', async
   await expect(integrationControl(page, 'general_http')).toBeVisible();
   const box = await httpCard.boundingBox(); expect(box.width).toBeLessThanOrEqual(680);
   await page.screenshot({path:'test-results/checkpoint-settings-light-narrow.png', fullPage:true});
+});
+
+// --------------------------------------------------------------------------- //
+// DP 1.0.12 Details Files canonical-object presentation leveling.
+// Production 303/304/305 shape: 3 physical transfer-local artifacts, 8 VERIFIED
+// canonical candidates, 10 canonical source/file relationships (8 verified +
+// 2 terminal UNVERIFIED). Everything below is backend-projected; the renderer
+// derives no relationship from a URL, host, filename or transfer adjacency.
+// --------------------------------------------------------------------------- //
+
+const CANONICAL_ISO = 'ubuntu-26.04.1-desktop-amd64.iso';
+const CANONICAL_SIZE = 6442450944;
+
+function canonicalDetail() {
+  const candidates = Array.from({length:8}, (_, index) => ({
+    candidate_id:`c${index}`, source_label:`mirror-${index}.example`, provider_id:'general_http',
+    relationship:index < 3 ? 'Original' : 'Consolidated', dispositions:index === 0 ? ['Active'] : [],
+    is_selected:index === 0, is_active:index === 0, is_delivering:false, switch_eligible:index !== 0}));
+  const physical = (id, status, label, extra = {}) => ({
+    id, artifact_id:id, presentation_id:`artifact:${id}`, request_id:`req-${id}`, filename:CANONICAL_ISO,
+    size_bytes:CANONICAL_SIZE, status, presentation_status:status, presentation_label:label,
+    presentation_badge_status:status, blocked:false, block_reason:null,
+    relationship:'original', verification_state:'verified', contributing_transfer_id:303, ...extra});
+  const contributed = (id, transfer) => ({
+    id, artifact_id:id, presentation_id:`artifact:${id}`, request_id:`req-${id}`, filename:CANONICAL_ISO,
+    size_bytes:CANONICAL_SIZE, status:'duplicate', presentation_status:'duplicate',
+    presentation_label:'Duplicate', presentation_badge_status:'duplicate', blocked:false, block_reason:null,
+    relationship:'consolidated', verification_state:'verified', contributing_transfer_id:transfer});
+  const associated = (request_id, reason) => ({
+    id:null, artifact_id:null, presentation_id:`request:${request_id}`, request_id, filename:CANONICAL_ISO,
+    size_bytes:null, status:'unverified', presentation_status:'unverified', presentation_label:'Unverified',
+    presentation_badge_status:'unverified', blocked:false, block_reason:null, unverified_reason:reason,
+    relationship:'unverified', verification_state:'unverified', contributing_transfer_id:305});
+
+  const canonical = physical(17432, 'downloading', 'Downloading',
+    {candidate_count:8, acquisition_candidates:candidates});
+  const files = [canonical, physical(17433, 'duplicate', 'Duplicate', {candidate_count:0}),
+                 physical(17434, 'duplicate', 'Duplicate', {candidate_count:0})];
+  return {...listFixture({id:303, name:CANONICAL_ISO, status:'downloading', progress:40, size_bytes:CANONICAL_SIZE}),
+    original_resource:'https://releases.ubuntu.com/…', executors:['aria2'], source_outcomes:[], events:[],
+    execution_attempts:[], route_attempts:[], file_count:3, files,
+    file_presentations:[...files,
+      contributed(17440, 304), contributed(17441, 304), contributed(17442, 304),
+      contributed(17450, 305), contributed(17451, 305),
+      associated('req-unverified-a', 'range_ignored'), associated('req-unverified-b', 'range_unsupported')]};
+}
+
+async function openCanonicalDetail(page, detail) {
+  await page.route(url => url.pathname === '/api/torrents/303',
+    r => r.fulfill({status:200, contentType:'application/json', body:JSON.stringify(detail)}));
+  await page.route(url => url.pathname === '/api/torrents',
+    r => r.fulfill({status:200, contentType:'application/json', body:JSON.stringify({items:[detail], total:1})}));
+  await page.goto('/');
+  await page.evaluate(() => showDetail(303));
+}
+
+test('Details Files presents the whole canonical object: native, contributed and unverified rows', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await openCanonicalDetail(page, canonicalDetail());
+
+  // Ten canonical source/file relationships, not the three physical artifacts.
+  await expect(page.locator('.dp-detail-files-card .card-title')).toHaveText(`Files (10)`);
+  const rows = page.locator('.dp-detail-files-card tr.dp-detail-file-row');
+  await expect(rows).toHaveCount(10);
+
+  // The three-column contract is retained: filename (+ provenance) / size / status.
+  await expect(page.locator('.dp-detail-files-card thead th')).toHaveText(['Filename', 'Size', 'Status']);
+  await expect(rows.nth(0).locator('td')).toHaveCount(3);
+
+  // Native rows carry no redundant origin subtitle; contributed and unverified do.
+  await expect(page.locator('.dp-detail-files-card tr.dp-detail-file-row .dp-detail-file-origin'))
+    .toHaveText(['From #304', 'From #304', 'From #304', 'From #305', 'From #305', 'From #305', 'From #305']);
+  for (const index of [0, 1, 2]) {
+    await expect(rows.nth(index).locator('.dp-detail-file-origin')).toHaveCount(0);
+  }
+
+  // An unverified association has no independently known size and says so factually.
+  const unverified = rows.nth(8);
+  await expect(unverified.locator('.dp-detail-filename-copy')).toHaveText(CANONICAL_ISO);
+  await expect(unverified.locator('td').nth(1)).toHaveText('—');
+  await expect(unverified.locator('td').nth(2)).toContainText('Unverified');
+  await expect(unverified.locator('.dp-detail-file-origin')).toHaveText('From #305');
+
+  // Status stays in the right-hand column for every row kind: it is never moved
+  // under the filename, and the provenance subtitle never becomes a status.
+  const geometry = await page.evaluate(() => {
+    const row = document.querySelectorAll('.dp-detail-files-card tr.dp-detail-file-row')[8];
+    const cells = Array.from(row.querySelectorAll('td')).map(cell => cell.getBoundingClientRect().left);
+    const origin = row.querySelector('.dp-detail-file-origin').getBoundingClientRect();
+    const filename = row.querySelector('.dp-detail-filename-copy').getBoundingClientRect();
+    return {cells, originBelowFilename: origin.top >= filename.bottom - 1, originLeft: origin.left,
+            statusLeft: cells[2], filenameCellLeft: cells[0]};
+  });
+  expect(geometry.cells[0]).toBeLessThan(geometry.cells[1]);
+  expect(geometry.cells[1]).toBeLessThan(geometry.cells[2]);
+  expect(geometry.originBelowFilename).toBeTruthy();
+  expect(geometry.originLeft).toBeLessThan(geometry.statusLeft);
+});
+
+test('only the canonical actionable row exposes candidate disclosure and switching', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const posted = [];
+  await page.route(url => /\/artifacts\/.+\/candidate$/.test(url.pathname), route => {
+    posted.push(route.request().url());
+    return route.fulfill({status:200, contentType:'application/json',
+      body:JSON.stringify({filename:CANONICAL_ISO, source_host:'mirror-1.example'})});
+  });
+  await openCanonicalDetail(page, canonicalDetail());
+
+  // Exactly one candidate control exists in the whole Files table, on the canonical row.
+  const disclosures = page.locator('.dp-detail-files-card .dp-detail-candidate-disclosure');
+  await expect(disclosures).toHaveCount(1);
+  await expect(disclosures.locator('.dp-candidate-chip-count')).toHaveText('8');
+  const rows = page.locator('.dp-detail-files-card tr.dp-detail-file-row');
+  await expect(rows.nth(0).locator('.dp-detail-candidate-disclosure')).toHaveCount(1);
+  for (const index of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    await expect(rows.nth(index).locator('.dp-detail-candidate-disclosure')).toHaveCount(0);
+  }
+
+  // A terminal UNVERIFIED row is a presentation row only: it carries NO artifact
+  // identity at all, so no code path can address it as an artifact.
+  await expect(page.locator('.dp-detail-files-card tr[data-dp-row-id="request:req-unverified-a"]')).toHaveCount(1);
+  await expect(page.locator('.dp-detail-files-card tr[data-dp-row-id="request:req-unverified-a"][data-dp-artifact-id]')).toHaveCount(0);
+  // A contributed row names a real foreign artifact, and is still not mutable here.
+  await expect(page.locator('.dp-detail-files-card tr[data-dp-row-id="artifact:17440"][data-dp-artifact-id]')).toHaveCount(0);
+
+  // Switching from the canonical row addresses the REAL artifact id.
+  await disclosures.click();
+  const panel = page.locator('tr[data-dp-candidate-owner="artifact:17432"]');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.dp-detail-candidate-item')).toHaveCount(8);
+  await panel.locator('.dp-detail-candidate-switch').first().click();
+  await expect.poll(() => posted.length).toBeGreaterThan(0);
+  expect(posted.every(url => /\/artifacts\/17432\/candidate$/.test(new URL(url).pathname))).toBeTruthy();
+  expect(posted.some(url => url.includes('request:'))).toBeFalsy();
+  expect(posted.some(url => /\/artifacts\/(null|undefined|17440|17450)\//.test(url))).toBeFalsy();
+});
+
+test('row identity survives an authoritative refresh: expansion and focus are keyed to the presentation row', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await openCanonicalDetail(page, canonicalDetail());
+
+  const disclosure = page.locator('.dp-detail-files-card .dp-detail-candidate-disclosure');
+  await disclosure.click();
+  await expect(page.locator('tr[data-dp-candidate-owner="artifact:17432"]')).toBeVisible();
+  await disclosure.focus();
+
+  // The same background refresh the Downloads/Dashboard surfaces trigger: the
+  // Files rows are re-rendered wholesale from a fresh payload.
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered')));
+  await expect(page.locator('.dp-detail-files-card tr.dp-detail-file-row')).toHaveCount(10);
+  // Expanded state is keyed by presentation_id, so it survives the re-render
+  // instead of collapsing or reopening against the wrong row.
+  await expect(page.locator('tr[data-dp-candidate-owner="artifact:17432"]')).toBeVisible();
+  await expect(page.locator('tr[data-dp-candidate-owner="artifact:17432"]')).toHaveCount(1);
+  await expect(page.locator('.dp-detail-files-card .dp-detail-candidate-disclosure')).toBeFocused();
+  await expect(page.locator('.dp-detail-files-card .dp-detail-candidate-disclosure')).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('canonical Files rows stay legible in light theme and at narrow width', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await openCanonicalDetail(page, canonicalDetail());
+  await page.evaluate(() => toggleTheme());
+  await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
+  await page.setViewportSize({width:680, height:900});
+
+  const rows = page.locator('.dp-detail-files-card tr.dp-detail-file-row');
+  await expect(rows).toHaveCount(10);
+  const contributed = rows.nth(3);
+  await expect(contributed.locator('.dp-detail-file-origin')).toBeVisible();
+  // The subtitle stays inside its own row and never collides with the status column.
+  const bounds = await page.evaluate(() => {
+    const row = document.querySelectorAll('.dp-detail-files-card tr.dp-detail-file-row')[3];
+    const rowBox = row.getBoundingClientRect();
+    const origin = row.querySelector('.dp-detail-file-origin').getBoundingClientRect();
+    const status = row.querySelectorAll('td')[2].getBoundingClientRect();
+    const card = document.querySelector('.dp-detail-files-card').getBoundingClientRect();
+    return {rowLeft:rowBox.left, rowRight:rowBox.right, originLeft:origin.left, originRight:origin.right,
+            statusLeft:status.left, cardWidth:card.width};
+  });
+  expect(bounds.originLeft).toBeGreaterThanOrEqual(bounds.rowLeft - 1);
+  expect(bounds.originRight).toBeLessThanOrEqual(bounds.statusLeft + 1);
+  expect(bounds.cardWidth).toBeLessThanOrEqual(680);
+  await page.screenshot({path:'test-results/checkpoint-details-canonical-files-light-narrow.png', fullPage:true});
 });

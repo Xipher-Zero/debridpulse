@@ -296,6 +296,149 @@ def effective_presentation(
     return aggregate
 
 
+# --------------------------------------------------------------------------- #
+# Details-only canonical-object Files presentation.
+#
+# ``files[]`` / ``file_count`` are, and remain, PHYSICAL transfer-local artifact
+# truth -- the rows of ``download_files WHERE torrent_id=?``. They are not
+# redefined, re-scoped or recounted here.
+#
+# ``file_presentations`` is a separate, additive, Details-only READ MODEL: the
+# complete canonical-object source/file story the Details Files card shows --
+# this transfer's own physical artifacts, the artifacts other transfers durably
+# contributed to the canonical object, and the terminal UNVERIFIED associations
+# that have no artifact at all by design. Nothing here is persisted and nothing
+# is inferred: a contributed row exists only because
+# ``canonical_candidate_bindings`` -> ``canonical_candidate_origins`` names its
+# real contributing artifact, and an association row exists only because the
+# equivalence owner durably wrote ``equivalence_disposition='unverified'``
+# against an artifact this transfer owns. No URL, host, filename or transfer
+# adjacency is ever consulted.
+#
+# NOTE: the unrelated local named ``file_presentations`` inside
+# ``presentation()`` below is the per-artifact recovery-presentation list that
+# feeds ``effective_presentation``. It is not this collection.
+# --------------------------------------------------------------------------- #
+
+_NATIVE_RELATIONSHIP = "original"
+_CONTRIBUTED_RELATIONSHIP = "consolidated"
+_UNVERIFIED_RELATIONSHIP = "unverified"
+_VERIFIED = "verified"
+_UNVERIFIED_STATUS = "unverified"
+_PRESENTATION_FIELDS = ("presentation_status", "presentation_label", "presentation_badge_status")
+
+
+def _artifact_presentation_id(artifact_id) -> str:
+    return f"artifact:{int(artifact_id)}"
+
+
+def _association_presentation_id(request_id) -> str:
+    return f"request:{request_id}"
+
+
+def _presentation_fields(status) -> dict:
+    """The badge triple, from the ONE presentation owner.
+
+    A contributed artifact must read exactly as a native duplicate reads
+    ("Duplicate", not a raw lowercase status), so this goes through
+    ``recovery_presentation`` rather than restating any label as a literal.
+    """
+    projection = recovery_presentation(status)
+    return {key: projection[key] for key in _PRESENTATION_FIELDS}
+
+
+def contributed_artifact_refs(candidate_bindings, transfer_id) -> list[tuple]:
+    """``(artifact_id, contributing_transfer_id, request_id)`` for every VERIFIED
+    artifact another transfer contributed to this transfer's canonical
+    artifacts -- each exactly once, in durable binding/origin order.
+
+    The input is the durable ``canonical_candidate_bindings`` ->
+    ``canonical_candidate_origins`` projection the canonical repository already
+    assembled for Details. Route History is never read, and no candidate URL,
+    host or filename participates.
+    """
+    refs, seen = [], set()
+    for binding in candidate_bindings or []:
+        for origin in binding.get("origins") or []:
+            try:
+                artifact_id = int(origin["contributing_artifact_id"])
+                contributor = int(origin["contributing_transfer_id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if contributor == int(transfer_id) or artifact_id in seen:
+                continue
+            seen.add(artifact_id)
+            refs.append((artifact_id, contributor, origin.get("request_id")))
+    return refs
+
+
+def canonical_file_presentations(files, refs, contributed, associations, *, transfer_id) -> list[dict]:
+    """Assemble the Details-only canonical-object Files rows in one
+    backend-owned deterministic order:
+
+    1. native physical artifacts, in their durable artifact order;
+    2. verified contributed artifacts, in durable binding/origin order;
+    3. terminal UNVERIFIED associations, in durable request order.
+
+    ``presentation_id`` is the row's render/DOM identity and is always present.
+    ``artifact_id`` is the real artifact-MUTATION identity and is ``None`` for
+    an association row, which has no artifact. The two are deliberately
+    separate: a presentation row must never be able to address an artifact
+    operation, and no fake artifact id is ever minted to make one look
+    addressable.
+    """
+    rows = []
+    for item in files or []:
+        artifact_id = int(item["id"])
+        rows.append({
+            **item,
+            "presentation_id": _artifact_presentation_id(artifact_id),
+            "artifact_id": artifact_id,
+            "relationship": _NATIVE_RELATIONSHIP,
+            "verification_state": _VERIFIED,
+            "contributing_transfer_id": int(transfer_id),
+        })
+    by_id = {int(row["id"]): row for row in contributed or []}
+    for artifact_id, contributor, request_id in refs:
+        artifact = by_id.get(artifact_id)
+        if artifact is None:
+            # The durable origin names an artifact that no longer exists. The
+            # row is omitted; it is never synthesized from anything else.
+            continue
+        status = artifact.get("status")
+        rows.append({
+            "presentation_id": _artifact_presentation_id(artifact_id),
+            "artifact_id": artifact_id,
+            "request_id": request_id,
+            "filename": artifact.get("filename"),
+            "size_bytes": artifact.get("size_bytes"),
+            "status": status,
+            **_presentation_fields(status),
+            "relationship": _CONTRIBUTED_RELATIONSHIP,
+            "verification_state": _VERIFIED,
+            "contributing_transfer_id": contributor,
+        })
+    for item in associations or []:
+        rows.append({
+            "presentation_id": _association_presentation_id(item["request_id"]),
+            # No artifact exists by design, so there is no artifact identity to
+            # borrow -- and none is invented.
+            "artifact_id": None,
+            "request_id": item["request_id"],
+            "filename": item.get("filename"),
+            # Independently unknown. The canonical artifact's size is a
+            # DIFFERENT object's fact and is never borrowed to fill this in.
+            "size_bytes": None,
+            "status": _UNVERIFIED_STATUS,
+            **_presentation_fields(_UNVERIFIED_STATUS),
+            "unverified_reason": item.get("unverified_reason"),
+            "relationship": _UNVERIFIED_RELATIONSHIP,
+            "verification_state": _UNVERIFIED_STATUS,
+            "contributing_transfer_id": item.get("contributing_transfer_id"),
+        })
+    return rows
+
+
 class TransferRepository(_CanonicalTransferRepository):
     """Canonical production repository plus safe recovery/source presentation."""
 
@@ -327,6 +470,9 @@ class TransferRepository(_CanonicalTransferRepository):
         file_rows = []
         progress_rows = []
         contexts = {}
+        contributed_refs = []
+        contributed_artifacts = []
+        associations = []
         async with get_db() as db:
             root = await db.fetchone(
                 """SELECT payload FROM transfer_requests
@@ -461,6 +607,44 @@ class TransferRepository(_CanonicalTransferRepository):
                         item["created_at"] = event_row.get("created_at")
                         failover_transitions.append(item)
 
+                # Canonical-object Files presentation (Details only), read in the
+                # session presentation() already owns. Both reads are bounded and
+                # set-based: one IN() over the durably named contributing
+                # artifacts, one over the durable equivalence associations. There
+                # is no per-row source archaeology and no N+1.
+                contributed_refs = contributed_artifact_refs(result.get("candidate_bindings"), transfer_id)
+                if contributed_refs:
+                    placeholders = ",".join("?" for _ in contributed_refs)
+                    contributed_artifacts = [dict(row) for row in await db.fetchall(
+                        f"""SELECT id,filename,size_bytes,status FROM download_files
+                            WHERE id IN ({placeholders})""",
+                        tuple(ref[0] for ref in contributed_refs),
+                    )]
+                # Exactly the durable predicate the canonical-object Route History
+                # projection uses for a terminal association: a request the
+                # equivalence owner durably marked 'unverified' against an
+                # artifact THIS transfer owns. Its name is the durable request's
+                # own name -- never a URL, host or filename guess.
+                for row in await db.fetchall(
+                    """SELECT r.id AS request_id,r.transfer_id AS contributing_transfer_id,
+                        r.equivalence_reason,r.payload FROM transfer_requests r
+                        JOIN download_files f ON f.id=r.equivalence_target_artifact_id
+                        WHERE r.equivalence_disposition='unverified' AND r.transfer_id!=?
+                        AND f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+                        ORDER BY r.transfer_id,r.ordinal,r.id""",
+                    (transfer_id, transfer_id),
+                ):
+                    try:
+                        name = codec.request(codec.load(row["payload"])).name
+                    except (TypeError, ValueError, KeyError):
+                        name = None
+                    associations.append({
+                        "request_id": row["request_id"],
+                        "contributing_transfer_id": int(row["contributing_transfer_id"]),
+                        "unverified_reason": row["equivalence_reason"] or None,
+                        "filename": name or None,
+                    })
+
             # Presentation already owns this DB session. Reuse it for durable
             # recovery snapshots instead of opening one fresh SQLite connection
             # per artifact through recovery_context(). Details need every child;
@@ -566,4 +750,16 @@ class TransferRepository(_CanonicalTransferRepository):
                     # must not suppress a retry solely because an older attempt failed.
                     candidate["switch_eligible"] = not selected and state in _SWITCHABLE_STATES
             result["manual_candidate_failovers"] = failover_transitions
+
+        if details:
+            # Assembled last, so the native rows carry the SAME fully-overlaid
+            # artifact truth files[] carries -- one candidate owner, one
+            # presentation owner, no second computation. Contributed and
+            # association rows deliberately carry no candidate_count /
+            # acquisition_candidates / source_candidates: verified candidate
+            # membership and failover remain the canonical artifact's alone.
+            result["file_presentations"] = canonical_file_presentations(
+                result.get("files"), contributed_refs, contributed_artifacts, associations,
+                transfer_id=transfer_id,
+            )
         return result
