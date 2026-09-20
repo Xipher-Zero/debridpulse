@@ -121,7 +121,7 @@ from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
     ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
     MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation, RequestRecord, ResolutionAttempt,
-    ResolutionResult, ResourceState,
+    ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import shared_size
@@ -1401,7 +1401,17 @@ class TransferEngine:
                 integrity=candidate.integrity if candidate else (), delay=self.policy.adoption_stability_seconds,
             )
             if size is not None:
-                await self.repository.artifact_state(artifact.id, "completed", expected_bytes=size)
+                # FUNC-001: record the canonical size fact durably alongside the
+                # accepted size, so a restart reconstructs the same semantics
+                # instead of re-reading a bare number. ``stable_material_size``
+                # returns 0 only when ``size_knowledge`` resolved KNOWN_ZERO from
+                # trusted affirmative-zero evidence AND the stable payload proved
+                # it; an unknown/defaulted zero verifies nothing and lands in the
+                # failure branch below, so this can never launder one into truth.
+                await self.repository.artifact_state(
+                    artifact.id, "completed", expected_bytes=size,
+                    size_knowledge=SizeKnowledge.KNOWN_POSITIVE if size > 0 else SizeKnowledge.KNOWN_ZERO,
+                )
             else:
                 error = self._error(Category.MATERIALIZATION_FAILED, Stage.VERIFICATION, domain=Domain.INTEGRITY,
                                     retryability=Retryability.AFTER_RESOURCE_CHANGE)
@@ -1476,8 +1486,17 @@ class TransferEngine:
                     raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.VERIFICATION,
                         domain=Domain.REQUEST, retryability=Retryability.NEVER))
                 sidecars = executor.resumable_paths(artifact.target)
-                if await asyncio.to_thread(payload_matches, artifact.target, artifact.expected_bytes,
-                                           sidecars, allow_empty=artifact.execution is not None):
+                # FUNC-001: empty material is acceptable only where canonical
+                # durable size truth affirmatively says this object is zero
+                # bytes. The presence of an execution is not evidence about
+                # size -- every failed, pathological and unknown-size execution
+                # has one too -- so it can never authorize committing an empty
+                # file as delivered artifact material. This boundary defends
+                # itself directly rather than relying on upstream sequencing:
+                # reached with an unproven empty artifact through any caller,
+                # it now fails closed into the requeue/verification path below.
+                if await asyncio.to_thread(payload_matches, artifact.target, artifact.expected_bytes, sidecars,
+                                           allow_empty=artifact.size_knowledge == SizeKnowledge.KNOWN_ZERO):
                     continue
                 if artifact.execution:
                     result = await executor.cancel(artifact.execution)

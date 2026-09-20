@@ -7,6 +7,7 @@ from typing import Mapping
 from uuid import uuid4
 
 from transfers.errors import NormalizedError
+from transfers.size_evidence import positive_size
 
 
 def new_identity() -> str:
@@ -466,6 +467,33 @@ class SizeKnowledge(StrEnum):
     KNOWN_ZERO = "known_zero"
     KNOWN_POSITIVE = "known_positive"
 
+    @classmethod
+    def durable(cls, expected_bytes, stored=None) -> "SizeKnowledge":
+        """The ONE interpretation of an artifact's durable size storage.
+
+        Durable size truth is stored as a byte count plus a nullable
+        size-knowledge column, and this is the only function that turns that
+        pair back into the canonical fact. The two are not independent
+        authorities: the byte count is the authority whenever it is positive,
+        and the column is consulted only for the case a number genuinely
+        cannot express -- whether a non-positive value means "no size
+        evidence" or "affirmatively zero bytes".
+
+        * positive byte count => ``KNOWN_POSITIVE``, whatever the column says,
+          so positive evidence can never be downgraded by stale or defaulted
+          bookkeeping;
+        * otherwise an explicit durable ``known_zero`` => ``KNOWN_ZERO``. Only
+          a verified completion whose trusted affirmative-zero evidence the
+          stable local payload proved ever writes that value;
+        * otherwise ``UNKNOWN`` -- which is exactly what every row written
+          before this column existed reads as, since they are all ``NULL``.
+          A historical numeric ``0`` is therefore never reinterpreted as a
+          legitimate empty payload, and nothing backfills one.
+        """
+        if positive_size(expected_bytes) is not None:
+            return cls.KNOWN_POSITIVE
+        return cls.KNOWN_ZERO if stored == cls.KNOWN_ZERO.value else cls.UNKNOWN
+
 
 class MaterializationAdmissionKind(StrEnum):
     """Universal execution-admission decision for one artifact's dispatch.
@@ -518,6 +546,11 @@ class Artifact:
     retries: int = 0
     retry_at: float = 0
     error: NormalizedError | None = None
+    # The canonical durable size fact this artifact's persisted size means,
+    # reconstructed on load by ``SizeKnowledge.durable`` from the byte count and
+    # the nullable durable column. Never set by hand: ``UNKNOWN`` is the correct
+    # value for an artifact whose size nothing has affirmatively established.
+    size_knowledge: SizeKnowledge = SizeKnowledge.UNKNOWN
 
 
 @dataclass(frozen=True)

@@ -837,12 +837,24 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # reconstructs correctness by comparing against current time alone --
         # no separate restart-reconciliation step is needed.
         'continuation_reservation_expires_at': 'REAL',
+        # FUNC-001: the durable half of the canonical size fact. ``size_bytes``
+        # alone cannot distinguish "zero because no size evidence exists" from
+        # "affirmatively zero bytes", and that distinction must survive restart
+        # and recovery. Additive and nullable: every existing row stays NULL,
+        # which ``transfers.models.SizeKnowledge.durable`` -- the one reader --
+        # interprets as UNKNOWN for a non-positive byte count and as
+        # KNOWN_POSITIVE for a positive one. A historical ``0`` is therefore
+        # never promoted to legitimate zero, and no backfill exists or is
+        # wanted. Written only by a verified completion (the one writer), so a
+        # value here is always evidence something actually proved, never a
+        # default.
+        'size_knowledge': 'TEXT',
     },
 }
 
 _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
-    'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at'},
+    'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},

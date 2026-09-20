@@ -24,7 +24,7 @@ from transfers.models import (
     BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, DeliveryKind, ExecutionAttempt, ExecutionHandle,
     ExecutionState,
     OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
-    ResourceState, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
+    ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
 )
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANSFER_STATES, transition_allowed
@@ -1043,7 +1043,8 @@ class TransferRepository:
                 Artifact(a["id"], transfer_id, a["request_id"], a["filename"], a["local_path"], a["size_bytes"] or 0,
                          a["status"], tuple(codec.candidate(item) for item in codec.load(a["candidates"], [])),
                          a["selected_candidate"], codec.handle(codec.load(a["handle"])), a["retry_count"] or 0,
-                         a["retry_at"], codec.error(a["normalized_error"]))
+                         a["retry_at"], codec.error(a["normalized_error"]),
+                         SizeKnowledge.durable(a["size_bytes"], a["size_knowledge"]))
                 for a in artifact_rows
             )
             execution_rows = await db.fetchall("SELECT * FROM execution_attempts WHERE transfer_id=?", (transfer_id,))
@@ -1873,7 +1874,8 @@ class TransferRepository:
         return tuple(Artifact(row["id"], transfer_id, row["request_id"], row["filename"], row["local_path"], row["size_bytes"] or 0,
                               row["status"], tuple(codec.candidate(item) for item in codec.load(row["candidates"], [])),
                               row["selected_candidate"], codec.handle(codec.load(row["handle"])), row["retry_count"] or 0,
-                              row["retry_at"], codec.error(row["normalized_error"])) for row in rows)
+                              row["retry_at"], codec.error(row["normalized_error"]),
+                              SizeKnowledge.durable(row["size_bytes"], row["size_knowledge"])) for row in rows)
 
     async def occupied_paths(self) -> set[str]:
         async with get_db() as db:
@@ -1983,7 +1985,16 @@ class TransferRepository:
             return False
         return action != "start" or row["state"] == "prepared"
 
-    async def artifact_state(self, artifact_id: int, state: str, *, error=None, retry_at=0, release=False, selected=None, expected_bytes=None):
+    async def artifact_state(self, artifact_id: int, state: str, *, error=None, retry_at=0, release=False, selected=None,
+                             expected_bytes=None, size_knowledge=None):
+        """``size_knowledge`` is the ONE durable writer of the canonical size
+        fact, and only a verified completion supplies it: the caller has
+        already proven the stable local payload against trusted evidence, so
+        the value recorded here is always something that was demonstrated, not
+        a default or a bookkeeping side effect. Every other artifact write
+        leaves the column untouched, so a reported/bookkeeping size never
+        manufactures size knowledge -- ``SizeKnowledge.durable`` reads such a
+        row back as KNOWN_POSITIVE or UNKNOWN from the byte count alone."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             current = await db.fetchone("SELECT execution_attempt_id FROM download_files WHERE id=?", (artifact_id,))
@@ -1996,10 +2007,12 @@ class TransferRepository:
             cursor = await db.execute("""UPDATE download_files SET status=?,normalized_error=?,retry_at=?,
                 execution_attempt_id=CASE WHEN ? THEN NULL ELSE execution_attempt_id END,
                 selected_candidate=COALESCE(?,selected_candidate),size_bytes=COALESCE(?,size_bytes),
+                size_knowledge=COALESCE(?,size_knowledge),
                 continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
                 WHERE id=? AND torrent_id IN (SELECT id FROM torrents
                     WHERE status NOT IN ('deleted','consolidated') AND (status!='cancelled' OR ?='cancelled'))""",
-                (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes, artifact_id, state))
+                (state, codec.dump(error) if error else None, retry_at, release, selected, expected_bytes,
+                 str(size_knowledge) if size_knowledge is not None else None, artifact_id, state))
             if cursor.rowcount and release and current and current.get("execution_attempt_id"):
                 await db.execute("""UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP
                     WHERE id=? AND state IN ('failed','absent','cancelled','succeeded')""", (current["execution_attempt_id"],))

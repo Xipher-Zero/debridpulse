@@ -18,7 +18,7 @@ from transfers._repository_base import (
     _durable_canonical_targets_for_request, _retire_transfer_auxiliary_state_in_db,
     terminal_unverified_association,
 )
-from transfers.models import Artifact, RequestRecord, TransferCandidate
+from transfers.models import Artifact, RequestRecord, SizeKnowledge, TransferCandidate
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
 
@@ -66,6 +66,10 @@ class CanonicalOwnership:
             tuple(codec.candidate(item) for item in codec.load(row["candidates"], [])),
             int(row["selected_candidate"] or 0), codec.handle(codec.load(row.get("handle"))),
             int(row["retry_count"] or 0), float(row["retry_at"] or 0), codec.error(row["normalized_error"]),
+            # FUNC-001: every loader reconstructs the size fact through the one
+            # canonical interpretation, so no reader can observe a different
+            # answer depending on which query produced the row.
+            SizeKnowledge.durable(row["size_bytes"], row["size_knowledge"]),
         )
 
     @staticmethod

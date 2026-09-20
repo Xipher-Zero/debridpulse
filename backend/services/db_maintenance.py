@@ -42,6 +42,9 @@ TABLES = [
     "route_attempt_provenance",
     "execution_attempts",
     "execution_attempt_provenance",
+    "canonical_candidate_bindings",
+    "canonical_candidate_origins",
+    "artifact_consolidations",
     "transfer_outcomes",
     "postprocess_attempts",
     "application_events",
@@ -70,6 +73,9 @@ _TABLE_ORDER = {
     "route_attempt_provenance": "transfer_id,ordinal",
     "execution_attempts": "id",
     "execution_attempt_provenance": "transfer_id,artifact_id,ordinal",
+    "canonical_candidate_bindings": "canonical_artifact_id,candidate_order",
+    "canonical_candidate_origins": "binding_id,id",
+    "artifact_consolidations": "canonical_artifact_id,contributing_artifact_id",
     "transfer_outcomes": "id",
     "postprocess_attempts": "transfer_id,processor_id",
     "application_events": "id",
@@ -258,6 +264,17 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         await db.execute("DELETE FROM transfer_file_selections")
         await db.execute("DELETE FROM transfer_file_manifest_entries")
         await db.execute("DELETE FROM transfer_file_manifests")
+        # Canonical candidate/consolidation state, deleted child-first. Derived
+        # from the real foreign keys, not assumed: an origin row references its
+        # binding, plus download_files/torrents/transfer_requests/resolution_
+        # attempts; a consolidation row references download_files/torrents/
+        # transfer_requests; a binding row references download_files. All three
+        # must therefore precede the resolution_attempts sweep below and the
+        # request/artifact/transfer deletes that follow it. Foreign keys stay
+        # enforced for the whole wipe; nothing here relies on ON DELETE CASCADE.
+        await db.execute("DELETE FROM canonical_candidate_origins")
+        await db.execute("DELETE FROM artifact_consolidations")
+        await db.execute("DELETE FROM canonical_candidate_bindings")
         for table in (
             "application_events", "artifact_recovery_state", "postprocess_attempts", "transfer_outcomes",
             "execution_attempt_provenance", "route_attempt_provenance",
