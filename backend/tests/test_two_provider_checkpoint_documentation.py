@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import re
 
 
 ROOT = Path(__file__).parents[2]
@@ -7,6 +8,20 @@ ROOT = Path(__file__).parents[2]
 
 def _text(path: str) -> str:
     return (ROOT / path).read_text()
+
+
+def _released_version() -> str:
+    """Newest published release named by the canonical CHANGELOG.
+
+    ``VERSION`` owns the in-development application version, which during a
+    development line deliberately names a version that has no published image
+    yet. Install examples therefore track the newest *released* CHANGELOG
+    entry; neither file is a second authority for the other's fact.
+    """
+    for version, title in re.findall(r"^## \[(\d+(?:\.\d+)+)\](.*)$", _text("CHANGELOG.md"), re.M):
+        if "development" not in title.casefold():
+            return version
+    raise AssertionError("CHANGELOG.md names no released version")
 
 
 def test_readme_describes_final_two_provider_state_and_current_release_examples():
@@ -18,9 +33,14 @@ def test_readme_describes_final_two_provider_state_and_current_release_examples(
     assert "not yet a released v1.0.12 baseline" not in readme
     assert "development architecture" not in readme
     assert "development support matrix" not in readme
-    # Install examples name the current release, derived from VERSION.
-    assert f"ghcr.io/xipher-zero/debridpulse:v{version}" in readme
+    # Install examples name the newest published release, derived from the
+    # canonical CHANGELOG. An in-development VERSION has no published image, so
+    # the examples must never claim one.
+    released = _released_version()
+    assert f"ghcr.io/xipher-zero/debridpulse:v{released}" in readme
     assert "ghcr.io/xipher-zero/debridpulse:v1.0.11.1" not in readme
+    if version != released:
+        assert f"ghcr.io/xipher-zero/debridpulse:v{version}" not in readme
     # Deferred expansion belongs to 1.0.13, not to an unmet 1.0.12 requirement.
     assert "1.0.13" in readme
     assert "Deferred Items 12–16" not in readme
@@ -71,12 +91,17 @@ def test_current_regression_map_and_support_doc_preserve_deferred_stage_status()
     assert "eventual full Stage 17/18" in support
 
 
-def test_authoritative_development_version_surfaces_agree_on_1_0_12():
-    assert _text("VERSION").strip() == "1.0.12"
+def test_authoritative_development_version_surfaces_agree_with_the_version_file():
+    # VERSION is the one application-version authority; every other development
+    # surface restates it rather than carrying an independent literal.
+    version = _text("VERSION").strip()
     package = json.loads(_text("frontend/browser/package.json"))
-    assert package["version"] == "1.0.12"
+    assert package["version"] == version
+    lock = json.loads(_text("frontend/browser/package-lock.json"))
+    assert lock["version"] == version
+    assert lock["packages"][""]["version"] == version
     ui_arch = _text("docs/UI_FRONTEND_ARCHITECTURE.md")
-    assert "reports `1.0.12` for the current development tree" in ui_arch
+    assert f"reports `{version}` for the current development tree" in ui_arch
     assert "remains `1.0.11.1` for this corrective release" not in ui_arch
 
 

@@ -1,3 +1,4 @@
+import re
 import stat
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,15 +12,26 @@ def _mode(path: Path) -> int:
 
 def test_install_surfaces_preserve_published_image_and_public_health_endpoint():
     root = Path(__file__).resolve().parents[2]
-    # Install surfaces name the current release, derived from the one version owner.
-    version = (root / "VERSION").read_text().strip()
-    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{version}"
+    # Install surfaces name the newest published release, derived from the
+    # canonical CHANGELOG. VERSION owns the in-development version, which on a
+    # development line has no published image, so install surfaces must not
+    # fabricate a tag for it.
+    headings = re.findall(
+        r"^## \[(\d+(?:\.\d+)+)\](.*)$", (root / "CHANGELOG.md").read_text(), re.M
+    )
+    released = next(v for v, title in headings if "development" not in title.casefold())
+    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{released}"
     compose = (root / "docker-compose.yml").read_text()
     readme = (root / "README.md").read_text()
     project_page = (root / "index.html").read_text()
     assert expected_image in compose
     assert readme.count(expected_image) >= 2
     assert expected_image in project_page
+    development = (root / "VERSION").read_text().strip()
+    if development != released:
+        unreleased = f"ghcr.io/xipher-zero/debridpulse:v{development}"
+        for surface in (compose, readme, project_page):
+            assert unreleased not in surface
     assert "http://localhost:8080/api/health" in compose
     assert "http://localhost:8080/api/stats" not in compose
 

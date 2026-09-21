@@ -9,6 +9,7 @@ on:
       - main
       - '1.0.11'
       - '1.0.12'
+      - '1.0.13'
       - 'staging/**'
     tags:
       - 'v*'
@@ -31,6 +32,7 @@ jobs:
     name: Resolve immutable candidate identity
     runs-on: ubuntu-24.04
     outputs:
+      app_version: ${{ steps.revision.outputs.app_version }}
       manifest_digest: ${{ steps.identity.outputs.manifest_digest }}
       amd64_digest: ${{ steps.identity.outputs.amd64_digest }}
       arm64_digest: ${{ steps.identity.outputs.arm64_digest }}
@@ -40,11 +42,17 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Verify exact checkout identity
+        id: revision
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(tr -d '\r\n' < VERSION)" = "1.0.12"
+          app_version="$(tr -d '\r\n' < VERSION)"
+          if [[ ! "$app_version" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "VERSION does not name a release version: '${app_version:-<empty>}'"
+            exit 1
+          fi
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
@@ -113,6 +121,7 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     env:
+      APP_VERSION: ${{ needs.identity.outputs.app_version }}
       CHILD_DIGEST: ${{ matrix.arch == 'amd64' && needs.identity.outputs.amd64_digest || needs.identity.outputs.arm64_digest }}
     steps:
       - name: Set up QEMU for cross-platform execution
@@ -132,7 +141,7 @@ jobs:
           image="${IMAGE_NAME}@${CHILD_DIGEST}"
           docker pull --platform "linux/${{ matrix.arch }}" "$image"
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GITHUB_SHA"
-          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "1.0.12"
+          test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$APP_VERSION"
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.title" }}')" = "DebridPulse: Universal Transfer Manager"
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" = "https://github.com/Xipher-Zero/debridpulse"
           test "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = "GPL-2.0-or-later"
@@ -185,7 +194,7 @@ jobs:
           '
 
           health="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/health)"
-          test "$(jq -r '.version // empty' <<< "$health")" = "1.0.12"
+          test "$(jq -r '.version // empty' <<< "$health")" = "$APP_VERSION"
 
           provider_status="$(docker exec "$container" curl --fail --silent --show-error http://127.0.0.1:8080/api/integration-status/alldebrid)"
           test "$(jq -r '.integration // empty' <<< "$provider_status")" = "alldebrid"

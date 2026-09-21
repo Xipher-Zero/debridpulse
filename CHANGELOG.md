@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.13] — Development
+
+1.0.13 is the active development line following the locked 1.0.12 Universal Transfer Core release.
+
+### Planned / in progress
+
+- STAGED-MATERIALIZATION-001 — execution-owned staging and verified atomic promotion.
+- Provider/executor expansion and associated UI work will be developed on this branch.
+
 ## [1.0.12] — Universal Transfer Core and canonical transfer architecture
 
 1.0.12 is the architectural release. It replaces the inherited AllDebrid-shaped download

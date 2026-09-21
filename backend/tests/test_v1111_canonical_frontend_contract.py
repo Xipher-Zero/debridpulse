@@ -15,6 +15,7 @@ BOOTSTRAP = STATIC / "ui-theme-bootstrap.js"
 VERSION = ROOT / "VERSION"
 README = ROOT / "README.md"
 COMPOSE = ROOT / "docker-compose.yml"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 
 def read(path: Path) -> str:
@@ -391,12 +392,21 @@ def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
     # the unified backend machinery, not a second frontend entry point.
     assert 'function runRecovery(' not in app
 
-def test_install_references_track_the_authoritative_version_file() -> None:
-    version = read(VERSION).strip()
-    assert version == "1.0.12"
-    tag = f"ghcr.io/xipher-zero/debridpulse:v{version}"
+def test_install_references_track_the_latest_published_release() -> None:
+    # VERSION names the in-development application version, which on a
+    # development line has no published image. Install references therefore
+    # track the newest released CHANGELOG entry and must not fabricate a tag
+    # for an unreleased VERSION.
+    headings = re.findall(r"^## \[(\d+(?:\.\d+)+)\](.*)$", read(CHANGELOG), re.M)
+    released = next(v for v, title in headings if "development" not in title.casefold())
+    tag = f"ghcr.io/xipher-zero/debridpulse:v{released}"
     assert tag in read(COMPOSE)
     assert read(README).count(tag) >= 2
+    development = read(VERSION).strip()
+    if development != released:
+        unreleased = f"ghcr.io/xipher-zero/debridpulse:v{development}"
+        assert unreleased not in read(COMPOSE)
+        assert unreleased not in read(README)
 
 
 def test_core_canonical_owners_do_not_reintroduce_historical_wrapper_patterns() -> None:

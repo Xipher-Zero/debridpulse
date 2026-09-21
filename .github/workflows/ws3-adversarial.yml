@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - '1.0.12'
+      - '1.0.13'
   workflow_dispatch:
 
 permissions:
