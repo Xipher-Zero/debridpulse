@@ -18,7 +18,10 @@ from urllib.parse import urlsplit
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.downloader_egress_guard import downloader_egress_guard
-from services.network_safety import DestinationLookupError, sampled_public_artifact_fingerprint, validate_resolved_public_destination
+from services.network_safety import (
+    SAMPLED_FINGERPRINT_SCHEMES, DestinationLookupError,
+    sampled_public_artifact_fingerprint, validate_resolved_public_destination,
+)
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, username_password
 from transfers.models import (
@@ -58,7 +61,11 @@ def execution_binding(configuration, url):
 class Aria2Executor:
     descriptor = IntegrationDescriptor(
         "aria2", "aria2", frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE, Capability.HEALTH}),
-        schemes=frozenset({"http", "https"}),
+        # Positive claim only: a transport aria2 actually delivers and that the
+        # canonical destination validator and egress guard cover. Everything
+        # else -- scp, rsync, ftps, webdav, metalink, magnet, native torrent --
+        # is unsupported by absence, never by a denial list.
+        schemes=frozenset({"http", "https", "ftp", "sftp"}),
     )
 
     def __init__(self, client: Aria2Service, configuration: Aria2Configuration,
@@ -115,7 +122,11 @@ class Aria2Executor:
         return (str(self._target(target)) + ".aria2",)
 
     async def fingerprint(self, candidate):
-        endpoint = next((item for item in candidate.endpoints if item.scheme in self.descriptor.schemes), None)
+        # Bounded content evidence is an HTTP(S) Range sample. A claimed
+        # transport the sampler cannot speak yields no executor sample at all
+        # rather than a guess; core equivalence policy owns unavailable proof.
+        sampleable = self.descriptor.schemes & SAMPLED_FINGERPRINT_SCHEMES
+        endpoint = next((item for item in candidate.endpoints if item.scheme in sampleable), None)
         if endpoint is None:
             return None
         for key, value in endpoint.headers.items():

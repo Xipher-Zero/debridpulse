@@ -1,4 +1,12 @@
-"""Network destination policy for provider-issued download capabilities."""
+"""Network destination policy for provider-issued download capabilities.
+
+One validator owns URL shape and public-destination policy for every transport
+this application touches. Callers select which transports they accept by
+passing a scheme set; the invariants (hostname required, malformed ports
+rejected, embedded credentials rejected, private/local/link-local/non-global
+destinations blocked, whole-DNS-answer rejection at connection time) are the
+same for all of them.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +30,44 @@ class DestinationLookupError(ConnectionError):
     """The destination could not be resolved; no policy authorization was granted."""
 
 
-def validate_provider_download_url(value: object, *, context: str = "download link") -> str:
+# The one canonical well-known-port table for every destination this
+# application validates, resolves, or guards. Callers never carry their own
+# per-scheme port arithmetic.
+DEFAULT_DESTINATION_PORTS: dict[str, int] = {
+    "http": 80,
+    "https": 443,
+    "ftp": 21,
+    "sftp": 22,
+}
+
+# Transports a *provider-issued link* may name. Providers hand back web
+# capabilities; widening this would widen every provider's link contract, which
+# is a separate decision from what the downloader is able to execute.
+PROVIDER_LINK_SCHEMES: frozenset[str] = frozenset({"http", "https"})
+
+# Transports the downloader may be pointed at. This is the guarded-transport
+# set: every scheme here is carried through the same hardened validation,
+# connection-time resolution, and egress guard. It is kept equal to the aria2
+# executor's positive claim by regression, not by importing across the layer.
+PUBLIC_DESTINATION_SCHEMES: frozenset[str] = frozenset(DEFAULT_DESTINATION_PORTS)
+
+# Transports the bounded content sampler below can actually speak. It is an
+# HTTP(S) Range sampler; anything else has no executor-side sample, and core
+# equivalence policy owns what unavailable proof means.
+SAMPLED_FINGERPRINT_SCHEMES: frozenset[str] = frozenset({"http", "https"})
+
+
+def default_destination_port(scheme: str) -> int:
+    """Return the well-known port for a guarded transport, or 0 when unknown."""
+    return DEFAULT_DESTINATION_PORTS.get(str(scheme or "").casefold(), 0)
+
+
+def validate_provider_download_url(
+    value: object,
+    *,
+    context: str = "download link",
+    schemes: frozenset[str] = PROVIDER_LINK_SCHEMES,
+) -> str:
     raw = str(value or "").strip()
     if not raw:
         raise UnsafeDestinationError(f"Provider returned an empty {context}")
@@ -31,7 +76,9 @@ def validate_provider_download_url(value: object, *, context: str = "download li
         port = parsed.port
     except ValueError as exc:
         raise UnsafeDestinationError(f"Provider returned an invalid {context}") from exc
-    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+    # The "non-HTTP(S)" wording is a load-bearing diagnostic marker consumed by
+    # provider error translation. Keep it verbatim when changing this message.
+    if parsed.scheme.casefold() not in schemes or not parsed.hostname:
         raise UnsafeDestinationError(f"Provider returned a non-HTTP(S) {context}")
     if parsed.username is not None or parsed.password is not None:
         raise UnsafeDestinationError(f"Provider returned a credential-bearing {context}")
@@ -73,8 +120,10 @@ def reject_non_public_resolution(addresses: Iterable[str], *, host: str) -> None
         )
 
 
-async def validate_resolved_public_destination(uri: str) -> str:
-    validated = validate_provider_download_url(uri, context="aria2 download link")
+async def validate_resolved_public_destination(
+    uri: str, *, schemes: frozenset[str] = PUBLIC_DESTINATION_SCHEMES
+) -> str:
+    validated = validate_provider_download_url(uri, context="aria2 download link", schemes=schemes)
     parsed = urlsplit(validated)
     host = str(parsed.hostname or "").rstrip(".").casefold()
     if not host:
@@ -87,7 +136,7 @@ async def validate_resolved_public_destination(uri: str) -> str:
         if not literal.is_global:
             raise UnsafeDestinationError(f"Provider download host {host!r} is not public")
         return validated
-    port = int(parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
+    port = int(parsed.port or default_destination_port(parsed.scheme))
     loop = asyncio.get_running_loop()
     try:
         answers = await loop.getaddrinfo(host, port, family=socket.AF_UNSPEC,
@@ -173,7 +222,7 @@ class PublicDestinationResolver(aiohttp.abc.AbstractResolver):
 def _origin(uri: str) -> tuple[str, str, int]:
     parsed = urlsplit(uri)
     return parsed.scheme.casefold(), str(parsed.hostname or "").casefold(), int(
-        parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
+        parsed.port or default_destination_port(parsed.scheme))
 
 
 async def _range_request(session, uri: str, headers: dict, *, max_redirects: int = 3):
@@ -197,7 +246,8 @@ async def _range_request(session, uri: str, headers: dict, *, max_redirects: int
             return None, "redirect"
         next_uri = urljoin(validated, location)
         try:
-            validate_provider_download_url(next_uri, context="redirect target")
+            validate_provider_download_url(next_uri, context="redirect target",
+                                           schemes=SAMPLED_FINGERPRINT_SCHEMES)
         except UnsafeDestinationError:
             return None, "destination_rejected"
         next_origin = _origin(next_uri)
@@ -224,6 +274,10 @@ async def sampled_public_artifact_fingerprint(
     not an identity gate. The sampler reports the payload size it discovers;
     the Universal Core owns reported-size plausibility policy.
     """
+    # The sampler speaks HTTP(S) only. A transport it cannot sample is refused
+    # here, at its own boundary, so no other caller has to know that.
+    if urlsplit(str(uri or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
+        return _unavailable("destination_rejected")
     try:
         validated = await validate_resolved_public_destination(uri)
     except DestinationLookupError:

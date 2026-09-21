@@ -497,3 +497,84 @@ async def _start_transfer(executor, uri, target):
     observation = await executor.start(request, handle)
     assert observation.error is None, observation.error
     return handle.context["gid"]
+
+
+# ── 1.0.13: the expanded transport claims run through this same boundary ─────
+
+async def _guard_connect_authorities(
+    tmp_path: Path, uri: str, monkeypatch, *, extra_args: tuple[str, ...] = ()
+) -> list[tuple[str, int]]:
+    """Drive a real aria2 job and report every authority it asked to tunnel to.
+
+    The guard's injected resolver runs only after a CONNECT arrived AND its
+    target-scoped credential verified, so a recorded authority simultaneously
+    proves the job was proxied, that aria2 and the guard agree on the scheme's
+    default port, and that the HMAC was scoped to that exact authority.
+    """
+    seen: list[tuple[str, int]] = []
+
+    async def resolver(host: str, port: int):
+        seen.append((host, port))
+        return [_answer("127.0.0.1", port)]
+
+    async def validated(address): return address
+
+    monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated)
+    proc, service = await _start_aria2(tmp_path, extra_args=extra_args)
+    guard = DownloaderEgressGuard(
+        resolver=resolver, public_check=lambda address: address == "127.0.0.1",
+        bind_host="127.0.0.1", bind_port=0,
+    )
+    executor = Aria2Executor(
+        service, Aria2Configuration(str(tmp_path), external=False),
+        AsyncMock(return_value=True), egress=guard,
+    )
+    try:
+        gid = await _start_transfer(executor, uri, tmp_path / "payload.bin")
+        await _wait_status(service, gid)
+    finally:
+        await _stop_aria2(proc, service)
+        await guard.stop()
+    return seen
+
+
+@pytest.mark.parametrize("scheme,port", [("ftp", 21), ("sftp", 22)])
+async def test_real_aria2_tunnels_the_new_transports_through_the_guard(
+    tmp_path: Path, monkeypatch, scheme: str, port: int
+) -> None:
+    seen = await _guard_connect_authorities(
+        tmp_path, f"{scheme}://delivery.test/payload.bin", monkeypatch)
+    assert seen == [("delivery.test", port)]
+
+
+@pytest.mark.parametrize("scheme,port", [("http", 80), ("https", 443)])
+async def test_real_aria2_still_tunnels_http_transports_through_the_guard(
+    tmp_path: Path, monkeypatch, scheme: str, port: int
+) -> None:
+    seen = await _guard_connect_authorities(
+        tmp_path, f"{scheme}://delivery.test/payload.bin", monkeypatch)
+    assert seen == [("delivery.test", port)]
+
+
+@pytest.mark.parametrize("preference", ["--ftp-proxy", "--http-proxy", "--https-proxy"])
+async def test_a_shared_daemon_per_protocol_proxy_cannot_route_around_the_guard(
+    tmp_path: Path, monkeypatch, preference: str
+) -> None:
+    """aria2 resolves a per-protocol proxy preference ahead of --all-proxy.
+
+    A shared daemon started with one of these would otherwise carry that
+    protocol around the guard entirely, so every one is pinned per job.
+    """
+    rogue = await asyncio.start_server(lambda reader, writer: writer.close(), "127.0.0.1", 0)
+    rogue_port = int(rogue.sockets[0].getsockname()[1])
+    scheme = {"--ftp-proxy": "ftp", "--http-proxy": "http", "--https-proxy": "https"}[preference]
+    expected = {"ftp": 21, "http": 80, "https": 443}[scheme]
+    try:
+        seen = await _guard_connect_authorities(
+            tmp_path, f"{scheme}://delivery.test/payload.bin", monkeypatch,
+            extra_args=(f"{preference}=http://127.0.0.1:{rogue_port}",),
+        )
+    finally:
+        rogue.close()
+        await rogue.wait_closed()
+    assert seen == [("delivery.test", expected)]

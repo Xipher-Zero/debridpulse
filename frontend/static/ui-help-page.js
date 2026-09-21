@@ -375,7 +375,7 @@
           <details class="dp-help-accordion" open>
             <summary>Sources &amp; Providers</summary>
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
-              <p>This is where DebridPulse configures the current provider layer. The v1.0.12 development architecture has <b>AllDebrid</b> plus <b>General Sources → HTTP &amp; HTTPS</b>.</p>
+              <p>This is where DebridPulse configures the current provider layer. The current architecture has <b>AllDebrid</b> plus <b>General Sources → HTTP &amp; HTTPS</b>.</p>
               <ul>
                 <li><b>Enable:</b> each current provider has one backend-owned enable control. Enablement is distinct from whether AllDebrid is configured/healthy or whether a particular host is currently available.</li>
                 <li><b>HTTP &amp; HTTPS:</b> the generic direct source intentionally exposes only its Enable control; there are no speculative protocol tuning fields.</li>

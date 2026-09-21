@@ -1,8 +1,8 @@
-"""Connection-boundary egress guard for DebridPulse-owned HTTP(S) downloads.
+"""Connection-boundary egress guard for DebridPulse-owned downloads.
 
-Provider download URLs retain their original hostname all the way through aria2 so
-HTTPS SNI and certificate hostname verification remain end-to-end.  Each owned
-aria2 job is forced through this CONNECT proxy.  The proxy performs the final DNS
+Download URLs retain their original hostname all the way through aria2 so HTTPS
+SNI and certificate hostname verification remain end-to-end.  Each owned aria2
+job is forced through this CONNECT proxy.  The proxy performs the final DNS
 resolution itself, rejects the entire answer set if any address is non-global,
 and then opens the upstream socket to an approved numeric address.  aria2 never
 gets a second opportunity to resolve the provider hostname for the target
@@ -28,10 +28,14 @@ import socket
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
+from services.network_safety import PUBLIC_DESTINATION_SCHEMES, default_destination_port
 from services.network_safety import validate_provider_download_url
 from services.network_safety import reject_non_public_resolution
 
 logger = logging.getLogger("debridpulse.downloader_egress_guard")
+
+# aria2's per-protocol proxy preferences, which take precedence over --all-proxy.
+_PER_PROTOCOL_PROXY_PREFERENCES = ("http", "https", "ftp")
 
 Resolver = Callable[[str, int], Awaitable[list[tuple]]]
 PublicCheck = Callable[[str], bool]
@@ -46,12 +50,15 @@ def _is_public(address: str) -> bool:
 
 
 def _target(uri: str) -> tuple[str, int]:
-    validated = validate_provider_download_url(uri, context="aria2 download link")
+    validated = validate_provider_download_url(
+        uri, context="aria2 download link", schemes=PUBLIC_DESTINATION_SCHEMES)
     parsed = urlsplit(validated)
     host = str(parsed.hostname or "").rstrip(".").casefold()
     if not host:
         raise ValueError("Provider download URL has no hostname")
-    port = int(parsed.port or (443 if parsed.scheme.casefold() == "https" else 80))
+    # aria2 derives the same well-known port when the URL omits one, so the
+    # guard credential is scoped to exactly the authority aria2 will CONNECT to.
+    port = int(parsed.port or default_destination_port(parsed.scheme))
     return host, port
 
 
@@ -182,21 +189,24 @@ class DownloaderEgressGuard:
             "all-proxy": proxy,
             "all-proxy-user": "debridpulse",
             "all-proxy-passwd": token,
-            "http-proxy": proxy,
-            "http-proxy-user": "debridpulse",
-            "http-proxy-passwd": token,
-            "https-proxy": proxy,
-            "https-proxy-user": "debridpulse",
-            "https-proxy-passwd": token,
             # A shared daemon may have a global no-proxy list.  Empty is the
             # explicit per-job override, preventing that list from bypassing the
             # guard for DebridPulse-owned jobs.
             "no-proxy": "",
             # Force CONNECT for ordinary HTTP too. HTTPS tunnels regardless, but
-            # setting this explicitly gives both schemes the same guarded target
+            # setting this explicitly gives every guarded scheme the same target
             # resolution boundary and keeps TLS end-to-end inside the tunnel.
             "proxy-method": "tunnel",
         }
+        # aria2 resolves a per-protocol proxy preference ahead of --all-proxy, so
+        # a shared daemon carrying its own --http-proxy/--https-proxy/--ftp-proxy
+        # would route that protocol around the guard.  Every per-protocol
+        # preference aria2 recognises is therefore pinned to the guard per job.
+        # SFTP has no per-protocol preference and resolves through --all-proxy.
+        for protocol in _PER_PROTOCOL_PROXY_PREFERENCES:
+            options[f"{protocol}-proxy"] = proxy
+            options[f"{protocol}-proxy-user"] = "debridpulse"
+            options[f"{protocol}-proxy-passwd"] = token
         return options
 
     async def _resolve(self, host: str, port: int) -> list[tuple]:
