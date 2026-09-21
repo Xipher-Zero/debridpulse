@@ -492,6 +492,7 @@ INPUT_CHALLENGE_SCHEMA = (
         request_id TEXT,
         artifact_id INTEGER,
         methods TEXT NOT NULL,
+        facts TEXT NOT NULL DEFAULT '[]',
         created_at REAL NOT NULL,
         updated_at REAL NOT NULL
     )""",
@@ -507,8 +508,11 @@ INPUT_CHALLENGE_SCHEMA = (
 
 _INPUT_CHALLENGE_COLUMNS = {
     "transfer_id", "challenge_id", "generation", "reason", "origin", "integration_id",
-    "operation_id", "request_id", "artifact_id", "methods", "created_at", "updated_at",
+    "operation_id", "request_id", "artifact_id", "methods", "facts", "created_at", "updated_at",
 }
+# Non-secret challenge facts (for example an observed server identity), added
+# in place to challenge tables created before they existed.
+_INPUT_CHALLENGE_FACTS_DEFINITION = "TEXT NOT NULL DEFAULT '[]'"
 
 _RUNTIME_STATE_COLUMNS = {
     "integration_id", "state_key", "schema_version", "payload", "observed_at", "stale_after",
@@ -1036,6 +1040,7 @@ async def _init_db_sqlite():
         """)
         await db.execute(RUNTIME_STATE_SCHEMA[0])
         await db.execute(INPUT_CHALLENGE_SCHEMA[0])
+        await _ensure_column(db, "transfer_input_challenges", "facts", _INPUT_CHALLENGE_FACTS_DEFINITION)
         for statement in TRANSFER_REPOSITORY_SCHEMA:
             await db.execute(statement)
         for col, defn in _SCHEMA_COLUMNS_TORRENTS:

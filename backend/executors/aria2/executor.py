@@ -12,23 +12,40 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+import re
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
 
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
-from services.downloader_egress_guard import downloader_egress_guard
+from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import (
     SAMPLED_FINGERPRINT_SCHEMES, DestinationLookupError,
     sampled_public_artifact_fingerprint, validate_resolved_public_destination,
 )
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
-from transfers.input_required import SubmittedInput, auth_required, username_password
+from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
 from transfers.models import (
     ArtifactFingerprint, CancellationInitiator, Capability, ExecutionHandle, ExecutionObservation,
-    ExecutionRequest, ExecutionState, ExecutionSnapshot, HealthObservation, InputField, InputMethod,
-    InputRequirement, IntegrationDescriptor, OutcomeKind, TransferOutcome,
+    ExecutionRequest, ExecutionState, ExecutionSnapshot, HealthObservation, InputFactName, InputField, InputMethod,
+    InputReason, InputRequirement, IntegrationDescriptor, OutcomeKind, TransferOutcome,
 )
+
+
+# Native input evidence, each characterized against the packaged aria2 1.37.0 /
+# libssh2 1.11.1. A native code alone is never authentication evidence; only the
+# exact deterministic diagnostic on the matching transport is.
+_FTP_LOGIN_REJECTED = "The response status is not successful. status=530"
+_SSH_PASSWORD_REJECTED = "SSH authentication failure: Authentication failed (username/password)"
+_SSH_HOST_KEY_MISMATCH = re.compile(r"Unexpected SSH host key: expected ([0-9a-f]{40}), actual ([0-9a-f]{40})")
+_SSH_HOST_KEY_OPTION = re.compile(r"sha-1=([0-9a-f]{40})")
+# The expected SHA-1 of a first SFTP attempt. It is never a trusted identity:
+# the SSH handshake observes the real server key, then fails on it before any
+# authentication, so an SFTP job never runs without host-key verification.
+_HOST_KEY_SENTINEL = "0" * 40
+# aria2's own anonymous defaults, pinned per job so a shared daemon's global FTP
+# credentials are never inherited by an owned job.
+_ANONYMOUS_LOGIN = {"ftp-user": "anonymous", "ftp-passwd": "ARIA2USER@"}
 
 
 @dataclass(frozen=True)
@@ -139,18 +156,47 @@ class Aria2Executor:
         )
         return ArtifactFingerprint(*result) if result else None
 
+    def _endpoint(self, candidate):
+        return next((item for item in candidate.endpoints if item.scheme in self.descriptor.schemes), None)
+
     def input_requirement(self, candidate, observed: ExecutionObservation) -> InputRequirement | None:
-        accepted = {str(item) for item in candidate.context.get("accepted_input_methods", ())}
-        # aria2 code 24 remains the generic candidate-expiry signal for
-        # non-auth-capable candidates. Only a candidate that explicitly
-        # advertises transient username/password input interprets that same
-        # definitive native signal as an authentication challenge.
-        if (InputMethod.USERNAME_PASSWORD.value in accepted
-                and observed.state == ExecutionState.FAILED
-                and observed.error is not None
-                and observed.error.native_code == "24"):
-            return auth_required(username_password())
+        # Only a candidate that explicitly advertises transient username/
+        # password input interprets definitive native evidence as a challenge.
+        endpoint = self._endpoint(candidate)
+        if (endpoint is None or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods
+                or observed.state != ExecutionState.FAILED or observed.error is None):
+            return None
+        code, diagnostic = observed.error.native_code, observed.error.diagnostic
+        if endpoint.scheme in {"http", "https"}:
+            # aria2 code 24 remains the generic candidate-expiry signal for
+            # candidates that accept no input.
+            return auth_required(username_password()) if code == "24" else None
+        if endpoint.scheme == "ftp":
+            return auth_required(username_password()) if code == "21" and diagnostic == _FTP_LOGIN_REJECTED else None
+        if endpoint.scheme == "sftp" and code == "1":
+            if diagnostic == _SSH_PASSWORD_REJECTED:
+                return auth_required(username_password())
+            mismatch = _SSH_HOST_KEY_MISMATCH.fullmatch(diagnostic)
+            # Only the fail-closed probe asks the operator. A mismatch against
+            # an already-confirmed key is a changed identity and stays a failure.
+            if mismatch and mismatch.group(1) == _HOST_KEY_SENTINEL and mismatch.group(2) != _HOST_KEY_SENTINEL:
+                host = str(urlsplit(endpoint.address).hostname or "").rstrip(".").casefold()
+                if host:
+                    return server_identity_required(username_password(), host=host, algorithm="sha-1",
+                                                    fingerprint=mismatch.group(2))
         return None
+
+    async def _confirmed_host_identity(self, gid: str) -> str:
+        """Recover the host key the operator already confirmed for this owned job.
+
+        Only the non-secret ``ssh-host-key-md`` is read; the client discards the
+        rest of the native option map. Anything but a confirmed SHA-1 fails
+        closed -- a credential retry never runs without host verification.
+        """
+        match = _SSH_HOST_KEY_OPTION.fullmatch(await self.client.get_option(gid, "ssh-host-key-md"))
+        if match is None or match.group(1) == _HOST_KEY_SENTINEL:
+            raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.QUEUE, domain=Domain.SECURITY)
+        return match.group(1)
 
     def _remote_target(self, target: Path) -> str:
         if not self.configuration.remote_root:
@@ -159,8 +205,8 @@ class Aria2Executor:
         return str(PurePosixPath(self.configuration.remote_root) / PurePosixPath(relative.as_posix()))
 
     async def _options(self, request: ExecutionRequest, handle: ExecutionHandle,
-                       submitted: SubmittedInput | None = None) -> tuple[str, dict]:
-        endpoint = next((item for item in request.candidate.endpoints if item.scheme in self.descriptor.schemes), None)
+                       submitted: SubmittedInput | None = None, *, host_identity: str | None = None) -> tuple[str, dict]:
+        endpoint = self._endpoint(request.candidate)
         if endpoint is None or urlsplit(endpoint.address).scheme != endpoint.scheme:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE)
         try:
@@ -172,7 +218,10 @@ class Aria2Executor:
             raise self._failure(Category.DESTINATION_BLOCKED, domain=Domain.SECURITY) from exc
         try:
             await self.egress.ensure_started()
-            guarded = self.egress.job_options(address, external=self.configuration.external)
+            # One passive FTP job also opens a server-selected data connection
+            # to the same host; every other transport is one exact endpoint.
+            scope = RouteScope.SAME_HOST if endpoint.scheme == "ftp" else RouteScope.ENDPOINT
+            guarded = self.egress.job_options(address, external=self.configuration.external, scope=scope)
         except Exception as exc:
             raise self._failure(Category.EGRESS_POLICY_VIOLATION, domain=Domain.SECURITY) from exc
         target = self._target(request.target)
@@ -190,6 +239,19 @@ class Aria2Executor:
             "continue": "true" if cfg.continue_downloads else "false",
             "pause": "true" if request.paused else "false", **guarded,
         }
+        if endpoint.scheme in {"ftp", "sftp"}:
+            # An owned job never donates its authenticated session to aria2's
+            # pool, so every later job authenticates freshly.
+            options["ftp-reuse-connection"] = "false"
+            options.update(_ANONYMOUS_LOGIN)
+        if endpoint.scheme == "ftp":
+            # Passive mode is the guarded FTP transport (an active data channel
+            # cannot cross the egress guard) and binary keeps artifact bytes
+            # exact; pinned so a daemon's global FTP defaults never apply.
+            options["ftp-pasv"] = "true"
+            options["ftp-type"] = "binary"
+        if endpoint.scheme == "sftp":
+            options["ssh-host-key-md"] = f"sha-1={host_identity or _HOST_KEY_SENTINEL}"
         if submitted is not None:
             if submitted.method != InputMethod.USERNAME_PASSWORD:
                 raise self._failure(Category.INVALID_REQUEST, Stage.QUEUE, domain=Domain.REQUEST)
@@ -197,12 +259,16 @@ class Aria2Executor:
             password = submitted.value(InputField.PASSWORD)
             if not username or not password:
                 raise self._failure(Category.INVALID_REQUEST, Stage.QUEUE, domain=Domain.REQUEST)
-            # Input exists only because a real HTTP authorization challenge was
-            # already observed. Send the submitted correction directly so an
-            # aria2 challenge cache cannot replay a superseded credential.
-            options["http-auth-challenge"] = "false"
-            options["http-user"] = username
-            options["http-passwd"] = password
+            if endpoint.scheme in {"http", "https"}:
+                # Input exists only because a real HTTP authorization challenge
+                # was already observed. Send the submitted correction directly so
+                # an aria2 challenge cache cannot replay a superseded credential.
+                options["http-auth-challenge"] = "false"
+                options["http-user"] = username
+                options["http-passwd"] = password
+            else:
+                options["ftp-user"] = username
+                options["ftp-passwd"] = password
         headers = []
         for key, value in endpoint.headers.items():
             if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
@@ -247,18 +313,27 @@ class Aria2Executor:
         try:
             gid = await self._check(handle, "resume")
             before = await self.observe(handle)
-            accepted = {str(item) for item in request.candidate.context.get("accepted_input_methods", ())}
-            if (InputMethod.USERNAME_PASSWORD.value not in accepted
-                    or before.state != ExecutionState.FAILED or before.error is None
-                    or before.error.native_code != "24"):
+            # Input continues only the challenge the live owned job still proves.
+            requirement = self.input_requirement(request.candidate, before)
+            if requirement is None or submitted.method not in {item.method for item in requirement.methods}:
                 raise self._failure(Category.RESOURCE_STATE_CONFLICT, domain=Domain.LIFECYCLE)
+            host_identity = None
+            if requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED:
+                # Acceptance holds only for exactly the identity the operator saw,
+                # and that must still be the identity the live job observed.
+                if set(submitted.facts) != set(requirement.facts):
+                    raise self._failure(Category.RESOURCE_STATE_CONFLICT, domain=Domain.LIFECYCLE)
+                host_identity = next(fact.value for fact in requirement.facts
+                                     if fact.name == InputFactName.SERVER_IDENTITY_FINGERPRINT)
+            elif self._endpoint(request.candidate).scheme == "sftp":
+                host_identity = await self._confirmed_host_identity(gid)
             await self._check(handle, "resume")
             try:
                 await self.client._call("aria2.removeDownloadResult", [gid])
             except Exception as exc:
                 if not is_missing(exc, gid):
                     raise
-            address, options = await self._options(request, handle, submitted)
+            address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             await self._check(handle, "resume")
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:

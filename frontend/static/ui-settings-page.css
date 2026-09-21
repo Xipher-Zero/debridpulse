@@ -868,10 +868,38 @@
 /* Roadmap Item 10: Sources & Providers. */
 #view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
 #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
-#view-settings .dp-settings-provider-minimal-copy { margin-bottom:0; }
+
+/* Direct Sources: every source is one compact header-only card -- title left,
+   explanation true-centered on the card, Enable right. Equal outer columns keep
+   the copy centered whatever the title and control widths. */
+#view-settings .dp-settings-direct-source-card > .card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  border-bottom-color: transparent;
+}
+#view-settings .dp-settings-direct-source-card > .card-header > .card-title { justify-self: start; }
+#view-settings .dp-settings-direct-source-card > .card-header > .dp-settings-integration-header-enable { justify-self: end; }
+#view-settings .dp-settings-provider-header-copy {
+  min-width: 0;
+  margin: 0;
+  justify-self: center;
+  text-align: center;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
 @media (max-width:700px) {
   #view-settings .dp-settings-provider-card > .card-header { gap:10px; }
   #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
+  /* Narrow: the copy wraps beneath title + Enable, still inside the header. */
+  #view-settings .dp-settings-direct-source-card > .card-header { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  #view-settings .dp-settings-direct-source-card > .card-header > .card-title { grid-column: 1; grid-row: 1; }
+  #view-settings .dp-settings-direct-source-card > .card-header > .dp-settings-integration-header-enable { grid-column: 2; grid-row: 1; }
+  #view-settings .dp-settings-direct-source-card .dp-settings-provider-header-copy {
+    grid-column: 1 / -1; grid-row: 2; justify-self: start; text-align: left;
+  }
 }
 
 /* Settings: tabs and action footer remain visible; only the body scrolls.

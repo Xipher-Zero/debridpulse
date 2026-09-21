@@ -278,7 +278,7 @@ def test_no_eligible_provider_returns_canonical_nonretryable_unsupported_route()
 
 
 def test_malformed_url_is_rejected_before_unsupported_route_selection():
-    with pytest.raises(ValueError, match="absolute HTTP or HTTPS URL"):
+    with pytest.raises(ValueError, match="absolute HTTP, HTTPS, FTP or SFTP URL"):
         normalize_direct_links(["not-a-url"])
 
 

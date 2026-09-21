@@ -21,12 +21,15 @@ def test_http_credentials_are_execution_local_and_saved_netrc_discovery_is_disab
     provider = (ROOT / "backend/providers/general_http/provider.py").read_text()
     executor = (ROOT / "backend/executors/aria2/executor.py").read_text()
 
-    assert '"accepted_input_methods": ("username_password",)' in provider
+    # 1.0.13: the accepted-input capability is the typed candidate field, not
+    # an opaque context entry.
+    assert 'accepted_input_methods=(InputMethod.USERNAME_PASSWORD,)' in provider
+    assert '"accepted_input_methods"' not in provider
     assert '"no-netrc": "true"' in executor
     assert '"http-auth-challenge": "true"' in executor
     assert '"http-user": "", "http-passwd": ""' in executor
-    assert 'observed.error.native_code == "24"' in executor
-    assert 'InputMethod.USERNAME_PASSWORD.value in accepted' in executor
+    assert 'return auth_required(username_password()) if code == "24" else None' in executor
+    assert 'InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods' in executor
 
 
 def test_item10_exposes_general_http_provider_ui_without_transport_tuning():

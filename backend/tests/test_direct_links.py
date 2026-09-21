@@ -59,8 +59,33 @@ class DirectLinkInputTests(unittest.TestCase):
         )
 
     def test_rejects_non_http_input(self):
-        with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP or HTTPS URL"):
+        with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL"):
             normalize_direct_links(["magnet:?xt=urn:btih:abc"])
+
+    def test_accepts_a_mixed_four_transport_batch(self):
+        links = ["https://a.invalid/1", "http://a.invalid/2", "ftp://a.invalid/3", "sftp://a.invalid/4", "ftp://a.invalid/3"]
+        self.assertEqual(normalize_direct_links(links), links[:4])
+
+    def test_rejects_other_schemes_and_authorityless_urls(self):
+        for link in ("ftps://a.invalid/f", "scp://a.invalid/f", "file:///etc/passwd", "webdav://a.invalid/f", "ftp:///f", "sftp://"):
+            with self.subTest(link=link):
+                with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL"):
+                    normalize_direct_links([link])
+
+    def test_rejects_embedded_userinfo_for_every_transport(self):
+        for link in ("ftp://u:p@a.invalid/f", "sftp://u@a.invalid/f", "https://u:p@a.invalid/f", "http://:p@a.invalid/f"):
+            with self.subTest(link=link):
+                with self.assertRaisesRegex(ValueError, "Credentials embedded in URLs are not supported"):
+                    normalize_direct_links([link])
+
+    def test_empty_submission_names_every_accepted_transport(self):
+        with self.assertRaisesRegex(ValueError, "At least one HTTP, HTTPS, FTP or SFTP link is required"):
+            normalize_direct_links(["", "  "])
+
+    def test_ftp_and_sftp_links_derive_safe_filenames_through_the_same_owner(self):
+        self.assertEqual(direct_link_filename("ftp://a.invalid/pub/My%20File.iso"), "My File.iso")
+        self.assertEqual(direct_link_filename("sftp://a.invalid:2222/data/archive.tar.gz"), "archive.tar.gz")
+        self.assertEqual(direct_link_filename("ftp://a.invalid/"), "a.invalid")
 
     def test_caps_each_batch_at_one_hundred_links(self):
         with self.assertRaisesRegex(ValueError, "maximum of 100"):

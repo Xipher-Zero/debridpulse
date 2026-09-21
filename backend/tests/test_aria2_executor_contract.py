@@ -88,7 +88,7 @@ def execution(tmp_path, monkeypatch):
     async def authorize(handle, action):
         return grants.get(handle.attempt_id) == handle
 
-    egress = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external: {"all-proxy": "http://guard:8888"})
+    egress = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external, scope=None: {"all-proxy": "http://guard:8888"})
     executor = Aria2Executor(daemon, Aria2Configuration(
         str(tmp_path), confirmation_delay=0, control_confirmation_timeout=0.02,
     ), authorize, egress=egress)

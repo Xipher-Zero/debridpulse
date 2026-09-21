@@ -51,8 +51,13 @@ def extract_hash(magnet: str) -> Optional[str]:
 
 
 
+# The direct-source transports one link submission may carry. The request kind
+# is the URL scheme; provider applicability decides who resolves it.
+DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp"})
+
+
 def normalize_direct_links(values: List[str]) -> List[str]:
-    """Validate and de-duplicate ordinary HTTP(S) links without fetching them."""
+    """Validate and de-duplicate direct-source links without fetching them."""
     normalized: List[str] = []
     seen: Set[str] = set()
     for raw in values or []:
@@ -60,15 +65,21 @@ def normalize_direct_links(values: List[str]) -> List[str]:
         if not value:
             continue
         parsed = urlparse(value)
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("Every link must be an absolute HTTP or HTTPS URL")
+        try:
+            malformed_port = parsed.port == 0  # urlparse raises on a non-numeric or out-of-range port
+        except ValueError:
+            malformed_port = True
+        if malformed_port:
+            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL")
+        if parsed.scheme.lower() not in DIRECT_LINK_SCHEMES or not parsed.hostname:
+            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL")
         if parsed.username is not None or parsed.password is not None:
             raise ValueError("Credentials embedded in URLs are not supported")
         if value not in seen:
             normalized.append(value)
             seen.add(value)
     if not normalized:
-        raise ValueError("At least one HTTP or HTTPS link is required")
+        raise ValueError("At least one HTTP, HTTPS, FTP or SFTP link is required")
     if len(normalized) > MAX_DIRECT_LINKS_PER_BATCH:
         raise ValueError(
             f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once"

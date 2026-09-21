@@ -790,3 +790,187 @@ async def test_operator_reopen_after_settlement_does_not_resurrect_prior_generat
         "username": "provider-user-sentinel", "password": "provider-password-sentinel"})
     await engine.tick()
     assert (await repository.get(transfer.id)).state == TransferState.TRANSFERRING
+
+
+# --------------------------------------------------------------------------- #
+# 1.0.13: neutral SERVER_IDENTITY_REQUIRED reason with durable non-secret facts.
+# One challenge carries the identity facts AND the credential method; facts are
+# durable, public and generation-fenced; values stay transient.
+# --------------------------------------------------------------------------- #
+
+from transfers.input_required import public_challenge, server_identity_required  # noqa: E402
+from transfers.models import ExecutionObservation, ExecutionState, InputFact, InputFactName, InputRequirement  # noqa: E402
+
+IDENTITY_FACTS = (
+    InputFact(InputFactName.SERVER_HOST, "server.neutral.example"),
+    InputFact(InputFactName.SERVER_IDENTITY_ALGORITHM, "sha-1"),
+    InputFact(InputFactName.SERVER_IDENTITY_FINGERPRINT, "ab" * 20),
+)
+
+
+class IdentityExecutor(MemoryExecutor):
+    """Neutral executor whose first start reports a server-identity requirement."""
+
+    def __init__(self, authorize):
+        super().__init__(authorize)
+        self.descriptor = IntegrationDescriptor("identity-copy", "Identity copy",
+                                                frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
+                                                schemes=frozenset({"keymem"}))
+        self.start_errors = [NormalizedError(Domain.EXECUTOR, Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION,
+                                             native_code="neutral-identity")]
+        self.continued = []
+
+    def input_requirement(self, candidate, observation):
+        if observation.state == ExecutionState.FAILED and observation.error and observation.error.native_code == "neutral-identity":
+            return server_identity_required(username_password(), host="server.neutral.example",
+                                            algorithm="sha-1", fingerprint="ab" * 20)
+        return None
+
+    async def start_with_input(self, request, handle, submitted):
+        self.continued.append((submitted.method, dict((fact.name, fact.value) for fact in submitted.facts),
+                               submitted.value(InputField.USERNAME), submitted.secret_values()))
+        result = ExecutionObservation(handle, ExecutionState.TRANSFERRING)
+        self.jobs[handle.attempt_id] = result
+        return result
+
+
+def test_server_identity_requirement_is_a_neutral_reason_with_exact_facts():
+    requirement = server_identity_required(username_password(), host="server.neutral.example",
+                                           algorithm="sha-1", fingerprint="ab" * 20)
+    assert requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED
+    assert requirement.reason.value == "server_identity_required"
+    assert requirement.facts == IDENTITY_FACTS
+    assert set(InputReason) == {InputReason.AUTH_REQUIRED, InputReason.SERVER_IDENTITY_REQUIRED}
+    assert not any("sftp" in item.value or "ssh" in item.value or "ftp" in item.value for item in InputReason)
+    assert not any("sftp" in item.value or "ssh" in item.value for item in InputFactName)
+
+
+@pytest.mark.parametrize("facts", [
+    (),
+    IDENTITY_FACTS[:2],
+    IDENTITY_FACTS + (IDENTITY_FACTS[0],),
+])
+def test_server_identity_requirement_rejects_missing_or_duplicate_facts(facts):
+    with pytest.raises(ValueError):
+        InputRequirement(InputReason.SERVER_IDENTITY_REQUIRED, (username_password(),), facts)
+
+
+def test_auth_requirement_carries_no_facts_and_facts_are_bounded_text():
+    with pytest.raises(ValueError):
+        InputRequirement(InputReason.AUTH_REQUIRED, (username_password(),), IDENTITY_FACTS)
+    for bad in ("", "x" * 1025, "line\nbreak", "nul\x00"):
+        with pytest.raises(ValueError):
+            InputFact(InputFactName.SERVER_HOST, bad)
+    with pytest.raises((TypeError, ValueError)):
+        InputFact("server_host", "server.neutral.example")
+
+
+def test_submitted_input_exposes_challenge_facts_without_treating_them_as_secrets():
+    requirement = server_identity_required(username_password(), host="server.neutral.example",
+                                           algorithm="sha-1", fingerprint="ab" * 20)
+    challenge = InputChallenge("challenge", 7, 3, requirement.reason, InputOrigin.EXECUTOR, "neutral", "operation",
+                               requirement.methods, facts=requirement.facts)
+    submitted = validate_submission(challenge, "username_password", {"username": "user", "password": "secret"})
+    assert submitted.facts == IDENTITY_FACTS
+    assert submitted.secret_values() == ("user", "secret")
+    assert "ab" * 20 not in submitted.secret_values()
+    with pytest.raises(TypeError):
+        codec.dump(submitted)
+    submitted.discard()
+    assert submitted.facts == IDENTITY_FACTS and submitted.secret_values() == ()
+
+
+@pytest.mark.asyncio
+async def test_canonical_schema_owns_one_nonsecret_facts_column(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "facts.sqlite3")
+    await database.init_db()
+    async with database.get_db() as db:
+        tables = [row["name"] for row in await db.fetchall("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%challenge%'")]
+        columns = {row["name"] for row in await db.fetchall("PRAGMA table_info(transfer_input_challenges)")}
+    assert tables == ["transfer_input_challenges"]
+    assert "facts" in columns and "facts" in database._INPUT_CHALLENGE_COLUMNS
+
+
+@pytest.mark.asyncio
+async def test_pre_facts_challenge_table_is_migrated_in_place(tmp_path, monkeypatch):
+    import aiosqlite
+
+    path = tmp_path / "legacy.sqlite3"
+    async with aiosqlite.connect(path) as legacy:
+        await legacy.execute("""CREATE TABLE transfer_input_challenges (
+            transfer_id INTEGER PRIMARY KEY, challenge_id TEXT NOT NULL UNIQUE,
+            generation INTEGER NOT NULL CHECK(generation > 0), reason TEXT NOT NULL, origin TEXT NOT NULL,
+            integration_id TEXT NOT NULL, operation_id TEXT NOT NULL, request_id TEXT, artifact_id INTEGER,
+            methods TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL)""")
+        await legacy.commit()
+    monkeypatch.setattr(database, "DB_PATH", path)
+    await database.init_db()
+    async with database.get_db() as db:
+        columns = {row["name"] for row in await db.fetchall("PRAGMA table_info(transfer_input_challenges)")}
+    assert "facts" in columns
+
+
+@pytest.mark.asyncio
+async def test_server_identity_challenge_is_durable_public_fenced_and_continues_with_facts(base):
+    repository, registry, engine, _ = base
+    registry.register_provider(StaticProvider())
+    executor = IdentityExecutor(repository.authorize_execution)
+    registry.register_executor(executor)
+    transfer = await engine.submit((TransferRequest("key-parcel", "opaque-source"),))
+    for _ in range(3):
+        await engine.tick()
+    challenge = await engine.challenges.current(transfer.id)
+    assert challenge.reason == InputReason.SERVER_IDENTITY_REQUIRED
+    assert challenge.origin == InputOrigin.EXECUTOR
+    assert challenge.facts == IDENTITY_FACTS
+    assert (await repository.get(transfer.id)).state == TransferState.INPUT_REQUIRED
+
+    public = public_challenge(challenge)
+    assert public["reason"] == "server_identity_required"
+    assert public["facts"] == [
+        {"name": "server_host", "value": "server.neutral.example"},
+        {"name": "server_identity_algorithm", "value": "sha-1"},
+        {"name": "server_identity_fingerprint", "value": "ab" * 20},
+    ]
+    detail = await repository.presentation(transfer.id, details=True)
+    assert detail["input_required"]["facts"] == public["facts"]
+
+    # Facts survive restart while pending.
+    restarted = TransferEngine(TransferRepository(), registry, download_root=engine.root, policy=engine.policy, clock=engine.clock)
+    await restarted.initialize()
+    restored = await restarted.challenges.current(transfer.id)
+    assert restored.facts == IDENTITY_FACTS and restored.id == challenge.id
+
+    # A stale challenge identity is still rejected.
+    with pytest.raises(ValueError):
+        await engine.submit_input(transfer.id, "stale-" + challenge.id, "username_password",
+                                  {"username": "identity-user-sentinel", "password": "identity-password-sentinel"})
+    await engine.submit_input(transfer.id, restored.id, "username_password",
+                              {"username": "identity-user-sentinel", "password": "identity-password-sentinel"})
+    encoded = await db_text()
+    assert "identity-user-sentinel" not in encoded and "identity-password-sentinel" not in encoded
+    await engine.tick()
+    assert executor.continued and executor.continued[0][0] == InputMethod.USERNAME_PASSWORD
+    assert executor.continued[0][1] == {fact.name: fact.value for fact in IDENTITY_FACTS}
+    assert executor.continued[0][2] == "identity-user-sentinel"
+    assert "ab" * 20 not in executor.continued[0][3]
+    async with database.get_db() as db:
+        events = await db.fetchall("SELECT detail FROM application_events WHERE transfer_id=? AND kind='input_required'", (transfer.id,))
+        messages = await db.fetchall("SELECT message FROM events WHERE torrent_id=?", (transfer.id,))
+    assert [row["detail"] for row in events] == ["server_identity_required"]
+    assert any("server identity" in row["message"].lower() for row in messages)
+
+
+@pytest.mark.asyncio
+async def test_replacement_generation_rewrites_facts_and_reason_together(base):
+    repository, registry, engine, _ = base
+    registry.register_provider(StaticProvider())
+    registry.register_executor(IdentityExecutor(repository.authorize_execution))
+    transfer = await engine.submit((TransferRequest("key-parcel", "opaque-source"),))
+    for _ in range(3):
+        await engine.tick()
+    first = await engine.challenges.current(transfer.id)
+    replaced = await engine.challenges.replace(first, auth_required(username_password()))
+    assert replaced.generation == first.generation + 1 and replaced.facts == ()
+    current = await engine.challenges.current(transfer.id)
+    assert current.reason == InputReason.AUTH_REQUIRED and current.facts == ()

@@ -1,7 +1,9 @@
-/* DebridPulse v1.0.12 generic AUTH_REQUIRED browser interaction.
+/* DebridPulse generic INPUT_REQUIRED browser interaction.
  *
  * Challenge metadata is the only authentication-policy input. This runtime
  * contains no protocol, provider, executor, URL-scheme, or native-error logic.
+ * A server-identity challenge is the same challenge with non-secret facts to
+ * compare; submitting it accepts that identity for this execution only.
  * Authentication values remain in this modal session only and are discarded
  * when the challenge resolves, is cancelled, or the page reloads.
  */
@@ -10,6 +12,10 @@
 
   const STATUS_INPUT_REQUIRED = 'input_required';
   const REASON_AUTH_REQUIRED = 'auth_required';
+  const REASON_SERVER_IDENTITY = 'server_identity_required';
+  const FACT_SERVER = 'server_host';
+  const FACT_ALGORITHM = 'server_identity_algorithm';
+  const FACT_FINGERPRINT = 'server_identity_fingerprint';
   const METHOD_PASSWORD = 'username_password';
   const METHOD_PRIVATE_KEY = 'username_private_key';
   const SCAN_INTERVAL_MS = 3000;
@@ -39,12 +45,29 @@
     return window.api(method, path, body, timeout);
   }
 
+  function challengeFact(challenge, name) {
+    const facts = Array.isArray(challenge && challenge.facts) ? challenge.facts : [];
+    const fact = facts.find(item => item && item.name === name);
+    return fact ? text(fact.value).trim() : '';
+  }
+
+  function identityChallenge(challenge) {
+    return lower(challenge && challenge.reason) === REASON_SERVER_IDENTITY;
+  }
+
+  function presentable(challenge) {
+    const reason = lower(challenge && challenge.reason);
+    if (reason === REASON_AUTH_REQUIRED) return true;
+    return reason === REASON_SERVER_IDENTITY
+      && [FACT_SERVER, FACT_ALGORITHM, FACT_FINGERPRINT].every(name => challengeFact(challenge, name));
+  }
+
   function isAuthTransfer(item) {
     const challenge = item && item.input_required;
     return !!item
       && lower(item.status) === STATUS_INPUT_REQUIRED
       && challenge
-      && lower(challenge.reason) === REASON_AUTH_REQUIRED
+      && presentable(challenge)
       && text(challenge.id).trim();
   }
 
@@ -119,7 +142,10 @@
     if (dialog) dialog.setAttribute('aria-busy', state.busy || state.cancelling ? 'true' : 'false');
     const continueButton = state.overlay.querySelector('[data-dp-auth-continue]');
     if (continueButton) {
-      continueButton.textContent = state.busy ? 'Authenticating…' : 'Continue';
+      const identity = !!(state.active && identityChallenge(state.active.challenge));
+      continueButton.textContent = state.busy
+        ? (identity ? 'Verifying…' : 'Authenticating…')
+        : (identity ? 'Verify & Continue' : 'Continue');
     }
   }
 
@@ -154,6 +180,7 @@
       ? fieldRequired(active.challenge, METHOD_PASSWORD, 'password')
       : fieldRequired(active.challenge, METHOD_PRIVATE_KEY, 'passphrase');
     const showKey = allowed.key;
+    const identity = identityChallenge(active.challenge);
 
     if (!state.overlay) {
       state.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -173,11 +200,18 @@
                data-dp-auth-transfer-id="${active.transferId}"
                role="dialog" aria-modal="true"
                aria-labelledby="dp-auth-required-title"
-               aria-describedby="dp-auth-required-error">
+               aria-describedby="${identity ? 'dp-auth-required-identity-note ' : ''}dp-auth-required-error">
         <header class="dp-modal-header dp-auth-required-header">
-          <div class="dp-modal-title" id="dp-auth-required-title">Authentication Required</div>
+          <div class="dp-modal-title" id="dp-auth-required-title">${identity ? 'Verify Server Identity' : 'Authentication Required'}</div>
         </header>
         <div class="dp-modal-body dp-auth-required-body">
+          ${identity ? `
+            <div class="dp-auth-required-identity" data-dp-identity>
+              <div class="dp-auth-required-identity-server" data-dp-identity-host></div>
+              <div class="form-label" data-dp-identity-algorithm></div>
+              <code class="dp-auth-required-fingerprint" data-dp-identity-fingerprint></code>
+              <p class="dp-auth-required-identity-note" id="dp-auth-required-identity-note">Compare this fingerprint with the server's expected identity before continuing.</p>
+            </div>` : ''}
           <label class="dp-auth-required-field">
             <span class="form-label">Username</span>
             <input class="input" type="text" autocomplete="off" spellcheck="false"
@@ -200,7 +234,7 @@
                     aria-pressed="${active.keySelected ? 'true' : 'false'}">
               ${selectedKeyLabel(active)}
             </button>` : ''}
-          <button class="btn btn-primary" type="button" data-dp-auth-continue>Continue</button>
+          <button class="btn btn-primary" type="button" data-dp-auth-continue>${identity ? 'Verify &amp; Continue' : 'Continue'}</button>
         </footer>
         ${showKey ? '<input type="file" data-dp-auth-key-input hidden>' : ''}
       </section>`;
@@ -209,6 +243,13 @@
     const secret = overlay.querySelector('[data-dp-auth-secret]');
     if (username) username.value = active.username || '';
     if (secret) secret.value = secretValue || '';
+    if (identity) {
+      // Challenge facts are server-supplied text: assigned, never parsed as markup.
+      overlay.querySelector('[data-dp-identity-host]').textContent = challengeFact(active.challenge, FACT_SERVER);
+      overlay.querySelector('[data-dp-identity-algorithm]').textContent =
+        `${challengeFact(active.challenge, FACT_ALGORITHM).toUpperCase()} fingerprint`;
+      overlay.querySelector('[data-dp-identity-fingerprint]').textContent = challengeFact(active.challenge, FACT_FINGERPRINT);
+    }
 
     overlay.onclick = event => {
       if (event.target === overlay && !state.busy && !state.cancelling) {

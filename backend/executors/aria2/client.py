@@ -240,6 +240,19 @@ class Aria2Service:
                 downloads.append(self._normalize(raw))
         return downloads
 
+    async def get_option(self, gid: str, name: str) -> str:
+        """Return one named option of one job.
+
+        aria2's full option map can carry plaintext credentials; it is cleared
+        before returning and never logged, cached or returned.
+        """
+        options = await self._call("aria2.getOption", [gid])
+        try:
+            return str(options.get(name) or "") if isinstance(options, dict) else ""
+        finally:
+            if isinstance(options, dict):
+                options.clear()
+
     async def tell_status(self, gid: str) -> Aria2DownloadStatus:
         result = await self._call("aria2.tellStatus", [gid, self._keys()])
         return self._normalize(result)

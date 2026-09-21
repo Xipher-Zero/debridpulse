@@ -34,6 +34,9 @@ class Capability(StrEnum):
 
 class InputReason(StrEnum):
     AUTH_REQUIRED = "auth_required"
+    # The operator must confirm an observed server identity before the
+    # execution may continue. A security interaction, not a protocol.
+    SERVER_IDENTITY_REQUIRED = "server_identity_required"
 
 
 class InputOrigin(StrEnum):
@@ -78,16 +81,51 @@ class InputMethodDescriptor:
             raise ValueError("Authentication method fields do not match the canonical contract")
 
 
+class InputFactName(StrEnum):
+    SERVER_HOST = "server_host"
+    SERVER_IDENTITY_ALGORITHM = "server_identity_algorithm"
+    SERVER_IDENTITY_FINGERPRINT = "server_identity_fingerprint"
+
+
+@dataclass(frozen=True)
+class InputFact:
+    """One durable, public, non-secret fact the operator needs to decide."""
+    name: InputFactName
+    value: str
+
+    def __post_init__(self):
+        if not isinstance(self.name, InputFactName):
+            raise TypeError("Input fact names must be canonical")
+        if (not isinstance(self.value, str) or not self.value or len(self.value) > 1024
+                or any(ord(char) < 32 or ord(char) == 127 for char in self.value)):
+            raise ValueError("Input fact values must be bounded printable text")
+
+
+# Exactly the facts each neutral reason carries.
+_REASON_FACTS = {
+    InputReason.AUTH_REQUIRED: frozenset(),
+    InputReason.SERVER_IDENTITY_REQUIRED: frozenset({
+        InputFactName.SERVER_HOST,
+        InputFactName.SERVER_IDENTITY_ALGORITHM,
+        InputFactName.SERVER_IDENTITY_FINGERPRINT,
+    }),
+}
+
+
 @dataclass(frozen=True)
 class InputRequirement:
     reason: InputReason
     methods: tuple[InputMethodDescriptor, ...]
+    facts: tuple[InputFact, ...] = ()
 
     def __post_init__(self):
-        if self.reason != InputReason.AUTH_REQUIRED:
+        if self.reason not in _REASON_FACTS:
             raise ValueError("Unsupported input-required reason")
         if not self.methods or len({item.method for item in self.methods}) != len(self.methods):
             raise ValueError("Authentication challenges require unique accepted methods")
+        names = [fact.name for fact in self.facts]
+        if len(set(names)) != len(names) or set(names) != _REASON_FACTS[self.reason]:
+            raise ValueError("Input challenge facts do not match the canonical reason contract")
 
 
 @dataclass(frozen=True)
@@ -102,10 +140,11 @@ class InputChallenge:
     methods: tuple[InputMethodDescriptor, ...]
     request_id: str | None = None
     artifact_id: int | None = None
+    facts: tuple[InputFact, ...] = ()
 
     @property
     def requirement(self) -> InputRequirement:
-        return InputRequirement(self.reason, self.methods)
+        return InputRequirement(self.reason, self.methods, self.facts)
 
 
 class ResourceState(StrEnum):
@@ -294,6 +333,15 @@ class TransferCandidate:
     source_identity: SourceIdentity | None = None
     resolver_identity_evidence: ResolverArtifactIdentityEvidence | None = None
     delivery: DeliveryKind = DeliveryKind.DIRECT
+    # Neutral transient-input methods an executor may request for this
+    # candidate. Never carries a secret, an executor identity or a native name.
+    accepted_input_methods: tuple[InputMethod, ...] = ()
+
+    def __post_init__(self):
+        methods = self.accepted_input_methods
+        if (not isinstance(methods, tuple) or any(not isinstance(item, InputMethod) for item in methods)
+                or len(set(methods)) != len(methods)):
+            raise ValueError("Accepted input methods must be unique canonical input methods")
 
 
 @dataclass(frozen=True)

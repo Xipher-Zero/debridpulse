@@ -1,7 +1,9 @@
 """Neutral INPUT_REQUIRED challenge persistence and transient secret delivery.
 
-Only non-secret challenge metadata is durable. Submitted values are process-local,
-bounded, redacted from repr, and structurally rejected by the persistence codec.
+Only non-secret challenge metadata is durable: the reason, the accepted methods
+and any non-secret facts the operator needs to decide (for example an observed
+server identity). Submitted values are process-local, bounded, redacted from
+repr, and structurally rejected by the persistence codec.
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from typing import Mapping
 
 from db.database import get_db
 from transfers.models import (
-    Artifact, InputChallenge, InputField, InputFieldDescriptor, InputMethod,
+    Artifact, InputChallenge, InputFact, InputFactName, InputField, InputFieldDescriptor, InputMethod,
     InputMethodDescriptor, InputOrigin, InputReason, InputRequirement,
     ResolutionAttempt, new_identity,
 )
@@ -43,6 +45,22 @@ def auth_required(*methods: InputMethodDescriptor) -> InputRequirement:
     return InputRequirement(InputReason.AUTH_REQUIRED, tuple(methods))
 
 
+def server_identity_required(*methods: InputMethodDescriptor, host: str, algorithm: str,
+                             fingerprint: str) -> InputRequirement:
+    """One challenge: confirm the observed server identity and supply ``methods``."""
+    return InputRequirement(InputReason.SERVER_IDENTITY_REQUIRED, tuple(methods), (
+        InputFact(InputFactName.SERVER_HOST, host),
+        InputFact(InputFactName.SERVER_IDENTITY_ALGORITHM, algorithm),
+        InputFact(InputFactName.SERVER_IDENTITY_FINGERPRINT, fingerprint),
+    ))
+
+
+_EVENT_MESSAGES = {
+    InputReason.AUTH_REQUIRED: "Transfer requires authentication input",
+    InputReason.SERVER_IDENTITY_REQUIRED: "Transfer requires server identity confirmation",
+}
+
+
 def _methods_payload(methods) -> str:
     return json.dumps([
         {
@@ -61,12 +79,22 @@ def _methods(value: str) -> tuple[InputMethodDescriptor, ...]:
     ) for item in raw)
 
 
+def _facts_payload(facts) -> str:
+    return json.dumps([{"name": fact.name.value, "value": fact.value} for fact in facts],
+                      separators=(",", ":"), sort_keys=True)
+
+
+def _facts(value) -> tuple[InputFact, ...]:
+    return tuple(InputFact(InputFactName(item["name"]), item["value"]) for item in json.loads(value or "[]"))
+
+
 def _challenge(row) -> InputChallenge:
     return InputChallenge(
         id=row["challenge_id"], transfer_id=int(row["transfer_id"]), generation=int(row["generation"]),
         reason=InputReason(row["reason"]), origin=InputOrigin(row["origin"]),
         integration_id=row["integration_id"], operation_id=row["operation_id"],
         methods=_methods(row["methods"]), request_id=row.get("request_id"), artifact_id=row.get("artifact_id"),
+        facts=_facts(row.get("facts")),
     )
 
 
@@ -86,19 +114,26 @@ def public_challenge(value) -> dict | None:
             }
             for item in challenge.methods
         ],
+        "facts": [{"name": fact.name.value, "value": fact.value} for fact in challenge.facts],
     }
 
 
 class SubmittedInput:
-    """Process-local credential bundle. No serialization or public projection exists."""
+    """Process-local credential bundle. No serialization or public projection exists.
 
-    __slots__ = ("challenge_id", "generation", "method", "_values")
+    ``facts`` are the answered challenge's non-secret facts, carried so the
+    continuation acts on exactly what the operator saw; they are not secrets.
+    """
 
-    def __init__(self, challenge_id: str, generation: int, method: InputMethod, values: Mapping[InputField, str]):
+    __slots__ = ("challenge_id", "generation", "method", "_values", "facts")
+
+    def __init__(self, challenge_id: str, generation: int, method: InputMethod, values: Mapping[InputField, str],
+                 facts: tuple[InputFact, ...] = ()):
         self.challenge_id = challenge_id
         self.generation = generation
         self.method = method
         self._values = MappingProxyType(dict(values))
+        self.facts = tuple(facts)
 
     def value(self, field: InputField) -> str | None:
         return self._values.get(field)
@@ -137,7 +172,7 @@ def validate_submission(challenge: InputChallenge, method, values: Mapping[str, 
     for field in descriptor.fields:
         if field.required and not converted.get(field.name):
             raise InputSubmissionRejected("Required authentication input is missing")
-    return SubmittedInput(challenge.id, challenge.generation, selected, converted)
+    return SubmittedInput(challenge.id, challenge.generation, selected, converted, challenge.facts)
 
 
 class EphemeralInputBroker:
@@ -235,19 +270,20 @@ class InputChallengeStore:
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
             identity, generation = await self._next(db, row["transfer_id"])
             challenge = InputChallenge(identity, row["transfer_id"], generation, requirement.reason, InputOrigin.PROVIDER,
-                integration_id, attempt.id, requirement.methods, request_id=attempt.request_id)
+                integration_id, attempt.id, requirement.methods, request_id=attempt.request_id, facts=requirement.facts)
             await db.execute("""INSERT INTO transfer_input_challenges(transfer_id,challenge_id,generation,reason,origin,integration_id,
-                operation_id,request_id,artifact_id,methods,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                operation_id,request_id,artifact_id,methods,facts,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(transfer_id) DO UPDATE SET challenge_id=excluded.challenge_id,generation=excluded.generation,
                 reason=excluded.reason,origin=excluded.origin,integration_id=excluded.integration_id,operation_id=excluded.operation_id,
-                request_id=excluded.request_id,artifact_id=NULL,methods=excluded.methods,updated_at=excluded.updated_at""",
+                request_id=excluded.request_id,artifact_id=NULL,methods=excluded.methods,facts=excluded.facts,updated_at=excluded.updated_at""",
                 (challenge.transfer_id, challenge.id, challenge.generation, challenge.reason.value, challenge.origin.value,
-                 challenge.integration_id, challenge.operation_id, challenge.request_id, None, _methods_payload(challenge.methods), now, now))
+                 challenge.integration_id, challenge.operation_id, challenge.request_id, None, _methods_payload(challenge.methods),
+                 _facts_payload(challenge.facts), now, now))
             await db.execute("UPDATE resolution_attempts SET state='input_required',error=NULL,result=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (attempt.id,))
             await db.execute("UPDATE transfer_requests SET state='input_required',retry_at=0,error=NULL,attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
             await db.execute("UPDATE torrents SET status='input_required',normalized_error=NULL,error_message=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (challenge.transfer_id,))
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer requires authentication input')", (challenge.transfer_id,))
-            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required','auth_required')", (challenge.transfer_id,))
+            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)", (challenge.transfer_id, _EVENT_MESSAGES[challenge.reason]))
+            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required',?)", (challenge.transfer_id, challenge.reason.value))
             await db.commit()
             return challenge
 
@@ -263,19 +299,21 @@ class InputChallengeStore:
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
             identity, generation = await self._next(db, artifact.transfer_id)
             challenge = InputChallenge(identity, artifact.transfer_id, generation, requirement.reason, InputOrigin.EXECUTOR,
-                integration_id, operation_id, requirement.methods, request_id=artifact.request_id, artifact_id=artifact.id)
+                integration_id, operation_id, requirement.methods, request_id=artifact.request_id, artifact_id=artifact.id,
+                facts=requirement.facts)
             await db.execute("""INSERT INTO transfer_input_challenges(transfer_id,challenge_id,generation,reason,origin,integration_id,
-                operation_id,request_id,artifact_id,methods,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                operation_id,request_id,artifact_id,methods,facts,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(transfer_id) DO UPDATE SET challenge_id=excluded.challenge_id,generation=excluded.generation,
                 reason=excluded.reason,origin=excluded.origin,integration_id=excluded.integration_id,operation_id=excluded.operation_id,
-                request_id=excluded.request_id,artifact_id=excluded.artifact_id,methods=excluded.methods,updated_at=excluded.updated_at""",
+                request_id=excluded.request_id,artifact_id=excluded.artifact_id,methods=excluded.methods,facts=excluded.facts,
+                updated_at=excluded.updated_at""",
                 (challenge.transfer_id, challenge.id, challenge.generation, challenge.reason.value, challenge.origin.value,
                  challenge.integration_id, challenge.operation_id, challenge.request_id, challenge.artifact_id,
-                 _methods_payload(challenge.methods), now, now))
+                 _methods_payload(challenge.methods), _facts_payload(challenge.facts), now, now))
             await db.execute("UPDATE download_files SET status='input_required',normalized_error=NULL WHERE id=?", (artifact.id,))
             await db.execute("UPDATE torrents SET status='input_required',normalized_error=NULL,error_message=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (artifact.transfer_id,))
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer requires authentication input')", (artifact.transfer_id,))
-            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required','auth_required')", (artifact.transfer_id,))
+            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)", (artifact.transfer_id, _EVENT_MESSAGES[challenge.reason]))
+            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required',?)", (artifact.transfer_id, challenge.reason.value))
             await db.commit()
             return challenge
 
@@ -290,12 +328,13 @@ class InputChallengeStore:
             identity = new_identity()
             generation = challenge.generation + 1
             replacement = InputChallenge(identity, challenge.transfer_id, generation, requirement.reason, challenge.origin,
-                challenge.integration_id, challenge.operation_id, requirement.methods, challenge.request_id, challenge.artifact_id)
-            await db.execute("""UPDATE transfer_input_challenges SET challenge_id=?,generation=?,reason=?,methods=?,updated_at=?
+                challenge.integration_id, challenge.operation_id, requirement.methods, challenge.request_id, challenge.artifact_id,
+                requirement.facts)
+            await db.execute("""UPDATE transfer_input_challenges SET challenge_id=?,generation=?,reason=?,methods=?,facts=?,updated_at=?
                 WHERE transfer_id=? AND challenge_id=? AND generation=?""",
-                (replacement.id, replacement.generation, replacement.reason.value, _methods_payload(replacement.methods), now,
-                 challenge.transfer_id, challenge.id, challenge.generation))
-            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required','auth_required')", (challenge.transfer_id,))
+                (replacement.id, replacement.generation, replacement.reason.value, _methods_payload(replacement.methods),
+                 _facts_payload(replacement.facts), now, challenge.transfer_id, challenge.id, challenge.generation))
+            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required',?)", (challenge.transfer_id, replacement.reason.value))
             await db.commit()
             return replacement
 

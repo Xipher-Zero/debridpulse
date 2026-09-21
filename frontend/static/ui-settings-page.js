@@ -451,7 +451,9 @@
     return {text: '', tone: 'none'};
   }
 
-  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName}) {
+  // headerOnly renders the whole card as its header -- title, centered
+  // headerCopy, Enable -- with no .card-body at all (Direct Sources).
+  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerOnly = false}) {
     const enabled = entry.enabled !== false;
     const configured = !!entry.configured;
     const premium = !!entry.presentation?.premium;
@@ -462,13 +464,15 @@
       ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>${crown}</span>`
       : `<span class="card-title">${html(title)}${crown}</span>`;
     if (!premium) {
+      const copy = headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : '';
       return `
       <section class="card dp-settings-card dp-large-panel-surface ${className}" data-provider-configured="${configured}">
         <div class="card-header">
           ${titleMarkup}
+          ${copy}
           ${enable}
-        </div>
-        <div class="card-body">${body}</div>
+        </div>${headerOnly ? '' : `
+        <div class="card-body">${body}</div>`}
       </section>`;
     }
     const status = providerStatus(enabled, configured);
@@ -489,6 +493,7 @@
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
     const generalHttp = integrations.general_http || {};
+    const generalFtp = integrations.general_ftp || {};
     const providerIdentity = `
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
         <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
@@ -527,17 +532,23 @@
       displayName: 'AllDebrid',
     });
 
-    const generalHttpCard = providerCard('general_http', 'HTTP & HTTPS', `
-      <p class="dp-settings-copy dp-settings-provider-minimal-copy">Direct downloads from standard HTTP and HTTPS URLs.</p>
-    `, generalHttp, {
-      className: 'dp-settings-provider-card dp-settings-provider-card--general-http',
+    const generalHttpCard = providerCard('general_http', 'HTTP & HTTPS', '', generalHttp, {
+      className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-http',
       displayName: 'HTTP & HTTPS',
+      headerCopy: 'Direct downloads from standard HTTP and HTTPS URLs.',
+      headerOnly: true,
+    });
+    const generalFtpCard = providerCard('general_ftp', 'FTP & SFTP', '', generalFtp, {
+      className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-ftp',
+      displayName: 'FTP & SFTP',
+      headerCopy: 'Direct downloads from FTP and SFTP URLs.',
+      headerOnly: true,
     });
 
     const debridServices = groupCard('Debrid Services', provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
-    const generalSources = groupCard(generalHttp.presentation?.status_group_label || 'Direct Sources', generalHttpCard, {
+    const generalSources = groupCard(generalHttp.presentation?.status_group_label || 'Direct Sources', generalHttpCard + generalFtpCard, {
       className: 'dp-settings-source-group dp-settings-general-sources',
     });
     return debridServices + generalSources;
@@ -1754,9 +1765,12 @@
     const active = state.activeTab;
     adoptIntegration('aria2', await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000));
     adoptIntegration('alldebrid', await request('PATCH', '/integrations/alldebrid/configuration', allDebridConfigurationPayload(), 15000));
-    const generalHttp = root()?.querySelector('[data-integration-enabled="general_http"]');
-    if (generalHttp && !!generalHttp.checked !== (state.settings?.integrations?.general_http?.enabled !== false)) {
-      adoptIntegration('general_http', await request('PATCH', '/integrations/general_http/configuration', {enabled: !!generalHttp.checked}, 15000));
+    // Direct Sources carry only their own generic Enable; each persists independently.
+    for (const identity of ['general_http', 'general_ftp']) {
+      const enabled = root()?.querySelector(`[data-integration-enabled="${identity}"]`);
+      if (enabled && !!enabled.checked !== (state.settings?.integrations?.[identity]?.enabled !== false)) {
+        adoptIntegration(identity, await request('PATCH', `/integrations/${identity}/configuration`, {enabled: !!enabled.checked}, 15000));
+      }
     }
     adoptTransferPolicy(await request('PATCH', '/transfer-policy', transferPolicyPayload(), 15000));
     const result = await request('PUT', '/settings', nonAuthPayload(), 15000);

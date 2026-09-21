@@ -1,4 +1,10 @@
-"""Resolution-only provider for ordinary HTTP and HTTPS resources."""
+"""Resolution-only provider for FTP and SFTP resources.
+
+Resolution is purely structural: the submitted URL becomes one neutral candidate.
+No DNS lookup, connection, credential probe or server-identity inspection happens
+here; execution, authentication and host identity belong to the executor and the
+universal INPUT_REQUIRED lifecycle.
+"""
 from urllib.parse import urlparse
 
 from transfers.applicability import ProviderApplicability
@@ -11,13 +17,13 @@ from transfers.models import (
 from transfers.requests import direct_link_filename
 
 
-class GeneralHttpProvider:
+class GeneralFtpProvider:
     applicability = ProviderApplicability(
-        generic_schemes=frozenset({"http", "https"}),
+        generic_schemes=frozenset({"ftp", "sftp"}),
     )
     descriptor = IntegrationDescriptor(
-        "general_http", "HTTP & HTTPS", frozenset({Capability.RESOLVE}),
-        request_types=frozenset({"http", "https"}),
+        "general_ftp", "FTP & SFTP", frozenset({Capability.RESOLVE}),
+        request_types=frozenset({"ftp", "sftp"}),
     )
 
     def _failure(self, category: Category, *, domain=Domain.REQUEST) -> TransferError:
@@ -36,7 +42,13 @@ class GeneralHttpProvider:
         address = request.payload
         parsed = urlparse(address)
         scheme = parsed.scheme.lower()
-        if scheme != request.kind or scheme not in self.descriptor.request_types or not parsed.netloc:
+        if scheme != request.kind or not parsed.netloc:
+            raise self._failure(Category.INVALID_REQUEST)
+        try:
+            malformed_port = parsed.port == 0  # urlparse raises on a non-numeric or out-of-range port
+        except ValueError:
+            malformed_port = True
+        if malformed_port:
             raise self._failure(Category.INVALID_REQUEST)
         if parsed.username is not None or parsed.password is not None:
             raise self._failure(Category.SECURITY_POLICY_REJECTED, domain=Domain.SECURITY)
@@ -52,7 +64,7 @@ class GeneralHttpProvider:
             name=name,
             endpoints=(Endpoint(scheme, address),),
             provider_id=self.descriptor.id,
-            accepted_input_methods=(InputMethod.USERNAME_PASSWORD,),
             source_identity=SourceIdentity("host", host),
+            accepted_input_methods=(InputMethod.USERNAME_PASSWORD,),
         )
         return ResolutionResult(ResourceState.AVAILABLE, (candidate,))

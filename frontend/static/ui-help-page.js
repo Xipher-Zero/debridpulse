@@ -49,7 +49,7 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p><b>DebridPulse is the application you use to submit, route, track, and manage downloads.</b> The current provider layer includes <b>AllDebrid</b> for magnets, torrent files, and HTTP/HTTPS hosts that AllDebrid currently supports, plus a generic <b>HTTP &amp; HTTPS</b> source for ordinary direct web downloads. A separate component called <b>aria2</b> performs the physical HTTP/HTTPS transfer and writes files to your storage.</p>
+          <p><b>DebridPulse is the application you use to submit, route, track, and manage downloads.</b> The current provider layer includes <b>AllDebrid</b> for magnets, torrent files, and HTTP/HTTPS hosts that AllDebrid currently supports, plus the generic <b>HTTP &amp; HTTPS</b> and <b>FTP &amp; SFTP</b> Direct Sources for ordinary direct downloads. A separate component called <b>aria2</b> performs the physical transfer and writes files to your storage.</p>
           <p>DebridPulse includes its own built-in copy of aria2, so most users do not need a separate download engine. An AllDebrid API key is required for AllDebrid routes, while generic HTTP/HTTPS direct downloads use the separate HTTP &amp; HTTPS provider when it is enabled.</p>
         </div>
 
@@ -60,6 +60,7 @@
             <ul>
               <li><b>AllDebrid account:</b> AllDebrid is the current specialized debrid provider. It prepares supported sources remotely; DebridPulse does not route every ordinary HTTP/HTTPS URL through it.</li>
               <li><b>HTTP &amp; HTTPS source:</b> The generic direct provider can hand ordinary HTTP/HTTPS resources to aria2 without an AllDebrid unlock when no enabled specialized provider claims that resource.</li>
+              <li><b>FTP &amp; SFTP source:</b> The generic direct provider hands FTP and SFTP resources to aria2. Each Direct Source has its own Enable control under <b>Sources &amp; Providers</b>.</li>
               <li><b>Download storage:</b> This can be a folder on the computer running DebridPulse, a mounted NAS share, or another location made available to the application.</li>
               <li><b>Login protection:</b> If DebridPulse can be reached by people or devices you do not fully trust, configure <b>Settings → Authentication</b> before exposing it. Username &amp; Password is the simplest protection for most users.</li>
             </ul>
@@ -79,7 +80,7 @@
           ${step(2, 'Confirm where downloads will be stored', `
             <div class="dp-help-prose">
               <p>Open <b>Settings → Downloads → Download Engine</b>. The default mode is <b>Built-in aria2</b>, which is the recommended choice unless you already operate a separate aria2 server.</p>
-              <p><b>aria2 is the component that performs the actual file transfer.</b> DebridPulse selects a provider first, obtains a canonical HTTP/HTTPS candidate from that provider, and gives the candidate to aria2. An AllDebrid route may use an unlocked provider URL; a General HTTP &amp; HTTPS route uses the validated direct resource. Built-in mode means DebridPulse runs and manages aria2 for you.</p>
+              <p><b>aria2 is the component that performs the actual file transfer.</b> DebridPulse selects a provider first, obtains a canonical HTTP/HTTPS, FTP or SFTP candidate from that provider, and gives the candidate to aria2. An AllDebrid route may use an unlocked provider URL; a General HTTP &amp; HTTPS route uses the validated direct resource. Built-in mode means DebridPulse runs and manages aria2 for you.</p>
               <p>The <b>Built-in Download Folder</b> tells DebridPulse where files should be written. The normal container path is <code>/download</code>.</p>
               <p>If you installed DebridPulse with Docker, DebridPulse runs inside an isolated environment called a <b>container</b>. A path such as <code>/download</code> is the folder name as DebridPulse sees it inside that container. During installation, that folder is normally connected to a real folder on your computer, NAS, or server. For example, a folder named <code>/mnt/downloads</code> on the host system might be made available to DebridPulse as <code>/download</code>.</p>
               <p>If downloads are already appearing in the correct place, you do not need to change this path.</p>
@@ -91,6 +92,7 @@
               <p>Return to the <b>Dashboard</b>. The main Add field accepts the common source types DebridPulse supports.</p>
               <ul>
                 <li><b>HTTP or HTTPS link:</b> DebridPulse evaluates current provider applicability. An enabled AllDebrid-supported host is routed to AllDebrid; otherwise an eligible ordinary web resource can use the generic HTTP &amp; HTTPS provider directly.</li>
+                <li><b>FTP or SFTP link:</b> The FTP &amp; SFTP provider hands the link to aria2 directly. If the server asks for a login, DebridPulse prompts for a username and password. For SFTP, DebridPulse asks you to confirm the server's identity fingerprint before using the supplied credentials. DebridPulse does not persist submitted credentials in its database.</li>
                 <li><b>Magnet link:</b> A special link that usually begins with <code>magnet:?</code> and describes torrent content without requiring a separate torrent file.</li>
                 <li><b>.torrent file:</b> A small metadata file that describes torrent content. To choose one, leave the Add text field empty and use the same Add control to select the file.</li>
               </ul>
@@ -165,10 +167,10 @@
         </div>
 
         <div class="dp-help-pipeline">
-          ${pipeline('1. Intake', 'DebridPulse accepts the HTTP/HTTPS link, magnet, or .torrent file and creates tracked work before provider or download-engine activity begins.')}
-          ${pipeline('2. Provider resolution', 'DebridPulse selects the current eligible provider. AllDebrid may unlock/process a supported source; General HTTP & HTTPS can produce a direct candidate for an ordinary web resource.')}
+          ${pipeline('1. Intake', 'DebridPulse accepts the HTTP/HTTPS, FTP or SFTP link, magnet, or .torrent file and creates tracked work before provider or download-engine activity begins.')}
+          ${pipeline('2. Provider resolution', 'DebridPulse selects the current eligible provider. AllDebrid may unlock/process a supported source; the HTTP & HTTPS and FTP & SFTP Direct Sources produce a direct candidate for an ordinary resource.')}
           ${pipeline('3. Transfer planning', 'DebridPulse turns the provider result into the files it should deliver, reconciles duplicates, and can keep verified alternate mirror links available as standby sources.')}
-          ${pipeline('4. aria2 delivery', 'Built-in or external aria2 downloads the prepared HTTP/HTTPS file links to the configured storage.', 'active')}
+          ${pipeline('4. aria2 delivery', 'Built-in or external aria2 downloads the prepared HTTP/HTTPS, FTP or SFTP file links to the configured storage.', 'active')}
           ${pipeline('5. Verification and finish', 'DebridPulse reconciles the physical result, preserves useful history, and marks the logical download complete only when its required local work is satisfied.', 'success')}
           ${pipeline('6. Optional extraction', 'If Automatic Extraction is enabled and the completed files include supported archives, extraction runs after the physical download stage.')}
         </div>

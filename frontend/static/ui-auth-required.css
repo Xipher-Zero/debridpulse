@@ -86,3 +86,35 @@
     width: 100%;
   }
 }
+
+/* Server-identity challenge: the facts the operator compares before continuing. */
+.dp-auth-required-identity {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.dp-auth-required-identity-server {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dp-auth-required-fingerprint {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: 6px;
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.dp-auth-required-identity-note {
+  margin: 0;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+

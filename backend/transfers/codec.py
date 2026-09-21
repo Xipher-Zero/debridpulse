@@ -10,7 +10,7 @@ from typing import Mapping
 from transfers.errors import NormalizedError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CachePresence, DeliveryKind, Endpoint, ExecutionHandle, IntegrityMetadata, Ownership,
+    CachePresence, DeliveryKind, Endpoint, ExecutionHandle, InputMethod, IntegrityMetadata, Ownership,
     ProviderResource, ResolverArtifactIdentityEvidence, TransferCandidate, TransferRequest,
     SourceEntry, SourceIdentity,
 )
@@ -71,6 +71,17 @@ def candidate(value: dict) -> TransferCandidate:
         data["refresh_request"] = request(data["refresh_request"])
     if "delivery" in data:
         data["delivery"] = DeliveryKind(data["delivery"])
+    methods = data.get("accepted_input_methods")
+    context = dict(data.get("context") or {})
+    if "accepted_input_methods" in context:
+        # One-way decode of candidates persisted before the typed field
+        # existed (1.0.12 General HTTP rows): the opaque entry terminates at the
+        # canonical typed field and is never written back.
+        legacy = context.pop("accepted_input_methods")
+        data["context"] = context
+        if methods is None:
+            methods = legacy
+    data["accepted_input_methods"] = tuple(InputMethod(item) for item in (methods or ()))
     return TransferCandidate(**data)
 
 

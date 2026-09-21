@@ -50,6 +50,9 @@ function fixture(base, {adEnabled = true, adConfigured = false, httpEnabled = tr
     },
     options: {},
   };
+  // The fixture owns its whole provider universe (AllDebrid, General Downloads
+  // and explicit extras); later live providers such as FTP & SFTP are not inherited.
+  delete result.integrations.general_ftp;
   Object.assign(result.integrations, clone(extraProviders));
   result.full_sync_interval_minutes ??= 5;
   return result;

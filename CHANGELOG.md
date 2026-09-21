@@ -4,6 +4,38 @@
 
 1.0.13 is the active development line following the locked 1.0.12 Universal Transfer Core release.
 
+### Added
+
+- **FTP & SFTP Direct Sources provider** (`general_ftp`). `ftp://` and `sftp://` links resolve into
+  ordinary neutral candidates that route to aria2 through the existing provider applicability and
+  executor selection. The provider has its own Enable control, independent of HTTP & HTTPS; disabling
+  it never changes aria2's transport claim.
+- **Direct-link submission accepts HTTP, HTTPS, FTP and SFTP** through the one existing admission path.
+  Mixed batches are valid and URLs with embedded credentials are still rejected.
+- **FTP and SFTP authentication through the existing INPUT_REQUIRED lifecycle.** aria2 reports a login
+  request only from the exact characterized native evidence (FTP `530`, SFTP password rejection). A
+  bare native code, a missing path or a permission failure is never treated as a login request.
+  DebridPulse does not persist submitted credentials in its database.
+- **Fail-closed SFTP server identity.** The first SFTP attempt never runs without host-key
+  verification: it observes the server's SHA-1 host-key fingerprint and stops before authenticating.
+  One neutral `server_identity_required` challenge then shows the fingerprint and asks for credentials.
+  A credential retry reuses the confirmed key and never falls back to unverified execution.
+
+### Changed
+
+- Candidates carry a typed `accepted_input_methods` capability. HTTP & HTTPS migrated to it; candidates
+  persisted with the former opaque context entry are decoded once into the typed field.
+- INPUT_REQUIRED challenges carry durable, non-secret facts (a new `facts` column on the existing
+  `transfer_input_challenges` table), shown by the existing input dialog.
+- The downloader egress guard signs each job credential for a route scope. The exact-endpoint scope is
+  the unchanged default. A same-host scope lets a passive FTP job reach its server-selected data port on
+  the same host, and each of those connections still gets the guard's own DNS and public-address
+  checks.
+- DebridPulse-managed FTP/SFTP jobs never reuse pooled connections (`ftp-reuse-connection=false`), so
+  each attempt authenticates freshly.
+- Settings → Sources & Providers → Direct Sources shows HTTP & HTTPS and FTP & SFTP as two equal,
+  compact header-only cards.
+
 ### Planned / in progress
 
 - STAGED-MATERIALIZATION-001 — execution-owned staging and verified atomic promotion.

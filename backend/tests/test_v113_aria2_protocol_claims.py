@@ -44,7 +44,7 @@ def _executor(tmp_path: Path, *, egress=None) -> Aria2Executor:
         None,
         Aria2Configuration(str(tmp_path), external=False),
         AsyncMock(return_value=True),
-        egress=egress or SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external: {}),
+        egress=egress or SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external, scope=None: {}),
     )
 
 
@@ -382,11 +382,19 @@ async def test_a_blocked_new_transport_destination_is_a_security_failure(tmp_pat
     assert raised.value.error.category == Category.DESTINATION_BLOCKED
 
 
-# ── 7. Authentication boundary is unchanged ───────────────────────────────────
+# ── 7. Authentication boundary stays at the native adapter ────────────────────
+# The FTP & SFTP provider pass made FTP/SFTP authentication and host identity
+# live (test_v113_aria2_ftp_sftp_auth.py). What remains pinned here: HTTP code
+# 24 is unchanged, and native credential/host-key option names exist in
+# production code only at the aria2 boundary.
 
-def test_aria2_code_24_remains_the_only_native_authentication_signal() -> None:
+def test_native_auth_option_names_are_confined_to_the_aria2_boundary() -> None:
     source = Path(executor_module.__file__).read_text()
     assert '"24"' in source
-    assert '"21"' not in source
-    assert "ssh-host-key-md" not in source
-    assert "ftp-user" not in source and "ftp-passwd" not in source
+    backend = Path(executor_module.__file__).resolve().parents[2]
+    for path in backend.rglob("*.py"):
+        if "tests" in path.parts or path.parent.name == "aria2":
+            continue
+        text = path.read_text()
+        for native in ("ssh-host-key-md", "ftp-user", "ftp-passwd", "ftp-reuse-connection"):
+            assert native not in text, (path, native)

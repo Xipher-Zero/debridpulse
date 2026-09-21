@@ -13,6 +13,13 @@ safely be assumed to reach the application's loopback namespace, so external mod
 fails closed unless the operator explicitly advertises a route to this guard with
 DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY.  The guard bind address/port are
 controlled by DEBRIDPULSE_EGRESS_GUARD_BIND and DEBRIDPULSE_EGRESS_GUARD_PORT.
+
+Each job credential is signed for one route scope. ``RouteScope.ENDPOINT`` (the
+default) admits exactly the authorized hostname and port. ``RouteScope.SAME_HOST``
+admits the same hostname on the authorized port plus server-selected
+unprivileged ports, for native transports whose one job opens a second
+connection the server chooses (a passive FTP data channel). No scope ever admits
+another hostname or skips this guard's own resolution and address policy.
 """
 from __future__ import annotations
 
@@ -26,6 +33,8 @@ import os
 import secrets
 import socket
 from collections.abc import Awaitable, Callable
+from enum import StrEnum
+import re
 from urllib.parse import urlsplit
 
 from services.network_safety import PUBLIC_DESTINATION_SCHEMES, default_destination_port
@@ -36,6 +45,23 @@ logger = logging.getLogger("debridpulse.downloader_egress_guard")
 
 # aria2's per-protocol proxy preferences, which take precedence over --all-proxy.
 _PER_PROTOCOL_PROXY_PREFERENCES = ("http", "https", "ftp")
+
+_PROXY_USER = "debridpulse"
+# Lowest port a same-host scope admits besides the authorized one. Servers
+# select passive data ports from their unprivileged range; privileged service
+# ports on the same host stay outside the grant.
+_SERVER_SELECTED_PORT_FLOOR = 1024
+
+
+class RouteScope(StrEnum):
+    """Which CONNECT authorities one signed job credential admits."""
+    ENDPOINT = "endpoint"
+    SAME_HOST = "same-host"
+
+
+_SAME_HOST_USER = re.compile(
+    re.escape(f"{_PROXY_USER}.{RouteScope.SAME_HOST.value}.") + r"([0-9]{1,5})"
+)
 
 Resolver = Callable[[str, int], Awaitable[list[tuple]]]
 PublicCheck = Callable[[str], bool]
@@ -151,6 +177,33 @@ class DownloaderEgressGuard:
         authority = f"{str(host).rstrip('.').casefold()}:{int(port)}".encode("utf-8")
         return hmac.new(self._secret, authority, hashlib.sha256).hexdigest()
 
+    def _same_host_token(self, host: str, port: int) -> str:
+        # Domain-separated from the endpoint token: a hostname never contains
+        # "|", so no endpoint message can equal a same-host message.
+        message = f"{RouteScope.SAME_HOST.value}|{str(host).rstrip('.').casefold()}:{int(port)}"
+        return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def _credential(self, host: str, port: int, scope: RouteScope) -> tuple[str, str]:
+        if scope == RouteScope.ENDPOINT:
+            return _PROXY_USER, self._token(host, port)
+        if scope == RouteScope.SAME_HOST:
+            return f"{_PROXY_USER}.{scope.value}.{int(port)}", self._same_host_token(host, port)
+        raise ValueError("Unsupported egress route scope")
+
+    def _admits(self, username: str, password: str, host: str, port: int) -> bool:
+        """Verify a CONNECT credential against the authority it names."""
+        if username == _PROXY_USER:
+            return hmac.compare_digest(password, self._token(host, port))
+        match = _SAME_HOST_USER.fullmatch(username)
+        if match is None:
+            return False
+        authorized = int(match.group(1))
+        if not 0 < authorized <= 65535:
+            return False
+        if port != authorized and port < _SERVER_SELECTED_PORT_FLOOR:
+            return False
+        return hmac.compare_digest(password, self._same_host_token(host, authorized))
+
     def _proxy_url(self, *, external: bool) -> str:
         if not external:
             if self._server is None or self._bound_port <= 0:
@@ -180,14 +233,16 @@ class DownloaderEgressGuard:
             )
         return f"http://{parsed.hostname}:{parsed.port}"
 
-    def job_options(self, uri: str, *, external: bool) -> dict[str, str]:
+    def job_options(
+        self, uri: str, *, external: bool, scope: RouteScope = RouteScope.ENDPOINT,
+    ) -> dict[str, str]:
         """Return per-addUri proxy policy that cannot inherit a daemon bypass."""
         host, port = _target(uri)
         proxy = self._proxy_url(external=external)
-        token = self._token(host, port)
+        user, token = self._credential(host, port, RouteScope(scope))
         options = {
             "all-proxy": proxy,
-            "all-proxy-user": "debridpulse",
+            "all-proxy-user": user,
             "all-proxy-passwd": token,
             # A shared daemon may have a global no-proxy list.  Empty is the
             # explicit per-job override, preventing that list from bypassing the
@@ -205,7 +260,7 @@ class DownloaderEgressGuard:
         # SFTP has no per-protocol preference and resolves through --all-proxy.
         for protocol in _PER_PROTOCOL_PROXY_PREFERENCES:
             options[f"{protocol}-proxy"] = proxy
-            options[f"{protocol}-proxy-user"] = "debridpulse"
+            options[f"{protocol}-proxy-user"] = user
             options[f"{protocol}-proxy-passwd"] = token
         return options
 
@@ -318,8 +373,7 @@ class DownloaderEgressGuard:
                 return
             host, port = _authority_target(request[1])
             username, password = self._proxy_credentials(lines[1:])
-            expected = self._token(host, port)
-            if username != "debridpulse" or not hmac.compare_digest(password, expected):
+            if not self._admits(username, password, host, port):
                 writer.write(
                     b"HTTP/1.1 407 Proxy Authentication Required\r\n"
                     b"Proxy-Authenticate: Basic realm=\"DebridPulse\"\r\n"
