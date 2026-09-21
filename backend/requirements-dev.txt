@@ -24,6 +24,8 @@ argon2-cffi==25.1.0
     # via -r requirements.in
 argon2-cffi-bindings==26.1.0
     # via argon2-cffi
+asyncssh==2.24.0
+    # via -r requirements.in
 attrs==26.1.0
     # via aiohttp
 authlib==1.7.2
@@ -44,6 +46,7 @@ coverage==7.14.0
     # via pytest-cov
 cryptography==50.0.0
     # via
+    #   asyncssh
     #   authlib
     #   joserfc
 fastapi==0.141.1
@@ -119,6 +122,7 @@ typing-extensions==4.15.0
     #   aiohttp
     #   aiosignal
     #   anyio
+    #   asyncssh
     #   bencode2
     #   fastapi
     #   pydantic

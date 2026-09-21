@@ -7,7 +7,7 @@ from pathlib import Path
 
 import transfers._engine_base as engine_base
 import transfers._engine_recovery as engine_recovery
-from services.network_safety import sampled_public_artifact_fingerprint
+from services.artifact_sampling import sampled_public_artifact_fingerprint
 from transfers import mirrors, size_evidence
 from transfers.candidate_activation import activate_candidate
 from transfers.convergence_engine import TransferEngine

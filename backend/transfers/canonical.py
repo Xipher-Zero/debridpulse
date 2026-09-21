@@ -18,7 +18,7 @@ from transfers._repository_base import (
     _durable_canonical_targets_for_request, _retire_transfer_auxiliary_state_in_db,
     terminal_unverified_association,
 )
-from transfers.models import Artifact, RequestRecord, SizeKnowledge, TransferCandidate
+from transfers.models import Artifact, ArtifactFingerprint, FingerprintKind, RequestRecord, SizeKnowledge, TransferCandidate
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
 
@@ -340,6 +340,32 @@ class CanonicalOwnership:
                     ORDER BY f.torrent_id,f.id"""
             )
         return tuple(self._artifact(row) for row in rows)
+
+    async def retain_evidence(self, candidate_id: str, evidence: ArtifactFingerprint) -> int:
+        """Durably keep the neutral content evidence that proved one canonical
+        member candidate, wherever that candidate is stored (the canonical row
+        and any standby holder). Only the ``ArtifactFingerprint`` is written --
+        never the input that acquired it. Returns the rows updated; a candidate
+        that joined no artifact updates nothing."""
+        if not isinstance(evidence, ArtifactFingerprint) or evidence.kind == FingerprintKind.UNAVAILABLE:
+            return 0
+        candidate_id = str(candidate_id)
+        updated = 0
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            rows = await db.fetchall("SELECT id,candidates FROM download_files WHERE candidates LIKE ?",
+                                     (f'%"{candidate_id}"%',))
+            for row in rows:
+                stored = tuple(codec.candidate(item) for item in codec.load(row.get("candidates"), []))
+                if not any(str(item.id) == candidate_id for item in stored):
+                    continue
+                kept = tuple(replace(item, content_evidence=evidence) if str(item.id) == candidate_id else item
+                             for item in stored)
+                await db.execute("UPDATE download_files SET candidates=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                 (codec.dump(kept), row["id"]))
+                updated += 1
+            await db.commit()
+        return updated
 
     async def durable_owner_for_request(self, request_id: str) -> int | None:
         """DP 1.0.12 Section 6: the one canonical artifact id, if any, that

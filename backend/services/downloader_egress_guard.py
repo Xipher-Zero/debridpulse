@@ -264,6 +264,59 @@ class DownloaderEgressGuard:
             options[f"{protocol}-proxy-passwd"] = token
         return options
 
+    async def open_tunnel(
+        self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT, port: int | None = None,
+        timeout_seconds: float = 10.0,
+    ) -> socket.socket:
+        """Open one in-process connection through this guard's own CONNECT boundary.
+
+        The application's bounded evidence readers reach a download origin
+        exactly the way an owned aria2 job does: the same signed route-scoped
+        credential, the same guard-owned resolution, public-address and
+        mixed/private/rebinding checks, and the same admission rule for a
+        server-selected port. ``port`` names that second connection (a passive
+        FTP data channel) and is only admitted under ``RouteScope.SAME_HOST``.
+        Returns a connected non-blocking socket carrying nothing but the
+        tunnelled bytes; a refusal raises ``PermissionError``.
+        """
+        host, authorized = _target(uri)
+        await self.ensure_started()
+        user, token = self._credential(host, authorized, RouteScope(scope))
+        server = self._server
+        if server is None or not server.sockets:
+            raise RuntimeError("DebridPulse egress guard is not running")
+        listener = server.sockets[0].getsockname()
+        family = server.sockets[0].family
+        address = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(listener[0], listener[0])
+        authority = f"{host}:{int(port) if port is not None else authorized}"
+        credential = base64.b64encode(f"{user}:{token}".encode("utf-8")).decode("ascii")
+        loop = asyncio.get_running_loop()
+        tunnel = socket.socket(family, socket.SOCK_STREAM)
+        tunnel.setblocking(False)
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                await loop.sock_connect(tunnel, (address, listener[1]))
+                await loop.sock_sendall(tunnel, (
+                    f"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n"
+                    f"Proxy-Authorization: Basic {credential}\r\n\r\n"
+                ).encode("ascii"))
+                # Read the proxy answer byte by byte: the origin may speak first
+                # (an FTP greeting, an SSH banner) and none of its bytes may be
+                # consumed here.
+                answer = b""
+                while not answer.endswith(b"\r\n\r\n"):
+                    chunk = await loop.sock_recv(tunnel, 1)
+                    if not chunk or len(answer) >= 1024:
+                        raise PermissionError("DebridPulse egress guard refused the connection")
+                    answer += chunk
+        except BaseException:
+            tunnel.close()
+            raise
+        if not answer.startswith(b"HTTP/1.1 200 "):
+            tunnel.close()
+            raise PermissionError("DebridPulse egress guard refused the connection")
+        return tunnel
+
     async def _resolve(self, host: str, port: int) -> list[tuple]:
         if self._resolver is not None:
             answers = await self._resolver(host, port)

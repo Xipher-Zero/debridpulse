@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import services.artifact_sampling as sampling
 import services.network_safety as safety
 import executors.aria2.executor as executor_module
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
@@ -123,60 +124,96 @@ async def test_metadata_following_stays_disabled_for_every_claimed_scheme(
     assert options["max-tries"] == "1"
 
 
-# ── 4. FTP/SFTP must not enter the HTTP(S) sampler ────────────────────────────
+# ── 4. One neutral CandidateSampling; transport I/O below it ─────────────────
+# 1.0.13 universal evidence acquisition reversed the first pass's "FTP/SFTP have
+# no executor sample" expectation (Transfer 312): every claimed transport now
+# yields the same neutral evidence through one capability, while the HTTP(S)
+# Range sampler itself still speaks only HTTP(S).
 
 def test_sampler_declares_the_schemes_it_can_actually_sample() -> None:
-    assert safety.SAMPLED_FINGERPRINT_SCHEMES == frozenset({"http", "https"})
+    assert sampling.SAMPLED_FINGERPRINT_SCHEMES == frozenset({"http", "https"})
+
+
+def test_aria2_exposes_one_neutral_sampling_capability_and_its_continuation() -> None:
+    from transfers.contracts import CandidateSampling, CandidateSamplingContinuation
+    executor = _executor(Path("/tmp"))
+    assert isinstance(executor, CandidateSampling)
+    assert isinstance(executor, CandidateSamplingContinuation)
+
+
+def _transport_samplers(monkeypatch):
+    calls = []
+
+    async def http(address, **kwargs):
+        calls.append(("http", address))
+        return (10, "sig", sampling.FingerprintKind.FULL_CONTENT_SAMPLE, "", "sig")
+
+    async def ftp(address, **kwargs):
+        calls.append(("ftp", address))
+        return (10, "sig", sampling.FingerprintKind.FULL_CONTENT_SAMPLE, "", "sig")
+
+    async def sftp(address, **kwargs):
+        calls.append(("sftp", address))
+        from services.artifact_sampling import AccessRequired
+        return AccessRequired("ab" * 20)
+
+    async def validated(uri, **_kwargs):
+        return uri
+
+    monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", http)
+    monkeypatch.setattr(executor_module, "ftp_fingerprint", ftp)
+    monkeypatch.setattr(executor_module, "sftp_fingerprint", sftp)
+    monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
+    return calls
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scheme", ("ftp", "sftp"))
-async def test_ftp_and_sftp_return_no_executor_sample(tmp_path, monkeypatch, scheme) -> None:
-    called = []
-
-    async def sampler(*args, **kwargs):
-        called.append((args, kwargs))
-        raise AssertionError("FTP/SFTP must never reach the HTTP sampler")
-
-    monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", sampler)
-    assert await _executor(tmp_path).fingerprint(_candidate(scheme)) is None
-    assert called == []
-
-
-@pytest.mark.asyncio
-async def test_http_endpoints_are_still_sampled(tmp_path, monkeypatch) -> None:
-    seen = []
-
-    async def sampler(address, **kwargs):
-        seen.append(address)
-        return (10, "sig", safety.FingerprintKind.FULL_CONTENT_SAMPLE, "", "sig")
-
-    monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", sampler)
-    result = await _executor(tmp_path).fingerprint(_candidate("https"))
-    assert result is not None and result.total_bytes == 10
-    assert seen == ["https://provider.example/payload.bin"]
+async def test_every_claimed_transport_is_sampled_through_its_own_evidence_reader(tmp_path, monkeypatch) -> None:
+    from transfers.models import InputMethod, InputReason, InputRequirement
+    calls = _transport_samplers(monkeypatch)
+    executor = _executor(tmp_path)
+    for scheme in ("http", "https", "ftp"):
+        result = await executor.fingerprint(_candidate(scheme))
+        assert result is not None and result.total_bytes == 10
+    sftp = TransferCandidate("payload.bin", (Endpoint("sftp", "sftp://provider.example/payload.bin"),),
+                             accepted_input_methods=(InputMethod.USERNAME_PASSWORD,))
+    requirement = await executor.fingerprint(sftp)
+    assert isinstance(requirement, InputRequirement) and requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED
+    assert [kind for kind, _address in calls] == ["http", "http", "ftp", "sftp"]  # FTP/SFTP never reach the HTTP sampler
 
 
 @pytest.mark.asyncio
-async def test_a_mixed_candidate_samples_only_its_http_endpoint(tmp_path, monkeypatch) -> None:
-    seen = []
-
-    async def sampler(address, **kwargs):
-        seen.append(address)
-        return (10, "sig", safety.FingerprintKind.FULL_CONTENT_SAMPLE, "", "sig")
-
-    monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", sampler)
+async def test_a_mixed_candidate_samples_the_endpoint_execution_uses(tmp_path, monkeypatch) -> None:
+    calls = _transport_samplers(monkeypatch)
     assert await _executor(tmp_path).fingerprint(_candidate("ftp", "https")) is not None
-    assert seen == ["https://provider.example/payload.bin"]
+    assert calls == [("ftp", "ftp://provider.example/payload.bin")]
+
+
+def test_core_names_no_transport_and_holds_no_sampling_scheme_list() -> None:
+    """Fingerprintability is a capability of the executor boundary; no universal
+    core module lists sampleable schemes or imports a transport reader."""
+    transfers = Path(safety.__file__).resolve().parents[1] / "transfers"
+    # Request-kind validation (requests.py) and request-kind presentation
+    # (presentation_repository.py) legitimately name submitted schemes; every
+    # equivalence, cohort, canonical, recovery, lifecycle and challenge owner
+    # must not.
+    for path in sorted(transfers.glob("*.py")):
+        if path.name in {"requests.py", "presentation_repository.py"}:
+            continue
+        text = path.read_text()
+        lowered = text.lower()
+        for scheme in ("ftp", "sftp", "http", "https"):
+            assert f'"{scheme}"' not in lowered and f"'{scheme}'" not in lowered, (path.name, scheme)
+        assert "SAMPLED_FINGERPRINT_SCHEMES" not in text and "artifact_sampling" not in text, path.name
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scheme", ("ftp", "sftp"))
 async def test_the_sampler_itself_fails_closed_on_an_unsampleable_scheme(scheme) -> None:
-    total, signature, kind, reason, _prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, _prefix = await sampling.sampled_public_artifact_fingerprint(
         f"{scheme}://provider.example/payload.bin"
     )
-    assert (total, signature, kind) == (0, "", safety.FingerprintKind.UNAVAILABLE)
+    assert (total, signature, kind) == (0, "", sampling.FingerprintKind.UNAVAILABLE)
     assert reason == "destination_rejected"
 
 

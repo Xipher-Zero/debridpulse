@@ -644,6 +644,24 @@ async def _may_admit_provisional_writer(engine, record, incoming, evidence, mate
     return True
 
 
+async def _await_evidence_input(engine, record, incoming, context) -> bool:
+    """Route THIS request's own evidence-acquisition requirement to the one
+    INPUT_REQUIRED lifecycle and keep the writer barrier up while it waits.
+
+    Only the request's own candidates may ever ask the operator: a peer's
+    requirement names a candidate this request does not own and a server
+    identity it did not submit, so it stays an ordinary unresolved hold. True
+    means the request is durably waiting on input (no disposition is written:
+    the decision itself is still open)."""
+    found = context.requirement_for(incoming) if context is not None else None
+    if found is None:
+        return False
+    candidate, integration_id, requirement = found
+    await engine._evidence_input_required(record, candidate, integration_id, requirement)
+    _decision(record, incoming, "hold_evidence_input", requirement.reason.value)
+    return True
+
+
 async def _bootstrap_admission(engine, record, incoming, disposition: str, context=None) -> bool:
     """DP 1.0.12 CANON-001 follow-up bootstrap barrier.
 
@@ -692,6 +710,8 @@ async def _bootstrap_admission(engine, record, incoming, disposition: str, conte
 
     evidence = await _bootstrap_self_evidence(incoming, engine.registry, context)
     if evidence.kind == EvidenceKind.UNAVAILABLE:
+        if await _await_evidence_input(engine, record, incoming, context):
+            return True
         if evidence.retryable:
             provisional = await _may_admit_provisional_writer(
                 engine, record, incoming, evidence, material, logical_key(incoming[0]),
@@ -762,13 +782,17 @@ async def _bootstrap_admission(engine, record, incoming, disposition: str, conte
     return False
 
 
-async def coordinate_collection(engine, record, candidates) -> bool:
+async def coordinate_collection(engine, record, candidates, context: EvidenceContext | None = None) -> bool:
     """Coordinate one request before ordinary path allocation.
 
     True means this invocation has either attached the request or deliberately
-    left it in durable MATERIALIZING state while a viable weak-evidence cohort or
-    bounded proof retry is incomplete. False means ordinary materialization may
-    continue immediately.
+    left it in durable MATERIALIZING state while a viable weak-evidence cohort,
+    bounded proof retry, or evidence acquisition awaiting operator input is
+    incomplete. False means ordinary materialization may continue immediately.
+
+    ``context`` is the materialization decision's one evidence context (it may
+    carry the transient input of an answered evidence challenge); a caller
+    without one gets a fresh context scoped to this call.
     """
     incoming = _normalized_candidates(record, candidates)
     if not incoming:
@@ -793,8 +817,8 @@ async def coordinate_collection(engine, record, candidates) -> bool:
     # One evidence context for THIS decision only: the primary mapping, the
     # resolved-sibling re-verification, the collection walk and the bootstrap
     # self-proof below all reuse what this call has already acquired. It goes
-    # out of scope on return, so the next scheduler decision re-acquires.
-    context = EvidenceContext()
+    # out of scope with the decision, so the next scheduler decision re-acquires.
+    context = context if context is not None else EvidenceContext()
     canonicals = tuple(
         item for item in await engine.canonical.canonical_artifacts()
         if item.request_id != record.id and item.candidates
@@ -804,6 +828,11 @@ async def coordinate_collection(engine, record, candidates) -> bool:
 
     current_mapping = await _mapping(canonicals, incoming, engine.registry, context)
     if not current_mapping.matched:
+        # A proven distinction needs no further evidence; anything else that
+        # this request's own evidence could still decide waits for its input.
+        if current_mapping.outcome != MappingOutcome.CONTRADICTORY and await _await_evidence_input(
+                engine, record, incoming, context):
+            return True
         evidence = current_mapping.evidence
         if _must_hold(current_mapping):
             if await _hold_unresolved(
@@ -1016,6 +1045,12 @@ async def coordinate_collection(engine, record, candidates) -> bool:
         )
         if not match.matched:
             evidence = match.evidence
+            if (sibling.id != record.id and match.outcome != MappingOutcome.CONTRADICTORY
+                    and context.requirement_for(sibling_candidates) is not None):
+                # That sibling's own evidence needs its operator's input; its
+                # own turn raises the challenge. Nothing is decided for it here.
+                pending = True
+                continue
             if _must_hold(match):
                 # A bounded retry is scheduled, or -- once the retry budget is
                 # spent, or for evidence that is not retryable -- this ONE

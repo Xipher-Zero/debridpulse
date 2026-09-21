@@ -200,3 +200,49 @@ async def test_html_login_form_is_ordinary_content_not_browser_auth_discovery(tm
         await _stop_aria2(proc, service)
         server.close()
         await server.wait_closed()
+
+
+# ── DP 1.0.13: the same narrow boundary holds for pre-writer evidence ─────────
+# Evidence acquisition may ask the operator only on a definitive Basic 401. An
+# ordinary failure status or an HTML sign-in page seen while SAMPLING is the
+# same fact it always was, never an evidence INPUT_REQUIRED challenge.
+
+async def _evidence(tmp_path, monkeypatch, uri):
+    import services.network_safety as network_safety
+    from unittest.mock import AsyncMock
+
+    async def validated(address, **_kwargs):
+        return address
+
+    monkeypatch.setattr(network_safety, "validate_resolved_public_destination", validated)
+    candidate = (await GeneralHttpProvider().resolve(TransferRequest("http", uri))).candidates[0]
+    executor = Aria2Executor(SimpleNamespace(url="http://aria2.invalid/jsonrpc"),
+                             Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True))
+    return await executor.fingerprint(candidate)
+
+
+@pytest.mark.parametrize("status", [403, 404, 503])
+async def test_http_failures_seen_by_evidence_sampling_do_not_become_challenges(tmp_path, monkeypatch, status):
+    from transfers.models import FingerprintKind, InputRequirement
+    server, port, state = await _start_origin(status)
+    try:
+        result = await _evidence(tmp_path, monkeypatch, f"http://127.0.0.1:{port}/status-{status}.bin")
+        assert not isinstance(result, InputRequirement)
+        assert result.kind == FingerprintKind.UNAVAILABLE and result.reason == "range_unsupported"
+        assert state["requests"] == 1
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_html_login_form_seen_by_evidence_sampling_is_ordinary_content(tmp_path, monkeypatch):
+    from transfers.models import FingerprintKind, InputRequirement
+    body = b"<!doctype html><form method='post'><input name='password' type='password'></form>"
+    server, port, _state = await _start_origin(200, body, content_type="text/html")
+    try:
+        result = await _evidence(tmp_path, monkeypatch, f"http://127.0.0.1:{port}/login.html")
+        assert not isinstance(result, InputRequirement)
+        assert result.kind == FingerprintKind.FULL_CONTENT_SAMPLE and result.total_bytes == len(body)
+    finally:
+        server.close()
+        await server.wait_closed()

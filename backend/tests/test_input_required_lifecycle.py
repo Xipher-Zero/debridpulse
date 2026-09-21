@@ -974,3 +974,87 @@ async def test_replacement_generation_rewrites_facts_and_reason_together(base):
     assert replaced.generation == first.generation + 1 and replaced.facts == ()
     current = await engine.challenges.current(transfer.id)
     assert current.reason == InputReason.AUTH_REQUIRED and current.facts == ()
+
+
+# ── DP 1.0.13: the evidence origin shares every lifecycle rule ────────────────
+
+async def _evidence_challenge(base):
+    from fake_integrations import VaultExecutor, VaultProvider
+    repository, registry, engine, _ = base
+    registry.register_provider(VaultProvider())
+    registry.register_executor(VaultExecutor(repository.authorize_execution, objects={
+        "open.example/item.bin": b"same-bytes", "locked.example/item.bin": b"same-bytes",
+    }, locks={"locked.example": ("evidence-user", "evidence-secret")}))
+    seed = await engine.submit((TransferRequest("vault", "open.example/item.bin", name="item.bin"),), deduplicate=False)
+    for _ in range(3):
+        await engine.tick()
+    incoming = await engine.submit((TransferRequest("vault", "locked.example/item.bin", name="item.bin"),),
+                                   deduplicate=False)
+    for _ in range(3):
+        await engine.tick()
+    challenge = await engine.challenges.current(incoming.id)
+    assert challenge is not None and challenge.origin == InputOrigin.EVIDENCE
+    return repository, engine, seed, incoming, challenge
+
+
+@pytest.mark.asyncio
+async def test_evidence_origin_uses_the_same_projection_validation_and_redaction(base):
+    repository, engine, _seed, incoming, challenge = await _evidence_challenge(base)
+    projected = public_challenge(challenge)
+    assert projected["origin"] == "evidence"
+    assert set(projected) == {"id", "generation", "reason", "origin", "methods", "facts"}
+    assert projected["methods"] == [{"method": "username_password",
+                                     "fields": [{"name": "username", "required": True},
+                                                {"name": "password", "required": True}]}]
+    for method, values in (("username_private_key", {"username": "u", "private_key": "k"}),
+                           ("username_password", {"username": "u", "password": "p", "passphrase": "x"}),
+                           ("username_password", {"username": "u"})):
+        with pytest.raises(InputSubmissionRejected):
+            validate_submission(challenge, method, values)
+    submitted = validate_submission(challenge, "username_password", {"username": "u", "password": "evidence-secret"})
+    assert "evidence-secret" not in repr(submitted)
+    with pytest.raises(TypeError):
+        codec.dump(submitted)
+    detail = await repository.presentation(incoming.id, details=True)
+    assert detail["input_required"] == projected
+    assert "evidence-secret" not in json.dumps(detail, default=str)
+
+
+@pytest.mark.asyncio
+async def test_evidence_challenge_is_request_scoped_and_goes_stale_with_its_request(base):
+    repository, engine, _seed, incoming, challenge = await _evidence_challenge(base)
+    record = (await repository.requests(incoming.id))[0]
+    assert record.state == "materializing" and challenge.request_id == record.id
+    async with database.get_db() as db:
+        await db.execute("UPDATE transfer_requests SET state='resolved' WHERE id=?", (record.id,))
+        await db.commit()
+    assert await engine.challenges.current(incoming.id) is None
+    async with database.get_db() as db:
+        assert await db.fetchone("SELECT 1 FROM transfer_input_challenges WHERE transfer_id=?", (incoming.id,)) is None
+    with pytest.raises(InputSubmissionRejected):
+        await engine.submit_input(incoming.id, challenge.id, "username_password",
+                                  {"username": "evidence-user", "password": "evidence-secret"})
+
+
+@pytest.mark.asyncio
+async def test_evidence_challenge_replacement_is_generation_fenced(base):
+    _repository, engine, _seed, incoming, challenge = await _evidence_challenge(base)
+    replacement = await engine.challenges.replace(challenge, auth_required(username_password()))
+    assert replacement.generation == challenge.generation + 1 and replacement.origin == InputOrigin.EVIDENCE
+    assert replacement.operation_id == challenge.operation_id and replacement.request_id == challenge.request_id
+    with pytest.raises(InputSubmissionRejected):
+        await engine.challenges.replace(challenge, auth_required(username_password()))
+    with pytest.raises(InputSubmissionRejected):
+        await engine.submit_input(incoming.id, challenge.id, "username_password",
+                                  {"username": "evidence-user", "password": "evidence-secret"})
+    await engine.submit_input(incoming.id, replacement.id, "username_password",
+                              {"username": "evidence-user", "password": "evidence-secret"})
+    await engine.tick()
+    assert (await engine.repository.get(incoming.id)).state == TransferState.CONSOLIDATED
+
+
+@pytest.mark.asyncio
+async def test_retired_transfer_discards_its_evidence_challenge(base):
+    _repository, engine, _seed, incoming, challenge = await _evidence_challenge(base)
+    await engine.cancel(incoming.id)
+    assert await engine.challenges.current(incoming.id) is None

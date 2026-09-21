@@ -221,7 +221,7 @@ Executors implement `prepare`, `start`, `observe`, `cancel` and `resumable_paths
 An executor may return the same neutral `InputRequirement` from `prepare` before
 external mutation and continue through `prepare_with_input`; executor credentials
 remain independent of provider credentials. Optional protocols include `PauseResume`,
-`BatchObservation`, `CandidateSampling` and `Health`. Selection uses supported
+`BatchObservation`, `CandidateSampling` (with `CandidateSamplingContinuation`) and `Health`. Selection uses supported
 endpoint schemes, enabled state, registered
 health and priority. A batch observation must account for every requested handle;
 a failed or incomplete snapshot never proves absence. The aria2 boundary confirms
@@ -234,6 +234,91 @@ must establish the actual size. Unknown or unprovable relationships remain separ
 Failover retires the old execution and its partial state before another source
 can write the same target. Local, security and unknown failures do not justify
 cycling through alternate sources.
+
+## Universal evidence acquisition (v1.0.13)
+
+The invariant is: **provider facts → access establishment → neutral evidence →
+equivalence → writer admission.** Access establishment happens before evidence
+acquisition, evidence acquisition happens before independent writer admission,
+and equivalence consumes only neutral evidence. No step downloads to a canonical
+target to learn identity.
+
+Every candidate reaches exactly one path:
+
+- **A — authoritative identity.** Strong integrity or
+  `ResolverArtifactIdentityEvidence` decides without byte sampling (AllDebrid's
+  resolver-attested fast path).
+- **B — immediate transport evidence.** `CandidateSampling.fingerprint()` returns
+  an `ArtifactFingerprint` (public HTTP(S), anonymous FTP).
+- **C — access-gated transport evidence.** `fingerprint()` returns the neutral
+  `InputRequirement`; the one INPUT_REQUIRED lifecycle carries it
+  (`InputOrigin.EVIDENCE`, the same `transfer_input_challenges` row, operation =
+  candidate identity, request unchanged in MATERIALIZING); the submitted input is
+  lent to the next materialization decision's `EvidenceContext` for exactly that
+  candidate, and `CandidateSamplingContinuation.fingerprint_with_input()`
+  continues the same acquisition (protected HTTP(S), protected FTP, SFTP).
+- **D — unavailable.** No capability, or a neutral unavailable reason; the
+  existing equivalence/cohort policy decides.
+
+A challenge is raised only for the deciding request's OWN candidates: no request
+may ask the operator for another request's source, borrow another request's
+input, or show another host's identity. Credentials are transient; artifact
+identity evidence is not secret. When transient input proves a candidate that
+joins a canonical artifact, `CanonicalOwnership.retain_evidence` stores that
+candidate's `ArtifactFingerprint` as `TransferCandidate.content_evidence` in the
+canonical candidate list (`download_files.candidates`, the rows equivalence
+already reads; no new table). A later decision whose live acquisition for that
+peer would need input it does not hold compares against the retained evidence
+instead, so a later protected mirror proves ITS OWN source with its own input
+and converges on a protected canonical -- across restarts. A live acquisition
+that needs no input always wins over retained evidence. A peer with neither
+yields the unresolved, non-retryable `input_required` reason and holds the
+writer barrier: no independent writer is admitted merely because proof needed
+access.
+
+An evidence challenge is valid only while the transfer is live, the request is
+still materializing and owns no artifact, the candidate identity is still in the
+request's current resolved candidate set, and the challenged integration is
+still the candidate's selected sampler; anything else fails closed at submission
+and at continuation. Replacement is generation-fenced.
+
+`EphemeralInputBroker` is the one process-local secret owner. When the evidence
+decision admits a writer for exactly the challenged candidate, the proven input
+moves into the broker's one-shot handoff slot, keyed by transfer, request,
+candidate and integration identities (never an endpoint), and `_dispatch`
+consumes it once through the existing `ExecutorInputRecovery.start_with_input`
+for that freshly prepared attempt, inside the same `_dispatch_lock` section as
+`prepare_execution`. Every pause-intent write (`pause`, `pause_all`, and the
+pauses `resume` applies to other transfers under a global pause) takes that lock
+too, so a pause lands strictly before admission (the handoff stays with the
+broker until the next admission) or strictly after the native start (consumed).
+Its dispositions are exactly: consumed; retained while the writer is paused and
+still current; discarded when a different candidate or integration of the same
+request is admitted, on cancel/delete, or on expiry with the broker lifetime.
+Nothing survives a restart; after a restart a protected candidate may ask again. The executor still enforces its own security
+facts: aria2 pins the evidence-confirmed SFTP host key as the exact
+`ssh-host-key-md` and fails closed before authentication if it changed.
+
+Transport I/O sits below the one neutral capability, in one owner:
+`services.artifact_sampling` owns window sizing, the digest, and the HTTP(S)
+Range reader (only a definitive Basic `401` is access evidence), the FTP reader
+(`TYPE I`, aria2's path semantics, `SIZE`, `REST`/`RETR` windows) and the SFTP
+reader (host identity during key exchange in the native executor's host-key
+order, then password, `STAT`, offset reads). `services.network_safety` keeps
+only destination, redirect and public-address primitives, which the HTTP(S)
+reader asks for every hop. FTP control/data and SFTP
+connections are `DownloaderEgressGuard.open_tunnel` connections through the
+guard's own CONNECT boundary. Identical bytes produce the identical
+`ArtifactFingerprint` over every transport.
+
+**Future providers.** A provider emitting candidates over an already-supported
+transport needs no equivalence, cohort, canonical, recovery or input-lifecycle
+change: it emits neutral facts (source identity, accepted input methods,
+provider-issued headers as candidate capability, authoritative identity only
+when it truly has it). A genuinely new transport adds one evidence reader at the
+executor boundary behind `CandidateSampling`/`CandidateSamplingContinuation`,
+never a core branch. Provider account/API credentials remain provider
+configuration and never enter the evidence INPUT_REQUIRED lifecycle.
 
 ## Normalized failures and outcomes
 

@@ -17,6 +17,7 @@ the lock file and `licenses/python-runtime.json`.
 | anyio | 4.14.2 | MIT |
 | argon2-cffi | 25.1.0 | MIT |
 | argon2-cffi-bindings | 26.1.0 | MIT; vendored Argon2/BLAKE2 components are CC0-1.0 |
+| asyncssh | 2.24.0 | EPL-2.0 OR GPL-2.0-or-later (used under GPL-2.0-or-later) |
 | attrs | 26.1.0 | MIT |
 | authlib | 1.7.2 | BSD-3-Clause |
 | bencode2 | 0.3.33 | MIT ([bundled notice](../licenses/bencode2-MIT.txt)) |
@@ -53,6 +54,13 @@ handling, and `httpx` for bounded outbound OIDC discovery/token/JWKS requests.
 The v1.0.12 provider-runtime hardening directly depends on `google-re2` so
 externally supplied AllDebrid applicability expressions execute with RE2's
 linear-time matching semantics instead of Python backtracking regex behavior.
+The 1.0.13 universal evidence acquisition work directly depends on `asyncssh`
+for bounded SFTP evidence reads (host identity confirmed before authentication,
+offset reads only) over connections the downloader egress guard authorizes.
+Its only dependencies, `cryptography` and `typing-extensions`, were already
+locked. `asyncssh` is dual-licensed EPL-2.0 OR GPL-2.0-or-later; DebridPulse,
+itself GPL-2.0-or-later, uses it under GPL-2.0-or-later. This is the one
+reviewed copyleft runtime dependency named in `backend/tests/test_license_policy.py`.
 Their transitive cryptographic/HTTP dependencies are included in the table and
 machine-readable runtime manifest above. Package/license pairs are cross-checked
 against the corresponding upstream/PyPI metadata when the lock is generated.

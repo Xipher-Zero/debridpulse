@@ -30,6 +30,7 @@ import asyncio
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.cohorts import coordinate_collection
+from transfers.mirrors import EvidenceContext
 from transfers.models import Artifact
 from transfers.policy import RecoveryContext
 
@@ -101,12 +102,17 @@ class TransferEngine(_QualifiedTransferEngine):
         provider = self.registry.providers.get(candidate.provider_id)
         return bool(provider and provider.descriptor.enabled)
 
-    async def _materialize(self, record, candidates):
+    async def _materialize(self, record, candidates, *, evidence: EvidenceContext | None = None):
         lock = self._cohort_locks.setdefault(record.transfer_id, asyncio.Lock())
         async with lock:
-            if await coordinate_collection(self, record, candidates):
+            # One evidence context per materialization decision: the cohort
+            # decision and the canonical attach/allocate step that follows it
+            # read the same acquisitions (and the same transient input, when
+            # this decision continues an answered evidence challenge).
+            evidence = evidence if evidence is not None else EvidenceContext()
+            if await coordinate_collection(self, record, candidates, evidence):
                 return
-            await super()._materialize(record, candidates)
+            await super()._materialize(record, candidates, evidence=evidence)
             artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
                              if item.request_id == record.id), None)
             if artifact is None or len(artifact.candidates) < 2:

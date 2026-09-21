@@ -106,8 +106,8 @@ import time
 from weakref import WeakValueDictionary
 
 from transfers.canonical import CanonicalOwnership
-from transfers.contracts import (BatchObservation, Cleanup, ExecutorInputContinuation, ExecutorInputRecovery,
-    Inventory, PauseResume, ProviderInputContinuation)
+from transfers.contracts import (BatchObservation, CandidateSamplingContinuation, Cleanup, ExecutorInputContinuation,
+    ExecutorInputRecovery, Inventory, PauseResume, ProviderInputContinuation)
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
@@ -124,7 +124,7 @@ from transfers.models import (
     ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
-from transfers.mirrors import shared_size
+from transfers.mirrors import EvidenceContext, shared_size
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
@@ -480,11 +480,13 @@ class TransferEngine:
             challenge = await self.challenges.current(transfer.id)
             if challenge:
                 # A challenged transfer resolves nothing else this cycle; only
-                # a provider-origin challenge has a continuation to admit, and
-                # never beside work of the transfer that is still in flight.
+                # a provider- or evidence-origin challenge has a continuation to
+                # admit here, and never beside work of the transfer that is
+                # still in flight.
                 if in_flight:
                     return None
-                if challenge.origin == InputOrigin.PROVIDER and challenge.id not in cycle.admitted:
+                if (challenge.origin in {InputOrigin.PROVIDER, InputOrigin.EVIDENCE}
+                        and challenge.id not in cycle.admitted):
                     return challenge
                 cycle.retired.add(transfer.id)
                 return None
@@ -566,7 +568,7 @@ class TransferEngine:
         else:
             cycle.retired.add(transfer.id)
             cycle.admitted[work.id] = None
-            unit = self._serve_provider_input(work)
+            unit = self._serve_input_continuation(work)
         cycle.served[transfer.id] = max(cycle.served.values(), default=0) + 1
         task = asyncio.create_task(unit)
         cycle.units[task] = transfer.id
@@ -588,14 +590,17 @@ class TransferEngine:
         await self._resolution_census(cycle, record.transfer_id, served=record.id)
         return changed
 
-    async def _serve_provider_input(self, challenge: InputChallenge):
-        """One admitted provider-input continuation. Whatever it changed --
-        the challenge cleared or replaced, requests created -- the scheduler
-        re-enters the transfer from current truth through its ordinary entry
-        path: liveness, the CURRENT challenge, then the census. A challenge
-        that is still current keeps blocking the transfer, and its identity
-        is never continued twice in one cycle."""
-        changed = await self._continue_provider_input(challenge)
+    async def _serve_input_continuation(self, challenge: InputChallenge):
+        """One admitted provider- or evidence-input continuation. Whatever it
+        changed -- the challenge cleared or replaced, requests created, a
+        writer admitted -- the scheduler re-enters the transfer from current
+        truth through its ordinary entry path: liveness, the CURRENT challenge,
+        then the census. A challenge that is still current keeps blocking the
+        transfer, and its identity is never continued twice in one cycle."""
+        if challenge.origin == InputOrigin.EVIDENCE:
+            changed = await self._continue_evidence_input(challenge)
+        else:
+            changed = await self._continue_provider_input(challenge)
         self._resolution_opportunity(challenge.transfer_id)
         return changed
 
@@ -1003,10 +1008,104 @@ class TransferEngine:
             if submitted:
                 submitted.discard()
 
+    async def _evidence_target(self, challenge: InputChallenge):
+        """The still-current subject of an evidence challenge, or ``None``.
+
+        Current means: the challenged request is still deciding its
+        materialization (``InputChallengeStore.current``), the challenged
+        candidate identity is still in that request's resolved candidate set
+        (a newer resolution generation carries new identities), and the
+        challenged integration is still the sampling capability selected for
+        that candidate. Nothing else may authorize the submitted input."""
+        record = next((item for item in await self.repository.requests(challenge.transfer_id)
+                       if item.id == challenge.request_id), None)
+        if record is None or record.state != "materializing":
+            return None
+        candidates = await self.repository.resolved_candidates(record.id)
+        candidate = next((item for item in candidates if str(item.id) == challenge.operation_id), None)
+        if candidate is None:
+            return None
+        eligible = self.registry.eligible_executors(candidate)
+        executor = eligible[0] if eligible else None
+        if executor is None or executor.descriptor.id != challenge.integration_id \
+                or not isinstance(executor, CandidateSamplingContinuation):
+            return None
+        return record, candidates, candidate, executor
+
+    async def _evidence_input_required(self, record: RequestRecord, candidate: TransferCandidate,
+                                       integration_id: str, requirement: InputRequirement) -> InputChallenge | None:
+        """Durably ask for evidence input for one of ``record``'s own candidates.
+
+        An answered challenge whose continuation still needs input for the
+        same candidate is replaced (next generation, fenced on the exact
+        current row); anything else starts a new challenge. A request that
+        stopped being challengeable meanwhile simply stays held: the next
+        ordinary decision re-evaluates it from current truth."""
+        current = await self.challenges.current(record.transfer_id)
+        try:
+            if (current is not None and current.origin == InputOrigin.EVIDENCE and current.request_id == record.id
+                    and current.operation_id == str(candidate.id) and current.integration_id == integration_id):
+                return await self.challenges.replace(current, requirement)
+            return await self.challenges.wait_evidence(record.transfer_id, record.id, str(candidate.id),
+                                                       integration_id, requirement)
+        except InputSubmissionRejected:
+            return None
+
+    async def _continue_evidence_input(self, challenge: InputChallenge):
+        """Continue the SAME evidence acquisition with the submitted input.
+
+        The input is lent to one ordinary materialization decision
+        (``EvidenceContext``) for exactly the challenged candidate, so
+        equivalence decides before any writer exists. When that decision
+        admits a writer for exactly this candidate, the proven input is handed
+        to its execution once through the one broker; otherwise it is
+        discarded here."""
+        if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
+            return
+        target = await self._evidence_target(challenge)
+        if target is None:
+            await self.challenges.clear(challenge)
+            await self.inputs.clear(challenge.id)
+            return
+        record, candidates, candidate, executor = target
+        # Evidence acquisition is not provider-resolution I/O.
+        self._resolution_slot_released()
+        submitted = await self.inputs.take(challenge)
+        if submitted is None:
+            return
+        try:
+            context = EvidenceContext(inputs={str(candidate.id): submitted})
+            await self._materialize(record, candidates, evidence=context)
+            current = await self.challenges.current(challenge.transfer_id)
+            if current is not None and current.id == challenge.id:
+                await self.challenges.clear(challenge)
+            proven = context.proven_evidence(candidate.id)
+            if proven is not None:
+                # The evidence (never the input) outlives this decision, so a
+                # later mirror can compare against this canonical member after
+                # the transient input is gone -- including across restarts.
+                await self.canonical.retain_evidence(str(candidate.id), proven)
+                artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
+                                 if item.request_id == record.id), None)
+                if (artifact is not None and artifact.execution is None and artifact.candidates
+                        and str(artifact.candidates[artifact.selected].id) == str(candidate.id)):
+                    await self.inputs.hand_off(record.transfer_id, record.id, str(candidate.id),
+                                               executor.descriptor.id, submitted)
+                    submitted = None
+        except Exception as exc:
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                exc, integration_id=challenge.integration_id, domain=Domain.EXECUTOR, stage=Stage.CANDIDATE_PREPARATION,
+                secrets=submitted.secret_values() if submitted else ())
+            await self.challenges.clear(challenge)
+            await self._request_failure(record, error)
+        finally:
+            if submitted:
+                submitted.discard()
+
     async def _observe_resource(self, record: RequestRecord):
         raise NotImplementedError("_observe_resource is implemented by transfers.engine.TransferEngine")
 
-    async def _materialize(self, record: RequestRecord, candidates):
+    async def _materialize(self, record: RequestRecord, candidates, *, evidence: EvidenceContext | None = None):
         if any(not candidate.endpoints or candidate.expected_bytes < 0 for candidate in candidates):
             raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.CANDIDATE_PREPARATION))
         candidates = tuple(sorted(candidates, key=lambda candidate: -candidate.priority))
@@ -1027,7 +1126,7 @@ class TransferEngine:
         async def equivalent_size(other_candidates):
             for left in other_candidates:
                 for right in candidates:
-                    size = await shared_size(left, right, self.registry)
+                    size = await shared_size(left, right, self.registry, evidence)
                     if size is not None:
                         return size
             return None
@@ -1211,11 +1310,32 @@ class TransferEngine:
                 if not await self.repository.prepare_execution(
                         artifact, handle, target_initially_absent=self._target_initially_absent(artifact.target, sidecars)):
                     return
-            try:
-                observed = await executor.start(request, handle)
-            except Exception as exc:
-                observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
-                    error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.QUEUE))
+                # Input that already proved this exact candidate's evidence
+                # starts the writer admitted for it, once, through the
+                # existing continuation -- still inside this admission lock,
+                # which every pause-intent write also takes. A pause therefore
+                # lands strictly before admission (the handoff stays with the
+                # broker until the next admission) or strictly after the native
+                # start (the input was consumed); never in between. The
+                # executor still enforces its own security facts.
+                submitted = await self.inputs.take_handoff(
+                    artifact.transfer_id, artifact.request_id, str(candidate.id), executor.descriptor.id,
+                ) if isinstance(executor, ExecutorInputRecovery) else None
+                if submitted is not None:
+                    try:
+                        observed = await executor.start_with_input(request, handle, submitted)
+                    except Exception as exc:
+                        observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                            error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR,
+                                                  stage=Stage.QUEUE, secrets=submitted.secret_values()))
+                    finally:
+                        submitted.discard()
+            if submitted is None:
+                try:
+                    observed = await executor.start(request, handle)
+                except Exception as exc:
+                    observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                        error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.QUEUE))
             current = next(item for item in await self.repository.artifacts(artifact.transfer_id) if item.id == artifact.id)
             await self._execution_result(current, executor, observed)
         except Exception as exc:
@@ -1586,6 +1706,9 @@ class TransferEngine:
         challenge = await self.challenges.current(transfer_id)
         if transfer.state != TransferState.INPUT_REQUIRED or challenge is None or challenge.id != challenge_id:
             raise InputSubmissionRejected("Input challenge is stale")
+        if challenge.origin == InputOrigin.EVIDENCE and await self._evidence_target(challenge) is None:
+            await self.challenges.clear(challenge)
+            raise InputSubmissionRejected("Input challenge is stale")
         await self.inputs.submit(challenge, method, values)
         return challenge
 
@@ -1612,6 +1735,7 @@ class TransferEngine:
             if challenge:
                 await self.inputs.clear(challenge.id)
                 await self.challenges.clear_transfer(transfer_id)
+            await self.inputs.discard_transfer(transfer_id)
 
             return await self._cleanup_executions_pending(transfer_id=transfer_id)
 
@@ -1719,6 +1843,7 @@ class TransferEngine:
         if challenge:
             await self.inputs.clear(challenge.id)
         await self.challenges.clear_transfer(transfer_id)
+        await self.inputs.discard_transfer(transfer_id)
         await self.repository.delete(transfer_id, remote=remote, now=self.clock())
         await self._cleanup_executions_pending(transfer_id=transfer_id)
         if remote:

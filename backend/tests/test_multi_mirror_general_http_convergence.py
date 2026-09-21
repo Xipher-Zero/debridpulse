@@ -1,7 +1,7 @@
 """DP 1.0.12 Section 11/12/13 real-runtime proof.
 
 Deterministic local fixture exercising the *real* General HTTP resolution +
-bounded-sampler path (``services.network_safety.sampled_public_artifact_fingerprint``
+bounded-sampler path (``services.artifact_sampling.sampled_public_artifact_fingerprint``
 through the real ``executors.aria2.executor.Aria2Executor.fingerprint``), never a
 fake "equivalent=True" hook. Mirrors are distinguished by loopback host address
 (``127.0.0.<n>``) rather than port, because ``GeneralHttpProvider`` derives

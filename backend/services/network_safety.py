@@ -10,16 +10,13 @@ same for all of them.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import ipaddress
-import re
 import socket
 from typing import Iterable
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 
 import aiohttp
 
-from transfers.models import FingerprintKind
 
 
 class UnsafeDestinationError(ValueError):
@@ -50,11 +47,6 @@ PROVIDER_LINK_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 # connection-time resolution, and egress guard. It is kept equal to the aria2
 # executor's positive claim by regression, not by importing across the layer.
 PUBLIC_DESTINATION_SCHEMES: frozenset[str] = frozenset(DEFAULT_DESTINATION_PORTS)
-
-# Transports the bounded content sampler below can actually speak. It is an
-# HTTP(S) Range sampler; anything else has no executor-side sample, and core
-# equivalence policy owns what unavailable proof means.
-SAMPLED_FINGERPRINT_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 
 
 def default_destination_port(scheme: str) -> int:
@@ -147,65 +139,6 @@ async def validate_resolved_public_destination(
     return validated
 
 
-def _content_range(value: str) -> tuple[int, int, int] | None:
-    match = re.fullmatch(r"\s*bytes\s+(\d+)\s*-\s*(\d+)\s*/\s*(\d+)\s*", str(value or ""), re.I)
-    if not match:
-        return None
-    start, end, total = (int(match.group(index)) for index in (1, 2, 3))
-    if total <= 0 or start < 0 or end < start or end >= total:
-        return None
-    return start, end, total
-
-
-def _digest_prefix(total: int, body: bytes) -> str:
-    digest = hashlib.sha256()
-    digest.update(str(total).encode("ascii"))
-    digest.update(b"\0prefix\0")
-    digest.update(body)
-    return digest.hexdigest()
-
-
-def _digest_full(total: int, first: bytes, last: bytes | None = None) -> str:
-    digest = hashlib.sha256()
-    digest.update(str(total).encode("ascii"))
-    digest.update(b"\0")
-    digest.update(first)
-    if last is not None:
-        digest.update(b"\0")
-        digest.update(last)
-    return digest.hexdigest()
-
-
-def _sample(total: int, signature: str, kind: FingerprintKind, reason: str = "",
-            prefix_signature: str = "") -> tuple[int, str, FingerprintKind, str, str]:
-    return total, signature, kind, reason, prefix_signature
-
-
-def _unavailable(reason: str) -> tuple[int, str, FingerprintKind, str, str]:
-    return _sample(0, "", FingerprintKind.UNAVAILABLE, reason)
-
-
-def _plausible_as_complete_representation(discovered_length: int, expected_bytes: int) -> bool:
-    """Negative certainty guard only -- never artifact-identity policy.
-
-    Decides whether a short, Range-ignoring 200 response can credibly be
-    treated as the complete representation of an object the caller reported
-    at a known positive size. A positive ``expected_bytes`` may only rule out
-    a claim of completeness here; it is never compared for exact equality and
-    never used to decide that two candidates are the same or different
-    artifact -- that remains Universal Core policy.
-    """
-    return expected_bytes <= 0 or discovered_length * 2 >= expected_bytes
-
-
-async def _read_exactly(response, count: int) -> bytes | None:
-    """Read exactly one bounded sample; never consume past its declared region."""
-    try:
-        return await response.content.readexactly(count)
-    except asyncio.IncompleteReadError:
-        return None
-
-
 class PublicDestinationResolver(aiohttp.abc.AbstractResolver):
     async def resolve(self, host, port=0, family=socket.AF_UNSPEC):
         answers = await asyncio.get_running_loop().getaddrinfo(
@@ -217,156 +150,3 @@ class PublicDestinationResolver(aiohttp.abc.AbstractResolver):
 
     async def close(self):
         pass
-
-
-def _origin(uri: str) -> tuple[str, str, int]:
-    parsed = urlsplit(uri)
-    return parsed.scheme.casefold(), str(parsed.hostname or "").casefold(), int(
-        parsed.port or default_destination_port(parsed.scheme))
-
-
-async def _range_request(session, uri: str, headers: dict, *, max_redirects: int = 3):
-    current = uri
-    current_headers = dict(headers)
-    prior_origin = _origin(uri)
-    redirected = False
-    for hop in range(max_redirects + 1):
-        try:
-            validated = await validate_resolved_public_destination(current)
-        except DestinationLookupError:
-            return None, "dns_failure"
-        except UnsafeDestinationError:
-            return None, "destination_rejected"
-        response = await session.get(validated, headers=current_headers, allow_redirects=False)
-        if not (300 <= response.status < 400):
-            return response, "redirect" if redirected else ""
-        location = str(response.headers.get("Location") or "").strip()
-        response.release()
-        if not location or hop >= max_redirects:
-            return None, "redirect"
-        next_uri = urljoin(validated, location)
-        try:
-            validate_provider_download_url(next_uri, context="redirect target",
-                                           schemes=SAMPLED_FINGERPRINT_SCHEMES)
-        except UnsafeDestinationError:
-            return None, "destination_rejected"
-        next_origin = _origin(next_uri)
-        if next_origin != prior_origin:
-            current_headers = {key: value for key, value in current_headers.items()
-                               if key.casefold() in {"range", "accept-encoding"}}
-        prior_origin = next_origin
-        current = next_uri
-        redirected = True
-    return None, "redirect"
-
-
-async def sampled_public_artifact_fingerprint(
-    uri: str,
-    *,
-    sample_bytes: int = 64 * 1024,
-    timeout_seconds: float = 20.0,
-    headers: dict | None = None,
-    expected_bytes: int = 0,
-) -> tuple[int, str, FingerprintKind, str, str]:
-    """Return bounded structured content evidence for a public HTTP(S) capability.
-
-    ``expected_bytes`` is retained for caller compatibility but is deliberately
-    not an identity gate. The sampler reports the payload size it discovers;
-    the Universal Core owns reported-size plausibility policy.
-    """
-    # The sampler speaks HTTP(S) only. A transport it cannot sample is refused
-    # here, at its own boundary, so no other caller has to know that.
-    if urlsplit(str(uri or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
-        return _unavailable("destination_rejected")
-    try:
-        validated = await validate_resolved_public_destination(uri)
-    except DestinationLookupError:
-        return _unavailable("dns_failure")
-    except UnsafeDestinationError:
-        return _unavailable("destination_rejected")
-
-    sample_bytes = max(4096, int(sample_bytes))
-    timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
-    base_headers = {**(headers or {}), "Accept-Encoding": "identity"}
-    connector = aiohttp.TCPConnector(resolver=PublicDestinationResolver(), use_dns_cache=False)
-    try:
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-            first_headers = {**base_headers, "Range": f"bytes=0-{sample_bytes - 1}"}
-            response, redirect_reason = await _range_request(session, validated, first_headers)
-            if response is None:
-                return _unavailable(redirect_reason or "sampler_unavailable")
-            try:
-                if response.status == 200:
-                    try:
-                        length = int(response.headers.get("Content-Length") or 0)
-                    except (TypeError, ValueError):
-                        length = 0
-                    if length <= 0:
-                        return _unavailable("range_ignored")
-                    count = min(sample_bytes, length)
-                    first = await _read_exactly(response, count)
-                    if first is None:
-                        return _unavailable("sampler_unavailable")
-                    prefix = _digest_prefix(length, first)
-                    if length <= sample_bytes:
-                        if not _plausible_as_complete_representation(length, expected_bytes):
-                            return _unavailable("incomplete_representation")
-                        return _sample(length, _digest_full(length, first), FingerprintKind.FULL_CONTENT_SAMPLE,
-                                       redirect_reason, prefix)
-                    return _sample(length, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
-                                   "range_ignored", prefix)
-                if response.status != 206:
-                    return _unavailable("range_unsupported")
-                parsed = _content_range(response.headers.get("Content-Range", ""))
-                if parsed is None:
-                    return _unavailable("invalid_content_range")
-                start, end, total = parsed
-                expected_end = min(total - 1, sample_bytes - 1)
-                if start != 0 or end != expected_end:
-                    return _unavailable("invalid_content_range")
-                first = await _read_exactly(response, end - start + 1)
-                if first is None:
-                    return _unavailable("sampler_unavailable")
-                prefix = _digest_prefix(total, first)
-            finally:
-                response.release()
-
-            if total <= len(first):
-                return _sample(total, _digest_full(total, first[:total]), FingerprintKind.FULL_CONTENT_SAMPLE,
-                               redirect_reason, prefix)
-
-            last_start = max(0, total - sample_bytes)
-            last_headers = {**base_headers, "Range": f"bytes={last_start}-{total - 1}"}
-            response, last_redirect_reason = await _range_request(session, validated, last_headers)
-            if response is None:
-                return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
-                               last_redirect_reason or "sampler_unavailable", prefix)
-            try:
-                if response.status != 206:
-                    reason = "range_ignored" if response.status == 200 else "range_unsupported"
-                    return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE, reason, prefix)
-                parsed = _content_range(response.headers.get("Content-Range", ""))
-                if parsed is None:
-                    return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
-                                   "invalid_content_range", prefix)
-                start, end, repeated_total = parsed
-                if start != last_start or end != total - 1 or repeated_total != total:
-                    return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
-                                   "size_disagreement" if repeated_total != total else "invalid_content_range", prefix)
-                last = await _read_exactly(response, end - start + 1)
-                if last is None:
-                    return _sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
-                                   "sampler_unavailable", prefix)
-            finally:
-                response.release()
-
-        return _sample(total, _digest_full(total, first, last), FingerprintKind.FULL_CONTENT_SAMPLE,
-                       redirect_reason or last_redirect_reason, prefix)
-    except asyncio.TimeoutError:
-        return _unavailable("timeout")
-    except DestinationLookupError:
-        return _unavailable("dns_failure")
-    except UnsafeDestinationError:
-        return _unavailable("destination_rejected")
-    except (aiohttp.ClientError, OSError, ValueError):
-        return _unavailable("sampler_unavailable")

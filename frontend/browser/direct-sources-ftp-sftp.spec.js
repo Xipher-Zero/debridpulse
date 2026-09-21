@@ -136,11 +136,11 @@ test('HTTP & HTTPS and FTP & SFTP toggles persist independently and never touch 
 const PASSWORD_METHOD = {method:'username_password', fields:[{name:'username', required:true}, {name:'password', required:true}]};
 const FINGERPRINT = '208c2653f8ed2c0d7b62d69b304e8016e4151f60';
 
-function challengeItem(id, reason, facts = []) {
+function challengeItem(id, reason, facts = [], origin = 'executor') {
   return {
     id, name:`Challenge fixture ${id}`, status:'input_required', progress:0, size_bytes:0, source:'direct_link',
     hash:'', label:'', created_at:'2026-09-21T00:00:00Z', error:null, error_message:null,
-    input_required:{id:`challenge-${id}`, generation:1, reason, origin:'executor', methods:[PASSWORD_METHOD], facts},
+    input_required:{id:`challenge-${id}`, generation:1, reason, origin, methods:[PASSWORD_METHOD], facts},
   };
 }
 
@@ -225,6 +225,34 @@ test('ordinary AUTH_REQUIRED presentation is unchanged', async ({ page }) => {
   await expect(modal.locator('[data-dp-identity-fingerprint]')).toHaveCount(0);
   await expect(modal.locator('[data-dp-auth-continue]')).toHaveText('Continue');
   await expect(modal.locator('[data-dp-auth-secret-label]')).toHaveText('Password');
+  expect(errors).toEqual([]);
+});
+
+test('evidence-origin challenges use the same single modal and submission contract', async ({ page }) => {
+  // 1.0.13 pre-writer evidence acquisition raises the SAME neutral challenges
+  // with origin "evidence"; the one modal owner never branches on origin.
+  await isolateExternalFonts(page);
+  const errors = observeRuntime(page);
+  const facts = [
+    {name:'server_host', value:'mirror.example.org'},
+    {name:'server_identity_algorithm', value:'sha-1'},
+    {name:'server_identity_fingerprint', value:FINGERPRINT},
+  ];
+  const fixture = await installChallenges(page, [challengeItem(954, 'server_identity_required', facts, 'evidence')]);
+  await page.goto('/');
+  const modal = page.locator('[data-dp-input-required-modal]');
+  await expect(modal).toBeVisible();
+  await expect(page.locator('[data-dp-input-required-modal]')).toHaveCount(1);
+  await expect(modal.locator('#dp-auth-required-title')).toHaveText('Verify Server Identity');
+  await expect(modal.locator('[data-dp-identity-fingerprint]')).toHaveText(FINGERPRINT);
+  await expect(modal).not.toContainText('evidence');
+  await modal.locator('[data-dp-auth-username]').fill('operator');
+  await modal.locator('[data-dp-auth-secret]').fill('secret-value');
+  await modal.locator('[data-dp-auth-continue]').click();
+  await expect(modal).toHaveCount(0);
+  expect(fixture.submissions).toEqual([{id:954, body:{
+    challenge_id:'challenge-954', method:'username_password', username:'operator', password:'secret-value',
+  }}]);
   expect(errors).toEqual([]);
 });
 

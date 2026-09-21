@@ -340,3 +340,96 @@ async def test_direct_unlock_candidate_is_provider_issued_delivery_with_upstream
     candidate = result.candidates[0]
     assert candidate.delivery == DeliveryKind.PROVIDER_ISSUED
     assert (candidate.source_identity.scope, candidate.source_identity.key) == ("host", "1fichier.com")
+
+
+# ── DP 1.0.13 provider-wide evidence conformance (Path A / Path B) ───────────
+# AllDebrid needed no production change: it already emits exactly the neutral
+# facts the universal evidence contract consumes.
+
+async def _unlocked(filename="file.bin", size=128, link="https://delivery.example/file", source="https://host-a.example/f"):
+    client = AsyncMock()
+    client.unlock_link.return_value = {"link": link, "filename": filename, "filesize": size}
+    return (await AllDebridProvider(client=client).resolve(TransferRequest("https", source))).candidates[0]
+
+
+def _aria2(tmp_path):
+    from types import SimpleNamespace
+    from executors.aria2.executor import Aria2Configuration, Aria2Executor
+    return Aria2Executor(SimpleNamespace(url="http://aria2.invalid/jsonrpc"), Aria2Configuration(str(tmp_path)),
+                         AsyncMock(return_value=True))
+
+
+@pytest.mark.asyncio
+async def test_resolver_attested_identity_still_bypasses_sampling(tmp_path):
+    from transfers.mirrors import EvidenceKind, shared_evidence
+    from transfers.registry import IntegrationRegistry
+    left = await _unlocked(source="https://host-a.example/f")
+    right = await _unlocked(source="https://host-b.example/f", link="https://delivery.example/other")
+    executor = _aria2(tmp_path)
+    sampled = []
+
+    async def forbidden(candidate):
+        sampled.append(candidate)
+        raise AssertionError("authoritative resolver evidence must never be byte-sampled")
+
+    executor.fingerprint = forbidden
+    registry = IntegrationRegistry()
+    registry.register_executor(executor)
+    evidence = await shared_evidence(left, right, registry)
+    assert evidence.kind == EvidenceKind.RESOLVER_ATTESTED and sampled == []
+
+
+@pytest.mark.asyncio
+async def test_provider_issued_capability_never_becomes_an_operator_challenge(tmp_path, monkeypatch):
+    import executors.aria2.executor as executor_module
+    from services.artifact_sampling import AccessRequired
+    from transfers.models import ArtifactFingerprint, FingerprintKind, InputRequirement
+
+    async def unauthorized(address, **kwargs):
+        return AccessRequired()
+
+    monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", unauthorized)
+    candidate = await _unlocked(filename="", size=0)  # no resolver identity: generalized HTTP evidence applies
+    assert candidate.delivery == DeliveryKind.PROVIDER_ISSUED and candidate.accepted_input_methods == ()
+    result = await _aria2(tmp_path).fingerprint(candidate)
+    assert not isinstance(result, InputRequirement)
+    assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
+
+
+@pytest.mark.asyncio
+async def test_delivery_candidate_without_resolver_identity_uses_the_generalized_http_evidence(tmp_path, monkeypatch):
+    import executors.aria2.executor as executor_module
+    from transfers.models import FingerprintKind
+    seen = []
+
+    async def sampled(address, **kwargs):
+        seen.append((address, kwargs.get("headers")))
+        return (128, "full", FingerprintKind.FULL_CONTENT_SAMPLE, "", "prefix")
+
+    monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", sampled)
+    candidate = await _unlocked(filename="", size=0)
+    assert candidate.resolver_identity_evidence is None
+    result = await _aria2(tmp_path).fingerprint(candidate)
+    assert result.kind == FingerprintKind.FULL_CONTENT_SAMPLE
+    assert seen == [("https://delivery.example/file", {})]  # the delivery capability, no operator credential
+
+
+def test_alldebrid_owns_no_sampling_or_evidence_input_code():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "providers" / "alldebrid"
+    for path in root.glob("*.py"):
+        text = path.read_text()
+        # (Its own "auth_required" health STATE is account/API configuration,
+        # deliberately outside the evidence INPUT_REQUIRED lifecycle.)
+        # ("fingerprint" alone is the torrent infohash request field.)
+        for token in ("ArtifactFingerprint", "def fingerprint", "CandidateSampling", "sampled_public", "artifact_sampling", "InputRequirement",
+                      "auth_required(", "server_identity_required(", "transfers.input_required", "accepted_input_methods"):
+            assert token not in text, (path.name, token)
+
+
+@pytest.mark.asyncio
+async def test_torrent_roots_resolve_to_observations_never_sampled_candidates():
+    client = AsyncMock()
+    client.upload_magnet.return_value = {"id": 7, "name": "Root", "ready": False}
+    result = await AllDebridProvider(client=client).resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40))
+    assert result.candidates == () and result.observation is not None

@@ -144,7 +144,8 @@ async def test_concurrent_extractions_cannot_clobber_same_new_target(tmp_path):
 
 
 def test_sample_fingerprints_request_identity_bytes_with_manual_redirect_control():
-    source = (Path(__file__).resolve().parents[1] / "services/network_safety.py").read_text()
+    # DP 1.0.13: bounded content sampling for every transport has one owner.
+    source = (Path(__file__).resolve().parents[1] / "services/artifact_sampling.py").read_text()
     # Workspace 4 centralizes identity encoding and redirect control in reusable
     # helpers: both first/last samples inherit one identity header definition,
     # and every hop is explicit with aiohttp redirects disabled.
@@ -152,4 +153,4 @@ def test_sample_fingerprints_request_identity_bytes_with_manual_redirect_control
     assert source.count("allow_redirects=False") == 1
     assert "async def _range_request" in source
     assert "urljoin(validated, location)" in source
-    assert "validate_resolved_public_destination(current)" in source
+    assert "network_safety.validate_resolved_public_destination(current)" in source

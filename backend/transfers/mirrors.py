@@ -6,8 +6,8 @@ from dataclasses import dataclass
 import logging
 import socket
 
-from transfers.contracts import CandidateSampling
-from transfers.models import FingerprintKind
+from transfers.contracts import CandidateSampling, CandidateSamplingContinuation
+from transfers.models import FingerprintKind, InputRequirement
 from transfers import size_evidence
 
 
@@ -32,6 +32,14 @@ _CONTRADICTORY_REASONS = frozenset({"size_disagreement", "sample_mismatch", "int
 #   * ``ambiguous_mapping`` -- the candidate matches more than one canonical
 #     target, so no unique mapping can ever be proven (never guess).
 _PROOF_UNAVAILABLE_REASONS = frozenset({"sampler_unsupported", "ambiguous_mapping"})
+# ``input_required`` -- the sampler reached the candidate and reports that its
+# evidence exists but acquiring it definitively requires transient operator
+# input. That is neither proof of difference nor absence of any possible
+# proof, so it is deliberately in none of the sets above or below: it is an
+# unresolved, non-retryable pairing that holds the writer barrier. For a
+# request's OWN candidate the cohort owner turns it into the one INPUT_REQUIRED
+# lifecycle (``EvidenceContext.requirement_for``); for a peer candidate no
+# challenge can be raised on this request's behalf, so the hold stands.
 _NONPAIRING_REASONS = frozenset({
     "same_candidate", "non_independent_source", "logical_pairing_mismatch",
     "size_disagreement", "sample_mismatch", "integrity_mismatch",
@@ -145,8 +153,8 @@ class EquivalenceEvidence:
 
 class EvidenceContext:
     """Fingerprint acquisitions already made within ONE cohort coordination
-    decision (``transfers.cohorts.coordinate_collection`` creates exactly one
-    per call and drops it on return).
+    decision (``transfers.cohorts.coordinate_collection`` uses exactly one per
+    call; the materialization owner creates it and drops it on return).
 
     It only avoids asking the same executor for the same candidate's
     fingerprint twice inside that decision; what a fingerprint MEANS is still
@@ -161,29 +169,80 @@ class EvidenceContext:
     a sample) -- never by a name, host or other display string. A failed
     acquisition is remembered for the decision exactly like a successful one,
     so one decision observes each candidate once; whether another attempt is
-    made at all remains the bounded proof-retry policy's decision."""
+    made at all remains the bounded proof-retry policy's decision.
 
-    __slots__ = ("_fingerprints",)
+    The same acquisition may need transient operator input. A decision that
+    continues an answered evidence challenge is given that input for exactly
+    the challenged candidate identity, so the SAME acquisition continues
+    (``CandidateSamplingContinuation``) inside the ordinary decision. The
+    context also records which candidates answered with an
+    ``InputRequirement`` so the cohort owner can route a request's own
+    requirement to the one INPUT_REQUIRED lifecycle. The input is borrowed:
+    the context never retains, copies or discards it."""
 
-    def __init__(self):
+    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven")
+
+    def __init__(self, inputs=None):
         self._fingerprints = {}
+        self._inputs = dict(inputs or {})
+        self._requirements = {}
+        self._proven = {}
 
     async def fingerprint(self, executor, candidate):
         key = (str(candidate.id), max(0, int(candidate.expected_bytes or 0)))
         if key not in self._fingerprints:
+            submitted = self._inputs.get(key[0])
             try:
-                self._fingerprints[key] = (await executor.fingerprint(candidate), None)
+                if submitted is not None and isinstance(executor, CandidateSamplingContinuation):
+                    sample = await executor.fingerprint_with_input(candidate, submitted)
+                    if sample is not None and not isinstance(sample, InputRequirement) \
+                            and _fingerprint_kind(sample) != FingerprintKind.UNAVAILABLE.value:
+                        self._proven[key[0]] = sample
+                else:
+                    sample = _retained(candidate, await executor.fingerprint(candidate))
+                self._fingerprints[key] = (sample, None)
             except Exception as exc:
                 self._fingerprints[key] = (None, exc)
+            sample = self._fingerprints[key][0]
+            # Only a candidate that advertises every requested input method may
+            # ever ask its operator; anything else stays an unresolved proof.
+            if isinstance(sample, InputRequirement) and {item.method for item in sample.methods} <= set(
+                    candidate.accepted_input_methods):
+                self._requirements[key[0]] = (executor.descriptor.id, sample)
         sample, error = self._fingerprints[key]
         if error is not None:
             raise error
         return sample
 
+    def requirement_for(self, candidates):
+        """The first of ``candidates`` (in the given order) whose evidence
+        acquisition requires operator input in this decision, as
+        ``(candidate, integration_id, requirement)``; ``None`` otherwise."""
+        for candidate in candidates:
+            found = self._requirements.get(str(candidate.id))
+            if found is not None:
+                return candidate, found[0], found[1]
+        return None
+
+    def proven_evidence(self, candidate_id):
+        """The usable evidence this decision's transient input produced for
+        ``candidate_id``, or ``None``."""
+        return self._proven.get(str(candidate_id))
+
+
+def _retained(candidate, sample):
+    """A live acquisition that would need operator input this decision does
+    not hold falls back to the candidate's retained neutral content evidence
+    (``TransferCandidate.content_evidence``), when it has any. The credential
+    that once proved it is never involved."""
+    if isinstance(sample, InputRequirement) and candidate.content_evidence is not None:
+        return candidate.content_evidence
+    return sample
+
 
 async def _fingerprint(executor, candidate, context: EvidenceContext | None):
     if context is None:
-        return await executor.fingerprint(candidate)
+        return _retained(candidate, await executor.fingerprint(candidate))
     return await context.fingerprint(executor, candidate)
 
 
@@ -361,6 +420,8 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
         # UNAVAILABLE with a retryable reason such as timeout/dns_failure.
         if a is None or b is None:
             return _diagnose(left, right, _unavailable("sampler_unsupported"))
+        if isinstance(a, InputRequirement) or isinstance(b, InputRequirement):
+            return _diagnose(left, right, _unavailable("input_required"))
 
         a_kind = _fingerprint_kind(a)
         b_kind = _fingerprint_kind(b)
@@ -428,6 +489,8 @@ async def self_evidence(candidate, registry, context: EvidenceContext | None = N
         sample = await _fingerprint(executor, candidate, context)
         if sample is None:
             return _unavailable("sampler_unsupported")
+        if isinstance(sample, InputRequirement):
+            return _unavailable("input_required")
         kind = _fingerprint_kind(sample)
         if kind == FingerprintKind.UNAVAILABLE.value:
             return _unavailable(str(getattr(sample, "reason", "") or "sampler_unavailable"))
@@ -446,7 +509,7 @@ async def self_evidence(candidate, registry, context: EvidenceContext | None = N
         return _unavailable("sampler_unavailable")
 
 
-async def shared_size(left, right, registry) -> int | None:
+async def shared_size(left, right, registry, context: EvidenceContext | None = None) -> int | None:
     """Compatibility seam: only strong/full evidence may merge one artifact."""
-    evidence = await shared_evidence(left, right, registry)
+    evidence = await shared_evidence(left, right, registry, context)
     return evidence.total_bytes if evidence.proves_individual else None

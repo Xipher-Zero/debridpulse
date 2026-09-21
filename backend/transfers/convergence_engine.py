@@ -2188,7 +2188,10 @@ class TransferEngine(_QualifiedTransferEngine):
         transfer = await self.repository.get(transfer_id)
         if transfer is None:
             raise KeyError(transfer_id)
-        await self.repository.set_pause_and_fence(transfer_id, True)
+        # Pause intent is written under the execution-admission lock, so it is
+        # ordered against any admission that hands transient input to a start.
+        async with self._dispatch_lock:
+            await self.repository.set_pause_and_fence(transfer_id, True)
         errors = []
         for artifact in await self.repository.artifacts(transfer_id):
             if artifact.execution is None:
@@ -2215,7 +2218,8 @@ class TransferEngine(_QualifiedTransferEngine):
         if await self.repository.globally_paused():
             for other in await self.repository.active():
                 if other.id != transfer_id:
-                    await self.repository.set_pause_and_fence(other.id, True)
+                    async with self._dispatch_lock:
+                        await self.repository.set_pause_and_fence(other.id, True)
             await self.repository.global_pause(False)
         await self.repository.set_pause_and_fence(transfer_id, False)
         transfer = await self.repository.get(transfer_id)
@@ -2237,7 +2241,8 @@ class TransferEngine(_QualifiedTransferEngine):
         return tuple(errors)
 
     async def pause_all(self):
-        await self.repository.global_pause(True)
+        async with self._dispatch_lock:
+            await self.repository.global_pause(True)
         results = {}
         for transfer in await self.repository.active():
             results[transfer.id] = await self.pause(transfer.id)

@@ -66,12 +66,21 @@ def test_human_runtime_license_inventory_covers_machine_manifest_exact_versions(
         )
 
 
+# Copyleft runtime dependencies admitted only after an explicit license review,
+# pinned to the exact reviewed license expression. asyncssh (DP 1.0.13 SFTP
+# evidence) is dual-licensed and used under GPL-2.0-or-later, the project's own
+# license; see docs/DEPENDENCY_LICENSES.md.
+_REVIEWED_COPYLEFT = {"asyncssh": "EPL-2.0 OR GPL-2.0-or-later"}
+
+
 def test_runtime_inventory_has_no_unknown_or_unreviewed_copyleft_license():
     manifest = _runtime_license_manifest()
     for item in manifest["packages"]:
         license_id = item["license"].upper()
         assert "UNKNOWN" not in license_id
         assert "AGPL" not in license_id
+        if _REVIEWED_COPYLEFT.get(_normalized_name(item["name"])) == item["license"]:
+            continue
         assert "GPL" not in license_id
 
 

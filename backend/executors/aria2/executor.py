@@ -8,6 +8,7 @@ The executor reports factual observations only; recovery policy is core-owned.
 from __future__ import annotations
 
 import asyncio
+import base64
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -18,17 +19,18 @@ from urllib.parse import urlsplit
 
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
-from services.downloader_egress_guard import RouteScope, downloader_egress_guard
-from services.network_safety import (
-    SAMPLED_FINGERPRINT_SCHEMES, DestinationLookupError,
-    sampled_public_artifact_fingerprint, validate_resolved_public_destination,
+from services.artifact_sampling import (
+    SAMPLED_FINGERPRINT_SCHEMES, AccessRequired, ftp_fingerprint, sampled_public_artifact_fingerprint,
+    sftp_fingerprint,
 )
+from services.downloader_egress_guard import RouteScope, downloader_egress_guard
+from services.network_safety import DestinationLookupError, validate_resolved_public_destination
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
 from transfers.models import (
     ArtifactFingerprint, CancellationInitiator, Capability, ExecutionHandle, ExecutionObservation,
-    ExecutionRequest, ExecutionState, ExecutionSnapshot, HealthObservation, InputFactName, InputField, InputMethod,
-    InputReason, InputRequirement, IntegrationDescriptor, OutcomeKind, TransferOutcome,
+    ExecutionRequest, ExecutionState, ExecutionSnapshot, FingerprintKind, HealthObservation, InputFactName, InputField,
+    InputMethod, InputReason, InputRequirement, IntegrationDescriptor, OutcomeKind, TransferOutcome,
 )
 
 
@@ -46,6 +48,14 @@ _HOST_KEY_SENTINEL = "0" * 40
 # aria2's own anonymous defaults, pinned per job so a shared daemon's global FTP
 # credentials are never inherited by an owned job.
 _ANONYMOUS_LOGIN = {"ftp-user": "anonymous", "ftp-passwd": "ARIA2USER@"}
+# The packaged libssh2 1.11.1 host-key preference (characterized against servers
+# restricted to subsets of ECDSA/Ed25519/RSA keys). Evidence acquisition asks for
+# the same order, so the identity an operator confirms is the one aria2 verifies.
+_NATIVE_HOST_KEY_ORDER = (
+    "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+    "ssh-ed25519", "rsa-sha2-512", "rsa-sha2-256", "ssh-rsa",
+)
+_SHA1_IDENTITY = re.compile(r"[0-9a-f]{40}")
 
 
 @dataclass(frozen=True)
@@ -139,22 +149,100 @@ class Aria2Executor:
         return (str(self._target(target)) + ".aria2",)
 
     async def fingerprint(self, candidate):
-        # Bounded content evidence is an HTTP(S) Range sample. A claimed
-        # transport the sampler cannot speak yields no executor sample at all
-        # rather than a guess; core equivalence policy owns unavailable proof.
-        sampleable = self.descriptor.schemes & SAMPLED_FINGERPRINT_SCHEMES
-        endpoint = next((item for item in candidate.endpoints if item.scheme in sampleable), None)
+        return await self._evidence(candidate)
+
+    async def fingerprint_with_input(self, candidate, submitted: SubmittedInput):
+        return await self._evidence(candidate, submitted)
+
+    async def _evidence(self, candidate, submitted: SubmittedInput | None = None):
+        """One neutral CandidateSampling over the endpoint execution would use.
+
+        Transport dispatch lives here, at the executor boundary; byte windows
+        and the digest are the one shared definition, so the same bytes are the
+        same fingerprint whatever the transport. Only definitive, characterized
+        access evidence becomes an ``InputRequirement``, and only for a
+        candidate that advertises transient username/password input."""
+        endpoint = self._endpoint(candidate)
         if endpoint is None:
             return None
         for key, value in endpoint.headers.items():
             if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
                 return None
-        result = await sampled_public_artifact_fingerprint(
-            endpoint.address,
-            headers=dict(endpoint.headers),
-            expected_bytes=max(0, int(candidate.expected_bytes or 0)),
-        )
-        return ArtifactFingerprint(*result) if result else None
+        accepts_input = InputMethod.USERNAME_PASSWORD in candidate.accepted_input_methods
+        credentials = None
+        if submitted is not None:
+            credentials = submitted.value(InputField.USERNAME), submitted.value(InputField.PASSWORD)
+            if not accepts_input or submitted.method != InputMethod.USERNAME_PASSWORD or not all(credentials):
+                return None
+        refused = ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
+        if endpoint.scheme in SAMPLED_FINGERPRINT_SCHEMES:
+            headers = dict(endpoint.headers)
+            # A provider-issued Authorization capability is the candidate's own
+            # access; operator credentials never replace it.
+            provider_authorization = any(str(key).lower() == "authorization" for key in headers)
+            if credentials is not None:
+                if provider_authorization:
+                    return None
+                headers["Authorization"] = "Basic " + base64.b64encode(":".join(credentials).encode()).decode()
+            result = await sampled_public_artifact_fingerprint(
+                endpoint.address, headers=headers, expected_bytes=max(0, int(candidate.expected_bytes or 0)),
+            )
+            if isinstance(result, AccessRequired):
+                return auth_required(username_password()) if accepts_input and not provider_authorization else refused
+            return ArtifactFingerprint(*result) if result else None
+        # FTP/SFTP evidence reaches its origin only through the egress guard,
+        # after the same destination validation execution applies.
+        try:
+            await validate_resolved_public_destination(endpoint.address)
+        except DestinationLookupError:
+            return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "dns_failure")
+        except ValueError:
+            return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
+        if endpoint.scheme == "ftp":
+            username, password = credentials or (_ANONYMOUS_LOGIN["ftp-user"], _ANONYMOUS_LOGIN["ftp-passwd"])
+            result = await ftp_fingerprint(
+                endpoint.address, username=username, password=password,
+                connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
+                                                                  port=port),
+            )
+            if isinstance(result, AccessRequired):
+                return auth_required(username_password()) if accepts_input else refused
+            return ArtifactFingerprint(*result)
+        if endpoint.scheme == "sftp":
+            # SFTP evidence always needs the operator: a confirmed identity and
+            # a credential. Without advertised input there is no sample.
+            if not accepts_input:
+                return None
+            host = str(urlsplit(endpoint.address).hostname or "").rstrip(".").casefold()
+            identity = None
+            if submitted is not None:
+                identity = self._confirmed_evidence_identity(host, submitted)
+                if identity is None:
+                    return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
+            result = await sftp_fingerprint(
+                endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
+                host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
+                username=credentials[0] if credentials else "", password=credentials[1] if credentials else "",
+            )
+            if isinstance(result, AccessRequired):
+                if not host or not _SHA1_IDENTITY.fullmatch(result.server_identity) \
+                        or result.server_identity == _HOST_KEY_SENTINEL:
+                    return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
+                return server_identity_required(username_password(), host=host, algorithm="sha-1",
+                                                fingerprint=result.server_identity)
+            return ArtifactFingerprint(*result)
+        return None
+
+    @staticmethod
+    def _confirmed_evidence_identity(host: str, submitted: SubmittedInput) -> str | None:
+        """The exact SHA-1 host identity the operator confirmed for ``host``, or None."""
+        facts = {fact.name: fact.value for fact in submitted.facts}
+        identity = facts.get(InputFactName.SERVER_IDENTITY_FINGERPRINT, "")
+        if (not host or facts.get(InputFactName.SERVER_HOST) != host
+                or facts.get(InputFactName.SERVER_IDENTITY_ALGORITHM) != "sha-1"
+                or not _SHA1_IDENTITY.fullmatch(identity) or identity == _HOST_KEY_SENTINEL):
+            return None
+        return identity
 
     def _endpoint(self, candidate):
         return next((item for item in candidate.endpoints if item.scheme in self.descriptor.schemes), None)
@@ -279,6 +367,11 @@ class Aria2Executor:
         return address, options
 
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
+        return await self._start(request, handle)
+
+    async def _start(self, request: ExecutionRequest, handle: ExecutionHandle,
+                     submitted: SubmittedInput | None = None) -> ExecutionObservation:
+        secrets = self._secrets(handle) + (submitted.secret_values() if submitted is not None else ())
         try:
             gid = await self._check(handle, "start")
             if self.prepare(request) != handle:
@@ -291,7 +384,15 @@ class Aria2Executor:
                     raise
             else:
                 raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
-            address, options = await self._options(request, handle)
+            host_identity = None
+            if submitted is not None and self._endpoint(request.candidate).scheme == "sftp":
+                # Evidence acquisition confirmed this identity before the writer
+                # existed; aria2 re-verifies exactly it before authenticating.
+                host = str(urlsplit(self._endpoint(request.candidate).address).hostname or "").rstrip(".").casefold()
+                host_identity = self._confirmed_evidence_identity(host, submitted)
+                if host_identity is None:
+                    raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.QUEUE, domain=Domain.SECURITY)
+            address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             # A deletion can revoke authority during DNS or egress startup.
             await self._check(handle, "start")
             returned = await self.client._call("aria2.addUri", [[address], options])
@@ -303,12 +404,17 @@ class Aria2Executor:
         except Exception as exc:
             # A lost acknowledgement leaves an uncertain execution, not a
             # failed artifact and not permission to create another native job.
-            error = exception_failure(exc, stage=Stage.QUEUE, secrets=self._secrets(handle))
+            error = exception_failure(exc, stage=Stage.QUEUE, secrets=secrets)
             uncertain = error.category == Category.EXECUTOR_UNAVAILABLE or error.retryability == Retryability.UNKNOWN
             return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
 
     async def start_with_input(self, request: ExecutionRequest, handle: ExecutionHandle,
                                submitted: SubmittedInput) -> ExecutionObservation:
+        if await self._never_started(handle):
+            # A freshly prepared attempt: the input already proved this
+            # candidate's evidence before the writer existed, so the writer
+            # starts with it instead of asking again.
+            return await self._start(request, handle, submitted)
         secrets = self._secrets(handle) + submitted.secret_values()
         try:
             gid = await self._check(handle, "resume")
@@ -345,6 +451,20 @@ class Aria2Executor:
             error = exception_failure(exc, stage=Stage.QUEUE, secrets=secrets)
             uncertain = error.category == Category.EXECUTOR_UNAVAILABLE or error.retryability == Retryability.UNKNOWN
             return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
+
+    async def _never_started(self, handle: ExecutionHandle) -> bool:
+        """Still authorized for its FIRST start and absent from the daemon.
+
+        A challenged execution always has its failed native job (the evidence
+        the challenge was raised from), so it never qualifies."""
+        if handle.executor_id != self.descriptor.id or not await self.authorize(handle, "start"):
+            return False
+        gid = str(handle.context.get("gid") or "")
+        try:
+            await self.client.tell_status(gid)
+        except Exception as exc:
+            return is_missing(exc, gid)
+        return False
 
     async def observe(self, handle: ExecutionHandle) -> ExecutionObservation:
         try:

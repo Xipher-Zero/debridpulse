@@ -41,6 +41,9 @@ class InputReason(StrEnum):
 
 class InputOrigin(StrEnum):
     PROVIDER = "provider"
+    # Pre-writer evidence acquisition for one resolved candidate: no artifact
+    # exists yet, and the sampling capability (never a provider) owns the input.
+    EVIDENCE = "evidence"
     EXECUTOR = "executor"
 
 
@@ -336,6 +339,11 @@ class TransferCandidate:
     # Neutral transient-input methods an executor may request for this
     # candidate. Never carries a secret, an executor identity or a native name.
     accepted_input_methods: tuple[InputMethod, ...] = ()
+    # Non-secret content evidence retained because transient operator input
+    # proved this candidate when it joined a canonical artifact. It stands in
+    # for a live acquisition only when that acquisition would need input the
+    # deciding request does not hold (the proving input itself is never kept).
+    content_evidence: ArtifactFingerprint | None = None
 
     def __post_init__(self):
         methods = self.accepted_input_methods

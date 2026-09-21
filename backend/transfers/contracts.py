@@ -99,7 +99,12 @@ class ExecutorInputContinuation(Protocol):
 
 @runtime_checkable
 class ExecutorInputRecovery(Protocol):
-    """Continue an already-started execution after a definitive input challenge."""
+    """Execute with transient input the executor did not have to ask for itself.
+
+    ``start_with_input`` continues an already-started execution after a
+    definitive input challenge, or starts a freshly prepared attempt whose input
+    was already proven by pre-writer evidence acquisition for that candidate.
+    """
 
     def input_requirement(self, candidate: TransferCandidate, observation: ExecutionObservation) -> InputRequirement | None: ...
     async def start_with_input(self, request: ExecutionRequest, handle: ExecutionHandle,
@@ -119,7 +124,24 @@ class BatchObservation(Protocol):
 
 @runtime_checkable
 class CandidateSampling(Protocol):
-    async def fingerprint(self, candidate: TransferCandidate) -> ArtifactFingerprint | None: ...
+    """Bounded neutral content evidence for one candidate, acquired before any writer.
+
+    ``None`` means no evidence capability for this candidate. An
+    ``InputRequirement`` means the evidence exists but acquiring it definitively
+    requires transient operator input; core carries it through the one
+    INPUT_REQUIRED lifecycle and continues through
+    ``CandidateSamplingContinuation``.
+    """
+
+    async def fingerprint(self, candidate: TransferCandidate) -> ArtifactFingerprint | InputRequirement | None: ...
+
+
+@runtime_checkable
+class CandidateSamplingContinuation(Protocol):
+    """Continue the same evidence acquisition with submitted transient input."""
+
+    async def fingerprint_with_input(self, candidate: TransferCandidate,
+                                     submitted: SubmittedInput) -> ArtifactFingerprint | InputRequirement | None: ...
 
 
 @runtime_checkable

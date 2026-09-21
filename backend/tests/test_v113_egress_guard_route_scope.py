@@ -38,10 +38,17 @@ class FtpOrigin:
     retrieval, and it refuses active mode (PORT/EPRT); both are recorded.
     """
 
-    def __init__(self, files: dict[str, bytes], *, users: dict[str, str] | None = None, anonymous: bool = True):
+    def __init__(self, files: dict[str, bytes], *, users: dict[str, str] | None = None, anonymous: bool = True,
+                 host: str = "127.0.0.1", rest: bool = True, pace: float = 0.0):
         self.files = files
         self.users = dict(users or {})
         self.anonymous = anonymous
+        self.host = host
+        self.rest = rest
+        # Seconds between 16 KiB data chunks; 0 writes the payload at once.
+        self.pace = pace
+        self.rest_offsets: list[int] = []
+        self._live: list = []
         self.logins: list[tuple[str, bool]] = []
         self.data_connections = 0
         self.retrieved: list[str] = []
@@ -52,7 +59,7 @@ class FtpOrigin:
         self.port = 0
 
     async def start(self):
-        self.server = await asyncio.start_server(self._control, "127.0.0.1", 0)
+        self.server = await asyncio.start_server(self._control, self.host, 0)
         self.port = int(self.server.sockets[0].getsockname()[1])
         return self
 
@@ -61,9 +68,22 @@ class FtpOrigin:
             self.server.close()
             await self.server.wait_closed()
 
+    async def abort(self):
+        """Stop listening AND sever every live control/data connection."""
+        if self.server is not None:
+            self.server.close()
+        for writer in self._live:
+            writer.transport.abort()
+        self._live.clear()
+
     async def _control(self, reader, writer):
         self.control_connections += 1
+        self._live.append(writer)
         user, authed, cwd, data_server, data_ready, ascii_type = "", False, "/", None, None, False
+        offset = 0
+        # A passive data listener lives on the address the client reached, as
+        # on a real multi-homed server.
+        local_address = writer.get_extra_info("sockname")[0]
 
         def send(line: str):
             writer.write((line + "\r\n").encode())
@@ -93,7 +113,7 @@ class FtpOrigin:
                 elif command == "PWD":
                     send('257 "/" is current directory')
                 elif command == "CWD":
-                    cwd = argument if argument.startswith("/") else "/" + argument
+                    cwd = argument if argument.startswith("/") else cwd.rstrip("/") + "/" + argument
                     send("250 ok")
                 elif command in {"SIZE", "MDTM", "RETR"}:
                     path = argument if argument.startswith("/") else cwd.rstrip("/") + "/" + argument
@@ -111,10 +131,21 @@ class FtpOrigin:
                         payload = self.files[path]
                         if ascii_type:
                             payload = payload.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-                        data_writer.write(payload)
-                        await data_writer.drain()
-                        data_writer.close()
-                        send("226 transfer complete")
+                        # REST applies to exactly the next RETR, like RFC 3659.
+                        payload, offset = payload[offset:], 0
+                        try:
+                            step = 16 * 1024 if self.pace else max(1, len(payload))
+                            for index in range(0, len(payload), step):
+                                data_writer.write(payload[index:index + step])
+                                await data_writer.drain()
+                                if self.pace:
+                                    await asyncio.sleep(self.pace)
+                        except ConnectionError:
+                            data_writer.close()
+                            send("426 transfer aborted")
+                        else:
+                            data_writer.close()
+                            send("226 transfer complete")
                 elif command in {"PORT", "EPRT"}:
                     self.data_modes.append("active")
                     send("502 active mode not offered")
@@ -125,17 +156,23 @@ class FtpOrigin:
 
                     async def accept(r, w, future=data_ready):
                         self.data_connections += 1
+                        self._live.append(w)
                         if not future.done():
                             future.set_result((r, w))
 
-                    data_server = await asyncio.start_server(accept, "127.0.0.1", 0)
+                    data_server = await asyncio.start_server(accept, local_address, 0)
                     port = int(data_server.sockets[0].getsockname()[1])
                     if command == "EPSV":
                         send(f"229 Entering Extended Passive Mode (|||{port}|)")
                     else:
                         send(f"227 Entering Passive Mode (127,0,0,1,{port // 256},{port % 256})")
                 elif command == "REST":
-                    send("350 restarting")
+                    if not self.rest:
+                        send("502 REST not implemented")
+                    else:
+                        offset = int(argument)
+                        self.rest_offsets.append(offset)
+                        send("350 restarting")
                 elif command == "QUIT":
                     send("221 bye")
                     await writer.drain()

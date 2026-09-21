@@ -10,6 +10,7 @@ google-re2==1.1.20251105
 python-multipart==0.0.32
 prometheus-client==0.26.0
 argon2-cffi==25.1.0
+asyncssh==2.24.0
 authlib==1.7.2
 httpx==0.28.1
 joserfc==1.7.4

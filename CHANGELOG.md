@@ -20,6 +20,27 @@
   verification: it observes the server's SHA-1 host-key fingerprint and stops before authenticating.
   One neutral `server_identity_required` challenge then shows the fingerprint and asks for credentials.
   A credential retry reuses the confirmed key and never falls back to unverified execution.
+- **Universal pre-writer evidence acquisition.** Before a writer is admitted, mirrors of one file are
+  compared on neutral content evidence (total size plus a bounded first and last window) whatever
+  their transport. HTTP(S), FTP and SFTP now produce the identical fingerprint for identical bytes, so
+  equivalent FTP and SFTP mirrors converge onto one canonical artifact with every source kept as a
+  candidate (production Transfer 312: two working FTP mirrors had become two independent downloads).
+  Same name and same size with different bytes still stay independent.
+- **Evidence that needs access asks through the existing INPUT_REQUIRED dialog.** A protected HTTP(S)
+  mirror (a definitive Basic `401`), a protected FTP mirror (`530` at login) or an SFTP mirror (server
+  identity first, then credentials) raises the same challenge the dialog already shows, before any
+  writer exists; equivalence is decided with the answer. When that decision then starts a download
+  for exactly that source, the answer is handed to it once, so the operator is not asked twice. The
+  confirmed SFTP host key is re-verified by aria2 before it authenticates, and a changed key fails
+  closed. Answers live only in memory, are never written to the database, and are gone after a restart.
+  Pausing during that handoff is ordered with it: the answer is either used by the download that
+  starts, or kept until the paused download resumes; it is never silently lost to the race.
+- **Protected canonical mirrors stay comparable.** The non-secret fingerprint that proved a protected
+  source is kept with the canonical download (never the credentials), so a later protected mirror —
+  proven with its own credentials — converges onto it, even after a restart.
+- Provider-wide evidence conformance: AllDebrid keeps its resolver-attested identity fast path and its
+  provider-issued delivery links never become operator challenges; General HTTP and FTP & SFTP stay
+  resolution-only. A future provider over an existing transport needs no equivalence change.
 
 ### Changed
 
@@ -35,6 +56,13 @@
   each attempt authenticates freshly.
 - Settings → Sources & Providers → Direct Sources shows HTTP & HTTPS and FTP & SFTP as two equal,
   compact header-only cards.
+- Bounded content sampling for HTTP(S), FTP and SFTP has one implementation
+  (`services/artifact_sampling.py`); `services/network_safety.py` keeps only destination, redirect and
+  public-address checks. FTP and SFTP evidence reads go through the downloader egress guard exactly
+  like aria2's own connections (control and passive data channels alike), read two bounded windows, and
+  never write local material.
+- New runtime dependency `asyncssh` (EPL-2.0 OR GPL-2.0-or-later, used under GPL-2.0-or-later) for
+  SFTP evidence reads.
 
 ### Planned / in progress
 

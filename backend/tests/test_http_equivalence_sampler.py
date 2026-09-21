@@ -8,6 +8,7 @@ from aiohttp import web
 import pytest
 import pytest_asyncio
 
+import services.artifact_sampling as sampling
 import services.network_safety as safety
 from transfers.models import FingerprintKind
 
@@ -84,7 +85,7 @@ async def sampler_server(monkeypatch):
 @pytest.mark.asyncio
 async def test_proper_ranges_produce_full_sample(sampler_server):
     base, calls = sampler_server
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/range", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert total == len(PAYLOAD)
     assert signature and prefix
@@ -96,7 +97,7 @@ async def test_proper_ranges_produce_full_sample(sampler_server):
 @pytest.mark.asyncio
 async def test_content_range_reported_size_mismatch_still_returns_discovered_evidence(sampler_server):
     base, _ = sampler_server
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/range", sample_bytes=4096, expected_bytes=len(PAYLOAD) + 1)
     assert total == len(PAYLOAD)
     assert signature and prefix
@@ -108,14 +109,14 @@ async def test_content_range_reported_size_mismatch_still_returns_discovered_evi
 async def test_range_ignored_returns_bounded_prefix_without_full_consumption(sampler_server, monkeypatch):
     base, _ = sampler_server
     reads = []
-    original = safety._read_exactly
+    original = sampling._read_exactly
 
     async def observed_read(response, count):
         reads.append(count)
         return await original(response, count)
 
-    monkeypatch.setattr(safety, "_read_exactly", observed_read)
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    monkeypatch.setattr(sampling, "_read_exactly", observed_read)
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/ignored", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert total == len(PAYLOAD)
     assert signature == prefix and signature
@@ -127,7 +128,7 @@ async def test_range_ignored_returns_bounded_prefix_without_full_consumption(sam
 @pytest.mark.asyncio
 async def test_range_ignored_reported_size_mismatch_still_returns_discovered_evidence(sampler_server):
     base, _ = sampler_server
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/mismatch-size", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert total == len(PAYLOAD) + 1
     assert signature == prefix and signature
@@ -138,7 +139,7 @@ async def test_range_ignored_reported_size_mismatch_still_returns_discovered_evi
 @pytest.mark.asyncio
 async def test_safe_redirect_is_followed_with_per_hop_validation(sampler_server):
     base, calls = sampler_server
-    result = await safety.sampled_public_artifact_fingerprint(
+    result = await sampling.sampled_public_artifact_fingerprint(
         base + "/redirect", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert result[2] == FingerprintKind.FULL_CONTENT_SAMPLE
     assert result[3] == "redirect"
@@ -149,7 +150,7 @@ async def test_safe_redirect_is_followed_with_per_hop_validation(sampler_server)
 @pytest.mark.asyncio
 async def test_unsafe_redirect_is_blocked_before_private_contact(sampler_server):
     base, calls = sampler_server
-    result = await safety.sampled_public_artifact_fingerprint(base + "/unsafe", sample_bytes=4096)
+    result = await sampling.sampled_public_artifact_fingerprint(base + "/unsafe", sample_bytes=4096)
     assert result[2] == FingerprintKind.UNAVAILABLE
     assert result[3] == "destination_rejected"
     assert calls == [("/unsafe", "bytes=0-4095")]
@@ -158,7 +159,7 @@ async def test_unsafe_redirect_is_blocked_before_private_contact(sampler_server)
 @pytest.mark.asyncio
 async def test_first_range_success_last_range_failure_never_becomes_full(sampler_server):
     base, _ = sampler_server
-    result = await safety.sampled_public_artifact_fingerprint(
+    result = await sampling.sampled_public_artifact_fingerprint(
         base + "/first-only", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert result[2] == FingerprintKind.PREFIX_CONTENT_SAMPLE
     assert result[3] == "range_ignored"
@@ -167,7 +168,7 @@ async def test_first_range_success_last_range_failure_never_becomes_full(sampler
 @pytest.mark.asyncio
 async def test_semantic_content_range_accepts_valid_format_variation(sampler_server):
     base, _ = sampler_server
-    result = await safety.sampled_public_artifact_fingerprint(
+    result = await sampling.sampled_public_artifact_fingerprint(
         base + "/variant", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert result[2] == FingerprintKind.FULL_CONTENT_SAMPLE
 
@@ -175,7 +176,7 @@ async def test_semantic_content_range_accepts_valid_format_variation(sampler_ser
 @pytest.mark.asyncio
 async def test_malformed_content_range_is_rejected(sampler_server):
     base, _ = sampler_server
-    result = await safety.sampled_public_artifact_fingerprint(
+    result = await sampling.sampled_public_artifact_fingerprint(
         base + "/malformed", sample_bytes=4096, expected_bytes=len(PAYLOAD))
     assert result[2] == FingerprintKind.UNAVAILABLE
     assert result[3] == "invalid_content_range"
@@ -190,7 +191,7 @@ async def test_malformed_content_range_is_rejected(sampler_server):
 @pytest.mark.asyncio
 async def test_short_200_response_incompatible_with_expected_size_is_not_false_full_sample(sampler_server):
     base, _ = sampler_server
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/short-ignored", sample_bytes=4096, expected_bytes=12288)
     assert kind != FingerprintKind.FULL_CONTENT_SAMPLE
     assert kind == FingerprintKind.UNAVAILABLE
@@ -206,7 +207,7 @@ async def test_short_200_response_incompatible_with_expected_size_is_not_false_f
 @pytest.mark.asyncio
 async def test_short_200_response_with_unknown_expected_size_still_full_sample(sampler_server):
     base, _ = sampler_server
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/short-ignored", sample_bytes=4096, expected_bytes=0)
     assert kind == FingerprintKind.FULL_CONTENT_SAMPLE
     assert total == 50
@@ -216,7 +217,7 @@ async def test_short_200_response_with_unknown_expected_size_still_full_sample(s
 @pytest.mark.asyncio
 async def test_short_200_response_compatible_with_expected_size_still_full_sample(sampler_server):
     base, _ = sampler_server
-    total, signature, kind, reason, prefix = await safety.sampled_public_artifact_fingerprint(
+    total, signature, kind, reason, prefix = await sampling.sampled_public_artifact_fingerprint(
         base + "/short-ignored", sample_bytes=4096, expected_bytes=60)
     assert kind == FingerprintKind.FULL_CONTENT_SAMPLE
     assert total == 50

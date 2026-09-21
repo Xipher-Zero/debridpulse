@@ -10,9 +10,9 @@ from typing import Mapping
 from transfers.errors import NormalizedError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CachePresence, DeliveryKind, Endpoint, ExecutionHandle, InputMethod, IntegrityMetadata, Ownership,
-    ProviderResource, ResolverArtifactIdentityEvidence, TransferCandidate, TransferRequest,
-    SourceEntry, SourceIdentity,
+    ArtifactFingerprint, CachePresence, DeliveryKind, Endpoint, ExecutionHandle, FingerprintKind, InputMethod,
+    IntegrityMetadata, Ownership, ProviderResource, ResolverArtifactIdentityEvidence, TransferCandidate,
+    TransferRequest, SourceEntry, SourceIdentity,
 )
 
 
@@ -69,6 +69,10 @@ def candidate(value: dict) -> TransferCandidate:
         data["resolver_identity_evidence"] = ResolverArtifactIdentityEvidence(**data["resolver_identity_evidence"])
     if data.get("refresh_request"):
         data["refresh_request"] = request(data["refresh_request"])
+    if data.get("content_evidence"):
+        evidence = dict(data["content_evidence"])
+        evidence["kind"] = FingerprintKind(evidence["kind"])
+        data["content_evidence"] = ArtifactFingerprint(**evidence)
     if "delivery" in data:
         data["delivery"] = DeliveryKind(data["delivery"])
     methods = data.get("accepted_input_methods")

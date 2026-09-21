@@ -105,3 +105,47 @@ def test_presentation_never_exposes_opaque_context_or_native_diagnostics():
         for secret in ("opaque-", "native diagnostic"):
             assert secret not in encoded
     assert public_torrent(row)["error"]["category"] == "unmapped_provider_error"
+
+
+def test_one_input_lifecycle_one_secret_owner_and_neutral_evidence_owners():
+    """DP 1.0.13: pre-writer evidence acquisition generalized the existing owners
+    in place -- one challenge store, one ephemeral secret broker, one equivalence
+    owner consuming neutral evidence -- and added no parallel lifecycle."""
+    backend = Path(__file__).parents[1]
+    classes = {}
+    for path in backend.rglob("*.py"):
+        if "tests" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ClassDef):
+                classes.setdefault(node.name, []).append(path.relative_to(backend).as_posix())
+    stores = {name: paths for name, paths in classes.items()
+              if any(token in name for token in ("ChallengeStore", "Broker", "CredentialStore", "SecretStore"))}
+    assert stores == {"InputChallengeStore": ["transfers/input_required.py"],
+                      "EphemeralInputBroker": ["transfers/input_required.py"]}
+    schema = (backend / "db" / "database.py").read_text()
+    assert schema.count("CREATE TABLE IF NOT EXISTS transfer_input_challenges") == 1
+    assert [line for line in schema.splitlines()
+            if "CREATE TABLE" in line and "challenge" in line.lower()] == [
+        '    """CREATE TABLE IF NOT EXISTS transfer_input_challenges (']
+    from transfers.models import InputOrigin
+    assert {item.value for item in InputOrigin} == {"provider", "evidence", "executor"}
+    # One fingerprint model: retained canonical evidence reuses ArtifactFingerprint.
+    fingerprint_models = {name for name in classes if "Fingerprint" in name}
+    assert fingerprint_models == {"ArtifactFingerprint", "FingerprintKind"}
+    import typing
+    from transfers.models import ArtifactFingerprint, TransferCandidate
+    hints = typing.get_type_hints(TransferCandidate)
+    assert hints["content_evidence"] == ArtifactFingerprint | None
+    for path in backend.rglob("*.py"):
+        if "tests" in path.parts:
+            continue
+        assert "CREATE TABLE IF NOT EXISTS" not in path.read_text() or "fingerprint" not in " ".join(
+            line for line in path.read_text().splitlines() if "CREATE TABLE" in line).lower(), path
+    mirrors = (backend / "transfers" / "mirrors.py").read_text()
+    for concrete in ("aria2", "general_ftp", "general_http", "alldebrid", "asyncssh", "artifact_sampling"):
+        assert concrete not in mirrors
+    for path in ("transfers/cohorts.py", "transfers/canonical.py", "transfers/policy.py", "transfers/input_required.py"):
+        source = (backend / path).read_text()
+        for concrete in ("general_ftp", "general_http", "alldebrid", "aria2", "asyncssh", "artifact_sampling"):
+            assert concrete not in source, (path, concrete)

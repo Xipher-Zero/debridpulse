@@ -400,6 +400,94 @@ def test_one_option_owner_and_one_path_per_operation() -> None:
     assert 'options["ftp-reuse-connection"] = "false"' in source
 
 
+# ── 5b. Evidence-origin input reaching a freshly prepared attempt ─────────────
+# Pre-writer evidence acquisition may already have proven a candidate with the
+# operator's input; the writer admitted for it then starts through the SAME
+# start_with_input continuation. The executor still enforces its own security
+# facts: the confirmed SFTP identity becomes the exact ssh-host-key-md aria2
+# verifies before authenticating, and nothing unconfirmed ever starts a job.
+
+def _evidence_input(host="files.example.org", fingerprint=ACTUAL, algorithm="sha-1"):
+    from transfers.input_required import server_identity_required, username_password
+    requirement = server_identity_required(username_password(), host=host, algorithm=algorithm,
+                                           fingerprint=fingerprint)
+    challenge = InputChallenge("challenge", 1, 1, requirement.reason, InputOrigin.EVIDENCE, "aria2", "candidate",
+                               requirement.methods, facts=requirement.facts)
+    return validate_submission(challenge, InputMethod.USERNAME_PASSWORD.value,
+                               {"username": "operator", "password": "s3cret-pass"})
+
+
+async def _fresh(tmp_path, monkeypatch, url):
+    async def validated(address):
+        return address
+    monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
+    daemon = Daemon()
+    executor = _executor(tmp_path, daemon)
+    request = ExecutionRequest(_candidate(url), str(tmp_path / "payload.bin"), "fresh-attempt")
+    return daemon, executor, request, executor.prepare(request)
+
+
+@pytest.mark.asyncio
+async def test_evidence_confirmed_identity_is_the_first_jobs_exact_host_key(tmp_path, monkeypatch) -> None:
+    daemon, executor, request, handle = await _fresh(tmp_path, monkeypatch, "sftp://files.example.org/f.bin")
+    result = await executor.start_with_input(request, handle, _evidence_input())
+    assert result.error is None and result.state == ExecutionState.QUEUED
+    (only,) = _added(daemon)
+    assert only["ssh-host-key-md"] == f"sha-1={ACTUAL}"  # never the probe sentinel
+    assert only["ftp-user"] == "operator" and only["ftp-passwd"] == "s3cret-pass"
+    assert only["gid"] == handle.context["gid"]
+    assert [method for method, _ in daemon.calls] == ["aria2.addUri"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("facts", [
+    {"host": "other.example.org"},
+    {"fingerprint": SENTINEL},
+    {"algorithm": "md5"},
+])
+async def test_unconfirmed_or_foreign_identity_never_starts_a_job(tmp_path, monkeypatch, facts) -> None:
+    daemon, executor, request, handle = await _fresh(tmp_path, monkeypatch, "sftp://files.example.org/f.bin")
+    submitted = _evidence_input(**facts)
+    result = await executor.start_with_input(request, handle, submitted)
+    assert result.state == ExecutionState.FAILED and result.error.domain.value == "security"
+    assert _added(daemon) == []
+    assert "s3cret-pass" not in repr(result.error.as_dict(diagnostics=True))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url,user_key,password_key", [
+    ("https://files.example.org/f.bin", "http-user", "http-passwd"),
+    ("ftp://files.example.org/f.bin", "ftp-user", "ftp-passwd"),
+])
+async def test_evidence_credentials_start_http_and_ftp_writers_directly(tmp_path, monkeypatch, url, user_key,
+                                                                        password_key) -> None:
+    from transfers.input_required import auth_required, username_password
+    daemon, executor, request, handle = await _fresh(tmp_path, monkeypatch, url)
+    requirement = auth_required(username_password())
+    challenge = InputChallenge("challenge", 1, 1, requirement.reason, InputOrigin.EVIDENCE, "aria2", "candidate",
+                               requirement.methods)
+    submitted = validate_submission(challenge, InputMethod.USERNAME_PASSWORD.value,
+                                    {"username": "operator", "password": "s3cret-pass"})
+    result = await executor.start_with_input(request, handle, submitted)
+    assert result.error is None
+    (only,) = _added(daemon)
+    assert only[user_key] == "operator" and only[password_key] == "s3cret-pass"
+    if url.startswith("ftp"):
+        assert only["ftp-pasv"] == "true" and only["ftp-type"] == "binary" and only["ftp-reuse-connection"] == "false"
+    else:
+        assert only["http-auth-challenge"] == "false"
+
+
+@pytest.mark.asyncio
+async def test_a_started_job_always_takes_the_challenge_continuation_path(tmp_path, monkeypatch) -> None:
+    daemon, executor, request, handle, observed = await _started(
+        tmp_path, monkeypatch, "sftp://files.example.org/f.bin", [("1", HOST_MISMATCH)])
+    # Even an evidence-shaped submission cannot turn a live challenged job into a fresh start.
+    result = await executor.start_with_input(request, handle, _evidence_input(fingerprint="1" * 40))
+    assert result.state == ExecutionState.FAILED
+    assert len(_added(daemon)) == 1
+
+
 # ── 6. Real aria2 through the real guard: FTP 530 -> challenge -> transfer ────
 
 async def _real(tmp_path, monkeypatch, origin, *, daemon_globals=()):
