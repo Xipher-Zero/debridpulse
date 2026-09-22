@@ -88,7 +88,7 @@ async def test_database_json_backup_includes_operational_tables(tmp_path, monkey
     result = await maintenance.run_database_backup()
     assert result["errors"] == []
     assert "transfer_pause_intents" in result["tables"]
-    assert "debridpulse_aria2_owned_gids" in result["tables"]
+    assert "debridpulse_aria2_owned_gids" not in result["tables"]
 
 
 @pytest.mark.asyncio

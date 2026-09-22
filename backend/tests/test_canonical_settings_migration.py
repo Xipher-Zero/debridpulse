@@ -13,6 +13,7 @@ import pytest
 import core.config as config
 from api.legacy_settings_view import legacy_settings_projection
 from integrations.catalog import definitions
+from test_executor_configuration_ownership import CURRENT_ARIA2_OPTIONS
 from transfers.runtime_limits import LEGACY_INPUT_FIELDS as RUNTIME_LEGACY
 from transfers.settings import LEGACY_INPUT_FIELDS as POLICY_LEGACY
 
@@ -78,14 +79,14 @@ def test_legacy_config_round_trips_through_load_save_and_reload(config_path):
     migrated = config.load_settings()
 
     aria2 = migrated.integrations["aria2"].options
-    assert aria2["mode"] == "external"
-    assert aria2["url"] == "http://aria2.lan:6800/jsonrpc"
-    assert aria2["secret"] == "rpc-private-secret"                      # secret preserved
-    assert aria2["download_path"] == "/remote/downloads"
-    assert (aria2["split"], aria2["min_split_size"], aria2["max_connection_per_server"]) == (32, "20M", 8)
+    # Keys naming no current option are inert: the canonical namespace carries
+    # exactly the current schema.
+    assert set(aria2) == CURRENT_ARIA2_OPTIONS
+    # A legacy value left at an older default is raised to the current default.
+    assert (aria2["split"], aria2["min_split_size"], aria2["max_connection_per_server"]) == (32, "20M", 16)
     assert aria2["continue_downloads"] is False and aria2["file_allocation"] == "none"
     assert aria2["disk_cache"] == "128M" and aria2["lowest_speed_limit"] == "10K"
-    assert aria2["max_upload_limit"] == 500000 and aria2["builtin_port"] == 6810
+    assert aria2["max_upload_limit"] == 500000
     assert aria2["max_download_result"] == 200 and aria2["restart_interval_hours"] == 12
     alldebrid = migrated.integrations["alldebrid"].options
     assert alldebrid["api_key"] == "ad-private-key-12345"
@@ -103,7 +104,7 @@ def test_legacy_config_round_trips_through_load_save_and_reload(config_path):
     # The loader rewrote the file in its canonical shape: no superseded alias.
     persisted = json.loads(config_path.read_text())
     assert not ALIASES & set(persisted)
-    assert persisted["integrations"]["aria2"]["options"]["secret"] == "rpc-private-secret"
+    assert "rpc-private-secret" not in config_path.read_text()
 
     # Explicit save, then reload: canonical values unchanged, aliases not regenerated.
     before = _canonical_state(migrated)
@@ -153,7 +154,7 @@ def test_a_fresh_installation_starts_with_complete_canonical_defaults(config_pat
     assert not config_path.exists()
     fresh = config.load_settings()
     assert set(fresh.integrations) >= {"aria2", "alldebrid", "general_http"}
-    assert fresh.integrations["aria2"].options["mode"] == "builtin"
+    assert set(fresh.integrations["aria2"].options) == CURRENT_ARIA2_OPTIONS
     assert fresh.transfer_policy.max_concurrent_executions == 3
     assert fresh.execution_runtime_limits.max_download_bytes_per_second == 0
 
@@ -171,10 +172,9 @@ def test_flat_names_are_read_only_compatibility_output_never_authority(config_pa
     settings = config.load_settings()
 
     view = legacy_settings_projection(settings, definitions)
-    assert view["aria2_mode"] == "external"
+    assert view["aria2_split"] == 32
     assert view["max_concurrent_downloads"] == view["aria2_max_active_downloads"] == 7
     assert view["aria2_max_download_limit"] == 2_500_000
-    assert view["aria2_secret"] == "" and view["aria2_secret_configured"] is True       # secret-safe
     assert view["alldebrid_api_key"] == "" and view["alldebrid_api_key_configured"] is True
     assert "rpc-private-secret" not in json.dumps(view)
 

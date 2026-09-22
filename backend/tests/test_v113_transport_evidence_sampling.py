@@ -155,7 +155,7 @@ def guard_for(seen=None, *, public=("127.0.0.1",), answers=None):
         return [_answer(address, port) for address in chosen]
 
     return DownloaderEgressGuard(resolver=resolver, public_check=lambda address: address in public,
-                                 bind_host="127.0.0.1", bind_port=0)
+                                 bind_port=0)
 
 
 def executor_for(tmp_path, guard):

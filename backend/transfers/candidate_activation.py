@@ -284,8 +284,8 @@ async def activate_candidate(
                         ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
                     )
                 observed = await old_executor.observe(artifact.execution)
-                # Some executors, including external aria2 daemons, may forget
-                # a force-removed job immediately. Once THIS exact command has
+                # An executor may forget a force-removed job immediately (aria2
+                # removes the owned job's result on cancel). Once THIS exact command has
                 # successfully cancelled a live writer, post-cancel absence is
                 # evidence of retirement, not an orphaned/failed source.
                 if observed.state == ExecutionState.ABSENT:

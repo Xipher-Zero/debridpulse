@@ -12,7 +12,6 @@ from test_universal_lifecycle import canonical_core, core, submit  # noqa: F401 
 from test_aria2_executor_contract import execution  # noqa: F401 -- pytest fixture re-export
 from application.service import ApplicationService
 from core.config import AppSettings
-from integrations.definition import IntegrationSettings
 from executors.aria2.executor import Aria2Executor
 from integrations.catalog import definitions
 from integrations.configuration import normalize_settings
@@ -79,8 +78,9 @@ async def test_progress_resets_stall_clock_but_repeated_observations_do_not(core
 
 
 @pytest.mark.asyncio
-async def test_executor_binding_refuses_a_changed_daemon_or_path_mapping(execution):
-    changed = Aria2Executor(execution.daemon, replace(execution.executor.configuration, remote_root="/different"), execution.executor.authorize)
+async def test_executor_binding_refuses_a_changed_download_root(execution):
+    other_root = execution.executor.configuration.local_root + "-other"
+    changed = Aria2Executor(execution.daemon, replace(execution.executor.configuration, local_root=other_root), execution.executor.authorize)
     result = await changed.observe(execution.handle)
     assert result.state == ExecutionState.UNKNOWN
     assert result.error.category == Category.EXECUTOR_UNAVAILABLE
@@ -89,18 +89,15 @@ async def test_executor_binding_refuses_a_changed_daemon_or_path_mapping(executi
 
 
 @pytest.mark.asyncio
-async def test_connection_change_with_live_references_is_rejected_before_save(core):
+async def test_download_folder_change_with_live_references_is_rejected_before_save(core):
     application = ApplicationService(core.engine)
     application.definitions = definitions
     application.repository.has_integration_references = AsyncMock(return_value=True)
-    before = normalize_settings(
-        AppSettings(integrations={"aria2": IntegrationSettings(options={"mode": "external"})}), definitions)
-    after = normalize_settings(
-        before.model_copy(update={"integrations": {"aria2": IntegrationSettings(options={"url": "http://other:6800/jsonrpc"})}}),
-        definitions, previous=before)
-    with pytest.raises(ValueError, match="existing aria2 resources"):
+    before = normalize_settings(AppSettings(download_folder="/download"), definitions)
+    after = normalize_settings(before.model_copy(update={"download_folder": "/elsewhere"}), definitions, previous=before)
+    with pytest.raises(ValueError, match="before changing the download folder"):
         await application.validate_configuration(before, after)
-    application.repository.has_integration_references.assert_awaited_once_with("aria2")
+    application.repository.has_integration_references.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

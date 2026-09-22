@@ -42,26 +42,21 @@ def test_how_it_works_explains_current_multi_stage_pipeline_without_legacy_fixed
         assert legacy not in panel
 
 
-def test_aria2_help_uses_current_downloads_ui_and_safe_external_ownership_model():
+def test_aria2_help_uses_current_downloads_ui_and_one_managed_engine():
     panel = _panel("aria2Panel", "integrationsPanel")
 
     for phrase in (
         "Settings → Downloads → Download Engine",
-        "Built-in aria2",
-        "External aria2",
-        "External RPC URL",
-        "/jsonrpc",
-        "aria2 RPC Secret",
-        "External aria2 Download Path",
-        "does not use external mode as a general administration interface",
+        "How DebridPulse runs aria2",
+        "Download Folder",
+        "reconnects to its own tracked downloads",
         "Maximum Concurrent Downloads",
         "Continue Partial Downloads",
         "Segments per File",
         "Connections per Server",
         "Download Safety &amp; Recovery",
         "speed-cap control",
-        "Test aria2",
-        "values currently entered in the form",
+        "Test Download Engine",
     ):
         assert phrase in panel
 
@@ -152,7 +147,6 @@ def test_troubleshooting_is_user_facing_and_covers_current_recovery_paths():
         "A download is stalled or aria2 reports an error",
         "Download Safety &amp; Recovery",
         "Files are not appearing in the expected folder",
-        "External aria2 will not connect",
         "Automatic extraction did not run or failed",
         "Discord or Prometheus integration is not working",
         "Server-Sent Events",

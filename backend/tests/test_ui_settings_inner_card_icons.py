@@ -6,7 +6,7 @@ STATIC = ROOT / 'frontend' / 'static'
 EXPECTED = {
     'Download Engine': ('downloads', 'download-engine.svg'),
     'Download Safety & Recovery': ('downloads', 'download-safety-recovery.svg'),
-    'Built-In Download Engine State': ('downloads', 'built-in-download-engine-state.svg'),
+    'Download Engine State': ('downloads', 'download-engine-state.svg'),
     'Automatic Extraction': ('extraction', 'automatic-extraction.svg'),
     'Authentication Status': ('authentication', 'authentication-status.svg'),
     'Username & Password': ('authentication', 'username-password.svg'),

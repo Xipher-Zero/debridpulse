@@ -35,19 +35,6 @@ async def test_owned_gid_with_foreign_path_is_excluded_from_native_admin(executi
     assert await admin.filter_owned([forged]) == []
 
 
-@pytest.mark.asyncio
-async def test_external_daemon_global_mutations_remain_blocked(execution):
-    """Specification section 9.3: mode is read from the injected
-    ``Aria2RuntimeConfiguration``, never a global-settings-backed helper --
-    no monkeypatch of any ``core.config.get_settings()``-derived function is
-    needed to exercise this."""
-    config = Aria2RuntimeConfiguration(options=Aria2Options(mode="external"))
-    admin = Aria2Administration(execution.executor, None, None, config)
-    with pytest.raises(PermissionError):
-        await admin.change_global_options({"max-concurrent-downloads": "9"})
-    assert not execution.daemon.calls
-
-
 class _FakeGlobalOptionsClient:
     """Minimal RPC-client double exposing only ``change_global_options`` --
     ``Aria2Administration.apply_memory_tuning()`` needs nothing else from
@@ -62,10 +49,10 @@ class _FakeGlobalOptionsClient:
 
 
 @pytest.mark.asyncio
-async def test_apply_memory_tuning_projects_universal_concurrency_into_builtin_native_option():
+async def test_apply_memory_tuning_projects_universal_concurrency_into_native_option():
     """Gate 9 revision-5 rejection finding 4: ``PATCH /transfer-policy`` now
     calls this executor-owned administration entry point after persisting a
-    concurrency change so the running built-in daemon's native
+    concurrency change so the running daemon's native
     ``max-concurrent-downloads`` tracks the just-persisted universal value,
     rather than staying pinned at whatever cap it was started with
     (specification sections 4.1, 9.7 -- the native option is a derived
@@ -73,27 +60,11 @@ async def test_apply_memory_tuning_projects_universal_concurrency_into_builtin_n
     second persisted policy)."""
     client = _FakeGlobalOptionsClient()
     config = Aria2RuntimeConfiguration(
-        options=Aria2Options(mode="builtin"), max_concurrent_executions=10,
+        options=Aria2Options(), max_concurrent_executions=10,
     )
     admin = Aria2Administration(SimpleNamespace(client=client), None, None, config)
     await admin.apply_memory_tuning()
     assert client.calls[-1]["max-concurrent-downloads"] == "10"
-
-
-@pytest.mark.asyncio
-async def test_apply_memory_tuning_is_a_no_op_for_external_shared_daemon():
-    """External mode: universal concurrency governs only DebridPulse's own
-    scheduler; a shared external daemon's global option must never be
-    mutated by a canonical transfer-policy change (specification section
-    9.7)."""
-    client = _FakeGlobalOptionsClient()
-    config = Aria2RuntimeConfiguration(
-        options=Aria2Options(mode="external"), max_concurrent_executions=10,
-    )
-    admin = Aria2Administration(SimpleNamespace(client=client), None, None, config)
-    result = await admin.apply_memory_tuning()
-    assert result == {"ok": True, "skipped": True, "reason": "External daemon policy is read-only"}
-    assert not client.calls
 
 
 @pytest.mark.asyncio
@@ -105,7 +76,7 @@ async def test_waiting_count_prevents_restart_even_when_snapshot_window_is_empty
     import executors.aria2.admin as module
 
     config = Aria2RuntimeConfiguration(options=Aria2Options(
-        mode="builtin", purge_interval_minutes=0, restart_interval_hours=1,
+        purge_interval_minutes=0, restart_interval_hours=1,
     ))
     runtime = SimpleNamespace(_started_at=1, restart=AsyncMock(), ensure_log_rotation=AsyncMock())
     monkeypatch.setattr(module, "runtime", runtime)

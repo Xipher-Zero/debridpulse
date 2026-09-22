@@ -2,15 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 import re
-import sqlite3
 
 import pytest
 
-import core.config as config
-import db.database as database
 import providers.alldebrid.host_runtime as host_runtime
 from integrations.runtime_state import RuntimeStateConflict, RuntimeStateRecord
 from providers.alldebrid.host_runtime import (
@@ -31,7 +27,6 @@ from transfers.applicability import (
 from transfers.models import TransferRequest
 
 
-PREDECESSOR = Path(__file__).with_name("fixtures") / "v1.0.11.1.sql"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -58,68 +53,6 @@ def _native_snapshot(domain: str, regexp: str) -> dict:
             }
         }
     }
-
-
-@pytest.mark.asyncio
-async def test_startup_sanitization_is_authoritative_for_external_aria2_migration(
-    tmp_path, monkeypatch
-):
-    """A malformed legacy mode must not mint authority over a foreign aria2 GID."""
-    main = _main(monkeypatch)
-    db_path = tmp_path / "legacy.db"
-    with sqlite3.connect(db_path) as conn:
-        conn.executescript(PREDECESSOR.read_text())
-        conn.execute(
-            "INSERT INTO torrents(id,hash,name,status,source) VALUES(901,?,?,?,?)",
-            ("9" * 40, "foreign execution", "downloading", "manual"),
-        )
-        conn.execute(
-            """INSERT INTO download_files(
-                id,torrent_id,filename,size_bytes,source_url,download_url,local_path,
-                status,download_id,download_client,blocked
-            ) VALUES(902,901,'foreign.bin',10,?,?,?,'downloading','foreign-gid','aria2',0)""",
-            (
-                "https://files.example.test/source",
-                "https://cdn.example.test/unlocked",
-                "/downloads/foreign.bin",
-            ),
-        )
-        conn.commit()
-
-    monkeypatch.setattr(database, "DB_PATH", db_path)
-    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
-    # A persisted pre-canonical configuration with a malformed mode. Loading it
-    # is the one migration boundary: the unknown mode becomes the conservative
-    # ``external`` in the canonical namespace, and no flat key survives.
-    (tmp_path / "config.json").write_text(json.dumps({"aria2_mode": "legacy-garbage", "paused": False}))
-    monkeypatch.setattr(config, "_settings", config.load_settings())
-
-    effective, aria2 = await main._prepare_startup_settings_and_migrate()
-
-    assert aria2.mode == "external"
-    assert effective.integrations["aria2"].options["mode"] == "external"
-    assert config.get_settings().integrations["aria2"].options["mode"] == "external"
-    persisted = json.loads((tmp_path / "config.json").read_text())
-    assert persisted["integrations"]["aria2"]["options"]["mode"] == "external"
-    assert "aria2_mode" not in persisted
-
-    with sqlite3.connect(db_path) as conn:
-        attempt = conn.execute(
-            "SELECT authorized,error FROM execution_attempts WHERE id IS NOT NULL"
-        ).fetchone()
-        file_row = conn.execute(
-            "SELECT status,normalized_error FROM download_files WHERE id=902"
-        ).fetchone()
-        ownership = conn.execute(
-            "SELECT 1 FROM debridpulse_aria2_owned_gids WHERE gid='foreign-gid'"
-        ).fetchone()
-
-    assert attempt is not None
-    assert attempt[0] == 0
-    assert "ownership_conflict" in str(attempt[1]).casefold()
-    assert file_row is not None and file_row[0] == "error"
-    assert "ownership_conflict" in str(file_row[1]).casefold()
-    assert ownership is None
 
 
 @pytest.mark.asyncio

@@ -70,12 +70,6 @@ class TestValidateAndSanitise:
         cfg = make_cfg()
         assert not [i for i in _validate(cfg) if i[0].startswith(("integrations.", "transfer_policy"))]
 
-    def test_aria2_url_sanity_is_checked_on_the_canonical_namespace(self):
-        from integrations.definition import IntegrationSettings
-
-        cfg = make_cfg(integrations={"aria2": IntegrationSettings(options={"url": "ftp://nope"})})
-        assert [i for i in _validate(cfg) if i[0] == "integrations.aria2.url"]
-
     def test_invalid_webhook_url_warned_not_cleared(self):
         # Bad URLs are warned but not auto-cleared (user must fix intentionally)
         cfg = make_cfg(discord_webhook_url="not-a-url")

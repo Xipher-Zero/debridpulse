@@ -3,7 +3,7 @@
 ``integrations.<id>``, ``transfer_policy`` and ``execution_runtime_limits`` are
 the settings authorities. This module derives the historical flat names from
 them, at response time only, so an external reader that still expects
-``aria2_mode`` or ``max_concurrent_downloads`` keeps working.
+``aria2_split`` or ``max_concurrent_downloads`` keeps working.
 
 It is compatibility *output*, not an authority: nothing here is persisted,
 nothing reads it back, ``PUT /settings`` ignores the names it emits, and the

@@ -179,7 +179,7 @@ HTTP authentication secrets are transient. They must not enter ordinary transfer
 | --- | --- | --- |
 | AllDebrid | magnets, `.torrent` files, and HTTP(S) URLs structurally claimed by the provider's validated dynamic supported-host state | generic handling of every HTTP(S) URL; ownership of universal retry/lifecycle |
 | General HTTP & HTTPS | generic direct `http`/`https` candidates; conventional HTTP resource username/password challenge continuation | FTP, SSH/SFTP/SCP, saved credentials, provider-specific retry policy |
-| aria2 | current HTTP(S) execution/observation boundary for built-in or external mode | provider routing, universal retry budgets, logical transfer lifecycle |
+| aria2 | current HTTP(S) execution/observation boundary of the aria2 daemon DebridPulse runs | provider routing, universal retry budgets, logical transfer lifecycle |
 | Generic Authentication Required UI | username/password and challenge-advertised username/private-key with optional passphrase | production SSH/SFTP/SCP support merely because key input can be represented |
 
 FTP, SCP, SFTP/SSH, rsync, additional providers/executors/dependencies, and richer provider-routing/failover work remain deferred to Items 12–16/later roadmap decisions.

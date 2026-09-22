@@ -111,7 +111,7 @@ def test_settings_runtime_directly_uses_backend_api_contracts():
         "request('POST', '/auth/api-token'",
         "request('DELETE', '/auth/api-token'",
         "'/settings/validate-alldebrid'",
-        "'/settings/validate-aria2'",
+        "'/settings/test-aria2'",
         "'/settings/validate-discord'",
         "request('POST', '/settings/upload-avatar'",
         "request('POST', '/admin/backup'",
@@ -189,15 +189,8 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         assert key in sources
 
     downloads = runtime[runtime.index("function downloadsPanel"):runtime.index("function extractionPanel")]
-    # The RPC-secret control is emitted by aria2RpcSecretFields(), which owns
-    # the ``aria2_secret`` control name.
-    assert "aria2RpcSecretFields(" in downloads
-    assert "const key = 'aria2_secret';" in runtime
     for key in (
-        "aria2_mode",
-        "aria2_url",
         "download_folder",
-        "aria2_download_path",
         "aria2_max_active_downloads",
         "min_free_disk_gb",
         "disk_guard_resume_hysteresis_gb",

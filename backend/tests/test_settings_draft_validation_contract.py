@@ -21,7 +21,7 @@ def section(source: str, start: str, end: str) -> str:
 
 def test_settings_events_are_delegated_once_on_the_persistent_root() -> None:
     runtime = read(RUNTIME)
-    bound = section(runtime, "function bindEvents(view)", "function updateModeState()")
+    bound = section(runtime, "function bindEvents(view)", "function fieldFor(key)")
 
     assert "if (view.dataset.dpSettingsEventsBound === '1') return;" in bound
     assert "view.dataset.dpSettingsEventsBound = '1';" in bound
@@ -39,18 +39,17 @@ def test_connection_tests_use_transient_drafts_without_saving_or_rerendering() -
 
     assert "api_key: valueOf('alldebrid_api_key')" in payload
     assert "clear_api_key: clears.has('alldebrid_api_key')" in payload
-    assert "mode: valueOf('aria2_mode'" in payload
-    assert "secret: valueOf('aria2_secret')" in payload
-    assert "clear_secret: clears.has('aria2_secret')" in payload
     assert "webhook_url: valueOf('discord_webhook_url')" in payload
     assert "clear_webhook: clears.has('discord_webhook_url')" in payload
 
     for endpoint in (
         "/settings/validate-alldebrid",
-        "/settings/validate-aria2",
         "/settings/validate-discord",
     ):
         assert endpoint in test_connection
+    # aria2 is the daemon DebridPulse runs: its test is that daemon's own health
+    # check, with no draft connection values.
+    assert "aria2: '/settings/test-aria2'" in test_connection
     assert "connectionTestPayload(kind)" in test_connection
     assert "persistNonAuth" not in test_connection
     assert "render();" not in test_connection
@@ -97,17 +96,14 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
 
     for route in (
         '@router.post("/settings/validate-alldebrid")',
-        '@router.post("/settings/validate-aria2")',
         '@router.post("/settings/validate-discord")',
     ):
         assert route in validation
 
     assert "AllDebridService(api_key, alldebrid.agent)" in validation
     assert "alldebrid_canonical_options(get_settings())" in validation
-    assert "Aria2Service(" in validation
     assert "NotificationService(webhook_url).test()" in validation
     assert "clear_api_key" in validation
-    assert "clear_secret" in validation
     assert "clear_webhook" in validation
 
     for forbidden in ("save_settings", "apply_settings", "persistNonAuth", "PUT /settings"):
@@ -117,7 +113,6 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
     assert 'app.include_router(settings_validation_router, prefix="/api")' in main
     for path in (
         '"/api/settings/validate-alldebrid"',
-        '"/api/settings/validate-aria2"',
         '"/api/settings/validate-discord"',
     ):
         assert path in main

@@ -8,11 +8,8 @@ and then opens the upstream socket to an approved numeric address.  aria2 never
 gets a second opportunity to resolve the provider hostname for the target
 connection.
 
-Built-in aria2 reaches the guard over loopback.  A shared/external daemon cannot
-safely be assumed to reach the application's loopback namespace, so external mode
-fails closed unless the operator explicitly advertises a route to this guard with
-DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY.  The guard bind address/port are
-controlled by DEBRIDPULSE_EGRESS_GUARD_BIND and DEBRIDPULSE_EGRESS_GUARD_PORT.
+aria2 reaches the guard over loopback; the guard listens on loopback only.  Its
+port is controlled by DEBRIDPULSE_EGRESS_GUARD_PORT.
 
 Each job credential is signed for one route scope. ``RouteScope.ENDPOINT`` (the
 default) admits exactly the authorized hostname and port. ``RouteScope.SAME_HOST``
@@ -47,6 +44,7 @@ logger = logging.getLogger("debridpulse.downloader_egress_guard")
 _PER_PROTOCOL_PROXY_PREFERENCES = ("http", "https", "ftp")
 
 _PROXY_USER = "debridpulse"
+_LOOPBACK = "127.0.0.1"
 # Lowest port a same-host scope admits besides the authorized one. Servers
 # select passive data ports from their unprivileged range; privileged service
 # ports on the same host stay outside the grant.
@@ -104,12 +102,10 @@ class DownloaderEgressGuard:
         *,
         resolver: Resolver | None = None,
         public_check: PublicCheck | None = None,
-        bind_host: str | None = None,
         bind_port: int | None = None,
     ) -> None:
         self._resolver = resolver
         self._public_check = public_check or _is_public
-        self._configured_host = bind_host
         self._configured_port = bind_port
         self._secret = secrets.token_bytes(32)
         self._server: asyncio.AbstractServer | None = None
@@ -119,13 +115,6 @@ class DownloaderEgressGuard:
     @property
     def bound_port(self) -> int:
         return int(self._bound_port)
-
-    def _bind_host(self) -> str:
-        return str(
-            self._configured_host
-            if self._configured_host is not None
-            else os.getenv("DEBRIDPULSE_EGRESS_GUARD_BIND", "127.0.0.1")
-        ).strip() or "127.0.0.1"
 
     def _bind_port(self) -> int:
         raw = (
@@ -147,7 +136,7 @@ class DownloaderEgressGuard:
         async with self._lock:
             if self._server is not None:
                 return
-            host = self._bind_host()
+            host = _LOOPBACK
             port = self._bind_port()
             self._server = await asyncio.start_server(
                 self._handle_client,
@@ -204,49 +193,22 @@ class DownloaderEgressGuard:
             return False
         return hmac.compare_digest(password, self._same_host_token(host, authorized))
 
-    def _proxy_url(self, *, external: bool) -> str:
-        if not external:
-            if self._server is None or self._bound_port <= 0:
-                raise RuntimeError("DebridPulse egress guard is not running")
-            return f"http://127.0.0.1:{self._bound_port}"
+    def _proxy_url(self) -> str:
+        if self._server is None or self._bound_port <= 0:
+            raise RuntimeError("DebridPulse egress guard is not running")
+        return f"http://{_LOOPBACK}:{self._bound_port}"
 
-        raw = os.getenv("DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY", "").strip()
-        if not raw:
-            raise RuntimeError(
-                "External aria2 is fail-closed until "
-                "DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY advertises a route "
-                "from the external daemon to the DebridPulse egress guard"
-            )
-        parsed = urlsplit(raw)
-        if (
-            parsed.scheme.casefold() != "http"
-            or not parsed.hostname
-            or parsed.port is None
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.path not in {"", "/"}
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise RuntimeError(
-                "DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY must be an http://host:port URL"
-            )
-        return f"http://{parsed.hostname}:{parsed.port}"
-
-    def job_options(
-        self, uri: str, *, external: bool, scope: RouteScope = RouteScope.ENDPOINT,
-    ) -> dict[str, str]:
+    def job_options(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT) -> dict[str, str]:
         """Return per-addUri proxy policy that cannot inherit a daemon bypass."""
         host, port = _target(uri)
-        proxy = self._proxy_url(external=external)
+        proxy = self._proxy_url()
         user, token = self._credential(host, port, RouteScope(scope))
         options = {
             "all-proxy": proxy,
             "all-proxy-user": user,
             "all-proxy-passwd": token,
-            # A shared daemon may have a global no-proxy list.  Empty is the
-            # explicit per-job override, preventing that list from bypassing the
-            # guard for DebridPulse-owned jobs.
+            # Empty is the explicit per-job override, so no daemon-global
+            # no-proxy list can ever bypass the guard for an owned job.
             "no-proxy": "",
             # Force CONNECT for ordinary HTTP too. HTTPS tunnels regardless, but
             # setting this explicitly gives every guarded scheme the same target
@@ -254,9 +216,9 @@ class DownloaderEgressGuard:
             "proxy-method": "tunnel",
         }
         # aria2 resolves a per-protocol proxy preference ahead of --all-proxy, so
-        # a shared daemon carrying its own --http-proxy/--https-proxy/--ftp-proxy
-        # would route that protocol around the guard.  Every per-protocol
-        # preference aria2 recognises is therefore pinned to the guard per job.
+        # a daemon-global --http-proxy/--https-proxy/--ftp-proxy would route
+        # that protocol around the guard.  Every per-protocol preference aria2
+        # recognises is therefore pinned to the guard per job.
         # SFTP has no per-protocol preference and resolves through --all-proxy.
         for protocol in _PER_PROTOCOL_PROXY_PREFERENCES:
             options[f"{protocol}-proxy"] = proxy
@@ -287,7 +249,7 @@ class DownloaderEgressGuard:
             raise RuntimeError("DebridPulse egress guard is not running")
         listener = server.sockets[0].getsockname()
         family = server.sockets[0].family
-        address = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(listener[0], listener[0])
+        address = listener[0]
         authority = f"{host}:{int(port) if port is not None else authorized}"
         credential = base64.b64encode(f"{user}:{token}".encode("utf-8")).decode("ascii")
         loop = asyncio.get_running_loop()

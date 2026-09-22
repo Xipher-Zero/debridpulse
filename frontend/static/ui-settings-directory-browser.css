@@ -2,7 +2,7 @@
  *
  * This stylesheet extends the neutral application-dialog shell
  * (ui-modal-contract.css, .dp-modal-*). It owns the shared Settings directory-field/control/browse layout (used by
- * both Built-in Download Folder and Backup Folder -- see Correction 5, DP
+ * both Download Folder and Backup Folder -- see Correction 5, DP
  * 1.0.12 UI Finishing) and the browse-modal geometry/state presentation.
  */
 

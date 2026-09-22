@@ -135,7 +135,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     page = read(PAGE)
     chrome = read(CHROME)
     manifest = json.loads(read(MANIFEST))
-    key_helper = runtime[runtime.index("function allDebridApiKeyField"):runtime.index("function aria2RpcSecretFields")]
+    key_helper = runtime[runtime.index("function allDebridApiKeyField"):runtime.index("function tuningToggle")]
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime

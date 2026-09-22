@@ -50,7 +50,7 @@
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
           <p><b>DebridPulse is the application you use to submit, route, track, and manage downloads.</b> The current provider layer includes <b>AllDebrid</b> for magnets, torrent files, and HTTP/HTTPS hosts that AllDebrid currently supports, plus the generic <b>HTTP &amp; HTTPS</b> and <b>FTP &amp; SFTP</b> Direct Sources for ordinary direct downloads. A separate component called <b>aria2</b> performs the physical transfer and writes files to your storage.</p>
-          <p>DebridPulse includes its own built-in copy of aria2, so most users do not need a separate download engine. An AllDebrid API key is required for AllDebrid routes, while generic HTTP/HTTPS direct downloads use the separate HTTP &amp; HTTPS provider when it is enabled.</p>
+          <p>DebridPulse runs and manages aria2 for you, so there is no separate download engine to install or connect. An AllDebrid API key is required for AllDebrid routes, while generic HTTP/HTTPS direct downloads use the separate HTTP &amp; HTTPS provider when it is enabled.</p>
         </div>
 
         <article class="dp-help-inset">
@@ -64,7 +64,7 @@
               <li><b>Download storage:</b> This can be a folder on the computer running DebridPulse, a mounted NAS share, or another location made available to the application.</li>
               <li><b>Login protection:</b> If DebridPulse can be reached by people or devices you do not fully trust, configure <b>Settings → Authentication</b> before exposing it. Username &amp; Password is the simplest protection for most users.</li>
             </ul>
-            <p>You do not need an external aria2 server, Discord notifications, automatic extraction, or OIDC just to perform a basic download. Those are optional features you can configure later.</p>
+            <p>You do not need Discord notifications, automatic extraction, or OIDC just to perform a basic download. Those are optional features you can configure later.</p>
           </div>
         </article>
 
@@ -79,12 +79,11 @@
 
           ${step(2, 'Confirm where downloads will be stored', `
             <div class="dp-help-prose">
-              <p>Open <b>Settings → Downloads → Download Engine</b>. The default mode is <b>Built-in aria2</b>, which is the recommended choice unless you already operate a separate aria2 server.</p>
-              <p><b>aria2 is the component that performs the actual file transfer.</b> DebridPulse selects a provider first, obtains a canonical HTTP/HTTPS, FTP or SFTP candidate from that provider, and gives the candidate to aria2. An AllDebrid route may use an unlocked provider URL; a General HTTP &amp; HTTPS route uses the validated direct resource. Built-in mode means DebridPulse runs and manages aria2 for you.</p>
-              <p>The <b>Built-in Download Folder</b> tells DebridPulse where files should be written. The normal container path is <code>/download</code>.</p>
+              <p>Open <b>Settings → Downloads → Download Engine</b>.</p>
+              <p><b>aria2 is the component that performs the actual file transfer.</b> DebridPulse selects a provider first, obtains a canonical HTTP/HTTPS, FTP or SFTP candidate from that provider, and gives the candidate to aria2. An AllDebrid route may use an unlocked provider URL; a General HTTP &amp; HTTPS route uses the validated direct resource. DebridPulse runs and manages aria2 for you.</p>
+              <p>The <b>Download Folder</b> tells DebridPulse where files should be written. The normal container path is <code>/download</code>.</p>
               <p>If you installed DebridPulse with Docker, DebridPulse runs inside an isolated environment called a <b>container</b>. A path such as <code>/download</code> is the folder name as DebridPulse sees it inside that container. During installation, that folder is normally connected to a real folder on your computer, NAS, or server. For example, a folder named <code>/mnt/downloads</code> on the host system might be made available to DebridPulse as <code>/download</code>.</p>
               <p>If downloads are already appearing in the correct place, you do not need to change this path.</p>
-              <p><b>Using an external aria2 server?</b> Choose <b>External aria2</b> only if you already have one. The <b>External RPC URL</b> is the network address DebridPulse uses to communicate with that aria2 server. The <b>External aria2 Download Path</b> is the download folder as that external aria2 system sees it. These values can differ from the paths visible inside the DebridPulse container.</p>
             </div>`) }
 
           ${step(3, 'Add your first download', `
@@ -170,7 +169,7 @@
           ${pipeline('1. Intake', 'DebridPulse accepts the HTTP/HTTPS, FTP or SFTP link, magnet, or .torrent file and creates tracked work before provider or download-engine activity begins.')}
           ${pipeline('2. Provider resolution', 'DebridPulse selects the current eligible provider. AllDebrid may unlock/process a supported source; the HTTP & HTTPS and FTP & SFTP Direct Sources produce a direct candidate for an ordinary resource.')}
           ${pipeline('3. Transfer planning', 'DebridPulse turns the provider result into the files it should deliver, reconciles duplicates, and can keep verified alternate mirror links available as standby sources.')}
-          ${pipeline('4. aria2 delivery', 'Built-in or external aria2 downloads the prepared HTTP/HTTPS, FTP or SFTP file links to the configured storage.', 'active')}
+          ${pipeline('4. aria2 delivery', 'The aria2 engine DebridPulse runs downloads the prepared HTTP/HTTPS, FTP or SFTP file links to the configured storage.', 'active')}
           ${pipeline('5. Verification and finish', 'DebridPulse reconciles the physical result, preserves useful history, and marks the logical download complete only when its required local work is satisfied.', 'success')}
           ${pipeline('6. Optional extraction', 'If Automatic Extraction is enabled and the completed files include supported archives, extraction runs after the physical download stage.')}
         </div>
@@ -217,37 +216,26 @@
       <section class="dp-help-document" aria-labelledby="dp-help-aria2-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-aria2-heading">aria2 and download delivery</h2>
-          <p>aria2 is the transfer engine that writes the prepared files to your storage. DebridPulse can manage its own built-in engine or connect to an aria2 server you already operate.</p>
+          <p>aria2 is the transfer engine that writes the prepared files to your storage. DebridPulse runs it, configures it, and connects to it; there is nothing to install or point it at.</p>
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p>Configure the engine under <b>Settings → Downloads → Download Engine</b>. Most installations should leave <b>Built-in aria2</b> selected. External mode is intended for users who already have a reason to operate a separate aria2 service.</p>
+          <p>Configure the engine under <b>Settings → Downloads → Download Engine</b>.</p>
         </div>
 
-        <div class="dp-help-integration-grid">
-          <article class="dp-help-inset">
-            <h3>Built-in aria2</h3>
-            <div class="dp-help-copy dp-help-prose">
-              <p>Built-in mode runs aria2 with DebridPulse. DebridPulse starts it, applies the built-in engine settings, and reconnects to its own tracked downloads during normal reconciliation and recovery.</p>
-              <p><b>Built-in Download Folder</b> is the path visible inside the DebridPulse container. The normal path is <code>/download</code>, which should be mapped to the host, NAS, or server folder where you actually want files stored.</p>
-              <p>If built-in downloads already land in the correct place, there is usually no reason to change the path or the advanced tuning values.</p>
-            </div>
-          </article>
-
-          <article class="dp-help-inset">
-            <h3>External aria2</h3>
-            <div class="dp-help-copy dp-help-prose">
-              <p>External mode connects over aria2's JSON-RPC interface. Enter the <b>External RPC URL</b>, normally ending in <code>/jsonrpc</code>, and the <b>aria2 RPC Secret</b> if your server requires one.</p>
-              <p><b>External aria2 Download Path</b> is the destination path as the external aria2 server sees it. DebridPulse and the external daemon must agree on the underlying storage even when their path names are different.</p>
-              <p>DebridPulse limits external control to jobs it owns. It does not use external mode as a general administration interface for unrelated aria2 jobs or daemon-wide policy.</p>
-            </div>
-          </article>
-        </div>
+        <article class="dp-help-inset">
+          <h3>How DebridPulse runs aria2</h3>
+          <div class="dp-help-copy dp-help-prose">
+            <p>DebridPulse starts aria2 with the application, applies the engine settings, and reconnects to its own tracked downloads during normal reconciliation and recovery.</p>
+            <p><b>Download Folder</b> is the path visible inside the DebridPulse container. The normal path is <code>/download</code>, which should be mapped to the host, NAS, or server folder where you actually want files stored.</p>
+            <p>If downloads already land in the correct place, there is usually no reason to change the path or the advanced tuning values.</p>
+          </div>
+        </article>
 
         <article class="dp-help-inset">
           <h3>Engine tuning in plain language</h3>
           <div class="dp-help-copy dp-help-prose">
-            <p>The built-in engine exposes additional tuning. The defaults are a sensible starting point, and changing every value is not a requirement for good performance.</p>
+            <p>The engine exposes additional tuning. The defaults are a sensible starting point, and changing every value is not a requirement for good performance.</p>
             <ul>
               <li><b>Maximum Concurrent Downloads:</b> the maximum number of physical downloads DebridPulse can run at the same time.</li>
               <li><b>Continue Partial Downloads:</b> lets aria2 resume usable partial files instead of starting from zero when possible.</li>
@@ -281,10 +269,10 @@
         </div>
 
         <article class="dp-help-inset">
-          <h3>Testing an aria2 configuration</h3>
+          <h3>Testing the download engine</h3>
           <div class="dp-help-copy dp-help-prose">
-            <p>While the Downloads tab is open, use <b>Test aria2</b> in the Settings footer. Connection tests use the values currently entered in the form and do not require you to save a bad configuration first.</p>
-            <p>After the test succeeds, use <b>Apply Settings</b> to make the new engine configuration persistent.</p>
+            <p>While the Downloads tab is open, use <b>Test Download Engine</b> in the Settings footer. It checks that the aria2 engine DebridPulse runs is responding and reports its version.</p>
+            <p>Tuning changes take effect when you use <b>Apply Settings</b>.</p>
           </div>
         </article>
       </section>`;
@@ -394,11 +382,10 @@
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
               <p>The Downloads section controls the physical transfer engine and the safeguards around it.</p>
               <ul>
-                <li><b>Download Engine:</b> choose Built-in aria2 or External aria2, configure the destination path, and set Maximum Concurrent Downloads.</li>
-                <li><b>External aria2:</b> additionally requires an External RPC URL and optionally an aria2 RPC Secret. The external download path is written from the external server's point of view.</li>
-                <li><b>Additional Engine Tuning:</b> available for built-in mode and includes partial-download continuation, segmentation, connection limits, split size, disk cache, file allocation, and the low-speed threshold.</li>
+                <li><b>Download Engine:</b> configure the Download Folder and set Maximum Concurrent Downloads.</li>
+                <li><b>Additional Engine Tuning:</b> includes partial-download continuation, segmentation, connection limits, split size, disk cache, file allocation, and the low-speed threshold.</li>
                 <li><b>Download Safety &amp; Recovery:</b> contains the minimum-free-space guard, resume buffer, stalled-download recovery, download-error retry count, and retry delay.</li>
-                <li><b>Test aria2:</b> verifies the current draft connection before Apply Settings.</li>
+                <li><b>Test Download Engine:</b> checks that the aria2 engine DebridPulse runs is responding.</li>
               </ul>
               <p>The header speed cap is an operational bandwidth control and is separate from the deeper engine settings on this tab.</p>
             </div>
@@ -510,19 +497,9 @@
           <details class="dp-help-accordion">
             <summary>Files are not appearing in the expected folder</summary>
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
-              <p>For built-in aria2, confirm the <b>Built-in Download Folder</b> and the Docker or container volume mapping behind it. The default <code>/download</code> path only works as intended when it is mapped to the host or NAS location you want.</p>
+              <p>Confirm the <b>Download Folder</b> and the Docker or container volume mapping behind it. The default <code>/download</code> path only works as intended when it is mapped to the host or NAS location you want.</p>
               <p>Confirm the container user has permission to create and modify files in the mapped destination.</p>
-              <p>For external aria2, <b>External aria2 Download Path</b> must be correct from the external daemon's point of view, and both systems must have access to the same underlying storage.</p>
               <p>If new transfers are not starting at all, also check whether the minimum-free-space guard is active.</p>
-            </div>
-          </details>
-
-          <details class="dp-help-accordion">
-            <summary>External aria2 will not connect</summary>
-            <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
-              <p>Verify that <b>External RPC URL</b> is reachable from the DebridPulse container or host network, not just from your desktop browser. A typical aria2 RPC endpoint ends in <code>/jsonrpc</code>.</p>
-              <p>If the daemon uses an RPC secret, enter the same value in <b>aria2 RPC Secret</b>. Check firewall rules, container networks, DNS, TLS termination, and the listening address on the external aria2 server.</p>
-              <p>Use <b>Test aria2</b> while the draft values are still in the form. A successful RPC test confirms connectivity; path mapping must still be correct for downloaded files to appear where DebridPulse expects them.</p>
             </div>
           </details>
 

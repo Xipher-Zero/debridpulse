@@ -116,15 +116,12 @@ def aria2_download_to_dict(download: Aria2DownloadStatus) -> Dict[str, Any]:
 class Aria2Service:
     """JSON-RPC client for one aria2 daemon.
 
-    ``owns_daemon`` is injected by whoever constructs the client from the
-    canonical ``Aria2Options.mode``: it is ``True`` only when DebridPulse
-    exclusively owns the daemon. It defaults to ``False`` so a client that was
-    not told it owns the daemon can never mutate shared state. The client never
-    looks up application settings itself.
+    The endpoint and secret are injected by the daemon owner
+    (``executors.aria2.runtime.rpc_service``); the client never looks up
+    application settings itself.
     """
 
-    def __init__(self, url: str, secret: str = "", timeout_seconds: int = 15, *, owns_daemon: bool = False):
-        self.owns_daemon = bool(owns_daemon)
+    def __init__(self, url: str, secret: str = "", timeout_seconds: int = 15):
         self.url = url.strip()
         self.secret = secret.strip()
         self.timeout = aiohttp.ClientTimeout(total=max(5, int(timeout_seconds or 15)))
@@ -170,19 +167,13 @@ class Aria2Service:
         return await self._call("aria2.getGlobalOption")
 
     async def change_global_options(self, options: Dict[str, Any]) -> Any:
-        if not self.owns_daemon:
-            logger.warning("Blocked aria2.changeGlobalOption for shared external daemon")
-            return {"skipped": True, "reason": "external aria2 policy is read-only"}
         return await self._call("aria2.changeGlobalOption", [options])
 
     async def purge_download_results(self, *, force: bool = False) -> Any:
-        """Preserve bounded built-in result state unless an explicit purge is requested."""
-        if not self.owns_daemon:
-            logger.warning("Blocked aria2.purgeDownloadResult for shared external daemon")
-            return {"skipped": True, "reason": "external aria2 result history is daemon-owned"}
+        """Preserve bounded result state unless an explicit purge is requested."""
         if not force:
-            logger.debug("Preserving bounded built-in aria2 result state")
-            return {"skipped": True, "reason": "bounded built-in aria2 result state is operator-visible"}
+            logger.debug("Preserving bounded aria2 result state")
+            return {"skipped": True, "reason": "bounded aria2 result state is operator-visible"}
         return await self._call("aria2.purgeDownloadResult")
 
     async def get_memory_diagnostics(
@@ -281,8 +272,7 @@ class Aria2Service:
 
     async def remove(self, gid: str):
         await self._best_effort("aria2.forceRemove", [gid])
-        if self.owns_daemon:
-            await self._best_effort("aria2.removeDownloadResult", [gid])
+        await self._best_effort("aria2.removeDownloadResult", [gid])
 
     def rpc_metrics(self) -> Dict[str, Any]:
         requests = int(self._rpc_http_requests)

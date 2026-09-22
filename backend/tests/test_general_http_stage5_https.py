@@ -255,7 +255,6 @@ async def test_real_general_https_transfer_uses_general_provider_core_aria2_and_
     guard = DownloaderEgressGuard(
         resolver=resolver,
         public_check=lambda address: address == "127.0.0.1",
-        bind_host="127.0.0.1",
         bind_port=0,
     )
 
@@ -274,7 +273,7 @@ async def test_real_general_https_transfer_uses_general_provider_core_aria2_and_
     await engine.initialize()
     executor = Aria2Executor(
         service,
-        Aria2Configuration(str(downloads), external=False, confirmation_delay=0),
+        Aria2Configuration(str(downloads), confirmation_delay=0),
         repository.authorize_execution,
         egress=guard,
     )

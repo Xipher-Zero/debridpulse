@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from executors.aria2.client import Aria2ConnectionError, Aria2DownloadStatus, Aria2RPCError, Aria2Service
-from executors.aria2.executor import Aria2Configuration, Aria2Executor
+from executors.aria2.executor import Aria2Configuration, Aria2Executor, execution_binding
 from executors.aria2.translation import native_failure, observation
 from transfers.errors import Category, Domain, Recovery, Retryability, TransferError
 from transfers.models import (
@@ -88,7 +88,7 @@ def execution(tmp_path, monkeypatch):
     async def authorize(handle, action):
         return grants.get(handle.attempt_id) == handle
 
-    egress = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external, scope=None: {"all-proxy": "http://guard:8888"})
+    egress = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, scope=None: {"all-proxy": "http://guard:8888"})
     executor = Aria2Executor(daemon, Aria2Configuration(
         str(tmp_path), confirmation_delay=0, control_confirmation_timeout=0.02,
     ), authorize, egress=egress)
@@ -121,6 +121,28 @@ async def test_start_preserves_connection_guard_and_metadata_safety(execution):
     assert options["auto-file-renaming"] == "false"
     assert options["max-tries"] == "1"
     assert (await execution.executor.observe(execution.handle)).state == ExecutionState.TRANSFERRING
+
+
+@pytest.mark.asyncio
+async def test_the_daemon_writes_into_the_one_canonical_download_root(execution):
+    # One filesystem: the configuration names the application download root and
+    # nothing that maps it onto another namespace.
+    assert set(Aria2Configuration.__dataclass_fields__) == {
+        "local_root", "split", "minimum_split_size", "connections_per_server", "continue_downloads",
+        "confirmation_delay", "control_confirmation_timeout", "waiting_window", "stopped_window", "secrets",
+    }
+    await execution.executor.start(execution.request, execution.handle)
+    options = execution.daemon.calls[0][1][1]
+    assert Path(options["dir"]) / options["out"] == Path(execution.request.target).resolve()
+
+
+def test_execution_binding_digest_is_durable_handle_identity():
+    # Every persisted handle carries this digest. The daemon endpoint and the
+    # default download root must keep producing the value existing handles were
+    # written with, or restart reconciliation would disown them.
+    assert execution_binding("/download", "http://127.0.0.1:6800/jsonrpc") == (
+        "879bfb1e0c9dab237c8ced10ca0c2006f41071d9202b532d8ea79fb4f4d010f7"
+    )
 
 
 @pytest.mark.asyncio
@@ -190,11 +212,14 @@ async def test_pause_resume_and_cancel_confirm_native_state(execution):
     assert (await execution.executor.resume(execution.handle)).state == ExecutionState.TRANSFERRING
     result = await execution.executor.cancel(execution.handle)
     assert result.kind == OutcomeKind.CANCELLED
-    assert execution.daemon.jobs[execution.handle.context["gid"]].status == "removed"
+    gid = execution.handle.context["gid"]
+    assert gid not in execution.daemon.jobs
     methods = [method for method, _ in execution.daemon.calls]
     assert "aria2.pause" in methods
     assert "aria2.forcePause" not in methods
-    assert all(method not in {"aria2.removeDownloadResult", "aria2.purgeDownloadResult", "aria2.changeGlobalOption"} for method in methods)
+    # Only the owned job's own result is removed; daemon-global state is never touched.
+    assert ("aria2.removeDownloadResult", [gid]) in execution.daemon.calls
+    assert all(method not in {"aria2.purgeDownloadResult", "aria2.changeGlobalOption"} for method in methods)
 
 
 @pytest.mark.asyncio

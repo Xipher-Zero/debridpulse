@@ -259,10 +259,6 @@ def test_only_composition_and_migration_bind_flat_aria2_tuning_fields():
             "getattr(cfg, \"aria2_max_connection_per_server\"", "getattr(cfg, \"aria2_disk_cache\"",
             "getattr(cfg, \"aria2_file_allocation\"", "getattr(cfg, \"aria2_continue_downloads\"",
             "getattr(cfg, \"aria2_lowest_speed_limit\"", "getattr(cfg, \"aria2_max_active_downloads\"",
-            "getattr(cfg, \"aria2_mode\"", "getattr(cfg, \"aria2_url\"", "getattr(cfg, \"aria2_secret\"",
-            "getattr(cfg, \"aria2_builtin_port\"", "getattr(cfg, \"aria2_builtin_auto_start\"",
-            "getattr(cfg, \"aria2_builtin_log_file\"", "getattr(cfg, \"aria2_builtin_log_max_mb\"",
-            "getattr(cfg, \"aria2_builtin_log_backups\"", "getattr(cfg, \"aria2_builtin_session_file\"",
             "getattr(cfg, \"aria2_purge_interval_minutes\"", "getattr(cfg, \"aria2_restart_interval_hours\"",
             "getattr(cfg, \"aria2_max_download_result\"", "getattr(cfg, \"aria2_keep_unfinished_download_result\"",
             "getattr(cfg, \"aria2_operation_timeout_seconds\"", "cfg.aria2_purge_interval_minutes",
@@ -271,21 +267,20 @@ def test_only_composition_and_migration_bind_flat_aria2_tuning_fields():
             assert forbidden not in source, f"{name} still rebuilds native tuning from flat field ({forbidden!r})"
 
 
-def test_builtin_runtime_and_administration_never_call_get_settings():
+def test_runtime_and_administration_never_call_get_settings():
     """Gate 9 revision-2 rejection finding, specification section 9.3:
     namespace canonicalization alone (flat fields -> ``_canonical_aria2_options()``)
-    is not dependency inversion. ``BuiltinAria2Runtime`` and
+    is not dependency inversion. ``Aria2Runtime`` and
     ``Aria2Administration`` -- the long-lived singletons -- must receive
     typed configuration through injection (``Aria2RuntimeConfiguration``,
     composed by ``application.composition.configure()``) and never call
     ``core.config.get_settings()`` themselves. The settings-boundary
-    translation helpers (``_canonical_aria2_options``, ``effective_rpc_config``)
-    remain legitimate for genuine settings-boundary callers (API routes,
-    migration, composition itself) -- this test isolates the two runtime
+    translation helper (``_canonical_aria2_options``) remains legitimate for
+    genuine settings-boundary callers (API routes, composition itself) -- this test isolates the two runtime
     CLASSES specifically, not the whole module."""
     source = (ROOT / "executors/aria2/runtime.py").read_text(encoding="utf-8")
-    class_start = source.index("class BuiltinAria2Runtime:")
-    class_end = source.index("\nruntime = BuiltinAria2Runtime()", class_start)
+    class_start = source.index("class Aria2Runtime:")
+    class_end = source.index("\nruntime = Aria2Runtime()", class_start)
     class_body = source[class_start:class_end]
     assert "get_settings" not in class_body
     assert "self._config" in class_body

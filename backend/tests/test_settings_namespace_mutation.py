@@ -24,6 +24,7 @@ import pytest
 from api import routes
 from core.config import AppSettings
 from executors.aria2.definition import definition as aria2_definition
+from integrations.configuration import normalize_settings
 from integrations.definition import IntegrationSettings
 from providers.alldebrid.definition import definition as alldebrid_definition
 from providers.general_http.definition import definition as general_http_definition
@@ -72,6 +73,7 @@ def _settings_with_full_integrations():
         integrations={
             "alldebrid": IntegrationSettings(options={"api_key": "secret-key"}),
             "general_http": IntegrationSettings(options={}),
+            # A value an earlier release stored and no current option names.
             "aria2": IntegrationSettings(options={"mode": "builtin", "split": 16, "disk_cache": "64M"}),
         },
         transfer_policy=TransferSettings(max_concurrent_executions=3, execution_retry_count=3),
@@ -119,7 +121,7 @@ async def test_patch_transfer_policy_updates_only_requested_field():
     assert application.configure.calls == 1
     application.reconcile_executions.assert_awaited_once()
     # Gate 9 revision-5 rejection finding 4: a concurrency change projects
-    # into the running built-in aria2 daemon's native
+    # into the running aria2 daemon's native
     # ``max-concurrent-downloads`` through the SAME executor-owned
     # administration entry point periodic housekeeping already uses -- not a
     # second native-option pipeline.
@@ -153,7 +155,7 @@ async def test_patch_transfer_policy_reconfigures_engine_but_skips_dispatch_nudg
 @pytest.mark.asyncio
 async def test_patch_transfer_policy_reports_native_concurrency_apply_failure_truthfully():
     """Specification section 2.7: an API success must not imply that a
-    failed native apply succeeded. When the built-in daemon rejects the
+    failed native apply succeeded. When the daemon rejects the
     projected native concurrency option, the route must report it as
     ``last_apply_error`` rather than silently swallowing it -- the durable
     desired value (the actual policy authority) is still persisted either
@@ -217,7 +219,6 @@ async def test_get_integration_configuration_reports_public_namespace():
         result = await routes.get_integration_configuration("aria2", application=application)
     assert result["ok"] is True
     assert result["options"]["split"] == 16
-    assert result["options"]["secret_configured"] is False
 
 
 @pytest.mark.asyncio
@@ -242,13 +243,11 @@ async def test_patch_integration_configuration_merges_only_supplied_options():
     assert application.configure.calls == 1
 
 
-def _settings_with_configured_aria2_secret():
+def _settings_with_configured_integration_secret():
     current = _settings_with_full_integrations()
     current.integrations = {
         **current.integrations,
-        "aria2": IntegrationSettings(options={
-            **current.integrations["aria2"].options, "secret": "configured-secret",
-        }),
+        "alldebrid": IntegrationSettings(options={"api_key": "configured-secret", "rate_limit_per_minute": 60}),
     }
     return current
 
@@ -257,9 +256,9 @@ def _settings_with_configured_aria2_secret():
 async def test_patch_integration_configuration_blank_secret_preserves_existing_value():
     """Gate 9 revision-3 rejection finding 2, specification section 9.5: the
     UI's existing contract is that a blank ALREADY-CONFIGURED secret control
-    means "keep current" -- ``aria2ConfigurationPayload()`` always sends
-    ``secret: ""`` for it. An ordinary scoped Save (no explicit
-    ``clear_secrets``) supplying a blank ``secret`` alongside an unrelated
+    means "keep current" -- ``allDebridConfigurationPayload()`` always sends
+    ``api_key: ""`` for it. An ordinary scoped Save (no explicit
+    ``clear_secrets``) supplying a blank secret alongside an unrelated
     option must not erase the stored value."""
     # ``load_settings`` returns a FRESH COPY on every call, matching real
     # ``core.config.load_settings()`` (which always parses a brand new
@@ -269,7 +268,7 @@ async def test_patch_integration_configuration_blank_secret_preserves_existing_v
     # local ``current`` variable silently "leak" into ``previous`` before
     # ``normalize_settings`` ever reads it, masking exactly the secret-
     # preservation bug this test exists to catch.
-    current = _settings_with_configured_aria2_secret()
+    current = _settings_with_configured_integration_secret()
     application = _application(current)
     saved = {}
     with patch("api.routes.get_settings", return_value=current), \
@@ -277,12 +276,12 @@ async def test_patch_integration_configuration_blank_secret_preserves_existing_v
          patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
          patch("api.routes.apply_settings"):
         result = await routes.patch_integration_configuration(
-            "aria2", routes.IntegrationConfigurationUpdate(options={"split": 32, "secret": ""}),
+            "alldebrid", routes.IntegrationConfigurationUpdate(options={"rate_limit_per_minute": 90, "api_key": ""}),
             application=application,
         )
-    assert result["options"]["split"] == 32
-    assert result["options"]["secret_configured"] is True
-    assert saved["cfg"].integrations["aria2"].options["secret"] == "configured-secret"
+    assert result["options"]["rate_limit_per_minute"] == 90
+    assert result["options"]["api_key_configured"] is True
+    assert saved["cfg"].integrations["alldebrid"].options["api_key"] == "configured-secret"
 
 
 @pytest.mark.asyncio
@@ -290,7 +289,7 @@ async def test_patch_integration_configuration_explicit_clear_secrets_erases_val
     """The SAME blank value, but with the secret named in ``clear_secrets``,
     must still erase it -- blank-preserves is not a blanket immunity from an
     explicit user-requested clear."""
-    current = _settings_with_configured_aria2_secret()
+    current = _settings_with_configured_integration_secret()
     application = _application(current)
     saved = {}
     with patch("api.routes.get_settings", return_value=current), \
@@ -298,18 +297,18 @@ async def test_patch_integration_configuration_explicit_clear_secrets_erases_val
          patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
          patch("api.routes.apply_settings"):
         result = await routes.patch_integration_configuration(
-            "aria2", routes.IntegrationConfigurationUpdate(options={"secret": ""}, clear_secrets=["secret"]),
+            "alldebrid", routes.IntegrationConfigurationUpdate(options={"api_key": ""}, clear_secrets=["api_key"]),
             application=application,
         )
-    assert result["options"]["secret_configured"] is False
-    assert saved["cfg"].integrations["aria2"].options["secret"] == ""
+    assert result["options"]["api_key_configured"] is False
+    assert saved["cfg"].integrations["alldebrid"].options["api_key"] == ""
 
 
 @pytest.mark.asyncio
 async def test_patch_integration_configuration_nonblank_secret_replaces_existing_value():
     """A genuine new value is never shadowed by preservation -- preservation
     only applies to a blank/omitted supplied value."""
-    current = _settings_with_configured_aria2_secret()
+    current = _settings_with_configured_integration_secret()
     application = _application(current)
     saved = {}
     with patch("api.routes.get_settings", return_value=current), \
@@ -317,11 +316,11 @@ async def test_patch_integration_configuration_nonblank_secret_replaces_existing
          patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
          patch("api.routes.apply_settings"):
         result = await routes.patch_integration_configuration(
-            "aria2", routes.IntegrationConfigurationUpdate(options={"secret": "rotated-secret"}),
+            "alldebrid", routes.IntegrationConfigurationUpdate(options={"api_key": "rotated-secret"}),
             application=application,
         )
-    assert result["options"]["secret_configured"] is True
-    assert saved["cfg"].integrations["aria2"].options["secret"] == "rotated-secret"
+    assert result["options"]["api_key_configured"] is True
+    assert saved["cfg"].integrations["alldebrid"].options["api_key"] == "rotated-secret"
 
 
 @pytest.mark.asyncio
@@ -363,25 +362,55 @@ async def test_patch_integration_configuration_rejects_invalid_option_value():
 
 
 @pytest.mark.asyncio
-async def test_patch_integration_configuration_ownership_field_change_honors_existing_reference_guard():
-    """Specification section 6: an ownership-field change (mode/url/port/
-    download_path) still goes through the SAME proven-invariant check the
-    whole-settings route already uses (``ApplicationService
-    .validate_configuration``) -- never a blanket maintenance wait instead."""
+async def test_patch_integration_configuration_honors_the_existing_reference_guard():
+    """Specification section 6: a scoped change still goes through the SAME
+    proven-invariant check the whole-settings route already uses
+    (``ApplicationService.validate_configuration``) -- never a blanket
+    maintenance wait instead."""
     current = _settings_with_full_integrations()
 
     async def reject(_previous, _clean):
-        raise ValueError("Finish or remove existing aria2 resources before changing its connection")
+        raise ValueError("Finish or remove existing resources before changing this integration")
 
     application = _application(current, validate_configuration=reject)
     with patch("api.routes.get_settings", return_value=current), \
          patch("api.routes.load_settings", return_value=current):
         with pytest.raises(routes.HTTPException) as excinfo:
             await routes.patch_integration_configuration(
-                "aria2", routes.IntegrationConfigurationUpdate(options={"mode": "external", "url": "http://elsewhere:6800/jsonrpc"}),
+                "aria2", routes.IntegrationConfigurationUpdate(options={"split": 8}),
                 application=application,
             )
     assert excinfo.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_aria2_settings_carry_no_daemon_topology_and_tuning_round_trips():
+    """GET exposes exactly the current aria2 schema; a tuning-only PATCH needs no
+    topology and never writes a value the schema does not define back to
+    storage or the response, even when the stored namespace still holds some."""
+    from test_executor_configuration_ownership import CURRENT_ARIA2_OPTIONS
+    current = _settings_with_full_integrations()
+    public = routes._public_settings(normalize_settings(current, DEFINITIONS), DEFINITIONS)
+    assert set(public["integrations"]["aria2"]["options"]) == CURRENT_ARIA2_OPTIONS
+    aria2_projection = {name for name in public["compatibility_fields"]
+                        if name.startswith("aria2_") and name[len("aria2_"):] in public["integrations"]["aria2"]["options"]}
+    assert aria2_projection == {f"aria2_{option}" for option in CURRENT_ARIA2_OPTIONS}
+
+    application = _application(current)
+    saved = {}
+    with patch("api.routes.get_settings", return_value=current), \
+         patch("api.routes.load_settings", return_value=current), \
+         patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
+         patch("api.routes.apply_settings"), \
+         patch("api.routes.aria2_runtime", SimpleNamespace(ensure_started=AsyncMock(), restart=AsyncMock(), stop=AsyncMock())):
+        result = await routes.patch_integration_configuration(
+            "aria2", routes.IntegrationConfigurationUpdate(options={"split": 8, "disk_cache": "32M"}),
+            application=application,
+        )
+    stored = saved["cfg"].integrations["aria2"].options
+    assert set(stored) == CURRENT_ARIA2_OPTIONS
+    assert stored["split"] == 8 and stored["disk_cache"] == "32M"
+    assert set(result["options"]) == CURRENT_ARIA2_OPTIONS
 
 
 def test_integration_configuration_route_never_acquires_configuration_admission():

@@ -26,19 +26,12 @@ class _FakeApplication:
         return self._admin
 
 
-@pytest.mark.parametrize("aria2_mode", ["builtin", "external"])
 @pytest.mark.asyncio
-async def test_topbar_concurrency_projection_uses_universal_scheduler_limit(monkeypatch, aria2_mode):
-    monkeypatch.setattr(
-        routes,
-        "get_settings",
-        lambda: SimpleNamespace(integrations={"aria2": SimpleNamespace(options={"mode": aria2_mode})}),
-    )
+async def test_topbar_concurrency_projection_uses_universal_scheduler_limit():
     application = _FakeApplication(max_active_executions=7)
 
     result = await routes.aria2_get_global_options(application=application)
 
-    assert result["mode"] == aria2_mode
-    assert result["global_options_read_only"] == (aria2_mode == "external")
+    assert set(result) == {"ok", "max_download_speed", "max_upload_speed", "max_concurrent_downloads", "raw"}
     assert result["max_concurrent_downloads"] == 7
     assert result["raw"]["max-concurrent-downloads"] == "99"

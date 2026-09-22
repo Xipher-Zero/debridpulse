@@ -28,7 +28,7 @@ The current workflow is intentionally deterministic:
 6. Provider route, candidate, executor, and final-delivery provenance remain durable so the UI can report what actually happened without inferring history from the URL.
 7. Failed or expired work can be retried or recovered according to universal policy without rebuilding the logical download manually.
 
-DebridPulse can manage its own built-in aria2 instance or safely use a shared external aria2 daemon.
+DebridPulse runs and manages its own aria2 daemon; there is no separate download engine to install or connect.
 
 ---
 
@@ -44,9 +44,7 @@ DebridPulse can manage its own built-in aria2 instance or safely use a shared ex
 | **Torrent files** | Upload `.torrent` files directly to AllDebrid |
 | **Pause-safe intake** | Pause All stops processing, not intake: new links, magnets, and `.torrent` files are recorded locally and begin provider work after Resume All |
 | **Delayed link generation** | Automatically handles AllDebrid links that require asynchronous generation |
-| **Built-in aria2** | Run DebridPulse with its bundled aria2 instance for a self-contained deployment |
-| **External aria2** | Connect to an existing aria2 JSON-RPC daemon |
-| **Shared aria2 safety** | Tracks DebridPulse-owned downloads and avoids modifying global settings, result history, or unrelated transfers on external aria2 instances |
+| **Managed aria2** | DebridPulse starts, configures, and supervises its bundled aria2 daemon for a self-contained deployment |
 | **Unified Downloads view** | Direct links, magnets, torrent files, and imported transfers share one lifecycle and history |
 | **Recent Activity** | Dashboard view of active and recently processed downloads |
 | **Retry and recovery** | Retry failed transfers and regenerate expired AllDebrid download URLs from the original source |
@@ -114,28 +112,15 @@ The generic Authentication Required component can represent `username_private_ke
 
 ---
 
-## aria2 modes
+## aria2
 
-### Built-in aria2
+DebridPulse starts its bundled aria2 daemon with the application and stops it on shutdown. The daemon
+listens on loopback only; DebridPulse constructs its RPC endpoint and credentials itself, applies the
+native engine settings, and writes every download into the Download Folder. On restart DebridPulse
+reconciles its tracked downloads against the daemon.
 
-The default configuration can run a bundled aria2 instance controlled by DebridPulse.
-
-In this mode DebridPulse owns the daemon and can manage its runtime configuration.
-
-### External aria2
-
-DebridPulse can instead use an existing aria2 JSON-RPC endpoint.
-
-External mode is designed to be safe for a **shared aria2 daemon**. DebridPulse maintains ownership information for downloads that it creates and does not assume that every transfer in aria2 belongs to DebridPulse.
-
-In external mode DebridPulse intentionally avoids operations such as:
-
-- changing daemon-wide bandwidth limits;
-- rewriting global aria2 configuration;
-- purging global download-result history;
-- controlling unrelated aria2 GIDs.
-
-Application-level concurrency for DebridPulse-owned jobs remains independently configurable.
+Every aria2 job is still routed through the DebridPulse egress guard with per-job proxy, credential,
+and host-key settings, so a job never inherits daemon-wide network configuration.
 
 ---
 
@@ -233,8 +218,6 @@ See **[docs/authentication.md](docs/authentication.md)** for configuration examp
 Configure:
 
 - download directory;
-- built-in or external aria2 mode;
-- external aria2 URL and authentication when applicable;
 - DebridPulse download concurrency;
 - download concurrency, limits, and recovery behavior.
 

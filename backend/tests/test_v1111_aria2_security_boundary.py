@@ -261,7 +261,7 @@ async def test_canonical_job_options_disable_metadata_following(tmp_path, monkey
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated)
     from types import SimpleNamespace
     guard = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda *args, **kwargs: {})
-    executor = Aria2Executor(None, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
+    executor = Aria2Executor(None, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
     request = ExecutionRequest(TransferCandidate("payload.bin", (Endpoint("https", "https://example.test/file"),)), str(tmp_path / "payload.bin"), new_identity())
     _uri, options = await executor._options(request, executor.prepare(request))
     assert options["follow-torrent"] == "false"
@@ -270,27 +270,15 @@ async def test_canonical_job_options_disable_metadata_following(tmp_path, monkey
     assert options["max-tries"] == "1"
 
 
-async def test_external_mode_fails_closed_without_guard_route(monkeypatch) -> None:
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
+async def test_guarded_options_override_daemon_global_proxy_bypasses() -> None:
+    guard = DownloaderEgressGuard(bind_port=0)
     await guard.ensure_started()
     try:
-        monkeypatch.delenv("DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY", raising=False)
-        with pytest.raises(RuntimeError, match="fail-closed"):
-            guard.job_options("https://provider.example/file.bin", external=True)
-    finally:
-        await guard.stop()
-
-
-async def test_guarded_options_override_shared_daemon_proxy_bypasses(monkeypatch) -> None:
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
-    await guard.ensure_started()
-    try:
-        advertised = f"http://127.0.0.1:{guard.bound_port}"
-        monkeypatch.setenv("DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY", advertised)
-        options = guard.job_options("https://provider.example/file.bin", external=True)
-        assert options["all-proxy"] == advertised
-        assert options["http-proxy"] == advertised
-        assert options["https-proxy"] == advertised
+        loopback = f"http://127.0.0.1:{guard.bound_port}"
+        options = guard.job_options("https://provider.example/file.bin")
+        assert options["all-proxy"] == loopback
+        assert options["http-proxy"] == loopback
+        assert options["https-proxy"] == loopback
         assert options["no-proxy"] == ""
         assert options["proxy-method"] == "tunnel"
         assert options["all-proxy-user"] == "debridpulse"
@@ -311,7 +299,6 @@ async def test_dns_rebinding_public_preflight_private_at_connect_is_blocked(
 
     guard = DownloaderEgressGuard(
         resolver=connection_time_resolver,
-        bind_host="127.0.0.1",
         bind_port=0,
     )
     await guard.ensure_started()
@@ -324,7 +311,7 @@ async def test_dns_rebinding_public_preflight_private_at_connect_is_blocked(
 
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
     monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
-    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
+    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
     uri = f"http://rebind.test:{target_port}/payload.bin"
     try:
         gid = await _start_transfer(guarded, uri, tmp_path / 'blocked.bin')
@@ -353,7 +340,6 @@ async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
     guard = DownloaderEgressGuard(
         resolver=resolver,
         public_check=lambda address: address == "127.0.0.1",
-        bind_host="127.0.0.1",
         bind_port=0,
     )
     await guard.ensure_started()
@@ -364,7 +350,7 @@ async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
 
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
     monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
-    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
+    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
     uri = f"http://public.test:{target_port}/payload.bin"
     try:
         gid = await _start_transfer(guarded, uri, tmp_path / 'public.bin')
@@ -394,7 +380,6 @@ async def test_guarded_https_preserves_original_hostname_and_tls_sni(
     guard = DownloaderEgressGuard(
         resolver=resolver,
         public_check=lambda address: address == "127.0.0.1",
-        bind_host="127.0.0.1",
         bind_port=0,
     )
     await guard.ensure_started()
@@ -408,7 +393,7 @@ async def test_guarded_https_preserves_original_hostname_and_tls_sni(
 
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated_as_public)
     monkeypatch.setattr(runtime_guard, "downloader_egress_guard", guard)
-    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
+    guarded = Aria2Executor(service, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
     uri = f"https://sni.test:{target_port}/payload.bin"
     try:
         gid = await _start_transfer(guarded, uri, tmp_path / 'tls.bin')
@@ -433,7 +418,6 @@ async def test_mixed_public_private_connection_time_answers_are_blocked() -> Non
 
     guard = DownloaderEgressGuard(
         resolver=resolver,
-        bind_host="127.0.0.1",
         bind_port=0,
     )
     endpoints = None
@@ -443,7 +427,7 @@ async def test_mixed_public_private_connection_time_answers_are_blocked() -> Non
 
 
 async def test_literal_private_connection_target_is_blocked() -> None:
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
+    guard = DownloaderEgressGuard(bind_port=0)
     with pytest.raises(ValueError, match="not public"):
         await guard._approved_endpoints("127.0.0.1", 80)
 
@@ -474,8 +458,8 @@ async def test_real_aria2_does_not_follow_http_metadata(tmp_path: Path, content_
     async def resolver(host, port): return [_answer("127.0.0.1", port)]
     async def validated(uri): return uri
     monkeypatch.setattr(runtime_guard, "validate_resolved_public_destination", validated)
-    guard = DownloaderEgressGuard(resolver=resolver, public_check=lambda address: address == "127.0.0.1", bind_host="127.0.0.1", bind_port=0)
-    executor = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True), egress=guard)
+    guard = DownloaderEgressGuard(resolver=resolver, public_check=lambda address: address == "127.0.0.1", bind_port=0)
+    executor = Aria2Executor(service, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
     try:
         gid = await _start_transfer(executor, f"http://metadata.test:{port}/{name}", tmp_path / name)
         status = await _wait_status(service, gid)
@@ -523,10 +507,10 @@ async def _guard_connect_authorities(
     proc, service = await _start_aria2(tmp_path, extra_args=extra_args)
     guard = DownloaderEgressGuard(
         resolver=resolver, public_check=lambda address: address == "127.0.0.1",
-        bind_host="127.0.0.1", bind_port=0,
+        bind_port=0,
     )
     executor = Aria2Executor(
-        service, Aria2Configuration(str(tmp_path), external=False),
+        service, Aria2Configuration(str(tmp_path)),
         AsyncMock(return_value=True), egress=guard,
     )
     try:
@@ -562,7 +546,7 @@ async def test_a_shared_daemon_per_protocol_proxy_cannot_route_around_the_guard(
 ) -> None:
     """aria2 resolves a per-protocol proxy preference ahead of --all-proxy.
 
-    A shared daemon started with one of these would otherwise carry that
+    A daemon started with one of these would otherwise carry that
     protocol around the guard entirely, so every one is pinned per job.
     """
     rogue = await asyncio.start_server(lambda reader, writer: writer.close(), "127.0.0.1", 0)

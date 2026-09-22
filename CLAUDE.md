@@ -134,7 +134,7 @@ before the session-issuing one) — ordered registration, not route-list surgery
   — the former `ui-settings-downloads-completion.js`, `-notifications.js`, `-maintenance-wipe.js`,
   `-card-icons.js`, `ui-provider-cards.js` were folded in and deleted. Bounded feature owners
   that remain: `ui-settings-directory-picker.js` (folder-browse modal), `ui-settings-aria2-live.js`
-  (built-in engine queue; behavior only), `ui-settings-archive-passwords.js`.
+  (aria2 engine queue; behavior only), `ui-settings-archive-passwords.js`.
 - Global processing pause is **operational state**: the durable application state
   (`TransferRepository.globally_paused()`) is the only authority. `AppSettings` has no `paused`;
   a pre-1.0.12 `config.json` value is a one-shot migration input (`legacy_paused_input()` →
@@ -329,8 +329,9 @@ re-pointed at a digest that already passed every gate.
 
 ## 8. Settings secret-merge model (`backend/api/routes.py`)
 
-- `_SECRET_SETTINGS` = `{alldebrid_api_key, aria2_secret, discord_webhook_url,
-  discord_webhook_added, stats_report_webhook_url, auth_password, extraction_password}`.
+- `_SECRET_SETTINGS` = `{discord_webhook_url, discord_webhook_added,
+  stats_report_webhook_url, auth_password, extraction_password}` (integration-owned
+  secrets such as the AllDebrid `api_key` live in their `integrations.<id>` namespace).
 - `GET /api/settings` (`_public_settings`) **redacts every secret to `""`** and adds
   `<field>_configured: bool`.
 - `PUT /api/settings` (`SettingsUpdate` = `AppSettings` + `clear_secrets: list[str]`),
@@ -355,8 +356,9 @@ not `AppSettings` fields; they are read only by `integrations.configuration.migr
 while `core.config.load_settings()` loads a file, and `GET /settings` derives them read-only
 (`api/legacy_settings_view.py`, named in `compatibility_fields`). `PUT /settings` never writes a
 canonical namespace (it carries `previous` forward); use `PATCH /integrations/{id}/configuration`,
-`PATCH /transfer-policy`, `PATCH /execution/runtime-limits`. `Aria2Service(owns_daemon=...)` is
-injected; the client never reads settings. Metrics are `debridpulse_*`.
+`PATCH /transfer-policy`, `PATCH /execution/runtime-limits`. aria2 has one topology: DebridPulse
+runs the daemon (`executors.aria2.runtime.Aria2Runtime`), which owns the loopback RPC endpoint/secret
+and constructs the client (`rpc_service`); the client never reads settings. Metrics are `debridpulse_*`.
 
 ## 9. Presentation-owner consolidation — status
 

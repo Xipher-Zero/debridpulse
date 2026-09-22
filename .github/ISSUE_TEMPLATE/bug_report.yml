@@ -20,16 +20,6 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: aria2
-    attributes:
-      label: aria2 mode
-      options:
-        - External aria2
-        - Built-in aria2
-    validations:
-      required: true
-
   - type: textarea
     id: description
     attributes:

@@ -52,7 +52,7 @@ def _tables(path: Path) -> set[str]:
 async def test_selection_tables_are_additive_on_an_existing_current_database(tmp_path, monkeypatch):
     path = tmp_path / "current.db"
     monkeypatch.setattr(database, "DB_PATH", path)
-    assert await v112.migrate(external_executor=False) == {"migrated": False}
+    assert await v112.migrate() == {"migrated": False}
 
     with sqlite3.connect(path) as conn:
         conn.execute("INSERT INTO torrents(id,hash,name,status) VALUES(7,?,?,'completed')", ("7" * 40, "kept"))

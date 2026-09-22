@@ -12,7 +12,7 @@ import base64
 from dataclasses import dataclass, field
 import hashlib
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
@@ -45,8 +45,8 @@ _SSH_HOST_KEY_OPTION = re.compile(r"sha-1=([0-9a-f]{40})")
 # the SSH handshake observes the real server key, then fails on it before any
 # authentication, so an SFTP job never runs without host-key verification.
 _HOST_KEY_SENTINEL = "0" * 40
-# aria2's own anonymous defaults, pinned per job so a shared daemon's global FTP
-# credentials are never inherited by an owned job.
+# aria2's own anonymous defaults, pinned per job so no daemon-global FTP
+# credentials are ever inherited by an owned job.
 _ANONYMOUS_LOGIN = {"ftp-user": "anonymous", "ftp-passwd": "ARIA2USER@"}
 # The packaged libssh2 1.11.1 host-key preference (characterized against servers
 # restricted to subsets of ECDSA/Ed25519/RSA keys). Evidence acquisition asks for
@@ -61,8 +61,6 @@ _SHA1_IDENTITY = re.compile(r"[0-9a-f]{40}")
 @dataclass(frozen=True)
 class Aria2Configuration:
     local_root: str
-    remote_root: str = ""
-    external: bool = True
     split: int = 1
     minimum_split_size: str = "10M"
     connections_per_server: int = 1
@@ -78,10 +76,14 @@ class _AdmissionDeferred(Exception):
     """Owned execution remains parked by a newer core control intent."""
 
 
-def execution_binding(configuration, url):
-    """Bind authority to one daemon and filesystem mapping, never merely a GID."""
-    payload = [str(url).strip(), configuration.external,
-               str(Path(configuration.local_root).resolve()), configuration.remote_root]
+def execution_binding(local_root, url):
+    """Bind authority to one daemon and download root, never merely a GID.
+
+    The digest is durable handle identity: every persisted handle carries it.
+    The serialized layout is therefore fixed, including its two constant
+    members, so existing handles keep matching after an upgrade.
+    """
+    payload = [str(url).strip(), False, str(Path(local_root).resolve()), ""]
     return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -101,7 +103,7 @@ class Aria2Executor:
         self.configuration = configuration
         self.authorize = authorize
         self.egress = egress or downloader_egress_guard
-        self.binding = execution_binding(configuration, getattr(client, "url", ""))
+        self.binding = execution_binding(configuration.local_root, getattr(client, "url", ""))
 
     def _failure(self, category: Category, stage=Stage.EXECUTION, *, domain=Domain.EXECUTOR) -> TransferError:
         return TransferError(NormalizedError(domain, category, stage, retryability=Retryability.NEVER,
@@ -286,12 +288,6 @@ class Aria2Executor:
             raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.QUEUE, domain=Domain.SECURITY)
         return match.group(1)
 
-    def _remote_target(self, target: Path) -> str:
-        if not self.configuration.remote_root:
-            return str(target)
-        relative = target.relative_to(Path(self.configuration.local_root).resolve())
-        return str(PurePosixPath(self.configuration.remote_root) / PurePosixPath(relative.as_posix()))
-
     async def _options(self, request: ExecutionRequest, handle: ExecutionHandle,
                        submitted: SubmittedInput | None = None, *, host_identity: str | None = None) -> tuple[str, dict]:
         endpoint = self._endpoint(request.candidate)
@@ -309,14 +305,13 @@ class Aria2Executor:
             # One passive FTP job also opens a server-selected data connection
             # to the same host; every other transport is one exact endpoint.
             scope = RouteScope.SAME_HOST if endpoint.scheme == "ftp" else RouteScope.ENDPOINT
-            guarded = self.egress.job_options(address, external=self.configuration.external, scope=scope)
+            guarded = self.egress.job_options(address, scope=scope)
         except Exception as exc:
             raise self._failure(Category.EGRESS_POLICY_VIOLATION, domain=Domain.SECURITY) from exc
         target = self._target(request.target)
-        remote = PurePosixPath(self._remote_target(target))
         cfg = self.configuration
         options = {
-            "gid": handle.context["gid"], "dir": str(remote.parent), "out": remote.name,
+            "gid": handle.context["gid"], "dir": str(target.parent), "out": target.name,
             "allow-overwrite": "true", "auto-file-renaming": "false",
             "follow-torrent": "false", "follow-metalink": "false",
             "max-http-redirection": "0", "check-certificate": "true",
@@ -487,7 +482,7 @@ class Aria2Executor:
     def _observation(self, handle, native):
         if str(native.gid) != str(handle.context["gid"]):
             raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
-        expected = self._remote_target(self._target(str(handle.context["target"])))
+        expected = str(self._target(str(handle.context["target"])))
         if any(str(item.get("path") or "") not in {"", expected} for item in (native.files or [])):
             raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
         result = observation(handle, native, secrets=self._secrets(handle))
@@ -618,9 +613,9 @@ class Aria2Executor:
                     return TransferOutcome(OutcomeKind.FAILURE, after.error)
                 if after.resumable or after.state == ExecutionState.UNKNOWN:
                     raise self._failure(Category.RECONCILIATION_FAILED, Stage.CLEANUP)
-            # Shared daemons retain stopped results. This never changes global
-            # daemon options, purges results, or mutates unowned jobs.
-            if not self.configuration.external and before.state != ExecutionState.ABSENT:
+            # Only this job's own stopped result is removed. This never changes
+            # global daemon options, purges results, or mutates unowned jobs.
+            if before.state != ExecutionState.ABSENT:
                 try:
                     await self.client._call("aria2.removeDownloadResult", [gid])
                 except Exception as exc:

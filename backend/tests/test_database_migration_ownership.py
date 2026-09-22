@@ -30,11 +30,22 @@ def tables(path: Path) -> set[str]:
 async def test_fresh_database_becomes_current_without_predecessor_backup(tmp_path, monkeypatch):
     path = tmp_path / "fresh.db"
     monkeypatch.setattr(database, "DB_PATH", path)
-    assert await v112.migrate(external_executor=False) == {"migrated": False}
+    assert await v112.migrate() == {"migrated": False}
     assert not Path(str(path) + ".pre-v112.sqlite3").exists()
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT 1 FROM schema_migrations WHERE version='1.0.12'").fetchone() == (1,)
     assert v112._CURRENT_CANONICAL_TABLES.issubset(tables(path))
+
+
+@pytest.mark.asyncio
+async def test_current_schema_defines_no_aria2_gid_ledger(tmp_path, monkeypatch):
+    # DebridPulse owns the only aria2 daemon; the predecessor per-GID ownership
+    # ledger is not part of the current schema, on a fresh database or otherwise.
+    path = tmp_path / "fresh.db"
+    monkeypatch.setattr(database, "DB_PATH", path)
+    await v112.migrate()
+    await database.init_db()
+    assert "debridpulse_aria2_owned_gids" not in tables(path)
 
 
 @pytest.mark.asyncio
@@ -58,7 +69,7 @@ async def test_backup_exists_pristine_before_current_initializer_can_run(tmp_pat
         await original()
 
     monkeypatch.setattr(database, "init_db", guarded_init)
-    report = await v112.migrate(external_executor=False)
+    report = await v112.migrate()
     assert report["migrated"] and observed["called"]
 
 
@@ -69,7 +80,7 @@ async def test_corrupt_database_fails_before_mutation_or_backup(tmp_path, monkey
     path.write_bytes(original)
     monkeypatch.setattr(database, "DB_PATH", path)
     with pytest.raises(RuntimeError):
-        await v112.migrate(external_executor=False)
+        await v112.migrate()
     assert path.read_bytes() == original
     assert not Path(str(path) + ".pre-v112.sqlite3").exists()
 
@@ -84,7 +95,7 @@ async def test_incompatible_schema_fails_before_mutation_or_backup(tmp_path, mon
     before = path.read_bytes()
     monkeypatch.setattr(database, "DB_PATH", path)
     with pytest.raises(RuntimeError):
-        await v112.migrate(external_executor=False)
+        await v112.migrate()
     assert path.read_bytes() == before
     assert not Path(str(path) + ".pre-v112.sqlite3").exists()
 
@@ -102,7 +113,7 @@ async def test_interrupted_after_backup_and_schema_setup_recovers(tmp_path, monk
     await database.init_db()
     await TransferRepository().initialize()
     assert tables(path) & v112._CURRENT_CANONICAL_TABLES
-    report = await v112.migrate(external_executor=False)
+    report = await v112.migrate()
     assert report["migrated"]
     assert backup.read_bytes() == pristine
     with sqlite3.connect(path) as conn:
@@ -118,12 +129,12 @@ async def test_predecessor_backup_is_restorable_and_reupgradeable(tmp_path, monk
         conn.execute("INSERT INTO torrents(id,hash,name,status) VALUES(52,?,?,'completed')", ("5" * 40, "restore-me"))
         conn.commit()
     monkeypatch.setattr(database, "DB_PATH", original)
-    report = await v112.migrate(external_executor=False)
+    report = await v112.migrate()
     backup = Path(report["backup"])
     restored = tmp_path / "restored.db"
     shutil.copy2(backup, restored)
     monkeypatch.setattr(database, "DB_PATH", restored)
-    second = await v112.migrate(external_executor=False)
+    second = await v112.migrate()
     assert second["migrated"]
     with sqlite3.connect(restored) as conn:
         assert conn.execute("SELECT name FROM torrents WHERE id=52").fetchone() == ("restore-me",)
@@ -134,7 +145,7 @@ async def test_predecessor_backup_is_restorable_and_reupgradeable(tmp_path, monk
 async def test_current_restart_preserves_runtime_state_and_provenance(tmp_path, monkeypatch):
     path = tmp_path / "current.db"
     monkeypatch.setattr(database, "DB_PATH", path)
-    await v112.migrate(external_executor=False)
+    await v112.migrate()
     with sqlite3.connect(path) as conn:
         conn.execute(
             "INSERT INTO integration_runtime_state("
@@ -150,7 +161,7 @@ async def test_current_restart_preserves_runtime_state_and_provenance(tmp_path, 
         conn.commit()
         before_runtime = conn.execute("SELECT * FROM integration_runtime_state WHERE integration_id='provider-a'").fetchone()
         before_prov = conn.execute("SELECT * FROM route_attempt_provenance WHERE resolution_attempt_id='a70'").fetchone()
-    assert await v112.migrate(external_executor=False) == {"migrated": False}
+    assert await v112.migrate() == {"migrated": False}
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT * FROM integration_runtime_state WHERE integration_id='provider-a'").fetchone() == before_runtime
         assert conn.execute("SELECT * FROM route_attempt_provenance WHERE resolution_attempt_id='a70'").fetchone() == before_prov

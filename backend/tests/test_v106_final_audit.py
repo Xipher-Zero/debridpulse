@@ -10,7 +10,7 @@ from core.logging_utils import sanitize_exception
 from db.database import DatabaseMaintenanceGate
 from executors.aria2.client import Aria2RPCError, Aria2Service
 from executors.aria2.definition import Aria2Options
-from executors.aria2.runtime import Aria2RuntimeConfiguration, BuiltinAria2Runtime
+from executors.aria2.runtime import Aria2Runtime, Aria2RuntimeConfiguration
 from services.maintenance_gate import ApplicationMaintenanceGate
 from test_aria2_executor_contract import execution
 
@@ -119,13 +119,13 @@ class _FakeProcess:
 
 
 @pytest.mark.asyncio
-async def test_failed_builtin_aria2_start_is_transactional(monkeypatch):
+async def test_failed_aria2_start_is_transactional(monkeypatch):
     import executors.aria2.runtime as runtime_module
 
-    runtime = BuiltinAria2Runtime()
+    runtime = Aria2Runtime()
     # Specification section 9.3: the runtime consumes its injected
     # Aria2RuntimeConfiguration, never core.config.get_settings().
-    runtime.configure(Aria2RuntimeConfiguration(options=Aria2Options(mode="builtin", builtin_auto_start=True)))
+    runtime.configure(Aria2RuntimeConfiguration(options=Aria2Options(auto_start=True)))
     process = _FakeProcess()
 
     monkeypatch.setattr(runtime_module.shutil, "which", lambda name: "/usr/bin/aria2c")

@@ -359,32 +359,17 @@ def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
     return merged
 
 
-async def _apply_aria2_lifecycle_transition(previous: AppSettings, clean: AppSettings, application: ApplicationService) -> None:
-    """Start/stop/restart the built-in aria2 process and reapply its native
-    tuning after a settings change that may have touched aria2 lifecycle
-    fields (mode/port). Shared by the whole-settings route and the scoped
+async def _apply_aria2_settings(application: ApplicationService) -> None:
+    """Ensure the aria2 daemon runs and reapply its native tuning after a
+    settings change. Shared by the whole-settings route and the scoped
     integration-configuration route (specification section 9.5) so both
-    surfaces give aria2's own lifecycle the same targeted, non-blanket
-    handling -- never ``ApplicationMaintenanceGate`` (specification section
-    2.6, 6): a proven binding invariant (has this integration ever been used)
-    is checked earlier, by ``ApplicationService.validate_configuration``, not
-    by waiting for the whole application to quiesce here.
-
-    Reads the canonical ``integrations.aria2`` namespace only.
-    """
-    previous_aria2 = _canonical_aria2_options(previous)
-    clean_aria2 = _canonical_aria2_options(clean)
-    if clean_aria2.mode == "builtin":
-        if previous_aria2.mode == "builtin" and previous_aria2.builtin_port != clean_aria2.builtin_port:
-            await aria2_runtime.restart()
-        else:
-            await aria2_runtime.ensure_started()
-        try:
-            await application.integration_admin("aria2").apply_memory_tuning()
-        except Exception as exc:
-            logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
-    elif previous_aria2.mode == "builtin":
-        await aria2_runtime.stop()
+    surfaces give aria2 the same targeted, non-blanket handling -- never
+    ``ApplicationMaintenanceGate`` (specification section 2.6, 6)."""
+    await aria2_runtime.ensure_started()
+    try:
+        await application.integration_admin("aria2").apply_memory_tuning()
+    except Exception as exc:
+        logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
 
 
 @router.put("/settings")
@@ -419,7 +404,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             apply_settings(clean)
         _revoke_stale_authentication_state(previous, clean)
         application.configure()
-        await _apply_aria2_lifecycle_transition(previous, clean, application)
+        await _apply_aria2_settings(application)
         data = _public_settings(clean, application.definitions)
         data["ok"] = True
         return data
@@ -544,35 +529,8 @@ async def aria2_runtime_status( application: ApplicationService = Depends(get_ap
 
 @router.get("/aria2/global-stat")
 async def aria2_global_stat( application: ApplicationService = Depends(get_application)):
-    """Return ownership-safe live counters used by the topbar indicator."""
-    cfg = get_settings()
-    external = _canonical_aria2_options(cfg).mode != "builtin"
-
-    if not external:
-        return {
-            "ok": True,
-            "mode": "builtin",
-            "external_control": False,
-            **await application.integration_admin("aria2").get_global_stat(),
-        }
-
-    # External aria2 may be shared with unrelated applications. Observe only
-    # jobs whose GIDs DebridPulse has recorded as its own.
-    active_downloads = await application.integration_admin("aria2").get_active()
-    owned_active = await application.integration_admin("aria2").filter_owned(active_downloads)
-
-    return {
-        "ok": True,
-        "mode": "external",
-        "external_control": True,
-        "download_speed": sum(
-            int(getattr(download, "download_speed", 0) or 0)
-            for download in owned_active
-        ),
-        "upload_speed": 0,
-        "active": len(owned_active),
-        "waiting": 0,
-    }
+    """Return live counters used by the topbar indicator."""
+    return {"ok": True, **await application.integration_admin("aria2").get_global_stat()}
 
 
 @router.post("/aria2/runtime/start")
@@ -1401,13 +1359,9 @@ async def wipe_database_admin(body: dict | None = None, application: Application
 async def aria2_get_global_options( application: ApplicationService = Depends(get_application)):
     """Return current aria2 global options (includes speed limits)."""
     try:
-        cfg = get_settings()
-        external = _canonical_aria2_options(cfg).mode != "builtin"
         opts = await application.integration_admin("aria2").get_global_options()
         return {
             "ok": True,
-            "mode": "external" if external else "builtin",
-            "global_options_read_only": external,
             "max_download_speed": int(opts.get("max-overall-download-limit") or 0),
             "max_upload_speed":   int(opts.get("max-overall-upload-limit")   or 0),
             "max_concurrent_downloads": int(
@@ -1440,14 +1394,7 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
     combined multi-field requests to keep working atomically.
     """
     async with application.application_operation():
-        cfg = get_settings()
-        external = _canonical_aria2_options(cfg).mode != "builtin"
         requested = set(body)
-        if external and requested & {"max_download_speed", "max_upload_speed"}:
-            raise HTTPException(
-                409,
-                "Global bandwidth limits are read-only for an external shared aria2 daemon",
-            )
         if not requested & {"max_download_speed", "max_upload_speed", "max_concurrent_downloads"}:
             raise HTTPException(400, "No valid options provided")
 
@@ -1494,13 +1441,10 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
                 # ``patch_transfer_policy`` itself reported as failed.
                 last_apply_error = last_apply_error or result.get("last_apply_error")
                 concurrency = result["max_concurrent_executions"]
-                applied["max-concurrent-downloads" if not external else "adc-max-concurrent-downloads"] = (
-                    str(concurrency) if not external else concurrency
-                )
+                applied["max-concurrent-downloads"] = str(concurrency)
 
             return {
                 "ok": last_apply_error is None,
-                "mode": "external" if external else "builtin",
                 "applied": applied,
             }
         except HTTPException:
@@ -1588,17 +1532,9 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
 
             last_apply_error = None
             try:
-                # Always attempted, never special-cased by mode here: the
-                # administration layer itself is the single owner of the
-                # external-daemon read-only invariant
-                # (``Aria2Administration.change_global_options``) and raises
-                # ``PermissionError`` for it. Skipping the attempt in external
-                # mode would silently report a native apply that never happened
-                # as effective (Gate 9 revision-2 rejection finding, specification
-                # section 2.7) -- letting the SAME rejection this route would
-                # otherwise have to reimplement flow into ``last_apply_error``
-                # keeps configured/effective truthful without a second read-only
-                # check.
+                # A native-apply failure flows into ``last_apply_error`` so
+                # configured/effective stay truthful (Gate 9 revision-2
+                # rejection finding, specification section 2.7).
                 await application.integration_admin("aria2").change_global_options(
                     {"max-overall-download-limit": str(value)},
                 )
@@ -1688,8 +1624,8 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
             if "max_concurrent_executions" in updates:
                 # Gate 9 revision-5 rejection finding 4: ``max_concurrent_executions``
                 # is the sole persisted/scheduler authority (specification
-                # sections 4.1, 9.7); when built-in aria2 is the live
-                # executor, its native ``max-concurrent-downloads`` option is
+                # sections 4.1, 9.7); aria2's native
+                # ``max-concurrent-downloads`` option is
                 # a derived implementation projection that must track the
                 # just-persisted value, not stay at whatever cap the daemon
                 # was started with. ``Aria2Administration.apply_memory_tuning()``
@@ -1697,10 +1633,7 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
                 # that already performs exactly this native reapply from the
                 # injected configuration (the same call periodic housekeeping
                 # uses) -- reused here rather than a second native-option
-                # pipeline. It is already a safe no-op in external mode (its
-                # own ``mode != "builtin"`` guard), so external aria2 remains
-                # governed only by the universal scheduler with no
-                # daemon-global mutation, without a separate mode branch here.
+                # pipeline.
                 try:
                     await application.integration_admin("aria2").apply_memory_tuning()
                 except Exception as exc:
@@ -1756,8 +1689,8 @@ async def patch_integration_configuration(
     existing namespace -- every unrelated integration and every unrelated
     option is preserved untouched. A proven lifecycle/binding invariant
     (``ApplicationService.validate_configuration`` -- has this integration
-    ever been used) is still enforced for ownership fields (mode/url/port/
-    download_path); it is not exempt merely because this is a scoped route."""
+    ever been used) is still enforced for an integration's ownership fields;
+    it is not exempt merely because this is a scoped route."""
     definition = _integration_definition(application, integration_id)
     async with application.application_operation():
         # The narrow config-write lock (specification sections 9.5, 13.8)
@@ -1809,7 +1742,7 @@ async def patch_integration_configuration(
             # the resulting live/native state together.
             application.configure()
             if integration_id == "aria2":
-                await _apply_aria2_lifecycle_transition(previous, clean, application)
+                await _apply_aria2_settings(application)
     from integrations.configuration import public_integrations
     public = public_integrations(clean, application.definitions).get(integration_id, {})
     return {"ok": True, **public}

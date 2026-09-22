@@ -8,7 +8,7 @@ import pytest_asyncio
 
 import db.database as database
 from db.migrations.v112 import migrate
-from transfers.errors import Category, TransferError
+from transfers.errors import TransferError
 from transfers.models import Ownership, TransferState
 from transfers.repository import TransferRepository
 
@@ -30,14 +30,14 @@ async def parent(identity, *, status="downloading", resource="123", source="manu
         await db.commit()
 
 
-async def file(identity, transfer_id, root, *, status="downloading", gid="0123456789abcdef", owned=True,
+async def file(identity, transfer_id, root, *, status="downloading", gid="0123456789abcdef",
                source="https://source.example/file", address="https://download.example/capability", mirror=None):
     async with database.get_db() as db:
         await db.execute("""INSERT INTO download_files(id,torrent_id,filename,size_bytes,source_url,download_url,local_path,status,
             download_id,download_client,mirror_group_id,mirror_state) VALUES(?,?,?,?,?,?,?,?,?,'aria2',?,?)""",
             (identity, transfer_id, f"file-{identity}.bin", 4, source, address, str(root / f"file-{identity}.bin"), status, gid,
              mirror, "standby" if mirror else ""))
-        if owned and gid:
+        if gid:
             await db.execute("INSERT INTO debridpulse_aria2_owned_gids(gid,download_file_id,torrent_id) VALUES(?,?,?)", (gid, identity, transfer_id))
         await db.commit()
 
@@ -49,7 +49,7 @@ async def test_active_identity_owned_execution_and_history_survive_upgrade(legac
     async with database.get_db() as db:
         await db.execute("INSERT INTO events(torrent_id,message) VALUES(7,'history remains')")
         await db.commit()
-    report = await migrate(external_executor=True)
+    report = await migrate()
     assert report["transfers"] == 1
     assert Path(report["backup"]).is_file()
     repository = TransferRepository()
@@ -68,20 +68,43 @@ async def test_active_identity_owned_execution_and_history_survive_upgrade(legac
         assert backup.execute("PRAGMA quick_check").fetchone()[0] == "ok"
         assert backup.execute("SELECT status FROM torrents WHERE id=7").fetchone()[0] == "downloading"
         assert backup.execute("SELECT name FROM sqlite_master WHERE name='transfer_requests'").fetchone() is None
-    assert await migrate(external_executor=True) == {"migrated": False}
+    assert await migrate() == {"migrated": False}
     assert len(await repository.executions(7)) == 1
 
 
 @pytest.mark.asyncio
-async def test_external_job_without_durable_ownership_is_not_adopted(legacy):
-    await parent(1)
-    await file(1, 1, legacy, owned=False)
-    await migrate(external_executor=True)
+async def test_predecessor_gid_ledger_is_inert_historical_data(legacy):
+    """The predecessor schema's per-GID ownership ledger is historical input only.
+
+    A job the ledger never recorded is still migrated as owned, a stray ledger row
+    adopts nothing, the migrated handle is recognized by the current executor, and
+    the physical table is neither read into state nor written to."""
+    from core.config import get_settings
+    from executors.aria2.definition import definition as aria2_definition
+    from integrations.definition import IntegrationEnvironment, IntegrationSettings
+
+    await parent(21)
+    await file(21, 21, legacy, gid="00000000000000aa")
+    async with database.get_db() as db:
+        await db.execute("DELETE FROM debridpulse_aria2_owned_gids WHERE gid='00000000000000aa'")
+        await db.execute("INSERT INTO debridpulse_aria2_owned_gids(gid,download_file_id,torrent_id) VALUES('foreign-gid',999,999)")
+        await db.commit()
+    with sqlite3.connect(database.DB_PATH) as conn:
+        ledger_before = conn.execute("SELECT gid,download_file_id,torrent_id FROM debridpulse_aria2_owned_gids ORDER BY gid").fetchall()
+
+    await migrate()
+    await database.init_db()
+
     repository = TransferRepository()
-    artifact = (await repository.artifacts(1))[0]
-    assert not await repository.authorize_execution(artifact.execution, "cancel")
-    assert artifact.state == "error"
-    assert artifact.error.category == Category.OWNERSHIP_CONFLICT
+    artifact = (await repository.artifacts(21))[0]
+    assert artifact.execution.context["gid"] == "00000000000000aa"
+    assert await repository.authorize_execution(artifact.execution, "cancel")
+    executor = aria2_definition.build(IntegrationSettings(), IntegrationEnvironment(
+        repository=repository, download_root=get_settings().download_folder))
+    assert artifact.execution.context["binding"] == executor.binding
+    with sqlite3.connect(database.DB_PATH) as conn:
+        assert conn.execute("SELECT count(*) FROM execution_attempts").fetchone()[0] == 1
+        assert conn.execute("SELECT gid,download_file_id,torrent_id FROM debridpulse_aria2_owned_gids ORDER BY gid").fetchall() == ledger_before
 
 
 @pytest.mark.asyncio
@@ -91,7 +114,7 @@ async def test_pause_intent_and_deferred_torrent_bytes_survive(legacy):
     async with database.get_db() as db:
         await db.execute("INSERT INTO deferred_provider_submissions(torrent_id,kind,payload,filename) VALUES(2,'torrent_file',?,'payload.torrent')", (payload,))
         await db.commit()
-    await migrate(external_executor=True, globally_paused=True)
+    await migrate(globally_paused=True)
     repository = TransferRepository()
     assert await repository.globally_paused()
     assert (await repository.get(2)).paused
@@ -105,7 +128,7 @@ async def test_pause_intent_and_deferred_torrent_bytes_survive(legacy):
 async def test_completed_history_is_retained_without_claiming_current_possession(legacy):
     await parent(3, status="completed", source="alldebrid_existing")
     await file(3, 3, legacy, status="completed", gid=None)
-    await migrate(external_executor=True)
+    await migrate()
     repository = TransferRepository()
     assert (await repository.get(3)).state == TransferState.COMPLETED
     assert not Path((await repository.artifacts(3))[0].target).exists()
@@ -123,7 +146,7 @@ async def test_source_outcomes_and_standby_mirrors_stay_outside_physical_denomin
         await db.execute("""INSERT INTO download_files(id,torrent_id,filename,source_url,status,blocked,block_reason)
             VALUES(42,4,'missing',?,'missing',NULL,'source unavailable')""", (links[2],))
         await db.commit()
-    await migrate(external_executor=True)
+    await migrate()
     repository = TransferRepository()
     artifacts = await repository.artifacts(4)
     assert len(artifacts) == 1
@@ -138,7 +161,7 @@ async def test_source_outcomes_and_standby_mirrors_stay_outside_physical_denomin
 async def test_unresolved_provider_link_is_not_migrated_as_usable_candidate(legacy):
     await parent(5)
     await file(5, 5, legacy, status="pending", gid=None, address="https://source.example/file")
-    await migrate(external_executor=True)
+    await migrate()
     repository = TransferRepository()
     artifact = (await repository.artifacts(5))[0]
     assert artifact.candidates == ()
@@ -151,7 +174,7 @@ async def test_migration_rolls_back_conflicting_provider_ownership(legacy):
     await parent(8, status="uploading", resource="collision")
     await parent(9, status="uploading", resource="collision")
     with pytest.raises(TransferError):
-        await migrate(external_executor=True)
+        await migrate()
     async with database.get_db() as db:
         assert (await db.fetchone("SELECT count(*) AS n FROM transfer_requests"))["n"] == 0
         assert (await db.fetchone("SELECT count(*) AS n FROM torrents WHERE status='uploading'"))["n"] == 2

@@ -56,13 +56,13 @@ def _failed(code: str, message: str) -> ExecutionObservation:
 
 
 def _executor(tmp_path, client=None, *, scopes=None) -> Aria2Executor:
-    def job_options(address, *, external, scope=RouteScope.ENDPOINT):
+    def job_options(address, *, scope=RouteScope.ENDPOINT):
         if scopes is not None:
             scopes.append((address, scope))
         return {"all-proxy": "http://guard:1"}
 
     return Aria2Executor(
-        client, Aria2Configuration(str(tmp_path), external=False, confirmation_delay=0),
+        client, Aria2Configuration(str(tmp_path), confirmation_delay=0),
         AsyncMock(return_value=True), egress=SimpleNamespace(ensure_started=AsyncMock(), job_options=job_options),
     )
 
@@ -501,9 +501,9 @@ async def _real(tmp_path, monkeypatch, origin, *, daemon_globals=()):
         return address
 
     monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
-    guard = DownloaderEgressGuard(resolver=resolver, public_check=lambda a: a == "127.0.0.1", bind_host="127.0.0.1", bind_port=0)
+    guard = DownloaderEgressGuard(resolver=resolver, public_check=lambda a: a == "127.0.0.1", bind_port=0)
     proc, service = await _start_aria2(tmp_path, extra_args=tuple(daemon_globals))
-    executor = Aria2Executor(service, Aria2Configuration(str(tmp_path), external=False, confirmation_delay=0.02),
+    executor = Aria2Executor(service, Aria2Configuration(str(tmp_path), confirmation_delay=0.02),
                              AsyncMock(return_value=True), egress=guard)
     url = f"ftp://files.test:{origin.port}/pub/file.bin"
     request = ExecutionRequest(_candidate(url), str(tmp_path / "file.bin"), "real-attempt")
@@ -613,7 +613,7 @@ async def test_the_test_origin_really_rewrites_ascii_transfers(tmp_path) -> None
     await guard.ensure_started()
     try:
         uri = f"ftp://files.test:{origin.port}/pub/file.bin"
-        options = {**guard.job_options(uri, external=False, scope=RouteScope.SAME_HOST), "ftp-type": "ascii"}
+        options = {**guard.job_options(uri, scope=RouteScope.SAME_HOST), "ftp-type": "ascii"}
         status = await _aria2_ftp(tmp_path, uri, options, "ascii.bin")
         assert status["status"] == "complete", status
         assert (tmp_path / "ascii.bin").read_bytes() != PAYLOAD

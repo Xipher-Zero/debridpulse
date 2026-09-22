@@ -8,7 +8,7 @@ async function keepTopbarEngineVisible(page) {
   await page.route(url => url.pathname === '/api/aria2/runtime', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({mode:'external', running:true, active:0, download_speed:0}),
+    body: JSON.stringify({running:true, active:0, download_speed:0}),
   }));
 }
 

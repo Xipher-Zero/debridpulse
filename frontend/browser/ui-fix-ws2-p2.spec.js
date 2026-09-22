@@ -174,7 +174,7 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
   await page.route('**/api/aria2/runtime', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({mode: 'external', running: true, active: 0, download_speed: 0}),
+    body: JSON.stringify({running: true, active: 0, download_speed: 0}),
   }));
 
   await page.goto('/');

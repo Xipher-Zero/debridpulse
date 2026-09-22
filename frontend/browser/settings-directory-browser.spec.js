@@ -134,7 +134,7 @@ async function openDownloadsSettings(page) {
   await expect(page.locator('.dp-settings-download-engine-row')).toBeVisible();
 }
 
-function builtinField(page) {
+function downloadFolderField(page) {
   return page.locator('#dp-settings-field-download-folder');
 }
 
@@ -146,15 +146,14 @@ function directoryDialog(page) {
   return page.locator('.dp-settings-directory-dialog');
 }
 
-test('Browse is built-in only and preserves backend path, ordering, capacity, root, and symlink semantics', async ({ page }) => {
+test('Browse is offered once and preserves backend path, ordering, capacity, root, and symlink semantics', async ({ page }) => {
   const requests = await installDirectoryFixture(page);
   await openDownloadsSettings(page);
 
   await expect(browseButton(page)).toHaveCount(1);
   await expect(browseButton(page)).toBeVisible();
-  await expect(page.locator('[data-download-path-mode="external"] button[data-action="browse-download-folder"]')).toHaveCount(0);
 
-  await builtinField(page).fill('/download');
+  await downloadFolderField(page).fill('/download');
   await browseButton(page).click();
   const dialog = directoryDialog(page);
   await expect(dialog).toBeVisible();
@@ -185,7 +184,7 @@ test('invalid initial path falls back without repairing the field and Cancel/Esc
   const requests = await installDirectoryFixture(page, { invalidInitial: true });
   await openDownloadsSettings(page);
 
-  const field = builtinField(page);
+  const field = downloadFolderField(page);
   const browse = browseButton(page);
   await field.fill('/missing/or/unavailable');
   await browse.click();
@@ -242,7 +241,7 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   });
 
   await openDownloadsSettings(page);
-  const field = builtinField(page);
+  const field = downloadFolderField(page);
   const browse = browseButton(page);
   await field.fill('/download');
   await browse.click();
@@ -398,7 +397,7 @@ test('Backup Folder browsing never invokes Download Storage validation semantics
 test('directory modal traps/restores focus and remains usable in dark, light, and narrow layouts', async ({ page }) => {
   await installDirectoryFixture(page);
   await openDownloadsSettings(page);
-  await builtinField(page).fill('/download');
+  await downloadFolderField(page).fill('/download');
   const browse = browseButton(page);
   await browse.click();
 
@@ -505,7 +504,7 @@ test('a directory response that arrives after the dialog closed cannot mutate th
   const errors = watchPageErrors(page);
   const fixture = await installGatedDirectoryFixture(page);
   await openDownloadsSettings(page);
-  await builtinField(page).fill('/download');
+  await downloadFolderField(page).fill('/download');
   await browseButton(page).click();
   const dialog = directoryDialog(page);
   await expect(currentPath(dialog)).toHaveText('/download');
@@ -522,7 +521,7 @@ test('a directory response that arrives after the dialog closed cannot mutate th
   await expect(directoryDialog(page)).toHaveCount(0);
   await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
   expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
-  await expect(builtinField(page)).toHaveValue('/download');
+  await expect(downloadFolderField(page)).toHaveValue('/download');
   expect(errors).toEqual([]);
 });
 
@@ -530,7 +529,7 @@ test('a stale response from a closed dialog can never mutate, or be accepted int
   const errors = watchPageErrors(page);
   const fixture = await installGatedDirectoryFixture(page);
   await openDownloadsSettings(page);
-  await builtinField(page).fill('/download');
+  await downloadFolderField(page).fill('/download');
   await browseButton(page).click();
   let dialog = directoryDialog(page);
   await expect(currentPath(dialog)).toHaveText('/download');
@@ -551,7 +550,7 @@ test('a stale response from a closed dialog can never mutate, or be accepted int
   await expect(currentPath(dialog)).toHaveText('/download');
   await expect(dialog.locator('[data-modal-accept]')).toBeEnabled();
   await dialog.locator('[data-modal-accept]').click();
-  await expect(builtinField(page)).toHaveValue('/download');
+  await expect(downloadFolderField(page)).toHaveValue('/download');
   await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -559,7 +558,7 @@ test('a stale response from a closed dialog can never mutate, or be accepted int
 test('repeated open/cancel cycles settle once each, restore Browse every time, and Escape works after focus leaves the dialog', async ({ page }) => {
   const fixture = await installGatedDirectoryFixture(page);
   await openDownloadsSettings(page);
-  await builtinField(page).fill('/download');
+  await downloadFolderField(page).fill('/download');
   const browse = browseButton(page);
 
   for (let cycle = 0; cycle < 3; cycle += 1) {
@@ -580,13 +579,13 @@ test('repeated open/cancel cycles settle once each, restore Browse every time, a
     expect(await page.evaluate(() => document.body.classList.contains('dp-modal-open'))).toBe(false);
   }
   expect(fixture.requests).toEqual(['/download', '/download', '/download']);
-  await expect(builtinField(page)).toHaveValue('/download');
+  await expect(downloadFolderField(page)).toHaveValue('/download');
 });
 
 test('the directory browser is a direct client of the dialog owner: its own dialog, no confirmation shell to mutate', async ({ page }) => {
   await installGatedDirectoryFixture(page);
   await openDownloadsSettings(page);
-  await builtinField(page).fill('/download');
+  await downloadFolderField(page).fill('/download');
   await browseButton(page).click();
   const dialog = directoryDialog(page);
   await expect(dialog).toBeVisible();

@@ -10,7 +10,7 @@ async function isolateExternalFonts(page) {
 }
 // Runtime exceptions and script console errors only: the browser's own
 // "Failed to load resource" status lines report unrelated endpoints (for example
-// a built-in aria2 still starting) and are not this surface's oracle.
+// aria2 still starting) and are not this surface's oracle.
 function observeRuntime(page) {
   const errors = [];
   page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));

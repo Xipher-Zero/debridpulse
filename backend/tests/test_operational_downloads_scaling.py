@@ -95,7 +95,7 @@ async def test_migrated_multifile_presentation_has_constant_sqlite_acquires(tmp_
         conn.commit()
 
     monkeypatch.setattr(database, "DB_PATH", path)
-    report = await v112.migrate(external_executor=False)
+    report = await v112.migrate()
     assert report["migrated"] is True
 
     before = database.db_runtime_metrics()["sqlite_acquires"]

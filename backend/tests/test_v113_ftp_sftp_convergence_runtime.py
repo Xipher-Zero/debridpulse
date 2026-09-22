@@ -125,7 +125,7 @@ async def _runtime(tmp_path, monkeypatch, *, mapping=None, origins=(), limit=Non
     mapping = dict(mapping or {})
     guard = guard_for(answers=lambda host, port: [mapping.get(host, "127.0.0.1")])
     proc, service = await _start_aria2(downloads, limit=limit)
-    executor = Aria2Executor(service, Aria2Configuration(str(downloads), external=False, confirmation_delay=0),
+    executor = Aria2Executor(service, Aria2Configuration(str(downloads), confirmation_delay=0),
                              repository.authorize_execution, egress=guard)
     registry.register_provider(GeneralHttpProvider())
     registry.register_provider(GeneralFtpProvider())

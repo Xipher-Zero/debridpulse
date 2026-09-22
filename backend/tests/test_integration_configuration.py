@@ -18,22 +18,16 @@ def _settings_from_legacy(raw: dict) -> AppSettings:
     return normalize_settings(AppSettings(**{k: v for k, v in raw.items() if k in AppSettings.model_fields}), definitions)
 
 
-def test_flat_settings_migrate_without_losing_native_credentials_or_remote_paths():
-    migrated = _settings_from_legacy({
-        "alldebrid_api_key": "private-key", "aria2_mode": "external",
-        "aria2_secret": "rpc-private", "aria2_download_path": "/remote",
-    })
+def test_flat_settings_migrate_without_losing_native_credentials_or_tuning():
+    migrated = _settings_from_legacy({"alldebrid_api_key": "private-key", "aria2_split": 32})
     assert migrated.integrations["alldebrid"].options["api_key"] == "private-key"
-    assert migrated.integrations["aria2"].options["download_path"] == "/remote"
-    assert migrated.integrations["aria2"].options["secret"] == "rpc-private"
-    assert migrated.integrations["aria2"].options["mode"] == "external"
+    assert migrated.integrations["aria2"].options["split"] == 32
     # The settings model has no flat field to carry them: canonical namespaces
     # are the only place these values exist.
-    assert not {"alldebrid_api_key", "aria2_secret", "aria2_mode", "aria2_download_path"} & set(migrated.model_dump())
+    assert not {"alldebrid_api_key", "aria2_split"} & set(migrated.model_dump())
     assert normalize_settings(migrated, definitions) == migrated
     public = public_integrations(migrated, definitions)
     assert "private-key" not in str(public)
-    assert "rpc-private" not in str(public)
     assert public["alldebrid"]["options"]["api_key_configured"] is True
 
 
@@ -127,7 +121,7 @@ def test_legacy_value_only_fills_an_option_the_canonical_namespace_does_not_carr
 
 
 def test_migration_consumes_every_legacy_key_and_reports_it():
-    raw = {"aria2_mode": "external", "max_concurrent_downloads": 4, "aria2_max_download_limit": 10, "paused": True}
+    raw = {"aria2_split": 8, "max_concurrent_downloads": 4, "aria2_max_download_limit": 10, "paused": True}
     assert migrate_legacy_settings(raw, definitions) is True
     assert set(raw) == {"paused", "integrations", "transfer_policy", "execution_runtime_limits"}
     assert migrate_legacy_settings(raw, definitions) is False

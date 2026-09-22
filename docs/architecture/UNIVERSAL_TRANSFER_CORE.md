@@ -399,10 +399,10 @@ Observed inventory never grants authority by itself. Cleanup intents and attempt
 are durable, and unknown cleanup acknowledgement is not blindly repeated.
 
 An execution handle must match the repository's authorization record. aria2 also
-binds it to the daemon and filesystem mapping, checks the observed native target,
-and refuses a colliding or foreign job. External/shared daemon global settings
-remain read-only. Existing metadata, redirect, egress, DNS rebinding, certificate
-and SNI controls live at the executor's network boundary.
+binds it to the daemon endpoint and download root, checks the observed native
+target, and refuses a colliding or foreign job. Per-job options never inherit
+daemon-global network settings. Existing metadata, redirect, egress, DNS
+rebinding, certificate and SNI controls live at the executor's network boundary.
 
 Existing local data is adopted only with positive size, directory visibility,
 absence of resumable sidecars, a no-follow regular-file open, exact size, readable

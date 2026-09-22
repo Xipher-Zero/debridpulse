@@ -64,6 +64,20 @@
 - New runtime dependency `asyncssh` (EPL-2.0 OR GPL-2.0-or-later, used under GPL-2.0-or-later) for
   SFTP evidence reads.
 
+### Removed
+
+- **External aria2 support.** aria2 has one topology: DebridPulse starts, configures and stops its
+  bundled daemon, which listens on loopback only. The Download Engine mode selector, the RPC URL, RPC
+  secret and remote download path settings, the draft aria2 connection test
+  (`POST /api/settings/validate-aria2`), the `DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY` and
+  `DEBRIDPULSE_EGRESS_GUARD_BIND` environment variables and the external-control topbar state are
+  gone. `Test Download Engine` checks the managed daemon. Stored values for the removed settings are
+  ignored. The daemon's hidden lifecycle options are now named `auto_start`, `log_file`,
+  `log_max_mb`, `log_backups` and `session_file`; values stored under their previous `builtin_*`
+  names are ignored and the defaults apply. Downloads in progress keep their identity across the
+  upgrade. The predecessor per-GID ownership table (`debridpulse_aria2_owned_gids`) is no longer
+  created, read or written; an existing database keeps it untouched as inert history.
+
 ### Planned / in progress
 
 - STAGED-MATERIALIZATION-001 — execution-owned staging and verified atomic promotion.

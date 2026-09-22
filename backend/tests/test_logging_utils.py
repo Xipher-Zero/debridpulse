@@ -46,7 +46,7 @@ def test_startup_banner_uses_logger_and_expected_links(caplog):
             version="1.8.7",
             mode="Docker / Unraid",
             database="SQLite",
-            download_client="aria2 builtin",
+            download_client="aria2",
             web_ui="http://0.0.0.0:8080",
             auth="disabled",
         )

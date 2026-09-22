@@ -13,15 +13,6 @@
   }
 }
 
-/* Match the configured external-secret edge to the 320px right-hand datum used
-   by Maximum Concurrent Downloads below it. */
-@media (min-width: 1181px) {
-  #view-settings .dp-settings-external-connection-row.is-secret-configured {
-    grid-template-columns: minmax(0, 1.35fr) minmax(300px, .9fr) 320px;
-    column-gap: 32px;
-  }
-}
-
 /* Treat concurrency + delete-after-extraction as one centered desktop block. */
 @media (min-width: 901px) {
   #view-settings .dp-settings-extraction-controls-row {

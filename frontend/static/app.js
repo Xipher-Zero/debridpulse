@@ -3,16 +3,9 @@
 const API = '/api';
 let settingsData = {};
 
-// settingsData is the cached GET /settings document. aria2 configuration, the
-// scheduler's concurrency and the download bandwidth cap are each read from
-// their one canonical namespace; no flat alias is read, mirrored or written.
-function aria2Options() {
-  var entry = settingsData && settingsData.integrations && settingsData.integrations.aria2;
-  return (entry && entry.options) || {};
-}
-function aria2Mode() {
-  return aria2Options().mode || 'builtin';
-}
+// settingsData is the cached GET /settings document. The scheduler's
+// concurrency and the download bandwidth cap are each read from their one
+// canonical namespace; no flat alias is read, mirrored or written.
 // Per-transfer pauses are counted by the backend (GET /stats by_status.paused);
 // this is only the last value read from there and is never adjusted locally.
 let pausedTransferCount = 0;
@@ -533,64 +526,24 @@ function patchProgressOnlyTransferEvent(data) {
 
 // ── Status Bar ─────────────────────────────────────────────────────────────
 
-function getAria2ngUrl(aria2Url) {
-  // Derive aria2ng URL from aria2 JSON-RPC URL.
-  // Example: http://192.168.1.100:6800/jsonrpc → http://192.168.1.100:6880/
-  if (!aria2Url) return '';
-  try {
-    const u = new URL(aria2Url);
-    u.port = '6880';
-    u.pathname = '/';
-    u.search = '';
-    return u.toString();
-  } catch(e) {
-    return '';
-  }
-}
-
-function updateAria2ngLink() {
-  const aria2Url = aria2Options().url || '';
-  const row  = document.getElementById('aria2ng-row');
-  const link = document.getElementById('aria2ng-link');
-  if (!row || !link) return;
-  // The aria2 web UI link is not offered inside an authenticated session.
-  const authenticated = !!(window.debridPulseAuth && window.debridPulseAuth.session()
-    && window.debridPulseAuth.session().authenticated);
-  if (aria2Url && !authenticated) {
-    link.href = getAria2ngUrl(aria2Url) || '#';
-    row.style.display = 'flex';
-  } else {
-    row.style.display = 'none';
-  }
-}
-document.addEventListener('debridpulse:session-changed', updateAria2ngLink);
-
 async function checkConnections() {
   const cfg = settingsData || {};
   await refreshProviderStatus();
 
   // aria2 check — retry once if first attempt fails
-  if (aria2Options().url || aria2Mode() === 'builtin') {
-    let aria2Ok = false;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const result = await api('POST', '/settings/test-aria2');
-        setDot('aria2', 'ok', `aria2: ${result.version||'online'}`);
-        aria2Ok = true;
-        break;
-      } catch {
-        if (attempt < 3) {
-          await new Promise(r => setTimeout(r, attempt * 800));
-        } else {
-          setDot('aria2', 'error', 'aria2: offline');
-        }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await api('POST', '/settings/test-aria2');
+      setDot('aria2', 'ok', `aria2: ${result.version||'online'}`);
+      break;
+    } catch {
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 800));
+      } else {
+        setDot('aria2', 'error', 'aria2: offline');
       }
     }
-  } else {
-    setDot('aria2', 'warn', 'aria2: not configured');
   }
-  updateAria2ngLink();
-
 }
 
 function setDot(id, state, label) {
@@ -1629,7 +1582,7 @@ function updateThemeToggle(isLight) {
 }
 document.addEventListener('DOMContentLoaded', () => {
   setInterval(function() {
-    if (settingsData && aria2Mode()==='builtin') {
+    if (settingsData) {
       loadAria2Runtime().catch(()=>{});
     }
   }, 5000);
@@ -1666,21 +1619,15 @@ async function loadAria2Runtime() {
   const data = await api('GET', '/aria2/runtime');
   const badge = document.getElementById('aria2-speed-badge');
   if (badge) {
-    const isBuiltin = (data.mode || '') === 'builtin';
-    if (isBuiltin && !data.running) {
+    if (!data.running) {
       badge.style.display = 'none';
-    } else if (isBuiltin) {
+    } else {
       badge.style.display = 'flex';
       updateAria2TopbarBadge({
         active: Number(data.active) || 0,
         liveBps: Number(data.download_speed) || 0,
-        externalControl: false,
       });
       loadAria2SpeedLimit().catch(function(){});
-    } else {
-      badge.style.display = 'flex';
-      updateAria2TopbarBadge({externalControl: true});
-      loadAria2TopbarStat().catch(function(){});
     }
   }
   return data;
@@ -1699,7 +1646,6 @@ async function loadAria2Runtime() {
   }
 
   renderTopbarActions();
-  updateAria2ngLink();
 
   // Load stats with visible retry
   let statsLoaded = false;
@@ -1964,24 +1910,12 @@ async function loadAria2SpeedLimit() {
     var data = await api('GET', '/aria2/global-options', null, 10000);
     // The native effective cap is what this badge displays. Scheduler capacity
     // is universal transfer policy and is never taken from an aria2 response.
-    updateAria2TopbarBadge({
-      limitBps: parseInt(data.max_download_speed || 0),
-      externalControl: !!data.global_options_read_only,
-    });
+    updateAria2TopbarBadge({limitBps: parseInt(data.max_download_speed || 0)});
   } catch (e) { /* aria2 not connected — silently ignore */ }
 }
 
 async function _setAria2Speed(bps) {
   var st = document.getElementById('aria2-speed-status');
-
-  if (aria2Mode() !== 'builtin') {
-    if (st) {
-      st.style.color = 'var(--text2)';
-      st.textContent = 'Externally Controlled';
-    }
-    updateAria2TopbarBadge({externalControl: true});
-    return false;
-  }
 
   if (st) { st.style.color='var(--text2)'; st.textContent='Applying…'; }
   try {
@@ -2015,7 +1949,6 @@ var _aria2BadgeState = {
   active: 0,
   limitBps: 0,
   liveBps: 0,
-  externalControl: false,
 };
 var _aria2TopbarStatBusy = false;
 
@@ -2027,7 +1960,6 @@ async function loadAria2TopbarStat() {
     updateAria2TopbarBadge({
       active: Number(data.active) || 0,
       liveBps: Number(data.download_speed) || 0,
-      externalControl: !!data.external_control,
     });
   } finally {
     _aria2TopbarStatBusy = false;
@@ -2045,8 +1977,6 @@ function updateAria2TopbarBadge(patch) {
   var toggle   = document.getElementById('aria2-cap-toggle');
   if (!topBadge) return;
 
-  var externalControl = !!s.externalControl;
-
   if (elActive) elActive.textContent = s.active;
   // The denominator is DebridPulse scheduler capacity: the canonical
   // transfer policy, never a value reported by the aria2 daemon.
@@ -2055,45 +1985,15 @@ function updateAria2TopbarBadge(patch) {
   if (elMax)    elMax.textContent    = maxDl || '—';
   if (elSpeed)  elSpeed.textContent  = fmtSpeed(s.liveBps || 0);
 
-  if (elLimit) {
-    elLimit.textContent = externalControl
-      ? 'Externally Controlled'
-      : fmtSpeedCap(s.limitBps);
-  }
+  if (elLimit) elLimit.textContent = fmtSpeedCap(s.limitBps);
 
-  topBadge.classList.toggle('external-control', externalControl);
-
-  if (toggle) {
-    toggle.setAttribute(
-      'aria-disabled',
-      externalControl ? 'true' : 'false'
-    );
-    toggle.title = externalControl
-      ? 'Bandwidth cap is controlled by the external aria2 daemon'
-      : 'Set download speed cap';
-    toggle.style.cursor = externalControl ? 'default' : '';
-
-    var capArrow = toggle.querySelector('span[aria-hidden="true"]');
-    if (capArrow) {
-      capArrow.style.display = externalControl ? 'none' : '';
-    }
-  }
-
-  topBadge.title = externalControl
-    ? 'Active / max — DebridPulse-owned live speed — bandwidth externally controlled'
-    : 'Active / max — live speed — download speed cap';
-
-  if (externalControl) {
-    topBadge.style.display = 'flex';
-    closeAria2SpeedCapMenu();
-  }
+  topBadge.title = 'Active / max — live speed — download speed cap';
 
   renderOperatorTitle();
 
   document.querySelectorAll('#aria2-cap-menu [data-cap-bps]').forEach(function(button) {
     button.classList.toggle(
       'active',
-      !externalControl &&
       Number(button.dataset.capBps) === Number(s.limitBps || 0)
     );
   });
@@ -2101,7 +2001,6 @@ function updateAria2TopbarBadge(patch) {
 
 function toggleAria2SpeedCapMenu(event) {
   if (event) event.stopPropagation();
-  if (_aria2BadgeState.externalControl) return;
   var menu = document.getElementById('aria2-cap-menu');
   var toggle = document.getElementById('aria2-cap-toggle');
   if (!menu || !toggle) return;

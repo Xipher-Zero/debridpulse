@@ -11,16 +11,16 @@ async function ready(page) {
   await page.waitForFunction(() => Boolean(window.DPProcessingPresentation && typeof updateAria2TopbarBadge === 'function'));
 }
 
-async function useSettings(page, {mode = 'builtin', concurrency = 7, limit = 0} = {}) {
-  await page.evaluate(({mode, concurrency, limit}) => {
+async function useSettings(page, {concurrency = 7, limit = 0} = {}) {
+  await page.evaluate(({concurrency, limit}) => {
     settingsData = {
-      integrations: {aria2: {options: {mode}}},
+      integrations: {aria2: {options: {}}},
       transfer_policy: {max_concurrent_executions: concurrency},
       execution_runtime_limits: {max_download_bytes_per_second: limit},
       paused: false,
     };
     updateAria2TopbarBadge({active: 3, liveBps: 1048576});
-  }, {mode, concurrency, limit});
+  }, {concurrency, limit});
 }
 
 const maxText = page => page.locator('#aria2-badge-max');
@@ -39,10 +39,9 @@ test('the retired topbar wrapper runtime is gone and updateAria2TopbarBadge is t
   expect(shape.sameBinding).toBe(true);
 });
 
-for (const mode of ['builtin', 'external']) {
-  test(`denominator is transfer_policy.max_concurrent_executions in ${mode} mode`, async ({ page }) => {
+test('denominator is transfer_policy.max_concurrent_executions', async ({ page }) => {
     await ready(page);
-    await useSettings(page, {mode, concurrency: 7});
+    await useSettings(page, {concurrency: 7});
     await expect(page.locator('#aria2-badge-active')).toHaveText('3');
     await expect(maxText(page)).toHaveText('7');
 
@@ -66,8 +65,7 @@ for (const mode of ['builtin', 'external']) {
       return getComputedStyle(badge).display;
     });
     expect(hidden).toBe('none');
-  });
-}
+});
 
 test('a stale or native maximum in a badge patch cannot replace scheduler capacity', async ({ page }) => {
   await ready(page);
@@ -83,8 +81,7 @@ test('the aria2 global-options response cannot override universal scheduler capa
   await useSettings(page, {concurrency: 7});
   await page.route('**/api/aria2/global-options', route => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ok: true, mode: 'builtin', global_options_read_only: false,
-      max_download_speed: 0, max_upload_speed: 0, max_concurrent_downloads: 2}),
+    body: JSON.stringify({ok: true, max_download_speed: 0, max_upload_speed: 0, max_concurrent_downloads: 2}),
   }));
   await page.evaluate(() => loadAria2SpeedLimit());
   await expect(maxText(page)).toHaveText('7');
@@ -99,7 +96,7 @@ test('an unknown capacity renders a dash instead of a manufactured default', asy
 
 test('no flat alias is read or written when the operator applies a bandwidth cap', async ({ page }) => {
   await ready(page);
-  await useSettings(page, {mode: 'builtin', concurrency: 4, limit: 0});
+  await useSettings(page, {concurrency: 4, limit: 0});
   let patched = null;
   await page.route('**/api/execution/runtime-limits', route => {
     patched = route.request().postDataJSON();
@@ -116,18 +113,6 @@ test('no flat alias is read or written when the operator applies a bandwidth cap
     capacity: settingsData.transfer_policy.max_concurrent_executions,
   }));
   expect(state).toEqual({canonical: 2097152, alias: false, capacity: 4});
-});
-
-test('an external aria2 daemon keeps the bandwidth cap read-only', async ({ page }) => {
-  await ready(page);
-  await useSettings(page, {mode: 'external', concurrency: 4, limit: 500});
-  let requests = 0;
-  await page.route('**/api/execution/runtime-limits', route => { requests += 1; return route.abort(); });
-  const applied = await page.evaluate(() => _setAria2Speed(1048576));
-  expect(applied).toBe(false);
-  expect(requests).toBe(0);
-  expect(await page.evaluate(() => settingsData.execution_runtime_limits.max_download_bytes_per_second)).toBe(500);
-  await expect(page.locator('#aria2-speed-badge')).toHaveClass(/external-control/);
 });
 
 test('saving Settings adopts the canonical policy and never writes a flat alias or namespace through the broad document', async ({ page }) => {
@@ -160,13 +145,27 @@ test('saving Settings adopts the canonical policy and never writes a flat alias 
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await page.locator('#view-settings [data-tab="downloads"]').click();
+  // One aria2: the Downloads panel offers no topology control, visible or hidden.
+  const downloads = page.locator('#view-settings [data-panel="downloads"]');
+  for (const retired of ['aria2_mode', 'aria2_url', 'aria2_secret', 'aria2_download_path']) {
+    await expect(downloads.locator(`[data-setting="${retired}"]`)).toHaveCount(0);
+  }
+  await expect(downloads.locator('[data-download-path-mode], [data-builtin-only-tuning], [data-clear-secret^="aria2"]')).toHaveCount(0);
   await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').fill('5');
+  await page.locator('#view-settings summary:has-text("Additional Engine Tuning")').click();
+  await page.locator('#view-settings [data-setting="aria2_split"]').fill('8');
   await page.locator('#view-settings button[data-action="save"]:visible').first().click();
 
   await expect.poll(() => captured.put).not.toBeNull();
   expect(captured.patches.find(p => p.id === 'transfer-policy').body.max_concurrent_executions).toBe(5);
+  // aria2 tuning still saves, and carries tuning only.
+  const aria2 = captured.patches.find(p => p.id === 'aria2').body;
+  expect(Object.keys(aria2)).toEqual(['options']);
+  expect(Object.keys(aria2.options).sort()).toEqual(['continue_downloads', 'disk_cache', 'file_allocation',
+    'lowest_speed_limit', 'max_connection_per_server', 'min_split_size', 'split']);
+  expect(aria2.options.split).toBe(8);
   for (const flat of ['max_concurrent_downloads', 'aria2_max_active_downloads', 'aria2_max_download_limit',
-    'aria2_mode', 'aria2_split', 'alldebrid_api_key', 'poll_interval_seconds', 'stuck_download_timeout_hours',
+    'aria2_split', 'alldebrid_api_key', 'poll_interval_seconds', 'stuck_download_timeout_hours',
     'upload_fail_retry_count', 'integrations', 'transfer_policy', 'execution_runtime_limits']) {
     expect(Object.keys(captured.put)).not.toContain(flat);
   }

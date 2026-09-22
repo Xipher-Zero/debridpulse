@@ -163,7 +163,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         reset_services.assert_called_once()
         advance.assert_awaited_once()
         # Gate 9 revision-5 rejection finding 4: the concurrency projection
-        # into the running built-in aria2 daemon happens even when reached
+        # into the running aria2 daemon happens even when reached
         # through this legacy compatibility-edge route, since it forwards
         # into the SAME canonical ``patch_transfer_policy`` implementation.
         fake_aria2.apply_memory_tuning.assert_awaited_once()
@@ -279,7 +279,7 @@ class ProcessingPauseRouteTests(unittest.IsolatedAsyncioTestCase):
 
 
 class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
-    async def test_global_stat_route_returns_live_rpc_counters_in_builtin_mode(self):
+    async def test_global_stat_route_returns_live_rpc_counters(self):
         stat = {
             "download_speed": 42_000_000,
             "upload_speed": 0,
@@ -289,67 +289,12 @@ class Aria2LiveStatRouteTests(unittest.IsolatedAsyncioTestCase):
         fake_aria2 = SimpleNamespace(
             get_global_stat=AsyncMock(return_value=stat)
         )
-        # Canonical aria2 tuning (specification sections 4.3, 9.1, 9.3): the
-        # route reads `integrations.aria2`, never flat `aria2_mode`.
-        cfg = SimpleNamespace(integrations={"aria2": SimpleNamespace(options={"mode": "builtin"})})
         application = SimpleNamespace(integration_admin=lambda _: fake_aria2)
 
-        with patch("api.routes.get_settings", return_value=cfg), \
-             patch("api.routes.get_application", return_value=application):
-            result = await routes.aria2_global_stat(application=application)
+        result = await routes.aria2_global_stat(application=application)
 
-        self.assertEqual(
-            result,
-            {
-                "ok": True,
-                "mode": "builtin",
-                "external_control": False,
-                **stat,
-            },
-        )
+        self.assertEqual(result, {"ok": True, **stat})
         fake_aria2.get_global_stat.assert_awaited_once_with()
-
-    async def test_global_stat_route_filters_external_daemon_to_owned_jobs(self):
-        foreign = SimpleNamespace(
-            gid="foreign-gid",
-            download_speed=90_000_000,
-        )
-        owned = SimpleNamespace(
-            gid="owned-gid",
-            download_speed=12_500_000,
-        )
-
-        fake_aria2 = SimpleNamespace(
-            get_active=AsyncMock(return_value=[foreign, owned])
-        )
-        ownership_filter = AsyncMock(return_value=[owned])
-        cfg = SimpleNamespace(integrations={"aria2": SimpleNamespace(options={"mode": "external"})})
-        fake_aria2.filter_owned = ownership_filter
-        application = SimpleNamespace(integration_admin=lambda _: fake_aria2)
-
-        with patch("api.routes.get_settings", return_value=cfg), \
-             patch("api.routes.get_application", return_value=application), \
-             patch.object(
-                 fake_aria2,
-                 "filter_owned",
-                 ownership_filter,
-             ):
-            result = await routes.aria2_global_stat(application=application)
-
-        self.assertEqual(
-            result,
-            {
-                "ok": True,
-                "mode": "external",
-                "external_control": True,
-                "download_speed": 12_500_000,
-                "upload_speed": 0,
-                "active": 1,
-                "waiting": 0,
-            },
-        )
-        fake_aria2.get_active.assert_awaited_once_with()
-        ownership_filter.assert_awaited_once_with([foreign, owned])
 
 
 class DatabaseMaintenanceRouteTests(unittest.IsolatedAsyncioTestCase):

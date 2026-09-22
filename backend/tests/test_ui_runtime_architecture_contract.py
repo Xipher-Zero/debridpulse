@@ -230,7 +230,6 @@ def test_frontend_reads_only_canonical_settings_fields() -> None:
         for pattern in flat_reads:
             assert not re.search(pattern, text), f"{path.name} reads flat alias {pattern!r}"
     app = _source_without_comments("app.js")
-    assert "settingsData.integrations && settingsData.integrations.aria2" in app
     assert "settingsData.execution_runtime_limits = Object.assign({}, settingsData.execution_runtime_limits" in app
     live = _source_without_comments("ui-settings-aria2-live.js")
-    assert "aria2Mode()" in live and "settingsData.aria2_mode" not in live
+    assert "settingsData" not in live

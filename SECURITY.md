@@ -72,9 +72,9 @@ For any network you do not fully trust, enable native DebridPulse authentication
 
 **Do not expose port 8080 directly to the public internet.** The generic Compose example uses bridge networking with an explicit port mapping so exposure remains visible and can be bound/restricted by the operator. Host networking should be an explicit deployment choice, not the generic default.
 
-### Shared external aria2
+### aria2
 
-External aria2 may be shared with unrelated applications. DebridPulse records ownership for GIDs it creates, permits per-GID mutations only for owned downloads, and avoids daemon-global mutation outside built-in aria2 mode. Keep aria2 RPC itself on a trusted network and configure its RPC secret when supported.
+DebridPulse runs its own aria2 daemon. Its JSON-RPC interface listens on loopback only and is never exposed as a setting or a published port. Every job is routed through the DebridPulse egress guard with per-job proxy, credential, and host-key options, and per-GID actions are permitted only for downloads DebridPulse owns.
 
 ### Archive extraction
 
@@ -101,7 +101,7 @@ The following are **in scope** for security reports:
 - configured-authentication fail-open behavior or lockout-prevention bypass;
 - remote code execution;
 - path traversal or unsafe archive extraction;
-- mutation of unrelated transfers on shared external aria2;
+- aria2 jobs bypassing the egress guard or acting on downloads DebridPulse does not own;
 - unsafe destructive database/backup behavior.
 
 The following are **out of scope**:

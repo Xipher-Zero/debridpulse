@@ -49,10 +49,6 @@ def test_settings_secret_fields_and_extraction_controls_keep_accepted_geometry()
     alldebrid = css.split(".dp-settings-alldebrid-key-row.is-configured {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns: minmax(0, 1fr) max-content;" in alldebrid
 
-    external = css.split(".dp-settings-external-connection-row.is-secret-configured {", 1)[1].split("}", 1)[0]
-    assert "minmax(300px, .9fr) 320px" in external
-    assert "column-gap: 32px;" in external
-
     controls = css.split(".dp-settings-extraction-controls-row {", 1)[1].split("}", 1)[0]
     assert "width: min(100%, 1040px);" in controls
     assert "margin-inline: auto;" in controls

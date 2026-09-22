@@ -252,16 +252,6 @@ body.light .logo-name span { color: #7c3aed; }
   padding: 0 12px !important;
   color: #bec3da !important;
 }
-#aria2-speed-badge.external-control {
-  color: #e2e4f1 !important;
-  border-color: rgba(52, 166, 255, .26) !important;
-}
-#aria2-speed-badge.external-control::before {
-  content: '◉';
-  margin-right: 2px;
-  color: #38bdf8;
-  text-shadow: 0 0 8px rgba(56, 189, 248, .55);
-}
 
 .sidebar-theme-control {
   top: 29px;

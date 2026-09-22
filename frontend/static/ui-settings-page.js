@@ -50,7 +50,7 @@
 
   // The Settings document is rendered from, and saved to, the canonical
   // namespaces: integrations.<id>.options, transfer_policy. Form controls keep
-  // their local names (data-setting="aria2_mode", ...) but those names never
+  // their local names (data-setting="aria2_split", ...) but those names never
   // imply a flat settings field.
   const aria2Of = s => s?.integrations?.aria2?.options || {};
   const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
@@ -59,7 +59,6 @@
   // written, and cleared, through that integration's own scoped surface.
   const INTEGRATION_SECRET_CONTROLS = Object.freeze({
     alldebrid_api_key: {integration: 'alldebrid', option: 'api_key'},
-    aria2_secret: {integration: 'aria2', option: 'secret'},
   });
 
   function oidcStatePresentation(auth, available = auth?.oidc_available) {
@@ -278,7 +277,7 @@
   const CARD_ICONS = Object.freeze({
     'Download Engine': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
     'Download Safety & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
-    'Built-In Download Engine State': ['downloads', '/icons/dp/settings/built-in-download-engine-state.svg?v=1'],
+    'Download Engine State': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
     'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
     'Authentication Status': ['authentication', '/icons/dp/settings/authentication-status.svg?v=1'],
     'Username & Password': ['authentication', '/icons/dp/settings/username-password.svg?v=1'],
@@ -384,33 +383,6 @@
             <input type="checkbox" data-clear-secret="${key}">
           </label>` : ''}
       </div>`;
-  }
-
-  function aria2RpcSecretFields(configured) {
-    const key = 'aria2_secret';
-    const id = fieldId(key);
-    const masked = CONFIGURED_SECRET_MASK;
-    const hint = configured
-      ? 'Enter a new RPC secret to replace the stored secret when you click Apply Settings. Leave this field blank to keep the current secret.'
-      : 'Enter the RPC secret used by your external aria2 server. It will be saved only when you click Apply Settings.';
-    return `
-      <div class="dp-settings-field dp-settings-aria2-secret-field">
-        <label class="form-label" for="${id}">aria2 RPC Secret</label>
-        <input class="input" id="${id}" data-setting="${key}" type="password" value=""
-               placeholder="${configured ? masked : 'Optional RPC secret'}" autocomplete="off">
-        <div class="dp-settings-aria2-secret-meta">
-          <span class="form-hint">${hint}</span>
-          ${configured ? '<span class="form-hint dp-settings-key-present">Secret Present</span>' : ''}
-        </div>
-      </div>
-      ${configured ? `
-        <label class="dp-settings-clear-secret dp-settings-clear-secret--aria2">
-          <span class="form-label">Clear stored aria2 RPC Secret</span>
-          <span class="dp-settings-clear-secret-control" aria-hidden="true">
-            <input type="checkbox" data-clear-secret="${key}" aria-label="Clear stored aria2 RPC Secret">
-          </span>
-          <small>Remove the saved RPC secret when you click Apply Settings.</small>
-        </label>` : ''}`;
   }
 
   function tuningToggle(key, label, detail, value) {
@@ -558,11 +530,11 @@
 
   function aria2LiveCard() {
     return `
-      <section class="card dp-settings-card dp-settings-aria2-live-card" data-dp-aria2-live-card="1" data-builtin-only-tuning aria-label="Built-In Download Engine State">
+      <section class="card dp-settings-card dp-settings-aria2-live-card" data-dp-aria2-live-card="1" aria-label="Download Engine State">
         <div class="card-header">
-          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Built-In Download Engine State'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Built-In Download Engine State</span></span>
+          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Download Engine State'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Download Engine State</span></span>
           <div class="dp-settings-card-header-center">
-            <span class="dp-settings-aria2-live-copy">Inspect and control the built-in aria2 engine.</span>
+            <span class="dp-settings-aria2-live-copy">Inspect and control the aria2 engine.</span>
           </div>
           <div class="dp-settings-aria2-live-header-actions">
             <button type="button" class="btn btn-ghost btn-sm" data-dp-aria2-live-refresh>Refresh</button>
@@ -578,18 +550,18 @@
               <div class="dp-settings-aria2-live-note-text">Bypasses normal DebridPulse transfer controls. Use for troubleshooting or recovery.</div>
             </div>
             <div class="dp-settings-aria2-live-tools">
-              <div class="dp-settings-aria2-live-metrics" aria-label="Built-in aria2 engine metrics">
+              <div class="dp-settings-aria2-live-metrics" aria-label="aria2 engine metrics">
                 <span data-dp-aria2-live-speed>0 KB/s</span>
                 <span data-dp-aria2-live-remaining>— Remaining</span>
               </div>
-              <div class="filter-tabs dp-settings-aria2-live-filters" role="tablist" aria-label="Filter built-in aria2 engine jobs">
+              <div class="filter-tabs dp-settings-aria2-live-filters" role="tablist" aria-label="Filter aria2 engine jobs">
                 ${ARIA2_LIVE_FILTERS.map(([id, label]) => `
                 <button type="button" class="ftab${id === 'all' ? ' active' : ''}" role="tab" aria-selected="${id === 'all'}" data-engine-filter="${id}">${label}</button>`).join('')}
               </div>
             </div>
           </div>
           <div id="dp-settings-aria2-downloads" data-dp-aria2-live-queue="1" class="dp-settings-aria2-live-queue" aria-live="polite">
-            <div class="empty">Loading built-in aria2 engine state…</div>
+            <div class="empty">Loading aria2 engine state…</div>
           </div>
         </div>
       </section>`;
@@ -598,34 +570,14 @@
   function downloadsPanel(s) {
     const aria2 = aria2Of(s);
     const policy = policyOf(s);
-    const builtIn = (aria2.mode || 'builtin') === 'builtin';
-    const engineCopy = 'Choose where DebridPulse sends downloads. Built-in aria2 runs with DebridPulse; External aria2 uses your existing aria2 server.';
-    const modeSelection = `
-      <div class="dp-settings-download-engine-mode">
-        ${selectField('aria2_mode', 'Mode Selection', aria2.mode || 'builtin', [
-          ['builtin', 'Built-in aria2'],
-          ['external', 'External aria2'],
-        ])}
-      </div>`;
+    const engineCopy = 'DebridPulse runs aria2 for you and writes every download to the Download Folder.';
     const delivery = card('Download Engine', `
-      <div class="dp-settings-mode-external dp-settings-external-connection-row ${aria2.secret_configured ? 'is-secret-configured' : ''}" ${builtIn ? 'hidden' : ''}>
-        ${input('aria2_url', 'External RPC URL', aria2.url || 'http://127.0.0.1:6800/jsonrpc', {
-          placeholder: 'http://aria2:6800/jsonrpc',
-          hint: 'JSON-RPC endpoint DebridPulse uses to connect to your external aria2 server.'
-        })}
-        ${aria2RpcSecretFields(!!aria2.secret_configured)}
-      </div>
       <div class="dp-settings-download-engine-row">
-        <div class="dp-settings-download-path-stack" data-download-path-mode="builtin" ${builtIn ? '' : 'hidden'}>
-          ${directoryField('download_folder', 'Built-in Download Folder', s.download_folder || '/download', {
+        <div class="dp-settings-download-path-stack">
+          ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
             hint: 'Where DebridPulse saves downloads.',
             browseAction: 'browse-download-folder',
-            browseLabel: 'Browse server directories for Built-in Download Folder',
-          })}
-        </div>
-        <div class="dp-settings-download-path-stack" data-download-path-mode="external" ${builtIn ? 'hidden' : ''}>
-          ${input('aria2_download_path', 'External aria2 Download Path', aria2.download_path || '', {
-            hint: 'Path your external aria2 server uses for the shared download folder on that server.'
+            browseLabel: 'Browse server directories for Download Folder',
           })}
         </div>
         <div class="dp-settings-download-limit">
@@ -638,11 +590,11 @@
       <details class="dp-settings-additional dp-settings-engine-tuning">
         <summary><span>Additional Engine Tuning</span></summary>
         <div class="dp-settings-additional-body">
-          <!-- Per-job tuning (specification section 9.9): applied to every
-               download regardless of built-in/external mode
-               (executors/aria2/executor.py Aria2Executor._options()), so it
-               must remain visible/controllable in BOTH modes -- never hidden
-               merely because external daemon-global mutation is read-only. -->
+          <!-- Specification section 9.9: continue/split/connections/min-split
+               are applied per job (executors/aria2/executor.py
+               Aria2Executor._options()); lowest-speed-limit, disk cache and file
+               allocation are daemon global options
+               (executors/aria2/runtime.py build_aria2_global_options()). -->
           <div class="dp-settings-engine-tuning-grid">
             ${tuningToggle(
               'aria2_continue_downloads',
@@ -661,32 +613,20 @@
             ${input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
               hint: 'Controls how small file sections can become when aria2 splits a download. Larger values create fewer parallel segments.'
             })}
+            ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
+              hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
+            })}
+            ${input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
+              hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
+            })}
           </div>
-          <!-- Built-in daemon/process-only tuning (specification section
-               9.9): these apply only to the built-in aria2 process's own
-               startup/global options (executors/aria2/runtime.py
-               build_aria2_global_options()), never per-job -- an external
-               aria2 daemon's own operator controls its own cache/allocation/
-               speed-limit configuration, so DebridPulse hides only THIS
-               group, never the per-job group above, when mode is external. -->
-          <div class="dp-settings-engine-tuning-builtin-only" data-builtin-only-tuning ${builtIn ? '' : 'hidden'}>
-            <p class="form-hint dp-settings-builtin-only-label">Built-in aria2 process only -- not applicable to an external aria2 daemon.</p>
-            <div class="dp-settings-engine-tuning-grid">
-              ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
-                hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
-              })}
-              ${input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
-                hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
-              })}
-            </div>
-            <div class="dp-settings-engine-file-allocation">
-              ${selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
-                ['trunc', 'Truncate'],
-                ['falloc', 'Fallocate'],
-                ['prealloc', 'Preallocate'],
-                ['none', 'None'],
-              ], 'Controls how aria2 prepares disk space for new files.')}
-            </div>
+          <div class="dp-settings-engine-file-allocation">
+            ${selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
+              ['trunc', 'Truncate'],
+              ['falloc', 'Fallocate'],
+              ['prealloc', 'Preallocate'],
+              ['none', 'None'],
+            ], 'Controls how aria2 prepares disk space for new files.')}
           </div>
         </div>
       </details>
@@ -694,7 +634,6 @@
       className: 'dp-settings-download-engine-card',
       wrapTitle: true,
       headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(engineCopy)}</span>`,
-      action: modeSelection,
     });
 
     const recovery = card('Download Safety & Recovery', `
@@ -1419,7 +1358,6 @@
 
     activateTab(state.activeTab);
     bindEvents(view);
-    updateModeState();
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
@@ -1518,7 +1456,6 @@
 
     view.addEventListener('change', event => {
       if (event.target.matches('[data-integration-enabled]')) providerEnableChanged(event.target);
-      if (event.target.matches(`[data-setting="aria2_mode"]`)) updateModeState();
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
@@ -1559,26 +1496,6 @@
       else if (action === 'copy-token') copyToken();
       else if (action === 'copy-oidc-callback') copyOidcCallback();
       else if (action === 'logout-session') logoutSession(button);
-    });
-  }
-
-  function updateModeState() {
-    const mode = valueOf('aria2_mode') || 'builtin';
-    root()?.querySelectorAll('.dp-settings-mode-external').forEach(el => {
-      el.hidden = mode !== 'external';
-    });
-    root()?.querySelectorAll('[data-download-path-mode]').forEach(el => {
-      el.hidden = el.dataset.downloadPathMode !== mode;
-    });
-    // Specification section 9.9: only the built-in daemon/process-only
-    // tuning subsection is mode-gated. The per-job tuning fields
-    // (split/min-split-size/max-connection-per-server/continue) inside the
-    // SAME <details> apply to every download regardless of mode
-    // (Aria2Executor._options()) and must stay visible/editable in both --
-    // never hide the whole "Additional Engine Tuning" section merely
-    // because external daemon-global mutation is read-only.
-    root()?.querySelectorAll('[data-builtin-only-tuning]').forEach(el => {
-      el.hidden = mode !== 'builtin';
     });
   }
 
@@ -1655,10 +1572,6 @@
     const current = aria2Of(state.settings);
     return {
       options: {
-        mode: valueOf('aria2_mode', current.mode || 'builtin'),
-        url: valueOf('aria2_url', current.url || 'http://127.0.0.1:6800/jsonrpc'),
-        secret: valueOf('aria2_secret'),
-        download_path: valueOf('aria2_download_path'),
         split: intOf('aria2_split', current.split ?? 16),
         min_split_size: valueOf('aria2_min_split_size', current.min_split_size || '10M'),
         max_connection_per_server: intOf('aria2_max_connection_per_server', current.max_connection_per_server ?? 16),
@@ -1667,7 +1580,6 @@
         file_allocation: valueOf('aria2_file_allocation', current.file_allocation || 'falloc'),
         lowest_speed_limit: valueOf('aria2_lowest_speed_limit', current.lowest_speed_limit || '0'),
       },
-      clear_secrets: scopedClears('aria2'),
     };
   }
 
@@ -1780,7 +1692,6 @@
       renderPreservingViewport();
     }
     if (!quiet) notify('Settings saved', 'success');
-    try { if (typeof updateAria2ngLink === 'function') updateAria2ngLink(); } catch (_) {}
     try { if (typeof checkConnections === 'function') checkConnections(); } catch (_) {}
     try { if (typeof loadAria2SpeedLimit === 'function') loadAria2SpeedLimit(); } catch (_) {}
     return result;
@@ -1875,14 +1786,6 @@
         clear_api_key: clears.has('alldebrid_api_key'),
       };
     }
-    if (kind === 'aria2') {
-      return {
-        mode: valueOf('aria2_mode', aria2Of(state.settings).mode || 'builtin'),
-        url: valueOf('aria2_url'),
-        secret: valueOf('aria2_secret'),
-        clear_secret: clears.has('aria2_secret'),
-      };
-    }
     if (kind === 'discord') {
       return {
         webhook_url: valueOf('discord_webhook_url'),
@@ -1897,13 +1800,15 @@
   async function testConnection(kind, button) {
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
-      aria2: '/settings/validate-aria2',
+      aria2: '/settings/test-aria2',
       discord: '/settings/validate-discord',
     };
     const labels = {alldebrid: 'AllDebrid', aria2: 'aria2', discord: 'Discord'};
     setBusy(button, true, 'Testing…');
     try {
-      const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
+      // aria2 is the daemon DebridPulse runs: its test takes no draft values.
+      const draft = kind === 'aria2' ? undefined : connectionTestPayload(kind);
+      const result = await request('POST', endpoints[kind], draft, 20000);
       if (kind === 'alldebrid') {
         notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
       } else if (kind === 'aria2') {

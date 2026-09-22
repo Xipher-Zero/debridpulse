@@ -13,15 +13,17 @@ from executors.aria2.client import Aria2Service
 
 logger = logging.getLogger("alldebrid.aria2")
 
-BUILTIN_ARIA2_SECRET = "debridpulse-internal-aria2-rpc"
+# The daemon DebridPulse runs listens on loopback only. Its RPC endpoint and
+# secret are constructed here and never come from settings.
+RPC_PORT = 6800
+RPC_SECRET = "debridpulse-internal-aria2-rpc"
 
 
 def _canonical_aria2_options(cfg):
     """Decode the executor-owned ``integrations.aria2`` namespace of ``cfg``.
 
     This is the settings-boundary accessor for callers that already hold an
-    ``AppSettings`` (``api/routes.py``, ``api/settings_validation_routes.py``,
-    ``executors/aria2/migration.py``, ``main.py``). ``BuiltinAria2Runtime`` and
+    ``AppSettings`` (``api/routes.py``). ``Aria2Runtime`` and
     ``Aria2Administration`` never call it: they consume the already-injected
     ``Aria2RuntimeConfiguration``. ``integrations.aria2`` is the only
     authority -- there is no flat-field fallback."""
@@ -32,16 +34,20 @@ def _canonical_aria2_options(cfg):
     return Aria2Options(**options)
 
 
-def effective_rpc_config(cfg) -> tuple[str, str]:
-    """RPC endpoint and secret for the canonical aria2 options of ``cfg``."""
-    return _effective_rpc_config(_canonical_aria2_options(cfg))
+def rpc_url() -> str:
+    return f"http://127.0.0.1:{RPC_PORT}/jsonrpc"
+
+
+def rpc_service(options) -> Aria2Service:
+    """The RPC client for the daemon DebridPulse runs; the one construction site."""
+    return Aria2Service(rpc_url(), RPC_SECRET, options.operation_timeout_seconds)
 
 
 def build_aria2_global_options(options, max_concurrent_executions: int, max_download_bytes_per_second: int,
                                 *, include_safety: bool = False) -> Dict[str, str]:
     """Pure translation of already-injected typed configuration into the
     native aria2 global-option dict -- no settings access of any kind. It is the
-    single mapping owner used by ``BuiltinAria2Runtime`` and
+    single mapping owner used by ``Aria2Runtime`` and
     ``Aria2Administration``, which only ever hold injected configuration."""
     options_dict: Dict[str, str] = {
         "max-download-result": str(int(options.max_download_result or 50)),
@@ -73,20 +79,6 @@ def build_aria2_global_options(options, max_concurrent_executions: int, max_down
     return options_dict
 
 
-def _builtin_mode(options) -> bool:
-    return options.mode == "builtin"
-
-
-def _builtin_rpc_url(options) -> str:
-    return f"http://127.0.0.1:{options.builtin_port}/jsonrpc"
-
-
-def _effective_rpc_config(options) -> tuple[str, str]:
-    if _builtin_mode(options):
-        return _builtin_rpc_url(options), BUILTIN_ARIA2_SECRET
-    return (options.url or "").strip(), (options.secret or "").strip()
-
-
 def _default_aria2_options():
     from executors.aria2.definition import Aria2Options
     return Aria2Options()
@@ -94,12 +86,12 @@ def _default_aria2_options():
 
 @dataclass(frozen=True)
 class Aria2RuntimeConfiguration:
-    """Typed configuration injected into ``BuiltinAria2Runtime``/
+    """Typed configuration injected into ``Aria2Runtime``/
     ``Aria2Administration`` (DP 1.0.12 canonical architecture correction,
     Workstream C, specification section 9.3). Rebuilt and re-injected by
     ``application.composition.configure()`` on every settings change; the
     runtime/admin singletons never consult global application settings
-    themselves to discover their own native tuning, lifecycle mode, or
+    themselves to discover their own native tuning, lifecycle, or
     application storage root."""
     options: Any = field(default_factory=_default_aria2_options)
     download_root: str = "/download"
@@ -107,7 +99,7 @@ class Aria2RuntimeConfiguration:
     max_download_bytes_per_second: int = 0
 
 
-class BuiltinAria2Runtime:
+class Aria2Runtime:
     def __init__(self) -> None:
         self._process: Optional[asyncio.subprocess.Process] = None
         self._started_at: float = 0.0
@@ -130,17 +122,15 @@ class BuiltinAria2Runtime:
         return self._config.options
 
     def _service(self) -> Aria2Service:
-        url, secret = _effective_rpc_config(self._config.options)
-        options = self._config.options
-        return Aria2Service(url, secret, options.operation_timeout_seconds, owns_daemon=options.mode == "builtin")
+        return rpc_service(self._config.options)
 
     def _is_process_alive(self) -> bool:
         return self._process is not None and self._process.returncode is None
 
     def _runtime_paths(self) -> tuple[Path, Path]:
         aria2 = self._config.options
-        log_file = Path(aria2.builtin_log_file or "/app/data/aria2/aria2.log")
-        session_file = Path(aria2.builtin_session_file or "/app/data/aria2/aria2.session")
+        log_file = Path(aria2.log_file or "/app/data/aria2/aria2.log")
+        session_file = Path(aria2.session_file or "/app/data/aria2/aria2.session")
         log_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.parent.mkdir(parents=True, exist_ok=True)
         session_file.touch(exist_ok=True)
@@ -148,8 +138,8 @@ class BuiltinAria2Runtime:
 
     def _log_rotation_settings(self) -> tuple[int, int]:
         aria2 = self._config.options
-        max_mb = int(aria2.builtin_log_max_mb or 25)
-        backups = int(aria2.builtin_log_backups or 0)
+        max_mb = int(aria2.log_max_mb or 25)
+        backups = int(aria2.log_backups or 0)
         return max(1, max_mb) * 1024 * 1024, max(0, backups)
 
     def _rotate_log_file(self) -> bool:
@@ -160,7 +150,7 @@ class BuiltinAria2Runtime:
                 return False
             if backups <= 0:
                 log_file.write_text("", encoding="utf-8")
-                logger.info("Built-in aria2 log truncated after reaching rotation limit")
+                logger.info("aria2 log truncated after reaching rotation limit")
                 return True
             for index in range(backups, 0, -1):
                 src = log_file.with_name(f"{log_file.name}.{index}")
@@ -171,18 +161,16 @@ class BuiltinAria2Runtime:
                     src.replace(dst)
             log_file.replace(log_file.with_name(f"{log_file.name}.1"))
             log_file.touch(exist_ok=True)
-            logger.info("Built-in aria2 log rotated after reaching rotation limit")
+            logger.info("aria2 log rotated after reaching rotation limit")
             return True
         except Exception as exc:
-            logger.warning("Built-in aria2 log rotation failed: %s", exc)
+            logger.warning("aria2 log rotation failed: %s", exc)
             return False
 
     def _download_dir(self) -> Path:
-        # Built-in aria2 runs in the same container as the app, so it must use
-        # the normal mounted download folder (application storage root,
-        # injected -- specification section 4.2). aria2_download_path is only
-        # for a separate external aria2 container with a different path
-        # namespace.
+        # aria2 runs in the same container as the app and writes into the
+        # application download folder (storage root, injected -- specification
+        # section 4.2).
         return Path(self._config.download_root or "/download")
 
     def _command(self) -> list[str]:
@@ -198,8 +186,8 @@ class BuiltinAria2Runtime:
             "aria2c",
             "--enable-rpc=true",
             "--rpc-listen-all=false",
-            f"--rpc-listen-port={aria2.builtin_port}",
-            f"--rpc-secret={BUILTIN_ARIA2_SECRET}",
+            f"--rpc-listen-port={RPC_PORT}",
+            f"--rpc-secret={RPC_SECRET}",
             "--rpc-allow-origin-all=false",
             f"--dir={download_dir}",
             f"--save-session={session_file}",
@@ -230,21 +218,17 @@ class BuiltinAria2Runtime:
         return cmd
 
     async def ensure_started(self) -> Dict[str, Any]:
-        if not _builtin_mode(self._config.options):
-            return await self.status()
-        if not self._config.options.builtin_auto_start:
+        if not self._config.options.auto_start:
             return await self.status()
         return await self.start()
 
     async def start(self) -> Dict[str, Any]:
         async with self._lock:
-            if not _builtin_mode(self._config.options):
-                return await self.status()
             if self._is_process_alive():
                 return await self.status()
             if not shutil.which("aria2c"):
                 self._last_error = "aria2c binary not found in container"
-                logger.warning("Built-in aria2 start skipped: %s", self._last_error)
+                logger.warning("aria2 start skipped: %s", self._last_error)
                 return await self.status()
             try:
                 self._rotate_log_file()
@@ -269,23 +253,22 @@ class BuiltinAria2Runtime:
                 self._started_at = time.time()
                 self._last_error = ""
                 await self._wait_until_healthy()
-                logger.info("Built-in aria2 started on %s", _builtin_rpc_url(self._config.options))
+                logger.info("aria2 started on %s", rpc_url())
             except BaseException as exc:
                 self._last_error = str(exc).strip() or exc.__class__.__name__
                 await self._cleanup_failed_start()
                 if isinstance(exc, asyncio.CancelledError):
                     raise
-                logger.warning("Built-in aria2 start failed: %s", exc)
+                logger.warning("aria2 start failed: %s", exc)
             return await self.status()
 
     async def stop(self) -> Dict[str, Any]:
         async with self._lock:
             try:
-                if _builtin_mode(self._config.options):
-                    try:
-                        await self._service()._call("aria2.shutdown")
-                    except Exception as _e:
-                        logger.debug("aria2 shutdown RPC failed (process will be killed): %s", _e)
+                try:
+                    await self._service()._call("aria2.shutdown")
+                except Exception as _e:
+                    logger.debug("aria2 shutdown RPC failed (process will be killed): %s", _e)
                 if self._process and self._process.returncode is None:
                     try:
                         await asyncio.wait_for(self._process.wait(), timeout=5)
@@ -299,7 +282,7 @@ class BuiltinAria2Runtime:
                 await self._cancel_drain_tasks()
             except Exception as exc:
                 self._last_error = str(exc)
-                logger.warning("Built-in aria2 stop failed: %s", exc)
+                logger.warning("aria2 stop failed: %s", exc)
             return await self.status()
 
     async def restart(self) -> Dict[str, Any]:
@@ -307,8 +290,6 @@ class BuiltinAria2Runtime:
         return await self.start()
 
     async def ensure_log_rotation(self) -> Dict[str, Any]:
-        if not _builtin_mode(self._config.options):
-            return {"ok": True, "enabled": False, "rotated": False}
         log_file, _ = self._runtime_paths()
         max_bytes, _ = self._log_rotation_settings()
         try:
@@ -316,18 +297,16 @@ class BuiltinAria2Runtime:
         except Exception:
             size = 0
         if size <= max_bytes:
-            return {"ok": True, "enabled": True, "rotated": False, "size_bytes": size}
+            return {"ok": True, "rotated": False, "size_bytes": size}
         if self._is_process_alive():
             # aria2 keeps the log file handle open. Restarting after rotation is
             # the reliable way to make it write into the fresh log file.
             await self.restart()
-            return {"ok": True, "enabled": True, "rotated": True, "restarted": True, "size_bytes": size}
+            return {"ok": True, "rotated": True, "restarted": True, "size_bytes": size}
         rotated = self._rotate_log_file()
-        return {"ok": True, "enabled": True, "rotated": rotated, "restarted": False, "size_bytes": size}
+        return {"ok": True, "rotated": rotated, "restarted": False, "size_bytes": size}
 
     async def apply_options(self) -> Dict[str, Any]:
-        if not _builtin_mode(self._config.options):
-            return {"ok": False, "enabled": False}
         svc = self._service()
         options = build_aria2_global_options(
             self._config.options, self._config.max_concurrent_executions,
@@ -338,28 +317,22 @@ class BuiltinAria2Runtime:
 
     async def status(self) -> Dict[str, Any]:
         aria2 = self._config.options
-        enabled = _builtin_mode(aria2)
         process_running = self._is_process_alive()
         rpc_ok = False
         version = ""
         rpc_error = ""
-        if enabled:
-            try:
-                result = await self._service().test()
-                rpc_ok = True
-                version = result.get("version", "")
-            except Exception as exc:
-                rpc_error = str(exc)
+        try:
+            result = await self._service().test()
+            rpc_ok = True
+            version = result.get("version", "")
+        except Exception as exc:
+            rpc_error = str(exc)
         return {
-            "enabled": enabled,
-            "mode": aria2.mode,
-            "auto_start": bool(aria2.builtin_auto_start),
-            "running": bool(enabled and (process_running or rpc_ok)),
+            "auto_start": bool(aria2.auto_start),
+            "running": bool(process_running or rpc_ok),
             "process_running": process_running,
             "rpc_ok": rpc_ok,
-            "rpc_url": _builtin_rpc_url(aria2) if enabled else (aria2.url or ""),
-            "download_dir": str(self._download_dir()) if enabled else "",
-            "secret_managed": enabled,
+            "download_dir": str(self._download_dir()),
             "version": version,
             "uptime_seconds": int(time.time() - self._started_at) if self._started_at else 0,
             "last_error": self._last_error or rpc_error,
@@ -367,7 +340,7 @@ class BuiltinAria2Runtime:
             "safety": build_aria2_global_options(
                 aria2, self._config.max_concurrent_executions,
                 self._config.max_download_bytes_per_second, include_safety=True,
-            ) if enabled else {},
+            ),
         }
 
     async def _wait_until_healthy(self) -> None:
@@ -442,4 +415,4 @@ class BuiltinAria2Runtime:
         return "; ".join(details)
 
 
-runtime = BuiltinAria2Runtime()
+runtime = Aria2Runtime()

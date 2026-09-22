@@ -36,9 +36,8 @@ def test_quick_start_uses_current_ui_names_and_first_download_flow():
         "Debrid Services → AllDebrid",
         "Apply Settings",
         "Settings → Downloads → Download Engine",
-        "Built-in aria2",
-        "Built-in Download Folder",
-        "External RPC URL",
+        "Download Folder",
+        "DebridPulse runs and manages aria2 for you",
         "Dashboard",
         "Downloads",
         "Activity Log",
@@ -70,7 +69,6 @@ def test_quick_start_explains_source_types_and_safe_defaults_before_advanced_opt
         "You do not need to manually unlock links on AllDebrid first.",
         "Your DebridPulse aria2 process does <b>not</b> need to join the torrent swarm.",
         "The defaults are appropriate for a normal installation",
-        "Choose <b>External aria2</b> only if you already have one.",
     ):
         assert phrase in quick
 

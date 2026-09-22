@@ -30,7 +30,6 @@ TABLES = [
     "stats_snapshots",
     "transfer_pause_intents",
     "deferred_provider_submissions",
-    "debridpulse_aria2_owned_gids",
     "transfer_controls",
     "transfer_requests",
     "provider_resources",
@@ -61,7 +60,6 @@ _TABLE_ORDER = {
     "stats_snapshots": "id",
     "transfer_pause_intents": "torrent_id",
     "deferred_provider_submissions": "torrent_id",
-    "debridpulse_aria2_owned_gids": "gid",
     "transfer_controls": "key",
     "transfer_requests": "id",
     "provider_resources": "id",
@@ -283,7 +281,6 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
             await db.execute(f"DELETE FROM {table}")
         await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")
         await db.execute("DELETE FROM transfer_requests")
-        await db.execute("DELETE FROM debridpulse_aria2_owned_gids")
         await db.execute("DELETE FROM transfer_pause_intents")
         await db.execute("DELETE FROM deferred_provider_submissions")
         await db.execute("DELETE FROM download_files")

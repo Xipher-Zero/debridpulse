@@ -30,7 +30,6 @@ from core.version import read_version
 from providers.alldebrid.admin import runtime_status as alldebrid_runtime_status
 from providers.alldebrid.client import AllDebridService
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
-from executors.aria2.client import Aria2Service
 from services.notifications import NotificationService
 from application.dependencies import get_application
 from application.service import ApplicationService
@@ -72,13 +71,6 @@ _LEGAL_DOCUMENTS = {
 class AllDebridValidationRequest(BaseModel):
     api_key: str = Field(default="", max_length=4096)
     clear_api_key: bool = False
-
-
-class Aria2ValidationRequest(BaseModel):
-    mode: Literal["builtin", "external"]
-    url: str = Field(default="", max_length=4096)
-    secret: str = Field(default="", max_length=4096)
-    clear_secret: bool = False
 
 
 class DiscordValidationRequest(BaseModel):
@@ -512,42 +504,6 @@ async def validate_alldebrid(payload: AllDebridValidationRequest):
             "isPremium": user_data.get("isPremium", False),
             "premiumUntil": user_data.get("premiumUntil", user_data.get("premium_until", 0)),
         }
-    except Exception as exc:
-        raise HTTPException(502, _safe_failure(exc)) from exc
-
-
-@router.post("/settings/validate-aria2")
-async def validate_aria2(payload: Aria2ValidationRequest, application: ApplicationService = Depends(get_application)):
-    from executors.aria2.runtime import _canonical_aria2_options
-
-    cfg = get_settings()
-    aria2 = _canonical_aria2_options(cfg)
-    try:
-        if payload.mode == "builtin":
-            if aria2.mode != "builtin":
-                raise HTTPException(
-                    400,
-                    "Built-in aria2 starts after Apply Settings; apply the mode change before testing it",
-                )
-            result = await application.integration_admin("aria2").test()
-        else:
-            url = payload.url.strip() or str(aria2.url or "").strip()
-            if not url:
-                raise HTTPException(400, "No external aria2 RPC URL configured or entered")
-            secret = "" if payload.clear_secret else (
-                payload.secret.strip() or str(aria2.secret or "").strip()
-            )
-            # A draft connection test never mutates the daemon it probes.
-            service = Aria2Service(
-                url,
-                secret,
-                aria2.operation_timeout_seconds,
-                owns_daemon=False,
-            )
-            result = await service.test()
-        return {"ok": True, **result}
-    except HTTPException:
-        raise
     except Exception as exc:
         raise HTTPException(502, _safe_failure(exc)) from exc
 

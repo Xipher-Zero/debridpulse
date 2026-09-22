@@ -126,10 +126,10 @@ async def _runtime(tmp_path, monkeypatch):
         return uri
 
     monkeypatch.setattr(aria2_runtime, "validate_resolved_public_destination", validated)
-    egress = SimpleNamespace(ensure_started=_noop, job_options=lambda address, external, scope=None: {})
+    egress = SimpleNamespace(ensure_started=_noop, job_options=lambda address, scope=None: {})
     executor = Aria2Executor(
         service,
-        Aria2Configuration(str(downloads), external=False, confirmation_delay=0),
+        Aria2Configuration(str(downloads), confirmation_delay=0),
         repository.authorize_execution,
         egress=egress,
     )

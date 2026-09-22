@@ -190,8 +190,7 @@ def test_non_auth_settings_contracts_remain_in_canonical_owner_or_semantic_modul
     combined = "\n".join(read(path) for path in sorted(STATIC.glob("ui-settings*.js")))
     for fragment in (
         "alldebrid_api_key",
-        "aria2_mode",
-        "aria2_secret",
+        "aria2_split",
         "extract_enabled",
         "extract_delete_archive",
         "discord_webhook_url",
@@ -199,7 +198,7 @@ def test_non_auth_settings_contracts_remain_in_canonical_owner_or_semantic_modul
         "db_wipe_enabled",
         "clear_secrets",
         "/settings/validate-alldebrid",
-        "/settings/validate-aria2",
+        "/settings/test-aria2",
         "/settings/validate-discord",
     ):
         assert fragment in combined

@@ -197,7 +197,7 @@ def _guard(seen: list | None = None, *, public=("127.0.0.1",), answers=None) -> 
 
     return DownloaderEgressGuard(
         resolver=resolver, public_check=lambda address: address in public,
-        bind_host="127.0.0.1", bind_port=0,
+        bind_port=0,
     )
 
 
@@ -246,7 +246,7 @@ async def test_real_aria2_passive_ftp_fails_under_an_exact_endpoint_credential(t
     await guard.ensure_started()
     try:
         uri = f"ftp://files.test:{origin.port}/pub/file.bin"
-        status = await _aria2_ftp(tmp_path, uri, guard.job_options(uri, external=False), "exact.bin")
+        status = await _aria2_ftp(tmp_path, uri, guard.job_options(uri), "exact.bin")
         assert status["status"] == "error"
         # The control channel was authorized and reached the origin; the
         # server-selected data CONNECT was refused before any DNS or socket.
@@ -262,7 +262,7 @@ async def test_exact_endpoint_credential_gets_407_on_a_second_port() -> None:
     guard = _guard()
     await guard.ensure_started()
     try:
-        options = guard.job_options("ftp://files.test:2121/f.bin", external=False)
+        options = guard.job_options("ftp://files.test:2121/f.bin")
         assert _status(await _connect(guard, "files.test:30007", *_credential(options))) == 407
     finally:
         await guard.stop()
@@ -278,7 +278,7 @@ async def test_real_aria2_passive_ftp_transfers_through_the_same_host_scope(tmp_
     await guard.ensure_started()
     try:
         uri = f"ftp://files.test:{origin.port}/pub/file.bin"
-        options = guard.job_options(uri, external=False, scope=RouteScope.SAME_HOST)
+        options = guard.job_options(uri, scope=RouteScope.SAME_HOST)
         if not anonymous:
             options = {**options, "ftp-user": "dp", "ftp-passwd": "pw"}
         status = await _aria2_ftp(tmp_path, uri, options, "same-host.bin")
@@ -301,7 +301,7 @@ async def test_same_host_credential_rejects_another_hostname() -> None:
     guard = _guard(seen)
     await guard.ensure_started()
     try:
-        options = guard.job_options("ftp://files.test:2121/f.bin", external=False, scope=RouteScope.SAME_HOST)
+        options = guard.job_options("ftp://files.test:2121/f.bin", scope=RouteScope.SAME_HOST)
         for authority in ("other.test:2121", "other.test:30007", "files.test.evil:30007", "127.0.0.1:30007"):
             assert _status(await _connect(guard, authority, *_credential(options))) == 407
         assert seen == []
@@ -313,7 +313,7 @@ async def test_same_host_credential_rejects_other_privileged_ports() -> None:
     guard = _guard()
     await guard.ensure_started()
     try:
-        options = guard.job_options("ftp://files.test/f.bin", external=False, scope=RouteScope.SAME_HOST)
+        options = guard.job_options("ftp://files.test/f.bin", scope=RouteScope.SAME_HOST)
         for port in (22, 25, 80, 443, 1023):
             assert _status(await _connect(guard, f"files.test:{port}", *_credential(options))) == 407
     finally:
@@ -324,11 +324,11 @@ async def test_same_host_credential_is_not_forgeable_by_editing_its_scope() -> N
     guard = _guard()
     await guard.ensure_started()
     try:
-        options = guard.job_options("ftp://files.test:2121/f.bin", external=False, scope=RouteScope.SAME_HOST)
+        options = guard.job_options("ftp://files.test:2121/f.bin", scope=RouteScope.SAME_HOST)
         username, password = _credential(options)
         forged = username.rsplit(".", 1)[0] + ".25"
         assert _status(await _connect(guard, "files.test:25", forged, password)) == 407
-        exact = guard.job_options("ftp://files.test:2121/f.bin", external=False)
+        exact = guard.job_options("ftp://files.test:2121/f.bin")
         assert _status(await _connect(guard, "files.test:30007", username, exact["all-proxy-passwd"])) == 407
         assert _status(await _connect(guard, "files.test:30007", "debridpulse", password)) == 407
         assert _status(await _connect(guard, "files.test:30007", username, "")) == 407
@@ -347,7 +347,7 @@ async def test_same_host_data_connect_still_rejects_non_public_resolution(answer
     guard = _guard(answers=lambda host, port: answers)
     await guard.ensure_started()
     try:
-        options = guard.job_options("ftp://files.test:2121/f.bin", external=False, scope=RouteScope.SAME_HOST)
+        options = guard.job_options("ftp://files.test:2121/f.bin", scope=RouteScope.SAME_HOST)
         assert _status(await _connect(guard, "files.test:30007", *_credential(options))) == 403
     finally:
         await guard.stop()
@@ -367,7 +367,7 @@ async def test_same_host_rebinding_between_control_and_data_is_rejected(tmp_path
     try:
         uri = f"ftp://files.test:{origin.port}/pub/file.bin"
         status = await _aria2_ftp(
-            tmp_path, uri, guard.job_options(uri, external=False, scope=RouteScope.SAME_HOST), "rebind.bin")
+            tmp_path, uri, guard.job_options(uri, scope=RouteScope.SAME_HOST), "rebind.bin")
         assert status["status"] == "error"
         assert len(calls) == 2 and origin.data_connections == 0
     finally:
@@ -382,7 +382,7 @@ async def test_same_host_literal_private_target_is_rejected_before_any_credentia
     await guard.ensure_started()
     try:
         with pytest.raises(UnsafeDestinationError):
-            guard.job_options("ftp://127.0.0.1/f.bin", external=False, scope=RouteScope.SAME_HOST)
+            guard.job_options("ftp://127.0.0.1/f.bin", scope=RouteScope.SAME_HOST)
     finally:
         await guard.stop()
 
@@ -395,8 +395,8 @@ async def test_default_scope_is_the_unchanged_exact_endpoint_credential(scheme, 
     await guard.ensure_started()
     try:
         uri = f"{scheme}://files.test/f.bin"
-        default = guard.job_options(uri, external=False)
-        assert default == guard.job_options(uri, external=False, scope=RouteScope.ENDPOINT)
+        default = guard.job_options(uri)
+        assert default == guard.job_options(uri, scope=RouteScope.ENDPOINT)
         assert default["all-proxy-user"] == "debridpulse"
         assert default["all-proxy-passwd"] == guard._token("files.test", port)
         for family in ("http", "https", "ftp"):
@@ -412,7 +412,7 @@ async def test_exact_endpoint_credential_still_admits_only_its_own_authority(sch
     guard = _guard(seen)
     await guard.ensure_started()
     try:
-        options = guard.job_options(f"{scheme}://files.test/f.bin", external=False)
+        options = guard.job_options(f"{scheme}://files.test/f.bin")
         # Its own authority passes authentication (then fails to reach an
         # origin that is not listening -> 403, proving it got past 407).
         assert _status(await _connect(guard, f"files.test:{port}", *_credential(options))) in {200, 403}
@@ -428,7 +428,7 @@ async def test_same_host_scope_pins_every_per_protocol_proxy_to_the_guard() -> N
     guard = _guard()
     await guard.ensure_started()
     try:
-        options = guard.job_options("ftp://files.test/f.bin", external=False, scope=RouteScope.SAME_HOST)
+        options = guard.job_options("ftp://files.test/f.bin", scope=RouteScope.SAME_HOST)
         proxy = f"http://127.0.0.1:{guard.bound_port}"
         assert options["all-proxy"] == proxy and options["no-proxy"] == "" and options["proxy-method"] == "tunnel"
         for family in ("http", "https", "ftp"):

@@ -43,9 +43,9 @@ def _candidate(*schemes: str) -> TransferCandidate:
 def _executor(tmp_path: Path, *, egress=None) -> Aria2Executor:
     return Aria2Executor(
         None,
-        Aria2Configuration(str(tmp_path), external=False),
+        Aria2Configuration(str(tmp_path)),
         AsyncMock(return_value=True),
-        egress=egress or SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, external, scope=None: {}),
+        egress=egress or SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, scope=None: {}),
     )
 
 
@@ -328,10 +328,10 @@ async def test_http_redirect_targets_are_still_confined_to_provider_link_schemes
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scheme,port", [("http", 80), ("https", 443), ("ftp", 21), ("sftp", 22)])
 async def test_guard_scopes_its_credential_to_the_correct_default_port(scheme, port) -> None:
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
+    guard = DownloaderEgressGuard(bind_port=0)
     await guard.ensure_started()
     try:
-        options = guard.job_options(f"{scheme}://provider.example/f.bin", external=False)
+        options = guard.job_options(f"{scheme}://provider.example/f.bin")
         assert options["all-proxy-passwd"] == guard._token("provider.example", port)
     finally:
         await guard.stop()
@@ -341,12 +341,12 @@ async def test_guard_scopes_its_credential_to_the_correct_default_port(scheme, p
 @pytest.mark.parametrize("scheme", CLAIMED)
 async def test_guard_forecloses_every_per_protocol_proxy_override(scheme) -> None:
     """aria2 lets --ftp-proxy override --all-proxy, so every per-protocol proxy
-    preference a shared daemon could carry must be pinned at the guard."""
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
+    preference a daemon could carry globally must be pinned at the guard."""
+    guard = DownloaderEgressGuard(bind_port=0)
     await guard.ensure_started()
     try:
         proxy = f"http://127.0.0.1:{guard.bound_port}"
-        options = guard.job_options(f"{scheme}://provider.example/f.bin", external=False)
+        options = guard.job_options(f"{scheme}://provider.example/f.bin")
         assert options["all-proxy"] == proxy
         for family in ("all", "http", "https", "ftp"):
             assert options[f"{family}-proxy"] == proxy
@@ -360,25 +360,12 @@ async def test_guard_forecloses_every_per_protocol_proxy_override(scheme) -> Non
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scheme", ("ftp", "sftp"))
-async def test_external_mode_still_fails_closed_for_the_new_transports(monkeypatch, scheme) -> None:
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
-    await guard.ensure_started()
-    try:
-        monkeypatch.delenv("DEBRIDPULSE_EXTERNAL_ARIA2_EGRESS_PROXY", raising=False)
-        with pytest.raises(RuntimeError, match="fail-closed"):
-            guard.job_options(f"{scheme}://provider.example/f.bin", external=True)
-    finally:
-        await guard.stop()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("scheme", ("ftp", "sftp"))
 async def test_guard_refuses_a_non_public_target_on_the_new_transports(scheme) -> None:
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
+    guard = DownloaderEgressGuard(bind_port=0)
     await guard.ensure_started()
     try:
         with pytest.raises(safety.UnsafeDestinationError):
-            guard.job_options(f"{scheme}://127.0.0.1/f.bin", external=False)
+            guard.job_options(f"{scheme}://127.0.0.1/f.bin")
     finally:
         await guard.stop()
 
@@ -391,7 +378,7 @@ async def test_the_new_transports_cannot_bypass_the_guard(tmp_path, monkeypatch,
         return uri
 
     monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
-    guard = DownloaderEgressGuard(bind_host="127.0.0.1", bind_port=0)
+    guard = DownloaderEgressGuard(bind_port=0)
     await guard.ensure_started()
     try:
         executor = _executor(tmp_path, egress=guard)

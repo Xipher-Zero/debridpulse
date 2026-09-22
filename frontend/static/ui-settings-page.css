@@ -151,19 +151,16 @@
 #view-settings .dp-settings-field + .dp-settings-toggle,
 #view-settings .dp-settings-toggle + .dp-settings-toggle,
 #view-settings .dp-settings-clear-secret + .dp-settings-field,
-#view-settings .dp-settings-field + .dp-settings-clear-secret,
-#view-settings .dp-settings-mode-external + .dp-settings-field,
-#view-settings .dp-settings-field + .dp-settings-mode-external {
+#view-settings .dp-settings-field + .dp-settings-clear-secret {
   margin-top: 12px;
 }
 
-#view-settings .dp-settings-mode-external[hidden],
 #view-settings .dp-settings-engine-tuning[hidden] {
   display: none !important;
 }
 
-/* Download Engine owns a three-part header: title/artwork on the left, the
-   engine explanation true-centered, and mode selection pinned to the right. */
+/* Download Engine owns a three-part header: title/artwork on the left and the
+   engine explanation true-centered between two equal side columns. */
 #view-settings .dp-settings-download-engine-card > .card-header {
   display: grid;
   grid-template-columns: minmax(250px, 1fr) minmax(420px, 900px) minmax(250px, 1fr);
@@ -188,96 +185,8 @@
   line-height: 1.45;
 }
 
-#view-settings .dp-settings-download-engine-mode {
-  min-width: 0;
-  justify-self: end;
-}
-
-#view-settings .dp-settings-download-engine-mode > .dp-settings-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-}
-
-#view-settings .dp-settings-download-engine-mode .form-label {
-  margin: 0;
-  white-space: nowrap;
-}
-
-#view-settings .dp-settings-download-engine-mode .dp-dropdown-shell {
-  width: 180px;
-  min-width: 180px;
-}
-
-/* External connection controls form one connection band. The URL remains the
-   dominant datum; secret replacement and explicit clearing stay adjacent. */
-#view-settings .dp-settings-external-connection-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, .65fr);
-  align-items: start;
-  gap: 22px;
-  margin-top: 0;
-  padding: 0;
-  border: 0;
-}
-
-#view-settings .dp-settings-external-connection-row.is-secret-configured {
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, .65fr) minmax(280px, .65fr);
-}
-
-#view-settings .dp-settings-external-connection-row > .dp-settings-field {
-  min-width: 0;
-  margin-top: 0;
-}
-
-#view-settings .dp-settings-aria2-secret-meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-#view-settings .dp-settings-aria2-secret-meta .form-hint:first-child {
-  min-width: 0;
-}
-
-#view-settings .dp-settings-external-connection-row .dp-settings-clear-secret--aria2 {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(38px, auto) auto;
-  align-items: center;
-  column-gap: 12px;
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
-}
-
-#view-settings .dp-settings-clear-secret--aria2 > .form-label {
-  grid-column: 1 / -1;
-  align-self: end;
-}
-
-#view-settings .dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control {
-  grid-column: 1 / -1;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-#view-settings .dp-settings-clear-secret--aria2 > small {
-  grid-column: 1 / -1;
-}
-
-#view-settings .dp-settings-clear-secret--aria2 input {
-  margin-left: auto;
-}
-
-/* The active path consumes all remaining row width; concurrency remains compact
-   and pinned to the card's right datum in both engine modes. */
+/* The download folder consumes all remaining row width; concurrency remains
+   compact and pinned to the card's right datum. */
 #view-settings .dp-settings-download-engine-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
@@ -443,7 +352,7 @@
   margin-top: 12px;
 }
 
-/* Built-in aria2 tuning follows the Settings field grammar in a compact two-
+/* aria2 tuning follows the Settings field grammar in a compact two-
    column matrix, then terminates with the semantically distinct allocation
    selector centered beneath the performance controls. */
 #view-settings .dp-settings-engine-tuning {
@@ -466,19 +375,6 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-}
-
-/* Specification section 9.9: the built-in-only tuning subsection is visually
-   separated from (never merged with) the per-job group above it, which
-   stays visible/editable in both built-in and external mode. */
-#view-settings .dp-settings-engine-tuning-builtin-only {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--dp-border-subtle);
-}
-
-#view-settings .dp-settings-builtin-only-label {
-  margin: 0 0 10px;
 }
 
 #view-settings .dp-settings-engine-file-allocation {
@@ -701,11 +597,6 @@
   #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.3fr) minmax(250px, 1fr);
   }
-
-  #view-settings .dp-settings-external-connection-row.is-secret-configured {
-    grid-template-columns: minmax(0, 1.5fr) minmax(230px, .65fr) minmax(250px, .65fr);
-    gap: 18px;
-  }
 }
 
 @media (max-width: 1180px) {
@@ -732,20 +623,6 @@
     grid-row: 2;
     padding-top: 2px;
   }
-
-  #view-settings .dp-settings-download-engine-mode {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  #view-settings .dp-settings-external-connection-row,
-  #view-settings .dp-settings-external-connection-row.is-secret-configured {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, .55fr);
-  }
-
-  #view-settings .dp-settings-external-connection-row.is-secret-configured .dp-settings-clear-secret--aria2 {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 900px) {
@@ -762,15 +639,9 @@
   }
 
   #view-settings .dp-settings-alldebrid-key-row.is-configured,
-  #view-settings .dp-settings-external-connection-row,
-  #view-settings .dp-settings-external-connection-row.is-secret-configured,
   #view-settings .dp-settings-engine-tuning-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
-  }
-
-  #view-settings .dp-settings-external-connection-row.is-secret-configured .dp-settings-clear-secret--aria2 {
-    grid-column: auto;
   }
 
   #view-settings .dp-settings-download-engine-row {
@@ -811,8 +682,7 @@
   }
 
   #view-settings .dp-settings-download-engine-card > .card-header > .card-title,
-  #view-settings .dp-settings-card-header-center,
-  #view-settings .dp-settings-download-engine-mode {
+  #view-settings .dp-settings-card-header-center {
     grid-column: 1;
   }
 
@@ -825,18 +695,7 @@
     text-align: left;
   }
 
-  #view-settings .dp-settings-download-engine-mode {
-    grid-row: 3;
-    width: 100%;
-    justify-self: stretch;
-  }
-
-  #view-settings .dp-settings-download-engine-mode > .dp-settings-field {
-    justify-content: space-between;
-  }
-
-  #view-settings .dp-settings-alldebrid-key-meta,
-  #view-settings .dp-settings-aria2-secret-meta {
+  #view-settings .dp-settings-alldebrid-key-meta {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;

@@ -207,11 +207,11 @@ def _settings(**enabled) -> AppSettings:
 def _registry(tmp_path, settings) -> IntegrationRegistry:
     registry = IntegrationRegistry()
     environment = SimpleNamespace(
-        aria2=None, download_root=str(tmp_path), aria2_configuration=Aria2Configuration(str(tmp_path), external=False),
+        aria2=None, download_root=str(tmp_path), aria2_configuration=Aria2Configuration(str(tmp_path)),
     )
     selected = tuple(item for item in definitions if item.kind == "provider")
     register(registry, settings, environment, selected=selected)
-    registry.register_executor(Aria2Executor(None, Aria2Configuration(str(tmp_path), external=False), AsyncMock(return_value=True),
+    registry.register_executor(Aria2Executor(None, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True),
                                              egress=SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda *a, **k: {})))
     return registry
 

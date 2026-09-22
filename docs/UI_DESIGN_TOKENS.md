@@ -18,7 +18,7 @@ When implementation differs from the accepted UI, prefer the token contract unle
 - Primary text is cool white; secondary and metadata text use blue-lavender slate.
 - Purple is the DebridPulse identity/accent color.
 - Blue supports active/download concepts and forms the cool end of primary gradients.
-- Cyan is reserved for connectivity/external-control semantics.
+- Cyan is reserved for connectivity semantics.
 - Semantic green, amber, and red remain immediately legible on dark surfaces.
 
 ### Light theme

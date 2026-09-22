@@ -18,24 +18,8 @@ def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leaka
     runtime = read("ui-settings-page.js")
     # One mask, emitted by the owner directly into every configured-secret field.
     assert "const CONFIGURED_SECRET_MASK = '•'.repeat(48);" in runtime
-    assert runtime.count("const masked = CONFIGURED_SECRET_MASK;") == 2
+    assert runtime.count("const masked = CONFIGURED_SECRET_MASK;") == 1
     assert "•••••" not in runtime
-
-
-def test_external_rpc_clear_secret_is_adjacent_to_copy_and_connection_band_is_rebalanced():
-    page = read("ui-settings-page.js")
-    css = read("ui-settings-downloads-completion.css")
-
-    assert "Clear stored aria2 RPC Secret" in page
-    assert "Remove the saved RPC secret when you click Apply Settings." in page
-    assert "grid-template-columns: minmax(0, 1.35fr) minmax(300px, .9fr) minmax(320px, .75fr);" in css
-    assert ".dp-settings-external-connection-row .dp-settings-clear-secret--aria2" in css
-    assert "grid-template-columns: fit-content(340px) auto;" in css
-    assert ".dp-settings-clear-secret--aria2 > .form-label" in css
-    assert ".dp-settings-clear-secret--aria2 > small" in css
-    assert ".dp-settings-clear-secret--aria2 > .dp-settings-clear-secret-control" in css
-    assert "grid-row: 1 / 3;" in css
-    assert "column-gap: 14px;" in css
 
 
 def test_continue_partial_uses_copy_block_with_adjacent_centered_toggle_and_file_allocation_stays_grouped():
@@ -154,7 +138,6 @@ def test_sources_and_downloads_shift_complete_copy_blocks_not_first_lines():
     assert '[data-panel="sources"] .dp-settings-field > .form-label' in css
     assert '[data-panel="downloads"] .dp-settings-field > .form-label' in css
     assert '[data-panel="sources"] .dp-settings-alldebrid-key-meta > .form-hint:first-child' in css
-    assert '[data-panel="downloads"] .dp-settings-aria2-secret-meta > .form-hint:first-child' in css
     assert "position: relative;" in css
     assert "inset-inline-start: 3px;" in css
     assert "padding-inline-start: 6px;" not in css

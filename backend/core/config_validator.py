@@ -64,10 +64,6 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
 
 
     # ── URLs ──────────────────────────────────────────────────────────────────
-    aria2_url = str(_options(cfg, "aria2").get("url") or "")
-    if aria2_url and not _is_valid_url(aria2_url):
-        warn("integrations.aria2.url", "not a valid HTTP(S) URL", aria2_url)
-
     for field in ("discord_webhook_url", "discord_webhook_added",
                   "stats_report_webhook_url"):
         val = getattr(cfg, field, "")

@@ -6,7 +6,10 @@ their scoped surfaces. The broad ``PUT /settings`` document never writes them,
 and the flat names a pre-canonical client may still send are ignored.
 """
 import ast
+import asyncio
 import json
+import shutil
+import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,7 +21,7 @@ from api import routes
 from core.config import AppSettings
 from executors.aria2.client import Aria2Service
 from executors.aria2.definition import Aria2Options, definition as aria2_definition
-from executors.aria2.runtime import BuiltinAria2Runtime, Aria2RuntimeConfiguration
+from executors.aria2.runtime import RPC_SECRET, Aria2Runtime, Aria2RuntimeConfiguration, rpc_url
 from integrations.catalog import definitions
 from integrations.configuration import normalize_settings
 from integrations.definition import IntegrationEnvironment, IntegrationSettings
@@ -50,7 +53,7 @@ def _current():
     return normalize_settings(AppSettings(
         integrations={
             "alldebrid": IntegrationSettings(options={"api_key": "stored-key", "rate_limit_per_minute": 60}),
-            "aria2": IntegrationSettings(options={"mode": "external", "url": "http://a:6800/jsonrpc", "split": 24}),
+            "aria2": IntegrationSettings(options={"split": 24}),
         },
         transfer_policy=TransferSettings(max_concurrent_executions=6, stalled_timeout_hours=9),
     ), definitions)
@@ -88,14 +91,13 @@ async def test_put_settings_never_writes_a_canonical_namespace():
 @pytest.mark.asyncio
 async def test_put_settings_ignores_every_flat_compatibility_name():
     flat = {
-        "aria2_mode": "builtin", "aria2_split": 2, "aria2_url": "http://evil/", "aria2_secret": "x",
+        "aria2_split": 2,
         "max_concurrent_downloads": 1, "aria2_max_active_downloads": 1, "aria2_max_download_limit": 5,
         "alldebrid_api_key": "attacker-key", "poll_interval_seconds": 999, "upload_fail_retry_count": 0,
         "stuck_download_timeout_hours": 1,
     }
     _current_before, saved, response = await _put(flat)
 
-    assert saved.integrations["aria2"].options["mode"] == "external"
     assert saved.integrations["aria2"].options["split"] == 24
     assert saved.integrations["alldebrid"].options["api_key"] == "stored-key"
     assert saved.transfer_policy.max_concurrent_executions == 6
@@ -104,15 +106,15 @@ async def test_put_settings_ignores_every_flat_compatibility_name():
     # ... while the response still shows the CURRENT canonical value under the
     # historical names, as read-only compatibility output.
     assert response["max_concurrent_downloads"] == 6
-    assert response["aria2_mode"] == "external"
+    assert response["aria2_split"] == 24
     # The document names its own compatibility output, so a client can drop it.
-    assert {"max_concurrent_downloads", "aria2_mode", "aria2_secret_configured"} <= set(response["compatibility_fields"])
+    assert {"max_concurrent_downloads", "aria2_split", "alldebrid_api_key_configured"} <= set(response["compatibility_fields"])
     assert "transfer_policy" not in response["compatibility_fields"]
 
 
 @pytest.mark.asyncio
 async def test_broad_secret_clear_no_longer_accepts_integration_owned_secrets():
-    for secret in ("alldebrid_api_key", "aria2_secret"):
+    for secret in ("alldebrid_api_key",):
         with pytest.raises(Exception, match="Unsupported secret field"):
             await _put({"clear_secrets": [secret]})
 
@@ -157,43 +159,25 @@ async def test_alldebrid_credentials_are_written_only_through_the_scoped_integra
 
 
 # --------------------------------------------------------------------------- #
-# aria2 daemon ownership is injected, never looked up
+# The daemon owner constructs the one RPC client; nothing looks it up
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_owning_client_may_change_global_options_and_purge_results():
-    service = Aria2Service("http://127.0.0.1:6800/jsonrpc", owns_daemon=True)
+async def test_client_may_change_global_options_and_purge_results():
+    service = Aria2Service("http://127.0.0.1:6800/jsonrpc")
     service._call = AsyncMock(return_value="ok")
     assert await service.change_global_options({"max-overall-download-limit": "1"}) == "ok"
     assert await service.purge_download_results(force=True) == "ok"
 
 
-@pytest.mark.asyncio
-async def test_non_owning_client_blocks_every_daemon_mutation():
-    service = Aria2Service("http://external.example/jsonrpc", owns_daemon=False)
-    service._call = AsyncMock()
-    assert (await service.change_global_options({"max-overall-download-limit": "1"}))["skipped"] is True
-    assert (await service.purge_download_results(force=True))["skipped"] is True
-    service._call.assert_not_awaited()
-
-
-def test_a_client_that_was_never_told_it_owns_the_daemon_does_not():
-    assert Aria2Service("http://x/jsonrpc").owns_daemon is False
-
-
-@pytest.mark.parametrize("mode,owns", [("builtin", True), ("external", False)])
-def test_composition_and_runtime_inject_ownership_from_canonical_mode(mode, owns):
-    options = Aria2Options(mode=mode, url="http://remote:6800/jsonrpc")
+def test_composition_and_runtime_construct_the_same_daemon_client():
+    options = Aria2Options(operation_timeout_seconds=30)
     executor = aria2_definition.factory(options, IntegrationEnvironment(repository=MagicMock(), download_root="/download"))
-    assert executor.client.owns_daemon is owns
-
-    runtime = BuiltinAria2Runtime()
+    runtime = Aria2Runtime()
     runtime.configure(Aria2RuntimeConfiguration(options=options))
-    assert runtime._service().owns_daemon is owns
-    # Reconfiguration re-derives it: the value is never cached across a mode change.
-    other = Aria2Options(mode="external" if owns else "builtin", url="http://remote:6800/jsonrpc")
-    runtime.configure(Aria2RuntimeConfiguration(options=other))
-    assert runtime._service().owns_daemon is (not owns)
+    for client in (executor.client, runtime._service()):
+        assert (client.url, client.secret) == (rpc_url(), RPC_SECRET) == ("http://127.0.0.1:6800/jsonrpc", RPC_SECRET)
+        assert client.timeout.total == 30
 
 
 def test_the_client_module_has_no_global_settings_lookup():
@@ -202,8 +186,6 @@ def test_the_client_module_has_no_global_settings_lookup():
     imports = [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
     assert not [n for n in imports if "core.config" in ast.dump(n)]
     assert "get_settings" not in source
-    assert "aria2_mode" not in source
-    assert "_is_builtin_mode" not in source
     for path in (ROOT / "executors/aria2").glob("*.py"):
         if path.name != "migration.py":     # startup-only legacy handle decoder; reads the canonical namespace
             assert "get_settings" not in path.read_text(), path.name
@@ -211,7 +193,7 @@ def test_the_client_module_has_no_global_settings_lookup():
 
 def test_flat_aliases_are_not_read_by_production_runtime_code():
     forbidden = (
-        'getattr(cfg, "aria2_mode"', "cfg.aria2_mode", ".aria2_mode", "settings.aria2_",
+        'getattr(cfg, "aria2_split"', "cfg.aria2_split", ".aria2_split", "settings.aria2_",
         "cfg.max_concurrent_downloads", "cfg.alldebrid_api_key", "settings.alldebrid_api_key",
     )
     for path in ROOT.rglob("*.py"):
@@ -220,3 +202,93 @@ def test_flat_aliases_are_not_read_by_production_runtime_code():
         text = path.read_text()
         for needle in forbidden:
             assert needle not in text, f"{path.relative_to(ROOT)} reads flat alias {needle!r}"
+
+
+# --------------------------------------------------------------------------- #
+# Obsolete persisted values have zero authority over the one aria2 daemon
+# --------------------------------------------------------------------------- #
+
+class _TrapRpcServer:
+    """Counts every connection made to an address no current code may dial."""
+
+    def __init__(self):
+        self.connections = 0
+
+    async def __aenter__(self):
+        async def accept(_reader, writer):
+            self.connections += 1
+            writer.close()
+        self.server = await asyncio.start_server(accept, "127.0.0.1", 0)
+        self.url = f"http://127.0.0.1:{self.server.sockets[0].getsockname()[1]}/jsonrpc"
+        return self
+
+    async def __aexit__(self, *_exc):
+        self.server.close()
+        await self.server.wait_closed()
+
+
+def _free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(shutil.which("aria2c") is None, reason="the packaged aria2c binary is required")
+async def test_obsolete_persisted_values_never_redirect_the_dp_owned_daemon(tmp_path, monkeypatch):
+    import core.config as config
+    from executors.aria2 import runtime as runtime_module
+    from test_executor_configuration_ownership import CURRENT_ARIA2_OPTIONS
+
+    downloads = tmp_path / "downloads"
+    async with _TrapRpcServer() as trap:
+        obsolete = {"mode": "external", "url": trap.url, "secret": "trap-secret", "download_path": "/elsewhere"}
+        path = tmp_path / "config.json"
+        # Values an earlier release persisted, both as pre-canonical flat keys and
+        # inside the canonical namespace, all naming the trap.
+        path.write_text(json.dumps({
+            **{f"aria2_{name}": value for name, value in obsolete.items()},
+            "download_folder": str(downloads),
+            "integrations": {"aria2": {"options": {**obsolete, "split": 4}}},
+        }))
+        monkeypatch.setattr(config, "CONFIG_PATH", path)
+        monkeypatch.setattr(config, "_settings", config.AppSettings())
+        port = _free_port()
+        monkeypatch.setattr(runtime_module, "RPC_PORT", port, raising=False)
+
+        settings = config.load_settings()
+        options = settings.integrations["aria2"].options
+
+        environment = IntegrationEnvironment(
+            repository=SimpleNamespace(authorize_execution=AsyncMock(return_value=True)),
+            download_root=settings.download_folder,
+        )
+        executor = aria2_definition.build(settings.integrations["aria2"], environment)
+        assert executor.client.url == f"http://127.0.0.1:{port}/jsonrpc"
+        assert executor.configuration.local_root == str(downloads)
+        assert set(options) == CURRENT_ARIA2_OPTIONS and options["split"] == 4
+
+        runtime = runtime_module.Aria2Runtime()
+        runtime.configure(Aria2RuntimeConfiguration(
+            options=Aria2Options(**options).model_copy(update={
+                "log_file": str(tmp_path / "aria2" / "aria2.log"),
+                "session_file": str(tmp_path / "aria2" / "aria2.session"),
+            }),
+            download_root=settings.download_folder,
+        ))
+        try:
+            status = await runtime.start()
+            assert status["running"] and status["rpc_ok"], status["last_error"]
+            assert status["download_dir"] == str(downloads)
+            assert (await executor.health()).healthy
+        finally:
+            await runtime.stop()
+
+        public = routes._public_settings(settings, definitions)
+        assert set(public["integrations"]["aria2"]["options"]) == CURRENT_ARIA2_OPTIONS
+        assert not [name for name in public if "migrat" in name]
+        config.save_settings(settings)
+        rewritten = json.loads(path.read_text())
+        assert set(rewritten["integrations"]["aria2"]["options"]) == CURRENT_ARIA2_OPTIONS
+        assert not {f"aria2_{name}" for name in obsolete} & set(rewritten)
+        assert trap.connections == 0

@@ -40,33 +40,25 @@ def aria2_global_options(cfg):
     )
 
 
-def test_aria2_options_owns_every_specification_section_5_tuning_field():
-    """Specification section 4.3's explicit field list must all be present on
-    the canonical typed schema -- including disk_cache/file_allocation/
-    lowest_speed_limit, which predate this correction as flat-only fields."""
-    fields = set(Aria2Options.model_fields)
-    for required in (
-        "mode", "url", "secret", "download_path",
-        "split", "min_split_size", "max_connection_per_server", "continue_downloads",
-        "disk_cache", "file_allocation", "lowest_speed_limit",
-    ):
-        assert required in fields, f"Aria2Options is missing canonical field {required!r}"
+# The exact current aria2 schema: tuning and lifecycle options of the one
+# DebridPulse-owned daemon. A positive allowlist -- a field is either listed here
+# or does not exist.
+CURRENT_ARIA2_OPTIONS = frozenset({
+    "operation_timeout_seconds", "split", "min_split_size", "max_connection_per_server",
+    "continue_downloads", "disk_cache", "file_allocation", "lowest_speed_limit",
+    "waiting_window", "stopped_window", "max_upload_limit",
+    "auto_start", "log_file", "log_max_mb", "log_backups", "session_file",
+    "purge_interval_minutes", "max_download_result", "keep_unfinished_download_result",
+    "deep_sync_interval_minutes", "restart_interval_hours",
+})
 
 
-def test_aria2_options_owns_every_remaining_operational_field():
-    """Gate 9 rejection follow-up: every remaining flat aria2-specific
-    operational setting must be reconciled against the canonical executor/
-    integration ownership rule -- moved here, with no field left owned by
-    ``AppSettings``."""
-    fields = set(Aria2Options.model_fields)
-    for required in (
-        "max_upload_limit", "builtin_auto_start", "builtin_log_file",
-        "builtin_log_max_mb", "builtin_log_backups", "builtin_session_file",
-        "purge_interval_minutes", "max_download_result",
-        "keep_unfinished_download_result", "deep_sync_interval_minutes",
-        "restart_interval_hours",
-    ):
-        assert required in fields, f"Aria2Options is missing canonical field {required!r}"
+def test_aria2_options_is_exactly_the_current_daemon_schema():
+    assert set(Aria2Options.model_fields) == CURRENT_ARIA2_OPTIONS
+    # DebridPulse constructs the RPC endpoint and secret itself: nothing in the
+    # schema is a credential or a connection identity.
+    assert aria2_definition.secret_fields == frozenset()
+    assert aria2_definition.ownership_fields == frozenset()
 
 
 def test_legacy_fields_are_auto_derived_not_hand_maintained():
@@ -92,13 +84,9 @@ def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     canonical ``integrations.aria2`` namespace; canonical tuning values are
     correct, not defaults."""
     migrated = _load_legacy({
-        "aria2_split": 32, "aria2_min_split_size": "20M", "aria2_max_connection_per_server": 4,
+        "aria2_split": 32, "aria2_min_split_size": "20M", "aria2_max_connection_per_server": 12,
         "aria2_continue_downloads": False, "aria2_disk_cache": "128M", "aria2_file_allocation": "none",
-        "aria2_lowest_speed_limit": "10K", "aria2_mode": "external", "aria2_url": "http://host:6800/jsonrpc",
-        "aria2_secret": "s3cr3t", "aria2_download_path": "/mnt/downloads",
-        "aria2_max_upload_limit": 1_000_000, "aria2_builtin_auto_start": False,
-        "aria2_builtin_log_file": "/data/aria2/custom.log", "aria2_builtin_log_max_mb": 50,
-        "aria2_builtin_log_backups": 7, "aria2_builtin_session_file": "/data/aria2/custom.session",
+        "aria2_lowest_speed_limit": "10K", "aria2_max_upload_limit": 1_000_000,
         "aria2_purge_interval_minutes": 15, "aria2_max_download_result": 200,
         "aria2_keep_unfinished_download_result": True, "aria2_deep_sync_interval_minutes": 30,
         "aria2_restart_interval_hours": 12,
@@ -106,38 +94,23 @@ def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     options = migrated.integrations["aria2"].options
     assert options["split"] == 32
     assert options["min_split_size"] == "20M"
-    assert options["max_connection_per_server"] == 4
+    assert options["max_connection_per_server"] == 12
     assert options["continue_downloads"] is False
     assert options["disk_cache"] == "128M"
     assert options["file_allocation"] == "none"
     assert options["lowest_speed_limit"] == "10K"
-    assert options["mode"] == "external"
-    assert options["url"] == "http://host:6800/jsonrpc"
-    assert options["secret"] == "s3cr3t"
     assert options["max_upload_limit"] == 1_000_000
-    assert options["builtin_auto_start"] is False
-    assert options["builtin_log_file"] == "/data/aria2/custom.log"
-    assert options["builtin_log_max_mb"] == 50
-    assert options["builtin_log_backups"] == 7
-    assert options["builtin_session_file"] == "/data/aria2/custom.session"
     assert options["purge_interval_minutes"] == 15
     assert options["max_download_result"] == 200
     assert options["keep_unfinished_download_result"] is True
     assert options["deep_sync_interval_minutes"] == 30
     assert options["restart_interval_hours"] == 12
-    assert options["download_path"] == "/mnt/downloads"
 
 
-def test_builtin_legacy_tuning_left_at_an_older_default_is_upgraded_but_external_is_not():
-    builtin = _load_legacy({"aria2_mode": "builtin", "aria2_split": 8, "aria2_max_connection_per_server": 4})
-    assert builtin.integrations["aria2"].options["split"] == 16
-    assert builtin.integrations["aria2"].options["max_connection_per_server"] == 16
-    external = _load_legacy({"aria2_mode": "external", "aria2_split": 8})
-    assert external.integrations["aria2"].options["split"] == 8
-
-
-def test_unknown_legacy_aria2_mode_becomes_the_conservative_external_mode():
-    assert _load_legacy({"aria2_mode": "legacy-garbage"}).integrations["aria2"].options["mode"] == "external"
+def test_legacy_tuning_left_at_an_older_default_is_upgraded():
+    migrated = _load_legacy({"aria2_split": 8, "aria2_max_connection_per_server": 4})
+    assert migrated.integrations["aria2"].options["split"] == 16
+    assert migrated.integrations["aria2"].options["max_connection_per_server"] == 16
 
 
 def test_migration_is_idempotent():

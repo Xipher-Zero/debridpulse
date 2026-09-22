@@ -185,7 +185,7 @@ def _error(message, *, execution=False):
         Stage.EXECUTION if execution else Stage.RESOLUTION, diagnostic=safe_diagnostic(message))
 
 
-async def migrate(*, external_executor: bool, globally_paused: bool = False) -> dict:
+async def migrate(*, globally_paused: bool = False) -> dict:
     state = _schema_state()
     repository = TransferRepository()
     if state == "fresh":
@@ -205,7 +205,6 @@ async def migrate(*, external_executor: bool, globally_paused: bool = False) -> 
         await db.execute("CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY,applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)")
         await _repair_legacy_statuses(db)
         parents = await db.fetchall("SELECT * FROM torrents ORDER BY id")
-        owned = {row["gid"] for row in await db.fetchall("SELECT gid FROM debridpulse_aria2_owned_gids")}
         for parent in parents:
             if await db.fetchone("SELECT id FROM transfer_requests WHERE transfer_id=? LIMIT 1", (parent["id"],)):
                 continue
@@ -276,15 +275,11 @@ async def migrate(*, external_executor: bool, globally_paused: bool = False) -> 
                 await db.execute("""UPDATE download_files SET request_id=?,candidates=?,execution_attempt_id=?,status=?,normalized_error=? WHERE id=?""",
                     (request_id, codec.dump(candidates), attempt_id if handle else None, state, codec.dump(error) if error else None, file["id"]))
                 if handle:
-                    authorized = not external_executor or str(file["download_id"]) in owned
                     execution_state = {"completed": "succeeded", "verifying": "succeeded", "downloading": "transferring",
                         "queued": "queued", "paused": "paused", "error": "failed"}.get(state, "unknown")
-                    if not authorized:
-                        error = NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RECONCILIATION)
-                        await db.execute("UPDATE download_files SET status='error',normalized_error=? WHERE id=?", (codec.dump(error), file["id"]))
                     await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,authorized,error)
                         VALUES(?,?,?,?,?,?,?,?)""", (attempt_id, parent["id"], file["id"], handle.executor_id,
-                        codec.dump(handle), execution_state, int(authorized), codec.dump(error) if error else None))
+                        codec.dump(handle), execution_state, 1, codec.dump(error) if error else None))
             for primary_id, alternatives in primary_candidates.items():
                 primary = await db.fetchone("SELECT candidates FROM download_files WHERE id=? AND torrent_id=? AND request_id IS NOT NULL", (primary_id, parent["id"]))
                 if primary:

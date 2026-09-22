@@ -1030,14 +1030,6 @@ async def _init_db_sqlite():
                 FOREIGN KEY (torrent_id) REFERENCES torrents(id)
             )
         """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS debridpulse_aria2_owned_gids (
-                gid TEXT PRIMARY KEY,
-                download_file_id INTEGER,
-                torrent_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
         await db.execute(RUNTIME_STATE_SCHEMA[0])
         await db.execute(INPUT_CHALLENGE_SCHEMA[0])
         await _ensure_column(db, "transfer_input_challenges", "facts", _INPUT_CHALLENGE_FACTS_DEFINITION)

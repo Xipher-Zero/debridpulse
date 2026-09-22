@@ -1,6 +1,6 @@
-/* Built-in aria2 engine-state queue (Settings → Downloads).
+/* aria2 engine-state queue (Settings → Downloads).
  *
- * This surface intentionally exposes the built-in aria2 engine beneath the
+ * This surface intentionally exposes the aria2 engine beneath the
  * normal DebridPulse transfer workflow. Engine actions mutate aria2 directly;
  * DebridPulse remains the durable transfer record and reconciles afterward.
  *
@@ -25,19 +25,8 @@
 
   const root = () => document.getElementById('view-settings');
   const downloadsPanel = () => root()?.querySelector('[data-panel="downloads"]') || null;
-  const modeControl = () => root()?.querySelector('[data-setting="aria2_mode"]') || null;
   const liveCard = () => root()?.querySelector('[data-dp-aria2-live-card="1"]') || null;
   const queueNode = () => liveCard()?.querySelector('[data-dp-aria2-live-queue="1"]') || null;
-
-  function currentMode() {
-    const control = modeControl();
-    if (control) return String(control.value || 'builtin');
-    try {
-      return String(aria2Mode());
-    } catch (_) {
-      return 'builtin';
-    }
-  }
 
   function settingsVisible() {
     return !!root()?.classList.contains('active');
@@ -49,7 +38,7 @@
   }
 
   function shouldRunLiveQueue() {
-    return settingsVisible() && downloadsVisible() && currentMode() === 'builtin';
+    return settingsVisible() && downloadsVisible();
   }
 
   function orderedItems(data) {
@@ -88,7 +77,7 @@
           <div class="aria2-actions">
             ${canPause ? `<button class="btn btn-ghost btn-sm" data-aria2-action="pause" data-gid="${gid}">Pause</button>` : ''}
             ${canResume ? `<button class="btn btn-blue btn-sm" data-aria2-action="resume" data-gid="${gid}">Resume</button>` : ''}
-            <button class="btn btn-danger btn-sm dp-settings-aria2-live-remove" data-aria2-action="remove" data-gid="${gid}" data-default-label="Remove from aria2" title="Directly remove this GID from the built-in aria2 engine.">Remove from aria2</button>
+            <button class="btn btn-danger btn-sm dp-settings-aria2-live-remove" data-aria2-action="remove" data-gid="${gid}" data-default-label="Remove from aria2" title="Directly remove this GID from the aria2 engine.">Remove from aria2</button>
           </div>
         </div>
         <div>${progress(job.progress || 0, job.status === 'complete' ? 'completed' : 'downloading')}</div>
@@ -170,7 +159,7 @@
     if (!queue) return;
     const error = document.createElement('div');
     error.className = 'aria2-error';
-    error.textContent = `Queue error: ${String(message || 'Unable to load built-in aria2 engine state')}`;
+    error.textContent = `Queue error: ${String(message || 'Unable to load aria2 engine state')}`;
     queue.replaceChildren(error);
     updateMetrics(null);
   }
@@ -191,7 +180,6 @@
   }
 
   async function refreshQueue(manual, force = false) {
-    if (currentMode() !== 'builtin') return null;
     if (!manual && !force && !shouldRunLiveQueue()) return null;
     if (refreshRunning) return refreshRunning;
 
@@ -272,11 +260,7 @@
     void refreshQueue(false, true);
   }
 
-  function syncCardForMode() {
-    if (currentMode() !== 'builtin') {
-      stopPolling();
-      return;
-    }
+  function syncCard() {
     const card = liveCard();
     if (!card) return;
     attachCard(card);
@@ -288,14 +272,11 @@
     if (!view) return;
     if (view.dataset.dpSettingsAria2LiveBound !== '1') {
       view.dataset.dpSettingsAria2LiveBound = '1';
-      view.addEventListener('change', event => {
-        if (event.target.matches('[data-setting="aria2_mode"]')) queueMicrotask(syncCardForMode);
-      });
       view.addEventListener('click', event => {
         if (event.target.closest('.dp-settings-tabs [data-tab]')) queueMicrotask(startVisibleQueue);
       });
     }
-    syncCardForMode();
+    syncCard();
   }
 
   document.addEventListener('debridpulse:settings-rendered', attach);

@@ -44,7 +44,7 @@
     purpose: 'download',
     fieldSelector: '[data-setting="download_folder"]',
     browseAction: 'browse-download-folder',
-    browseAriaLabel: 'Browse server directories for Built-in Download Folder',
+    browseAriaLabel: 'Browse server directories for Download Folder',
     dialogTitle: 'Choose Download Folder',
     selectableLabel: 'Selectable as Download Storage',
     fallbackNoticeText: 'The current Download Folder cannot be browsed. Showing the server fallback location instead; the Settings field has not been changed.',

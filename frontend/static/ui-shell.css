@@ -329,23 +329,6 @@ body {
   font-family: var(--dp-font-mono);
   font-size: 10.5px !important;
 }
-#aria2-speed-badge.external-control {
-  flex: 0 0 280px;
-  width: 280px;
-  min-width: 280px;
-  justify-content: flex-start;
-  border-color: color-mix(in srgb, var(--dp-state-connectivity) 30%, var(--dp-border-default)) !important;
-  background: color-mix(in srgb, var(--dp-state-connectivity) 7%, var(--dp-surface-2)) !important;
-}
-#aria2-speed-badge.external-control #aria2-badge-speed {
-  width: 72px;
-  min-width: 72px;
-  text-align: right;
-}
-#aria2-speed-badge.external-control #aria2-badge-limit {
-  width: auto;
-  text-align: left;
-}
 #aria2-badge-speed {
   display: inline-block;
   width: 64px;
@@ -359,7 +342,6 @@ body {
   text-align: right;
 }
 #aria2-cap-toggle { font-size: 10.5px; }
-#aria2-cap-toggle[aria-disabled="true"] { color: var(--dp-state-connectivity); }
 #aria2-cap-toggle svg { width: 13px; height: 13px; }
 #aria2-cap-toggle .dp-speedcap-arrow {
   display: inline-block;

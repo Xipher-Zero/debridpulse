@@ -122,6 +122,32 @@ def test_release_surfaces_do_not_advertise_removed_watch_folder_workflow():
     assert "/app/data/processed" not in release_surfaces
 
 
+# Release-history records describe earlier releases and are not current documentation.
+HISTORICAL_RECORDS = {
+    "docs/architecture/COUPLING_INVENTORY_V112.md",   # v1.0.12 starting-architecture baseline
+    "docs/security-audit-v1.0.6-corrections.md",
+}
+
+
+def test_current_documentation_and_configuration_describe_one_managed_aria2():
+    surfaces = [
+        "README.md", "SECURITY.md", "CONTRIBUTING.md", "index.html", "Dockerfile", "docker-compose.yml",
+        "entrypoint.sh", ".github/ISSUE_TEMPLATE/bug_report.yml",
+        "frontend/static/index.html", "frontend/static/ui-help-page.js",
+    ] + [
+        str(path.relative_to(REPO_ROOT)) for path in sorted((REPO_ROOT / "docs").rglob("*.md"))
+        if str(path.relative_to(REPO_ROOT)) not in HISTORICAL_RECORDS
+    ]
+    for surface in surfaces:
+        text = (REPO_ROOT / surface).read_text(encoding="utf-8").casefold()
+        for marker in (
+            "external aria2", "external rpc", "shared aria2", "shared external", "external mode",
+            "external daemon", "aria2 rpc url", "rpc secret", "aria2_url", "aria2_mode",
+            "aria2_download_path", "external_aria2", "built-in aria2", "built-in or external",
+        ):
+            assert marker not in text, f"{surface}: {marker}"
+
+
 def test_v1_runtime_database_scope_is_sqlite_only():
     assert not (REPO_ROOT / "docker-compose.postgres.yml").exists()
     surfaces = "\n".join(
@@ -246,11 +272,9 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
     index = (REPO_ROOT / "frontend/static/index.html").read_text()
     # DP 1.0.12 canonical flattening: style.css is now a pure @import list;
-    # the aria2 speed-cap popover lives in ui-dropdown-contract.css and the
-    # topbar external-control badge state lives in ui-shell.css (both
-    # migrated from the retired ui-legacy-foundation.css).
+    # the aria2 speed-cap popover lives in ui-dropdown-contract.css (migrated
+    # from the retired ui-legacy-foundation.css).
     styles = (REPO_ROOT / "frontend/static/ui-dropdown-contract.css").read_text()
-    shell_styles = (REPO_ROOT / "frontend/static/ui-shell.css").read_text()
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
     aria2_service = (REPO_ROOT / "backend/executors/aria2/client.py").read_text()
 
@@ -263,9 +287,6 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     assert "return '<1 KB/s'" in frontend
     assert "return 'Unlimited'" in frontend
     assert "const units = ['KB', 'MB', 'GB', 'TB']" in frontend
-    assert "'Externally Controlled'" in frontend
-    assert "externalControl" in frontend
-    assert "if (_aria2BadgeState.externalControl) return;" in frontend
     assert '<span id="aria2-badge-limit">Unlimited</span>' in index
 
     runtime_handler = frontend.split("async function loadAria2Runtime()", 1)[1].split(
@@ -285,12 +306,10 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     assert "updateAria2TopbarBadge({limitBps: bps})" in frontend
     assert ".aria2-cap-menu" in styles
     assert ".aria2-cap-options" in styles
-    assert "#aria2-speed-badge.external-control" in shell_styles
 
-    assert "async def get_active(self)" in aria2_service
-    assert 'owned_active = await application.integration_admin("aria2").filter_owned(active_downloads)' in routes
+    assert "async def get_global_stat(self)" in aria2_service
+    assert 'return {"ok": True, **await application.integration_admin("aria2").get_global_stat()}' in routes
     assert 'downloads = await application.integration_admin("aria2").filter_owned(downloads)' in routes
-    assert '"external_control": True' in routes
 
 
 

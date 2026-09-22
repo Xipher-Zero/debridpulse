@@ -11,8 +11,8 @@ class Aria2Administration:
         """``config`` is injected by composition (DP 1.0.12 canonical
         architecture correction, Workstream C, specification section 9.3):
         this class never reads global application settings to discover
-        its own native tuning/lifecycle mode -- it consumes the SAME typed
-        configuration bundle composition injects into the ``BuiltinAria2Runtime``
+        its own native tuning/lifecycle -- it consumes the SAME typed
+        configuration bundle composition injects into the ``Aria2Runtime``
         singleton, kept current by ``application.composition.configure()``
         rebuilding and re-injecting it on every settings change."""
         self.executor = executor
@@ -82,8 +82,6 @@ class Aria2Administration:
         return await self.client.get_global_options()
 
     async def change_global_options(self, options):
-        if self._config.options.mode != "builtin":
-            raise PermissionError("Global aria2 options are read-only in external mode")
         return await self.client.change_global_options(options)
 
     async def memory_diagnostics(self):
@@ -94,8 +92,6 @@ class Aria2Administration:
         return {**await self.client.test(), "diagnostics": await self.memory_diagnostics()}
 
     async def apply_memory_tuning(self):
-        if self._config.options.mode != "builtin":
-            return {"ok": True, "skipped": True, "reason": "External daemon policy is read-only"}
         options = build_aria2_global_options(
             self._config.options, self._config.max_concurrent_executions,
             self._config.max_download_bytes_per_second, include_safety=True,
@@ -120,8 +116,6 @@ class Aria2Administration:
         if housekeeping_interval and now - self._last_housekeeping >= housekeeping_interval:
             await self.housekeeping()
             self._last_housekeeping = now
-        if aria2.mode != "builtin":
-            return
         if now - self._last_rotation >= 900:
             await runtime.ensure_log_rotation()
             self._last_rotation = now

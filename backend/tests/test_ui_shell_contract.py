@@ -125,7 +125,6 @@ def test_shell_owns_topbar_navigation_canvas_and_provider_support_geometry() -> 
     for fragment in (
         ".sidebar-theme-control",
         "#page-title::after",
-        "#aria2-speed-badge.external-control",
         ".aria2-cap-options button:hover",
         "@media (max-width: 899px)",
     ):
