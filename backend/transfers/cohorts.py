@@ -33,6 +33,12 @@ _PROOF_RETRY_DELAY_CAP = 1.0
 # evidence (a genuinely proven distinction, an explicit prior release, or a
 # structurally non-pairing candidate), never mere absence of proof.
 _INDEPENDENT_DISPOSITIONS = frozenset({"released", "independent", "contradictory"})
+# The subset that records an AFFIRMATIVE decision that this request's own
+# source is distinct (never a mere cohort release). Read by parent lifecycle
+# voting (``transfers._repository_base._slot_delivered_elsewhere``): a failed
+# artifact whose request was proven distinct keeps its FAILED vote even when a
+# same-slot artifact completed.
+_PROVEN_DISTINCT_DISPOSITIONS = frozenset({"independent", "contradictory"})
 # "exhausted" means automatic proof attempts stopped while identity remains
 # UNRESOLVED -- it must never be read as permission to materialize. A held
 # request stays in durable MATERIALIZING state; only later affirmative
@@ -380,6 +386,31 @@ async def reopen_unverified_associations(transfer_id: int) -> int:
         )
         await db.commit()
     return int(cursor.rowcount or 0)
+
+
+async def _invalidate_stale_target(request_id: str, target_artifact_id: int) -> bool:
+    """Clear ONE stale UNVERIFIED association: ``request_id`` held against
+    exactly ``target_artifact_id``, which has terminally failed. True only when
+    this call cleared it.
+
+    Compare-and-set on the exact old pair: a request that has left
+    MATERIALIZING, carries any newer disposition, or is now associated with a
+    different target is never touched, and neither is one whose target has
+    not failed. The bounded proof state belonged to the stale association and
+    is reset with it. This is not identity evidence: the cleared request is
+    exactly the pre-decision state ordinary ``coordinate_collection`` already
+    evaluates -- never independent/released, never a membership mutation."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """UPDATE transfer_requests SET equivalence_disposition='',equivalence_reason=NULL,
+                equivalence_target_artifact_id=NULL,equivalence_retry_count=0,retry_at=0
+                WHERE id=? AND state='materializing' AND equivalence_disposition=?
+                AND equivalence_target_artifact_id=?
+                AND EXISTS(SELECT 1 FROM download_files WHERE id=? AND status='error')""",
+            (request_id, _UNVERIFIED_DISPOSITION, int(target_artifact_id), int(target_artifact_id)),
+        )
+        await db.commit()
+    return bool(cursor.rowcount)
 
 
 async def unverified_association_count(transfer_id: int) -> int:
@@ -809,7 +840,22 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
     # work this tick. "provisional" (the one bootstrap writer admitted after
     # eligible proof exhaustion) likewise authorizes its own request's writer
     # without re-litigating proof, while identity stays unresolved.
+    #
+    # "unverified" is terminal only while its exact target remains a valid
+    # non-failed target (DP 1.0.13): when that artifact has terminally failed
+    # the association -- not the identity question -- is stale. Only that
+    # exact association is cleared (compare-and-set), and whatever the durable
+    # disposition is afterwards -- cleared here, or a newer decision another
+    # worker made -- is obeyed in THIS call: a cleared request continues into
+    # the ordinary mapping/bootstrap logic below against current canonical
+    # truth. A live target keeps the hold exactly as before.
     disposition = await _disposition(record.id)
+    if disposition == _UNVERIFIED_DISPOSITION:
+        stale_target = await engine.repository.failed_unverified_target(record.id)
+        if stale_target is not None:
+            if await _invalidate_stale_target(record.id, stale_target):
+                _decision(record, incoming, "stale_target_released", "canonical_target_failed")
+            disposition = await _disposition(record.id)
     if disposition in _INDEPENDENT_DISPOSITIONS or disposition == _PROVISIONAL_DISPOSITION:
         return False
     if disposition in _HELD_DISPOSITIONS:

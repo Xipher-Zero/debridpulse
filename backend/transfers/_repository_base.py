@@ -16,7 +16,7 @@ from uuid import NAMESPACE_URL, uuid5
 from core.presentation_safety import safe_public_host, safe_route_endpoint
 from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
-from transfers.cohorts import _HELD_DISPOSITIONS
+from transfers.cohorts import _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
@@ -197,11 +197,39 @@ def _logical_slot_key_for_artifact(artifact) -> str:
     return next(iter(keys)) if len(keys) == 1 else ""
 
 
+async def failed_unverified_target(db, request_id) -> int | None:
+    """DP 1.0.13 stale UNVERIFIED target liveness: the exact canonical artifact
+    id ``request_id`` is held UNVERIFIED against, when that exact artifact has
+    terminally failed; otherwise ``None``.
+
+    An UNVERIFIED hold is terminal only while the one target that justifies it
+    remains a valid non-failed target. Once that exact artifact is ``error``
+    the durable premise "held against A" is stale: the ASSOCIATION is stale,
+    never the identity question -- A's failure is evidence of nothing about
+    this request's identity. Reads durable rows only, on the caller's session
+    (so lifecycle aggregation stays one transaction); no provider/executor
+    I/O, no inference from URL/host/protocol. The single definition shared by
+    ``terminal_unverified_association`` below, parent lifecycle aggregation and
+    the equivalence owner's exact-target invalidation
+    (``transfers.cohorts``, through ``TransferRepository``). Only the proven
+    failed-target case: a completed target remains valid provenance."""
+    row = await db.fetchone(
+        """SELECT r.equivalence_target_artifact_id AS target FROM transfer_requests r
+            JOIN download_files c ON c.id=r.equivalence_target_artifact_id
+            WHERE r.id=? AND r.state='materializing' AND r.equivalence_disposition=? AND c.status='error'""",
+        (request_id, _UNVERIFIED_DISPOSITION),
+    )
+    return int(row["target"]) if row else None
+
+
 async def terminal_unverified_association(db, request_id) -> bool:
     """DP 1.0.12 consolidation corrective, Remediation 4: True when the one
     equivalence owner (``transfers.cohorts``) has durably settled this request
     as a terminal UNVERIFIED association to a canonical artifact owned by a
-    DIFFERENT transfer.
+    DIFFERENT transfer -- and that artifact has not terminally failed
+    (``failed_unverified_target``): a failed target no longer excuses any
+    material work, it is a stale association awaiting ordinary
+    reconsideration.
 
     That pair of durable facts -- the terminal, writer-forbidden disposition
     and the artifact it is associated with -- is the whole statement: no
@@ -217,7 +245,7 @@ async def terminal_unverified_association(db, request_id) -> bool:
             WHERE r.id=? AND r.equivalence_disposition='unverified' AND c.torrent_id!=r.transfer_id""",
         (request_id,),
     )
-    return row is not None
+    return row is not None and await failed_unverified_target(db, request_id) is None
 
 
 async def _completion_obligation_satisfied(db, record, completed_canonical_keys) -> bool:
@@ -263,17 +291,63 @@ async def _completion_obligation_satisfied(db, record, completed_canonical_keys)
     return own_artifact is None
 
 
+async def _proven_distinct(db, request_id) -> bool:
+    """True unless ``request_id`` exists and was never affirmatively proven
+    distinct (``transfers.cohorts._PROVEN_DISTINCT_DISPOSITIONS``); an absent
+    row is conservatively treated as distinct."""
+    row = await db.fetchone("SELECT equivalence_disposition FROM transfer_requests WHERE id=?", (request_id,))
+    return row is None or str(row["equivalence_disposition"] or "") in _PROVEN_DISTINCT_DISPOSITIONS
+
+
+async def _slot_delivered_elsewhere(db, artifact, delivered_slots) -> bool:
+    """DP 1.0.13 stale UNVERIFIED target liveness, failed former anchor: True
+    when failed ``artifact`` occupied a logical delivery slot that a
+    DIFFERENT, completed canonical artifact of the SAME transfer has since
+    delivered (``delivered_slots``: logical-slot key -> ids of completed
+    artifacts whose own request was never proven distinct, keyed through the
+    one ``_logical_slot_key_for_artifact`` owner), and the failed row's own
+    originating request was never affirmatively proven distinct either.
+    Distinction is normally recorded on the LATER incoming request, so both
+    sides are asked: a completed artifact proven distinct (from anything) can
+    never satisfy another artifact's slot, and a failed artifact proven
+    distinct is never satisfied (``transfers.cohorts
+    ._PROVEN_DISTINCT_DISPOSITIONS``).
+
+    This means only "logical slot S has been successfully delivered" -- never
+    "failed source A was proven identical to the source that delivered it".
+    It is a derived parent-voting fact: nothing is written, the failed row
+    keeps its durable error/history, and no binding, mirror-group membership,
+    standby/blocked state or equivalence target is created. An empty
+    (UNKNOWN) slot key never matches."""
+    key = _logical_slot_key_for_artifact(artifact)
+    if not key or not delivered_slots.get(key, frozenset()) - {int(artifact.id)}:
+        return False
+    return not await _proven_distinct(db, artifact.request_id)
+
+
 async def _voting_artifacts(db, artifacts):
     """DP 1.0.12 Root Cause B (Section 5): the canonical-membership artifacts
     that may actually cast a lifecycle vote (completion/FAILED) for the
     parent transfer -- ``artifacts`` minus a failed row whose own logical
     delivery obligation a different, completed canonical artifact already
-    satisfies. A genuinely independent failed artifact -- with no durable
-    canonical mapping -- still votes (Section 5.2); this is not a blanket
-    "completed wins" rule."""
+    satisfies: durably, through its canonical mapping
+    (``_satisfied_elsewhere``), or because a different completed canonical
+    artifact of this same transfer delivered the same logical slot and the
+    failed row and the completed one were both never proven distinct
+    (``_slot_delivered_elsewhere``, DP 1.0.13). A failed artifact on either
+    side of an affirmative distinction, or occupying a slot nothing else
+    delivered, still votes (Section 5.2); this is not a blanket "completed
+    wins" rule."""
+    delivered_slots: dict[str, set[int]] = {}
+    for item in artifacts:
+        if item.state == "completed":
+            key = _logical_slot_key_for_artifact(item)
+            if key and not await _proven_distinct(db, item.request_id):
+                delivered_slots.setdefault(key, set()).add(int(item.id))
     result = []
     for item in artifacts:
-        if item.state == "error" and await _satisfied_elsewhere(db, item):
+        if item.state == "error" and (await _satisfied_elsewhere(db, item)
+                                      or await _slot_delivered_elsewhere(db, item, delivered_slots)):
             continue
         result.append(item)
     return tuple(result)
@@ -1104,8 +1178,23 @@ class TransferRepository:
             #     level row for presentation to misrepresent as active; only
             #     the parent's own truthful QUEUED state (this branch)
             #     surfaces the hold.
+            #   - DP 1.0.13 stale target: an UNVERIFIED hold whose exact
+            #     target has terminally failed (``failed_unverified_target``,
+            #     read in this SAME transaction) is not a quiescent hold -- its
+            #     premise is gone and the equivalence owner reconsiders it on
+            #     the request's next ordinary turn. It counts as pending work,
+            #     so the failed former target can never terminalize the parent
+            #     first. Nothing here clears it, proves anything or picks a
+            #     writer.
+            stale_targets = {
+                r["id"] for r in request_rows
+                if r["state"] == "materializing" and r["equivalence_disposition"] == _UNVERIFIED_DISPOSITION
+                and await failed_unverified_target(db, r["id"]) is not None
+            }
+
             def _quiescently_held(row) -> bool:
-                return row["state"] == "materializing" and str(row["equivalence_disposition"] or "") in _HELD_DISPOSITIONS
+                return (row["state"] == "materializing" and row["id"] not in stale_targets
+                        and str(row["equivalence_disposition"] or "") in _HELD_DISPOSITIONS)
 
             pending = any(
                 r["state"] in {"pending", "waiting", "waiting_parent", "resolving", "materializing"}
@@ -1587,6 +1676,13 @@ class TransferRepository:
         return tuple(RequestRecord(row["id"], transfer_id, codec.request(codec.load(row["payload"])), row["state"],
                                    row["parent_id"], codec.resource(codec.load(row["resource"])), row["attempts"],
                                    row["retry_at"], codec.error(row["error"]), codec.entry(codec.load(row["metadata"]))) for row in rows)
+
+    async def failed_unverified_target(self, request_id: str) -> int | None:
+        """The shared ``failed_unverified_target`` reader for callers without
+        a session of their own (the equivalence owner's held-disposition
+        boundary). One definition; this only supplies the session."""
+        async with get_db() as db:
+            return await failed_unverified_target(db, request_id)
 
     async def bound_route_provider(self, request_id: str) -> str | None:
         """Return the provider owning this request's route: the latest durable
