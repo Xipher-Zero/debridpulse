@@ -329,6 +329,42 @@ async def _normalize_legacy_cleanup_claims(db: aiosqlite.Connection) -> None:
         raise RuntimeError("legacy cleanup-claim normalization failed") from exc
 
 
+async def _migrate_execution_identity(db: aiosqlite.Connection) -> None:
+    """One bounded, one-way, idempotent migration of durable execution identity.
+
+    * A historical handle stored as ``{executor_id, context, attempt_id}`` is
+      rewritten to the canonical ``{executor_id, attempt_id, correlation,
+      native}``: the whole opaque context becomes the executor's correlation
+      and native identity is unbound (``None``). The owning executor may bind it
+      once through the ordinary one-way binding; nothing is interpreted here.
+    * The historical active execution state ``transferring`` becomes the
+      neutral ``running``.
+
+    Only the canonical layout is decodable afterwards, so authorization, which
+    compares persisted handles, never sees two representations.
+    """
+    try:
+        rows = await (await db.execute(
+            "SELECT id,handle FROM execution_attempts WHERE handle LIKE '%\"context\"%'")).fetchall()
+        for attempt_id, raw in rows:
+            value = json.loads(raw)
+            if not isinstance(value, dict) or "context" not in value or "correlation" in value:
+                continue
+            canonical = {"executor_id": value["executor_id"], "attempt_id": value["attempt_id"],
+                         "correlation": value["context"], "native": None}
+            await db.execute("UPDATE execution_attempts SET handle=? WHERE id=?",
+                             (json.dumps(canonical, separators=(",", ":"), sort_keys=True), attempt_id))
+        await db.execute("UPDATE execution_attempts SET state='running' WHERE state='transferring'")
+        # Material ownership becomes one explicit fact: a historical attempt
+        # that observed its target absent at admission owns its material.
+        await db.execute("""UPDATE execution_attempts SET material_owner_attempt_id=id
+            WHERE material_owner_attempt_id IS NULL AND target_initially_absent=1""")
+        await db.commit()
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        logger.error("execution identity migration failed: %s", exc)
+        raise RuntimeError("execution identity migration failed") from exc
+
+
 async def _migrate_recovery_state_from_events(db: aiosqlite.Connection) -> None:
     """Idempotent additive backfill for DP 1.0.12 recovery leveling, Section 19.
 
@@ -820,6 +856,18 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # column existed stays NULL, which reads as "ownership unknown" and
         # therefore never authorizes cleanup. No backfill exists or is needed.
         'target_initially_absent': 'INTEGER',
+        # Neutral verified materialization result of a SUCCEEDED attempt,
+        # written only after core verified the executor's report. Additive and
+        # nullable: historical rows stay NULL and are read through the
+        # artifact's own FILE target.
+        'materialization': 'TEXT',
+        # The ONE durable material-ownership authority of an attempt: the id
+        # of the attempt that established DebridPulse ownership of the
+        # artifact's material boundary (itself, when the boundary and every
+        # declared transient path were absent at its admission; otherwise the
+        # owner inherited from this artifact's immediately preceding attempt).
+        # NULL = no ownership: cleanup may delete nothing.
+        'material_owner_attempt_id': 'TEXT',
     },
     # Additive nullable column for databases created before the Torrent/Magnet
     # File-Selection Lifecycle Correction. A metadata-only ALTER: every existing
@@ -860,7 +908,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
-    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at'},
+    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
@@ -1046,6 +1094,7 @@ async def _init_db_sqlite():
         await _backfill_provider_resource_bindings(db)
         await _normalize_legacy_cleanup_claims(db)
         await _migrate_recovery_state_from_events(db)
+        await _migrate_execution_identity(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 

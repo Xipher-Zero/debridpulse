@@ -29,8 +29,8 @@ class ControlledMemoryExecutor(MemoryExecutor):
         self.calls.append(("start", handle))
         error = self.start_errors.pop(0) if self.start_errors else None
         progress = TransferProgress(4, 0 if self.zero_progress else 1, 0 if self.zero_progress else 1)
-        result = ExecutionObservation(handle, ExecutionState.FAILED if error else ExecutionState.TRANSFERRING,
-                                      progress, (request.target,), error)
+        result = ExecutionObservation(handle, ExecutionState.FAILED if error else ExecutionState.RUNNING,
+                                      progress, error)
         self.jobs[handle.attempt_id] = result
         return result
 
@@ -53,7 +53,7 @@ class ControlledMemoryExecutor(MemoryExecutor):
             await self.resume_release.wait()
         current = self.jobs.get(handle.attempt_id, ExecutionObservation(handle, ExecutionState.ABSENT))
         if current.resumable:
-            current = replace(current, state=ExecutionState.TRANSFERRING)
+            current = replace(current, state=ExecutionState.RUNNING)
             self.jobs[handle.attempt_id] = current
         return current
 
@@ -148,7 +148,7 @@ async def test_scheduler_and_explicit_resume_share_one_native_convergence_owner(
     await asyncio.gather(scheduler, explicit)
 
     assert convergence.executor.native_resume_calls == 1
-    assert convergence.executor.jobs[artifact.execution.attempt_id].state == ExecutionState.TRANSFERRING
+    assert convergence.executor.jobs[artifact.execution.attempt_id].state == ExecutionState.RUNNING
 
 
 @pytest.mark.asyncio
@@ -204,7 +204,7 @@ async def test_unknown_execution_never_aggregates_to_transferring_or_spawns_writ
     artifact = (await convergence.repository.artifacts(transfer.id))[0]
     original = artifact.execution
     convergence.executor.jobs[original.attempt_id] = ExecutionObservation(
-        original, ExecutionState.UNKNOWN, error=executor_uncertainty(), paths=(artifact.target,),
+        original, ExecutionState.UNKNOWN, error=executor_uncertainty(),
     )
     for _ in range(4):
         await convergence.engine.tick()
@@ -365,7 +365,7 @@ async def test_executor_ambiguity_never_consumes_source_recovery_budget(recovery
     transfer = await submit(recovery)
     artifact = (await recovery.repository.artifacts(transfer.id))[0]
     recovery.executor.jobs[artifact.execution.attempt_id] = ExecutionObservation(
-        artifact.execution, ExecutionState.UNKNOWN, error=executor_uncertainty(), paths=(artifact.target,),
+        artifact.execution, ExecutionState.UNKNOWN, error=executor_uncertainty(),
     )
     await recovery.engine.tick()
     assert await recovery.repository.recovery_budget(artifact.id) == (0, 0)

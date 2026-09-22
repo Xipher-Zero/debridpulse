@@ -6,7 +6,7 @@ import pytest
 
 from test_universal_lifecycle import core, submit, failure
 from transfers.errors import Category
-from transfers.models import ResolutionResult, ResourceState, TransferState, TransferOutcome, OutcomeKind
+from transfers.models import ExecutionObservation, ExecutionState, ResolutionResult, ResourceState, TransferState, TransferOutcome, OutcomeKind
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_existing_payload_requires_verified_possession(core, condition, ad
     elif condition != 'missing':
         target.write_bytes(b'bad' if condition == 'wrong_size' else b'done')
     if condition == 'sidecar':
-        Path(core.executor.resumable_paths(str(target))[0]).write_bytes(b'resume')
+        Path(core.executor.sidecar(target)).write_bytes(b'resume')
     await core.engine.reconcile_executions()
     result = await core.repository.get(transfer.id)
     if adopt:
@@ -76,11 +76,16 @@ async def test_uncertain_execution_reserves_path_even_with_terminal_parent(core,
     await core.engine.tick()
     artifact = (await core.repository.artifacts(first.id))[0]
     if deleted:
-        core.executor.cancel = AsyncMock(return_value=TransferOutcome(OutcomeKind.FAILURE, failure()))
+        # Unconfirmed native stop: the writer is never assumed gone.
+        core.executor.cancel = AsyncMock(return_value=ExecutionObservation(
+            artifact.execution, ExecutionState.UNKNOWN, error=failure()))
         await core.engine.delete(first.id, remote=False)
     else:
+        # A malformed batch observation is uncertainty, never absence.
         core.executor.observe = AsyncMock(return_value=None)
         await core.engine.reconcile_executions()
+        assert (await core.repository.executions(first.id))[0].state == "unknown"
+        await core.repository.state(first.id, TransferState.FAILED, error=failure())
         assert (await core.repository.get(first.id)).state == TransferState.FAILED
     second = await submit(core, 'second', 'same.bin')
     await core.engine.resolve_pending()

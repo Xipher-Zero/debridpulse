@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 
 import db.database as database
-from fake_integrations import MemoryExecutor, ParcelProvider
+from fake_integrations import TransientInputExecutor, MemoryExecutor, ParcelProvider
 from test_candidate_provenance_consolidation import admit, p2  # noqa: F401 -- pytest fixture re-export
 from transfers import codec
 from transfers.applicability import ProviderApplicability
@@ -65,14 +65,14 @@ class StaticProvider:
         return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
 
 
-class KeyExecutor(MemoryExecutor):
+class KeyExecutor(TransientInputExecutor):
     def __init__(self, authorize, *, encrypted):
         super().__init__(authorize)
         self.encrypted = encrypted
         self.prepare_calls = 0
         self.input_calls = 0
-        self.descriptor = IntegrationDescriptor("key-copy", "Key copy", frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
-                                                schemes=frozenset({"keymem"}))
+        self.descriptor = IntegrationDescriptor("key-copy", "Key copy", frozenset())
+        self.claim_schemes = frozenset({"keymem"})
 
     def prepare(self, request):
         self.prepare_calls += 1
@@ -87,7 +87,9 @@ class KeyExecutor(MemoryExecutor):
             accepted = accepted and submitted.value(InputField.PASSPHRASE) == "executor-passphrase-sentinel"
         if not accepted:
             return auth_required(username_private_key())
-        return ExecutionHandle(self.descriptor.id, {"copy_ticket": request.attempt_id, "destination": request.target}, request.attempt_id)
+        plan = request.work.materialization
+        return ExecutionHandle(self.descriptor.id, request.attempt_id,
+                               {"copy_ticket": request.attempt_id, "destination": plan.target, "root": plan.root})
 
 
 @pytest_asyncio.fixture
@@ -476,7 +478,7 @@ async def test_waiting_executor_input_uses_no_slot_and_submission_waits_for_capa
     challenge = await engine.challenges.current(waiting.id)
     waiting_artifact = (await repository.artifacts(waiting.id))[0]
     assert challenge and waiting_artifact.execution is None and waiting_artifact.retries == 0
-    assert len([item for item in await repository.live_executions() if item.state in {"prepared", "queued", "transferring", "unknown"}]) == 1
+    assert len([item for item in await repository.live_executions() if item.state in {"prepared", "queued", "running", "unknown"}]) == 1
 
     await engine.submit_input(waiting.id, challenge.id, "username_private_key", {
         "username": "executor-user-sentinel", "private_key": "executor-private-key-sentinel"})
@@ -808,14 +810,13 @@ IDENTITY_FACTS = (
 )
 
 
-class IdentityExecutor(MemoryExecutor):
+class IdentityExecutor(TransientInputExecutor):
     """Neutral executor whose first start reports a server-identity requirement."""
 
     def __init__(self, authorize):
         super().__init__(authorize)
-        self.descriptor = IntegrationDescriptor("identity-copy", "Identity copy",
-                                                frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
-                                                schemes=frozenset({"keymem"}))
+        self.descriptor = IntegrationDescriptor("identity-copy", "Identity copy", frozenset())
+        self.claim_schemes = frozenset({"keymem"})
         self.start_errors = [NormalizedError(Domain.EXECUTOR, Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION,
                                              native_code="neutral-identity")]
         self.continued = []
@@ -829,7 +830,7 @@ class IdentityExecutor(MemoryExecutor):
     async def start_with_input(self, request, handle, submitted):
         self.continued.append((submitted.method, dict((fact.name, fact.value) for fact in submitted.facts),
                                submitted.value(InputField.USERNAME), submitted.secret_values()))
-        result = ExecutionObservation(handle, ExecutionState.TRANSFERRING)
+        result = ExecutionObservation(handle, ExecutionState.RUNNING)
         self.jobs[handle.attempt_id] = result
         return result
 

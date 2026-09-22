@@ -6,7 +6,9 @@ from application.service import ApplicationService
 from core.config import get_settings, apply_settings
 from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
-from integrations.definition import IntegrationEnvironment
+from integrations.definition import (
+    AdministeredIntegration, IntegrationEnvironment, IntegrationLifecycle, ManagedIntegration,
+)
 from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.convergence_engine import TransferEngine
 from transfers.policy import TransferPolicy
@@ -15,12 +17,26 @@ from transfers.recovery_repository import TransferRepository
 from transfers.storage import DiskCapacity, register_storage_health
 
 
+def integration_surfaces(registry) -> tuple[tuple, dict]:
+    """Generic discovery of integration-owned lifecycle components and
+    administration surfaces -- the one seam through which a managed
+    integration participates in the application lifecycle. No integration is
+    named here; adding one needs no composition change."""
+    implementations = (*registry.providers.values(), *registry.executors.values())
+    lifecycle = tuple(item.lifecycle for item in implementations
+                      if isinstance(item, ManagedIntegration) and isinstance(item.lifecycle, IntegrationLifecycle))
+    admins = {item.descriptor.id: item.administration for item in implementations
+              if isinstance(item, AdministeredIntegration)}
+    return lifecycle, admins
+
+
 def configure(application):
     settings = normalize_settings(get_settings(), definitions)
     apply_settings(settings)
     application.definitions = definitions
     registry = IntegrationRegistry()
-    register(registry, settings, IntegrationEnvironment(application.repository, settings.download_folder))
+    register(registry, settings, IntegrationEnvironment(application.repository, settings.download_folder,
+                                                        commands=application))
     application.engine.registry = registry
     application.engine.root = settings.download_folder
     policy = settings.transfer_policy
@@ -59,25 +75,13 @@ def configure(application):
     application.execution_poll_interval = policy.execution_poll_interval_seconds
     from postprocessors.archive.processor import ArchivePostProcessor
     application.engine.postprocessors = (ArchivePostProcessor(),) if settings.extract_enabled else ()
-    from executors.aria2.admin import Aria2Administration
-    from executors.aria2.definition import Aria2Options
-    from executors.aria2.runtime import Aria2RuntimeConfiguration, runtime as aria2_runtime
     from transfers.runtime_limits import ExecutionRuntimeLimits
-    # Dependency inversion (DP 1.0.12 canonical architecture correction,
-    # Workstream C, specification section 9.3): composition is the ONE place
-    # that translates canonical settings into typed aria2 runtime
-    # configuration and injects it into the long-lived runtime/admin
-    # singletons -- they never call core.config.get_settings() themselves.
+    # The canonical global runtime limit is injected into its one core owner;
+    # executors receive only the ceiling that owner assigns them.
     limits = settings.execution_runtime_limits or ExecutionRuntimeLimits()
-    aria2_runtime_config = Aria2RuntimeConfiguration(
-        options=Aria2Options(**settings.integrations["aria2"].options),
-        download_root=settings.download_folder,
-        max_concurrent_executions=policy.max_concurrent_executions,
-        max_download_bytes_per_second=limits.max_download_bytes_per_second,
-    )
-    aria2_runtime.configure(aria2_runtime_config)
-    administration = Aria2Administration(registry.executors["aria2"], application.repository, application, aria2_runtime_config)
-    application.admins = {"aria2": administration}
+    application.engine.configure_runtime_limits(limits.max_download_bytes_per_second)
+    integration_lifecycle, admins = integration_surfaces(registry)
+    application.admins = admins
     runtime_state = getattr(application, "runtime_state", None)
     if runtime_state is None:
         runtime_state = ProviderRuntimeStateStore()
@@ -99,7 +103,7 @@ def configure(application):
     host_maintenance.bind(registry.providers.get("alldebrid"), initial=initial_host_binding,
         notify=application.notify_applicability_changed)
 
-    application.lifecycle = (runtime_state, host_maintenance, administration)
+    application.lifecycle = (runtime_state, host_maintenance, *integration_lifecycle)
     from application.observability import Observability
     application.observability = Observability(application.repository, application.consolidation_events)
 

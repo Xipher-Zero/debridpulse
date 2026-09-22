@@ -58,7 +58,7 @@ async def test_active_identity_owned_execution_and_history_survive_upgrade(legac
     assert transfer.id == 7 and transfer.state == TransferState.TRANSFERRING
     assert artifact.id == 11
     assert artifact.target == str(legacy / "file-11.bin")
-    assert artifact.execution.context["gid"] == "0123456789abcdef"
+    assert artifact.execution.native["gid"] == "0123456789abcdef"
     assert await repository.authorize_execution(artifact.execution, "observe")
     assert (await repository.resources(7))[0][0].ownership == Ownership.CREATED
     async with database.get_db() as db:
@@ -97,11 +97,11 @@ async def test_predecessor_gid_ledger_is_inert_historical_data(legacy):
 
     repository = TransferRepository()
     artifact = (await repository.artifacts(21))[0]
-    assert artifact.execution.context["gid"] == "00000000000000aa"
+    assert artifact.execution.native["gid"] == "00000000000000aa"
     assert await repository.authorize_execution(artifact.execution, "cancel")
     executor = aria2_definition.build(IntegrationSettings(), IntegrationEnvironment(
         repository=repository, download_root=get_settings().download_folder))
-    assert artifact.execution.context["binding"] == executor.binding
+    assert artifact.execution.correlation["binding"] == executor.binding
     with sqlite3.connect(database.DB_PATH) as conn:
         assert conn.execute("SELECT count(*) FROM execution_attempts").fetchone()[0] == 1
         assert conn.execute("SELECT gid,download_file_id,torrent_id FROM debridpulse_aria2_owned_gids ORDER BY gid").fetchall() == ledger_before

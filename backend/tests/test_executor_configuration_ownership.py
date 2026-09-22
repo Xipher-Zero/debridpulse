@@ -19,7 +19,7 @@ Existing coverage this file does not duplicate: scoped API mutation
 """
 from core.config import AppSettings
 from executors.aria2.definition import Aria2Options, definition as aria2_definition
-from executors.aria2.runtime import _canonical_aria2_options, build_aria2_global_options
+from executors.aria2.runtime import NATIVE_ACTIVE_DOWNLOADS, _canonical_aria2_options, build_aria2_global_options
 from integrations.configuration import migrate_legacy_settings, normalize_settings
 from integrations.definition import IntegrationSettings
 from providers.alldebrid.definition import definition as alldebrid_definition
@@ -32,12 +32,9 @@ DEFINITIONS = (alldebrid_definition, general_http_definition, aria2_definition)
 
 
 def aria2_global_options(cfg):
-    """Native option dict for the canonical namespaces of ``cfg``."""
-    return build_aria2_global_options(
-        _canonical_aria2_options(cfg),
-        cfg.transfer_policy.max_concurrent_executions,
-        cfg.execution_runtime_limits.max_download_bytes_per_second,
-    )
+    """Native tuning dict for the aria2-owned namespace of ``cfg`` -- never
+    DebridPulse global concurrency or bandwidth."""
+    return build_aria2_global_options(_canonical_aria2_options(cfg))
 
 
 # The exact current aria2 schema: tuning and lifecycle options of the one
@@ -156,8 +153,10 @@ def test_aria2_global_options_sources_native_tuning_from_canonical_namespace():
     assert options["disk-cache"] == "7M"
     assert options["file-allocation"] == "none"
     assert options["lowest-speed-limit"] == "5K"
-    assert options["max-concurrent-downloads"] == "11"
-    assert options["max-overall-download-limit"] == "4321"
+    # Global concurrency (11) and the global download cap (4321) are core-owned:
+    # neither is mirrored into native tuning.
+    assert options["max-concurrent-downloads"] == str(NATIVE_ACTIVE_DOWNLOADS)
+    assert "max-overall-download-limit" not in options
     assert options["max-download-result"] == "77"
     assert options["keep-unfinished-download-result"] == "true"
     assert options["max-overall-upload-limit"] == "555"

@@ -37,8 +37,9 @@ regression test is not a claim this module makes.
 2. **Per-execution-attempt convergence lock** (``self._convergence_lock``,
    this class): serializes every native pause/resume/observe/cancel call
    against ONE execution handle, across every caller that might touch it --
-   ordinary scheduler observation (``_converge_execution``, entered whenever
-   ``isinstance(executor, PauseResume)``, true for every current executor),
+   ordinary scheduler observation (``_converge_execution``, entered for every
+   observed execution; it mutates only through controls the current
+   observation advertises),
    ``pause``/``resume``/``resume_all`` (via ``_converge_execution`` per
    artifact), and candidate activation's own old-writer retirement dance
    (``transfers.candidate_activation.activate_candidate``). Proven for
@@ -97,37 +98,39 @@ aggregation) safe against every other writer.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
 import logging
-import os
 from pathlib import Path
 import time
 from weakref import WeakValueDictionary
 
 from transfers.canonical import CanonicalOwnership
-from transfers.contracts import (BatchObservation, CandidateSamplingContinuation, Cleanup, ExecutorInputContinuation,
-    ExecutorInputRecovery, Inventory, PauseResume, ProviderInputContinuation)
+from transfers.contracts import Cleanup, Inventory, ProviderInputContinuation
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
 from transfers.filesystem import (
-    destination, payload_matches, retire_partial, safe_name, stable_material_size, stable_payload, validate_target,
+    adoptable_material, destination, material_initially_absent, materialization_plan, retire_materialization,
+    safe_name, validate_plan, verified_material_paths, verify_materialization,
 )
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
-    ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputOrigin, InputRequirement,
-    MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation, RequestRecord, ResolutionAttempt,
-    ResolutionResult, ResourceState, SizeKnowledge,
+    ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability, InputChallenge,
+    InputOrigin, InputRequirement, MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation,
+    RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import EvidenceContext, shared_size
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
+from transfers.runtime_coordination import ExecutionRuntimeCoordinator
 
 
 logger = logging.getLogger(__name__)
@@ -238,6 +241,11 @@ class TransferEngine:
         # recovery lifecycle. Presentation only ever reads this set; it never
         # decides independently that capacity is the blocker.
         self._capacity_only_blocked: set[int] = set()
+        # The one core owner of executor runtime limits (global download
+        # bandwidth split across reserved executors).
+        self.runtime = ExecutionRuntimeCoordinator(lambda: self.registry, repository)
+        # Executors whose acquisition gate global pause has confirmed engaged.
+        self._acquisition_gated: set[str] = set()
 
     async def initialize(self):
         await self.repository.initialize()
@@ -248,6 +256,15 @@ class TransferEngine:
         """Called only after application admission has drained active work."""
         self.policy = policy
         self._resolution_slots = asyncio.Semaphore(max(1, policy.resolution_concurrency))
+
+    def configure_runtime_limits(self, max_download_bytes_per_second: int) -> None:
+        """Inject the canonical global runtime limit into its core owner."""
+        self.runtime.configure(max_download_bytes_per_second)
+
+    async def converge_runtime_limits(self):
+        """Converge executor ceilings to the configured global limit; neutral status."""
+        async with self._dispatch_lock:
+            return await self.runtime.converge()
 
     async def _live(self, transfer_id: int, *, admission=False) -> bool:
         transfer = await self.repository.get(transfer_id)
@@ -260,8 +277,10 @@ class TransferEngine:
         return NormalizedError(domain, category, stage, retryability=retryability)
 
     @classmethod
-    def _authoritative_provider_result(cls, provider_id: str, result: ResolutionResult) -> ResolutionResult:
-        """Validate and stamp provider output with the selected route identity."""
+    def _authoritative_provider_result(cls, provider_id: str, result: ResolutionResult, *,
+                                       request_kind: str) -> ResolutionResult:
+        """Validate and stamp provider output with the selected route identity
+        and the canonical request class each candidate was resolved for."""
         if not isinstance(result, ResolutionResult):
             raise TransferError(cls._error(
                 Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
@@ -292,6 +311,7 @@ class TransferEngine:
                 ))
             candidates.append(replace(
                 candidate, provider_id=provider_id, resource=authoritative_resource(candidate.resource),
+                request_kind=str(request_kind),
             ))
 
         observation = result.observation
@@ -417,7 +437,7 @@ class TransferEngine:
                 continue
             if (artifact.state != "queued" or artifact.retry_at > now
                     or not 0 <= artifact.selected < len(artifact.candidates)
-                    or not self.registry.eligible_executors(artifact.candidates[artifact.selected])):
+                    or not self.registry.claimants(ExecutionSubject.of(artifact.candidates[artifact.selected]))):
                 continue
             admission = await self.repository.materialization_authorization(artifact)
             if admission.kind == MaterializationAdmissionKind.PROCEED:
@@ -684,33 +704,141 @@ class TransferEngine:
                     if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
                         grouped.setdefault(artifact.execution.executor_id, []).append(artifact.execution)
             observations = {}
+            reservation_facts = {}
             for executor_id, handles in grouped.items():
                 executor = self.registry.executors.get(executor_id)
-                if not isinstance(executor, BatchObservation):
+                if executor is None:
                     continue
-                try:
-                    snapshot = await executor.observe_many(tuple(handles))
-                    if snapshot.error:
-                        for handle in handles:
-                            observations[handle.attempt_id] = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=snapshot.error)
-                    else:
-                        requested = {handle.attempt_id: handle for handle in handles}
-                        for observation in snapshot.observations:
-                            if requested.get(observation.handle.attempt_id) != observation.handle:
-                                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
-                            observations[observation.handle.attempt_id] = observation
-                        if any(handle.attempt_id not in observations for handle in handles):
-                            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
-                except Exception as exc:
-                    error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id=executor_id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION)
-                    for handle in handles:
-                        observations[handle.attempt_id] = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
+                snapshot = await self._observe_batch(executor, tuple(handles))
+                certain = snapshot.error is None
+                for handle, observation in zip(handles, snapshot.observations):
+                    try:
+                        observation = await self._accept_observation(handle, observation)
+                    except TransferError as exc:
+                        observation = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
+                    observations[handle.attempt_id] = observation
+                    certain = certain and observation.error is None and observation.state != ExecutionState.UNKNOWN
+                reservation_facts[executor_id] = (certain, any(
+                    item.resumable and item.activity.bandwidth_reservation_required
+                    for item in (observations[handle.attempt_id] for handle in handles)))
+            await self.runtime.observe(reservation_facts)
             for transfer in transfers:
                 challenge = challenges[transfer.id]
                 await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations,
                                                dispatch_allowed=challenge is None)
                 if challenge and challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
                     await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
+            await self._release_runtime_reservations()
+
+    async def _release_runtime_reservations(self):
+        """Positive durable truth that an executor holds no live native work
+        releases its bandwidth reservation; remaining shares may then rise."""
+        async with self._dispatch_lock:
+            await self.runtime.release_absent(await self.repository.executors_with_live_work())
+
+    async def _observe_batch(self, executor, handles: tuple[ExecutionHandle, ...]) -> ExecutionSnapshot:
+        """The one executor observation call: one neutral batch per executor.
+
+        Returns exactly one observation per requested handle, in order. A
+        native/batch failure never becomes an empty or absent snapshot: every
+        affected handle is UNKNOWN with the snapshot's error."""
+        try:
+            snapshot = await executor.observe_many(tuple(handles))
+            if not isinstance(snapshot, ExecutionSnapshot):
+                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+            if snapshot.error:
+                return ExecutionSnapshot(tuple(ExecutionObservation(handle, ExecutionState.UNKNOWN, error=snapshot.error)
+                                               for handle in handles), snapshot.error)
+            by_attempt = {}
+            for observation in snapshot.observations:
+                if not isinstance(observation, ExecutionObservation) or observation.handle.attempt_id in by_attempt:
+                    raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                by_attempt[observation.handle.attempt_id] = observation
+            if set(by_attempt) != {handle.attempt_id for handle in handles}:
+                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+            return ExecutionSnapshot(tuple(by_attempt[handle.attempt_id] for handle in handles))
+        except Exception as exc:
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION)
+            return ExecutionSnapshot(tuple(ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
+                                           for handle in handles), error)
+
+    async def _observe_execution(self, executor, handle: ExecutionHandle) -> ExecutionObservation:
+        """Observe one execution through the batch contract and accept it."""
+        observed = (await self._observe_batch(executor, (handle,))).observations[0]
+        return await self._accept_observation(handle, observed)
+
+    async def _accept_observation(self, handle: ExecutionHandle, observed) -> ExecutionObservation:
+        """THE acceptance of every executor observation for ``handle``.
+
+        The observation must name the same executor and DP attempt. Its
+        handle is either the persisted one, or that handle's one legal native
+        binding (``None`` -> value), which is durably bound here BEFORE the
+        observation can be persisted. Every other handle mutation is refused."""
+        if not isinstance(observed, ExecutionObservation) or not isinstance(observed.handle, ExecutionHandle):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+        if not isinstance(observed.state, ExecutionState) or not isinstance(observed.activity, ExecutionActivity) \
+                or not isinstance(observed.controls, frozenset) \
+                or any(not isinstance(item, ExecutionControl) for item in observed.controls):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+        if observed.handle == handle:
+            return observed
+        if handle.binds(observed.handle) and await self.repository.bind_execution_handle(handle, observed.handle):
+            return observed
+        raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+
+    @staticmethod
+    def _controls(executor, observed: ExecutionObservation) -> frozenset:
+        """Controls usable now: advertised by the current observation AND
+        backed by the executor's static per-execution control capability."""
+        return observed.controls if executor.capabilities.per_execution_pause else frozenset()
+
+    async def _cancel_execution(self, executor, handle: ExecutionHandle) -> ExecutionObservation:
+        """Ask the executor to stop native work and accept the observed truth.
+
+        The result proves a stop only when it is ``stopped``; an unconfirmed
+        or lost acknowledgement stays uncertain (UNKNOWN) and keeps its
+        reservation, cleanup authority and material ownership."""
+        try:
+            observed = await executor.cancel(handle)
+        except Exception as exc:
+            observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                                            error=self._executor_cleanup_exception(executor.descriptor.id, exc))
+        return await self._accept_observation(handle, observed)
+
+    @staticmethod
+    def _cancellation_outcome(observed: ExecutionObservation, initiator=CancellationInitiator.USER) -> TransferOutcome:
+        if observed.stopped:
+            return TransferOutcome(OutcomeKind.CANCELLED, cancellation_initiator=initiator)
+        return TransferOutcome(OutcomeKind.FAILURE, observed.error or NormalizedError(
+            Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.CLEANUP, retryability=Retryability.BACKOFF))
+
+    def _work(self, artifact: Artifact, candidate: TransferCandidate) -> ExecutionWork:
+        """Core output policy for one artifact's selected subject."""
+        return ExecutionWork(ExecutionSubject.of(candidate),
+                             materialization_plan(self.root, artifact.target, candidate.materialization))
+
+    def _footprint(self, executor, work: ExecutionWork) -> ExecutionFootprint:
+        footprint = executor.footprint(work)
+        if not isinstance(footprint, ExecutionFootprint):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
+        validate_plan(self.root, work.materialization, footprint)
+        return footprint
+
+    def _artifact_work(self, artifact: Artifact, executor=None):
+        """(executor, work, footprint) for an artifact's current selection; the
+        executor is the attempt's own when one exists, else the core-selected
+        claimant."""
+        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+        if candidate is None:
+            return executor, None, None
+        if executor is None:
+            executor = (self.registry.executors.get(artifact.execution.executor_id) if artifact.execution
+                        else self.registry.executor_for_subject(ExecutionSubject.of(candidate)))
+        if executor is None:
+            return None, None, None
+        work = self._work(artifact, candidate)
+        return executor, work, self._footprint(executor, work)
 
     async def _current_artifact(self, transfer_id: int, artifact_id: int):
         return next((item for item in await self.repository.artifacts(transfer_id) if item.id == artifact_id), None)
@@ -743,14 +871,19 @@ class TransferEngine:
         Callers may arrive with stale observations. Any observation that would
         trigger a native mutation is revalidated while holding the per-execution
         lock, so explicit controls and scheduler reconciliation cannot both emit
-        the same pause/unpause. Durable pause intent is reread after every native
-        action, allowing a newer opposite intent to win before ownership is
-        released. Scheduler callers can leave passive observation persistence to
-        activity accounting so byte progress is measured before it is stored.
+        the same pause/unpause. A control is invoked only while the CURRENT
+        observation advertises it (and the executor statically supports
+        per-execution control); an unavailable control is never guessed at --
+        the execution stays observed and owned until a later observation offers
+        it. Durable pause intent is reread after every native action, allowing a
+        newer opposite intent to win before ownership is released. Scheduler
+        callers can leave passive observation persistence to activity accounting
+        so byte progress is measured before it is stored.
         """
         if artifact.execution is None:
             return observed
         handle = artifact.execution
+        controllable = executor.capabilities.per_execution_pause
         async with self._convergence_lock(handle.attempt_id):
             current = await self._current_artifact(artifact.transfer_id, artifact.id)
             if current is None or current.execution is None or current.execution.attempt_id != handle.attempt_id:
@@ -758,16 +891,18 @@ class TransferEngine:
                     Category.OWNERSHIP_CONFLICT, Stage.RECONCILIATION, domain=Domain.LIFECYCLE,
                     retryability=Retryability.NEVER,
                 ))
+            handle = current.execution
             try:
                 transfer = await self.repository.get(artifact.transfer_id)
                 desired_paused = bool(transfer and transfer.paused) or await self.repository.globally_paused()
-                mutation_implied = observed is None or (
-                    desired_paused and observed.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING}
-                ) or (not desired_paused and observed.state == ExecutionState.PAUSED)
+                mutation_implied = observed is None or (controllable and (
+                    (desired_paused and observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING})
+                    or (not desired_paused and observed.state == ExecutionState.PAUSED)))
                 if mutation_implied:
-                    observed = await executor.observe(handle)
-                if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
-                    raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                    observed = await self._observe_execution(executor, handle)
+                else:
+                    observed = await self._accept_observation(handle, observed)
+                handle = observed.handle
 
                 for _ in range(4):
                     current = await self._current_artifact(artifact.transfer_id, artifact.id)
@@ -777,6 +912,7 @@ class TransferEngine:
                     if transfer is None or transfer.state in {TransferState.DELETED, TransferState.COMPLETED, TransferState.CONSOLIDATED, TransferState.CANCELLED}:
                         return observed
                     desired_paused = transfer.paused or await self.repository.globally_paused()
+                    controls = self._controls(executor, observed)
 
                     if observed.state in {ExecutionState.UNKNOWN, ExecutionState.FAILED, ExecutionState.ABSENT,
                                           ExecutionState.CANCELLED, ExecutionState.SUCCEEDED}:
@@ -785,17 +921,16 @@ class TransferEngine:
                         return observed
 
                     if desired_paused:
-                        if observed.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING}:
-                            observed = await executor.pause(handle)
-                            if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
-                                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                        if (observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING}
+                                and ExecutionControl.PAUSE in controls):
+                            observed = await self._accept_observation(handle, await executor.pause(handle))
                             await self.repository.execution(observed)
                             continue
                         if persist_passive:
                             await self.repository.execution(observed)
                         return observed
 
-                    if observed.state == ExecutionState.PAUSED:
+                    if observed.state == ExecutionState.PAUSED and ExecutionControl.RESUME in controls:
                         async with self._dispatch_lock:
                             current = await self._current_artifact(artifact.transfer_id, artifact.id)
                             transfer = await self.repository.get(artifact.transfer_id)
@@ -820,16 +955,15 @@ class TransferEngine:
                             occupied = await self.repository.occupied_execution_slots(
                                 self.clock(), exclude_artifact_id=artifact.id,
                             )
-                            if occupied >= max(1, self.policy.max_active_executions):
+                            if (occupied >= max(1, self.policy.max_active_executions)
+                                    or not await self.runtime.admit(executor)):
                                 if persist_passive:
                                     await self.repository.execution(observed)
                                 return observed
                             await self.repository.execution(ExecutionObservation(
-                                handle, ExecutionState.QUEUED, observed.progress, observed.paths,
+                                handle, ExecutionState.QUEUED, observed.progress, activity=observed.activity,
                             ))
-                        observed = await executor.resume(handle)
-                        if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
-                            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+                        observed = await self._accept_observation(handle, await executor.resume(handle))
                         await self.repository.execution(observed)
                         continue
 
@@ -837,12 +971,11 @@ class TransferEngine:
                         await self.repository.execution(observed)
                     return observed
 
-                return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, observed.paths,
-                    NormalizedError(
-                        Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-                        retryability=Retryability.BACKOFF,
-                        operator_action_required=False, integration_id=executor.descriptor.id,
-                    ))
+                return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, NormalizedError(
+                    Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
+                    retryability=Retryability.BACKOFF,
+                    operator_action_required=False, integration_id=executor.descriptor.id,
+                ))
             except Exception as exc:
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                     error=self._control_error(exc, executor.descriptor.id))
@@ -858,17 +991,13 @@ class TransferEngine:
                         error = self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RECONCILIATION, domain=Domain.REQUEST, retryability=Retryability.NEVER)
                         await self.repository.artifact_state(artifact.id, "error", error=error)
                         continue
-                    try:
-                        observed = observations.get(artifact.execution.attempt_id)
-                        if observed is None:
-                            observed = await executor.observe(artifact.execution)
-                    except Exception as exc:
-                        observed = ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN,
-                            error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.RECONCILIATION))
-                    if not isinstance(observed, ExecutionObservation) or observed.handle != artifact.execution:
-                        raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
-                    if isinstance(executor, PauseResume):
-                        observed = await self._converge_execution(artifact, executor, observed, persist_passive=False)
+                    observed = observations.get(artifact.execution.attempt_id)
+                    if observed is None:
+                        observed = await self._observe_execution(executor, artifact.execution)
+                    else:
+                        observed = await self._accept_observation(artifact.execution, observed)
+                    artifact = replace(artifact, execution=observed.handle)
+                    observed = await self._converge_execution(artifact, executor, observed, persist_passive=False)
                     await self._execution_result(artifact, executor, observed)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "queued" and artifact.retry_at <= self.clock():
                     await self._dispatch(artifact)
@@ -894,7 +1023,7 @@ class TransferEngine:
 
     async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
                                 *, challenge: InputChallenge | None = None):
-        result = self._authoritative_provider_result(provider.descriptor.id, result)
+        result = self._authoritative_provider_result(provider.descriptor.id, result, request_kind=record.request.kind)
         if result.input_required:
             if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
@@ -1025,10 +1154,17 @@ class TransferEngine:
         candidate = next((item for item in candidates if str(item.id) == challenge.operation_id), None)
         if candidate is None:
             return None
-        eligible = self.registry.eligible_executors(candidate)
-        executor = eligible[0] if eligible else None
-        if executor is None or executor.descriptor.id != challenge.integration_id \
-                or not isinstance(executor, CandidateSamplingContinuation):
+        # Fenced to the EXACT executor identity that raised the requirement:
+        # if the core-selected claimant for this subject changed, the challenge
+        # is stale and ordinary routing re-enters -- the submitted input never
+        # moves to another executor.
+        try:
+            executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
+        except TransferError:
+            return None
+        capabilities = executor.capabilities
+        if (executor.descriptor.id != challenge.integration_id or not capabilities.candidate_sampling
+                or not capabilities.transient_input):
             return None
         return record, candidates, candidate, executor
 
@@ -1106,7 +1242,9 @@ class TransferEngine:
         raise NotImplementedError("_observe_resource is implemented by transfers.engine.TransferEngine")
 
     async def _materialize(self, record: RequestRecord, candidates, *, evidence: EvidenceContext | None = None):
-        if any(not candidate.endpoints or candidate.expected_bytes < 0 for candidate in candidates):
+        # Structural validity only: whether some executor can act on a
+        # candidate is a claim over its subject, decided at dispatch.
+        if any(not isinstance(candidate, TransferCandidate) or candidate.expected_bytes < 0 for candidate in candidates):
             raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.CANDIDATE_PREPARATION))
         candidates = tuple(sorted(candidates, key=lambda candidate: -candidate.priority))
         if record.entry:
@@ -1228,19 +1366,7 @@ class TransferEngine:
         await self.repository.artifact_state(artifact.id, "unresolved", release=True)
         await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
 
-    @staticmethod
-    def _target_initially_absent(target: str, sidecars) -> bool:
-        """Observed at the final execution-admission boundary, immediately
-        before the attempt is durably prepared and handed native start
-        authority: does the artifact's canonical target -- or any resumable
-        sidecar the executor declares for it -- already hold material? Anything
-        present now (legitimate prior partial bytes, an operator's file, a
-        symlink) pre-dates this execution and is never this execution's to
-        retire. ``lexists`` so a dangling symlink still counts as present. A
-        pure observation: it adds no admission rule of its own."""
-        return not any(os.path.lexists(item) for item in (target, *sidecars))
-
-    async def _dispatch(self, artifact: Artifact):
+    async def _dispatch(self, artifact: Artifact, *, retry_from: ExecutionHandle | None = None):
         try:
             # Universal execution-admission invariant (DP 1.0.12 canonical
             # architecture correction, Workstream A): stops before ANY
@@ -1257,12 +1383,12 @@ class TransferEngine:
             if admission.kind == MaterializationAdmissionKind.STALE:
                 await self._retire_stale_materialization(artifact)
                 return
-            validate_target(self.root, artifact.target)
             candidate = artifact.candidates[artifact.selected]
-            executor = self.registry.executor_for(candidate)
-            sidecars = executor.resumable_paths(artifact.target)
-            if await stable_payload(artifact.target, artifact.expected_bytes, sidecars=sidecars, integrity=candidate.integrity,
-                                    delay=self.policy.adoption_stability_seconds):
+            executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
+            work = self._work(artifact, candidate)
+            footprint = self._footprint(executor, work)
+            if await adoptable_material(work.materialization, footprint, artifact.expected_bytes, candidate.integrity,
+                                        delay=self.policy.adoption_stability_seconds):
                 await self.repository.artifact_state(artifact.id, "completed")
                 return
             if candidate.expires_at is not None and candidate.expires_at <= self.clock():
@@ -1270,16 +1396,17 @@ class TransferEngine:
                     retryability=Retryability.AFTER_RERESOLUTION)
                 await self._schedule_refresh(artifact, error)
                 return
-            request = ExecutionRequest(candidate, artifact.target, new_identity())
+            request = ExecutionRequest(work, new_identity())
             prepared = executor.prepare(request)
             if isinstance(prepared, InputRequirement):
-                if not isinstance(executor, ExecutorInputContinuation):
+                if not executor.capabilities.transient_input:
                     raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE, domain=Domain.REQUEST, retryability=Retryability.NEVER))
                 await self.challenges.wait_executor(artifact, executor.descriptor.id, request.attempt_id, prepared)
                 return
-            if not isinstance(prepared, ExecutionHandle) or prepared.executor_id != executor.descriptor.id or prepared.attempt_id != request.attempt_id:
-                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
+            self._require_prepared(prepared, executor.descriptor.id, request.attempt_id)
             handle = prepared
+            native_retry = retry_from is not None and await self._native_retry_available(executor, retry_from)
+            submitted = None
             async with self._dispatch_lock:
                 # Close the TOCTOU window (specification section 7.4):
                 # revalidate the same authority immediately before the
@@ -1307,8 +1434,14 @@ class TransferEngine:
                     # reason this artifact did not dispatch this attempt.
                     self._capacity_only_blocked.add(artifact.id)
                     return
+                # Global bandwidth admission: under a finite global cap the
+                # executor's assigned ceiling is proven (existing shares shrunk
+                # first) before its native acquisition may begin.
+                if not await self.runtime.admit(executor):
+                    return
                 if not await self.repository.prepare_execution(
-                        artifact, handle, target_initially_absent=self._target_initially_absent(artifact.target, sidecars)):
+                        artifact, handle,
+                        target_initially_absent=material_initially_absent(work.materialization, footprint)):
                     return
                 # Input that already proved this exact candidate's evidence
                 # starts the writer admitted for it, once, through the
@@ -1316,11 +1449,16 @@ class TransferEngine:
                 # which every pause-intent write also takes. A pause therefore
                 # lands strictly before admission (the handoff stays with the
                 # broker until the next admission) or strictly after the native
-                # start (the input was consumed); never in between. The
-                # executor still enforces its own security facts.
+                # start (the input was consumed); never in between. The broker
+                # hands input only to the exact executor identity it was proven
+                # for: admitting any other claimant discards it. The executor
+                # still enforces its own security facts.
                 submitted = await self.inputs.take_handoff(
                     artifact.transfer_id, artifact.request_id, str(candidate.id), executor.descriptor.id,
-                ) if isinstance(executor, ExecutorInputRecovery) else None
+                )
+                if submitted is not None and not executor.capabilities.transient_input:
+                    submitted.discard()
+                    submitted = None
                 if submitted is not None:
                     try:
                         observed = await executor.start_with_input(request, handle, submitted)
@@ -1332,7 +1470,13 @@ class TransferEngine:
                         submitted.discard()
             if submitted is None:
                 try:
-                    observed = await executor.start(request, handle)
+                    if native_retry:
+                        # Core already decided this same-candidate retry and
+                        # fenced the previous attempt; the executor may carry
+                        # its native state into the new, durably prepared one.
+                        observed = await executor.retry_from(request, handle, retry_from)
+                    else:
+                        observed = await executor.start(request, handle)
                 except Exception as exc:
                     observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
                         error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.QUEUE))
@@ -1341,6 +1485,23 @@ class TransferEngine:
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.QUEUE)
             await self.repository.artifact_state(artifact.id, "error", error=error)
+
+    def _require_prepared(self, prepared, executor_id: str, attempt_id: str) -> None:
+        if (not isinstance(prepared, ExecutionHandle) or prepared.executor_id != executor_id
+                or prepared.attempt_id != attempt_id or not isinstance(prepared.correlation, Mapping)
+                or not (prepared.native is None or isinstance(prepared.native, Mapping))):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
+
+    async def _native_retry_available(self, executor, previous: ExecutionHandle) -> bool:
+        """Static capability AND current runtime availability, for a previous
+        attempt of this very executor."""
+        if not executor.capabilities.native_assisted_retry or previous.executor_id != executor.descriptor.id:
+            return False
+        try:
+            health = await executor.health()
+        except Exception:
+            return False
+        return ExecutorRuntimeCapability.NATIVE_ASSISTED_RETRY in health.available_runtime_capabilities
 
     async def _continue_executor_input(self, challenge: InputChallenge, artifacts):
         if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
@@ -1366,14 +1527,23 @@ class TransferEngine:
             await self._retire_stale_materialization(artifact)
             return
         candidate = artifact.candidates[artifact.selected]
-        eligible = {item.descriptor.id: item for item in self.registry.eligible_executors(candidate)}
-        executor = eligible.get(challenge.integration_id)
-        request = ExecutionRequest(candidate, artifact.target, challenge.operation_id)
+        try:
+            executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
+        except TransferError:
+            executor = None
+        if (executor is None or executor.descriptor.id != challenge.integration_id
+                or not executor.capabilities.transient_input):
+            # The challenged executor is no longer the selected claimant: its
+            # challenge is retired, the submitted input dies unused, and the
+            # artifact re-enters ordinary routing (which asks again through the
+            # one INPUT_REQUIRED lifecycle if the new claimant needs input).
+            await self._retire_executor_challenge(challenge, artifact)
+            return
+        work = self._work(artifact, candidate)
+        request = ExecutionRequest(work, challenge.operation_id)
         submitted = None
 
-        if (artifact.execution is not None
-                and artifact.execution.attempt_id == challenge.operation_id
-                and isinstance(executor, ExecutorInputRecovery)):
+        if artifact.execution is not None and artifact.execution.attempt_id == challenge.operation_id:
             try:
                 async with self._dispatch_lock:
                     if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
@@ -1387,7 +1557,7 @@ class TransferEngine:
                     occupied = await self.repository.occupied_execution_slots(
                         self.clock(), exclude_artifact_id=artifact.id,
                     )
-                    if occupied >= max(1, self.policy.max_active_executions):
+                    if occupied >= max(1, self.policy.max_active_executions) or not await self.runtime.admit(executor):
                         return
                     submitted = await self.inputs.take(challenge)
                     if submitted is None:
@@ -1408,9 +1578,8 @@ class TransferEngine:
                     submitted.discard()
             return
 
-        if not isinstance(executor, ExecutorInputContinuation):
-            return
         try:
+            footprint = self._footprint(executor, work)
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
                     return
@@ -1423,7 +1592,7 @@ class TransferEngine:
                 occupied = await self.repository.occupied_execution_slots(
                     self.clock(), exclude_artifact_id=artifact.id,
                 )
-                if occupied >= max(1, self.policy.max_active_executions):
+                if occupied >= max(1, self.policy.max_active_executions) or not await self.runtime.admit(executor):
                     return
                 submitted = await self.inputs.take(challenge)
                 if submitted is None:
@@ -1432,12 +1601,10 @@ class TransferEngine:
                 if isinstance(prepared, InputRequirement):
                     await self.challenges.replace(challenge, prepared)
                     return
-                if not isinstance(prepared, ExecutionHandle) or prepared.executor_id != challenge.integration_id or prepared.attempt_id != challenge.operation_id:
-                    raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.QUEUE))
+                self._require_prepared(prepared, challenge.integration_id, challenge.operation_id)
                 if not await self.repository.prepare_execution(
                         artifact, prepared, from_input_required=True,
-                        target_initially_absent=self._target_initially_absent(
-                            artifact.target, executor.resumable_paths(artifact.target))):
+                        target_initially_absent=material_initially_absent(work.materialization, footprint)):
                     return
                 handle = prepared
             await self.challenges.clear(challenge)
@@ -1460,12 +1627,29 @@ class TransferEngine:
             if submitted:
                 submitted.discard()
 
+    async def _retire_executor_challenge(self, challenge: InputChallenge, artifact: Artifact) -> None:
+        """Retire an executor-origin challenge whose executor stopped being the
+        selected claimant, and return the artifact to ordinary routing without
+        orphaning a native writer: a challenged attempt is requeued only once
+        its native work is positively stopped (or never existed)."""
+        await self.challenges.clear(challenge)
+        await self.inputs.clear(challenge.id)
+        if artifact.execution is not None:
+            owner = self.registry.executors.get(artifact.execution.executor_id)
+            if owner is None:
+                return
+            observed = await self._observe_execution(owner, artifact.execution)
+            await self.repository.execution(observed)
+            if not observed.stopped:
+                return
+        await self.repository.artifact_state(artifact.id, "queued", release=True)
+
     async def _execution_result(self, artifact, executor, observed):
-        if not isinstance(observed, ExecutionObservation) or observed.handle != artifact.execution:
-            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
+        observed = await self._accept_observation(artifact.execution, observed)
+        artifact = replace(artifact, execution=observed.handle)
         idle_seconds = await self.repository.execution_idle_seconds(observed, self.clock())
         await self.repository.execution(observed)
-        if (artifact.candidates and isinstance(executor, ExecutorInputRecovery)):
+        if artifact.candidates and executor.capabilities.transient_input:
             requirement = executor.input_requirement(artifact.candidates[artifact.selected], observed)
             if requirement is not None:
                 if not isinstance(requirement, InputRequirement):
@@ -1473,64 +1657,55 @@ class TransferEngine:
                 await self.challenges.wait_executor(artifact, executor.descriptor.id, observed.handle.attempt_id, requirement)
                 return
         if not await self._live(artifact.transfer_id):
-            await executor.cancel(observed.handle)
+            await self.repository.execution(await self._cancel_execution(executor, observed.handle))
             return
         transfer = await self.repository.get(artifact.transfer_id)
-        if observed.occupies_slot and (transfer.paused or await self.repository.globally_paused()):
-            if isinstance(executor, PauseResume):
-                await self._converge_execution(artifact, executor, observed)
+        if (observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING}
+                and (transfer.paused or await self.repository.globally_paused())):
+            await self._converge_execution(artifact, executor, observed)
             return
         if observed.state == ExecutionState.UNKNOWN:
             return
-        if (observed.state == ExecutionState.TRANSFERRING and observed.error is None
+        if (observed.state == ExecutionState.RUNNING and observed.error is None and observed.activity.progress_expected
                 and self.policy.stalled_after_seconds > 0 and idle_seconds >= self.policy.stalled_after_seconds):
-            cancelled = await executor.cancel(observed.handle)
-            if cancelled.kind == OutcomeKind.FAILURE:
-                await self.repository.outcome(artifact.transfer_id, cancelled, attempt_id=observed.handle.attempt_id)
-                return
-            confirmed = await executor.observe(observed.handle)
+            confirmed = await self._cancel_execution(executor, observed.handle)
             await self.repository.execution(confirmed)
+            await self.repository.outcome(artifact.transfer_id, self._cancellation_outcome(
+                confirmed, CancellationInitiator.POLICY), attempt_id=observed.handle.attempt_id)
             if confirmed.error or confirmed.state not in {ExecutionState.ABSENT, ExecutionState.CANCELLED}:
                 return
             error = self._error(Category.TRANSFER_STALLED, Stage.EXECUTION, domain=Domain.EXECUTOR,
                 retryability=Retryability.BACKOFF)
             await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.SUCCEEDED:
-            validate_target(self.root, artifact.target)
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+            if candidate is None:
+                raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.VERIFICATION))
+            work = self._work(artifact, candidate)
+            footprint = self._footprint(executor, work)
             # DP 1.0.12 canonical lifecycle/recovery/completion rework,
-            # Section 5: a SUCCEEDED observation whose size is unknown (both
-            # the artifact's own expected size and the executor's own final
-            # total are absent/zero) must never silently collapse into an
-            # affirmative zero-byte completion -- route it through the same
-            # verification-failure/recovery path an ordinary payload mismatch
-            # already uses instead of inventing a second outcome.
-            #
-            # Three distinct facts, none trusted over another: what the
-            # selected candidate's provider reported (0 = no report), what the
-            # executor finally measured, and the artifact's own recorded size
-            # (bookkeeping -- never an upstream report, and never grounds to
-            # reject the executor's final total). ``stable_material_size``
-            # reconciles them against the stable local payload and returns the
-            # size that payload actually proves, which becomes the artifact's
-            # accepted material size (the provider's original report stays in
-            # the durable candidate/resolution history).
-            size = await stable_material_size(
-                artifact.target, candidate.expected_bytes if candidate else 0, observed.progress.total_bytes,
-                recorded_bytes=artifact.expected_bytes, sidecars=executor.resumable_paths(artifact.target),
-                integrity=candidate.integrity if candidate else (), delay=self.policy.adoption_stability_seconds,
+            # Section 5: the executor's materialization report is a fact to
+            # verify, never to trust. The one generalized verifier reconciles
+            # the provider-reported size, the executor's final total and the
+            # artifact's recorded size against stable local material (a size
+            # that is unknown everywhere never collapses into an affirmative
+            # zero-byte completion) and returns the size the material proves;
+            # a missing/invalid report verifies nothing.
+            verified = await verify_materialization(
+                self.root, work.materialization, observed.materialization, footprint,
+                reported_bytes=candidate.expected_bytes, observed_total=observed.progress.total_bytes,
+                recorded_bytes=artifact.expected_bytes, integrity=candidate.integrity,
+                delay=self.policy.adoption_stability_seconds,
             )
-            if size is not None:
+            if verified is not None and await self.repository.record_materialization(observed.handle, verified.result):
                 # FUNC-001: record the canonical size fact durably alongside the
                 # accepted size, so a restart reconstructs the same semantics
-                # instead of re-reading a bare number. ``stable_material_size``
-                # returns 0 only when ``size_knowledge`` resolved KNOWN_ZERO from
-                # trusted affirmative-zero evidence AND the stable payload proved
-                # it; an unknown/defaulted zero verifies nothing and lands in the
-                # failure branch below, so this can never launder one into truth.
+                # instead of re-reading a bare number. KNOWN_ZERO is returned
+                # only when trusted affirmative-zero evidence AND stable
+                # material proved it; an unknown/defaulted zero verifies nothing.
                 await self.repository.artifact_state(
-                    artifact.id, "completed", expected_bytes=size,
-                    size_knowledge=SizeKnowledge.KNOWN_POSITIVE if size > 0 else SizeKnowledge.KNOWN_ZERO,
+                    artifact.id, "completed", expected_bytes=verified.total_bytes,
+                    size_knowledge=verified.size_knowledge,
                 )
             else:
                 error = self._error(Category.MATERIALIZATION_FAILED, Stage.VERIFICATION, domain=Domain.INTEGRITY,
@@ -1542,7 +1717,7 @@ class TransferEngine:
                 await self.repository.artifact_state(artifact.id, "error", error=error)
                 await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error), attempt_id=observed.handle.attempt_id)
                 if owned:
-                    await self._retire_execution_owned_material(artifact, executor)
+                    await self._retire_execution_owned_material(artifact, work, footprint)
         elif observed.state == ExecutionState.FAILED:
             error = observed.error or self._error(Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION, domain=Domain.EXECUTOR)
             await self._recover_artifact(artifact, error)
@@ -1555,16 +1730,16 @@ class TransferEngine:
                 cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
 
 
-    async def _retire_execution_owned_material(self, artifact, executor) -> None:
-        """Retire the invalid material a rejected execution itself created:
-        exactly the artifact's canonical target and the executor-declared
-        resumable sidecars for it, through the existing hardened
-        ``retire_partial`` primitive. Verification failure is not the
-        authority -- the caller has already proven positive execution
-        ownership. The verification failure is already durable; a cleanup
-        failure is logged and changes nothing about it."""
+    async def _retire_execution_owned_material(self, artifact, work: ExecutionWork, footprint: ExecutionFootprint) -> None:
+        """Retire the invalid material a rejected execution itself created --
+        its FILE target or its dedicated COLLECTION root, plus its declared
+        transient paths -- through the one hardened cleanup owner. Verification
+        failure is not the authority -- the caller has already proven positive
+        execution ownership. The verification failure is already durable; a
+        cleanup failure is logged and changes nothing about it."""
         try:
-            await asyncio.to_thread(retire_partial, self.root, artifact.target, executor.resumable_paths(artifact.target))
+            await asyncio.to_thread(retire_materialization, self.root, work.materialization, footprint,
+                                    owned=True)
         except (TransferError, OSError) as exc:
             logger.warning(
                 "execution-owned invalid material could not be retired transfer=%s artifact=%s: %s",
@@ -1591,21 +1766,19 @@ class TransferEngine:
     async def _complete(self, transfer_id: int, artifacts):
         if (await self.repository.get(transfer_id)).state == TransferState.POST_PROCESSING:
             return
+        outputs: list[str] = []
         for artifact in artifacts:
+            executor = None
             try:
-                validate_target(self.root, artifact.target)
+                executor, work, footprint = self._artifact_work(artifact)
+                if executor is None or work is None:
+                    raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.VERIFICATION,
+                        domain=Domain.REQUEST, retryability=Retryability.NEVER))
             except TransferError as exc:
                 await self.repository.artifact_state(artifact.id, "error", error=exc.error)
                 await self.repository.state(transfer_id, TransferState.FAILED, error=exc.error)
                 return
-            executor = None
             try:
-                candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-                executor = self.registry.executors.get(artifact.execution.executor_id) if artifact.execution else self.registry.executor_for(candidate) if candidate else None
-                if executor is None:
-                    raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.VERIFICATION,
-                        domain=Domain.REQUEST, retryability=Retryability.NEVER))
-                sidecars = executor.resumable_paths(artifact.target)
                 # FUNC-001: empty material is acceptable only where canonical
                 # durable size truth affirmatively says this object is zero
                 # bytes. The presence of an execution is not evidence about
@@ -1613,17 +1786,24 @@ class TransferEngine:
                 # has one too -- so it can never authorize committing an empty
                 # file as delivered artifact material. This boundary defends
                 # itself directly rather than relying on upstream sequencing:
-                # reached with an unproven empty artifact through any caller,
-                # it now fails closed into the requeue/verification path below.
-                if await asyncio.to_thread(payload_matches, artifact.target, artifact.expected_bytes, sidecars,
-                                           allow_empty=artifact.size_knowledge == SizeKnowledge.KNOWN_ZERO):
+                # reached with unproven material through any caller, it fails
+                # closed into the requeue/verification path below.
+                stored = (await self.repository.execution_materialization(artifact.execution.attempt_id)
+                          if artifact.execution else None)
+                paths = await asyncio.to_thread(
+                    verified_material_paths, self.root, work.materialization, stored, footprint,
+                    expected_bytes=artifact.expected_bytes,
+                    allow_empty=artifact.size_knowledge == SizeKnowledge.KNOWN_ZERO,
+                )
+                if paths is not None:
+                    outputs.extend(paths)
                     continue
                 if artifact.execution:
-                    result = await executor.cancel(artifact.execution)
-                    if not isinstance(result, TransferOutcome) or result.kind not in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED}:
-                        error = result.error if isinstance(result, TransferOutcome) and result.error else self._error(
-                            Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION)
-                        raise TransferError(error)
+                    stopped = await self._cancel_execution(executor, artifact.execution)
+                    await self.repository.execution(stopped)
+                    if not stopped.stopped:
+                        raise TransferError(stopped.error or self._error(
+                            Category.RECONCILIATION_FAILED, Stage.RECONCILIATION, retryability=Retryability.BACKOFF))
                 await self.repository.artifact_state(artifact.id, "queued", release=True)
                 await self.repository.state(transfer_id, TransferState.QUEUED)
                 return
@@ -1636,7 +1816,7 @@ class TransferEngine:
                 return
         if self.postprocessors:
             await self.repository.state(transfer_id, TransferState.POST_PROCESSING, progress=100, verified=True)
-            await self.repository.queue_postprocessing(transfer_id, self.postprocessors, tuple(item.target for item in artifacts))
+            await self.repository.queue_postprocessing(transfer_id, self.postprocessors, tuple(outputs))
             return
         await self._delivered(transfer_id)
 
@@ -1692,10 +1872,16 @@ class TransferEngine:
             raise KeyError(artifact_id)
         if artifact.execution:
             executor = self.registry.executors[artifact.execution.executor_id]
-            outcome = await executor.cancel(artifact.execution)
-            await self.repository.outcome(transfer_id, outcome, attempt_id=artifact.execution.attempt_id)
-            if outcome.error:
-                raise TransferError(outcome.error)
+            stopped = await self._cancel_execution(executor, artifact.execution)
+            await self.repository.execution(stopped)
+            await self.repository.outcome(transfer_id, self._cancellation_outcome(stopped),
+                                          attempt_id=artifact.execution.attempt_id)
+            if not stopped.stopped:
+                # Acknowledgement is not stop truth: the attempt stays owned
+                # and reconciled until its native writer is proven stopped.
+                raise TransferError(stopped.error or self._error(
+                    Category.RECONCILIATION_FAILED, Stage.CLEANUP, domain=Domain.RECONCILIATION,
+                    retryability=Retryability.BACKOFF))
         await self.repository.artifact_state(artifact_id, "cancelled")
         await self._aggregate(transfer_id)
 
@@ -1780,17 +1966,10 @@ class TransferEngine:
 
             cancel_attempted = False
             try:
-                observed = await executor.observe(handle)
-                if not isinstance(observed, ExecutionObservation) or observed.handle != handle:
-                    raise TransferError(self._error(
-                        Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,
-                        retryability=Retryability.NEVER,
-                    ))
+                observed = await self._observe_execution(executor, handle)
+                handle = observed.handle
                 await self.repository.execution(observed)
-                if observed.state in {
-                    ExecutionState.ABSENT, ExecutionState.CANCELLED,
-                    ExecutionState.SUCCEEDED, ExecutionState.FAILED,
-                }:
+                if observed.stopped:
                     await self.repository.execution_cleanup_complete(handle.attempt_id)
                     continue
                 if observed.error is not None:
@@ -1812,19 +1991,18 @@ class TransferEngine:
                 if not await self.repository.execution_cleanup_attempt(handle.attempt_id):
                     continue
                 cancel_attempted = True
-                outcome = await executor.cancel(handle)
-                if not isinstance(outcome, TransferOutcome):
-                    raise TransferError(self._error(
-                        Category.INVALID_ADAPTER_RESPONSE, Stage.CLEANUP, domain=Domain.EXECUTOR,
-                        retryability=Retryability.NEVER,
-                    ))
-                await self.repository.outcome(attempt.transfer_id, outcome, attempt_id=handle.attempt_id)
-                if outcome.kind not in {OutcomeKind.SUCCESS, OutcomeKind.CANCELLED, OutcomeKind.SKIPPED}:
-                    error = outcome.error or self._error(
+                stopped = await self._cancel_execution(executor, handle)
+                await self.repository.execution(stopped)
+                await self.repository.outcome(attempt.transfer_id, self._cancellation_outcome(stopped),
+                                              attempt_id=handle.attempt_id)
+                if not stopped.stopped:
+                    # Native stop is not proven (an unconfirmed or lost
+                    # acknowledgement): cleanup authority is retained and the
+                    # next pass reconciles by observation before cancelling again.
+                    raise TransferError(stopped.error or self._error(
                         Category.REMOTE_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,
                         retryability=Retryability.BACKOFF,
-                    )
-                    raise TransferError(error)
+                    ))
 
                 await self.repository.execution_cleanup_complete(handle.attempt_id)
             except Exception as exc:

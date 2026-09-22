@@ -215,7 +215,8 @@ async def test_section11_decisive_specific_reason_is_not_masked_by_unrelated_can
     assert len(await diagnostic_pair.repository.artifacts(unrelated.id)) == 1
     assert len(await diagnostic_pair.repository.artifacts(target.id)) == 1
 
-    async def ambiguous(candidate):
+    async def ambiguous(subject):
+        candidate = subject.candidate
         if candidate.provider_id == diagnostic_pair.b.descriptor.id and candidate.name == "target.bin":
             return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "incomplete_representation", "")
         signature = f"prefix:{candidate.name.casefold()}"

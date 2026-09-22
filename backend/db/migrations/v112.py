@@ -275,7 +275,7 @@ async def migrate(*, globally_paused: bool = False) -> dict:
                 await db.execute("""UPDATE download_files SET request_id=?,candidates=?,execution_attempt_id=?,status=?,normalized_error=? WHERE id=?""",
                     (request_id, codec.dump(candidates), attempt_id if handle else None, state, codec.dump(error) if error else None, file["id"]))
                 if handle:
-                    execution_state = {"completed": "succeeded", "verifying": "succeeded", "downloading": "transferring",
+                    execution_state = {"completed": "succeeded", "verifying": "succeeded", "downloading": "running",
                         "queued": "queued", "paused": "paused", "error": "failed"}.get(state, "unknown")
                     await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,authorized,error)
                         VALUES(?,?,?,?,?,?,?,?)""", (attempt_id, parent["id"], file["id"], handle.executor_id,

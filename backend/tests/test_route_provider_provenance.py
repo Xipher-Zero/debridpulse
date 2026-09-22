@@ -83,7 +83,7 @@ async def _resolve(repository, record, provider_id, candidates=(), *, error=None
 async def _materialize_and_execute(repository, record, candidate, *, attempt_id="exec-1", succeed=True):
     artifact = await repository.materialize(record, (candidate,), f"/tmp/{candidate.name}")
     assert artifact is not None
-    handle = ExecutionHandle("fixture_executor", {}, attempt_id=attempt_id)
+    handle = ExecutionHandle("fixture_executor", attempt_id, {})
     assert await repository.prepare_execution(artifact, handle)
     observation = ExecutionObservation(
         handle,
@@ -158,13 +158,13 @@ async def test_candidate_change_within_provider_is_not_provider_failover(tmp_pat
     record = (await repository.requests(transfer.id))[0]
     artifact = await repository.materialize(record, (first, second), "/tmp/candidate.bin")
 
-    handle1 = ExecutionHandle("fixture_executor", {}, attempt_id="candidate-exec-1")
+    handle1 = ExecutionHandle("fixture_executor", "candidate-exec-1", {})
     assert await repository.prepare_execution(artifact, handle1)
     error = NormalizedError(Domain.EXECUTOR, Category.TRANSFER_FAILED, Stage.EXECUTION)
     await repository.execution(ExecutionObservation(handle1, ExecutionState.FAILED, error=error))
     await repository.artifact_state(artifact.id, "queued", release=True, selected=1, expected_bytes=8)
     artifact = (await repository.artifacts(transfer.id))[0]
-    handle2 = ExecutionHandle("fixture_executor", {}, attempt_id="candidate-exec-2")
+    handle2 = ExecutionHandle("fixture_executor", "candidate-exec-2", {})
     assert await repository.prepare_execution(artifact, handle2)
     await repository.execution(ExecutionObservation(handle2, ExecutionState.SUCCEEDED, TransferProgress(8, 8)))
     await repository.artifact_state(artifact.id, "completed", expected_bytes=8)
@@ -197,13 +197,13 @@ async def test_executor_retry_keeps_same_provider_candidate_route(tmp_path, monk
     record = (await repository.requests(transfer.id))[0]
     artifact = await repository.materialize(record, (candidate,), "/tmp/retry.bin")
 
-    first = ExecutionHandle("fixture_executor", {}, attempt_id="retry-exec-1")
+    first = ExecutionHandle("fixture_executor", "retry-exec-1", {})
     assert await repository.prepare_execution(artifact, first)
     error = NormalizedError(Domain.EXECUTOR, Category.TRANSFER_FAILED, Stage.EXECUTION)
     await repository.execution(ExecutionObservation(first, ExecutionState.FAILED, error=error))
     await repository.artifact_state(artifact.id, "queued", release=True)
     artifact = (await repository.artifacts(transfer.id))[0]
-    second = ExecutionHandle("fixture_executor", {}, attempt_id="retry-exec-2")
+    second = ExecutionHandle("fixture_executor", "retry-exec-2", {})
     assert await repository.prepare_execution(artifact, second)
     await repository.execution(ExecutionObservation(second, ExecutionState.SUCCEEDED, TransferProgress(8, 8)))
     await repository.artifact_state(artifact.id, "completed", expected_bytes=8)
@@ -227,7 +227,7 @@ async def test_item8_style_rows_backfill_known_facts_idempotently_without_url_in
         await db.execute("DROP TABLE route_attempt_provenance")
         await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state,result) VALUES('legacy-route',?,?, 'succeeded',?)", (record.id, "durably_known_provider", codec.dump(result)))
         file_id = await db.execute_returning_id("""INSERT INTO download_files(torrent_id,request_id,filename,size_bytes,local_path,status,candidates,selected_candidate,execution_attempt_id,download_client)\n            VALUES(?,?,?,8,'/tmp/legacy.bin','completed',?,0,'legacy-execution','fixture_executor')""", (transfer.id, record.id, "legacy.bin", codec.dump((candidate,))))
-        handle = ExecutionHandle("fixture_executor", {}, attempt_id="legacy-execution")
+        handle = ExecutionHandle("fixture_executor", "legacy-execution", {})
         await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate)\n            VALUES('legacy-execution',?,?, 'fixture_executor',?,'succeeded',?)""", (transfer.id, file_id, codec.dump(handle), codec.dump(candidate)))
         await db.execute("UPDATE torrents SET status='completed' WHERE id=?", (transfer.id,))
         await db.commit()
@@ -384,7 +384,7 @@ async def test_completed_transfer_provenance_follows_delivered_execution_not_sub
                VALUES(?,?,?,8,'/tmp/file.bin','completed',?,0,'exec-1','fixture_executor')""",
             (transfer.id, record.id, "file.bin", codec.dump((candidate,))),
         )
-        handle = ExecutionHandle("fixture_executor", {}, attempt_id="exec-1")
+        handle = ExecutionHandle("fixture_executor", "exec-1", {})
         await db.execute(
             """INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate)
                VALUES('exec-1',?,?, 'fixture_executor',?,'succeeded',?)""",
@@ -1166,10 +1166,8 @@ _SECRET = "SECRET-SIGNED-TOKEN"
 
 
 class _HttpsExecutor(MemoryExecutor):
-    descriptor = IntegrationDescriptor(
-        "memory-copy", "Memory copy", frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
-        schemes=frozenset({"https"}),
-    )
+    descriptor = IntegrationDescriptor("memory-copy", "Memory copy", frozenset())
+    claim_schemes = frozenset({"https"})
 
 
 class _MirrorProvider(ParcelProvider):
@@ -1202,7 +1200,8 @@ async def _canonical_history_runtime(tmp_path, monkeypatch, hosts, *, unresolved
     host_of = {provider.descriptor.id: host for host, provider in providers.items()}
     probes, now = [], [1000.0]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         host = host_of[candidate.provider_id]
         probes.append(host)
         if host in reasons:

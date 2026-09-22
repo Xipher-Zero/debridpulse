@@ -90,8 +90,8 @@ class HttpMemoryExecutor(MemoryExecutor):
         MemoryExecutor.descriptor,
         id="item11-http-memory",
         name="Item 11 deterministic HTTP executor",
-        schemes=frozenset({"http", "https"}),
     )
+    claim_schemes = frozenset({"http", "https"})
 
 
 async def build_core(tmp_path, monkeypatch, name: str, *, client=None):

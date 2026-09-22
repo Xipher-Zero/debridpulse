@@ -162,11 +162,10 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["applied"].transfer_policy.max_concurrent_executions, 2)
         reset_services.assert_called_once()
         advance.assert_awaited_once()
-        # Gate 9 revision-5 rejection finding 4: the concurrency projection
-        # into the running aria2 daemon happens even when reached
-        # through this legacy compatibility-edge route, since it forwards
-        # into the SAME canonical ``patch_transfer_policy`` implementation.
-        fake_aria2.apply_memory_tuning.assert_awaited_once()
+        # Universal Executor Leveling: the canonical route this edge forwards
+        # to never projects global concurrency into an executor -- core
+        # admission is its only owner.
+        fake_aria2.apply_memory_tuning.assert_not_awaited()
 
     async def test_aria2_global_options_upload_speed_persists_before_native_apply_and_reconfigures(self):
         """Gate 9 revision-5 rejection finding 3: the legacy upload-speed
@@ -208,15 +207,12 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         fake_aria2.change_global_options.assert_awaited_once_with({"max-overall-upload-limit": "750000"})
         application.configure.assert_called_once()
 
-    async def test_aria2_global_options_concurrency_apply_failure_propagates_through_legacy_compatibility_response(self):
-        """Gate 9 revision-6 rejection finding 3: ``patch_transfer_policy``
-        already reports ``ok: false`` / ``last_apply_error`` truthfully when
-        the native built-in concurrency projection fails, but this legacy
-        compatibility route was discarding that result and reading only
-        ``max_concurrent_executions`` -- so an ``ok: true`` response here
-        could imply a native apply that the canonical route itself reported
-        as failed. This must never happen: the canonical failure must
-        propagate through."""
+    async def test_aria2_global_options_concurrency_change_touches_no_executor_administration(self):
+        """Gate 9 revision-6 rejection finding 3 required this legacy edge to
+        propagate the canonical route's apply truth. Under Universal Executor
+        Leveling that truth is simply the durable policy: global concurrency
+        is enforced by core admission alone, so even an unreachable executor
+        administration surface is never consulted and cannot fail the call."""
         saved = {}
         from transfers.settings import TransferSettings
         current = routes.AppSettings(transfer_policy=TransferSettings(max_concurrent_executions=1))
@@ -243,7 +239,8 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
              patch("api.routes.get_application", return_value=application):
             result = await routes.aria2_set_global_options({"max_concurrent_downloads": 2}, application=application)
 
-        self.assertFalse(result["ok"], "a canonical native-apply failure must not be reported as legacy-route success")
+        self.assertTrue(result["ok"])
+        fake_aria2.apply_memory_tuning.assert_not_awaited()
         # The durable desired value still persists regardless of the native
         # apply outcome (specification section 2.7: configured/effective).
         self.assertEqual(saved["cfg"].transfer_policy.max_concurrent_executions, 2)

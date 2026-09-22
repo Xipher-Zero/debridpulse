@@ -662,7 +662,7 @@ async def test_prepared_attempt_survives_crash_before_external_contact(canonical
     record = (await core.repository.requests(transfer.id))[0]
     await core.engine._resolve(record)
     artifact = (await core.repository.artifacts(transfer.id))[0]
-    request = ExecutionRequest(artifact.candidates[0], artifact.target, "crash-before-start")
+    request = ExecutionRequest(core.engine._work(artifact, artifact.candidates[0]), "crash-before-start")
     handle = core.executor.prepare(request)
     assert await core.repository.prepare_execution(artifact, handle)
     await core.engine.tick()
@@ -842,7 +842,7 @@ async def test_mirrors_share_one_artifact_and_failover_retires_partial_bytes(can
     target = Path(artifact.target)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"part")
-    sidecar = Path(core.executor.resumable_paths(artifact.target)[0])
+    sidecar = Path(core.executor.sidecar(artifact.target))
     sidecar.write_bytes(b"resume")
     error = NormalizedError(Domain.NETWORK, Category.REMOTE_READ_FAILED, Stage.EXECUTION,
                             Retryability.BACKOFF, Recovery.TRY_ALTERNATE_CANDIDATE)

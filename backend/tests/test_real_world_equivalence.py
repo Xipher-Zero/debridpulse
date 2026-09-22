@@ -95,7 +95,8 @@ async def test_single_large_prefix_only_match_remains_independent(batch_pair, mo
     )
     await batch_pair.engine.tick()
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         signature = f"prefix:{candidate.name.casefold()}"
         return ArtifactFingerprint(candidate.expected_bytes, signature,
                                    FingerprintKind.PREFIX_CONTENT_SAMPLE,
@@ -120,7 +121,8 @@ async def test_real_world_seven_plus_seven_prefix_cohort_consolidates_without_du
     assert len(await batch_pair.repository.artifacts(first.id)) == 7
     assert len([call for call in batch_pair.executor.calls if call[0] == "start"]) == 7
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         signature = f"prefix:{candidate.name.casefold()}"
         return ArtifactFingerprint(candidate.expected_bytes, signature,
                                    FingerprintKind.PREFIX_CONTENT_SAMPLE,
@@ -161,7 +163,8 @@ async def test_seven_plus_seven_one_prefix_mismatch_releases_whole_weak_cohort(b
     first = await submit_batch(batch_pair, batch_pair.a, "submission-a")
     await batch_pair.engine.tick()
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         signature = f"prefix:{candidate.name.casefold()}"
         if candidate.provider_id == batch_pair.b.descriptor.id and candidate.name == "part7.rar":
             signature += ":different"
@@ -203,7 +206,8 @@ async def test_ambiguous_duplicate_filename_never_uses_collection_guess(batch_pa
     await batch_pair.engine.tick()
     assert len(await batch_pair.repository.artifacts(first.id)) == 2
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         signature = "same-prefix"
         return ArtifactFingerprint(candidate.expected_bytes, signature,
                                    FingerprintKind.PREFIX_CONTENT_SAMPLE,

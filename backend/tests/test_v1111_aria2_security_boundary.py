@@ -13,6 +13,7 @@ from executors.aria2.client import Aria2Service
 from services.downloader_egress_guard import DownloaderEgressGuard
 import executors.aria2.executor as runtime_guard
 from executors.aria2.executor import Aria2Executor, Aria2Configuration
+from execution_requests import file_request
 from transfers.models import Endpoint, ExecutionRequest, TransferCandidate, new_identity
 from unittest.mock import AsyncMock
 from urllib.parse import urlsplit
@@ -262,7 +263,7 @@ async def test_canonical_job_options_disable_metadata_following(tmp_path, monkey
     from types import SimpleNamespace
     guard = SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda *args, **kwargs: {})
     executor = Aria2Executor(None, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
-    request = ExecutionRequest(TransferCandidate("payload.bin", (Endpoint("https", "https://example.test/file"),)), str(tmp_path / "payload.bin"), new_identity())
+    request = file_request(TransferCandidate("payload.bin", (Endpoint("https", "https://example.test/file"),)), str(tmp_path / "payload.bin"), new_identity())
     _uri, options = await executor._options(request, executor.prepare(request))
     assert options["follow-torrent"] == "false"
     assert options["follow-metalink"] == "false"
@@ -476,11 +477,11 @@ async def test_real_aria2_does_not_follow_http_metadata(tmp_path: Path, content_
 
 
 async def _start_transfer(executor, uri, target):
-    request = ExecutionRequest(TransferCandidate(target.name, (Endpoint(urlsplit(uri).scheme, uri),)), str(target), new_identity())
+    request = file_request(TransferCandidate(target.name, (Endpoint(urlsplit(uri).scheme, uri),)), str(target), new_identity())
     handle = executor.prepare(request)
     observation = await executor.start(request, handle)
     assert observation.error is None, observation.error
-    return handle.context["gid"]
+    return handle.native["gid"]
 
 
 # ── 1.0.13: the expanded transport claims run through this same boundary ─────

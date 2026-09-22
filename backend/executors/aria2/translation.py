@@ -21,7 +21,9 @@ from transfers.errors import (
     NormalizedError, Origin as O, Permanence as P, Retryability as T, Stage,
     TransferError, safe_diagnostic,
 )
-from transfers.models import ExecutionHandle, ExecutionObservation, ExecutionState, TransferProgress
+from transfers.models import (
+    ExecutionActivity, ExecutionControl, ExecutionHandle, ExecutionObservation, ExecutionState, TransferProgress,
+)
 
 
 # Values are facts only: semantic domain/category, factual retryability legacy
@@ -77,7 +79,7 @@ _CODE1_DIAGNOSTICS = (
 _HTTP_STATUS = re.compile(r"\bstatus\s*=\s*(\d{3})\b", re.I)
 
 _STATES = {
-    "active": ExecutionState.TRANSFERRING, "waiting": ExecutionState.QUEUED,
+    "active": ExecutionState.RUNNING, "waiting": ExecutionState.QUEUED,
     "paused": ExecutionState.PAUSED, "complete": ExecutionState.SUCCEEDED,
     "error": ExecutionState.FAILED, "removed": ExecutionState.CANCELLED,
 }
@@ -166,14 +168,29 @@ def is_missing(exc: Exception, gid: str) -> bool:
 
 
 def observation(handle: ExecutionHandle, native, *, secrets=()) -> ExecutionObservation:
+    """Translate one native job into neutral lifecycle, activity and controls.
+
+    ``active`` acquires over the network and should progress; ``waiting`` is
+    queued inside the daemon and may start acquiring without another core
+    admission; ``paused`` can be unpaused under the same durable intent, so
+    every live native job keeps its executor's bandwidth reservation. Pause is
+    offered for active/waiting jobs, resume for paused ones."""
     state = _STATES.get(str(native.status), ExecutionState.UNKNOWN)
     error = None
     if state == ExecutionState.FAILED:
         error = native_failure(native.error_code, native.error_message, secrets=secrets)
     elif state == ExecutionState.UNKNOWN:
         error = native_failure("", "Unrecognized executor state", secrets=secrets)
+    live = state in {ExecutionState.QUEUED, ExecutionState.RUNNING, ExecutionState.PAUSED}
+    activity = ExecutionActivity(
+        network_active=state == ExecutionState.RUNNING,
+        bandwidth_reservation_required=live,
+        progress_expected=state == ExecutionState.RUNNING,
+    )
+    controls = (frozenset({ExecutionControl.PAUSE}) if state in {ExecutionState.QUEUED, ExecutionState.RUNNING}
+                else frozenset({ExecutionControl.RESUME}) if state == ExecutionState.PAUSED else frozenset())
     return ExecutionObservation(
         handle, state,
         TransferProgress(max(0, int(native.total_length)), max(0, int(native.completed_length)), max(0, int(native.download_speed))),
-        tuple(str(item["path"]) for item in (native.files or []) if item.get("path")), error,
+        error, activity, controls,
     )

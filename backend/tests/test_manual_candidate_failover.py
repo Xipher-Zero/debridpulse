@@ -117,7 +117,7 @@ async def test_switch_retires_old_writer_and_redispatches_exact_candidate(tmp_pa
     active = (await repository.artifacts(canonical.id))[0]
     assert active.execution is not None and active.execution != old
     live = [item for item in await repository.executions(canonical.id)
-            if item.state in {"prepared", "queued", "transferring", "paused", "unknown"}]
+            if item.state in {"prepared", "queued", "running", "paused", "unknown"}]
     assert len(live) == 1 and live[0].candidate.provider_id == "provider-b"
     assert len([call for call in executor.calls if call[0] == "start"]) == 2
 
@@ -223,7 +223,7 @@ async def test_duplicate_activation_and_stale_callback_cannot_restore_old_owner(
 
     await repository.execution(ExecutionObservation(
         old,
-        ExecutionState.TRANSFERRING,
+        ExecutionState.RUNNING,
         TransferProgress(4, 3, 1),
         ((await repository.artifacts(canonical.id))[0].target,),
     ))
@@ -509,7 +509,6 @@ async def test_switch_on_one_artifact_leaves_multi_artifact_parent_transferring(
     # observed failure would, before forcing the recovery-error state.
     await repository.execution(ExecutionObservation(
         artifact_b.execution, ExecutionState.FAILED, TransferProgress(4, 0, 0),
-        (artifact_b.target,),
     ))
     assert await repository.transition_recovery(artifact_b.id, "error", retry_at=0)
     b_before = next(item for item in await repository.artifacts(canonical.id) if item.id == artifact_b.id)

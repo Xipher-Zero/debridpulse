@@ -6,6 +6,7 @@ import pytest
 import executors.aria2.executor as aria2_executor
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from transfers.models import Endpoint, FingerprintKind, TransferCandidate
+from transfers.models import ExecutionSubject
 
 
 @pytest.mark.asyncio
@@ -34,7 +35,7 @@ async def test_aria2_fingerprint_binds_sampler_to_declared_candidate_size(tmp_pa
         provider_id="provider-test",
     )
 
-    fingerprint = await executor.fingerprint(candidate)
+    fingerprint = await executor.fingerprint(ExecutionSubject.of(candidate))
 
     assert captured["expected_bytes"] == 123
     assert captured["uri"] == "https://example.invalid/payload.bin"

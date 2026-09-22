@@ -114,4 +114,7 @@ def test_concrete_integrations_are_registered_only_at_explicit_production_compos
     assert "providers.general_http.definition" in catalog
     assert "executors.aria2.definition" in catalog
     assert "providers.alldebrid.host_runtime" in composition
-    assert "executors.aria2.admin" in composition
+    # Managed executors reach the application lifecycle only through the
+    # generic integration seam; no concrete executor module is composed.
+    assert "executors." not in composition.replace("registry.executors", "")
+    assert "integration_surfaces(" in composition

@@ -59,7 +59,8 @@ async def near_size_engine(tmp_path, monkeypatch):
     )
     executor = MemoryExecutor(repository.authorize_execution)
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         return ArtifactFingerprint(ACTUAL, "bounded-shared-content")
 
     monkeypatch.setattr(executor, "fingerprint", fingerprint)

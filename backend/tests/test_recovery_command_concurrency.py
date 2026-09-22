@@ -160,7 +160,7 @@ async def test_late_retired_writer_observation_cannot_mutate_new_generation(tmp_
     # generation: download_files.execution_attempt_id already points at the
     # new writer, so this late write is inert exactly where it matters.
     from transfers.models import ExecutionObservation
-    stale_observation = ExecutionObservation(old_handle, ExecutionState.TRANSFERRING)
+    stale_observation = ExecutionObservation(old_handle, ExecutionState.RUNNING)
     await repository.execution(stale_observation)
 
     unchanged = (await repository.artifacts(canonical.id))[0]
@@ -189,7 +189,7 @@ async def test_manual_activation_vs_cancel_never_reauthorizes_writer(tmp_path, m
     current = (await repository.artifacts(canonical.id))[0]
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     # Exactly one authorized live writer for this artifact, ever -- the new
     # one -- never the retired one restored alongside it.
@@ -222,9 +222,10 @@ async def test_uncertain_writer_retirement_never_commits_candidate_activation(tm
         # terminal (still "transferring"), exactly the "requested but not
         # confirmed" case Section 27 requires activation to reject.
         executor.jobs[handle.attempt_id] = dataclass_replace(
-            executor.jobs[handle.attempt_id], state=ExecutionState.TRANSFERRING,
+            executor.jobs[handle.attempt_id], state=ExecutionState.RUNNING,
         )
-        return TransferOutcome(OutcomeKind.CANCELLED)
+        # Observed truth, not the acknowledgement: still running.
+        return await executor.observe(handle)
 
     monkeypatch.setattr(executor, "cancel", unconfirmable_cancel)
 
@@ -240,7 +241,7 @@ async def test_uncertain_writer_retirement_never_commits_candidate_activation(tm
 
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     # The old writer remains the ONLY authorized generation -- no new writer
     # was ever authorized alongside it.
@@ -304,7 +305,7 @@ async def test_manual_activation_vs_resume_is_generation_safe(tmp_path, monkeypa
 
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     assert len(live_attempts) <= 1, "never two live writers for one artifact"
     current = (await repository.artifacts(canonical.id))[0]
@@ -334,7 +335,7 @@ async def test_manual_activation_vs_retry_is_generation_safe(tmp_path, monkeypat
 
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     assert len(live_attempts) <= 1, "never two live writers for one artifact"
     assert not await repository.authorize_execution(old_handle, "resume"), (
@@ -366,7 +367,7 @@ async def test_manual_activation_vs_pause_is_deterministic(tmp_path, monkeypatch
 
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown", "paused"}
+        if item.state in {"prepared", "queued", "running", "unknown", "paused"}
     ]
     assert len(live_attempts) <= 1, "never two live writers for one artifact"
     current = (await repository.artifacts(canonical.id))[0]
@@ -408,7 +409,7 @@ async def test_manual_activation_vs_auto_retry_is_generation_safe(tmp_path, monk
 
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     assert len(live_attempts) <= 1, "never two live writers for one artifact"
     assert not await repository.authorize_execution(old_handle, "resume"), (
@@ -449,7 +450,7 @@ async def test_manual_activation_vs_scheduler_execution_observation_is_determini
     # observation the scheduler will make of this same attempt.
     executor.jobs[old_handle.attempt_id] = dataclass_replace(
         executor.jobs[old_handle.attempt_id],
-        state=ExecutionState.TRANSFERRING,
+        state=ExecutionState.RUNNING,
         progress=executor.jobs[old_handle.attempt_id].progress,
     )
 
@@ -460,7 +461,7 @@ async def test_manual_activation_vs_scheduler_execution_observation_is_determini
 
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     assert len(live_attempts) <= 1, "never two live writers for one artifact"
     current = (await repository.artifacts(canonical.id))[0]
@@ -505,7 +506,7 @@ async def test_manual_activation_vs_delete_never_reauthorizes_or_corrupts(tmp_pa
     # writer is ever left authorized once the transfer is deleted.
     live_attempts = [
         item for item in await repository.executions(canonical.id)
-        if item.state in {"prepared", "queued", "transferring", "unknown"}
+        if item.state in {"prepared", "queued", "running", "unknown"}
     ]
     assert not await repository.live_executions(), (
         "a deleted transfer must never leave a currently-authorized writer "

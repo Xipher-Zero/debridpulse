@@ -83,7 +83,7 @@ async def test_database_maintenance_acquisition_cancellation_reopens_gate():
 
 @pytest.mark.asyncio
 async def test_aria2_failure_never_exposes_capability_or_blindly_retries(execution, monkeypatch, caplog):
-    capability = execution.request.candidate.endpoints[0].address
+    capability = execution.request.work.subject.candidate.endpoints[0].address
     calls = []
 
     async def fail(*args, **kwargs):
@@ -208,7 +208,7 @@ def test_v1_metadata_does_not_claim_multiple_providers():
 def test_disk_guard_comment_matches_runtime_contract():
     root = Path(__file__).parents[2]
     source = (root / "backend" / "core" / "config.py").read_text()
-    assert "Transfers already active in aria2 are allowed to finish" in source
+    assert "Transfers already active in an executor are allowed to finish" in source
     assert "Active aria2 downloads are PAUSED automatically" not in source
 
 

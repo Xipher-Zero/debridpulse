@@ -35,6 +35,7 @@ from transfers.models import TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from transfers.models import ExecutionSubject
 
 pytestmark = pytest.mark.asyncio
 
@@ -191,8 +192,8 @@ async def test_transfer_312_shape_equivalent_ftp_mirrors_converge_to_one_canonic
         # A and B produce the same neutral fingerprint; filename alone never did this.
         a = await runtime.repository.resolved_candidates(rows[0]["id"])
         b = await runtime.repository.resolved_candidates(rows[1]["id"])
-        fingerprint_a = await runtime.executor.fingerprint(a[0])
-        fingerprint_b = await runtime.executor.fingerprint(b[0])
+        fingerprint_a = await runtime.executor.fingerprint(ExecutionSubject.of(a[0]))
+        fingerprint_b = await runtime.executor.fingerprint(ExecutionSubject.of(b[0]))
         assert fingerprint_a == fingerprint_b and fingerprint_a.total_bytes == len(PAYLOAD)
 
         bindings = await runtime.engine.canonical.bindings(canonical.id)

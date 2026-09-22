@@ -9,6 +9,7 @@ import pytest
 from executors.aria2.client import Aria2ConnectionError, Aria2DownloadStatus, Aria2RPCError, Aria2Service
 from executors.aria2.executor import Aria2Configuration, Aria2Executor, execution_binding
 from executors.aria2.translation import native_failure, observation
+from execution_requests import file_request
 from transfers.errors import Category, Domain, Recovery, Retryability, TransferError
 from transfers.models import (
     Endpoint, ExecutionHandle, ExecutionRequest, ExecutionState, OutcomeKind,
@@ -28,6 +29,8 @@ class NativeDaemon:
         self.fail_control_after_apply = set()
         self.delayed_controls = {}
         self.pending_controls = {}
+        self.options = {}
+        self.fail_get_option = False
 
     async def tell_status(self, gid):
         self.lookups += 1
@@ -45,9 +48,14 @@ class NativeDaemon:
 
     async def _call(self, method, params):
         self.calls.append((method, params))
+        if method == "aria2.getOption":
+            if self.fail_get_option:
+                raise Aria2ConnectionError("option read failed transiently")
+            return dict(self.options.get(params[0], {}))
         if method == "aria2.addUri":
             options = params[1]
             gid = options["gid"]
+            self.options[gid] = dict(options)
             self.jobs[gid] = Aria2DownloadStatus(
                 gid, "paused" if options["pause"] == "true" else "active", 100, 20, 2,
                 files=[{"path": str(Path(options["dir"]) / options["out"])}],
@@ -93,7 +101,7 @@ def execution(tmp_path, monkeypatch):
         str(tmp_path), confirmation_delay=0, control_confirmation_timeout=0.02,
     ), authorize, egress=egress)
     candidate = TransferCandidate("payload", (Endpoint("https", "https://download.example/file?s=secret", {"X-Capability": "opaque-header-value"}),), expected_bytes=100)
-    request = ExecutionRequest(candidate, str(tmp_path / "file"), "durable-attempt")
+    request = file_request(candidate, str(tmp_path / "file"), "durable-attempt", root=tmp_path)
     handle = executor.prepare(request)
     grants[handle.attempt_id] = handle
     return SimpleNamespace(executor=executor, daemon=daemon, request=request, handle=handle, grants=grants, egress=egress)
@@ -102,7 +110,7 @@ def execution(tmp_path, monkeypatch):
 def test_executor_is_registered_by_contract_and_scheme(execution):
     registry = IntegrationRegistry()
     registry.register_executor(execution.executor)
-    assert registry.executor_for(execution.request.candidate) is execution.executor
+    assert registry.executor_for_subject(execution.request.work.subject) is execution.executor
     assert execution.executor.prepare(execution.request) == execution.handle
     assert "secret" not in repr(execution.handle)
     assert not execution.daemon.calls
@@ -113,14 +121,14 @@ async def test_start_preserves_connection_guard_and_metadata_safety(execution):
     state = await execution.executor.start(execution.request, execution.handle)
     assert state.state == ExecutionState.QUEUED
     options = execution.daemon.calls[0][1][1]
-    assert options["gid"] == execution.handle.context["gid"]
+    assert options["gid"] == execution.handle.native["gid"]
     assert options["all-proxy"] == "http://guard:8888"
     assert options["follow-torrent"] == options["follow-metalink"] == "false"
     assert options["max-http-redirection"] == "0"
     assert options["check-certificate"] == "true"
     assert options["auto-file-renaming"] == "false"
     assert options["max-tries"] == "1"
-    assert (await execution.executor.observe(execution.handle)).state == ExecutionState.TRANSFERRING
+    assert (await execution.executor.observe(execution.handle)).state == ExecutionState.RUNNING
 
 
 @pytest.mark.asyncio
@@ -133,7 +141,7 @@ async def test_the_daemon_writes_into_the_one_canonical_download_root(execution)
     }
     await execution.executor.start(execution.request, execution.handle)
     options = execution.daemon.calls[0][1][1]
-    assert Path(options["dir"]) / options["out"] == Path(execution.request.target).resolve()
+    assert Path(options["dir"]) / options["out"] == Path(execution.request.work.materialization.target).resolve()
 
 
 def test_execution_binding_digest_is_durable_handle_identity():
@@ -152,14 +160,14 @@ async def test_lost_ack_is_reconciled_without_second_job(execution):
     assert uncertain.state == ExecutionState.UNKNOWN
     assert uncertain.error.recovery == Recovery.NONE
     recovered = await execution.executor.observe(execution.handle)
-    assert recovered.state == ExecutionState.TRANSFERRING
+    assert recovered.state == ExecutionState.RUNNING
     assert recovered.handle.attempt_id == execution.request.attempt_id
     assert len(execution.daemon.calls) == 1
 
 
 @pytest.mark.asyncio
 async def test_collision_never_adopts_or_mutates_preexisting_job(execution):
-    gid = execution.handle.context["gid"]
+    gid = execution.handle.native["gid"]
     execution.daemon.jobs[gid] = Aria2DownloadStatus(gid, "active", 100, 30, 0)
     result = await execution.executor.start(execution.request, execution.handle)
     assert result.error.category == Category.OWNERSHIP_CONFLICT
@@ -189,7 +197,7 @@ async def test_absence_requires_repeated_explicit_missing_responses(execution):
 @pytest.mark.asyncio
 async def test_transport_failure_during_confirmation_preserves_uncertainty(execution):
     execution.daemon.tell_status = AsyncMock(side_effect=[
-        Aria2RPCError(f"GID {execution.handle.context['gid']} is not found"),
+        Aria2RPCError(f"GID {execution.handle.native['gid']} is not found"),
         Aria2ConnectionError("unavailable"),
     ])
     result = await execution.executor.observe(execution.handle)
@@ -209,10 +217,10 @@ async def test_rpc_rejection_is_not_evidence_of_absence(execution):
 async def test_pause_resume_and_cancel_confirm_native_state(execution):
     await execution.executor.start(execution.request, execution.handle)
     assert (await execution.executor.pause(execution.handle)).state == ExecutionState.PAUSED
-    assert (await execution.executor.resume(execution.handle)).state == ExecutionState.TRANSFERRING
+    assert (await execution.executor.resume(execution.handle)).state == ExecutionState.RUNNING
     result = await execution.executor.cancel(execution.handle)
-    assert result.kind == OutcomeKind.CANCELLED
-    gid = execution.handle.context["gid"]
+    assert result.state == ExecutionState.CANCELLED and result.stopped
+    gid = execution.handle.native["gid"]
     assert gid not in execution.daemon.jobs
     methods = [method for method, _ in execution.daemon.calls]
     assert "aria2.pause" in methods
@@ -240,7 +248,7 @@ async def test_control_lost_ack_is_reconciled_from_observed_truth(execution):
     await execution.executor.pause(execution.handle)
     execution.daemon.fail_control_after_apply.add("aria2.unpause")
     result = await execution.executor.resume(execution.handle)
-    assert result.state == ExecutionState.TRANSFERRING
+    assert result.state == ExecutionState.RUNNING
     assert result.error is None
     assert [method for method, _ in execution.daemon.calls].count("aria2.unpause") == 1
 
@@ -263,7 +271,7 @@ async def test_delayed_control_transition_converges_without_repeat_mutation(exec
     await execution.executor.pause(execution.handle)
     execution.daemon.delayed_controls["aria2.unpause"] = 2
     result = await execution.executor.resume(execution.handle)
-    assert result.state == ExecutionState.TRANSFERRING
+    assert result.state == ExecutionState.RUNNING
     assert [method for method, _ in execution.daemon.calls].count("aria2.unpause") == 1
 
 
@@ -272,7 +280,7 @@ async def test_fifty_pause_resume_cycles_do_not_accumulate_control_mutations(exe
     await execution.executor.start(execution.request, execution.handle)
     for _ in range(50):
         assert (await execution.executor.pause(execution.handle)).state == ExecutionState.PAUSED
-        assert (await execution.executor.resume(execution.handle)).state == ExecutionState.TRANSFERRING
+        assert (await execution.executor.resume(execution.handle)).state == ExecutionState.RUNNING
     methods = [method for method, _ in execution.daemon.calls]
     assert methods.count("aria2.pause") == 50
     assert methods.count("aria2.unpause") == 50
@@ -300,7 +308,7 @@ async def test_guard_failure_never_dispatches(execution):
 @pytest.mark.asyncio
 async def test_observation_diagnostics_redact_candidate_header_values(execution):
     await execution.executor.start(execution.request, execution.handle)
-    native = execution.daemon.jobs[execution.handle.context["gid"]]
+    native = execution.daemon.jobs[execution.handle.native["gid"]]
     native.status = "error"
     native.error_code = "987654"
     native.error_message = "unexpected opaque-header-value https://download.example/file?s=secret"
@@ -314,7 +322,8 @@ async def test_observation_diagnostics_redact_candidate_header_values(execution)
 def test_path_escape_is_security_failure(execution, tmp_path):
     outside = tmp_path.parent / "outside"
     (tmp_path / "escape").symlink_to(outside, target_is_directory=True)
-    request = replace(execution.request, target=str(tmp_path / "escape" / "file"))
+    request = file_request(execution.request.work.subject.candidate, str(tmp_path / "escape" / "file"),
+                           execution.request.attempt_id, root=tmp_path)
     with pytest.raises(TransferError) as failure:
         execution.executor.prepare(request)
     assert failure.value.error.category == Category.PATH_POLICY_VIOLATION
@@ -338,7 +347,7 @@ def test_error_translation_is_factual(code, category, retryability):
 
 
 def test_removed_and_unknown_are_not_ordinary_failures():
-    handle = ExecutionHandle("aria2", {"gid": "0123456789abcdef"})
+    handle = ExecutionHandle("aria2", "attempt", {}, {"gid": "0123456789abcdef"})
     native = Aria2DownloadStatus("0123456789abcdef", "removed", 0, 0, 0)
     result = observation(handle, native)
     assert result.state == ExecutionState.CANCELLED
@@ -381,7 +390,9 @@ async def test_bulk_failure_remains_unknown_without_per_job_retry_storm(executio
 async def test_private_literal_is_explicit_nonretryable_security_failure(execution, monkeypatch):
     from services.network_safety import validate_resolved_public_destination
     monkeypatch.setattr("executors.aria2.executor.validate_resolved_public_destination", validate_resolved_public_destination)
-    request = replace(execution.request, candidate=replace(execution.request.candidate, endpoints=(Endpoint("http", "http://127.0.0.1/file"),)))
+    request = file_request(replace(execution.request.work.subject.candidate,
+                                   endpoints=(Endpoint("http", "http://127.0.0.1/file"),)),
+                           execution.request.work.materialization.target, execution.request.attempt_id)
     handle = execution.executor.prepare(request)
     execution.grants[handle.attempt_id] = handle
     result = await execution.executor.start(request, handle)
@@ -407,3 +418,55 @@ async def test_sampling_resolver_rejects_changed_private_answer_at_connection(mo
     assert public[0]["hostname"] == "changing.example"
     with pytest.raises(UnsafeDestinationError):
         await resolver.resolve("changing.example", 443)
+
+
+@pytest.mark.asyncio
+async def test_opaque_header_redaction_survives_restart_without_a_durable_copy(execution, tmp_path):
+    """A new-format handle carries no endpoint or header value. After a restart
+    (fresh runtime/executor, empty process memory) an arbitrary provider
+    capability header echoed by a native diagnostic is still removed: the exact
+    value is recovered from the owned native job's own options."""
+    from transfers import codec
+    await execution.executor.start(execution.request, execution.handle)
+    assert "opaque-header-value" not in codec.dump(execution.handle)
+    restarted = Aria2Executor(execution.daemon, Aria2Configuration(
+        str(tmp_path), confirmation_delay=0, control_confirmation_timeout=0.02,
+    ), execution.executor.authorize, egress=execution.egress)
+    assert execution.handle.attempt_id not in restarted._redactions
+    native = execution.daemon.jobs[execution.handle.native["gid"]]
+    native.status = "error"
+    native.error_code = "987654"
+    native.error_message = "unexpected opaque-header-value https://download.example/file?s=secret"
+    result = await restarted.observe(execution.handle)
+    rendered = str(result.error.as_dict(diagnostics=True))
+    assert "opaque-header-value" not in rendered and "download.example" not in rendered
+    assert execution.daemon.calls[-1] == ("aria2.getOption", [execution.handle.native["gid"]])
+
+
+@pytest.mark.asyncio
+async def test_unrecoverable_redaction_facts_fail_closed_on_diagnostic_text_not_lifecycle(execution, tmp_path):
+    """After a restart with empty process memory, a failed ``getOption`` means
+    exact redaction facts are unavailable: the job is still truthfully FAILED
+    with its native code/category, but no native diagnostic text crosses the
+    boundary, nothing is cached, and the next observation retries."""
+    from transfers import codec
+    await execution.executor.start(execution.request, execution.handle)
+    restarted = Aria2Executor(execution.daemon, Aria2Configuration(
+        str(tmp_path), confirmation_delay=0, control_confirmation_timeout=0.02,
+    ), execution.executor.authorize, egress=execution.egress)
+    native = execution.daemon.jobs[execution.handle.native["gid"]]
+    native.status = "error"
+    native.error_code = "987654"
+    native.error_message = "unexpected opaque-header-value https://download.example/file?s=secret"
+    execution.daemon.fail_get_option = True
+    result = await restarted.observe(execution.handle)
+    assert result.state == ExecutionState.FAILED
+    assert result.error.native_code == "987654" and result.error.category == Category.UNMAPPED_EXECUTOR_ERROR
+    for rendered in (str(result.error.as_dict(diagnostics=True)), codec.dump(result.error)):
+        assert "opaque-header-value" not in rendered and "download.example" not in rendered
+    assert execution.handle.attempt_id not in restarted._redactions  # nothing cached: retryable
+    execution.daemon.fail_get_option = False
+    retried = await restarted.observe(execution.handle)
+    assert retried.state == ExecutionState.FAILED and "unexpected" in retried.error.diagnostic
+    assert "opaque-header-value" not in retried.error.diagnostic
+    assert execution.handle.attempt_id in restarted._redactions

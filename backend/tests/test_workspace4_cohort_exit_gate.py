@@ -114,7 +114,8 @@ async def test_same_name_and_size_but_different_full_content_stays_independent(c
     first = await submit_names(cohort_pair, cohort_pair.a, "a", ("same.bin",))
     await cohort_pair.engine.tick()
 
-    async def different(candidate):
+    async def different(subject):
+        candidate = subject.candidate
         return ArtifactFingerprint(
             candidate.expected_bytes,
             f"full:{candidate.provider_id}",
@@ -136,7 +137,8 @@ async def test_partial_overlap_full_proof_consolidates_only_proven_members(cohor
     first = await submit_names(cohort_pair, cohort_pair.a, "a", ("part1.rar", "part2.rar"))
     await cohort_pair.engine.tick()
 
-    async def full(candidate):
+    async def full(subject):
+        candidate = subject.candidate
         return _full_fingerprint(candidate)
 
     monkeypatch.setattr(cohort_pair.executor, "fingerprint", full)
@@ -183,7 +185,8 @@ async def test_resolver_attested_evidence_consolidates_through_the_actual_cohort
     fingerprint_calls = []
     original_fingerprint = cohort_pair.executor.fingerprint
 
-    async def spied_fingerprint(candidate):
+    async def spied_fingerprint(subject):
+        candidate = subject.candidate
         fingerprint_calls.append(candidate)
         return await original_fingerprint(candidate)
 
@@ -225,7 +228,8 @@ async def test_slow_sibling_does_not_block_unrelated_transfer(cohort_pair, monke
     first = await submit_names(cohort_pair, cohort_pair.a, "a", ("part1.rar", "part2.rar"))
     await cohort_pair.engine.tick()
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         return _prefix_fingerprint(candidate)
 
     monkeypatch.setattr(cohort_pair.executor, "fingerprint", prefix)
@@ -269,7 +273,8 @@ async def test_terminal_sibling_releases_weak_barrier_without_hanging(cohort_pai
     await submit_names(cohort_pair, cohort_pair.a, "a", ("part1.rar", "part2.rar"))
     await cohort_pair.engine.tick()
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         return _prefix_fingerprint(candidate)
 
     monkeypatch.setattr(cohort_pair.executor, "fingerprint", prefix)
@@ -310,7 +315,8 @@ async def test_concurrent_equivalent_batches_preserve_one_writer_and_canonical_w
     await cohort_pair.engine.tick()
     assert len(_starts(cohort_pair)) == 7
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         return _prefix_fingerprint(candidate)
 
     monkeypatch.setattr(cohort_pair.executor, "fingerprint", prefix)
@@ -343,7 +349,8 @@ async def test_concurrent_transiently_unresolved_member_does_not_race_into_indep
     await cohort_pair.engine.tick()
     assert len(_starts(cohort_pair)) == 7
 
-    async def mostly_prefix_one_transient(candidate):
+    async def mostly_prefix_one_transient(subject):
+        candidate = subject.candidate
         if candidate.provider_id == cohort_pair.b.descriptor.id and candidate.name == "part7.rar":
             return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported", "")
         return _prefix_fingerprint(candidate)
@@ -399,7 +406,8 @@ async def test_same_transfer_resolved_sibling_mapping_is_durably_discoverable(co
     transfer = await submit_names(cohort_pair, cohort_pair.a, "a", ("same.bin", "same.bin"))
     records = sorted(await cohort_pair.repository.requests(transfer.id), key=lambda item: item.request.payload)
 
-    async def full(candidate):
+    async def full(subject):
+        candidate = subject.candidate
         return _full_fingerprint(candidate)
 
     monkeypatch.setattr(cohort_pair.executor, "fingerprint", full)
@@ -444,7 +452,8 @@ async def test_restart_during_pending_weak_cohort_reconstructs_without_duplicate
     await cohort_pair.engine.tick()
     assert len(_starts(cohort_pair)) == 2
 
-    async def prefix(candidate):
+    async def prefix(subject):
+        candidate = subject.candidate
         return _prefix_fingerprint(candidate)
 
     monkeypatch.setattr(cohort_pair.executor, "fingerprint", prefix)

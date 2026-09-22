@@ -11,8 +11,8 @@ from transfers.errors import NormalizedError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
     ArtifactFingerprint, CachePresence, DeliveryKind, Endpoint, ExecutionHandle, FingerprintKind, InputMethod,
-    IntegrityMetadata, Ownership, ProviderResource, ResolverArtifactIdentityEvidence, TransferCandidate,
-    TransferRequest, SourceEntry, SourceIdentity,
+    IntegrityMetadata, MaterializationKind, MaterializationResult, MaterializedEntry, Ownership, ProviderResource,
+    ResolverArtifactIdentityEvidence, TransferCandidate, TransferRequest, SourceEntry, SourceIdentity,
 )
 
 
@@ -75,6 +75,8 @@ def candidate(value: dict) -> TransferCandidate:
         data["content_evidence"] = ArtifactFingerprint(**evidence)
     if "delivery" in data:
         data["delivery"] = DeliveryKind(data["delivery"])
+    if "materialization" in data:
+        data["materialization"] = MaterializationKind(data["materialization"])
     methods = data.get("accepted_input_methods")
     context = dict(data.get("context") or {})
     if "accepted_input_methods" in context:
@@ -99,8 +101,26 @@ def cache_presence(value) -> CachePresence:
         return CachePresence.UNKNOWN
 
 
+_HANDLE_FIELDS = frozenset({"executor_id", "attempt_id", "correlation", "native"})
+
+
 def handle(value: dict | None) -> ExecutionHandle | None:
-    return ExecutionHandle(**value) if value else None
+    """Decode the canonical handle layout only. Rows written in the historical
+    single-context layout are rewritten once at initialization
+    (``db.database._migrate_execution_identity``) and never decoded here."""
+    if not value:
+        return None
+    if set(value) != _HANDLE_FIELDS:
+        raise TypeError("Execution handle is not in the canonical layout")
+    return ExecutionHandle(value["executor_id"], value["attempt_id"], value["correlation"], value["native"])
+
+
+def materialization(value: str | None) -> MaterializationResult | None:
+    data = load(value)
+    if not data:
+        return None
+    return MaterializationResult(MaterializationKind(data["kind"]), tuple(
+        MaterializedEntry(item["relative_path"], item.get("bytes")) for item in data["entries"]))
 
 
 def entry(value: dict | None) -> SourceEntry | None:

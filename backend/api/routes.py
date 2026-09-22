@@ -1455,30 +1455,12 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
 
 @router.get("/execution/runtime-limits")
 async def get_execution_runtime_limits(application: ApplicationService = Depends(get_application)):
-    """Neutral live executor-runtime capability limits (specification section
-    4.4). Executor-neutral surface: never an aria2-native option name. Reports
-    both the durable configured/desired value and the currently effective
-    value observed from the executor, distinguishable per specification
-    section 2.7."""
-    cfg = get_settings()
-    configured = cfg.execution_runtime_limits or ExecutionRuntimeLimits()
-    # Gate 9 revision-3 rejection finding 6: effective is UNKNOWN, not equal
-    # to configured, when the live read itself fails -- reporting it as
-    # equal to the desired value on observation failure directly contradicts
-    # the configured/effective truth requirement (specification section 2.7).
-    effective_bytes = None
-    last_apply_error = None
-    try:
-        opts = await application.integration_admin("aria2").get_global_options()
-        effective_bytes = int(opts.get("max-overall-download-limit") or 0)
-    except Exception as exc:
-        last_apply_error = _sanitize_error(exc)
-    return {
-        "ok": last_apply_error is None,
-        "configured": {"max_download_bytes_per_second": configured.max_download_bytes_per_second},
-        "effective": {"max_download_bytes_per_second": effective_bytes},
-        "last_apply_error": last_apply_error,
-    }
+    """Neutral live executor-runtime limits (specification section 4.4).
+    ``configured`` is the durable desired value; ``effective`` is the value
+    the core runtime owner has proven enforced across every executor that
+    currently holds a bandwidth reservation -- ``None`` (with
+    ``last_apply_error``) whenever that cannot be proven (section 2.7)."""
+    return await application.execution_runtime_limits()
 
 
 @router.patch("/execution/runtime-limits")
@@ -1496,32 +1478,14 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
         raise HTTPException(400, "max_download_bytes_per_second must be an integer") from None
 
     async with application.application_operation():
-        # Gate 9 revision-3 rejection findings 3 and 7: the config-write lock
-        # now serializes the FULL desired-write -> native-apply ->
-        # runtime-reinjection pipeline as one critical section, not only the
-        # persistence step. Previously the native apply ran BEFORE the lock
-        # (so two concurrent speed mutations could apply/persist out of
-        # order relative to each other) and ``application.configure()`` --
-        # the sole place that rebuilds the injected ``Aria2RuntimeConfiguration``
-        # snapshot consumed by ``Aria2Administration.apply_memory_tuning()`` --
-        # was never called at all, so the long-lived runtime/admin singletons
-        # kept serving the OLD bandwidth cap until an unrelated reconfigure.
-        # Doing apply -> persist -> reconfigure inside the SAME lock makes the
-        # last writer under the lock win for the durable value, the native
-        # daemon state, and the injected runtime snapshot together.
+        # The config-write lock serializes the full desired-write ->
+        # reinjection -> convergence pipeline as one critical section, so the
+        # last writer under the lock wins for the durable value and the
+        # enforced executor ceilings together. Durable desired state is
+        # persisted FIRST: a convergence failure afterwards is an explicit,
+        # observable configured != effective divergence (section 2.7), never
+        # a silent split between executors and disk.
         async with config_write_lock():
-            # Gate 9 revision-4 rejection finding 4: durable desired state is
-            # persisted BEFORE the native apply is attempted, not after.
-            # Previously the native apply ran first; if save_settings then
-            # failed (disk fault, process interruption) the native daemon
-            # would already be at the NEW value while the durable desired
-            # state stayed at the OLD one, with no durable fact from which
-            # restart/convergence could recover. Persisting first, then
-            # refreshing the injected runtime snapshot, then attempting the
-            # native apply means a native-apply failure below (below) leaves
-            # an explicit, observable configured != effective divergence
-            # (specification section 2.7) instead of a silent split between
-            # the daemon and disk.
             current = load_settings()
             current.execution_runtime_limits = ExecutionRuntimeLimits(max_download_bytes_per_second=value)
             from integrations.configuration import normalize_settings
@@ -1529,24 +1493,7 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
             save_settings(current)
             apply_settings(current)
             application.configure()
-
-            last_apply_error = None
-            try:
-                # A native-apply failure flows into ``last_apply_error`` so
-                # configured/effective stay truthful (Gate 9 revision-2
-                # rejection finding, specification section 2.7).
-                await application.integration_admin("aria2").change_global_options(
-                    {"max-overall-download-limit": str(value)},
-                )
-            except Exception as exc:
-                last_apply_error = _sanitize_error(exc)
-
-    return {
-        "ok": last_apply_error is None,
-        "configured": {"max_download_bytes_per_second": value},
-        "effective": {"max_download_bytes_per_second": None if last_apply_error else value},
-        "last_apply_error": last_apply_error,
-    }
+            return await application.execution_runtime_limits()
 
 
 # ── Scoped namespace mutation surfaces (DP 1.0.12 canonical architecture ──
@@ -1620,24 +1567,10 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
             # interleaving (specification section 13.8).
             application.configure()
 
+            # ``max_concurrent_executions`` is the one global concurrency
+            # policy and core admission (``occupied_execution_slots``) its only
+            # enforcement: no executor receives it as a native policy copy.
             last_apply_error = None
-            if "max_concurrent_executions" in updates:
-                # Gate 9 revision-5 rejection finding 4: ``max_concurrent_executions``
-                # is the sole persisted/scheduler authority (specification
-                # sections 4.1, 9.7); aria2's native
-                # ``max-concurrent-downloads`` option is
-                # a derived implementation projection that must track the
-                # just-persisted value, not stay at whatever cap the daemon
-                # was started with. ``Aria2Administration.apply_memory_tuning()``
-                # is the existing executor-owned administration entry point
-                # that already performs exactly this native reapply from the
-                # injected configuration (the same call periodic housekeeping
-                # uses) -- reused here rather than a second native-option
-                # pipeline.
-                try:
-                    await application.integration_admin("aria2").apply_memory_tuning()
-                except Exception as exc:
-                    last_apply_error = _sanitize_error(exc)
         if "max_concurrent_executions" in updates:
             # Only the capacity-triggered dispatch nudge stays conditional:
             # it exists solely to immediately use newly available

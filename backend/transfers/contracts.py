@@ -6,9 +6,10 @@ from typing import Protocol, runtime_checkable
 from transfers.applicability import ProviderApplicability
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CleanupDirective, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
-    HealthObservation, InputRequirement, IntegrationDescriptor, ProviderObservation,
-    ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
+    CleanupDirective, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
+    ExecutorHealth, ExecutorRuntimeControlResult, HealthObservation, InputRequirement, IntegrationDescriptor,
+    ProviderObservation, ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
     TransferOutcome, TransferRequest, SourceEntry, ArtifactFingerprint,
 )
 
@@ -77,19 +78,43 @@ class Health(Protocol):
 
 @runtime_checkable
 class Executor(Protocol):
+    """The one generalized executor contract.
+
+    Core speaks only these neutral semantics; everything native terminates in
+    the implementation. Optional semantic operations below are used only when
+    ``capabilities`` declares them (validated at registration)."""
+
     descriptor: IntegrationDescriptor
+    capabilities: ExecutorCapabilities
+
+    def claim(self, subject: ExecutionSubject) -> ExecutorClaim:
+        """Pure, fast, I/O-free applicability over canonical subject facts."""
+        ...
+
+    def footprint(self, work: ExecutionWork) -> ExecutionFootprint:
+        """Pure: native transient paths this work may create beside its plan."""
+        ...
 
     def prepare(self, request: ExecutionRequest) -> ExecutionHandle | InputRequirement:
-        """Allocate a handle or request transient input without remote mutation."""
+        """Allocate a durable correlation or request transient input; no native mutation."""
         ...
 
-    async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation: ...
-    async def observe(self, handle: ExecutionHandle) -> ExecutionObservation: ...
-    async def cancel(self, handle: ExecutionHandle) -> TransferOutcome: ...
-
-    def resumable_paths(self, target: str) -> tuple[str, ...]:
-        """Executor-owned sidecars which prevent adoption as a complete payload."""
+    async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
+        """May return the prepared handle or its one legal native binding.
+        A lost acknowledgement is ``UNKNOWN``, never ``FAILED``."""
         ...
+
+    async def observe_many(self, handles: tuple[ExecutionHandle, ...]) -> ExecutionSnapshot:
+        """One neutral snapshot; failure is a snapshot error, never an empty success."""
+        ...
+
+    async def cancel(self, handle: ExecutionHandle) -> ExecutionObservation:
+        """Request native stop and report observed truth: only CANCELLED/ABSENT
+        (or another terminal state) proves the writer stopped; an unconfirmed
+        or lost acknowledgement is ``UNKNOWN``."""
+        ...
+
+    async def health(self) -> ExecutorHealth: ...
 
 
 @runtime_checkable
@@ -113,34 +138,60 @@ class ExecutorInputRecovery(Protocol):
 
 @runtime_checkable
 class PauseResume(Protocol):
+    """Per-execution controls (``capabilities.per_execution_pause``). Core
+    invokes one only while the current observation advertises it."""
+
     async def pause(self, handle: ExecutionHandle) -> ExecutionObservation: ...
     async def resume(self, handle: ExecutionHandle) -> ExecutionObservation: ...
 
 
 @runtime_checkable
-class BatchObservation(Protocol):
-    async def observe_many(self, handles: tuple[ExecutionHandle, ...]) -> ExecutionSnapshot: ...
+class ExecutorAcquisitionGate(Protocol):
+    """``capabilities.acquisition_gate``: while paused, this executor begins or
+    continues no DP-owned network acquisition; executor-local non-network work
+    may continue. Never proof of full application quiescence."""
+
+    async def set_acquisition_paused(self, paused: bool) -> ExecutorGateResult: ...
+
+
+@runtime_checkable
+class ExecutorBandwidthControl(Protocol):
+    """``capabilities.aggregate_bandwidth_ceiling``: ``bytes_per_second`` (0 =
+    unlimited) bounds the aggregate DP-owned acquisition of this executor."""
+
+    async def set_bandwidth_ceiling(self, bytes_per_second: int) -> ExecutorRuntimeControlResult: ...
+
+
+@runtime_checkable
+class ExecutorNativeRetry(Protocol):
+    """``capabilities.native_assisted_retry``: after core decided a same-
+    candidate retry and fenced ``previous``, continue its native state under
+    the new durably prepared attempt ``prepared``."""
+
+    async def retry_from(self, request: ExecutionRequest, prepared: ExecutionHandle,
+                         previous: ExecutionHandle) -> ExecutionObservation: ...
 
 
 @runtime_checkable
 class CandidateSampling(Protocol):
-    """Bounded neutral content evidence for one candidate, acquired before any writer.
+    """Bounded neutral content evidence for one subject, acquired before any writer.
 
-    ``None`` means no evidence capability for this candidate. An
+    ``None`` means no evidence capability for this subject. An
     ``InputRequirement`` means the evidence exists but acquiring it definitively
     requires transient operator input; core carries it through the one
     INPUT_REQUIRED lifecycle and continues through
-    ``CandidateSamplingContinuation``.
+    ``CandidateSamplingContinuation``. The sample is a fact; what it means for
+    equivalence is decided by core evidence policy only.
     """
 
-    async def fingerprint(self, candidate: TransferCandidate) -> ArtifactFingerprint | InputRequirement | None: ...
+    async def fingerprint(self, subject: ExecutionSubject) -> ArtifactFingerprint | InputRequirement | None: ...
 
 
 @runtime_checkable
 class CandidateSamplingContinuation(Protocol):
     """Continue the same evidence acquisition with submitted transient input."""
 
-    async def fingerprint_with_input(self, candidate: TransferCandidate,
+    async def fingerprint_with_input(self, subject: ExecutionSubject,
                                      submitted: SubmittedInput) -> ArtifactFingerprint | InputRequirement | None: ...
 
 

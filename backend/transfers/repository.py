@@ -196,10 +196,10 @@ _HISTORICAL_SNAPSHOT_KEYS = frozenset({
 
 
 _TERMINAL_EXECUTION_STATES = frozenset({"failed", "absent", "cancelled", "succeeded"})
-_MUTATING_EXECUTION_STATES = frozenset({"prepared", "queued", "transferring", "paused", "unknown"})
+_MUTATING_EXECUTION_STATES = frozenset({"prepared", "queued", "running", "paused", "unknown"})
 _RUNTIME_TOTAL_STATES = frozenset({
     ExecutionState.QUEUED,
-    ExecutionState.TRANSFERRING,
+    ExecutionState.RUNNING,
     ExecutionState.PAUSED,
 })
 _FAILED_CANDIDATE_OUTCOMES = frozenset({"failed", "error", "rejected", "absent"})
@@ -815,7 +815,10 @@ class TransferRepository(_QualifiedTransferRepository):
             if not row:
                 return 0
             previous = TransferProgress(**codec.load(row["progress"], {}))
-            active = observation.state == ExecutionState.TRANSFERRING and observation.error is None
+            # Only acquisition that the executor itself says should be
+            # progressing can stall; RUNNING alone implies no network semantics.
+            active = (observation.state == ExecutionState.RUNNING and observation.error is None
+                      and observation.activity.progress_expected)
             changed = previous.completed_bytes != observation.progress.completed_bytes or row["state"] != observation.state
             if row["progress_at"] is None or not active or changed:
                 await db.execute(
@@ -939,7 +942,7 @@ class TransferRepository(_QualifiedTransferRepository):
                              (observation.state, codec.dump(observation.progress), error, revoked, handle.attempt_id))
             await db.execute("UPDATE execution_attempt_provenance SET outcome=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=?",
                              (self._execution_outcome(observation.state), handle.attempt_id))
-            states = {ExecutionState.TRANSFERRING: "downloading", ExecutionState.QUEUED: "queued", ExecutionState.PAUSED: "paused",
+            states = {ExecutionState.RUNNING: "downloading", ExecutionState.QUEUED: "queued", ExecutionState.PAUSED: "paused",
                       ExecutionState.SUCCEEDED: "verifying", ExecutionState.FAILED: "error", ExecutionState.CANCELLED: "cancelled",
                       ExecutionState.ABSENT: "lost", ExecutionState.UNKNOWN: "unknown"}
             await db.execute("""UPDATE download_files SET status=?,normalized_error=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=? AND torrent_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','consolidated','cancelled'))""",

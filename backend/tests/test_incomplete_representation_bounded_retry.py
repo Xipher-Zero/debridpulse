@@ -75,7 +75,8 @@ async def test_ambiguous_first_attempt_recovers_on_later_trustworthy_proof(pair,
 
     attempts = {"count": 0}
 
-    async def flaky(candidate):
+    async def flaky(subject):
+        candidate = subject.candidate
         if candidate.provider_id == pair.b.descriptor.id:
             attempts["count"] += 1
             if attempts["count"] == 1:

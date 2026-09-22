@@ -18,6 +18,7 @@ from transfers.models import TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
+from transfers.models import ExecutionSubject
 
 pytestmark = pytest.mark.asyncio
 
@@ -218,7 +219,7 @@ async def _evidence(tmp_path, monkeypatch, uri):
     candidate = (await GeneralHttpProvider().resolve(TransferRequest("http", uri))).candidates[0]
     executor = Aria2Executor(SimpleNamespace(url="http://aria2.invalid/jsonrpc"),
                              Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True))
-    return await executor.fingerprint(candidate)
+    return await executor.fingerprint(ExecutionSubject.of(candidate))
 
 
 @pytest.mark.parametrize("status", [403, 404, 503])

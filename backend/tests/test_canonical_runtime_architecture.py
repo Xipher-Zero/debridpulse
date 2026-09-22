@@ -241,8 +241,12 @@ def test_aria2_runtime_builds_native_options_from_canonical_namespaces_only():
     ):
         assert forbidden not in body, f"build_aria2_global_options still reads flat field {forbidden!r}"
     assert "options.max_download_result" in body
-    assert "max_concurrent_executions" in body
-    assert "max_download_bytes_per_second" in body
+    # Universal Executor Leveling: DP global concurrency and global bandwidth
+    # have one core owner each and are never mirrored into native tuning.
+    assert "max_concurrent_executions" not in body
+    assert "max_download_bytes_per_second" not in body
+    assert "max-overall-download-limit" not in body
+    assert "NATIVE_ACTIVE_DOWNLOADS" in body
 
 
 def test_only_composition_and_migration_bind_flat_aria2_tuning_fields():
@@ -288,18 +292,22 @@ def test_runtime_and_administration_never_call_get_settings():
     admin_source = (ROOT / "executors/aria2/admin.py").read_text(encoding="utf-8")
     assert "get_settings" not in admin_source
     assert "from core.config import" not in admin_source
-    assert "self._config" in admin_source
+    assert "self.runtime" in admin_source
 
 
 def test_composition_is_the_sole_aria2_runtime_configuration_injection_point():
-    """Specification section 9.3: ``application/composition.py`` is the one
-    place that translates canonical settings into typed
-    ``Aria2RuntimeConfiguration`` and injects it -- via ``runtime.configure()``
-    and the ``Aria2Administration`` constructor -- on every settings change."""
+    """Universal Executor Leveling (supersedes specification section 9.3's
+    composition-owned construction): the aria2 integration factory is the one
+    place that builds typed ``Aria2RuntimeConfiguration`` from the aria2-owned
+    namespace, injects it via ``runtime.configure()`` and constructs
+    ``Aria2Administration`` -- reaching the application only through the
+    generic integration lifecycle/administration seam. Central composition
+    constructs no concrete executor runtime or administration."""
+    factory = (ROOT / "executors/aria2/definition.py").read_text(encoding="utf-8")
+    assert "Aria2RuntimeConfiguration(" in factory
+    assert "runtime.configure(" in factory
+    assert "Aria2Administration(" in factory
     source = (ROOT / "application/composition.py").read_text(encoding="utf-8")
-    assert "Aria2RuntimeConfiguration(" in source
-    assert "aria2_runtime.configure(" in source
-    assert "Aria2Administration(" in source
-    call_start = source.index("Aria2Administration(")
-    call_end = source.index(")", call_start)
-    assert "aria2_runtime_config" in source[call_start:call_end]
+    for concrete in ("Aria2RuntimeConfiguration", "Aria2Administration", "aria2_runtime", "executors.aria2"):
+        assert concrete not in source
+    assert "integration_surfaces(" in source

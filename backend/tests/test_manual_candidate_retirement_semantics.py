@@ -7,7 +7,7 @@ import pytest
 
 from test_manual_candidate_failover import attach_two, build_engine
 from transfers.manual_failover import manual_candidate_failover
-from transfers.models import ExecutionState, OutcomeKind, TransferOutcome
+from transfers.models import ExecutionObservation, ExecutionState, OutcomeKind, TransferOutcome
 
 
 @pytest.mark.asyncio
@@ -27,7 +27,9 @@ async def test_manual_switch_treats_post_cancel_absence_as_retired_writer(tmp_pa
         assert await executor.authorize(handle, "cancel")
         executor.calls.append(("cancel", handle))
         executor.jobs.pop(handle.attempt_id, None)
-        return TransferOutcome(OutcomeKind.CANCELLED)
+        # The executor removed its own job and reports the confirmed stop;
+        # it never leaves core to reinterpret a later absence.
+        return ExecutionObservation(handle, ExecutionState.CANCELLED)
 
     monkeypatch.setattr(executor, "cancel", forgetful_cancel)
 

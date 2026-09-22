@@ -23,6 +23,22 @@ post-processing belong to the **Universal Transfer Core** (`backend/transfers/`)
 any provider or executor. Providers resolve sources into canonical candidates and expose
 neutral applicability facts; executors execute; the classifier is provider-neutral.
 
+**Executor contract (1.0.13 Universal Executor Leveling).** Core speaks one generalized
+contract (`transfers/contracts.py` `Executor`: `claim`, `footprint`, `prepare`, `start`,
+`observe_many`, `cancel`, `health` + declared `ExecutorCapabilities`). Executor selection
+is the one claim router `IntegrationRegistry.claimants(ExecutionSubject)` /
+`executor_for_subject` (viability, evidence sampling, input continuation, dispatch,
+recovery) — there is no scheme routing and `IntegrationDescriptor` has no `schemes`.
+`ExecutionHandle` = `(executor_id, attempt_id, correlation, native)`; native binds once via
+`bind_execution_handle`; `_engine_base._accept_observation` is the one acceptance point.
+`ExecutionState.RUNNING` (not `transferring`) + `ExecutionActivity`; controls come from the
+current observation; `cancel` returns observed truth. Global bandwidth:
+`transfers/runtime_coordination.py`; global concurrency: core admission only (aria2 keeps a
+fixed native queue width). Materialization verify/cleanup: `transfers/filesystem.py`
+(`verify_materialization`, `retire_materialization`). Managed executors reach the
+application via `integrations/definition.py` `ManagedIntegration`/`AdministeredIntegration`
+— `application/composition.py` names no executor. Non-aria2 proofs: `tests/executor_fakes.py`.
+
 `VERSION` = `1.0.12` (development; not a released baseline — published images still tag
 `v1.0.11.1` in `docker-compose.yml`).
 

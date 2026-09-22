@@ -71,8 +71,8 @@ class ScriptedExecutor(MemoryExecutor):
 
     async def start(self, request, handle):
         observed = await super().start(request, handle)
-        self.started.append(request.candidate.name)
-        scripted = self.failures.get(request.candidate.name)
+        self.started.append(request.work.subject.candidate.name)
+        scripted = self.failures.get(request.work.subject.candidate.name)
         if scripted:
             error, progress = scripted.pop(0)
             observed = replace(observed, state=ExecutionState.FAILED, progress=progress, error=error)

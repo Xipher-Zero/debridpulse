@@ -18,15 +18,16 @@ from dataclasses import dataclass, replace
 
 from transfers.candidate_activation import ActivationResult, activate_candidate
 from transfers.cohorts import reopen_unverified_associations, unverified_association_count
-from transfers.contracts import CandidateRefresh, PauseResume, ResourceLookup
+from transfers.contracts import CandidateRefresh, ResourceLookup
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
     unknown_failure,
 )
-from transfers.filesystem import stable_payload
+from transfers.filesystem import adoptable_material
 from transfers.models import (
-    Artifact, CleanupAuthority, ExecutionObservation, ExecutionState, MaterializationAdmissionKind, Ownership,
+    Artifact, CleanupAuthority, ExecutionControl, ExecutionHandle, ExecutionObservation, ExecutionState,
+    ExecutionSubject, ExecutorRuntimeCapability, MaterializationAdmissionKind, Ownership,
     OutcomeKind, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferState,
 )
 from transfers.policy import RecoveryAction, TERMINAL_TRANSFER_STATES, failure_signature
@@ -321,7 +322,7 @@ class TransferEngine(_QualifiedTransferEngine):
 
     # States in which the native writer is confirmed to have actually
     # stopped producing bytes -- the only states safe to detach/deauthorize
-    # from (Gate 9 revision-4 rejection finding 2). QUEUED/TRANSFERRING/
+    # from (Gate 9 revision-4 rejection finding 2). QUEUED/RUNNING/
     # PAUSED/UNKNOWN must never reach ``_retire_stale_materialization``: the
     # native process may still be live and would be orphaned (DB association
     # dropped while the writer keeps running untracked).
@@ -374,19 +375,16 @@ class TransferEngine(_QualifiedTransferEngine):
         if not await self.repository.recovery_claim_current(claim, now=self.clock()):
             return self._CLAIM_LOST, None
         handle = artifact.execution
-        outcome = await executor.cancel(handle)
+        try:
+            # The executor reports observed stop truth, never a bare
+            # acknowledgement; a terminal state reported against any other
+            # handle is refused by the one acceptance function.
+            confirmed = await self._cancel_execution(executor, handle)
+        except TransferError:
+            return self._DEFERRED, None
         await self.repository.outcome(
-            artifact.transfer_id, outcome, attempt_id=handle.attempt_id,
+            artifact.transfer_id, self._cancellation_outcome(confirmed), attempt_id=handle.attempt_id,
         )
-        if outcome.kind == OutcomeKind.FAILURE:
-            # Cancellation itself failed -- the writer may still be live.
-            # Preserve association; the next pass retries cancellation.
-            return self._DEFERRED, None
-        confirmed = await executor.observe(handle)
-        if confirmed.handle != handle:
-            # A terminal state reported against a different handle is not
-            # trustworthy evidence that THIS execution stopped.
-            return self._DEFERRED, None
         await self.repository.execution(confirmed)
         if confirmed.state not in self._STALE_RETIREMENT_CONFIRMED_TERMINAL_STATES:
             # UNKNOWN or still-active: cannot yet prove the writer stopped.
@@ -483,12 +481,35 @@ class TransferEngine(_QualifiedTransferEngine):
             return True
         if not self._candidate_provider_enabled(candidate):
             return False
-        if not self.registry.eligible_executors(candidate):
+        if not self.registry.claimants(ExecutionSubject.of(candidate)):
             return False
         if candidate.expires_at is not None and candidate.expires_at <= self.clock():
             return False
-        await super()._dispatch(current)
+        # This dispatch runs under the recovery claim that decided to reuse the
+        # same candidate: the one place a native-assisted retry may hand the
+        # previous (already fenced) attempt's native state to the new attempt.
+        await super()._dispatch(current, retry_from=await self._native_retry_predecessor(current, candidate))
         return True
+
+    async def _native_retry_predecessor(self, artifact: Artifact, candidate) -> ExecutionHandle | None:
+        """The previous attempt a native-assisted retry may continue: this
+        artifact's most recent attempt, for the same candidate identity, whose
+        normal control authority is already revoked and whose native work is
+        terminal-but-unsuccessful. ``None`` when core did not decide a
+        same-candidate retry of such an attempt, or when the selected claimant
+        does not declare native-assisted retry."""
+        claimants = self.registry.claimants(ExecutionSubject.of(candidate))
+        if not claimants or not claimants[0].capabilities.native_assisted_retry:
+            return None
+        latest = None
+        for attempt in await self.repository.executions(artifact.transfer_id):
+            if attempt.artifact_id == artifact.id:
+                latest = attempt
+        if (latest is None or latest.state not in {"failed", "cancelled", "absent"} or latest.candidate is None
+                or str(latest.candidate.id) != str(candidate.id)
+                or await self.repository.authorize_execution(latest.handle, "observe")):
+            return None
+        return latest.handle
 
     async def _refresh_claimed(
         self, claim: RecoveryClaim, artifact: Artifact,
@@ -641,6 +662,7 @@ class TransferEngine(_QualifiedTransferEngine):
             result = self._authoritative_provider_result(
                 provider.descriptor.id,
                 await provider.refresh(bound_candidate),
+                request_kind=record.request.kind,
             )
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
@@ -881,7 +903,7 @@ class TransferEngine(_QualifiedTransferEngine):
         wake: str,
         retry_at: float = 0.0,
     ) -> bool:
-        """Park without losing a usable GID; retire only when pause is impossible."""
+        """Park without losing reusable native work; retire only when pause is impossible."""
         current = await self._current_artifact(artifact.transfer_id, artifact.id)
         if current is None:
             return False
@@ -900,37 +922,21 @@ class TransferEngine(_QualifiedTransferEngine):
             )
         if not await self.repository.recovery_claim_current(claim, now=self.clock()):
             return False
-        try:
-            observed = await executor.observe(current.execution)
-        except Exception:
-            observed = ExecutionObservation(
-                current.execution,
-                ExecutionState.UNKNOWN,
-                error=self._executor_wait_error(current.execution.executor_id),
-            )
-        if observed.handle != current.execution:
-            raise TransferError(NormalizedError(
-                Domain.EXECUTOR,
-                Category.INVALID_ADAPTER_RESPONSE,
-                Stage.RECONCILIATION,
-                retryability=Retryability.NEVER,
-                origin=Origin.CORE,
-            ))
+        observed = await self._observe_execution(executor, current.execution)
+        handle = observed.handle
 
         if observed.resumable:
-            if isinstance(executor, PauseResume):
+            if executor.capabilities.per_execution_pause:
                 if observed.state != ExecutionState.PAUSED:
+                    if ExecutionControl.PAUSE not in self._controls(executor, observed):
+                        # Pausable in general but not right now: never guess
+                        # and never retire a live writer for it -- keep it
+                        # owned and let the next pass converge.
+                        await self.repository.execution(observed)
+                        return False
                     if not await self.repository.recovery_claim_current(claim, now=self.clock()):
                         return False
-                    observed = await executor.pause(current.execution)
-                    if observed.handle != current.execution:
-                        raise TransferError(NormalizedError(
-                            Domain.EXECUTOR,
-                            Category.INVALID_ADAPTER_RESPONSE,
-                            Stage.RECONCILIATION,
-                            retryability=Retryability.NEVER,
-                            origin=Origin.CORE,
-                        ))
+                    observed = await self._accept_observation(handle, await executor.pause(handle))
                 await self.repository.execution(observed)
                 return await self.repository.record_recovery_quiescence(
                     claim,
@@ -1008,17 +1014,23 @@ class TransferEngine(_QualifiedTransferEngine):
                 if not await self.repository.recovery_claim_current(claim, now=self.clock()):
                     return False
                 try:
-                    observed = await executor.observe(current.execution)
-                except Exception:
+                    observed = await self._observe_execution(executor, current.execution)
+                except TransferError:
                     observed = None
-            if observed is not None and observed.handle == current.execution:
-                if observed.resumable and isinstance(executor, PauseResume):
+                if observed is not None and observed.state == ExecutionState.UNKNOWN:
+                    observed = None
+            if observed is not None:
+                if observed.resumable and executor.capabilities.per_execution_pause:
                     if observed.state != ExecutionState.PAUSED:
+                        if ExecutionControl.PAUSE not in self._controls(executor, observed):
+                            # Not pausable right now: stay owned, unsettled.
+                            await self.repository.execution(observed)
+                            return False
                         if not await self.repository.recovery_claim_current(claim, now=self.clock()):
                             return False
-                        observed = await executor.pause(current.execution)
-                    if observed is not None and observed.handle == current.execution:
-                        await self.repository.execution(observed)
+                        observed = await self._accept_observation(
+                            observed.handle, await executor.pause(observed.handle))
+                    await self.repository.execution(observed)
                     await self.repository.record_recovery_quiescence(
                         claim,
                         reason=reason,
@@ -1110,7 +1122,7 @@ class TransferEngine(_QualifiedTransferEngine):
         if transfer.paused and trigger != RecoveryTrigger.RESUME:
             if current.execution is not None:
                 executor = self.registry.executors.get(current.execution.executor_id)
-                if isinstance(executor, PauseResume):
+                if executor is not None:
                     await self._converge_execution(current, executor)
             return current, error, observed, _Step(
                 True, True, RecoveryAction.RECONCILE.value,
@@ -1137,27 +1149,10 @@ class TransferEngine(_QualifiedTransferEngine):
             executor = self.registry.executors.get(current.execution.executor_id)
             if executor is not None:
                 if observed is None:
-                    try:
-                        observed = await executor.observe(current.execution)
-                    except Exception as exc:
-                        observed = ExecutionObservation(
-                            current.execution,
-                            ExecutionState.UNKNOWN,
-                            error=unknown_failure(
-                                exc,
-                                integration_id=current.execution.executor_id,
-                                domain=Domain.EXECUTOR,
-                                stage=Stage.RECONCILIATION,
-                            ),
-                        )
-                if observed.handle != current.execution:
-                    raise TransferError(NormalizedError(
-                        Domain.EXECUTOR,
-                        Category.INVALID_ADAPTER_RESPONSE,
-                        Stage.RECONCILIATION,
-                        retryability=Retryability.NEVER,
-                        origin=Origin.CORE,
-                    ))
+                    observed = await self._observe_execution(executor, current.execution)
+                else:
+                    observed = await self._accept_observation(current.execution, observed)
+                current = replace(current, execution=observed.handle)
 
                 if observed.state == ExecutionState.SUCCEEDED:
                     await self._execution_result(current, executor, observed)
@@ -1275,10 +1270,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 )
                 return current, error, observed, step, retirement_reason
             if observed.resumable:
-                if isinstance(executor, PauseResume):
-                    observed = await self._converge_execution(current, executor, observed)
-                else:
-                    await self.repository.execution(observed)
+                observed = await self._converge_execution(current, executor, observed)
                 await self.repository.clear_recovery_quiescence(claim)
                 return current, error, observed, _Step(
                     True, True, RecoveryAction.RECONCILE.value,
@@ -1458,13 +1450,23 @@ class TransferEngine(_QualifiedTransferEngine):
                 quiescence_reason=decision.quiescence_reason or "retry_backoff",
                 wake_condition=decision.wake_condition or f"retry_at:{retry_at}",
             )
-        return await self.repository.transition_recovery(
+        applied = await self.repository.transition_recovery(
             current.id,
             "queued",
             error=error,
             retry_at=retry_at,
             clear_quiescence=True,
         )
+        if applied:
+            # A same-candidate retry decided now is dispatched under THIS
+            # claim when the executor can carry native state across attempts;
+            # otherwise the ordinary scheduler dispatches a fresh start.
+            requeued = await self._current_artifact(current.transfer_id, current.id)
+            candidate = self._candidate(requeued) if requeued is not None else None
+            if (requeued is not None and candidate is not None and requeued.execution is None
+                    and await self._native_retry_predecessor(requeued, candidate) is not None):
+                await self._dispatch_claimed(claim, requeued)
+        return applied
 
     # ------------------------------------------------------------------
     # Manual retry trigger adaptation
@@ -1627,7 +1629,7 @@ class TransferEngine(_QualifiedTransferEngine):
 
         Concurrency (Gate 9 rev. 8 correction -- rev. 7 fenced the MUTATING
         native calls per-attempt but still performed the initial native
-        ``executor.observe()`` in the plan-building loop before acquiring
+        executor observation in the plan-building loop before acquiring
         EITHER ``_execution_cycle_lock`` or the per-attempt
         ``_convergence_lock``; a review correctly found this left a real
         unfenced-observe window a concurrent ``pause()``/``resume()`` could
@@ -1641,7 +1643,7 @@ class TransferEngine(_QualifiedTransferEngine):
         before) and, per artifact, its own ``self._convergence_lock(handle
         .attempt_id)`` (the SAME per-attempt lock ``_converge_execution``
         uses for every native pause/resume/cancel), this method re-reads the
-        artifact fresh and performs its OWN ``executor.observe()`` for the
+        artifact fresh and performs its OWN executor observation for the
         first time -- there is no unfenced observation left to carry across
         the boundary, because none is taken before it. A concurrent
         ``pause()``/``resume()`` racing this exact handle therefore cannot
@@ -1711,37 +1713,35 @@ class TransferEngine(_QualifiedTransferEngine):
                                 return False
                             artifact = current
                         candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-                        executor = (
-                            self.registry.executors.get(artifact.execution.executor_id) if artifact.execution
-                            else self.registry.executor_for(candidate) if candidate else None
-                        )
-                        if executor is None and (candidate is not None or artifact.execution is not None):
+                        executor = self.registry.executors.get(artifact.execution.executor_id) if artifact.execution else None
+                        if executor is None and artifact.execution is not None:
                             return False
                         observation = None
                         if executor is not None and artifact.execution:
-                            observation = await executor.observe(artifact.execution)
+                            observation = await self._observe_execution(executor, artifact.execution)
                             if observation.state == ExecutionState.UNKNOWN:
                                 return False
+                            artifact = replace(artifact, execution=observation.handle)
                         if observation:
                             if observation.resumable:
                                 await self.repository.execution(observation)
                                 continue
                         if candidate is None:
-                            if artifact.execution:
-                                outcome = await executor.cancel(artifact.execution)
-                                if outcome.error:
-                                    return False
+                            if artifact.execution and not await self._stop_confirmed(executor, artifact.execution):
+                                return False
                             await self.repository.artifact_state(artifact.id, "unresolved", release=True)
                             await self.repository.retry_requests(transfer_id, request_id=artifact.request_id)
                             continue
-                        if await stable_payload(artifact.target, artifact.expected_bytes, sidecars=executor.resumable_paths(artifact.target),
-                                                integrity=candidate.integrity, delay=self.policy.adoption_stability_seconds):
+                        try:
+                            executor, work, footprint = self._artifact_work(artifact, executor)
+                        except TransferError:
+                            return False
+                        if await adoptable_material(work.materialization, footprint, artifact.expected_bytes,
+                                                    candidate.integrity, delay=self.policy.adoption_stability_seconds):
                             await self.repository.artifact_state(artifact.id, "completed")
                             continue
-                        if artifact.execution:
-                            outcome = await executor.cancel(artifact.execution)
-                            if outcome.error:
-                                return False
+                        if artifact.execution and not await self._stop_confirmed(executor, artifact.execution):
+                            return False
                         await self.repository.reset_retry_budget(artifact.id)
                         await self.repository.artifact_state(artifact.id, "unresolved", release=True)
                         origin = await self.canonical.origin_for(artifact, candidate)
@@ -1753,6 +1753,13 @@ class TransferEngine(_QualifiedTransferEngine):
                             await self.repository.artifact_state(artifact.id, "queued", release=True)
                 await self.repository.retry_requests(transfer_id, reset_budget=True)
                 return True
+
+    async def _stop_confirmed(self, executor, handle) -> bool:
+        """Cancel native work and persist the observed truth; only a
+        positively observed stop confirms."""
+        stopped = await self._cancel_execution(executor, handle)
+        await self.repository.execution(stopped)
+        return stopped.stopped
 
     async def _renew_source_parent(self, record, *, operator=False):
         """Re-observe a manifest-member request's parent resource and renew
@@ -1964,7 +1971,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 trigger=RecoveryTrigger.AUTO_RETRY,
                 error=self._provider_wait_error(candidate),
             )
-        if candidate is not None and not self.registry.eligible_executors(candidate):
+        if candidate is not None and not self.registry.claimants(ExecutionSubject.of(candidate)):
             return await self.recover_artifact(
                 artifact,
                 trigger=RecoveryTrigger.AUTO_RETRY,
@@ -2016,7 +2023,7 @@ class TransferEngine(_QualifiedTransferEngine):
                     ) or (
                         artifact.execution is None
                         and candidate is not None
-                        and self.registry.eligible_executors(candidate)
+                        and self.registry.claimants(ExecutionSubject.of(candidate))
                     ):
                         await self.recover_artifact(
                             artifact, trigger=RecoveryTrigger.EXECUTOR_RECOVERY,
@@ -2193,21 +2200,38 @@ class TransferEngine(_QualifiedTransferEngine):
         async with self._dispatch_lock:
             await self.repository.set_pause_and_fence(transfer_id, True)
         errors = []
+        globally_paused = await self.repository.globally_paused()
         for artifact in await self.repository.artifacts(transfer_id):
             if artifact.execution is None:
                 continue
+            # An engaged executor-wide acquisition gate prevents network
+            # acquisition for global pause even where one execution cannot be
+            # paused individually right now; it never proves full quiescence.
+            covered = globally_paused and artifact.execution.executor_id in self._acquisition_gated
             executor = self.registry.executors.get(artifact.execution.executor_id)
-            if not isinstance(executor, PauseResume):
-                errors.append(self._error(
-                    Category.UNSUPPORTED_CAPABILITY,
-                    Stage.EXECUTION,
-                    domain=Domain.REQUEST,
-                    retryability=Retryability.NEVER,
-                ))
+            if executor is None or not executor.capabilities.per_execution_pause:
+                if not covered:
+                    errors.append(self._error(
+                        Category.UNSUPPORTED_CAPABILITY,
+                        Stage.EXECUTION,
+                        domain=Domain.REQUEST,
+                        retryability=Retryability.NEVER,
+                    ))
                 continue
             observed = await self._converge_execution(artifact, executor)
             if observed and observed.error:
                 errors.append(observed.error)
+            elif observed is not None and observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING} \
+                    and not covered:
+                # Pause is not currently offered for this execution: the
+                # intent is durable and convergence continues, but the pause is
+                # reported as unconfirmed rather than guessed successful.
+                errors.append(self._error(
+                    Category.RECONCILIATION_FAILED,
+                    Stage.EXECUTION,
+                    domain=Domain.RECONCILIATION,
+                    retryability=Retryability.BACKOFF,
+                ))
         await self._aggregate(transfer_id)
         return tuple(errors)
 
@@ -2240,16 +2264,49 @@ class TransferEngine(_QualifiedTransferEngine):
         await self._aggregate(transfer_id)
         return tuple(errors)
 
+    async def _set_acquisition_gates(self, paused: bool) -> tuple:
+        """Engage/release every executor-wide acquisition gate an executor
+        declares AND currently reports available. Core already recorded the
+        durable global intent (and blocks new admission itself); a gate is an
+        executor-local enforcement of it, never proof of quiescence. A gate
+        the runtime-limit owner holds because a finite cap cannot currently be
+        proven is not released by global resume."""
+        errors = []
+        for executor in tuple(self.registry.executors.values()):
+            identity = executor.descriptor.id
+            if not executor.capabilities.acquisition_gate:
+                continue
+            if not paused and identity in self.runtime.gated:
+                self._acquisition_gated.discard(identity)
+                continue
+            try:
+                health = await executor.health()
+                if ExecutorRuntimeCapability.ACQUISITION_GATE not in health.available_runtime_capabilities:
+                    continue
+                result = await executor.set_acquisition_paused(paused)
+                if result.error is not None or result.effective_paused is not paused:
+                    errors.append(result.error or self._executor_wait_error(identity))
+                elif paused:
+                    self._acquisition_gated.add(identity)
+                else:
+                    self._acquisition_gated.discard(identity)
+            except Exception:
+                errors.append(self._executor_wait_error(identity))
+        return tuple(errors)
+
     async def pause_all(self):
         async with self._dispatch_lock:
             await self.repository.global_pause(True)
+            await self._set_acquisition_gates(True)
         results = {}
         for transfer in await self.repository.active():
             results[transfer.id] = await self.pause(transfer.id)
         return results
 
     async def resume_all(self):
-        await self.repository.global_pause(False)
+        async with self._dispatch_lock:
+            await self.repository.global_pause(False)
+            await self._set_acquisition_gates(False)
         results = {}
         for transfer in await self.repository.active():
             await self.repository.set_pause_and_fence(transfer.id, False)

@@ -8,11 +8,15 @@ from transfers.applicability import (
     assess_provider_applicability,
 )
 from transfers.contracts import (
-    ApplicabilitySource, CandidateRefresh, Cleanup, Executor, Health, Inventory, PauseResume, Provider,
-    RequestApplicabilitySource, ResourceLookup, Manifest,
+    ApplicabilitySource, CandidateRefresh, CandidateSampling, CandidateSamplingContinuation, Cleanup, Executor,
+    ExecutorAcquisitionGate, ExecutorBandwidthControl, ExecutorInputContinuation, ExecutorInputRecovery,
+    ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource, ResourceLookup,
+    Manifest,
 )
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
-from transfers.models import Capability, TransferCandidate, TransferRequest
+from transfers.models import (
+    Capability, ExecutionSubject, ExecutorCapabilities, ExecutorClaim, ExecutorRuntimeCapability, TransferRequest,
+)
 
 
 _PROVIDER_CAPABILITIES = {
@@ -24,6 +28,28 @@ _PROVIDER_CAPABILITIES = {
     # does not imply provider ownership of selection policy.
     Capability.FILE_MANIFEST: ResourceLookup,
 }
+
+# Every declared executor capability promises its neutral semantic operation(s).
+_EXECUTOR_CAPABILITIES = {
+    "candidate_sampling": (CandidateSampling,),
+    "per_execution_pause": (PauseResume,),
+    "acquisition_gate": (ExecutorAcquisitionGate,),
+    "aggregate_bandwidth_ceiling": (ExecutorBandwidthControl,),
+    "native_assisted_retry": (ExecutorNativeRetry,),
+    "transient_input": (ExecutorInputContinuation, ExecutorInputRecovery),
+}
+
+# The runtime availability fact that may narrow each static capability.
+RUNTIME_CAPABILITY = {
+    "acquisition_gate": ExecutorRuntimeCapability.ACQUISITION_GATE,
+    "aggregate_bandwidth_ceiling": ExecutorRuntimeCapability.AGGREGATE_BANDWIDTH_CEILING,
+    "native_assisted_retry": ExecutorRuntimeCapability.NATIVE_ASSISTED_RETRY,
+}
+
+
+def declared_runtime_capabilities(capabilities: ExecutorCapabilities) -> frozenset[ExecutorRuntimeCapability]:
+    """The runtime capabilities an executor may ever report available."""
+    return frozenset(value for name, value in RUNTIME_CAPABILITY.items() if getattr(capabilities, name))
 
 
 class IntegrationRegistry:
@@ -47,13 +73,19 @@ class IntegrationRegistry:
 
     def register_executor(self, executor: Executor) -> None:
         if not isinstance(executor, Executor):
-            raise TypeError("Executor must implement execution and descriptor contracts")
+            raise TypeError("Executor must implement the generalized execution contract")
         descriptor = executor.descriptor
-        if not descriptor.id or descriptor.id in self.executors or descriptor.id in self.providers or not descriptor.schemes:
-            raise ValueError("Executor requires a unique identity and supported schemes")
-        if ({Capability.PAUSE, Capability.RESUME} & descriptor.capabilities
-                and not isinstance(executor, PauseResume)):
-            raise TypeError("Executor declares unimplemented pause/resume capabilities")
+        if not descriptor.id or descriptor.id in self.executors or descriptor.id in self.providers:
+            raise ValueError("Executor requires a unique identity")
+        capabilities = executor.capabilities
+        if not isinstance(capabilities, ExecutorCapabilities):
+            raise TypeError("Executor must declare neutral executor capabilities")
+        for name, protocols in _EXECUTOR_CAPABILITIES.items():
+            if getattr(capabilities, name) and not all(isinstance(executor, item) for item in protocols):
+                raise TypeError(f"Executor declares an unimplemented capability: {name}")
+        if (capabilities.candidate_sampling and capabilities.transient_input
+                and not isinstance(executor, CandidateSamplingContinuation)):
+            raise TypeError("Executor declares input-continued sampling without implementing it")
         self.executors[descriptor.id] = executor
 
     def mark_health(self, integration_id: str, *, healthy: bool) -> None:
@@ -215,15 +247,32 @@ class IntegrationRegistry:
         """
         return self._provider_for_bound_owner(provider_id, request, require_health=False)
 
-    def eligible_executors(self, candidate: TransferCandidate) -> tuple[Executor, ...]:
-        schemes = {endpoint.scheme for endpoint in candidate.endpoints}
-        matches = [executor for executor in self.executors.values()
-                   if executor.descriptor.enabled and executor.descriptor.id not in self._unhealthy
-                   and schemes & executor.descriptor.schemes]
+    def claimants(self, subject: ExecutionSubject) -> tuple[Executor, ...]:
+        """THE executor applicability router, used before and after
+        materialization alike: viability, pre-writer evidence sampling and its
+        input continuation, dispatch, executor-input continuation and recovery.
+
+        Each enabled, healthy executor answers a pure claim over canonical
+        subject facts; anything but an ``ExecutorClaim`` is no claim. The
+        subject's neutral materialization shape must be one the executor
+        declares. Ordering is core-owned: configured priority, then identity."""
+        kind = subject.candidate.materialization
+        matches = []
+        for executor in self.executors.values():
+            if not executor.descriptor.enabled or executor.descriptor.id in self._unhealthy:
+                continue
+            if kind not in executor.capabilities.materialization_kinds:
+                continue
+            try:
+                claim = executor.claim(subject)
+            except Exception:
+                continue
+            if isinstance(claim, ExecutorClaim) and claim.supported is True:
+                matches.append(executor)
         return tuple(sorted(matches, key=lambda item: (-item.descriptor.priority, item.descriptor.id)))
 
-    def executor_for(self, candidate: TransferCandidate) -> Executor:
-        matches = self.eligible_executors(candidate)
+    def executor_for_subject(self, subject: ExecutionSubject) -> Executor:
+        matches = self.claimants(subject)
         if not matches:
             raise TransferError(NormalizedError(
                 Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE,

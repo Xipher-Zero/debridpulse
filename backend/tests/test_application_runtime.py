@@ -234,7 +234,8 @@ async def test_quick_add_ten_equivalent_urls_admit_one_transfer_and_converge_to_
     # override the fake sampler to a fixed shared signature regardless of
     # which mirror URL it was given (transfers/mirrors.py identity is proven
     # by sampled content, never by URL/hostname).
-    async def shared_fingerprint(candidate):
+    async def shared_fingerprint(subject):
+        candidate = subject.candidate
         return ArtifactFingerprint(candidate.expected_bytes, "shared-quick-add-iso-content")
 
     monkeypatch.setattr(executor, "fingerprint", shared_fingerprint)

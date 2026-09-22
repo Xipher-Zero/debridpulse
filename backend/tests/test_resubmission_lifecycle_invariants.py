@@ -70,10 +70,8 @@ class NoCleanupProvider(ParcelProvider):
 class HttpsExecutor(MemoryExecutor):
     """Executes the https members AllDebrid fans a magnet out into."""
 
-    descriptor = IntegrationDescriptor(
-        "https-lab", "HTTPS lab",
-        frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
-        schemes=frozenset({"https"}))
+    descriptor = IntegrationDescriptor("https-lab", "HTTPS lab", frozenset())
+    claim_schemes = frozenset({"https"})
 
     def __init__(self, authorize):
         super().__init__(authorize)

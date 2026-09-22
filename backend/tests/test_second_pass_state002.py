@@ -9,7 +9,7 @@ import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
-from transfers.models import ExecutionState, OutcomeKind, TransferOutcome, TransferProgress, TransferRequest, TransferState
+from transfers.models import ExecutionObservation, ExecutionState, OutcomeKind, TransferOutcome, TransferProgress, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -77,8 +77,8 @@ async def test_state002_failed_cancel_is_durable_while_parent_is_already_cancell
     transfer, artifact = await executing(core)
     error = transient_cleanup_error()
 
-    async def fail_cancel(_handle):
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+    async def fail_cancel(handle):
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = fail_cancel
     assert await core.engine.cancel(transfer.id) == (error,)
@@ -102,7 +102,7 @@ async def test_state002_failed_cancel_survives_restart_and_converges(core):
         nonlocal calls
         calls += 1
         if calls == 1:
-            return TransferOutcome(OutcomeKind.FAILURE, error)
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
         return await original_cancel(handle)
 
     core.executor.cancel = fail_once
@@ -125,10 +125,10 @@ async def test_state002_repeated_failures_bound_destructive_pressure_without_aba
     error = transient_cleanup_error()
     calls = 0
 
-    async def fail_cancel(_handle):
+    async def fail_cancel(handle):
         nonlocal calls
         calls += 1
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = fail_cancel
     for _ in range(4):
@@ -148,8 +148,8 @@ async def test_state002_late_executor_success_only_reconciles_external_cleanup(c
     transfer, artifact = await executing(core)
     error = transient_cleanup_error()
 
-    async def fail_cancel(_handle):
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+    async def fail_cancel(handle):
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = fail_cancel
     await core.engine.cancel(transfer.id)
@@ -173,10 +173,10 @@ async def test_state002_repeated_user_cancel_does_not_duplicate_cleanup_obligati
     entered = asyncio.Event()
     release = asyncio.Event()
 
-    async def blocked_failure(_handle):
+    async def blocked_failure(handle):
         entered.set()
         await release.wait()
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = blocked_failure
     first = asyncio.create_task(core.engine.cancel(transfer.id))
@@ -196,7 +196,7 @@ async def test_state002_cancel_commit_contains_cleanup_obligation_before_executo
     transfer, artifact = await executing(core)
     observed = {}
 
-    async def inspect_then_fail(_handle):
+    async def inspect_then_fail(handle):
         observed["parent"] = (await core.repository.get(transfer.id)).state
         observed["artifact"] = (await core.repository.artifacts(transfer.id))[0].state
         observed["cleanup"] = await core.repository.execution_cleanup_status(artifact.execution.attempt_id)

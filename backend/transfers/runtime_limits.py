@@ -1,12 +1,11 @@
 """Neutral live executor-runtime capability limits (DP 1.0.12 canonical
 architecture correction, Workstream C, specification section 4.4).
 
-Download bandwidth is a neutral execution capability, not an aria2-native
+Download bandwidth is a neutral execution capability, not an executor-native
 policy concept: the canonical owner of the DESIRED (configured) value is this
-universal namespace. The EFFECTIVE (actually-applied)
-value and any apply failure are reported by the concrete executor/integration
-runtime that received the injected desired value (specification section
-2.7) -- this module owns only the desired/configured side.
+universal namespace. ``transfers.runtime_coordination`` owns the global
+allocation and reports the EFFECTIVE (proven enforced) value; executors only
+enforce the ceiling assigned to them. This module owns only the desired side.
 """
 from pydantic import BaseModel, Field
 

@@ -62,7 +62,7 @@ async def _resolve(repository, record, provider_id, candidates=(), *, error=None
 async def _complete_execution(repository, record, candidate, attempt_id):
     artifact = await repository.materialize(record, (candidate,), f"/tmp/{candidate.name}")
     assert artifact is not None
-    handle = ExecutionHandle("fixture_executor", {}, attempt_id=attempt_id)
+    handle = ExecutionHandle("fixture_executor", attempt_id, {})
     assert await repository.prepare_execution(artifact, handle)
     await repository.execution(ExecutionObservation(handle, ExecutionState.SUCCEEDED, TransferProgress(8, 8)))
     await repository.artifact_state(artifact.id, "completed", expected_bytes=8)
@@ -197,7 +197,7 @@ async def test_executor_success_is_not_delivery_until_artifact_verification_comp
     route = await _resolve(repository, record, "provider_a", (candidate,))
     record = (await repository.requests(transfer.id))[0]
     artifact = await repository.materialize(record, (candidate,), "/tmp/delivery.bin")
-    handle = ExecutionHandle("fixture_executor", {}, attempt_id="delivery-execution")
+    handle = ExecutionHandle("fixture_executor", "delivery-execution", {})
     assert await repository.prepare_execution(artifact, handle)
     await repository.execution(ExecutionObservation(handle, ExecutionState.SUCCEEDED, TransferProgress(8, 8)))
 
@@ -248,7 +248,7 @@ async def test_cancelled_executor_attempt_is_historical_not_provider_failover(tm
     record = (await repository.requests(transfer.id))[0]
     artifact = await repository.materialize(record, (candidate,), "/tmp/cancel.bin")
 
-    first = ExecutionHandle("fixture_executor", {}, attempt_id="cancel-exec-1")
+    first = ExecutionHandle("fixture_executor", "cancel-exec-1", {})
     assert await repository.prepare_execution(artifact, first)
     await repository.execution(ExecutionObservation(first, ExecutionState.CANCELLED, TransferProgress(8, 2)))
     cancelled = await repository.presentation(transfer.id, details=True)
@@ -260,7 +260,7 @@ async def test_cancelled_executor_attempt_is_historical_not_provider_failover(tm
 
     await repository.artifact_state(artifact.id, "queued", release=True)
     artifact = (await repository.artifacts(transfer.id))[0]
-    second = ExecutionHandle("fixture_executor", {}, attempt_id="cancel-exec-2")
+    second = ExecutionHandle("fixture_executor", "cancel-exec-2", {})
     assert await repository.prepare_execution(artifact, second)
     await repository.execution(ExecutionObservation(second, ExecutionState.SUCCEEDED, TransferProgress(8, 8)))
     await repository.artifact_state(artifact.id, "completed", expected_bytes=8)
@@ -277,7 +277,7 @@ async def test_restart_reconciliation_observation_preserves_existing_route_linka
     route = await _resolve(repository, record, "provider_a", (candidate,))
     record = (await repository.requests(transfer.id))[0]
     artifact = await repository.materialize(record, (candidate,), "/tmp/reconcile.bin")
-    handle = ExecutionHandle("fixture_executor", {"gid": "durable-handle"}, attempt_id="reconcile-exec")
+    handle = ExecutionHandle("fixture_executor", "reconcile-exec", {"gid": "durable-handle"})
     assert await repository.prepare_execution(artifact, handle)
 
     restarted = TransferRepository()
@@ -285,7 +285,7 @@ async def test_restart_reconciliation_observation_preserves_existing_route_linka
     live = await restarted.live_executions()
     assert len(live) == 1
     assert live[0].handle.attempt_id == handle.attempt_id
-    await restarted.execution(ExecutionObservation(live[0].handle, ExecutionState.TRANSFERRING, TransferProgress(8, 4)))
+    await restarted.execution(ExecutionObservation(live[0].handle, ExecutionState.RUNNING, TransferProgress(8, 4)))
     mid = await restarted.presentation(transfer.id, details=True)
     assert len(mid["route_attempts"]) == 1
     assert mid["execution_attempts"][0]["route_attempt_id"] == route.id

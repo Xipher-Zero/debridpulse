@@ -32,12 +32,14 @@ import pytest
 import pytest_asyncio
 
 import db.database as database
-from fake_integrations import MemoryExecutor, ParcelProvider
+from fake_integrations import MemoryExecutor, ParcelProvider, neutral_facts
 from file_selection_support import executable, rebind_resource, seed_window
 from transfers.convergence_engine import TransferEngine
 from transfers.errors import NormalizedError
 from transfers.models import (
-    Artifact, Capability, ExecutionHandle, ExecutionObservation, ExecutionState, IntegrationDescriptor,
+    ExecutionObservation,
+    Artifact, Capability, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionSnapshot,
+    ExecutionState, ExecutorCapabilities, ExecutorClaim, ExecutorHealth, IntegrationDescriptor,
     MaterializationAdmission, MaterializationAdmissionKind, OutcomeKind, TransferOutcome, TransferProgress,
     TransferRequest,
 )
@@ -659,8 +661,9 @@ async def test_ordinary_reconciliation_cadence_never_orphans_generation_a_when_c
         await _generation_a_live_with_stale_generation_b(engine_stack)
     )
 
-    async def failing_cancel(_handle):
-        return TransferOutcome(OutcomeKind.FAILURE, NormalizedError(Domain.EXECUTOR, Category.TRANSFER_FAILED, Stage.CLEANUP))
+    async def failing_cancel(handle):
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                                    error=NormalizedError(Domain.EXECUTOR, Category.TRANSFER_FAILED, Stage.CLEANUP))
 
     monkeypatch.setattr(executor, "cancel", failing_cancel)
     start_before = sum(1 for call in executor.calls if call[0] == "start")
@@ -882,7 +885,7 @@ async def test_ordinary_reconciliation_cadence_resumes_quiesced_writer_once_admi
         exec_row = await db.fetchone(
             "SELECT state, authorized FROM execution_attempts WHERE id=?", (attempt_id,),
         )
-    assert exec_row["state"] == "transferring"
+    assert exec_row["state"] == "running"
     assert exec_row["authorized"] == 1
     assert sum(1 for call in executor.calls if call[0] == "start") == 1, (
         "resumption must never dispatch a second execution attempt"
@@ -985,34 +988,34 @@ async def test_stale_retirement_atomic_commit_never_detaches_or_requeues_when_cl
 
 
 class _UnpausableMemoryExecutor:
-    """A writer that structurally cannot be paused -- deliberately defines NO
-    ``pause``/``resume`` attributes at all (not even overridden to ``None``),
-    so ``isinstance(executor, transfers.contracts.PauseResume)`` is False,
-    forcing ``_park_existing_execution`` into its cancel/retire-on-HOLD
-    branch rather than the pause branch ``MemoryExecutor`` (which DOES
-    support ``PauseResume``) would take."""
+    """A writer that structurally cannot be paused -- it declares no
+    per-execution control capability and defines NO ``pause``/``resume``
+    attributes at all, forcing ``_park_existing_execution`` into its
+    cancel/retire-on-HOLD branch rather than the pause branch
+    ``MemoryExecutor`` (which DOES declare per-execution pause) would take."""
+
+    capabilities = ExecutorCapabilities()
 
     def __init__(self, authorize):
-        self.descriptor = IntegrationDescriptor(
-            "unpausable-memory-copy", "Unpausable memory copy",
-            frozenset({Capability.RECONCILE}), schemes=frozenset({"memory"}),
-        )
+        self.descriptor = IntegrationDescriptor("unpausable-memory-copy", "Unpausable memory copy", frozenset())
         self.authorize = authorize
         self.calls = []
         self.jobs = {}
 
-    def prepare(self, request):
-        return ExecutionHandle(
-            self.descriptor.id, {"copy_ticket": request.attempt_id, "destination": request.target}, request.attempt_id,
-        )
+    def claim(self, subject):
+        return ExecutorClaim(any(endpoint.scheme == "memory" for endpoint in subject.candidate.endpoints))
 
-    def resumable_paths(self, target):
-        return (target + ".memory-progress",)
+    def footprint(self, work):
+        return ExecutionFootprint((work.materialization.target + ".memory-progress",))
+
+    def prepare(self, request):
+        return ExecutionHandle(self.descriptor.id, request.attempt_id,
+                               {"copy_ticket": request.attempt_id, "destination": request.work.materialization.target})
 
     async def start(self, request, handle):
         assert await self.authorize(handle, "start"), "Core must persist authority before executor contact"
         self.calls.append(("start", handle))
-        result = ExecutionObservation(handle, ExecutionState.TRANSFERRING, TransferProgress(4, 1, 1), (request.target,), None)
+        result = neutral_facts(ExecutionObservation(handle, ExecutionState.RUNNING, TransferProgress(4, 1, 1)))
         self.jobs[handle.attempt_id] = result
         return result
 
@@ -1021,12 +1024,19 @@ class _UnpausableMemoryExecutor:
         self.calls.append(("observe", handle))
         return self.jobs.get(handle.attempt_id, ExecutionObservation(handle, ExecutionState.ABSENT))
 
+    async def observe_many(self, handles):
+        return ExecutionSnapshot(tuple([await self.observe(handle) for handle in handles]))
+
     async def cancel(self, handle):
         assert await self.authorize(handle, "cancel")
         self.calls.append(("cancel", handle))
         if handle.attempt_id in self.jobs:
             self.jobs[handle.attempt_id] = replace(self.jobs[handle.attempt_id], state=ExecutionState.CANCELLED)
-        return TransferOutcome(OutcomeKind.CANCELLED)
+            return self.jobs[handle.attempt_id]
+        return ExecutionObservation(handle, ExecutionState.ABSENT)
+
+    async def health(self):
+        return ExecutorHealth(True, True)
 
 
 @pytest_asyncio.fixture

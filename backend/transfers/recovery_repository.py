@@ -305,7 +305,7 @@ class TransferRepository(_QualifiedRepository):
         wake_condition: str,
         blocked_retry_at: float = 0.0,
     ) -> bool:
-        """Publish nonproductive lifecycle truth while preserving a reusable GID."""
+        """Publish nonproductive lifecycle truth while preserving reusable native work."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone(

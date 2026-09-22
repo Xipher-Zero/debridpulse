@@ -63,6 +63,27 @@
   never write local material.
 - New runtime dependency `asyncssh` (EPL-2.0 OR GPL-2.0-or-later, used under GPL-2.0-or-later) for
   SFTP evidence reads.
+- **Universal executor leveling.** The transfer core speaks one generalized executor contract and no
+  longer carries an aria2-shaped model. Executors claim a pre-materialization subject (candidate plus
+  its canonical request kind) instead of core intersecting URL schemes; the same claim router selects
+  the executor for viability, pre-writer evidence sampling, input continuation, dispatch and recovery.
+  An input challenge is fenced to the exact executor that raised it: if a different executor becomes
+  responsible, the challenge is retired and the answer is never handed across.
+- Execution identity is a durable correlation plus a native identity an executor may learn after
+  acceptance and bind exactly once. Active executions report neutral lifecycle (`running`) with separate
+  network-activity, bandwidth-reservation and progress-expected facts; stall detection follows only the
+  last. Pause and resume are used only when the current observation offers them. A cancel request is
+  never taken as proof: ownership, cleanup and bandwidth stay reserved until the stop is observed.
+- The global download limit is split equally across the executors currently downloading, shrinking
+  existing shares before a new executor starts; `GET/PATCH /execution/runtime-limits` report what is
+  proven enforced. The global concurrency setting is enforced only by DebridPulse admission and is no
+  longer mirrored into aria2 (aria2 keeps a fixed native queue width that never undercuts it).
+- Successful executions report what they produced; one verifier checks single files and multi-file
+  collections (which must account for every file produced) before post-processing receives the verified
+  paths. Cleanup never deletes material an execution does not durably own, such as a file that already
+  existed before the download started. Execution records no longer store copies of download URLs or
+  request headers. Existing databases are upgraded once
+  in place (execution handles and the former `transferring` state); nothing else changes for users.
 
 ### Removed
 

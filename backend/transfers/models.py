@@ -27,9 +27,6 @@ class Capability(StrEnum):
     CLEANUP = "cleanup"
     HEALTH = "health"
     INTEGRITY = "integrity"
-    PAUSE = "pause"
-    RESUME = "resume"
-    RECONCILE = "reconcile"
 
 
 class InputReason(StrEnum):
@@ -207,8 +204,11 @@ class TransferState(StrEnum):
 
 
 class ExecutionState(StrEnum):
+    """Neutral executor lifecycle. ``RUNNING`` means only that executor work is
+    currently active; network activity, bandwidth need and stall expectations
+    are separate ``ExecutionActivity`` facts."""
     QUEUED = "queued"
-    TRANSFERRING = "transferring"
+    RUNNING = "running"
     PAUSED = "paused"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -270,7 +270,6 @@ class IntegrationDescriptor:
     name: str
     capabilities: frozenset[Capability]
     request_types: frozenset[str] = frozenset()
-    schemes: frozenset[str] = frozenset()
     enabled: bool = True
     priority: int = 0
 
@@ -301,6 +300,13 @@ class SourceIdentity:
     """Comparable source scope supplied by the resolver, without source secrets."""
     scope: str
     key: str
+
+
+class MaterializationKind(StrEnum):
+    """Neutral shape of one logical acquisition: one final file, or a
+    collection of final files beneath one dedicated directory boundary."""
+    FILE = "file"
+    COLLECTION = "collection"
 
 
 class FingerprintKind(StrEnum):
@@ -344,8 +350,17 @@ class TransferCandidate:
     # for a live acquisition only when that acquisition would need input the
     # deciding request does not hold (the proving input itself is never kept).
     content_evidence: ArtifactFingerprint | None = None
+    # The canonical request class this candidate was resolved for. Stamped by
+    # core from the owning request (never chosen by a provider); an executor
+    # may claim a subject from it without any URL endpoint.
+    request_kind: str = ""
+    # Provider-declared neutral acquisition shape; core derives the
+    # materialization plan from it without knowing the eventual executor.
+    materialization: MaterializationKind = MaterializationKind.FILE
 
     def __post_init__(self):
+        if not isinstance(self.materialization, MaterializationKind):
+            raise ValueError("Candidate materialization must be a canonical kind")
         methods = self.accepted_input_methods
         if (not isinstance(methods, tuple) or any(not isinstance(item, InputMethod) for item in methods)
                 or len(set(methods)) != len(methods)):
@@ -425,18 +440,175 @@ class ResourceSnapshot:
 
 
 @dataclass(frozen=True)
+class ExecutionSubject:
+    """What an executor is asked to claim, before any output target exists.
+
+    Canonical request/candidate facts only: no executor choice, no native
+    option or identity, no core routing/recovery decision, no transient secret.
+    """
+    request_kind: str
+    candidate: TransferCandidate
+
+    @classmethod
+    def of(cls, candidate: TransferCandidate) -> "ExecutionSubject":
+        return cls(candidate.request_kind, candidate)
+
+
+@dataclass(frozen=True)
+class MaterializationPlan:
+    """Core-owned output policy. ``FILE``: ``target`` is the exact final file
+    and ``root`` the allowed boundary. ``COLLECTION``: ``root`` is a dedicated
+    core-authorized directory and ``target`` is ``None``."""
+    kind: MaterializationKind
+    root: str
+    target: str | None = None
+
+    def __post_init__(self):
+        if not isinstance(self.kind, MaterializationKind) or not self.root:
+            raise ValueError("Materialization plans require a canonical kind and a root")
+        if (self.kind == MaterializationKind.FILE) != (self.target is not None):
+            raise ValueError("Only a FILE plan names an exact target")
+
+
+@dataclass(frozen=True)
+class ExecutionWork:
+    """A subject after core allocated its materialization boundary."""
+    subject: ExecutionSubject
+    materialization: MaterializationPlan
+
+
+@dataclass(frozen=True)
+class ExecutorClaim:
+    """An executor's pure applicability answer; ordering stays core-owned."""
+    supported: bool
+
+
+@dataclass(frozen=True)
+class ExecutorCapabilities:
+    """Static semantic guarantees an executor implementation declares.
+
+    Each flag promises the matching neutral operation exists (validated at
+    registration); none of them states that it is available right now --
+    that is ``ExecutorHealth.available_runtime_capabilities``."""
+    candidate_sampling: bool = False
+    per_execution_pause: bool = False
+    acquisition_gate: bool = False
+    aggregate_bandwidth_ceiling: bool = False
+    native_assisted_retry: bool = False
+    transient_input: bool = False
+    materialization_kinds: frozenset[MaterializationKind] = frozenset({MaterializationKind.FILE})
+
+    def __post_init__(self):
+        kinds = self.materialization_kinds
+        if (not isinstance(kinds, frozenset) or not kinds
+                or any(not isinstance(item, MaterializationKind) for item in kinds)):
+            raise ValueError("Executors must declare canonical materialization kinds")
+
+
+class ExecutorRuntimeCapability(StrEnum):
+    ACQUISITION_GATE = "acquisition_gate"
+    AGGREGATE_BANDWIDTH_CEILING = "aggregate_bandwidth_ceiling"
+    NATIVE_ASSISTED_RETRY = "native_assisted_retry"
+
+
+@dataclass(frozen=True)
+class ExecutorHealth:
+    """Current executor truth. Runtime availability may only narrow the
+    statically declared capabilities, never extend them."""
+    reachable: bool
+    ready: bool
+    available_runtime_capabilities: frozenset[ExecutorRuntimeCapability] = frozenset()
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class ExecutorRuntimeControlResult:
+    """Outcome of an assigned aggregate ceiling: ``effective`` is confirmed
+    executor truth, ``None`` when it could not be proven."""
+    requested_bytes_per_second: int
+    effective_bytes_per_second: int | None
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class ExecutorGateResult:
+    """Outcome of an executor-wide acquisition gate; ``effective_paused`` is
+    confirmed truth, ``None`` when it could not be proven."""
+    requested_paused: bool
+    effective_paused: bool | None
+    error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
 class ExecutionHandle:
+    """Durable execution identity.
+
+    ``executor_id`` and ``attempt_id`` are core identities. ``correlation`` is
+    executor-owned, persisted before any native mutation and immutable;
+    ``native`` is executor-owned, may be bound once (``None`` -> value) after
+    native acceptance and is immutable afterwards. Core copies and compares
+    both maps and never interprets them. Both are durable non-secret facts."""
     executor_id: str
-    context: Mapping[str, object] = field(repr=False)
-    attempt_id: str = field(default_factory=new_identity)
+    attempt_id: str
+    correlation: Mapping[str, object] = field(repr=False)
+    native: Mapping[str, object] | None = field(default=None, repr=False)
+
+    def binds(self, bound: "ExecutionHandle") -> bool:
+        """Whether ``bound`` is this prepared handle's one legal native binding."""
+        return (self.native is None and bound.native is not None and bound.executor_id == self.executor_id
+                and bound.attempt_id == self.attempt_id and bound.correlation == self.correlation)
 
 
 @dataclass(frozen=True)
 class ExecutionRequest:
-    candidate: TransferCandidate
-    target: str
+    work: ExecutionWork
     attempt_id: str
     paused: bool = False
+
+
+@dataclass(frozen=True)
+class ExecutionFootprint:
+    """Native transient material an executor may create beside or inside the
+    core plan (and later resume from or clean). Never final material.
+
+    ``transient_paths`` are single native files (a resume/control file);
+    ``transient_trees`` are native directories whose whole subtree is
+    transient (a partial-transfer directory). Core validates both inside
+    download storage, excludes both from materialization, and removes them
+    only under the execution's durable material ownership."""
+    transient_paths: tuple[str, ...] = ()
+    transient_trees: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ExecutionActivity:
+    """Facts independent of lifecycle state.
+
+    ``network_active``: network acquisition is observed now.
+    ``bandwidth_reservation_required``: the executor may consume download
+    bandwidth for this execution without another core admission transition.
+    ``progress_expected``: acquisition progress is expected (stall detection)."""
+    network_active: bool = False
+    bandwidth_reservation_required: bool = False
+    progress_expected: bool = False
+
+
+class ExecutionControl(StrEnum):
+    PAUSE = "pause"
+    RESUME = "resume"
+
+
+@dataclass(frozen=True)
+class MaterializedEntry:
+    relative_path: str
+    bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class MaterializationResult:
+    """What a succeeded execution reports it produced, relative to its plan."""
+    kind: MaterializationKind
+    entries: tuple[MaterializedEntry, ...]
 
 
 @dataclass(frozen=True)
@@ -444,16 +616,23 @@ class ExecutionObservation:
     handle: ExecutionHandle
     state: ExecutionState
     progress: TransferProgress = field(default_factory=TransferProgress)
-    paths: tuple[str, ...] = ()
     error: NormalizedError | None = None
-
-    @property
-    def occupies_slot(self) -> bool:
-        return self.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING}
+    activity: ExecutionActivity = field(default_factory=ExecutionActivity)
+    # Controls valid for this execution now (static capability permitting).
+    controls: frozenset[ExecutionControl] = frozenset()
+    # Supplied only with SUCCEEDED; core verifies it before trusting it.
+    materialization: MaterializationResult | None = None
 
     @property
     def resumable(self) -> bool:
-        return self.state in {ExecutionState.QUEUED, ExecutionState.TRANSFERRING, ExecutionState.PAUSED}
+        """Native work exists and has not reached a terminal state."""
+        return self.state in {ExecutionState.QUEUED, ExecutionState.RUNNING, ExecutionState.PAUSED}
+
+    @property
+    def stopped(self) -> bool:
+        """Positively observed truth that the native writer is not running."""
+        return self.state in {ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.CANCELLED,
+                              ExecutionState.ABSENT}
 
 
 @dataclass(frozen=True)

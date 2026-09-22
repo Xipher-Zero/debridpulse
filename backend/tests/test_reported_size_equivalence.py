@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+from transfers.models import ExecutorCapabilities
+
 import pytest
 
 from transfers.mirrors import (
@@ -44,18 +46,20 @@ def candidate(
 
 
 class SamplingExecutor:
+    capabilities = ExecutorCapabilities(candidate_sampling=True)
+
     def __init__(self, fingerprints):
         self.fingerprints = fingerprints
 
-    async def fingerprint(self, value):
-        return self.fingerprints[value.id]
+    async def fingerprint(self, subject):
+        return self.fingerprints[subject.candidate.id]
 
 
 class Registry:
     def __init__(self, executor):
         self.executor = executor
 
-    def executor_for(self, _candidate):
+    def executor_for_subject(self, _subject):
         return self.executor
 
 

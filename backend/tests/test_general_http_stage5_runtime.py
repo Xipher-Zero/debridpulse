@@ -211,7 +211,7 @@ async def test_definitive_401_wrong_then_correct_credentials_complete_same_trans
         assert first.methods[0].method == InputMethod.USERNAME_PASSWORD
         artifact = (await repository.artifacts(transfer.id))[0]
         first_attempt = artifact.execution.attempt_id
-        first_gid = artifact.execution.context["gid"]
+        first_gid = artifact.execution.native["gid"]
         assert artifact.retries == 1
 
         await engine.submit_input(transfer.id, first.id, "username_password", {"username": username, "password": wrong})
@@ -223,7 +223,7 @@ async def test_definitive_401_wrong_then_correct_credentials_complete_same_trans
         second = await _until(engine, rechallenged, label="correctable HTTP authentication challenge")
         artifact = (await repository.artifacts(transfer.id))[0]
         assert artifact.execution.attempt_id == first_attempt
-        assert artifact.execution.context["gid"] == first_gid
+        assert artifact.execution.native["gid"] == first_gid
         assert artifact.retries == 1
         with pytest.raises(ValueError):
             await engine.submit_input(transfer.id, first.id, "username_password", {"username": username, "password": password})
@@ -249,7 +249,7 @@ async def test_definitive_401_wrong_then_correct_credentials_complete_same_trans
         artifact = (await repository.artifacts(transfer.id))[0]
         assert current.id == transfer.id
         assert artifact.execution.attempt_id == first_attempt
-        assert artifact.execution.context["gid"] == first_gid
+        assert artifact.execution.native["gid"] == first_gid
         assert artifact.retries == 1
         assert (downloads / "protected.bin").read_bytes() == b"authenticated-direct-http"
         assert await engine.challenges.current(transfer.id) is None

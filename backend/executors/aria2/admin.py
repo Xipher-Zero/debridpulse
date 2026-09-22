@@ -3,22 +3,20 @@ from __future__ import annotations
 
 import time
 
-from executors.aria2.runtime import runtime, Aria2RuntimeConfiguration, build_aria2_global_options
+from executors.aria2.runtime import build_aria2_global_options
 
 
 class Aria2Administration:
-    def __init__(self, executor, repository, application, config: Aria2RuntimeConfiguration):
-        """``config`` is injected by composition (DP 1.0.12 canonical
-        architecture correction, Workstream C, specification section 9.3):
-        this class never reads global application settings to discover
-        its own native tuning/lifecycle -- it consumes the SAME typed
-        configuration bundle composition injects into the ``Aria2Runtime``
-        singleton, kept current by ``application.composition.configure()``
-        rebuilding and re-injecting it on every settings change."""
+    """aria2's own administration surface and managed-daemon lifecycle,
+    registered through the generic integration seam (``lifecycle`` /
+    ``administration`` of the aria2 executor). It holds no DebridPulse global
+    policy and is never used by neutral runtime-limit operations."""
+
+    def __init__(self, executor, repository, commands, runtime):
         self.executor = executor
         self.repository = repository
-        self.application = application
-        self._config = config
+        self.application = commands
+        self.runtime = runtime
         self._last_housekeeping = 0.0
         self._last_rotation = 0.0
 
@@ -40,9 +38,9 @@ class Aria2Administration:
         for attempt in await self.repository.executions():
             handle = attempt.handle
             if (handle.executor_id == self.executor.descriptor.id
-                    and handle.context.get("binding") == self.executor.binding
+                    and handle.correlation.get("binding") == self.executor.binding
                     and await self.repository.authorize_execution(handle, "observe")):
-                result[str(handle.context.get("gid") or "")] = attempt
+                result[self.executor._handle_gid(handle)] = attempt
         return result
 
     async def filter_owned(self, downloads):
@@ -92,10 +90,7 @@ class Aria2Administration:
         return {**await self.client.test(), "diagnostics": await self.memory_diagnostics()}
 
     async def apply_memory_tuning(self):
-        options = build_aria2_global_options(
-            self._config.options, self._config.max_concurrent_executions,
-            self._config.max_download_bytes_per_second, include_safety=True,
-        )
+        options = build_aria2_global_options(self.runtime.options, include_safety=True)
         await self.client.change_global_options(options)
         return {"ok": True, "applied": options}
 
@@ -104,13 +99,14 @@ class Aria2Administration:
         return {"ok": True, "reason": "Execution result history retained", "diagnostics": await self.memory_diagnostics()}
 
     async def start(self):
-        await runtime.ensure_started()
+        await self.runtime.ensure_started()
 
     async def stop(self):
-        await runtime.stop()
+        await self.runtime.stop()
 
     async def maintain(self):
-        aria2 = self._config.options
+        runtime = self.runtime
+        aria2 = runtime.options
         now = time.time()
         housekeeping_interval = max(0, aria2.purge_interval_minutes) * 60
         if housekeeping_interval and now - self._last_housekeeping >= housekeeping_interval:

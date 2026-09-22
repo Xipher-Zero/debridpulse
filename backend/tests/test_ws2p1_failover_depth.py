@@ -236,7 +236,7 @@ async def test_discovered_size_survives_unknown_size_failover_and_stale_a_observ
 
     stale = ExecutionObservation(
         a2,
-        ExecutionState.TRANSFERRING,
+        ExecutionState.RUNNING,
         TransferProgress(999, 999, 1),
         (artifact.target,),
     )

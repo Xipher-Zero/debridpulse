@@ -54,7 +54,7 @@ async def test_cancellation_is_durable_before_blocked_executor_cancel_and_late_c
         assert await core.repository.authorize_execution(handle, "cancel")
         entered.set()
         await release.wait()
-        return TransferOutcome(OutcomeKind.CANCELLED)
+        return ExecutionObservation(handle, ExecutionState.CANCELLED)
 
     core.executor.cancel = blocked_cancel
     task = asyncio.create_task(core.engine.cancel(transfer.id))
@@ -97,8 +97,8 @@ async def test_executor_cancel_failure_preserves_logical_cancel_and_reports_clea
         retryability=Retryability.NEVER, recovery=Recovery.REQUIRE_OPERATOR,
     )
 
-    async def failed_cancel(_handle):
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+    async def failed_cancel(handle):
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = failed_cancel
     errors = await core.engine.cancel(transfer.id)

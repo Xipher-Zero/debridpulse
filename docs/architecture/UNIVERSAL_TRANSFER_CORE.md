@@ -217,15 +217,61 @@ Provider selection first filters by enabled state, registered health, supported 
 
 In the current two-provider tree, AllDebrid translates its own validated runtime host facts into request-aware `SPECIALIZED` HTTP(S) claims while General HTTP & HTTPS contributes `GENERIC` `http`/`https` applicability. These are integration facts, not concrete provider-name branches in the classifier or core. This rule is the implemented initial routing policy for the current architecture; it does not pre-decide every later failover/selection policy for deferred providers.
 
-Executors implement `prepare`, `start`, `observe`, `cancel` and `resumable_paths`.
-An executor may return the same neutral `InputRequirement` from `prepare` before
-external mutation and continue through `prepare_with_input`; executor credentials
-remain independent of provider credentials. Optional protocols include `PauseResume`,
-`BatchObservation`, `CandidateSampling` (with `CandidateSamplingContinuation`) and `Health`. Selection uses supported
-endpoint schemes, enabled state, registered
-health and priority. A batch observation must account for every requested handle;
-a failed or incomplete snapshot never proves absence. The aria2 boundary confirms
-missing handles individually and does not adopt jobs by matching URL or path.
+Executors implement one generalized contract (`transfers.contracts.Executor`):
+`claim(ExecutionSubject)`, `footprint(ExecutionWork)`, `prepare`, `start`,
+`observe_many`, `cancel` and `health`, and declare static semantic
+`ExecutorCapabilities` (`candidate_sampling`, `per_execution_pause`,
+`acquisition_gate`, `aggregate_bandwidth_ceiling`, `native_assisted_retry`,
+`transient_input`, `materialization_kinds`). The registry validates every declared
+capability against its protocol, and core invokes an optional operation only when
+it is declared (and, for runtime controls, currently reported available by
+`ExecutorHealth.available_runtime_capabilities`, which may only narrow the static
+declaration).
+
+Executor selection is one core-owned claim router,
+`IntegrationRegistry.claimants(ExecutionSubject)` / `executor_for_subject`, used
+before and after materialization alike: viability, pre-writer evidence sampling,
+evidence and executor input continuation, dispatch and recovery. A subject is the
+candidate plus its core-stamped canonical `request_kind`; an executor claims it
+purely from canonical facts (aria2 privately inspects endpoint transports, a
+non-URL executor may claim from the request kind alone). Ordering stays core-owned:
+enabled state, registered health, declared materialization kind, priority, then
+identity. No URL-scheme intersection exists in core.
+
+An `ExecutionHandle` is `(executor_id, attempt_id, correlation, native)`: the
+correlation is persisted before any native mutation; the native identity may be
+bound exactly once (`None` -> value) through `bind_execution_handle`, and core never
+parses either map. Observations carry neutral lifecycle (`RUNNING` means only that
+work is active), independent `ExecutionActivity` facts (network activity, bandwidth
+reservation, progress expected -- the only stall input), the controls usable now,
+and -- on success -- a `MaterializationResult` that the one verifier
+(`transfers.filesystem.verify_materialization`) checks for FILE or COLLECTION plans
+before post-processing receives the verified paths; a COLLECTION report must account
+for exactly the stable final files under its root. An `ExecutionFootprint` declares
+native transient files and transient trees, both excluded from material. Cleanup
+(`retire_materialization`) deletes nothing without the attempt's durable material
+ownership (`execution_attempts.material_owner_attempt_id`: established when the
+boundary was absent at admission, or inherited from the artifact's preceding owning
+attempt). Durable handles never carry endpoint addresses, headers or other
+capabilities. `cancel` returns observed truth;
+only a positively observed stop releases ownership, cleanup authority or bandwidth
+reservation. A batch observation must account for every requested handle; a failed
+snapshot is UNKNOWN, never absence. An executor challenge or evidence challenge is
+fenced to the exact executor identity that raised it; if the selected claimant
+changes, the challenge is retired and the input dies unused.
+
+`transfers.runtime_coordination.ExecutionRuntimeCoordinator` is the one global
+download-bandwidth owner: `execution_runtime_limits` is split equally across the
+executors currently holding a reservation, shrinking existing shares before a new
+executor may acquire, never borrowing idle share, retaining an uncertain executor's
+share, and failing closed for new acquisition through an executor that cannot
+enforce a finite cap. A positive cap is never assigned as 0 (unlimited): if it cannot
+give every reserved executor a positive share, admission fails closed and enforcement
+is reported unproven. Every admission re-reads current executor health (reachable,
+ready, ceiling available); an earlier confirmation never authorizes a new start or
+resume. Global concurrency is enforced only by core admission.
+Managed executors reach the application lifecycle and their own administration
+surfaces through the generic `ManagedIntegration` / `AdministeredIntegration` seam.
 
 Mirrors require equal normalized names, positive known sizes and different source
 keys in the same declared scope. Equal sizes are eligible by metadata. Different

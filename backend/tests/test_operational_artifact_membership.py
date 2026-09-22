@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 import db.database as database
-from fake_integrations import MemoryExecutor
+from fake_integrations import MemoryExecutor, TransientInputExecutor
 from transfers.models import (
     Capability, InputField, InputFieldDescriptor, InputMethod, InputMethodDescriptor,
     InputReason, InputRequirement, IntegrationDescriptor, TransferRequest, TransferState,
@@ -295,17 +295,15 @@ async def test_all_exhausted_children_require_attention(tmp_path, monkeypatch):
 # mirror any of the earlier gates.
 # ---------------------------------------------------------------------------
 
-class _InputRequiringExecutor(MemoryExecutor):
-    """A higher-priority same-scheme executor whose prepare() always demands
-    input, used to prove the real dispatch path routes into the
+class _InputRequiringExecutor(TransientInputExecutor):
+    """A higher-priority same-transport executor whose prepare() always
+    demands input, used to prove the real dispatch path routes into the
     input-required branch and returns before ever reaching the capacity
     gate -- registered alongside (not instead of) the harness's default
-    MemoryExecutor and picked first by IntegrationRegistry.eligible_executors'
-    own priority ordering."""
+    MemoryExecutor and selected first by the core claim router's neutral
+    priority ordering."""
     descriptor = IntegrationDescriptor(
-        "memory-copy-input-required", "Memory copy (input required)",
-        frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
-        schemes=frozenset({"memory"}), priority=10,
+        "memory-copy-input-required", "Memory copy (input required)", frozenset(), priority=10,
     )
 
     def prepare(self, request):

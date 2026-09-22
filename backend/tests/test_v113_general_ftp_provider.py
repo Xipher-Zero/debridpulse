@@ -14,8 +14,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from transfers.models import ExecutionSubject
+
 from core.config import AppSettings
-from executors.aria2.executor import Aria2Configuration, Aria2Executor
+from executors.aria2.executor import SUPPORTED_SCHEMES, Aria2Configuration, Aria2Executor
 from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings, public_integrations
 from integrations.definition import IntegrationSettings
@@ -223,7 +225,7 @@ async def test_enabled_provider_resolves_and_the_candidate_routes_to_aria2(tmp_p
     provider = registry.provider_for(_request(url))
     assert provider.descriptor.id == "general_ftp"
     candidate = (await provider.resolve(_request(url))).candidates[0]
-    assert registry.executor_for(candidate).descriptor.id == "aria2"
+    assert registry.executor_for_subject(ExecutionSubject.of(candidate)).descriptor.id == "aria2"
 
 
 @pytest.mark.parametrize("url", ["ftp://files.example.org/f.bin", "sftp://files.example.org/f.bin"])
@@ -233,7 +235,7 @@ def test_disabled_provider_yields_the_existing_unsupported_semantics(tmp_path, u
         registry.provider_for(_request(url))
     assert raised.value.error.category in {Category.UNSUPPORTED_REQUEST, Category.UNSUPPORTED_CAPABILITY, Category.PROVIDER_UNAVAILABLE}
     # Executor capability is a separate fact: aria2 still truthfully claims both.
-    assert {"ftp", "sftp"} <= Aria2Executor.descriptor.schemes
+    assert {"ftp", "sftp"} <= SUPPORTED_SCHEMES
 
 
 def test_enablement_is_independent_between_http_and_ftp(tmp_path) -> None:

@@ -26,6 +26,7 @@ from transfers.models import IntegrationDescriptor, TransferRequest, TransferSta
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from transfers.models import ExecutionSubject
 
 pytestmark = pytest.mark.asyncio
 
@@ -344,8 +345,8 @@ async def test_unsupported_sampler_still_fails_closed_without_a_challenge(lab):
         # this executor has no evidence capability at all.
         fingerprint = None
         fingerprint_with_input = None
-        descriptor = IntegrationDescriptor("vault-plain", "Vault plain", VaultExecutor.descriptor.capabilities,
-                                           schemes=frozenset({"vault"}), priority=20)
+        capabilities = replace(VaultExecutor.capabilities, candidate_sampling=False)
+        descriptor = IntegrationDescriptor("vault-plain", "Vault plain", frozenset(), priority=20)
 
     registry.register_executor(NoSampling(repository.authorize_execution, locks={"locked.example": (USER, PASSWORD)}))
     incoming = await engine.submit((TransferRequest("vault", "locked.example/payload.bin", name="payload.bin"),),

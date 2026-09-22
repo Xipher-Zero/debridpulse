@@ -168,7 +168,8 @@ async def test_same_name_and_size_without_fingerprint_remain_independent(pair, m
     first = await admit(pair, pair.a, "submission-a")
     await pair.engine.tick()
 
-    async def unavailable(_candidate):
+    async def unavailable(subject):
+        _candidate = subject.candidate
         return None
 
     monkeypatch.setattr(pair.executor, "fingerprint", unavailable)
@@ -268,7 +269,8 @@ async def test_slow_fingerprint_revalidates_owner_before_attachment(pair, monkey
     release = asyncio.Event()
     calls = 0
 
-    async def blocked_fingerprint(candidate):
+    async def blocked_fingerprint(subject):
+        candidate = subject.candidate
         nonlocal calls
         calls += 1
         if calls >= 2:

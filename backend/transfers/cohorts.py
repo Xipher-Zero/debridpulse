@@ -12,6 +12,7 @@ import logging
 from types import SimpleNamespace
 
 from db.database import get_db
+from transfers.models import ExecutionSubject
 from transfers.mirrors import (
     EvidenceContext, EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, self_evidence,
     shared_evidence,
@@ -630,7 +631,7 @@ async def _may_admit_provisional_writer(engine, record, incoming, evidence, mate
     cannot race another admission."""
     if not evidence.eligible_for_provisional_writer_after_exhaustion:
         return False
-    if not any(engine.registry.eligible_executors(candidate) for candidate in incoming):
+    if not any(engine.registry.claimants(ExecutionSubject.of(candidate)) for candidate in incoming):
         return False
     for sibling in material:
         if sibling.id == record.id or await _disposition(sibling.id) != _PROVISIONAL_DISPOSITION:

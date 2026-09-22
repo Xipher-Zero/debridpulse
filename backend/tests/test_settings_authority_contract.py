@@ -280,7 +280,7 @@ async def test_obsolete_persisted_values_never_redirect_the_dp_owned_daemon(tmp_
             status = await runtime.start()
             assert status["running"] and status["rpc_ok"], status["last_error"]
             assert status["download_dir"] == str(downloads)
-            assert (await executor.health()).healthy
+            assert (await executor.health()).reachable
         finally:
             await runtime.stop()
 

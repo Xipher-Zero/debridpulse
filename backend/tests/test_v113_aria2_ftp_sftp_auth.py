@@ -29,6 +29,7 @@ from executors.aria2.client import Aria2DownloadStatus, Aria2RPCError, Aria2Serv
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from executors.aria2.translation import native_failure
 from services.downloader_egress_guard import RouteScope
+from execution_requests import file_request
 from transfers.input_required import validate_submission
 from transfers.models import (
     Endpoint, ExecutionObservation, ExecutionRequest, ExecutionState, InputChallenge, InputFact,
@@ -152,7 +153,7 @@ async def _options(tmp_path, monkeypatch, url, submitted=None, **kwargs):
     monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
     scopes: list = []
     executor = _executor(tmp_path, scopes=scopes)
-    request = ExecutionRequest(_candidate(url), str(tmp_path / "payload.bin"), "attempt")
+    request = file_request(_candidate(url), str(tmp_path / "payload.bin"), "attempt")
     address, options = await executor._options(request, executor.prepare(request), submitted, **kwargs)
     return address, options, scopes
 
@@ -245,7 +246,7 @@ async def _started(tmp_path, monkeypatch, url, outcomes):
     daemon = Daemon()
     daemon.outcomes = list(outcomes)
     executor = _executor(tmp_path, daemon)
-    request = ExecutionRequest(_candidate(url), str(tmp_path / "payload.bin"), "attempt")
+    request = file_request(_candidate(url), str(tmp_path / "payload.bin"), "attempt")
     handle = executor.prepare(request)
     started = await executor.start(request, handle)
     assert started.error is None
@@ -261,12 +262,12 @@ def _added(daemon):
 async def test_ftp_530_continuation_resubmits_the_same_attempt_with_ftp_credentials(tmp_path, monkeypatch) -> None:
     daemon, executor, request, handle, observed = await _started(
         tmp_path, monkeypatch, "ftp://files.example.org/f.bin", [("21", FTP_530)])
-    requirement = executor.input_requirement(request.candidate, observed)
+    requirement = executor.input_requirement(request.work.subject.candidate, observed)
     assert requirement.reason == InputReason.AUTH_REQUIRED
     result = await executor.start_with_input(request, handle, _submitted(requirement))
     assert result.error is None and result.state == ExecutionState.QUEUED
     first, second = _added(daemon)
-    assert second["gid"] == first["gid"] == handle.context["gid"]
+    assert second["gid"] == first["gid"] == handle.native["gid"]
     assert second["ftp-user"] == "operator" and second["ftp-passwd"] == "s3cret-pass"
     assert second["http-user"] == "" and second["http-passwd"] == ""
     assert second["ftp-reuse-connection"] == "false"
@@ -278,7 +279,7 @@ async def test_ftp_530_continuation_resubmits_the_same_attempt_with_ftp_credenti
 async def test_sftp_identity_confirmation_resubmits_with_the_confirmed_key_and_credentials(tmp_path, monkeypatch) -> None:
     daemon, executor, request, handle, observed = await _started(
         tmp_path, monkeypatch, "sftp://files.example.org/f.bin", [("1", HOST_MISMATCH)])
-    requirement = executor.input_requirement(request.candidate, observed)
+    requirement = executor.input_requirement(request.work.subject.candidate, observed)
     assert requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED
     result = await executor.start_with_input(request, handle, _submitted(requirement))
     assert result.error is None
@@ -286,7 +287,7 @@ async def test_sftp_identity_confirmation_resubmits_with_the_confirmed_key_and_c
     assert first["ssh-host-key-md"] == f"sha-1={SENTINEL}"
     assert second["ssh-host-key-md"] == f"sha-1={ACTUAL}"
     assert second["ftp-user"] == "operator" and second["ftp-passwd"] == "s3cret-pass"
-    assert second["gid"] == handle.context["gid"]
+    assert second["gid"] == handle.native["gid"]
 
 
 @pytest.mark.asyncio
@@ -302,7 +303,7 @@ async def test_sftp_identity_confirmation_resubmits_with_the_confirmed_key_and_c
 async def test_identity_acceptance_must_match_the_live_observed_identity(tmp_path, monkeypatch, facts) -> None:
     daemon, executor, request, handle, observed = await _started(
         tmp_path, monkeypatch, "sftp://files.example.org/f.bin", [("1", HOST_MISMATCH)])
-    requirement = executor.input_requirement(request.candidate, observed)
+    requirement = executor.input_requirement(request.work.subject.candidate, observed)
     submitted = _submitted(requirement, facts=facts) if facts else _submitted(
         SimpleNamespace(reason=InputReason.AUTH_REQUIRED, methods=requirement.methods, facts=()))
     result = await executor.start_with_input(request, handle, submitted)
@@ -314,17 +315,17 @@ async def test_identity_acceptance_must_match_the_live_observed_identity(tmp_pat
 async def test_sftp_credential_retry_recovers_and_reuses_the_confirmed_host_key(tmp_path, monkeypatch) -> None:
     daemon, executor, request, handle, observed = await _started(
         tmp_path, monkeypatch, "sftp://files.example.org/f.bin", [("1", HOST_MISMATCH), ("1", SSH_AUTH)])
-    identity = executor.input_requirement(request.candidate, observed)
+    identity = executor.input_requirement(request.work.subject.candidate, observed)
     await executor.start_with_input(request, handle, _submitted(identity, password="wrong"))
     failed = await executor.observe(handle)
-    retry = executor.input_requirement(request.candidate, failed)
+    retry = executor.input_requirement(request.work.subject.candidate, failed)
     assert retry.reason == InputReason.AUTH_REQUIRED
     result = await executor.start_with_input(request, handle, _submitted(retry, password="right"))
     assert result.error is None
     third = _added(daemon)[2]
     assert third["ssh-host-key-md"] == f"sha-1={ACTUAL}"
     assert third["ftp-passwd"] == "right"
-    assert daemon.option_reads == [(handle.context["gid"], "ssh-host-key-md")]
+    assert daemon.option_reads == [(handle.native["gid"], "ssh-host-key-md")]
 
 
 @pytest.mark.asyncio
@@ -332,14 +333,14 @@ async def test_sftp_credential_retry_recovers_and_reuses_the_confirmed_host_key(
 async def test_unrecoverable_confirmed_identity_fails_closed_without_resubmitting(tmp_path, monkeypatch, stored) -> None:
     daemon, executor, request, handle, observed = await _started(
         tmp_path, monkeypatch, "sftp://files.example.org/f.bin", [("1", HOST_MISMATCH), ("1", SSH_AUTH)])
-    identity = executor.input_requirement(request.candidate, observed)
+    identity = executor.input_requirement(request.work.subject.candidate, observed)
     await executor.start_with_input(request, handle, _submitted(identity))
-    gid = handle.context["gid"]
+    gid = handle.native["gid"]
     if stored is None:
         daemon.options.pop(gid)
     else:
         daemon.options[gid]["ssh-host-key-md"] = stored
-    retry = executor.input_requirement(request.candidate, await executor.observe(handle))
+    retry = executor.input_requirement(request.work.subject.candidate, await executor.observe(handle))
     result = await executor.start_with_input(request, handle, _submitted(retry))
     assert result.state in {ExecutionState.FAILED, ExecutionState.UNKNOWN}
     assert len(_added(daemon)) == 2
@@ -361,7 +362,7 @@ async def test_generic_failures_cannot_be_continued_with_input(tmp_path, monkeyp
 async def test_http_code_24_continuation_is_unchanged(tmp_path, monkeypatch) -> None:
     daemon, executor, request, handle, observed = await _started(
         tmp_path, monkeypatch, "https://files.example.org/f.bin", [("24", "Authorization failed.")])
-    requirement = executor.input_requirement(request.candidate, observed)
+    requirement = executor.input_requirement(request.work.subject.candidate, observed)
     await executor.start_with_input(request, handle, _submitted(requirement))
     second = _added(daemon)[1]
     assert second["http-user"] == "operator" and second["http-passwd"] == "s3cret-pass"
@@ -423,7 +424,7 @@ async def _fresh(tmp_path, monkeypatch, url):
     monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
     daemon = Daemon()
     executor = _executor(tmp_path, daemon)
-    request = ExecutionRequest(_candidate(url), str(tmp_path / "payload.bin"), "fresh-attempt")
+    request = file_request(_candidate(url), str(tmp_path / "payload.bin"), "fresh-attempt")
     return daemon, executor, request, executor.prepare(request)
 
 
@@ -435,7 +436,7 @@ async def test_evidence_confirmed_identity_is_the_first_jobs_exact_host_key(tmp_
     (only,) = _added(daemon)
     assert only["ssh-host-key-md"] == f"sha-1={ACTUAL}"  # never the probe sentinel
     assert only["ftp-user"] == "operator" and only["ftp-passwd"] == "s3cret-pass"
-    assert only["gid"] == handle.context["gid"]
+    assert only["gid"] == handle.native["gid"]
     assert [method for method, _ in daemon.calls] == ["aria2.addUri"]
 
 
@@ -506,7 +507,7 @@ async def _real(tmp_path, monkeypatch, origin, *, daemon_globals=()):
     executor = Aria2Executor(service, Aria2Configuration(str(tmp_path), confirmation_delay=0.02),
                              AsyncMock(return_value=True), egress=guard)
     url = f"ftp://files.test:{origin.port}/pub/file.bin"
-    request = ExecutionRequest(_candidate(url), str(tmp_path / "file.bin"), "real-attempt")
+    request = file_request(_candidate(url), str(tmp_path / "file.bin"), "real-attempt")
     return guard, proc, service, executor, request
 
 
@@ -552,12 +553,12 @@ async def test_real_aria2_protected_ftp_challenges_then_continues_with_a_fresh_l
         assert (await executor.start(request, handle)).error is None
         observed = await _terminal(executor, handle)
         assert (observed.error.native_code, observed.error.diagnostic) == ("21", FTP_530)
-        requirement = executor.input_requirement(request.candidate, observed)
+        requirement = executor.input_requirement(request.work.subject.candidate, observed)
         assert requirement.reason == InputReason.AUTH_REQUIRED
 
         await executor.start_with_input(request, handle, _submitted(requirement, username="operator", password="wrong"))
         rejected = await _terminal(executor, handle)
-        assert executor.input_requirement(request.candidate, rejected).reason == InputReason.AUTH_REQUIRED
+        assert executor.input_requirement(request.work.subject.candidate, rejected).reason == InputReason.AUTH_REQUIRED
 
         await executor.start_with_input(request, handle, _submitted(requirement, username="operator", password="right"))
         observed = await _terminal(executor, handle)
@@ -595,7 +596,7 @@ async def test_real_aria2_owned_ftp_job_stays_passive_and_binary_under_hostile_d
         assert (tmp_path / "file.bin").read_bytes() == PAYLOAD
         assert origin.data_modes and set(origin.data_modes) == {"passive"}
         assert origin.transfer_types and all(kind.startswith("I") for kind in origin.transfer_types)
-        job = await service._call("aria2.getOption", [handle.context["gid"]])
+        job = await service._call("aria2.getOption", [handle.native["gid"]])
         assert (job["ftp-pasv"], job["ftp-type"]) == ("true", "binary")
     finally:
         await _stop_aria2(proc, service)

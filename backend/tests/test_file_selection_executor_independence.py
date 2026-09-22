@@ -92,7 +92,7 @@ async def test_cached_interactive_torrent_fully_prepares_while_every_executor_sl
         await _submit(core, tag, selection_mode="all")
     await _drain(core)
     assert len(core.executor.started) == 2
-    occupied = sum(a.state in {"prepared", "queued", "transferring", "unknown"}
+    occupied = sum(a.state in {"prepared", "queued", "running", "unknown"}
                    for a in await core.repository.live_executions())
     assert occupied == 2                                    # slots are full
 
@@ -140,11 +140,11 @@ async def test_cached_interactive_torrent_fully_prepares_while_every_executor_sl
     core.executor.finish(core.executor.started[0])
     await _drain(core, rounds=12)
     selected_started = {
-        req.candidate.relative_path for req in core.executor.started
-        if req.candidate.relative_path in {"S1/e2.mkv", "S1/e4.mkv"}}
+        req.work.subject.candidate.relative_path for req in core.executor.started
+        if req.work.subject.candidate.relative_path in {"S1/e2.mkv", "S1/e4.mkv"}}
     assert selected_started                                 # selected work dispatched once a slot freed
     for req in core.executor.started:
-        assert req.candidate.relative_path not in {"S1/e1.mkv", "S1/e3.mkv"}   # unselected never dispatched
+        assert req.work.subject.candidate.relative_path not in {"S1/e1.mkv", "S1/e3.mkv"}   # unselected never dispatched
 
 
 @pytest.mark.asyncio

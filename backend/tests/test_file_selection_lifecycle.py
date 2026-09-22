@@ -699,7 +699,7 @@ async def test_engine_cached_confirm_materializes_only_subset_and_executor_is_se
     # work: no manifest id, selection state, provider file index, or native tree.
     assert len(core.executor.started) == 2
     for request in core.executor.started:
-        candidate = request.candidate
+        candidate = request.work.subject.candidate
         blob = repr(request).casefold()
         for token in ("manifest", "selection", "entry_id", "file_manifest", "bitmask"):
             assert token not in blob

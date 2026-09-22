@@ -105,7 +105,8 @@ async def test_seven_plus_seven_two_transient_failures_recover_to_full_consolida
 
     seen = {"part1.rar": 0, "part3.rar": 0}
 
-    async def flaky(candidate):
+    async def flaky(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id and candidate.name in seen:
             seen[candidate.name] += 1
             if seen[candidate.name] == 1:
@@ -177,7 +178,8 @@ async def test_persistent_transient_failure_exhausts_bound_and_holds_unresolved(
 
     fingerprint_calls = {"part1.rar": 0}
 
-    async def persistent(candidate):
+    async def persistent(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id and candidate.name == "part1.rar":
             fingerprint_calls["part1.rar"] += 1
             return _unavailable("timeout")
@@ -265,7 +267,8 @@ async def test_restart_after_exhaustion_stays_quiescent_and_never_duplicates_a_w
     await _submit_batch(retry_pair, retry_pair.a, "rapidgator")
     await retry_pair.engine.tick()
 
-    async def persistent(candidate):
+    async def persistent(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id and candidate.name == "part1.rar":
             return _unavailable("timeout")
         return _prefix(candidate)
@@ -326,7 +329,8 @@ async def test_restart_preserves_pending_retry_budget_and_writer_barrier(retry_p
 
     seen = 0
 
-    async def once(candidate):
+    async def once(subject):
+        candidate = subject.candidate
         nonlocal seen
         if candidate.provider_id == retry_pair.b.descriptor.id and candidate.name == "part1.rar":
             seen += 1
@@ -391,7 +395,8 @@ async def test_each_transient_reason_exhausts_without_materializing_or_hot_loopi
 
     calls = {"count": 0}
 
-    async def persistent(candidate):
+    async def persistent(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id:
             calls["count"] += 1
             return _unavailable(reason)
@@ -497,7 +502,8 @@ async def test_non_retryable_unresolved_pairing_holds_and_never_becomes_independ
 
     calls = {"count": 0}
 
-    async def range_ignored(candidate):
+    async def range_ignored(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id:
             calls["count"] += 1
             return _unavailable("range_ignored")
@@ -553,7 +559,8 @@ async def test_sampled_content_contradiction_still_releases_independent_writer(r
     )
     await retry_pair.engine.tick()
 
-    async def different(candidate):
+    async def different(subject):
+        candidate = subject.candidate
         signature = f"full:{candidate.provider_id}"
         return ArtifactFingerprint(
             candidate.expected_bytes, signature, FingerprintKind.FULL_CONTENT_SAMPLE, "", signature,
@@ -587,7 +594,8 @@ async def test_candidate_with_no_possible_proof_still_uses_degraded_fallback(ret
     )
     await retry_pair.engine.tick()
 
-    async def no_capability(_candidate):
+    async def no_capability(subject):
+        _candidate = subject.candidate
         return None
 
     monkeypatch.setattr(retry_pair.executor, "fingerprint", no_capability)
@@ -626,7 +634,8 @@ async def test_sibling_walk_non_retryable_unresolved_member_holds_whole_cohort(r
 
     mode = {"third": "timeout"}
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == third.descriptor.id:
             return _unavailable(mode["third"])
         return _prefix(candidate)
@@ -693,7 +702,8 @@ async def test_single_target_exhaustion_settles_unverified_and_never_starts_a_wr
     )
     await retry_pair.engine.tick()
 
-    async def unavailable(candidate):
+    async def unavailable(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id:
             return _unavailable("dns_failure")
         signature = f"full:{candidate.name.casefold()}"
@@ -740,7 +750,8 @@ async def test_specific_unavailable_reason_beats_generic_pairing_placeholder(ret
     left = retry_pair.a.candidate("same.rar", payload="a")
     right = retry_pair.b.candidate("same.rar", payload="b")
 
-    async def timeout(candidate):
+    async def timeout(subject):
+        candidate = subject.candidate
         if candidate.provider_id == retry_pair.b.descriptor.id:
             return _unavailable("timeout")
         return _prefix(candidate)
@@ -765,7 +776,8 @@ async def test_size_and_content_contradictions_are_not_retryable(retry_pair, mon
     assert size.failure_class == EvidenceFailureClass.CONTRADICTORY
     assert not size.retryable
 
-    async def different(candidate):
+    async def different(subject):
+        candidate = subject.candidate
         signature = f"full:{candidate.provider_id}"
         return ArtifactFingerprint(
             candidate.expected_bytes, signature,
@@ -1008,7 +1020,8 @@ async def test_bootstrap_incomplete_representation_exhaustion_admits_exactly_one
     pair = retry_pair
     calls = {"count": 0}
 
-    async def incomplete(_candidate):
+    async def incomplete(subject):
+        _candidate = subject.candidate
         calls["count"] += 1
         return _unavailable("incomplete_representation")
 
@@ -1064,7 +1077,8 @@ async def test_bootstrap_provisional_writer_is_never_a_second_writer_after_the_f
     role is a durable fact, not a function of what is currently in flight."""
     pair = retry_pair
 
-    async def incomplete(_candidate):
+    async def incomplete(subject):
+        _candidate = subject.candidate
         return _unavailable("incomplete_representation")
 
     monkeypatch.setattr(pair.executor, "fingerprint", incomplete)
@@ -1097,7 +1111,8 @@ async def test_bootstrap_zero_byte_range_ignored_still_gets_no_artifact_and_no_e
     pair = retry_pair
     calls = {"count": 0}
 
-    async def zero_byte(_candidate):
+    async def zero_byte(subject):
+        _candidate = subject.candidate
         calls["count"] += 1
         return _unavailable("range_ignored")
 

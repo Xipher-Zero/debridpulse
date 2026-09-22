@@ -179,6 +179,18 @@ class ApplicationService:
     def database_wipe_admission(self):
         return self._storage_checked_admission(maintenance=True)
 
+    async def execution_runtime_limits(self) -> dict:
+        """Neutral configured/effective global runtime limits, converged by the
+        core runtime owner; ``effective`` is what is proven enforced across the
+        reserved executor set, ``None`` when it cannot be proven."""
+        status = await self.engine.converge_runtime_limits()
+        return {
+            "ok": status.ok,
+            "configured": {"max_download_bytes_per_second": status.configured},
+            "effective": {"max_download_bytes_per_second": status.effective},
+            "last_apply_error": status.last_apply_error,
+        }
+
     def integration_admin(self, identity):
         try:
             return self.admins[identity]
@@ -486,7 +498,7 @@ class ApplicationService:
             executor = self.engine.registry.executors.get(attempt.handle.executor_id)
             if executor is None:
                 raise RuntimeError("An execution integration is unavailable")
-            observation = await executor.observe(attempt.handle)
+            observation = await self.engine._observe_execution(executor, attempt.handle)
             if observation.state not in {ExecutionState.PAUSED, ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.CANCELLED, ExecutionState.ABSENT}:
                 raise RuntimeError("An owned execution could not be confirmed idle")
             checked += 1

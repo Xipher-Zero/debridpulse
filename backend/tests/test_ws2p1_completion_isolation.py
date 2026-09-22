@@ -65,7 +65,7 @@ async def test_contradictory_active_runtime_total_cannot_rewrite_accepted_denomi
 
     executor.jobs[artifact.execution.attempt_id] = replace(
         executor.jobs[artifact.execution.attempt_id],
-        state=ExecutionState.TRANSFERRING,
+        state=ExecutionState.RUNNING,
         progress=TransferProgress(12, 6, 2),
     )
     await engine.reconcile_executions()

@@ -38,7 +38,7 @@ def config_write_lock() -> asyncio.Lock:
 class AppSettings(BaseModel):
     # Canonical authorities. ``integrations.<id>`` owns each provider's and the
     # executor's configuration (including the AllDebrid credentials and every
-    # aria2 option), ``transfer_policy`` owns execution/resolution policy, and
+    # executor option), ``transfer_policy`` owns execution/resolution policy, and
     # ``execution_runtime_limits`` owns runtime capability limits. Nothing below
     # duplicates them: pre-canonical flat names are migration input only
     # (``integrations.configuration.migrate_legacy_settings``).
@@ -143,7 +143,7 @@ class AppSettings(BaseModel):
     # ── Disk space guard ─────────────────────────────────────────────────────
     # Minimum free disk space required on the download filesystem. At/below the
     # configured threshold, new dispatch is deferred until the resume hysteresis
-    # is satisfied. Transfers already active in aria2 are allowed to finish.
+    # is satisfied. Transfers already active in an executor are allowed to finish.
     min_free_disk_gb: float = 0
     disk_guard_interval_seconds: int = 60
     disk_guard_resume_hysteresis_gb: float = 0.5

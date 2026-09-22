@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import logging
 import socket
 
-from transfers.contracts import CandidateSampling, CandidateSamplingContinuation
+from transfers.models import ExecutionSubject
 from transfers.models import FingerprintKind, InputRequirement
 from transfers import size_evidence
 
@@ -192,14 +192,15 @@ class EvidenceContext:
         key = (str(candidate.id), max(0, int(candidate.expected_bytes or 0)))
         if key not in self._fingerprints:
             submitted = self._inputs.get(key[0])
+            subject = ExecutionSubject.of(candidate)
             try:
-                if submitted is not None and isinstance(executor, CandidateSamplingContinuation):
-                    sample = await executor.fingerprint_with_input(candidate, submitted)
+                if submitted is not None and executor.capabilities.transient_input:
+                    sample = await executor.fingerprint_with_input(subject, submitted)
                     if sample is not None and not isinstance(sample, InputRequirement) \
                             and _fingerprint_kind(sample) != FingerprintKind.UNAVAILABLE.value:
                         self._proven[key[0]] = sample
                 else:
-                    sample = _retained(candidate, await executor.fingerprint(candidate))
+                    sample = _retained(candidate, await executor.fingerprint(subject))
                 self._fingerprints[key] = (sample, None)
             except Exception as exc:
                 self._fingerprints[key] = (None, exc)
@@ -242,8 +243,16 @@ def _retained(candidate, sample):
 
 async def _fingerprint(executor, candidate, context: EvidenceContext | None):
     if context is None:
-        return _retained(candidate, await executor.fingerprint(candidate))
+        return _retained(candidate, await executor.fingerprint(ExecutionSubject.of(candidate)))
     return await context.fingerprint(executor, candidate)
+
+
+def _sampler(candidate, registry):
+    """The core-selected claimant for the candidate's pre-materialization
+    subject -- the SAME router dispatch uses -- when it declares neutral
+    candidate sampling; ``None`` otherwise. Never a scheme or name lookup."""
+    executor = registry.executor_for_subject(ExecutionSubject.of(candidate))
+    return executor if executor is not None and executor.capabilities.candidate_sampling else None
 
 
 def _normalized_algorithm(value: str) -> str:
@@ -411,8 +420,10 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
         return _diagnose(left, right, resolver_evidence)
 
     try:
-        first, second = registry.executor_for(left), registry.executor_for(right)
-        if not isinstance(first, CandidateSampling) or not isinstance(second, CandidateSampling):
+        # Sampling executors are selected by the one subject-claim router
+        # (``registry.executor_for_subject``) used for dispatch.
+        first, second = _sampler(left, registry), _sampler(right, registry)
+        if first is None or second is None:
             return _diagnose(left, right, _unavailable("sampler_unsupported"))
         a, b = await asyncio.gather(_fingerprint(first, left, context), _fingerprint(second, right, context))
         # A sampler returning None has no proof capability for this candidate.
@@ -483,8 +494,9 @@ async def self_evidence(candidate, registry, context: EvidenceContext | None = N
     independently-maintained sampler classifier anywhere else.
     """
     try:
-        executor = registry.executor_for(candidate)
-        if not isinstance(executor, CandidateSampling):
+        # The one subject-claim router (``registry.executor_for_subject``).
+        executor = _sampler(candidate, registry)
+        if executor is None:
             return _unavailable("sampler_unsupported")
         sample = await _fingerprint(executor, candidate, context)
         if sample is None:

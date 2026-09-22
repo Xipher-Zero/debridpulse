@@ -13,6 +13,7 @@ from transfers.models import (
     CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, FileManifest,
     OutcomeKind, Ownership, ProviderResource, ResourceState, TransferRequest,
 )
+from transfers.models import ExecutionSubject
 
 
 @pytest.mark.parametrize("code,description,state,category", [
@@ -368,7 +369,8 @@ async def test_resolver_attested_identity_still_bypasses_sampling(tmp_path):
     executor = _aria2(tmp_path)
     sampled = []
 
-    async def forbidden(candidate):
+    async def forbidden(subject):
+        candidate = subject.candidate
         sampled.append(candidate)
         raise AssertionError("authoritative resolver evidence must never be byte-sampled")
 
@@ -391,7 +393,7 @@ async def test_provider_issued_capability_never_becomes_an_operator_challenge(tm
     monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", unauthorized)
     candidate = await _unlocked(filename="", size=0)  # no resolver identity: generalized HTTP evidence applies
     assert candidate.delivery == DeliveryKind.PROVIDER_ISSUED and candidate.accepted_input_methods == ()
-    result = await _aria2(tmp_path).fingerprint(candidate)
+    result = await _aria2(tmp_path).fingerprint(ExecutionSubject.of(candidate))
     assert not isinstance(result, InputRequirement)
     assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
 
@@ -409,7 +411,7 @@ async def test_delivery_candidate_without_resolver_identity_uses_the_generalized
     monkeypatch.setattr(executor_module, "sampled_public_artifact_fingerprint", sampled)
     candidate = await _unlocked(filename="", size=0)
     assert candidate.resolver_identity_evidence is None
-    result = await _aria2(tmp_path).fingerprint(candidate)
+    result = await _aria2(tmp_path).fingerprint(ExecutionSubject.of(candidate))
     assert result.kind == FingerprintKind.FULL_CONTENT_SAMPLE
     assert seen == [("https://delivery.example/file", {})]  # the delivery capability, no operator credential
 

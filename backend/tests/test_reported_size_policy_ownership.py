@@ -66,8 +66,12 @@ def test_completion_size_acceptance_has_one_owner_below_the_engine_recovery_laye
     assert composed._execution_result is engine_base.TransferEngine._execution_result
 
     completion = inspect.getsource(engine_base.TransferEngine._execution_result)
-    assert "stable_material_size(" in completion
+    # The one generalized materialization verifier (whose FILE branch is the
+    # hardened ``stable_material_size``) is the completion-size owner.
+    assert "verify_materialization(" in completion
     assert "stable_payload(" not in completion and "payload_matches(" not in completion
+    verifier = inspect.getsource(__import__("transfers.filesystem", fromlist=["x"]).verify_materialization)
+    assert "stable_material_size(" in verifier
 
     recovery_source = inspect.getsource(engine_recovery)
     for forbidden in (

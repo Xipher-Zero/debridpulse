@@ -10,7 +10,7 @@ import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage
-from transfers.models import ExecutionState, OutcomeKind, TransferOutcome, TransferRequest, TransferState
+from transfers.models import ExecutionObservation, ExecutionState, OutcomeKind, TransferOutcome, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -72,10 +72,10 @@ async def exhaust_destructive_cancel_budget(core, transfer_id):
     error = transient_cleanup_error()
     calls = 0
 
-    async def fail_cancel(_handle):
+    async def fail_cancel(handle):
         nonlocal calls
         calls += 1
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = fail_cancel
     for _ in range(4):
@@ -215,7 +215,9 @@ async def test_state003_cleanup_claim_lease_serializes_concurrent_workers(core):
     assert await first_task == ()
 
     status = await core.repository.execution_cleanup_status(artifact.execution.attempt_id)
-    assert observations == 1
+    # Only the lease holder observed: once before cancelling, once more as
+    # the executor confirmed its own cancellation by observation.
+    assert observations == 2
     assert status["state"] == "complete"
     assert status["attempts"] == 1
     assert status["authorized"] is False
@@ -229,10 +231,10 @@ async def test_state003_delete_preserves_cleanup_and_path_reservation_until_exte
     error = transient_cleanup_error()
     calls = 0
 
-    async def fail_cancel(_handle):
+    async def fail_cancel(handle):
         nonlocal calls
         calls += 1
-        return TransferOutcome(OutcomeKind.FAILURE, error)
+        return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
 
     core.executor.cancel = fail_cancel
     await core.engine.delete(transfer.id, remote=False)

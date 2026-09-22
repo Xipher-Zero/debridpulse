@@ -234,7 +234,7 @@ async def test_unknown_size_zero_byte_success_never_completes(core):
     async def unknown_size_start(request, handle):
         assert await core.executor.authorize(handle, "start")
         core.executor.calls.append(("start", handle))
-        result = ExecutionObservation(handle, ExecutionState.TRANSFERRING, TransferProgress(0, 0, 0), (request.target,), None)
+        result = ExecutionObservation(handle, ExecutionState.RUNNING, TransferProgress(0, 0, 0))
         core.executor.jobs[handle.attempt_id] = result
         return result
     core.executor.start = unknown_size_start

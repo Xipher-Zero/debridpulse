@@ -114,6 +114,7 @@ async def _refresh_exact(engine, artifact, index: int):
         result = engine._authoritative_provider_result(
             provider.descriptor.id,
             await provider.refresh(bound),
+            request_kind=origin.request.request.kind,
         )
         live = await engine.repository.resolution(attempt, result)
         if not live and origin.request.transfer_id == artifact.transfer_id:

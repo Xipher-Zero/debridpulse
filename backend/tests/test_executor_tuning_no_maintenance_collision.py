@@ -33,6 +33,9 @@ def _application(gate: ApplicationMaintenanceGate, current):
         configuration_admission=gate.maintenance,
         configure=lambda: None,
         reconcile_executions=AsyncMock(),
+        execution_runtime_limits=AsyncMock(side_effect=lambda: {
+            "ok": True, "configured": {"max_download_bytes_per_second": current.execution_runtime_limits.max_download_bytes_per_second},
+            "effective": {}, "last_apply_error": None}),
     )
 
 

@@ -22,7 +22,7 @@ from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
 from transfers.models import (
     BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, DeliveryKind, ExecutionAttempt, ExecutionHandle,
-    ExecutionState,
+    ExecutionState, MaterializationResult,
     OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
     ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
@@ -41,7 +41,7 @@ _AGGREGATE_TERMINAL_STATES = TERMINAL_TRANSFER_STATES
 # doing something -- while paused, the parent may not claim PAUSED until
 # none of a transfer's recorded attempts are in one of these.
 _UNSETTLED_EXECUTION_STATES = frozenset({
-    "prepared", ExecutionState.QUEUED.value, ExecutionState.TRANSFERRING.value, ExecutionState.UNKNOWN.value,
+    "prepared", ExecutionState.QUEUED.value, ExecutionState.RUNNING.value, ExecutionState.UNKNOWN.value,
 })
 
 
@@ -485,7 +485,7 @@ class TransferRepository:
             params = () if identity is None else (identity,)
             executor_filter = "" if identity is None else " AND executor_id=?"
             provider_filter = "" if identity is None else " AND provider_id=?"
-            if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','transferring','paused','unknown')" + executor_filter + " LIMIT 1", params):
+            if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','running','paused','unknown')" + executor_filter + " LIMIT 1", params):
                 return True
             return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent'" + provider_filter + " LIMIT 1", params))
 
@@ -1276,7 +1276,7 @@ class TransferRepository:
                 # to claim parent PAUSED while a durable execution
                 # observation is still active/unknown; once every recorded
                 # attempt is quiescent, this is metadata-only -- it does not
-                # dispatch, refresh, replace a GID, or consume recovery
+                # dispatch, refresh, replace native work, or consume recovery
                 # authority.
                 await _transition(TransferState.PAUSED)
             await db.commit()
@@ -1492,7 +1492,7 @@ class TransferRepository:
                 """UPDATE execution_attempts SET cleanup_state='pending',cleanup_attempts=0,
                     cleanup_retry_at=?,cleanup_error=NULL
                     WHERE transfer_id=? AND authorized=1
-                    AND state IN ('prepared','queued','transferring','paused','unknown')
+                    AND state IN ('prepared','queued','running','paused','unknown')
                     AND id IN (SELECT execution_attempt_id FROM download_files
                         WHERE torrent_id=? AND execution_attempt_id IS NOT NULL)""",
                 (now, transfer_id, transfer_id),
@@ -1807,7 +1807,7 @@ class TransferRepository:
                     if previous_generation and str(previous_generation) != str(selection_id):
                         live_execution = await db.fetchone(
                             """SELECT f.id FROM download_files f JOIN execution_attempts e ON e.id=f.execution_attempt_id
-                                WHERE f.request_id=? AND e.state IN ('prepared','queued','transferring','paused','unknown')""",
+                                WHERE f.request_id=? AND e.state IN ('prepared','queued','running','paused','unknown')""",
                             (identity,),
                         )
                         if live_execution:
@@ -1883,7 +1883,7 @@ class TransferRepository:
                 WHERE f.local_path IS NOT NULL AND COALESCE(f.mirror_state,'')!='standby'
                 AND (t.status NOT IN ('deleted','completed','consolidated','error')
                     OR EXISTS (SELECT 1 FROM execution_attempts e WHERE e.id=f.execution_attempt_id AND e.authorized=1
-                        AND e.state IN ('prepared','queued','transferring','paused','unknown')))""")
+                        AND e.state IN ('prepared','queued','running','paused','unknown')))""")
         return {str(row["local_path"]).casefold() for row in rows}
 
     async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False,
@@ -1907,11 +1907,25 @@ class TransferRepository:
             )
             ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (artifact.id,))
             ordinal = int(ordinal_row["n"] or 0) + 1
+            # Material ownership is explicit and durable: established when the
+            # boundary was absent at this admission, or carried forward from
+            # this artifact's immediately preceding attempt when THAT attempt
+            # owned it (the present material is DebridPulse's own lineage).
+            # Anything else -- pre-existing material, or no observation -- is
+            # unowned, and no cleanup may delete it.
+            owner = None
+            if target_initially_absent:
+                owner = handle.attempt_id
+            elif target_initially_absent is not None:
+                predecessor = await db.fetchone(
+                    "SELECT material_owner_attempt_id FROM execution_attempts WHERE artifact_id=? ORDER BY rowid DESC LIMIT 1",
+                    (artifact.id,))
+                owner = (predecessor or {}).get("material_owner_attempt_id")
             await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate,
-                target_initially_absent) VALUES(?,?,?,?,?,'prepared',?,?)""",
+                target_initially_absent,material_owner_attempt_id) VALUES(?,?,?,?,?,'prepared',?,?,?)""",
                 (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
                  codec.dump(candidate) if candidate else None,
-                 None if target_initially_absent is None else int(bool(target_initially_absent))))
+                 None if target_initially_absent is None else int(bool(target_initially_absent)), owner))
             await db.execute("""INSERT INTO execution_attempt_provenance(
                 execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
                 outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?, 'prepared',0,'recorded')""",
@@ -1948,20 +1962,84 @@ class TransferRepository:
             await db.commit()
         return True
 
+    async def bind_execution_handle(self, prepared: ExecutionHandle, bound: ExecutionHandle) -> bool:
+        """THE one-way native identity binding of a durable execution attempt.
+
+        Atomically permits exactly ``native: None -> value`` for the same
+        attempt, executor and correlation, and only while that attempt is
+        still authorized and current for its artifact. Idempotent when the
+        persisted handle already equals ``bound``. Every other transition --
+        attempt/executor/correlation change, native replacement or removal,
+        binding a superseded or revoked attempt -- is refused. Nothing here
+        interprets either opaque map."""
+        if not isinstance(prepared, ExecutionHandle) or not isinstance(bound, ExecutionHandle):
+            return False
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone("""SELECT e.handle,e.authorized,e.executor_id,f.execution_attempt_id AS current_id
+                FROM execution_attempts e JOIN download_files f ON f.id=e.artifact_id WHERE e.id=?""",
+                                    (prepared.attempt_id,))
+            if not row:
+                await db.rollback()
+                return False
+            persisted = codec.handle(codec.load(row["handle"]))
+            if persisted == bound:
+                await db.rollback()
+                return True
+            if (persisted != prepared or not prepared.binds(bound) or row["executor_id"] != bound.executor_id
+                    or not row["authorized"] or row.get("current_id") != prepared.attempt_id):
+                await db.rollback()
+                return False
+            cursor = await db.execute("UPDATE execution_attempts SET handle=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND handle=?",
+                                      (codec.dump(bound), prepared.attempt_id, row["handle"]))
+            await db.commit()
+        return cursor.rowcount == 1
+
+    async def record_materialization(self, handle: ExecutionHandle, result: MaterializationResult) -> bool:
+        """Persist core-verified materialization truth for the still-current attempt."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone("""SELECT e.handle FROM execution_attempts e JOIN download_files f
+                ON f.id=e.artifact_id AND f.execution_attempt_id=e.id WHERE e.id=? AND e.executor_id=?""",
+                                    (handle.attempt_id, handle.executor_id))
+            if not row or codec.handle(codec.load(row["handle"])) != handle:
+                await db.rollback()
+                return False
+            await db.execute("UPDATE execution_attempts SET materialization=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                             (codec.dump(result), handle.attempt_id))
+            await db.commit()
+        return True
+
+    async def execution_materialization(self, attempt_id: str) -> MaterializationResult | None:
+        async with get_db() as db:
+            row = await db.fetchone("SELECT materialization FROM execution_attempts WHERE id=?", (attempt_id,))
+        return codec.materialization(row["materialization"]) if row else None
+
+    async def executors_with_live_work(self) -> frozenset[str]:
+        """Executors that durably still own native work that might acquire:
+        an authorized, not-yet-terminal attempt, or an attempt whose native
+        cleanup has not been proven complete. Absence here is positive truth."""
+        async with get_db() as db:
+            rows = await db.fetchall("""SELECT DISTINCT executor_id FROM execution_attempts
+                WHERE (authorized=1 AND state IN ('prepared','queued','running','paused','unknown'))
+                   OR cleanup_state IN ('pending','blocked')""")
+        return frozenset(str(row["executor_id"]) for row in rows)
+
     async def execution_owns_target(self, handle: ExecutionHandle) -> bool:
-        """Positive target-ownership authority for ``handle``: True only when
-        this exact attempt durably recorded that its target was initially
-        absent AND it is still the artifact's current execution. Unknown
-        (NULL, a pre-change row), false, superseded, or missing all answer
-        False -- ownership is never inferred from the file itself."""
+        """Positive material-ownership authority for ``handle``: True only when
+        this exact attempt durably carries a material owner (established at
+        its own admission or inherited from its artifact's preceding owning
+        attempt) AND it is still the artifact's current execution. Unowned,
+        superseded, or missing all answer False -- ownership is never inferred
+        from the file itself."""
         async with get_db() as db:
             row = await db.fetchone(
-                """SELECT e.target_initially_absent FROM execution_attempts e
+                """SELECT e.material_owner_attempt_id FROM execution_attempts e
                     JOIN download_files f ON f.id=e.artifact_id AND f.execution_attempt_id=e.id
                     WHERE e.id=? AND e.executor_id=?""",
                 (handle.attempt_id, handle.executor_id),
             )
-        return bool(row) and row["target_initially_absent"] is not None and int(row["target_initially_absent"]) == 1
+        return bool(row) and bool(row.get("material_owner_attempt_id"))
 
     async def authorize_execution(self, handle: ExecutionHandle, action: str) -> bool:
         async with get_db() as db:
@@ -2028,7 +2106,7 @@ class TransferRepository:
 
     async def executions(self, transfer_id: int | None = None) -> tuple[ExecutionAttempt, ...]:
         async with get_db() as db:
-            rows = await db.fetchall("SELECT * FROM execution_attempts" + (" WHERE transfer_id=?" if transfer_id is not None else ""),
+            rows = await db.fetchall("SELECT * FROM execution_attempts" + (" WHERE transfer_id=?" if transfer_id is not None else "") + " ORDER BY rowid",
                                      (transfer_id,) if transfer_id is not None else ())
         return tuple(self._execution_attempt(row) for row in rows)
 
@@ -2045,7 +2123,7 @@ class TransferRepository:
                 WHERE t.status NOT IN ('deleted','completed','consolidated','cancelled') AND e.authorized=1""")
         return tuple(self._execution_attempt(row) for row in rows)
 
-    _OCCUPYING_EXECUTION_STATES = ("prepared", "queued", "transferring", "unknown")
+    _OCCUPYING_EXECUTION_STATES = ("prepared", "queued", "running", "unknown")
 
     async def occupied_execution_slots(self, now: float, *, exclude_artifact_id: int | None = None) -> int:
         """DP 1.0.12 recovery leveling, Section 13: the ONE canonical execution-
@@ -2315,7 +2393,7 @@ class TransferRepository:
                     cleanup_error=CASE WHEN cleanup_state IN ('pending','blocked') THEN cleanup_error ELSE NULL END,
                     updated_at=CURRENT_TIMESTAMP
                     WHERE transfer_id=? AND authorized=1
-                    AND state IN ('prepared','queued','transferring','paused','unknown')""",
+                    AND state IN ('prepared','queued','running','paused','unknown')""",
                 (now, now, transfer_id),
             )
             # DP 1.0.12 recovery leveling, Section 13: DELETED is not a true

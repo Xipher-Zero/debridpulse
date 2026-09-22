@@ -32,6 +32,7 @@ from transfers.models import (
     ArtifactFingerprint, Endpoint, FingerprintKind, InputFact, InputFactName, InputField, InputMethod,
     InputReason, InputRequirement, TransferCandidate,
 )
+from transfers.models import ExecutionSubject
 
 pytestmark = pytest.mark.asyncio
 
@@ -232,10 +233,10 @@ def full(value):
 
 async def test_http_ftp_sftp_produce_the_identical_fingerprint_for_identical_bytes(origins):
     executor = origins.executor
-    http = full(await executor.fingerprint(candidate(origins.http.url("/pub/object.bin"))))
-    ftp = full(await executor.fingerprint(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/object.bin")))
-    identity = await executor.fingerprint(candidate(origins.sftp.url("/data/object.bin")))
-    sftp = full(await executor.fingerprint_with_input(candidate(origins.sftp.url("/data/object.bin")),
+    http = full(await executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/pub/object.bin")))))
+    ftp = full(await executor.fingerprint(ExecutionSubject.of(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/object.bin"))))
+    identity = await executor.fingerprint(ExecutionSubject.of(candidate(origins.sftp.url("/data/object.bin"))))
+    sftp = full(await executor.fingerprint_with_input(ExecutionSubject.of(candidate(origins.sftp.url("/data/object.bin"))),
                                                       submitted(identity)))
     assert http == ftp == sftp
     first, last = PAYLOAD[:SAMPLE], PAYLOAD[len(PAYLOAD) - SAMPLE:]
@@ -246,10 +247,10 @@ async def test_http_ftp_sftp_produce_the_identical_fingerprint_for_identical_byt
 
 async def test_small_objects_keep_full_content_semantics_on_every_transport(origins):
     executor = origins.executor
-    http = full(await executor.fingerprint(candidate(origins.http.url("/pub/small.bin"))))
-    ftp = full(await executor.fingerprint(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/small.bin")))
-    identity = await executor.fingerprint(candidate(origins.sftp.url("/data/small.bin")))
-    sftp = full(await executor.fingerprint_with_input(candidate(origins.sftp.url("/data/small.bin")),
+    http = full(await executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/pub/small.bin")))))
+    ftp = full(await executor.fingerprint(ExecutionSubject.of(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/small.bin"))))
+    identity = await executor.fingerprint(ExecutionSubject.of(candidate(origins.sftp.url("/data/small.bin"))))
+    sftp = full(await executor.fingerprint_with_input(ExecutionSubject.of(candidate(origins.sftp.url("/data/small.bin"))),
                                                       submitted(identity)))
     assert http == ftp == sftp
     assert http.signature == _sampling().digest_full(len(SMALL), SMALL)
@@ -257,8 +258,8 @@ async def test_small_objects_keep_full_content_semantics_on_every_transport(orig
 
 async def test_same_name_and_size_with_different_bytes_is_a_different_fingerprint(origins):
     executor = origins.executor
-    original = full(await executor.fingerprint(candidate(origins.http.url("/pub/object.bin"))))
-    twin = full(await executor.fingerprint(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/twin.bin")))
+    original = full(await executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/pub/object.bin")))))
+    twin = full(await executor.fingerprint(ExecutionSubject.of(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/twin.bin"))))
     assert original.total_bytes == twin.total_bytes
     assert original.signature != twin.signature and original.prefix_signature != twin.prefix_signature
 
@@ -298,29 +299,29 @@ async def test_public_http_sampling_is_unchanged(origins):
 
 async def test_definitive_http_auth_is_a_neutral_requirement_for_an_input_capable_candidate(origins):
     locked = candidate(origins.http.url("/locked/object.bin"))
-    requirement = await origins.executor.fingerprint(locked)
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
     assert isinstance(requirement, InputRequirement)
     assert requirement.reason == InputReason.AUTH_REQUIRED and requirement.facts == ()
-    proven = full(await origins.executor.fingerprint_with_input(locked, submitted()))
-    public = full(await origins.executor.fingerprint(candidate(origins.http.url("/pub/object.bin"))))
+    proven = full(await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted()))
+    public = full(await origins.executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/pub/object.bin")))))
     assert proven == public
-    wrong = await origins.executor.fingerprint_with_input(locked, submitted(password="wrong"))
+    wrong = await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(password="wrong"))
     assert isinstance(wrong, InputRequirement) and wrong.reason == InputReason.AUTH_REQUIRED
 
 
 async def test_http_auth_never_challenges_a_candidate_without_operator_input(origins):
     """Provider-issued capabilities (e.g. a debrid delivery URL) keep their
     pre-existing fact; they never become operator challenges."""
-    result = await origins.executor.fingerprint(candidate(origins.http.url("/locked/object.bin"), accepts=False))
+    result = await origins.executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/locked/object.bin"), accepts=False)))
     assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
 
 
 async def test_provider_issued_authorization_is_never_replaced_by_operator_credentials(origins):
     capability = {"Authorization": "Bearer provider-issued-capability"}
     locked = candidate(origins.http.url("/locked/object.bin"), headers=capability)
-    result = await origins.executor.fingerprint(locked)
+    result = await origins.executor.fingerprint(ExecutionSubject.of(locked))
     assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
-    assert await origins.executor.fingerprint_with_input(locked, submitted()) is None
+    assert await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted()) is None
     assert "Basic " not in " ".join(value or "" for value in origins.http.authorizations)
 
 
@@ -328,14 +329,14 @@ async def test_non_basic_http_challenges_are_not_reinterpreted_as_authentication
     origin = await HttpOrigin({"/locked/x": PAYLOAD}, protected={"/locked/x": ("a", "b")},
                               scheme_header='Digest realm="dp", nonce="n"').start()
     try:
-        result = await executor_for(tmp_path, guard_for()).fingerprint(candidate(origin.url("/locked/x")))
+        result = await executor_for(tmp_path, guard_for()).fingerprint(ExecutionSubject.of(candidate(origin.url("/locked/x"))))
         assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
     finally:
         await origin.close()
 
 
 async def test_http_generic_failures_keep_their_existing_reasons(origins):
-    missing = await origins.executor.fingerprint(candidate(origins.http.url("/pub/missing.bin")))
+    missing = await origins.executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/pub/missing.bin"))))
     assert missing == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
 
 
@@ -343,7 +344,7 @@ async def test_http_generic_failures_keep_their_existing_reasons(origins):
 
 async def test_anonymous_ftp_is_sampled_in_bounded_windows_through_the_guard(origins):
     ftp = origins.ftp
-    result = full(await origins.executor.fingerprint(candidate(f"ftp://ftp-origin.test:{ftp.port}/pub/object.bin")))
+    result = full(await origins.executor.fingerprint(ExecutionSubject.of(candidate(f"ftp://ftp-origin.test:{ftp.port}/pub/object.bin"))))
     assert result.total_bytes == len(PAYLOAD)
     assert ftp.logins == [("anonymous", True)]
     assert ftp.transfer_types == ["I"] and set(ftp.data_modes) == {"passive"}
@@ -356,24 +357,24 @@ async def test_anonymous_ftp_is_sampled_in_bounded_windows_through_the_guard(ori
 
 async def test_protected_ftp_requires_authentication_then_samples_with_input(origins):
     locked = candidate(f"ftp://locked-ftp.test:{origins.locked_ftp.port}/data/object.bin")
-    requirement = await origins.executor.fingerprint(locked)
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
     assert isinstance(requirement, InputRequirement) and requirement.reason == InputReason.AUTH_REQUIRED
-    proven = full(await origins.executor.fingerprint_with_input(locked, submitted()))
-    assert proven == full(await origins.executor.fingerprint(candidate(origins.http.url("/pub/object.bin"))))
-    wrong = await origins.executor.fingerprint_with_input(locked, submitted(password="wrong"))
+    proven = full(await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted()))
+    assert proven == full(await origins.executor.fingerprint(ExecutionSubject.of(candidate(origins.http.url("/pub/object.bin")))))
+    wrong = await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(password="wrong"))
     assert isinstance(wrong, InputRequirement)
     assert origins.locked_ftp.logins == [("anonymous", False), (USER, True), (USER, False)]
 
 
 async def test_ftp_missing_path_is_not_authentication(origins):
-    result = await origins.executor.fingerprint(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/none.bin"))
+    result = await origins.executor.fingerprint(ExecutionSubject.of(candidate(f"ftp://ftp-origin.test:{origins.ftp.port}/pub/none.bin")))
     assert isinstance(result, ArtifactFingerprint) and result.kind == FingerprintKind.UNAVAILABLE
     assert result.reason == "range_unsupported"
 
 
 async def test_ftp_login_rejection_never_challenges_a_candidate_without_input(origins):
     locked = candidate(f"ftp://locked-ftp.test:{origins.locked_ftp.port}/data/object.bin", accepts=False)
-    result = await origins.executor.fingerprint(locked)
+    result = await origins.executor.fingerprint(ExecutionSubject.of(locked))
     assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "range_unsupported")
 
 
@@ -381,7 +382,7 @@ async def test_ftp_without_restart_support_reports_only_prefix_evidence(tmp_path
     origin = await FtpOrigin({"/x.bin": PAYLOAD}, rest=False).start()
     guard = guard_for()
     try:
-        result = await executor_for(tmp_path, guard).fingerprint(candidate(f"ftp://norest.test:{origin.port}/x.bin"))
+        result = await executor_for(tmp_path, guard).fingerprint(ExecutionSubject.of(candidate(f"ftp://norest.test:{origin.port}/x.bin")))
         assert result.kind == FingerprintKind.PREFIX_CONTENT_SAMPLE and result.reason == "range_unsupported"
         assert result.signature == _sampling().digest_prefix(len(PAYLOAD), PAYLOAD[:SAMPLE])
     finally:
@@ -394,7 +395,7 @@ async def test_ftp_evidence_uses_aria2_path_semantics(tmp_path, loopback):
     guard = guard_for()
     try:
         url = f"ftp://paths.test:{origin.port}/home/sp%20ace/f%23.bin"
-        full(await executor_for(tmp_path, guard).fingerprint(candidate(url)))
+        full(await executor_for(tmp_path, guard).fingerprint(ExecutionSubject.of(candidate(url))))
         assert origin.retrieved == ["/home/sp ace/f#.bin"]
     finally:
         await guard.stop()
@@ -409,7 +410,7 @@ async def test_ftp_control_connection_rejects_private_or_mixed_resolution(tmp_pa
     origin = await FtpOrigin({"/x.bin": PAYLOAD}).start()
     guard = guard_for(answers=answers)
     try:
-        result = await executor_for(tmp_path, guard).fingerprint(candidate(f"ftp://mixed.test:{origin.port}/x.bin"))
+        result = await executor_for(tmp_path, guard).fingerprint(ExecutionSubject.of(candidate(f"ftp://mixed.test:{origin.port}/x.bin")))
         assert result.kind == FingerprintKind.UNAVAILABLE and result.reason == "destination_rejected"
         assert origin.control_connections == 0
     finally:
@@ -421,7 +422,7 @@ async def test_ftp_passive_data_rebinding_is_rejected(tmp_path, loopback):
     origin = await FtpOrigin({"/x.bin": PAYLOAD}).start()
     guard = guard_for(answers=lambda host, port: ["127.0.0.1"] if port == origin.port else ["10.0.0.9"])
     try:
-        result = await executor_for(tmp_path, guard).fingerprint(candidate(f"ftp://rebind.test:{origin.port}/x.bin"))
+        result = await executor_for(tmp_path, guard).fingerprint(ExecutionSubject.of(candidate(f"ftp://rebind.test:{origin.port}/x.bin")))
         assert result.kind == FingerprintKind.UNAVAILABLE
         assert origin.control_connections == 1 and origin.data_connections == 0
     finally:
@@ -433,7 +434,7 @@ async def test_ftp_passive_data_rebinding_is_rejected(tmp_path, loopback):
 
 async def test_first_sftp_access_is_a_server_identity_challenge_before_any_authentication(origins):
     sftp = origins.sftp
-    requirement = await origins.executor.fingerprint(candidate(sftp.url("/data/object.bin")))
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(candidate(sftp.url("/data/object.bin"))))
     assert isinstance(requirement, InputRequirement)
     assert requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED
     facts = {fact.name: fact.value for fact in requirement.facts}
@@ -453,7 +454,7 @@ async def test_sftp_host_key_order_follows_the_native_executor_preference(tmp_pa
     sftp = await SftpOrigin(root).start(algorithms=("ssh-rsa", "ssh-ed25519"))
     guard = guard_for()
     try:
-        requirement = await executor_for(tmp_path, guard).fingerprint(candidate(sftp.url("/x")))
+        requirement = await executor_for(tmp_path, guard).fingerprint(ExecutionSubject.of(candidate(sftp.url("/x"))))
         facts = {fact.name: fact.value for fact in requirement.facts}
         assert facts[InputFactName.SERVER_IDENTITY_FINGERPRINT] == sftp.fingerprint("ssh-ed25519")
     finally:
@@ -464,8 +465,8 @@ async def test_sftp_host_key_order_follows_the_native_executor_preference(tmp_pa
 async def test_confirmed_sftp_identity_and_credentials_sample_bounded_offsets(origins):
     sftp = origins.sftp
     locked = candidate(sftp.url("/data/object.bin"))
-    requirement = await origins.executor.fingerprint(locked)
-    proven = full(await origins.executor.fingerprint_with_input(locked, submitted(requirement)))
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
+    proven = full(await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(requirement)))
     assert proven.total_bytes == len(PAYLOAD)
     assert sftp.auth_attempts == [USER]
     assert sum(sftp.read_bytes) <= 2 * SAMPLE  # two bounded windows, never the whole object
@@ -474,8 +475,8 @@ async def test_confirmed_sftp_identity_and_credentials_sample_bounded_offsets(or
 async def test_wrong_sftp_password_yields_no_fingerprint_and_asks_again(origins):
     sftp = origins.sftp
     locked = candidate(sftp.url("/data/object.bin"))
-    requirement = await origins.executor.fingerprint(locked)
-    again = await origins.executor.fingerprint_with_input(locked, submitted(requirement, password="wrong"))
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
+    again = await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(requirement, password="wrong"))
     assert isinstance(again, InputRequirement)
     assert again.reason == InputReason.SERVER_IDENTITY_REQUIRED and set(again.facts) == set(requirement.facts)
     assert sftp.read_bytes == []
@@ -484,21 +485,21 @@ async def test_wrong_sftp_password_yields_no_fingerprint_and_asks_again(origins)
 async def test_changed_sftp_host_key_fails_closed_before_authentication(origins):
     sftp = origins.sftp
     locked = candidate(sftp.url("/data/object.bin"))
-    requirement = await origins.executor.fingerprint(locked)
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
     forged = tuple(
         InputFact(fact.name, "ab" * 20) if fact.name == InputFactName.SERVER_IDENTITY_FINGERPRINT else fact
         for fact in requirement.facts
     )
-    result = await origins.executor.fingerprint_with_input(locked, submitted(requirement, facts=forged))
+    result = await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(requirement, facts=forged))
     assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
     assert sftp.auth_attempts == []  # the password was never offered to a changed host
 
 
 async def test_sftp_identity_for_another_host_is_refused(origins):
     sftp = origins.sftp
-    requirement = await origins.executor.fingerprint(candidate(sftp.url("/data/object.bin")))
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(candidate(sftp.url("/data/object.bin"))))
     other = candidate(sftp.url("/data/object.bin", host="elsewhere.test"))
-    result = await origins.executor.fingerprint_with_input(other, submitted(requirement))
+    result = await origins.executor.fingerprint_with_input(ExecutionSubject.of(other), submitted(requirement))
     assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
     assert sftp.auth_attempts == []
 
@@ -507,8 +508,8 @@ async def test_sftp_missing_path_and_directory_are_not_authentication(origins):
     sftp = origins.sftp
     for path in ("/data/none.bin", "/data"):
         locked = candidate(sftp.url(path))
-        requirement = await origins.executor.fingerprint(locked)
-        result = await origins.executor.fingerprint_with_input(locked, submitted(requirement))
+        requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
+        result = await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(requirement))
         assert isinstance(result, ArtifactFingerprint) and result.kind == FingerprintKind.UNAVAILABLE
         assert result.reason == "range_unsupported"
 
@@ -519,7 +520,7 @@ async def test_sftp_connects_only_through_the_guard(tmp_path, loopback):
     sftp = await SftpOrigin(root).start()
     guard = guard_for(answers=lambda host, port: ["10.0.0.7"])
     try:
-        result = await executor_for(tmp_path, guard).fingerprint(candidate(sftp.url("/x")))
+        result = await executor_for(tmp_path, guard).fingerprint(ExecutionSubject.of(candidate(sftp.url("/x"))))
         assert result == ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
     finally:
         await guard.stop()
@@ -529,22 +530,22 @@ async def test_sftp_connects_only_through_the_guard(tmp_path, loopback):
 async def test_sftp_evidence_writes_no_local_material(origins, tmp_path):
     before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
     locked = candidate(origins.sftp.url("/data/object.bin"))
-    requirement = await origins.executor.fingerprint(locked)
-    full(await origins.executor.fingerprint_with_input(locked, submitted(requirement)))
+    requirement = await origins.executor.fingerprint(ExecutionSubject.of(locked))
+    full(await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(requirement)))
     assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
 
 
 async def test_sftp_candidate_without_operator_input_has_no_sample(origins):
-    assert await origins.executor.fingerprint(candidate(origins.sftp.url("/data/object.bin"), accepts=False)) is None
+    assert await origins.executor.fingerprint(ExecutionSubject.of(candidate(origins.sftp.url("/data/object.bin"), accepts=False))) is None
     assert origins.sftp.auth_attempts == []
 
 
 async def test_evidence_errors_never_carry_submitted_secrets(origins, caplog):
     locked = candidate(f"ftp://locked-ftp.test:{origins.locked_ftp.port}/data/object.bin")
     with caplog.at_level("DEBUG"):
-        await origins.executor.fingerprint_with_input(locked, submitted(password="wrong-secret-sentinel"))
+        await origins.executor.fingerprint_with_input(ExecutionSubject.of(locked), submitted(password="wrong-secret-sentinel"))
         sftp_locked = candidate(origins.sftp.url("/data/object.bin"))
-        requirement = await origins.executor.fingerprint(sftp_locked)
-        await origins.executor.fingerprint_with_input(sftp_locked, submitted(requirement, password="wrong-secret-sentinel"))
+        requirement = await origins.executor.fingerprint(ExecutionSubject.of(sftp_locked))
+        await origins.executor.fingerprint_with_input(ExecutionSubject.of(sftp_locked), submitted(requirement, password="wrong-secret-sentinel"))
     assert "wrong-secret-sentinel" not in caplog.text
     assert USER not in caplog.text

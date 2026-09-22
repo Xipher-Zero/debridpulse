@@ -49,9 +49,8 @@ class NoProgressMemoryExecutor(MemoryExecutor):
         error = self.start_errors.pop(0) if self.start_errors else None
         result = ExecutionObservation(
             handle,
-            ExecutionState.FAILED if error else ExecutionState.TRANSFERRING,
+            ExecutionState.FAILED if error else ExecutionState.RUNNING,
             TransferProgress(4, 0, 1),
-            (request.target,),
             error,
         )
         self.jobs[handle.attempt_id] = result
@@ -59,12 +58,8 @@ class NoProgressMemoryExecutor(MemoryExecutor):
 
 
 class RuntimeHttpExecutor(MemoryExecutor):
-    descriptor = IntegrationDescriptor(
-        "runtime-http",
-        "Runtime HTTP",
-        frozenset({Capability.PAUSE, Capability.RESUME, Capability.RECONCILE}),
-        schemes=frozenset({"http", "https"}),
-    )
+    descriptor = IntegrationDescriptor("runtime-http", "Runtime HTTP", frozenset())
+    claim_schemes = frozenset({"http", "https"})
 
     def __init__(self, authorize=None, *, total=10, completed=2):
         super().__init__(authorize)
@@ -76,9 +71,8 @@ class RuntimeHttpExecutor(MemoryExecutor):
         self.calls.append(("start", handle))
         result = ExecutionObservation(
             handle,
-            ExecutionState.TRANSFERRING,
+            ExecutionState.RUNNING,
             TransferProgress(self.total, self.completed, 3),
-            (request.target,),
         )
         self.jobs[handle.attempt_id] = result
         return result
@@ -86,13 +80,14 @@ class RuntimeHttpExecutor(MemoryExecutor):
     def finish(self, handle, *, materialize=True):
         current = self.jobs[handle.attempt_id]
         if materialize:
-            target = Path(current.paths[0])
+            target = Path(handle.correlation["destination"])
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b"x" * max(1, self.total))
         self.jobs[handle.attempt_id] = replace(
             current,
             state=ExecutionState.SUCCEEDED,
             progress=TransferProgress(self.total, self.total, 0),
+            materialization=self.file_result(handle, self.total),
         )
 
 
@@ -102,9 +97,8 @@ class ContradictoryMemoryExecutor(NoProgressMemoryExecutor):
         self.calls.append(("start", handle))
         result = ExecutionObservation(
             handle,
-            ExecutionState.TRANSFERRING,
+            ExecutionState.RUNNING,
             TransferProgress(8, 2, 1),
-            (request.target,),
         )
         self.jobs[handle.attempt_id] = result
         return result
@@ -359,7 +353,6 @@ async def test_unknown_execution_authority_vetoes_candidate_switch_and_survives_
         handle,
         ExecutionState.UNKNOWN,
         TransferProgress(0, 0, 0),
-        (artifact.target,),
         NormalizedError(
             Domain.EXECUTOR,
             Category.EXECUTOR_UNAVAILABLE,

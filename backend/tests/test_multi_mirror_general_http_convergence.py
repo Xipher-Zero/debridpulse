@@ -697,7 +697,8 @@ def _build_unknown_size_runtime(tmp_path, monkeypatch, providers, *, now=None):
     registry = IntegrationRegistry()
     executor = MemoryExecutor(repository.authorize_execution)
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         # 4 bytes to match MemoryExecutor.finish()'s fixed b"done" payload,
         # so a completion-path test (13.7) can adopt the file as stable
         # without a spurious expected/actual size mismatch.
@@ -822,7 +823,8 @@ async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_pa
     range_unsupported_ids = {providers[6].descriptor.id, providers[7].descriptor.id}
     dns_failure_ids = {providers[8].descriptor.id, providers[9].descriptor.id}
 
-    async def mixed_fingerprint(candidate):
+    async def mixed_fingerprint(subject):
+        candidate = subject.candidate
         source_key = candidate.provider_id
         if source_key in range_unsupported_ids:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
@@ -948,7 +950,8 @@ async def test_five_mirror_production_263_regression(tmp_path, monkeypatch):
     )
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[3].descriptor.id:  # mirror D
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
         if candidate.provider_id == providers[4].descriptor.id:  # mirror E
@@ -1044,7 +1047,8 @@ async def test_production_266_empty_bootstrap_bad_source_first(tmp_path, monkeyp
     )
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[3].descriptor.id:  # mirror D
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_unsupported")
         if candidate.provider_id == providers[4].descriptor.id:  # mirror E (NUS-shaped)
@@ -1154,7 +1158,8 @@ async def test_production_270_exhausted_identity_satisfied_by_completed_canonica
     )
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[4].descriptor.id:  # mirror E: NUS-shaped, DNS-failing.
             raise socket.gaierror("simulated DNS resolution failure for mirror E")
         return ArtifactFingerprint(4, "bounded-shared-iso-content")
@@ -1274,7 +1279,8 @@ async def test_single_member_cohort_materializes_immediately(tmp_path, monkeypat
 
     probed = []
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         probed.append(candidate.provider_id)
         return ArtifactFingerprint(4, "bounded-shared-iso-content")
 
@@ -1311,7 +1317,8 @@ async def test_one_viable_one_transient_bootstrap_does_not_deadlock(tmp_path, mo
     )
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[1].descriptor.id:
             raise socket.gaierror("simulated persistent DNS resolution failure")
         return ArtifactFingerprint(4, "bounded-shared-iso-content")
@@ -1379,7 +1386,8 @@ async def test_all_transient_cohort_creates_no_writer_and_bounds_retry(tmp_path,
     )
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         raise socket.gaierror("simulated DNS resolution failure for every source")
 
     monkeypatch.setattr(executor, "fingerprint", fingerprint)
@@ -1444,7 +1452,8 @@ async def test_bad_ordinal_zero_cannot_win_seed_authority_by_arrival(tmp_path, m
     )
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[0].descriptor.id:
             raise socket.gaierror("simulated DNS resolution failure for ordinal 0")
         return ArtifactFingerprint(4, "bounded-shared-iso-content")
@@ -1495,7 +1504,8 @@ async def test_all_distinct_healthy_sources_still_materialize_independently(tmp_
         providers[2].descriptor.id: "content-gamma",
     }
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         return ArtifactFingerprint(4, signatures[candidate.provider_id])
 
     monkeypatch.setattr(executor, "fingerprint", fingerprint)
@@ -1536,7 +1546,8 @@ async def test_bootstrap_restart_reentry_no_duplicate_writer(tmp_path, monkeypat
     repository, engine, executor = build()
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[0].descriptor.id:
             raise socket.gaierror("simulated persistent DNS resolution failure")
         return ArtifactFingerprint(4, "bounded-shared-iso-content")
@@ -1561,7 +1572,8 @@ async def test_bootstrap_restart_reentry_no_duplicate_writer(tmp_path, monkeypat
     repository2, engine2, executor2 = build()
     await engine2.initialize()
 
-    async def fingerprint2(candidate):
+    async def fingerprint2(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[0].descriptor.id:
             raise socket.gaierror("simulated persistent DNS resolution failure")
         return ArtifactFingerprint(4, "bounded-shared-iso-content")
@@ -1629,7 +1641,8 @@ async def test_resolved_sibling_reverify_bounds_retry_without_hot_loop(tmp_path,
     }
     phase = ["bootstrap"]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         label = label_by_provider[candidate.provider_id]
         call_counts[label] += 1
         if phase[0] == "reverify" and label in {"a", "b"}:
@@ -1729,7 +1742,8 @@ async def test_resolved_sibling_reverify_non_retryable_unresolved_holds_without_
     label_by_provider = {provider.descriptor.id: label for provider, label in zip(providers, "abcd")}
     phase = ["bootstrap"]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         label = label_by_provider[candidate.provider_id]
         call_counts[label] += 1
         if phase[0] == "reverify" and label == "b":
@@ -1813,7 +1827,8 @@ async def test_bad_first_structural_bootstrap_waits_for_capable_sibling(tmp_path
     repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[0].descriptor.id:
             return None  # structurally unroutable for this candidate -- never transient.
         return ArtifactFingerprint(4, "prefix-sig", FingerprintKind.PREFIX_CONTENT_SAMPLE,
@@ -1880,7 +1895,8 @@ async def test_all_structurally_unprovable_cohort_reaches_degraded_fallback_with
     repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         return None  # structurally unroutable for every source -- never transient.
 
     monkeypatch.setattr(executor, "fingerprint", fingerprint)
@@ -1941,7 +1957,8 @@ async def test_transfer_286_bad_source_first_is_held_once_a_canonical_exists(tmp
     repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, providers)
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == providers[0].descriptor.id:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
         return ArtifactFingerprint(4, "prefix-sig", FingerprintKind.PREFIX_CONTENT_SAMPLE,
@@ -2005,7 +2022,8 @@ async def test_bad_first_structural_bootstrap_treats_unnamed_sibling_as_unknown(
     call_counts = {"bad": 0, "good": 0}
     label_by_provider = {providers[0].descriptor.id: "bad", providers[1].descriptor.id: "good"}
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         call_counts[label_by_provider[candidate.provider_id]] += 1
         if label_by_provider[candidate.provider_id] == "bad":
             return None  # structurally unroutable -- never transient.
@@ -2257,7 +2275,8 @@ async def test_transfer_291_exhausted_incomplete_representation_bootstrap_progre
     executor = next(iter(runtime.engine.registry.executors.values()))
     probes = {"count": 0}
 
-    async def incomplete_representation(_candidate):
+    async def incomplete_representation(subject):
+        _candidate = subject.candidate
         probes["count"] += 1
         return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="incomplete_representation")
 
@@ -2346,7 +2365,8 @@ async def _masking_runtime(tmp_path, monkeypatch, *, unrelated: int, incoming_re
     await engine.initialize()
     probes = {"incoming": 0}
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == incoming_provider.descriptor.id:
             probes["incoming"] += 1
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason=incoming_reason)
@@ -2500,7 +2520,8 @@ async def test_mapping_decision_table_is_order_independent(
         tmp_path, monkeypatch, (*providers.values(), incoming_provider),
     )
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         behaviour = candidate.provider_id.rsplit("-", 1)[0]
         if behaviour == "unresolved":
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
@@ -2557,7 +2578,8 @@ async def test_candidate_order_within_a_canonical_never_masks_unresolved_proof(t
         tmp_path, monkeypatch, (member, incoming_provider, unrelated),
     )
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == member.descriptor.id:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
         return ArtifactFingerprint(4, "shared-content", FingerprintKind.FULL_CONTENT_SAMPLE)
@@ -2603,7 +2625,7 @@ async def _nominal_success_runtime(tmp_path, monkeypatch, *, db_name: str, befor
     await engine._resolve(record)
     (artifact,) = await repository.artifacts(transfer.id)
     target = Path(artifact.target)
-    (sidecar,) = (Path(item) for item in executor.resumable_paths(artifact.target))
+    sidecar = Path(executor.sidecar(artifact.target))
     target.parent.mkdir(parents=True, exist_ok=True)
     if before_start is not None:
         before_start(target, sidecar)
@@ -2696,7 +2718,7 @@ async def test_historical_attempt_without_ownership_fact_never_deletes(tmp_path,
     runtime = await _nominal_success_runtime(tmp_path, monkeypatch, db_name="historical-null")
     async with database.get_db() as db:
         await db.execute(
-            "UPDATE execution_attempts SET target_initially_absent=NULL WHERE id=?",
+            "UPDATE execution_attempts SET target_initially_absent=NULL,material_owner_attempt_id=NULL WHERE id=?",
             (runtime.artifact.execution.attempt_id,),
         )
         await db.commit()
@@ -2726,11 +2748,11 @@ async def test_cleanup_failure_never_rewrites_verification_history(tmp_path, mon
 
     retired = []
 
-    def failing_retire(root, target, sidecars=()):
-        retired.append((str(target), tuple(str(item) for item in sidecars)))
+    def failing_retire(root, plan, footprint, *, owned):
+        retired.append((str(plan.target), tuple(str(item) for item in footprint.transient_paths)))
         raise TransferError(NormalizedError(Domain.LOCAL_RESOURCE, Category.LOCAL_CLEANUP_FAILED, Stage.CLEANUP))
 
-    monkeypatch.setattr(engine_base_module, "retire_partial", failing_retire)
+    monkeypatch.setattr(engine_base_module, "retire_materialization", failing_retire)
     artifact, _attempt, outcomes = await _report_success(runtime, total=0)
     _assert_verification_failure_recorded(artifact, outcomes)  # still MATERIALIZATION_FAILED, never completed.
     # The one hardened primitive was asked for exactly this execution's target and declared sidecar -- nothing else.
@@ -2759,7 +2781,8 @@ async def _established_canonical(tmp_path, monkeypatch, *, members: int, db_name
     calls = []
     phase = ["establish"]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if phase[0] == "count":
             calls.append(candidate.provider_id)
         if candidate.provider_id == incoming_provider.descriptor.id:
@@ -2842,7 +2865,8 @@ async def test_evidence_context_never_changes_mapping_semantics(
     )
     acquisitions = []
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         acquisitions.append(str(candidate.id))
         behaviour = candidate.provider_id.rsplit("-", 1)[0]
         if behaviour == "unresolved":
@@ -2971,7 +2995,8 @@ async def test_several_plausible_targets_are_never_guessed_as_unverified(tmp_pat
     repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, (first, second, incoming_provider))
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == incoming_provider.descriptor.id:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
         return ArtifactFingerprint(4, f"content:{candidate.provider_id}", FingerprintKind.FULL_CONTENT_SAMPLE)
@@ -3017,7 +3042,8 @@ async def test_reconsidered_unverified_request_transitions_through_the_ordinary_
     await engine.initialize()
     phase = ["unresolved"]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == incoming_provider.descriptor.id:
             if phase[0] == "unresolved":
                 return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
@@ -3193,7 +3219,8 @@ async def test_production_298_299_300_shape_consolidates_with_unverified_sources
 # nullable, idempotent, and need no backfill against an existing 1.0.12 database.
 # ---------------------------------------------------------------------------
 
-_NEW_COLUMNS = (("transfer_requests", "equivalence_target_artifact_id"), ("execution_attempts", "target_initially_absent"))
+_NEW_COLUMNS = (("transfer_requests", "equivalence_target_artifact_id"), ("execution_attempts", "target_initially_absent"),
+                ("execution_attempts", "material_owner_attempt_id"))
 
 
 async def _table_snapshot(db) -> dict:
@@ -3274,7 +3301,8 @@ async def _mixed_parent_runtime(tmp_path, monkeypatch, *, db_name, unresolved_re
     repository, engine, executor = _build_unknown_size_runtime(tmp_path, monkeypatch, (external, associated, local))
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == associated.descriptor.id:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason=unresolved_reason)
         return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
@@ -3353,7 +3381,8 @@ async def test_mixed_parent_with_nonterminal_unresolved_leaf_still_blocks(tmp_pa
         tmp_path, monkeypatch, (first, second, associated, local))
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == associated.descriptor.id:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
         return ArtifactFingerprint(4, f"content:{candidate.provider_id}", FingerprintKind.FULL_CONTENT_SAMPLE)
@@ -3403,7 +3432,8 @@ async def _prefix_cohort_runtime(tmp_path, monkeypatch, *, db_name, decidable_un
     await engine.initialize()
     phase = ["seed"]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == held.descriptor.id:
             return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
         if candidate.provider_id == decidable.descriptor.id and decidable_unresolved:
@@ -3522,7 +3552,8 @@ async def _settled_unverified_runtime(tmp_path, monkeypatch, *, db_name):
     await engine.initialize()
     phase = ["unresolved"]
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         if candidate.provider_id == source_provider.descriptor.id:
             if phase[0] == "unresolved":
                 return ArtifactFingerprint(0, "", kind=FingerprintKind.UNAVAILABLE, reason="range_ignored")
@@ -3663,7 +3694,8 @@ async def test_settled_unverified_association_is_quiescent_without_operator_acti
     probes = {"count": 0}
     inner = runtime.executor.fingerprint
 
-    async def counting(candidate):
+    async def counting(subject):
+        candidate = subject.candidate
         probes["count"] += 1
         return await inner(candidate)
 
@@ -3708,7 +3740,8 @@ async def test_operator_retry_still_refuses_an_ordinary_consolidated_transfer(tm
         tmp_path, monkeypatch, (owner_provider, source_provider))
     await engine.initialize()
 
-    async def fingerprint(candidate):
+    async def fingerprint(subject):
+        candidate = subject.candidate
         return ArtifactFingerprint(4, f"full:{candidate.name}", FingerprintKind.FULL_CONTENT_SAMPLE)
 
     monkeypatch.setattr(executor, "fingerprint", fingerprint)

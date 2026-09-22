@@ -431,7 +431,7 @@ def test_one_canonical_candidate_activation_owner_for_both_engine_stacks():
     assert "activate_candidate(" in canonical_source
 
     activation_source = inspect.getsource(candidate_activation.activate_candidate)
-    assert "retire_partial(" in activation_source
+    assert "retire_materialization(" in activation_source
     assert "transition_recovery(" in activation_source
     assert "record_candidate_attempt(" in activation_source
 

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import shutil
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -43,16 +43,23 @@ def rpc_service(options) -> Aria2Service:
     return Aria2Service(rpc_url(), RPC_SECRET, options.operation_timeout_seconds)
 
 
-def build_aria2_global_options(options, max_concurrent_executions: int, max_download_bytes_per_second: int,
-                                *, include_safety: bool = False) -> Dict[str, str]:
-    """Pure translation of already-injected typed configuration into the
-    native aria2 global-option dict -- no settings access of any kind. It is the
-    single mapping owner used by ``Aria2Runtime`` and
-    ``Aria2Administration``, which only ever hold injected configuration."""
+# Executor-local native queue width. DebridPulse's own global admission is the
+# only concurrency policy; this value merely never undercuts any supported
+# global setting, and nothing synchronizes it to that setting.
+NATIVE_ACTIVE_DOWNLOADS = 64
+
+
+def build_aria2_global_options(options, *, include_safety: bool = False) -> Dict[str, str]:
+    """Pure translation of aria2-owned typed tuning into the native aria2
+    global-option dict -- no settings access of any kind, and no DebridPulse
+    global policy (concurrency or bandwidth) mirrored into native options. It
+    is the single tuning mapping owner used by ``Aria2Runtime`` and
+    ``Aria2Administration``. The download ceiling is enforced only through the
+    executor's assigned-ceiling operation."""
     options_dict: Dict[str, str] = {
         "max-download-result": str(int(options.max_download_result or 50)),
         "keep-unfinished-download-result": "true" if bool(options.keep_unfinished_download_result) else "false",
-        "max-concurrent-downloads": str(int(max_concurrent_executions or 3)),
+        "max-concurrent-downloads": str(NATIVE_ACTIVE_DOWNLOADS),
         "split": str(int(options.split or 8)),
         "min-split-size": str(options.min_split_size or "10M"),
         "max-connection-per-server": str(int(options.max_connection_per_server or 8)),
@@ -64,7 +71,6 @@ def build_aria2_global_options(options, max_concurrent_executions: int, max_down
         "file-allocation": str(options.file_allocation or "falloc"),
         "continue": "true" if bool(options.continue_downloads) else "false",
         "lowest-speed-limit": str(options.lowest_speed_limit or "0"),
-        "max-overall-download-limit": str(int(max_download_bytes_per_second or 0)),
         "max-overall-upload-limit":   str(int(options.max_upload_limit or 0)),
     }
     if include_safety:
@@ -86,17 +92,12 @@ def _default_aria2_options():
 
 @dataclass(frozen=True)
 class Aria2RuntimeConfiguration:
-    """Typed configuration injected into ``Aria2Runtime``/
-    ``Aria2Administration`` (DP 1.0.12 canonical architecture correction,
-    Workstream C, specification section 9.3). Rebuilt and re-injected by
-    ``application.composition.configure()`` on every settings change; the
-    runtime/admin singletons never consult global application settings
-    themselves to discover their own native tuning, lifecycle, or
-    application storage root."""
+    """aria2-owned typed configuration: its ``integrations.aria2`` options and
+    the download root. Built by the aria2 integration factory on every
+    settings change; the runtime never consults global application settings
+    and carries no DebridPulse global policy."""
     options: Any = field(default_factory=_default_aria2_options)
     download_root: str = "/download"
-    max_concurrent_executions: int = 3
-    max_download_bytes_per_second: int = 0
 
 
 class Aria2Runtime:
@@ -109,13 +110,23 @@ class Aria2Runtime:
         self._stderr_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
         self._config = Aria2RuntimeConfiguration()
+        # The aggregate download ceiling core last assigned to this executor
+        # (0 = unlimited). Held here so a daemon (re)start enforces it too.
+        self._bandwidth_ceiling = 0
+        # Process-lifetime (never persisted) exact values to redact from this
+        # daemon's diagnostics per DP attempt: endpoint addresses and header
+        # values of owned jobs. Bounded; lost on restart, when the generic
+        # URL/credential sanitizer and the job's own reported URIs remain.
+        self.redactions: OrderedDict[str, tuple[str, ...]] = OrderedDict()
 
     def configure(self, config: Aria2RuntimeConfiguration) -> None:
-        """Injection point (specification section 9.3): composition calls
-        this on every settings change so this long-lived singleton always
-        acts on current configuration without ever reading global
-        application settings itself."""
+        """Injection point: the aria2 integration factory calls this on every
+        settings change so this long-lived singleton always acts on current
+        aria2 configuration without ever reading global application settings."""
         self._config = config
+
+    def assign_bandwidth_ceiling(self, bytes_per_second: int) -> None:
+        self._bandwidth_ceiling = max(0, int(bytes_per_second))
 
     @property
     def options(self):
@@ -178,10 +189,8 @@ class Aria2Runtime:
         log_file, session_file = self._runtime_paths()
         download_dir = self._download_dir()
         download_dir.mkdir(parents=True, exist_ok=True)
-        options = build_aria2_global_options(
-            aria2, self._config.max_concurrent_executions,
-            self._config.max_download_bytes_per_second, include_safety=True,
-        )
+        options = build_aria2_global_options(aria2, include_safety=True)
+        options["max-overall-download-limit"] = str(self._bandwidth_ceiling)
         cmd = [
             "aria2c",
             "--enable-rpc=true",
@@ -308,10 +317,7 @@ class Aria2Runtime:
 
     async def apply_options(self) -> Dict[str, Any]:
         svc = self._service()
-        options = build_aria2_global_options(
-            self._config.options, self._config.max_concurrent_executions,
-            self._config.max_download_bytes_per_second, include_safety=True,
-        )
+        options = build_aria2_global_options(self._config.options, include_safety=True)
         await svc.change_global_options(options)
         return {"ok": True, "options": options}
 
@@ -337,10 +343,7 @@ class Aria2Runtime:
             "uptime_seconds": int(time.time() - self._started_at) if self._started_at else 0,
             "last_error": self._last_error or rpc_error,
             "last_output": "\n".join(self._last_output),
-            "safety": build_aria2_global_options(
-                aria2, self._config.max_concurrent_executions,
-                self._config.max_download_bytes_per_second, include_safety=True,
-            ),
+            "safety": build_aria2_global_options(aria2, include_safety=True),
         }
 
     async def _wait_until_healthy(self) -> None:

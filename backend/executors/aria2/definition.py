@@ -55,11 +55,13 @@ def _upgrade_legacy_options(legacy: dict, existing: dict) -> dict:
 
 
 def build(options, environment):
+    from executors.aria2.admin import Aria2Administration
     from executors.aria2.executor import Aria2Configuration, Aria2Executor
-    from executors.aria2.runtime import RPC_SECRET, rpc_service
-    # Derived entirely from the injected typed `options` -- never a global
-    # settings lookup (specification section 9.3). The daemon owner constructs
-    # the client for the one daemon DebridPulse runs.
+    from executors.aria2.runtime import RPC_SECRET, Aria2RuntimeConfiguration, rpc_service, runtime
+    # Derived entirely from the injected typed `options` and the download root
+    # -- never a global settings lookup and never DebridPulse global policy.
+    # The daemon owner constructs the client for the one daemon DebridPulse runs.
+    runtime.configure(Aria2RuntimeConfiguration(options=options, download_root=environment.download_root))
     client = rpc_service(options)
     configuration = Aria2Configuration(
         environment.download_root,
@@ -67,7 +69,14 @@ def build(options, environment):
         waiting_window=options.waiting_window, stopped_window=options.stopped_window,
         secrets=(RPC_SECRET,),
     )
-    return Aria2Executor(client, configuration, environment.repository.authorize_execution)
+    executor = Aria2Executor(client, configuration, environment.repository.authorize_execution, runtime=runtime)
+    # The managed daemon lifecycle and aria2's administration surface are
+    # aria2-owned and reach the application through the generic integration
+    # seam (``ManagedIntegration`` / ``AdministeredIntegration``).
+    administration = Aria2Administration(executor, environment.repository, environment.commands, runtime)
+    executor.lifecycle = administration
+    executor.administration = administration
+    return executor
 
 
 definition = IntegrationDefinition(

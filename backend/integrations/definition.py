@@ -1,6 +1,6 @@
 """Configuration metadata shared by modular integration definitions."""
 from dataclasses import dataclass, replace
-from typing import Callable, Optional
+from typing import Callable, Optional, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,35 @@ class IntegrationSettings(BaseModel):
 class IntegrationEnvironment:
     repository: object
     download_root: str
+    # Neutral application commands (pause/resume/cancel) an integration-owned
+    # administration surface may forward operator intent to.
+    commands: object = None
+
+
+@runtime_checkable
+class IntegrationLifecycle(Protocol):
+    """A managed integration component driven by the application lifecycle."""
+
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
+    async def maintain(self) -> None: ...
+
+
+@runtime_checkable
+class ManagedIntegration(Protocol):
+    """An integration implementation that owns a lifecycle component (for
+    example a managed daemon). Discovered generically by composition."""
+
+    lifecycle: IntegrationLifecycle
+
+
+@runtime_checkable
+class AdministeredIntegration(Protocol):
+    """An integration implementation exposing its own administration surface
+    for integration-specific API/UI endpoints. Never used by neutral core
+    runtime operations."""
+
+    administration: object
 
 
 @dataclass(frozen=True)

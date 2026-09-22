@@ -31,7 +31,7 @@ from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.cohorts import coordinate_collection
 from transfers.mirrors import EvidenceContext
-from transfers.models import Artifact
+from transfers.models import Artifact, ExecutionSubject
 from transfers.policy import RecoveryContext
 
 
@@ -141,7 +141,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 continue
             if not self._candidate_provider_enabled(candidate):
                 continue
-            if not self.registry.eligible_executors(candidate):
+            if not self.registry.claimants(ExecutionSubject.of(candidate)):
                 continue
             if await self.canonical.origin_for(artifact, candidate) is None:
                 continue
@@ -153,7 +153,7 @@ class TransferEngine(_QualifiedTransferEngine):
         stored = await self.repository.recovery_context(artifact.id)
         candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
         provider_ready = self._candidate_provider_enabled(candidate)
-        executor_ready = bool(candidate is None or self.registry.eligible_executors(candidate))
+        executor_ready = bool(candidate is None or self.registry.claimants(ExecutionSubject.of(candidate)))
         return RecoveryContext(
             execution_attempts=int(stored.get("execution_attempts") or 0),
             consecutive_no_progress_failures=int(stored.get("consecutive_no_progress_failures") or 0),

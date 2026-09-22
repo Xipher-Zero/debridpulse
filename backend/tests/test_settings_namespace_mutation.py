@@ -46,6 +46,8 @@ def _application(current, *, validate_configuration=None, aria2_admin=None):
         reconcile_executions=AsyncMock(),
         integration_admin=lambda _identity: admin,
         validate_configuration=validate_configuration or AsyncMock(),
+        execution_runtime_limits=AsyncMock(side_effect=lambda: {
+            "ok": True, "configured": {}, "effective": {}, "last_apply_error": None}),
     )
 
 
@@ -120,12 +122,10 @@ async def test_patch_transfer_policy_updates_only_requested_field():
     assert saved["cfg"].integrations["aria2"].options["split"] == 16
     assert application.configure.calls == 1
     application.reconcile_executions.assert_awaited_once()
-    # Gate 9 revision-5 rejection finding 4: a concurrency change projects
-    # into the running aria2 daemon's native
-    # ``max-concurrent-downloads`` through the SAME executor-owned
-    # administration entry point periodic housekeeping already uses -- not a
-    # second native-option pipeline.
-    application.integration_admin("aria2").apply_memory_tuning.assert_awaited_once()
+    # Universal Executor Leveling: global concurrency has one owner -- core
+    # admission. A concurrency change is never projected into any executor's
+    # native options (no executor administration surface is touched).
+    application.integration_admin("aria2").apply_memory_tuning.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -153,13 +153,12 @@ async def test_patch_transfer_policy_reconfigures_engine_but_skips_dispatch_nudg
 
 
 @pytest.mark.asyncio
-async def test_patch_transfer_policy_reports_native_concurrency_apply_failure_truthfully():
-    """Specification section 2.7: an API success must not imply that a
-    failed native apply succeeded. When the daemon rejects the
-    projected native concurrency option, the route must report it as
-    ``last_apply_error`` rather than silently swallowing it -- the durable
-    desired value (the actual policy authority) is still persisted either
-    way."""
+async def test_patch_transfer_policy_never_projects_concurrency_into_an_executor():
+    """Universal Executor Leveling (supersedes Gate 9 revision-5 finding 4):
+    ``max_concurrent_executions`` is enforced only by core admission, so a
+    concurrency change has no native apply that could fail -- even an
+    unreachable executor administration surface is never consulted, and the
+    durable desired value is the whole truth."""
     current = _settings_with_full_integrations()
     admin = SimpleNamespace(apply_memory_tuning=AsyncMock(side_effect=RuntimeError("daemon unreachable")))
     application = _application(current, aria2_admin=admin)
@@ -171,11 +170,10 @@ async def test_patch_transfer_policy_reports_native_concurrency_apply_failure_tr
         result = await routes.patch_transfer_policy(
             routes.TransferPolicyUpdate(max_concurrent_executions=9), application=application,
         )
-    assert result["ok"] is False
-    assert result["last_apply_error"]
+    assert result["ok"] is True
+    assert result["last_apply_error"] is None
     assert result["max_concurrent_executions"] == 9
-    # Durable desired state is the actual scheduler authority and is not
-    # rewritten back because the native projection failed.
+    admin.apply_memory_tuning.assert_not_awaited()
     assert saved["cfg"].transfer_policy.max_concurrent_executions == 9
 
 

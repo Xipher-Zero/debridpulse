@@ -22,11 +22,13 @@ import services.network_safety as safety
 import executors.aria2.executor as executor_module
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from services.downloader_egress_guard import DownloaderEgressGuard
+from execution_requests import file_request
 from transfers.errors import Category, TransferError
 from transfers.models import (
     Endpoint, ExecutionRequest, TransferCandidate, new_identity,
 )
 from transfers.registry import IntegrationRegistry
+from transfers.models import ExecutionSubject
 
 
 CLAIMED = ("http", "https", "ftp", "sftp")
@@ -52,7 +54,8 @@ def _executor(tmp_path: Path, *, egress=None) -> Aria2Executor:
 # ── 1. Descriptor truth ───────────────────────────────────────────────────────
 
 def test_descriptor_claims_exactly_the_four_supported_transports() -> None:
-    assert Aria2Executor.descriptor.schemes == frozenset({"http", "https", "ftp", "sftp"})
+    assert executor_module.SUPPORTED_SCHEMES == frozenset({"http", "https", "ftp", "sftp"})
+    assert "schemes" not in vars(Aria2Executor.descriptor)
 
 
 def test_descriptor_claim_is_a_positive_allowlist_with_no_negative_list() -> None:
@@ -63,7 +66,7 @@ def test_descriptor_claim_is_a_positive_allowlist_with_no_negative_list() -> Non
         for name in vars(descriptor)
     )
     for scheme in UNCLAIMED:
-        assert scheme not in descriptor.schemes
+        assert scheme not in executor_module.SUPPORTED_SCHEMES
 
 
 # ── 2. Registry truth (no scheme-specific core policy) ────────────────────────
@@ -73,24 +76,24 @@ def test_registry_selects_aria2_for_every_claimed_scheme(tmp_path, scheme) -> No
     registry = IntegrationRegistry()
     executor = _executor(tmp_path)
     registry.register_executor(executor)
-    candidate = _candidate(scheme)
-    assert registry.eligible_executors(candidate) == (executor,)
-    assert registry.executor_for(candidate) is executor
+    subject = ExecutionSubject.of(_candidate(scheme))
+    assert registry.claimants(subject) == (executor,)
+    assert registry.executor_for_subject(subject) is executor
 
 
 @pytest.mark.parametrize("scheme", UNCLAIMED)
 def test_unclaimed_schemes_simply_have_no_eligible_executor(tmp_path, scheme) -> None:
     registry = IntegrationRegistry()
     registry.register_executor(_executor(tmp_path))
-    candidate = _candidate(scheme)
-    assert registry.eligible_executors(candidate) == ()
+    subject = ExecutionSubject.of(_candidate(scheme))
+    assert registry.claimants(subject) == ()
     with pytest.raises(TransferError) as raised:
-        registry.executor_for(candidate)
+        registry.executor_for_subject(subject)
     assert raised.value.error.category == Category.UNSUPPORTED_CAPABILITY
 
 
 def test_registry_carries_no_scheme_specific_policy() -> None:
-    """Selection stays a set intersection; the core names no transport."""
+    """Selection is a claim over the subject; the core names no transport."""
     source = (Path(safety.__file__).resolve().parents[1] / "transfers" / "registry.py").read_text()
     lowered = source.lower()
     for scheme in ("ftp", "sftp", "http"):
@@ -101,8 +104,8 @@ def test_registry_carries_no_scheme_specific_policy() -> None:
 
 def test_executor_claims_no_torrent_magnet_or_metalink_execution() -> None:
     descriptor = Aria2Executor.descriptor
-    assert "magnet" not in descriptor.schemes
-    assert "metalink" not in descriptor.schemes
+    assert "magnet" not in executor_module.SUPPORTED_SCHEMES
+    assert "metalink" not in executor_module.SUPPORTED_SCHEMES
     assert descriptor.request_types == frozenset()
 
 
@@ -116,7 +119,7 @@ async def test_metadata_following_stays_disabled_for_every_claimed_scheme(
 
     monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
     executor = _executor(tmp_path)
-    request = ExecutionRequest(_candidate(scheme), str(tmp_path / "payload.bin"), new_identity())
+    request = file_request(_candidate(scheme), str(tmp_path / "payload.bin"), new_identity())
     _address, options = await executor._options(request, executor.prepare(request))
     assert options["follow-torrent"] == "false"
     assert options["follow-metalink"] == "false"
@@ -173,11 +176,11 @@ async def test_every_claimed_transport_is_sampled_through_its_own_evidence_reade
     calls = _transport_samplers(monkeypatch)
     executor = _executor(tmp_path)
     for scheme in ("http", "https", "ftp"):
-        result = await executor.fingerprint(_candidate(scheme))
+        result = await executor.fingerprint(ExecutionSubject.of(_candidate(scheme)))
         assert result is not None and result.total_bytes == 10
     sftp = TransferCandidate("payload.bin", (Endpoint("sftp", "sftp://provider.example/payload.bin"),),
                              accepted_input_methods=(InputMethod.USERNAME_PASSWORD,))
-    requirement = await executor.fingerprint(sftp)
+    requirement = await executor.fingerprint(ExecutionSubject.of(sftp))
     assert isinstance(requirement, InputRequirement) and requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED
     assert [kind for kind, _address in calls] == ["http", "http", "ftp", "sftp"]  # FTP/SFTP never reach the HTTP sampler
 
@@ -185,7 +188,7 @@ async def test_every_claimed_transport_is_sampled_through_its_own_evidence_reade
 @pytest.mark.asyncio
 async def test_a_mixed_candidate_samples_the_endpoint_execution_uses(tmp_path, monkeypatch) -> None:
     calls = _transport_samplers(monkeypatch)
-    assert await _executor(tmp_path).fingerprint(_candidate("ftp", "https")) is not None
+    assert await _executor(tmp_path).fingerprint(ExecutionSubject.of(_candidate("ftp", "https"))) is not None
     assert calls == [("ftp", "ftp://provider.example/payload.bin")]
 
 
@@ -227,7 +230,7 @@ def test_one_validator_owns_both_scheme_sets() -> None:
 
 def test_guarded_transport_set_matches_the_executor_claim() -> None:
     """The guarded-transport set and the executor claim may never drift apart."""
-    assert safety.PUBLIC_DESTINATION_SCHEMES == Aria2Executor.descriptor.schemes
+    assert safety.PUBLIC_DESTINATION_SCHEMES == executor_module.SUPPORTED_SCHEMES
 
 
 @pytest.mark.parametrize("scheme", CLAIMED)
@@ -382,7 +385,7 @@ async def test_the_new_transports_cannot_bypass_the_guard(tmp_path, monkeypatch,
     await guard.ensure_started()
     try:
         executor = _executor(tmp_path, egress=guard)
-        request = ExecutionRequest(_candidate(scheme), str(tmp_path / "payload.bin"), new_identity())
+        request = file_request(_candidate(scheme), str(tmp_path / "payload.bin"), new_identity())
         _address, options = await executor._options(request, executor.prepare(request))
         assert options["all-proxy"] == f"http://127.0.0.1:{guard.bound_port}"
         assert options["ftp-proxy"] == options["all-proxy"]
@@ -396,7 +399,7 @@ async def test_the_new_transports_cannot_bypass_the_guard(tmp_path, monkeypatch,
 @pytest.mark.parametrize("scheme", ("ftp", "sftp"))
 async def test_a_blocked_new_transport_destination_is_a_security_failure(tmp_path, scheme) -> None:
     executor = _executor(tmp_path)
-    request = ExecutionRequest(
+    request = file_request(
         TransferCandidate("payload.bin", (Endpoint(scheme, f"{scheme}://127.0.0.1/payload.bin"),)),
         str(tmp_path / "payload.bin"),
         new_identity(),

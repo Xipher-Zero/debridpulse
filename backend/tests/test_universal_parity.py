@@ -25,11 +25,12 @@ async def test_resume_all_obeys_capacity_and_releases_parked_successors(canonica
     core.engine.policy = replace(core.engine.policy, max_active_executions=1)
     await core.engine.resume_all()
     jobs = list(core.executor.jobs.values())
-    assert sum(job.occupies_slot for job in jobs) == 1
-    active = next(job for job in jobs if job.occupies_slot)
+    acquiring = {ExecutionState.QUEUED, ExecutionState.RUNNING}
+    assert sum(job.state in acquiring for job in jobs) == 1
+    active = next(job for job in jobs if job.state in acquiring)
     core.executor.finish(active.handle)
     await core.engine.tick()
-    assert sum(job.occupies_slot for job in core.executor.jobs.values()) == 1
+    assert sum(job.state in acquiring for job in core.executor.jobs.values()) == 1
     assert len(core.executor.jobs) == len(parents)
 
 

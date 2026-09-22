@@ -61,7 +61,7 @@ def candidate(
 class Registry:
     """No sampler should ever be reached once resolver-attested proof applies."""
 
-    def executor_for(self, _candidate):
+    def executor_for_subject(self, _subject):
         raise AssertionError("sampling must not be reached when resolver evidence proves equivalence")
 
 
@@ -133,8 +133,8 @@ async def test_near_but_not_exact_resolver_size_falls_through_to_content_evidenc
     calls = []
 
     class SamplingRegistry:
-        def executor_for(self, value):
-            calls.append(value.id)
+        def executor_for_subject(self, subject):
+            calls.append(subject.candidate.id)
             return None  # no sampling capability -> UNAVAILABLE, proves the resolver path did not consolidate
 
     evidence = await shared_evidence(left, right, SamplingRegistry())
@@ -162,8 +162,8 @@ async def test_generic_http_same_name_same_size_without_resolver_evidence_stays_
     calls = []
 
     class SamplingRegistry:
-        def executor_for(self, value):
-            calls.append(value.id)
+        def executor_for_subject(self, subject):
+            calls.append(subject.candidate.id)
             return None
 
     evidence = await shared_evidence(left, right, SamplingRegistry())
