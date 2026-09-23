@@ -124,6 +124,9 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
   font-weight: 700;
   letter-spacing: .09em;
   text-transform: uppercase;
+  /* The heading centres over the family it names; the provider rows beneath
+     keep their own left alignment. */
+  text-align: center;
 }
 
 body.light .sidebar-footer .dp-provider-status-tier-label {

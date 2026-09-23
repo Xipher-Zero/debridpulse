@@ -6,6 +6,7 @@ is persisted only as opaque context on a resource or execution attempt.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -2171,6 +2172,203 @@ class TransferRepository:
         if action in {"start", "resume"} and await self.globally_paused():
             return False
         return action != "start" or row["state"] == "prepared"
+
+    async def converge_staged_input(self, attempt_id: str, *, staged_context: dict,
+                                    context_key: str, retire_context_keys=()) -> tuple[str, dict | None]:
+        """Replace one execution's OBSOLETE INLINE submitted input with a
+        canonical staged reference, atomically, in both durable places that
+        carry it.
+
+        A release that moved a large submitted payload out of the request and
+        the candidate and into the staged-input owner leaves work resolved by
+        the previous release carrying the old representation. Such work is
+        still perfectly valid; only its input representation is obsolete, and
+        the executor holding it must not write SQLite itself. This is the one
+        durable seam for that convergence, handed to an owner as a bound
+        callable exactly as ``authorize_execution`` is.
+
+        It is generic: it names no request class, provider or executor. The
+        caller states which context key its obsolete representation used and
+        which one the canonical reference belongs under; everything else --
+        atomicity, compare-and-swap, the digest agreement between the two
+        durable copies, and proving the result -- belongs here.
+
+        One transaction:
+
+          1. resolve attempt -> artifact -> its root request;
+          2. require the selected candidate to still carry the expected
+             obsolete representation, and its bytes to match the staged
+             reference BY DIGEST;
+          3. require the request payload to be one of exactly two proven
+             shapes -- the obsolete inline form carrying the SAME bytes, or a
+             canonical reference to those same bytes (a half-converged row,
+             where only the candidate side is left to do). Every other shape,
+             including a canonical reference to DIFFERENT bytes, is a durable
+             inconsistency: a freshly staged copy of the candidate's bytes is
+             never authority to overwrite a durable request, so nothing is
+             written and no representation is chosen for being the one that
+             happened to be recognised;
+          4. rewrite the request payload and the SELECTED candidate's context
+             only, preserving every other candidate, every other context key,
+             the candidate ordering and the selected index exactly. A
+             half-converged row converges onto the reference ALREADY durable,
+             never onto the caller's newer copy;
+          5. prove both rows canonical inside the transaction, commit, then
+             prove them again on a connection that never saw the transaction.
+
+        Returns ``(outcome, proven_context)``:
+
+          ``converged`` -- this call performed it; the context is the one now
+                           durable.
+          ``already``   -- the rows were already canonical, because another
+                           worker won or this is a restart. The context is the
+                           WINNER's, which is what the caller must use: staged
+                           identities are minted per staging, so the caller's
+                           own staged object is simply an orphan the ordinary
+                           sweep reclaims.
+          ``mismatch``  -- a durable inconsistency. Nothing was written.
+          ``absent``    -- the attempt, artifact or request no longer exists.
+        """
+        retire = tuple(str(key) for key in retire_context_keys)
+        reference = {"$staged": dict(staged_context)}
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT e.artifact_id AS artifact_id, f.request_id AS request_id,
+                          f.candidates AS candidates, f.selected_candidate AS selected,
+                          r.payload AS payload
+                   FROM execution_attempts e
+                   JOIN download_files f ON f.id=e.artifact_id
+                   JOIN transfer_requests r ON r.id=f.request_id
+                   WHERE e.id=?""", (attempt_id,))
+            if not row:
+                return "absent", None
+
+            candidates = codec.load(row["candidates"], [])
+            selected = int(row["selected"] or 0)
+            if not candidates or not (0 <= selected < len(candidates)):
+                return "absent", None
+            payload = codec.load(row["payload"], {}) or {}
+            context = dict((candidates[selected].get("context") or {}))
+
+            # Already canonical: report the durable reference, not ours.
+            durable = payload.get("payload")
+            if isinstance(durable, dict) and isinstance(durable.get("$staged"), dict) \
+                    and isinstance(context.get(context_key), dict):
+                return "already", dict(context[context_key])
+
+            inline = next((key for key in retire if key in context), None)
+            if inline is None:
+                return "absent", None
+
+            # The two durable copies were written from ONE payload. BOTH are
+            # proven before EITHER is replaced -- there is no shape of request
+            # payload that is simply accepted because it is not the expected
+            # obsolete one. A request that is neither the obsolete inline form
+            # nor a canonical reference to these exact bytes is a durable
+            # inconsistency, and the caller's freshly staged copy is not
+            # authority to overwrite it.
+            digest = str(staged_context.get("sha256") or "")
+            try:
+                candidate_bytes = base64.b64decode(str(context[inline]), validate=True)
+            except (ValueError, TypeError):
+                return "mismatch", None
+            if hashlib.sha256(candidate_bytes).hexdigest() != digest:
+                return "mismatch", None
+
+            if not isinstance(durable, dict):
+                return "mismatch", None
+            if "$bytes" in durable:
+                # The obsolete inline form: it must be the same bytes.
+                try:
+                    request_bytes = base64.b64decode(str(durable["$bytes"]), validate=True)
+                except (ValueError, TypeError):
+                    return "mismatch", None
+                if hashlib.sha256(request_bytes).hexdigest() != digest:
+                    return "mismatch", None
+            elif isinstance(durable.get("$staged"), dict):
+                # A half-converged row: the request is already canonical while
+                # the candidate is not. Recoverable ONLY when the reference it
+                # already carries is to these exact bytes -- otherwise this
+                # call would be choosing between two disagreeing authorities.
+                existing = durable["$staged"]
+                if str(existing.get("sha256") or "") != digest:
+                    return "mismatch", None
+                if int(existing.get("byte_length") or -1) != len(candidate_bytes):
+                    return "mismatch", None
+                # Converge the remaining side onto the reference that is
+                # already durable, never onto the caller's newer copy.
+                reference = {"$staged": dict(existing)}
+                staged_context = dict(existing)
+            else:
+                return "mismatch", None
+
+            converged = list(candidates)
+            for key in retire:
+                context.pop(key, None)
+            context[context_key] = dict(staged_context)
+            converged[selected] = {**candidates[selected], "context": context}
+
+            # Compare-and-swap: both rows must still be exactly what was read,
+            # so a worker that converged concurrently is never overwritten by
+            # this call's stale candidate list.
+            updated = await db.execute(
+                "UPDATE transfer_requests SET payload=? WHERE id=? AND payload=?",
+                (codec.dump({**payload, "payload": reference}), row["request_id"], row["payload"]))
+            artifact = await db.execute(
+                "UPDATE download_files SET candidates=? WHERE id=? AND candidates=?",
+                (codec.dump(converged), row["artifact_id"], row["candidates"]))
+            if not updated.rowcount or not artifact.rowcount:
+                # Another worker changed a row between the read and the write.
+                await db.rollback()
+                return "already", None
+
+            # Proven TWICE, deliberately.
+            #
+            # The frozen ordering is "persist -> commit -> re-read and prove".
+            # Proving only after the commit would make an unproven rewrite
+            # durable for as long as it took to discover, so the write is first
+            # proven inside the transaction -- where a failure can still be
+            # rolled back and the obsolete representation left intact and
+            # retryable -- and then proven AGAIN after the commit, on a
+            # connection that never saw the transaction. The second read is the
+            # frozen one; the first only ensures nothing unproven can become
+            # durable in order to reach it.
+            if not await self._staged_input_is_canonical(
+                    db, row["artifact_id"], staged_context, context_key, retire):
+                await db.rollback()
+                return "mismatch", None
+            await db.commit()
+
+        async with get_db() as fresh:
+            if not await self._staged_input_is_canonical(
+                    fresh, row["artifact_id"], staged_context, context_key, retire):
+                return "mismatch", None
+        return "converged", dict(staged_context)
+
+    @staticmethod
+    async def _staged_input_is_canonical(db, artifact_id, staged_context, context_key, retire) -> bool:
+        """Read both durable rows and answer whether they are canonical.
+
+        One reader, used inside the transaction and again afterwards, so the
+        two proofs cannot drift apart.
+        """
+        proof = await db.fetchone(
+            """SELECT f.candidates AS candidates, f.selected_candidate AS selected,
+                      r.payload AS payload
+               FROM download_files f JOIN transfer_requests r ON r.id=f.request_id
+               WHERE f.id=?""", (artifact_id,))
+        if not proof:
+            return False
+        candidates = codec.load(proof["candidates"], [])
+        index = int(proof["selected"] or 0)
+        if not (0 <= index < len(candidates)):
+            return False
+        context = dict((candidates[index].get("context") or {}))
+        payload = (codec.load(proof["payload"], {}) or {}).get("payload")
+        return (isinstance(payload, dict)
+                and payload.get("$staged") == staged_context
+                and context.get(context_key) == staged_context
+                and not any(key in context for key in retire))
 
     async def artifact_state(self, artifact_id: int, state: str, *, error=None, retry_at=0, release=False, selected=None,
                              expected_bytes=None, size_knowledge=None):

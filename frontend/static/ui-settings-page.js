@@ -316,11 +316,16 @@
       </section>`;
   }
   function groupCard(title, body, options = {}) {
+    const titleMarkup = options.titlePrefix
+      ? `<span class="card-title dp-settings-card-title--with-icon">${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span></span>`
+      : `<span class="card-title">${html(title)}</span>`;
     return `
-      <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}">
-        <div class="card-header">
-          <span class="card-title">${html(title)}</span>
-          ${options.action || ''}
+      <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
+        options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}>
+        <div class="card-header${options.action ? ' dp-settings-card-header' : ''}">
+          ${options.action ? `<span class="dp-settings-card-title-group">${titleMarkup}</span>` : titleMarkup}
+          ${options.action ? `<div class="dp-settings-card-header-center"></div>
+          <div class="dp-settings-card-header-controls">${options.action}</div>` : ''}
         </div>
         <div class="card-body dp-settings-group-body">${body}</div>
       </section>`;
@@ -410,6 +415,45 @@
         <span class="toggle">
           <input id="${id}" data-integration-enabled="${html(identity)}" type="checkbox" ${checked(value)}
                  aria-label="Enable ${html(displayName)} provider route">
+          <span class="ttrack"></span>
+        </span>
+      </label>`;
+  }
+
+  /* The aggregate participation gate for one integration GROUP.
+   *
+   * Deliberately the same control, the same classes and the same immediate
+   * discipline as a member's Enable: to the operator these are the same kind
+   * of thing, and the only difference is what the mutation is scoped to. */
+  /* The ONE Settings protocol identity chip.
+   *
+   * Six appearances (General Sources, HTTP & HTTPS, FTP & SFTP and Usenet on
+   * Sources & Providers; General Sources and Usenet on Downloads) render this
+   * and nothing else, so the chip's whole treatment is declared once in CSS
+   * and a protocol contributes nothing but its canonical colour. */
+  const PROTOCOL_GLYPHS = Object.freeze({
+    direct_sources: 'globe',
+    general_http: 'globe',
+    general_ftp: 'arrow-up-down',
+    usenet: 'newspaper',
+  });
+
+  function protocolIcon(protocol) {
+    const glyph = PROTOCOL_GLYPHS[protocol];
+    if (!glyph) return '';
+    return `<span class="dp-settings-protocol-chip" aria-hidden="true" data-protocol="${html(protocol)}">`
+      + `<img src="/icons/lucide/${glyph}.svg" alt="" decoding="async"></span>`;
+  }
+
+  function groupHeaderToggle(groupId, label, value) {
+    const safeGroup = String(groupId || '').replace(/[^a-z0-9_-]/gi, '-');
+    const id = `dp-settings-integration-group-${safeGroup}-enabled`;
+    return `
+      <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable dp-settings-integration-header-enable dp-settings-provider-header-enable" for="${id}">
+        <span class="toggle-info"><span class="tl">Enable</span></span>
+        <span class="toggle">
+          <input id="${id}" data-integration-group-enabled="${html(groupId)}" type="checkbox" ${checked(value)}
+                 aria-label="Enable ${html(label)}">
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -636,6 +680,14 @@
           })}
         </div>
       </details>
+      <div class="dp-settings-provider-actions">
+        <button class="btn btn-ghost" type="button" data-action="test-alldebrid">
+          <span class="dp-settings-action-chip" aria-hidden="true">
+            <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
+          </span>
+          <span>Test</span>
+        </button>
+      </div>
 `, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
@@ -645,12 +697,14 @@
 
     const generalHttpCard = providerCard('general_http', 'HTTP & HTTPS', '', generalHttp, {
       className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-http',
+      titlePrefix: protocolIcon('general_http'),
       displayName: 'HTTP & HTTPS',
       headerCopy: 'Direct downloads from standard HTTP and HTTPS URLs.',
       headerOnly: true,
     });
     const generalFtpCard = providerCard('general_ftp', 'FTP & SFTP', '', generalFtp, {
       className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-ftp',
+      titlePrefix: protocolIcon('general_ftp'),
       displayName: 'FTP & SFTP',
       headerCopy: 'Direct downloads from FTP and SFTP URLs.',
       headerOnly: true,
@@ -662,6 +716,7 @@
     const usenet = integrations.usenet || {enabled: false};
     const usenetCard = providerCard('usenet', 'Usenet', usenetBody(s, usenet), usenet, {
       className: 'dp-settings-provider-card dp-settings-provider-card--usenet',
+      titlePrefix: protocolIcon('usenet'),
       displayName: 'Usenet',
       headerCopy: 'Download NZB content from configured Usenet news servers.',
     });
@@ -670,8 +725,17 @@
     const externalProviders = groupCard('External Providers', usenetCard + provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
-    const generalSources = groupCard(generalHttp.presentation?.status_group_label || 'General Sources', generalHttpCard + generalFtpCard, {
+    // Group identity, label and gate all come from metadata the members
+    // already publish -- there is no second list of who is in this family.
+    const groupId = generalHttp.presentation?.status_group || '';
+    const groupLabel = (s.integration_groups?.[groupId]?.label)
+      || generalHttp.presentation?.status_group_label || 'General Sources';
+    const groupEnabled = s.integration_groups?.[groupId]?.enabled !== false;
+    const generalSources = groupCard(groupLabel, generalHttpCard + generalFtpCard, {
       className: 'dp-settings-source-group dp-settings-general-sources',
+      titlePrefix: protocolIcon(groupId),
+      action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
+      groupId,
     });
     return externalProviders + generalSources;
   }
@@ -723,13 +787,15 @@
   // Download Safety and Recovery. Operator-facing labels name capabilities,
   // never daemon implementations.
 
-  function executorTuningCard(id, label, copy, body) {
+  function executorTuningCard(id, label, copy, body, protocol = '') {
     const bodyId = `dp-executor-tuning-${id}`;
+    const identity = protocolIcon(protocol);
     return `
       <section class="card dp-settings-card dp-executor-tuning-card" data-executor-tuning="${html(id)}">
         <div class="card-header dp-settings-card-header">
           <span class="dp-settings-card-title-group">
-            <span class="card-title">${html(label)}</span>
+            <span class="card-title${identity ? ' dp-settings-card-title--with-icon' : ''}">${identity}${
+              identity ? `<span class="dp-settings-card-title-text">${html(label)}</span>` : html(label)}</span>
             ${settingsDisclosure(bodyId, false, `${label} tuning`)}
           </span>
           <div class="dp-settings-card-header-center">${html(copy)}</div>
@@ -838,10 +904,14 @@
     });
 
     const tuning = groupCard('Executor Tuning',
-      executorTuningCard('direct', 'Direct Transfers',
-        'Tuning for HTTP(S), FTP/SFTP and other direct transfers.', directTransfersTuning(s)) +
+      // The operator-facing family name matches Sources & Providers exactly;
+      // the executor id stays 'direct', because nothing about the executor
+      // changed and renaming it would only churn durable identities.
+      executorTuningCard('direct', 'General Sources',
+        'Tuning for HTTP(S), FTP/SFTP and other general source transfers.',
+        directTransfersTuning(s), 'direct_sources') +
       executorTuningCard('usenet', 'Usenet',
-        'Tuning for Usenet download behavior.', usenetTuning(s)), {
+        'Tuning for Usenet download behavior.', usenetTuning(s), 'usenet'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
     });
 
@@ -1550,12 +1620,6 @@
         <div class="dp-settings-master-footer" aria-label="Settings actions">
           <span class="dp-settings-save-hint">Changes remain unsaved until Apply Settings is selected.</span>
           <div class="dp-settings-context-actions">
-            <button class="btn btn-ghost" type="button" data-context-action="sources" data-action="test-alldebrid">
-              <span class="dp-settings-action-chip" aria-hidden="true">
-                <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-              </span>
-              <span>Test AllDebrid</span>
-            </button>
             <button class="btn btn-ghost" type="button" data-context-action="downloads" data-action="test-aria2">Test Download Engine</button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt=""></span><span>Test Discord</span></button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="send-report"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/send.svg" alt=""></span><span>Send Report Now</span></button>
@@ -1689,6 +1753,50 @@
     try { window.DPProviderStatus?.refresh(); } catch (_) {}
   }
 
+  /* Render one integration GROUP's presentation from COMMITTED canonical
+   * state -- the same rule as renderIntegrationState, for the same reason. */
+  function renderGroupState(card, groupId) {
+    const entry = state.settings?.integration_groups?.[groupId] || {};
+    const input = card.querySelector(`[data-integration-group-enabled="${groupId}"]`);
+    if (input) input.checked = entry.enabled !== false;
+  }
+
+  function adoptIntegrationGroup(groupId, result) {
+    const {ok, group_id, ...entry} = result || {};
+    state.settings = {...state.settings,
+      integration_groups: {...state.settings?.integration_groups, [groupId]: entry}};
+  }
+
+  /* The group master, on the same immediate path as every member toggle.
+   *
+   * It is a participation GATE: it persists one boolean scoped to the group
+   * and writes no member namespace, so the members' own preferences are
+   * exactly as they were on both sides of it. */
+  async function groupEnableChanged(input) {
+    const groupId = input.dataset.integrationGroupEnabled;
+    const card = input.closest('[data-integration-group]');
+    if (!groupId || !card) return;
+    const desired = input.checked;
+    input.disabled = true;
+    try {
+      const result = await request(
+        'PATCH', `/integration-groups/${encodeURIComponent(groupId)}/configuration`,
+        {enabled: desired}, 15000);
+      adoptIntegrationGroup(groupId, result);
+      renderGroupState(card, groupId);
+      const committed = state.settings?.integration_groups?.[groupId]?.enabled !== false;
+      notify(`${result?.label || groupId} ${committed ? 'enabled' : 'disabled'}`, 'success');
+    } catch (error) {
+      // Nothing optimistic is left lying: the control returns to the canonical
+      // group state the server last confirmed.
+      renderGroupState(card, groupId);
+      notify(error.message, 'error');
+    } finally {
+      input.disabled = false;
+    }
+    try { window.DPProviderStatus?.refresh(); } catch (_) {}
+  }
+
   function integrationDisplayName(card, identity) {
     return card.querySelector('.card-title .dp-settings-card-title-text')?.textContent?.trim()
       || card.querySelector('.card-title')?.textContent?.trim()
@@ -1719,6 +1827,7 @@
 
     view.addEventListener('change', event => {
       if (event.target.matches('[data-integration-enabled]')) void providerEnableChanged(event.target);
+      if (event.target.matches('[data-integration-group-enabled]')) void groupEnableChanged(event.target);
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
@@ -1900,6 +2009,7 @@
     // read-only compatibility names the server derived from them are never
     // echoed back (the server lists exactly which names those are).
     delete current.integrations;
+    delete current.integration_groups;
     delete current.transfer_policy;
     delete current.execution_runtime_limits;
     for (const name of current.compatibility_fields || []) delete current[name];

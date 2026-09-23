@@ -154,6 +154,12 @@
   margin: 2px 0 10px;
   font-size: .82rem;
   opacity: .85;
+  /* The primitive is a block whose checkbox and text are inline siblings, so
+     centring the inline formatting context centres the CONTROL AND ITS TEXT
+     as one group -- and leaves the primitive's own optical baseline
+     (vertical-align: middle on the control) untouched. Anything that centred
+     the text alone would leave the checkbox where it was. */
+  text-align: center;
 }
 
 .dp-usenet-server-status { margin: 8px 0 0; text-align: center; font-size: .85rem; }

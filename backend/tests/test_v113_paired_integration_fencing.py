@@ -48,7 +48,7 @@ def test_the_declared_identities_match_what_is_actually_registered(tmp_path):
     settings = SimpleNamespace(integrations={d.id: IntegrationSettings() for d in definitions})
     registry = IntegrationRegistry()
     register(registry, settings, IntegrationEnvironment(
-        SimpleNamespace(authorize_execution=None), str(tmp_path)))
+        SimpleNamespace(authorize_execution=None, converge_staged_input=None), str(tmp_path)))
     registered = set(registry.providers) | set(registry.executors)
     declared = set().union(*(d.owned_identities for d in definitions))
     assert declared == registered, (declared ^ registered)

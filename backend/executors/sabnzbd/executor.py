@@ -56,6 +56,7 @@ the existing observation machinery to converge.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import base64
 import hashlib
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -87,6 +88,13 @@ SUPPORTED_REQUEST_KIND = "nzb"
 # owner and are streamed from there, so neither the candidate row nor this
 # executor ever holds a whole large posting in memory.
 CONTEXT_STAGED_INPUT = "staged_input"
+# Where a PREVIOUS release parked the manifest itself: base64 inside the
+# candidate, with the same bytes inline in the durable request. Work resolved
+# before the staged-input correction and not yet terminal still carries it at
+# upgrade, and is perfectly valid work -- only its input representation is
+# obsolete. It is read exactly once per execution, to converge it, and this is
+# the only place the name appears.
+LEGACY_CONTEXT_MANIFEST = "nzb_base64"
 # The longest native job name DebridPulse will assign. SAB sanitizes a job name
 # into a folder name, and a release name is the only thing that belongs here.
 _MAXIMUM_DISPLAY_NAME = 200
@@ -125,13 +133,18 @@ class SabnzbdExecutor:
 
     def __init__(self, client, configuration: SabnzbdConfiguration,
                  authorize: Callable[[ExecutionHandle, str], Awaitable[bool]],
-                 staged_input=None):
+                 staged_input=None, converge=None):
         self.client = client
         self.configuration = configuration
         self.authorize = authorize
         # The neutral durable-input owner. Borrowed to READ the submitted
         # manifest; this executor owns none of its lifecycle.
         self.staged_input = staged_input
+        # The narrow durable convergence seam, bound exactly like ``authorize``:
+        # this executor never writes the database, and this is not a general
+        # repository handle. Absent simply means an execution carrying the
+        # obsolete inline representation cannot be converged here.
+        self.converge = converge
 
     # --- pure contract ---------------------------------------------------
 
@@ -247,17 +260,97 @@ class SabnzbdExecutor:
         if action != "observe" and not await self.authorize(handle, action):
             raise TransferError(failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE))
 
-    def _staged(self, request: ExecutionRequest) -> StagedPayload:
-        """This execution's durable input reference, as the provider left it."""
-        raw = (request.work.subject.candidate.context or {}).get(CONTEXT_STAGED_INPUT)
+    @staticmethod
+    def _malformed(diagnostic: str = "") -> TransferError:
+        """The submitted input is not usable. Permanent, and never a guess."""
+        return TransferError(failure(Category.INVALID_REQUEST, stage=Stage.QUEUE,
+                                     domain=Domain.REQUEST, diagnostic=diagnostic))
+
+    @staticmethod
+    def _unavailable(diagnostic: str = "") -> TransferError:
+        """Staging or durable persistence could not complete RIGHT NOW.
+
+        Truthfully retryable: the input is fine, the infrastructure is not, and
+        terminalizing it as malformed input would destroy valid work for a
+        reason that has nothing to do with it.
+        """
+        return TransferError(failure(Category.EXECUTOR_UNAVAILABLE, stage=Stage.QUEUE,
+                                     retryability=Retryability.BACKOFF, diagnostic=diagnostic))
+
+    async def _staged(self, request: ExecutionRequest) -> StagedPayload:
+        """This execution's durable input reference.
+
+        Canonical work already carries one. Work resolved by a previous release
+        carries the manifest inline instead, and is converged to the canonical
+        representation ONCE, here, before anything is submitted -- a one-way
+        migration, not a second execution path: after it the ordinary staged
+        path runs, and nothing downstream knows the difference.
+        """
+        context = request.work.subject.candidate.context or {}
         if self.staged_input is None:
-            raise TransferError(failure(Category.INVALID_REQUEST, stage=Stage.QUEUE,
-                                        domain=Domain.REQUEST))
+            raise self._malformed()
+        raw = context.get(CONTEXT_STAGED_INPUT)
+        if raw is not None:
+            try:
+                return StagedPayload.from_context(raw)
+            except StagedInputError as exc:
+                raise self._malformed() from exc
+        return await self._converge_obsolete_input(request, context)
+
+    async def _converge_obsolete_input(self, request: ExecutionRequest, context: dict) -> StagedPayload:
+        """Move this execution's inline submitted input to the staged owner.
+
+        Frozen ordering: decode -> stage -> verify -> persist both durable
+        copies atomically -> prove -> only then may the caller submit. A
+        failure anywhere before the durable commit leaves the obsolete rows
+        exactly as they were, so the next attempt can simply do this again;
+        the staged object it abandoned is an ordinary orphan for the existing
+        sweep, and gets no second cleanup owner here.
+        """
+        inline = context.get(LEGACY_CONTEXT_MANIFEST)
+        if inline is None or self.converge is None:
+            raise self._malformed()
         try:
-            return StagedPayload.from_context(raw)
+            payload = base64.b64decode(str(inline), validate=True)
+        except (ValueError, TypeError) as exc:
+            raise self._malformed("submitted input is not valid base64") from exc
+        if not payload:
+            raise self._malformed("submitted input is empty")
+
+        async def one_chunk():
+            yield payload
+
+        try:
+            staged = await self.staged_input.stage(one_chunk())
+            self.staged_input.verify(staged)
         except StagedInputError as exc:
-            raise TransferError(failure(Category.INVALID_REQUEST, stage=Stage.QUEUE,
-                                        domain=Domain.REQUEST)) from exc
+            raise self._unavailable(str(exc)) from exc
+        except OSError as exc:
+            raise self._unavailable(type(exc).__name__) from exc
+
+        try:
+            outcome, proven = await self.converge(
+                request.attempt_id, staged_context=staged.as_context(),
+                context_key=CONTEXT_STAGED_INPUT,
+                retire_context_keys=(LEGACY_CONTEXT_MANIFEST,))
+        except Exception as exc:
+            # Durable persistence, not the input, is what failed.
+            raise self._unavailable(type(exc).__name__) from exc
+
+        if outcome == "mismatch":
+            # The two durable copies of this input disagree. That is corruption
+            # and there is no authority to pick one, so nothing is submitted.
+            raise self._malformed("submitted input copies disagree")
+        if outcome not in ("converged", "already"):
+            raise self._unavailable(str(outcome))
+        if proven is None:
+            # Another worker converged it; this attempt reads the canonical
+            # rows on its next pass rather than racing them.
+            raise self._unavailable("durable input convergence was won elsewhere")
+        try:
+            return StagedPayload.from_context(proven)
+        except StagedInputError as exc:
+            raise self._malformed() from exc
 
     async def _locate(self, token: str, nzo_id: str = ""):
         """Find this execution's native job. Returns ``(slot, in_history)``.
@@ -300,7 +393,7 @@ class SabnzbdExecutor:
             if self.prepare(request) != handle:
                 raise TransferError(failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE))
             token = self._token(handle)
-            staged = self._staged(request)
+            staged = await self._staged(request)
         except TransferError as exc:
             return ExecutionObservation(handle, ExecutionState.FAILED, error=exc.error)
 

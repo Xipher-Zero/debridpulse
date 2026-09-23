@@ -12,6 +12,20 @@ class IntegrationSettings(BaseModel):
     clear_secrets: list[str] = Field(default_factory=list, exclude=True)
 
 
+class IntegrationGroupSettings(BaseModel):
+    """One aggregate participation gate over a family of integrations.
+
+    A group is identified by the ``presentation.status_group`` its members
+    already declare, so nothing here holds a second list of who belongs to
+    what. The gate is a gate and not a bulk editor: it never appears in, and
+    never writes, a member's own ``integrations.<id>`` namespace.
+
+    Defaults to enabled, so a configuration written before groups existed
+    behaves exactly as it did.
+    """
+    enabled: bool = True
+
+
 @dataclass(frozen=True)
 class IntegrationEnvironment:
     repository: object

@@ -10,7 +10,7 @@ from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
 from core.secure_files import atomic_write_json
 from integrations.configuration import clamp_persisted_namespaces, migrate_legacy_settings, normalize_settings
-from integrations.definition import IntegrationSettings
+from integrations.definition import IntegrationGroupSettings, IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.settings import TransferSettings
 
@@ -43,6 +43,10 @@ class AppSettings(BaseModel):
     # duplicates them: pre-canonical flat names are migration input only
     # (``integrations.configuration.migrate_legacy_settings``).
     integrations: dict[str, IntegrationSettings] = Field(default_factory=dict, repr=False)
+    # Aggregate participation gates over integration FAMILIES, keyed by the
+    # ``presentation.status_group`` the members already declare. Composes with
+    # ``integrations.<id>.enabled`` at runtime and never rewrites it.
+    integration_groups: dict[str, IntegrationGroupSettings] = Field(default_factory=dict, repr=False)
     transfer_policy: TransferSettings = Field(default_factory=TransferSettings)
     execution_runtime_limits: ExecutionRuntimeLimits = Field(default_factory=ExecutionRuntimeLimits)
 

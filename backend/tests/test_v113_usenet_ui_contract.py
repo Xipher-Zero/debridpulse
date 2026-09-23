@@ -1,7 +1,7 @@
 """1.0.13 Usenet UI contract: Sources & Providers, Downloads, sidebar.
 
 Static-analysis contract over the bounded owners. Operator-facing surfaces name
-capabilities ("Usenet", "Direct Transfers", "General Sources"), never daemon
+capabilities ("Usenet", "General Sources"), never daemon
 implementations ("SABnzbd", "aria2").
 """
 from __future__ import annotations
@@ -221,9 +221,12 @@ def test_global_row_keeps_download_folder_and_max_concurrent_on_one_line():
     assert "dp-settings-download-path-stack" in row and "dp-settings-download-limit" in row
 
 
-def test_executor_tuning_has_direct_transfers_and_usenet_children():
+def test_executor_tuning_has_general_sources_and_usenet_children():
+    """DP 1.0.13 Item 8: the operator-facing family name matches Sources &
+    Providers. The executor id stays 'direct' -- nothing about the executor
+    changed, and renaming a durable identity for copy would be churn."""
     panel = downloads_panel()
-    assert "executorTuningCard('direct', 'Direct Transfers'" in panel
+    assert "executorTuningCard('direct', 'General Sources'" in panel
     assert "executorTuningCard('usenet', 'Usenet'" in panel
 
 
@@ -243,7 +246,7 @@ def test_child_tuning_cards_default_collapsed_with_the_control_beside_the_label(
 
 def test_tuning_headers_have_centred_neutral_explanatory_text():
     panel = downloads_panel()
-    assert "Tuning for HTTP(S), FTP/SFTP and other direct transfers." in panel
+    assert "Tuning for HTTP(S), FTP/SFTP and other general source transfers." in panel
     assert "Tuning for Usenet download behavior." in panel
     # DP 1.0.13 work item E: the copy is centred against the FULL header by the
     # canonical three-region Settings card header, not against a flex remainder.

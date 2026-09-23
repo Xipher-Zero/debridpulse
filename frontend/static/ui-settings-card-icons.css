@@ -32,6 +32,87 @@
   --dp-settings-inner-icon-color: #3ab8a8;
 }
 
+/* ── The ONE Settings protocol identity chip ──────────────────────────────
+ *
+ * Same visual grammar as the AllDebrid identity block
+ * (ui-settings-chrome.css .dp-settings-provider-chip--alldebrid): a compact
+ * rounded-square container with a visible border, a tinted surface, the same
+ * restrained inset/drop dimensional treatment, and the glyph centred inside
+ * it. A free-floating glowing SVG is not that, which is what this replaces.
+ *
+ * AllDebrid hand-writes its gold ramp because it has exactly one colour. A
+ * protocol chip has several and must not become several copies of the same
+ * declarations, so the whole treatment is derived from ONE per-instance
+ * datum -- --dp-protocol-color -- and every protocol contributes nothing but
+ * that colour. --dp-settings-inner-icon-color is kept in step with it so the
+ * glyph glow keeps its single source. */
+#view-settings .dp-settings-protocol-chip {
+  --dp-protocol-color: #b866f5;
+  --dp-settings-inner-icon-color: var(--dp-protocol-color);
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--dp-protocol-color) 66%, #000);
+  border-radius: 9px;
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--dp-protocol-color) 16%, #000) 0%,
+    color-mix(in srgb, var(--dp-protocol-color) 30%, #000) 52%,
+    color-mix(in srgb, var(--dp-protocol-color) 52%, #000) 100%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--dp-protocol-color) 34%, transparent),
+    inset 0 -1px 0 rgba(0,0,0,.34),
+    0 1px 3px rgba(0,0,0,.18);
+}
+
+body.light #view-settings .dp-settings-protocol-chip {
+  border-color: color-mix(in srgb, var(--dp-protocol-color) 58%, #000);
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--dp-protocol-color) 78%, #fff) 0%,
+    color-mix(in srgb, var(--dp-protocol-color) 92%, #fff) 54%,
+    color-mix(in srgb, var(--dp-protocol-color) 72%, #000) 100%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 72%, transparent),
+    inset 0 -1px 0 rgba(0,0,0,.16),
+    0 1px 3px rgba(0,0,0,.14);
+}
+
+/* The one per-instance datum. Each protocol states its canonical colour and
+   nothing else; the chip above derives border, surface and glow from it. */
+#view-settings .dp-settings-protocol-chip[data-protocol='direct_sources'],
+#view-settings .dp-settings-protocol-chip[data-protocol='general_http'] {
+  --dp-protocol-color: #3B82F6;
+}
+#view-settings .dp-settings-protocol-chip[data-protocol='general_ftp'] {
+  --dp-protocol-color: #2DD4BF;
+}
+#view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
+  --dp-protocol-color: #CBD5E1;
+}
+
+/* The glyph sits INSIDE the chip, so it is sized to leave the container
+   visible rather than filling it. The glow is the same colour-derived pair
+   the inner-card icons use, from the same datum. */
+#view-settings .dp-settings-protocol-chip img {
+  width: 22px;
+  height: 22px;
+  display: block;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 3px color-mix(in srgb, var(--dp-protocol-color) 78%, transparent))
+    drop-shadow(0 0 7px color-mix(in srgb, var(--dp-protocol-color) 34%, transparent));
+}
+
+body.light #view-settings .dp-settings-protocol-chip img {
+  filter:
+    saturate(1.08)
+    contrast(1.04)
+    drop-shadow(0 0 3px color-mix(in srgb, var(--dp-protocol-color) 62%, transparent))
+    drop-shadow(0 0 7px color-mix(in srgb, var(--dp-protocol-color) 28%, transparent));
+}
+
 #view-settings .dp-settings-inner-card-icon img {
   width: 34px;
   height: 34px;

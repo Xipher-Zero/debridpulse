@@ -180,8 +180,9 @@ _AUTH_COMPAT_SETTINGS_FIELDS = (
 
 def _public_settings(settings: AppSettings, definitions=()) -> dict:
     data = settings.model_dump()
-    from integrations.configuration import public_integrations
+    from integrations.configuration import public_integration_groups, public_integrations
     data["integrations"] = public_integrations(settings, definitions)
+    data["integration_groups"] = public_integration_groups(settings, definitions)
     # Compatibility output for pre-canonical readers, derived from the
     # canonical namespaces above at response time; never persisted or consumed.
     compatibility = legacy_settings_projection(settings, definitions)
@@ -392,6 +393,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             # stale snapshot echoes for them is ignored, so it cannot undo a
             # concurrently applied scoped write.
             merged["integrations"] = previous.integrations
+            merged["integration_groups"] = previous.integration_groups
             merged["transfer_policy"] = previous.transfer_policy
             merged["execution_runtime_limits"] = previous.execution_runtime_limits
             clean = normalize_settings(AppSettings(**merged), definitions, previous=previous)
@@ -1757,6 +1759,57 @@ async def patch_integration_configuration(
     # canonical namespace is saved (it is the desired state) but the operator is
     # never told the service is configured when it is not.
     return {"ok": True, **public, **({"native": applied.public()} if applied is not None else {})}
+
+
+class IntegrationGroupConfigurationUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/integration-groups")
+async def list_integration_groups(application: ApplicationService = Depends(get_application)):
+    """Every declared integration group and its aggregate participation gate."""
+    from integrations.configuration import public_integration_groups
+    return {"ok": True, "groups": public_integration_groups(get_settings(), application.definitions)}
+
+
+@router.patch("/integration-groups/{group_id}/configuration")
+async def patch_integration_group_configuration(
+    group_id: str, body: IntegrationGroupConfigurationUpdate,
+    application: ApplicationService = Depends(get_application),
+):
+    """Scoped mutation of ONE aggregate participation gate.
+
+    Deliberately the same discipline as ``/integrations/{id}/configuration``
+    -- the same admission, the same narrow config-write lock held across
+    validate -> save -> apply -> reconfigure, and the same neutral applicability
+    wake afterwards -- because it is the same kind of thing: canonical operator
+    intent about whether something participates. It is not a second settings
+    framework, and it writes no member namespace: a gate gates, and the
+    members' own preferences are exactly as they were on both sides of it.
+    """
+    from integrations.configuration import (
+        known_groups, normalize_settings, public_integration_groups, set_group_enabled,
+    )
+    if group_id not in known_groups(application.definitions):
+        raise HTTPException(404, "Unknown integration group")
+    async with application.application_operation():
+        async with config_write_lock():
+            previous = get_settings()
+            current = set_group_enabled(load_settings(), group_id, body.enabled,
+                                        definitions=application.definitions)
+            clean = normalize_settings(current, application.definitions, previous=previous)
+            try:
+                await application.validate_configuration(previous, clean)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            save_settings(clean)
+            apply_settings(clean)
+            application.configure()
+    # Which sources are routable just changed for every member of this group.
+    for member in public_integration_groups(clean, application.definitions)[group_id]["members"]:
+        application.notify_applicability_changed(member)
+    return {"ok": True, "group_id": group_id,
+            **public_integration_groups(clean, application.definitions)[group_id]}
 
 
 @router.get("/stats/comprehensive")

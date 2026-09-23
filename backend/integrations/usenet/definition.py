@@ -198,6 +198,10 @@ def build(options: UsenetOptions, environment):
         ),
         environment.repository.authorize_execution,
         staged_input=environment.staged_input,
+        # The narrow durable convergence seam for work resolved before the
+        # staged-input correction. A bound method, exactly like the
+        # authorization callable above -- never a repository handle.
+        converge=environment.repository.converge_staged_input,
     )
     # The administration surface is BOTH the configuration applier and the
     # managed lifecycle component; composition discovers each generically.

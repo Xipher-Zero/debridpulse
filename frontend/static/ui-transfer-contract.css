@@ -249,16 +249,26 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-transfer-source-label { display:block; color:var(--dp-text-muted, var(--text3)); font-size:10px; line-height:1.3; }
 .dp-detail-original-resource .dv { overflow-wrap:anywhere; word-break:break-word; }
 .dp-detail-route-body { padding:10px 14px 12px; }
-.dp-detail-route-list { display:grid; gap:7px; }
+/* The five route columns are declared ONCE, on the list, and every row spans
+   them as a subgrid. A row that sized its own trailing `auto` tracks gave each
+   row a different provenance right edge -- the gap between provenance and
+   status stayed constant while the column itself wandered with the width of
+   the status label beside it. Sharing the tracks is what makes the provenance
+   column one column, without reserving a width guessed from sample text. */
+.dp-detail-route-list {
+  --dp-route-column-gap: 10px;
+  --dp-route-provenance-gap: 22px;
+  display:grid; grid-template-columns:28px minmax(70px,auto) minmax(0,1fr) auto auto;
+  gap:7px; column-gap: var(--dp-route-column-gap);
+}
 .dp-detail-route-row {
   /* The URL/identity column keeps every flexible pixel; provenance and status
      stay content-sized, so no fixed column is reserved to fake alignment.
      --dp-route-provenance-gap is the ONE explicit constant separating the
      provenance from the route status: it is a fixed distance, so no status
      label length can close it or push the provenance around. */
-  --dp-route-column-gap: 10px;
-  --dp-route-provenance-gap: 22px;
-  display:grid; grid-template-columns:28px minmax(70px,auto) minmax(0,1fr) auto auto; align-items:center;
+  grid-column:1/-1;
+  display:grid; grid-template-columns:subgrid; align-items:center;
   column-gap: var(--dp-route-column-gap); row-gap: 0; min-width:0;
   padding:7px 9px; border:1px solid var(--dp-divider, var(--border)); border-radius:8px;
   background:color-mix(in srgb, var(--dp-text-primary, var(--text)) 2%, transparent);
@@ -292,6 +302,8 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-detail-advanced-grid span { color:var(--dp-text-muted, var(--text3)); }
 .dp-detail-advanced-grid strong { min-width:0; overflow-wrap:anywhere; color:var(--dp-text-secondary, var(--text2)); font-weight:600; }
 @media (max-width:700px) {
+  /* Stacked: the row leaves the shared tracks and owns its own two columns. */
+  .dp-detail-route-list { display:block; }
   .dp-detail-route-row { grid-template-columns:24px minmax(0,1fr); }
   .dp-detail-route-identity, .dp-detail-route-outcome, .dp-detail-route-relation {
     grid-column:2; text-align:left; justify-self:start; white-space:normal; overflow-wrap:anywhere;

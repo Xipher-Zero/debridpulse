@@ -3,6 +3,7 @@ from executors.aria2.definition import definition as aria2
 from providers.alldebrid.definition import definition as alldebrid
 from providers.general_ftp.definition import definition as general_ftp
 from providers.general_http.definition import definition as general_http
+from integrations.configuration import effective_integration_settings
 from integrations.usenet.definition import definition as usenet
 
 definitions = (alldebrid, usenet, general_http, general_ftp, aria2)
@@ -10,7 +11,10 @@ definitions = (alldebrid, usenet, general_http, general_ftp, aria2)
 
 def register(registry, settings, environment, selected=definitions):
     for definition in selected:
-        configured = settings.integrations[definition.id]
+        # Effective participation is the member's own preference AND its
+        # group's gate. Composed here, on a copy, so the persisted namespace
+        # keeps the operator's own choice about this member untouched.
+        configured = effective_integration_settings(settings, definition)
         implementation = definition.build(configured, environment)
         if definition.kind == "provider":
             registry.register_provider(implementation)

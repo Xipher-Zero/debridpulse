@@ -292,12 +292,31 @@ def test_c9_no_whole_payload_representation_survives_in_the_maintained_path():
     assert "fromstring" not in parser, "no whole-document parse may remain"
     assert "element.clear()" in parser, "elements must be released as they are consumed"
     # Prose may still explain what was removed; no CODE may re-create it.
-    for module in ("providers/usenet/provider.py", "executors/sabnzbd/executor.py"):
-        source = (backend / module).read_text()
-        assert "import base64" not in source, module
-        assert "base64." not in source, module
-        assert "nzb_base64" not in source.replace(
-            "base64 in a context field", ""), module
+    provider = (backend / "providers" / "usenet" / "provider.py").read_text()
+    assert "import base64" not in provider
+    assert "base64." not in provider
+    assert "nzb_base64" not in provider.replace("base64 in a context field", "")
+
+    # The executor decodes base64 in exactly ONE place: the one-way first-use
+    # convergence of work resolved before this architecture existed
+    # (DP 1.0.13 Item 9). That path runs at most once per transfer, is bounded
+    # by the request-body ceiling that applied when the work was submitted, and
+    # ends by writing a staged reference -- after which the ordinary streamed
+    # path is the only one that runs. What must never come back is a whole
+    # payload in the MAINTAINED path, so that is what is asserted.
+    executor = (backend / "executors" / "sabnzbd" / "executor.py").read_text()
+    assert executor.count("b64decode(") == 1, "more than one whole-payload decode"
+    assert "b64encode" not in executor, "the executor must never re-create the inline form"
+    decode = executor.index("b64decode(")
+    converge = executor.index("async def _converge_obsolete_input(")
+    assert decode > converge, "the decode escaped the one-way convergence"
+    following = executor[converge:decode + 2000]
+    assert "addfile" not in following, "decoded bytes reach the native submission"
+    # And the canonical resolution of an input never decodes anything: it
+    # returns a reference, or hands the obsolete case to the migration.
+    staged = executor[executor.index("    async def _staged("):converge]
+    assert "b64decode" not in staged
+    assert "StagedPayload.from_context(raw)" in staged
 
 
 def test_c9_defensive_validation_was_not_weakened_to_gain_streaming():

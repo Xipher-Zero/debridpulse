@@ -107,6 +107,8 @@ def test_the_canonical_checkbox_row_is_declared_once_by_the_form_layout_owner():
     offenders = []
     for name in OFFSET_OWNERS:
         css = (STATIC / name).read_text(encoding="utf-8")
+        # Comments describe the geometry; they do not declare it.
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
             if "dp-settings-inline-check" in rule.group(1) and geometry.search(rule.group(2)):
                 offenders.append(f"{name}: {' '.join(rule.group(1).split())[:90]}")
@@ -149,12 +151,19 @@ def test_provenance_is_right_aligned_and_the_url_keeps_the_flexible_space():
     relation = relation[:relation.index("}") + 1]
     assert "text-align: right" in relation or "text-align:right" in relation
     assert "justify-self: end" in relation or "justify-self:end" in relation
-    row = TRANSFER_CSS[TRANSFER_CSS.index(".dp-detail-route-row {"):]
-    row = row[:row.index("}") + 1]
+    # DP 1.0.13 Item 1: the five tracks are declared ONCE on the list and every
+    # row spans them as a subgrid, so provenance occupies one shared column
+    # across the whole route history instead of being re-sized per row.
+    listing = TRANSFER_CSS[TRANSFER_CSS.index(".dp-detail-route-list {"):]
+    listing = listing[:listing.index("}") + 1]
     # The identity column keeps every flexible pixel; nothing fixed is reserved
     # for provenance or status.
-    assert "minmax(0,1fr)" in row.replace(" ", "")
-    assert re.search(r"grid-template-columns:[^;]*auto\s+auto", row)
+    assert "minmax(0,1fr)" in listing.replace(" ", "")
+    assert re.search(r"grid-template-columns:[^;]*auto\s+auto", listing)
+    row = TRANSFER_CSS[TRANSFER_CSS.index(".dp-detail-route-row {"):]
+    row = row[:row.index("}") + 1]
+    assert "subgrid" in row
+    assert "grid-column:1/-1" in row.replace(" ", "")
 
 
 def test_the_responsive_stack_releases_the_inline_offset():

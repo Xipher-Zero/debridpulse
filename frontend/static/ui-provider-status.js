@@ -18,6 +18,10 @@
   function candidates(settings) {
     const integrations = settings?.integrations;
     if (!integrations || typeof integrations !== 'object') return null;
+    // Aggregate participation gates, keyed by the same status_group identity
+    // the entries below already carry. Absent means open, so a panel served by
+    // an older backend behaves exactly as it did.
+    const gates = settings?.integration_groups || {};
     return Object.entries(integrations)
       // A paired provider+executor integration (one canonical enable state)
       // still presents as one provider family in this panel.
@@ -36,6 +40,7 @@
           order: Number.isFinite(Number(presentation.display_order)) ? Number(presentation.display_order) : 100,
           groupId: String(presentation.status_group || '').trim(),
           groupLabel: String(presentation.status_group_label || '').trim(),
+          groupEnabled: gates[String(presentation.status_group || '').trim()]?.enabled !== false,
           tierId: String(presentation.status_tier || '').trim(),
           tierLabel: String(presentation.status_tier_label || '').trim(),
         };
@@ -55,9 +60,25 @@
     return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unknown:'check', checking:'check', mixed:'warn', disabled:'error'})[state] || 'check';
   }
 
-  function aggregateState(entries) {
+  /* The group's one reported state.
+   *
+   * ``gateEnabled`` is the family's aggregate participation gate. While the
+   * gate is OPEN the existing health model runs unchanged, so a member with a
+   * real health state still decides the colour.
+   *
+   * `disabled` belongs to the GATE, not to the members: an open gate whose
+   * members are all switched off is still an admitted family whose members are
+   * disabled -- which is `mixed`, the same answer as one member off, because
+   * "one or more members disabled" does not stop being true when the number
+   * reaches all of them. Reporting that as `disabled` made an open gate
+   * indistinguishable from a closed one, which is the whole distinction the
+   * master exists to draw. A group with no members at all has nothing to
+   * report and stays `disabled`. */
+  function aggregateState(entries, gateEnabled = true) {
+    if (gateEnabled === false) return 'disabled';
+    if (!entries.length) return 'disabled';
     const enabled = entries.filter(entry => entry.enabled);
-    if (!enabled.length) return 'disabled';
+    if (!enabled.length) return 'mixed';
     if (enabled.length !== entries.length) return 'mixed';
     if (enabled.some(entry => ['unhealthy', 'auth_required'].includes(entry.state))) return 'unhealthy';
     if (enabled.some(entry => entry.state === 'unconfigured')) return 'unconfigured';
@@ -100,7 +121,7 @@
       if (entry.groupId && entry.groupLabel) {
         let group = groups ? groups.get(entry.groupId) : null;
         if (!group) {
-          group = {id:entry.groupId, label:entry.groupLabel, entries:[]};
+          group = {id:entry.groupId, label:entry.groupLabel, gate:entry.groupEnabled, entries:[]};
           if (groups) groups.set(entry.groupId, group);
           rows.push(group);
         }
@@ -112,7 +133,7 @@
 
     const markup = item => {
       if (item.entry) return rowFor(item.entry);
-      const state = aggregateState(item.entries);
+      const state = aggregateState(item.entries, item.gate);
       return `<div class="dp-provider-status-group" data-provider-group="${esc(item.id)}"><div class="conn-row dp-provider-status-group-row" data-provider-state="${esc(state)}"><div class="dot ${dotClass(state)}"></div><span>${esc(item.label)}</span></div></div>`;
     };
 

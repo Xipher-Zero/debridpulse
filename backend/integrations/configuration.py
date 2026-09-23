@@ -9,7 +9,7 @@ input of ``migrate_legacy_settings``, which runs once while a persisted file is
 loaded and folds them into the canonical namespaces. Nothing else reads them, and
 nothing regenerates them.
 """
-from integrations.definition import IntegrationSettings
+from integrations.definition import IntegrationGroupSettings, IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits, LEGACY_INPUT_FIELDS as RUNTIME_LIMIT_LEGACY_FIELDS
 from transfers.settings import TransferSettings, LEGACY_INPUT_FIELDS as TRANSFER_POLICY_LEGACY_FIELDS
 
@@ -124,6 +124,96 @@ def _merged_namespace(model, previous, supplied):
     return model(**options)
 
 
+# ── Integration groups ───────────────────────────────────────────────────────
+#
+# A group is an aggregate participation gate over a family of integrations. Its
+# identity and operator-facing label are read from the members' own
+# ``presentation.status_group`` / ``status_group_label``, so the membership of a
+# group is stated exactly once -- by each member -- and never duplicated here,
+# in the API or in the UI.
+
+
+def known_groups(definitions) -> dict:
+    """Every declared group, as ``{group id: operator-facing label}``."""
+    return {definition.presentation.status_group: definition.presentation.status_group_label
+            for definition in definitions if definition.presentation.status_group}
+
+
+def group_members(definitions, group_id: str) -> tuple:
+    return tuple(definition.id for definition in definitions
+                 if definition.presentation.status_group == group_id)
+
+
+def group_enabled(settings, group_id) -> bool:
+    """The group's desired state. Absent means enabled: a configuration written
+    before this gate existed keeps behaving exactly as it did."""
+    if not group_id:
+        return True
+    entry = (getattr(settings, "integration_groups", None) or {}).get(group_id)
+    if entry is None:
+        return True
+    return bool(entry.enabled if isinstance(entry, IntegrationGroupSettings) else entry.get("enabled", True))
+
+
+def effective_enabled(settings, definition) -> bool:
+    """Runtime participation: the member's own preference AND its group's gate.
+
+    Derived, never stored. ``integrations.<id>.enabled`` remains the member's
+    own desired state and is not replaced by this.
+    """
+    entry = (settings.integrations or {}).get(definition.id)
+    desired = entry.enabled if isinstance(entry, IntegrationSettings) else (
+        bool((entry or {}).get("enabled", definition.default_enabled)) if entry is not None
+        else definition.default_enabled)
+    return bool(desired) and group_enabled(settings, definition.presentation.status_group)
+
+
+def effective_integration_settings(settings, definition) -> IntegrationSettings:
+    """The member's namespace as RUNTIME should see it.
+
+    A copy: the persisted namespace is never rewritten by the gate, so turning
+    a group off and on again returns exactly the member preferences that were
+    there before.
+    """
+    entry = settings.integrations[definition.id]
+    gated = effective_enabled(settings, definition)
+    return entry if entry.enabled == gated else entry.model_copy(update={"enabled": gated})
+
+
+def normalize_groups(settings, definitions) -> dict:
+    """Complete the group namespace: every declared group gets an entry."""
+    groups = dict(getattr(settings, "integration_groups", None) or {})
+    for group_id in known_groups(definitions):
+        entry = groups.get(group_id)
+        groups[group_id] = entry if isinstance(entry, IntegrationGroupSettings) else \
+            IntegrationGroupSettings(**(entry or {}))
+    return groups
+
+
+def set_group_enabled(settings, group_id: str, enabled: bool, *, definitions=None):
+    """Return ``settings`` with exactly one group gate changed.
+
+    The one place a group gate is written. It touches no member namespace, in
+    either direction -- proving that is the whole point of a gate.
+    """
+    from integrations.catalog import definitions as production
+    known = known_groups(definitions if definitions is not None else production)
+    if group_id not in known:
+        raise ValueError("Unknown integration group")
+    groups = dict(getattr(settings, "integration_groups", None) or {})
+    groups[group_id] = IntegrationGroupSettings(enabled=bool(enabled))
+    return settings.model_copy(update={"integration_groups": groups})
+
+
+def public_integration_groups(settings, definitions) -> dict:
+    """Safe public projection of the group gates, with their membership."""
+    return {group_id: {
+        "enabled": group_enabled(settings, group_id),
+        "label": label,
+        "members": list(group_members(definitions, group_id)),
+    } for group_id, label in known_groups(definitions).items()}
+
+
 def normalize_settings(settings, definitions, *, previous=None):
     """Validate and complete the canonical namespaces of ``settings``.
 
@@ -161,6 +251,7 @@ def normalize_settings(settings, definitions, *, previous=None):
         namespaces[definition.id] = IntegrationSettings(enabled=enabled, priority=priority, options=validated)
     return settings.model_copy(update={
         "integrations": namespaces,
+        "integration_groups": normalize_groups(settings, definitions),
         "transfer_policy": _merged_namespace(
             TransferSettings, getattr(previous, "transfer_policy", None), settings.transfer_policy),
         "execution_runtime_limits": _merged_namespace(
@@ -174,7 +265,13 @@ def public_integrations(settings, definitions):
     for identity, entry in settings.integrations.items():
         definition = known.get(identity)
         result[identity] = {
+            # The member's own stored preference. It does NOT flip because the
+            # group gate is closed: the operator's choice about this member
+            # survives a master toggle, and its toggle keeps showing it.
             "enabled": entry.enabled,
+            # Derived, read-only: what the runtime actually does with it.
+            "effective_enabled": (effective_enabled(settings, definition)
+                                  if definition else entry.enabled),
             "priority": entry.priority,
             "name": definition.name if definition else None,
             "kind": definition.kind if definition else None,

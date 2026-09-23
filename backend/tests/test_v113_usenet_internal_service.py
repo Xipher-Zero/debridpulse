@@ -62,7 +62,7 @@ async def test_composition_attaches_the_lifecycle_generically(tmp_path):
     settings = SimpleNamespace(integrations={d.id: IntegrationSettings() for d in definitions})
     registry = IntegrationRegistry()
     register(registry, settings, IntegrationEnvironment(
-        SimpleNamespace(authorize_execution=None), str(tmp_path)),
+        SimpleNamespace(authorize_execution=None, converge_staged_input=None), str(tmp_path)),
         selected=[d for d in definitions if d.id == "usenet"])
     lifecycle, admins, appliers = integration_surfaces(registry)
     assert lifecycle, "the internal service must participate in the application lifecycle"

@@ -21,7 +21,7 @@ from transfers.registry import IntegrationRegistry
 
 
 def environment(tmp_path):
-    return IntegrationEnvironment(SimpleNamespace(authorize_execution=None), str(tmp_path))
+    return IntegrationEnvironment(SimpleNamespace(authorize_execution=None, converge_staged_input=None), str(tmp_path))
 
 
 def registry_for(tmp_path, *, enabled=True):

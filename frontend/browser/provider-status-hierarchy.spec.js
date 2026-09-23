@@ -155,3 +155,41 @@ test('health dots and the AllDebrid subscription row survive the hierarchy', asy
   // The premium/subscription row is sibling shell markup and is untouched.
   await expect(page.locator('#premium-row')).toHaveCount(1);
 });
+
+/* DP 1.0.13 Item 2 -- tier labels are centred; the rows beneath are not. */
+
+test('each tier label is horizontally centred within the status region', async ({page}) => {
+  await renderWith(page);
+  const geometry = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#provider-status-list .dp-provider-status-tier')).map(tier => {
+      const label = tier.querySelector('.dp-provider-status-tier-label');
+      // A block label's own box spans the tier, so the RENDERED text is measured.
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      const text = range.getBoundingClientRect();
+      const box = tier.getBoundingClientRect();
+      const row = tier.querySelector('.conn-row');
+      return {
+        label: label.textContent.trim(),
+        offset: ((text.left + text.right) / 2) - ((box.left + box.right) / 2),
+        rowLeft: row ? row.getBoundingClientRect().left - box.left : null,
+      };
+    }));
+  expect(geometry.length).toBeGreaterThanOrEqual(3);
+  for (const tier of geometry) {
+    expect(Math.abs(tier.offset), `${tier.label} is not centred`).toBeLessThanOrEqual(1);
+  }
+});
+
+test('centring the tier label does not centre the provider rows beneath it', async ({page}) => {
+  await renderWith(page);
+  const rows = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('#provider-status-list .conn-row')).map(row => {
+      const tier = row.closest('.dp-provider-status-tier') || row.parentElement;
+      return row.getBoundingClientRect().left - tier.getBoundingClientRect().left;
+    }));
+  expect(rows.length).toBeGreaterThan(0);
+  const spread = Math.max(...rows) - Math.min(...rows);
+  expect(spread).toBeLessThanOrEqual(1);
+  expect(Math.max(...rows)).toBeLessThanOrEqual(2);
+});
