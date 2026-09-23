@@ -25,14 +25,6 @@
   min-width: 1px;
 }
 
-/* Match Sources / Downloads / Data & Maintenance: field labels and helper copy
-   share the input's 3px content datum rather than drifting left of the field. */
-#view-settings [data-panel="notifications"] .dp-settings-field > .form-label,
-#view-settings [data-panel="notifications"] .dp-settings-field > .form-hint {
-  position: relative;
-  inset-inline-start: 3px;
-}
-
 #view-settings [data-panel="notifications"] .dp-settings-field > .form-label {
   display: block;
   margin-bottom: 7px;

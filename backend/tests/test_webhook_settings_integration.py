@@ -132,7 +132,14 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         from transfers.settings import TransferSettings
         current = routes.AppSettings(transfer_policy=TransferSettings(max_concurrent_executions=1))
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock(), apply_memory_tuning=AsyncMock())
-        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(), application_operation=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
+        application = SimpleNamespace(
+            integration_admin=lambda _: fake_aria2,
+            # DP 1.0.13 work item A: a canonical configuration mutation wakes the
+            # neutral lifecycle/routing maintenance that has to act on it.
+            notify_applicability_changed=lambda _identity: None,
+            apply_integration_configuration=AsyncMock(return_value=None), definitions=(),
+            application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
+            reconcile_executions=AsyncMock())
 
         def fake_save(cfg):
             saved["cfg"] = cfg
@@ -181,6 +188,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
         application = SimpleNamespace(
             integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(aria2_definition,),
+            notify_applicability_changed=lambda _identity: None,
             application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
             reconcile_executions=AsyncMock(), validate_configuration=AsyncMock(),
         )
@@ -222,6 +230,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         )
         application = SimpleNamespace(
             integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(),
+            notify_applicability_changed=lambda _identity: None,
             application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
             reconcile_executions=AsyncMock(),
         )

@@ -124,8 +124,14 @@ def test_presentation_uses_a_real_readiness_endpoint_not_a_static_status():
     # A static status could not express "enabled but not yet configured".
     assert presentation.static_status is None
     assert presentation.status_endpoint == "/integration-status/usenet"
-    # Usenet sorts above AllDebrid (display_order 10) under External Providers.
-    assert presentation.display_order < 10
+    # DP 1.0.13 work item L: display_order is the ONE ordering authority, and
+    # the Provider Status tier order is derived from it -- named premium
+    # services (AllDebrid, 10) before aggregate premium families (Usenet, 20)
+    # before the general families (100+). The Settings card order is owned
+    # separately by ui-settings-page.js and is unaffected.
+    assert presentation.display_order == 20
+    assert presentation.status_tier == "premium_family"
+    assert presentation.status_tier_label == "Premium"
 
 
 def test_display_name_defaults_to_derived_from_host():

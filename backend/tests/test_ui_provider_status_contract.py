@@ -58,7 +58,10 @@ def test_presentation_identity_and_direct_source_group_are_provider_owned():
 def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_disclosure():
     assert "entry.configured" in CARDS
     assert "data-integration-enabled" in CARDS
-    assert "dp-settings-provider-disclosure" in CARDS
+    # DP 1.0.13 work item C: ONE canonical disclosure component, shared with
+    # the executor-tuning cards and placed immediately after the title.
+    assert "dp-settings-disclosure" in CARDS
+    assert "settingsDisclosure(" in CARDS
     assert "Configuration required" in CARDS
     assert "Provider configured" in CARDS
     assert "const dirty =" in CARDS

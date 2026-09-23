@@ -262,5 +262,55 @@
     return dialog.closed.then(result => result.accepted);
   }
 
-  window.DPSettingsModal = Object.freeze({open, confirm});
+  /* The single-text-field dialog shape.
+   *
+   * It exists here, beside confirm(), because this module is the ONE physical
+   * owner of the application dialog shell -- a browser-native prompt() bypasses
+   * the visual, focus and accessibility contract entirely, and a second modal
+   * implementation would duplicate the owner. Resolves to the entered string,
+   * or null when the operator cancels (Escape, Cancel, or backdrop dismissal),
+   * exactly like the primitive it replaces. A blank value is a legal answer.
+   */
+  function prompt({
+    title,
+    label,
+    value = '',
+    hint = '',
+    acceptLabel = 'Save',
+    cancelLabel = 'Cancel',
+    placeholder = '',
+  } = {}) {
+    let field = null;
+    const dialog = open({
+      role: 'dialog',
+      title: title || 'Edit value',
+      acceptLabel,
+      cancelLabel,
+      className: 'dp-modal-prompt',
+      mount(body) {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'dp-modal-field';
+        wrapper.innerHTML = '<span class="form-label"></span><input class="input" type="text" autocomplete="off" spellcheck="false">';
+        wrapper.querySelector('.form-label').textContent = String(label || '');
+        field = wrapper.querySelector('input');
+        field.value = String(value ?? '');
+        if (placeholder) field.placeholder = String(placeholder);
+        body.appendChild(wrapper);
+        if (!hint) return null;
+        const help = document.createElement('p');
+        help.className = 'dp-modal-message';
+        help.textContent = String(hint);
+        body.appendChild(help);
+        return help;
+      },
+    });
+    // The shell focuses Cancel by default; a text dialog starts in its field.
+    if (field) {
+      field.focus();
+      field.select();
+    }
+    return dialog.closed.then(result => (result.accepted && field ? field.value : null));
+  }
+
+  window.DPSettingsModal = Object.freeze({open, confirm, prompt});
 })();

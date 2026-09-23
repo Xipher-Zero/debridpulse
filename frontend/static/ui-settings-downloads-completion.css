@@ -4,20 +4,6 @@
  * transfer semantics owned by ui-settings-page.js.
  */
 
-/* Standard Settings fields use one small shared text offset so complete title
-   and helper blocks align with the control datum. Relative positioning moves
-   wrapped helper lines as a unit; continuation lines cannot snap back left. */
-#view-settings [data-panel="sources"] .dp-settings-field > .form-label,
-#view-settings [data-panel="sources"] .dp-settings-field > .form-hint,
-#view-settings [data-panel="sources"] .dp-settings-alldebrid-key-meta > .form-hint:first-child,
-#view-settings [data-panel="downloads"] .dp-settings-field > .form-label,
-#view-settings [data-panel="downloads"] .dp-settings-field > .form-hint,
-#view-settings [data-panel="extraction"] .dp-settings-field > .form-label,
-#view-settings [data-panel="extraction"] .dp-settings-field > .form-hint {
-  position: relative;
-  inset-inline-start: 3px;
-}
-
 /* Boolean/action controls use a different grammar from text fields: title and
    explanation form one text block and the compact control sits just to its
    right, vertically centered against that complete block. */

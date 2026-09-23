@@ -21,6 +21,7 @@ from transfers.models import (
     ArtifactFingerprint, Capability, ExecutionActivity, ExecutionControl, ExecutionFootprint,
     ExecutionHandle, ExecutionObservation, ExecutionSnapshot, ExecutionState, ExecutorCapabilities,
     ExecutorClaim, ExecutorGateResult, ExecutorHealth, ExecutorRuntimeCapability, ExecutorRuntimeControlResult,
+    ExecutorThroughput,
     InputField, InputMethod, IntegrationDescriptor, MaterializationKind, MaterializationResult, MaterializedEntry,
     ResolutionResult, ResourceState, TransferCandidate, TransferProgress,
 )
@@ -86,6 +87,9 @@ class LedgerExecutor:
         self.ceiling_failure = False
         self.ceilings: list[int] = []
         self.gate: list[bool] = []
+        # Executor-level throughput, for the neutral aggregate telemetry seam.
+        self.aggregate_throughput = 0
+        self.throughput_unobservable = False
         self.runtime_available = (frozenset(runtime_available) if runtime_available is not None
                                   else frozenset(ExecutorRuntimeCapability))
         self.collection_files: dict[str, bytes] = {"part-1.bin": b"ab", "nested/part-2.bin": b"cd"}
@@ -210,6 +214,15 @@ class LedgerExecutor:
         self.log.append((self.descriptor.id, "gate", paused))
         self.gate.append(paused)
         return ExecutorGateResult(paused, paused)
+
+    async def aggregate_download_throughput(self):
+        """The neutral executor-level throughput seam, proven by an executor
+        that is neither of the two shipped ones: nothing about it is specific
+        to how any particular service measures."""
+        self.log.append((self.descriptor.id, "throughput", self.aggregate_throughput))
+        if self.throughput_unobservable:
+            return ExecutorThroughput(0, False)
+        return ExecutorThroughput(self.aggregate_throughput, True)
 
     async def retry_from(self, request, prepared, previous):
         assert await self.authorize(prepared, "start")

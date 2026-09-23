@@ -36,6 +36,8 @@
           order: Number.isFinite(Number(presentation.display_order)) ? Number(presentation.display_order) : 100,
           groupId: String(presentation.status_group || '').trim(),
           groupLabel: String(presentation.status_group_label || '').trim(),
+          tierId: String(presentation.status_tier || '').trim(),
+          tierLabel: String(presentation.status_tier_label || '').trim(),
         };
       })
       .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -75,29 +77,52 @@
       host.innerHTML = '<div class="conn-row dp-provider-status-row" data-provider-state="unknown"><div class="dot check"></div><span>Provider status unavailable</span></div>';
       return;
     }
-    const output = [];
-    const groups = new Map();
+    // Two levels, both driven purely by integration-owned presentation
+    // metadata: a TIER (which acquisition family this belongs to, rendered as a
+    // heading) and, inside it, the existing aggregate GROUP. Nothing here names
+    // an integration, and no tier order is declared: entries arrive already
+    // sorted by display_order, so a tier takes the position of its first entry.
+    // An integration that declares no tier is never dropped -- it renders
+    // ungrouped after the tiers, exactly as before this hierarchy existed.
+    const tiers = new Map();
+    const untiered = [];
+    const rowFor = entry =>
+      `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}</span></div>`;
+
     for (const entry of entries) {
+      const bucket = entry.tierId && entry.tierLabel
+        ? (tiers.get(entry.tierId)
+            || (tiers.set(entry.tierId, {id:entry.tierId, label:entry.tierLabel, rows:[], groups:new Map()}),
+                tiers.get(entry.tierId)))
+        : null;
+      const rows = bucket ? bucket.rows : untiered;
+      const groups = bucket ? bucket.groups : null;
       if (entry.groupId && entry.groupLabel) {
-        let group = groups.get(entry.groupId);
+        let group = groups ? groups.get(entry.groupId) : null;
         if (!group) {
           group = {id:entry.groupId, label:entry.groupLabel, entries:[]};
-          groups.set(entry.groupId, group);
-          output.push(group);
+          if (groups) groups.set(entry.groupId, group);
+          rows.push(group);
         }
         group.entries.push(entry);
       } else if (entry.enabled && entry.state !== 'disabled') {
-        output.push({entry});
+        rows.push({entry});
       }
     }
-    host.innerHTML = output.length ? output.map(item => {
-      if (item.entry) {
-        const entry = item.entry;
-        return `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}</span></div>`;
-      }
+
+    const markup = item => {
+      if (item.entry) return rowFor(item.entry);
       const state = aggregateState(item.entries);
       return `<div class="dp-provider-status-group" data-provider-group="${esc(item.id)}"><div class="conn-row dp-provider-status-group-row" data-provider-state="${esc(state)}"><div class="dot ${dotClass(state)}"></div><span>${esc(item.label)}</span></div></div>`;
-    }).join('') : '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>';
+    };
+
+    // A tier with nothing to show renders nothing: no bare heading is left behind.
+    const rendered = [...tiers.values()].filter(tier => tier.rows.length).map(tier =>
+      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"><div class="dp-provider-status-tier-label">${esc(tier.label)}</div>${tier.rows.map(markup).join('')}</div>`
+    ).concat(untiered.map(markup));
+
+    host.innerHTML = rendered.length ? rendered.join('')
+      : '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>';
   }
 
   async function observe(candidate) {

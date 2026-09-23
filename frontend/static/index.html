@@ -80,31 +80,31 @@
        style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--accent);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:none"
        title="Open the DebridPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
     <div id="topbar-actions"></div>
-    <div id="aria2-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" title="Active / max — live speed — download speed cap">
-      <span style="color:var(--green)">&#9660;</span><span id="aria2-badge-active">0</span><span style="color:var(--text3)">/</span><span id="aria2-badge-max">0</span>
-      <span style="color:var(--border);margin:0 2px">|</span><span id="aria2-badge-speed" style="color:var(--green)">0 KB/s</span>
+    <div id="runtime-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" title="Active / max — live speed — download speed cap">
+      <span style="color:var(--green)">&#9660;</span><span id="runtime-badge-active">0</span><span style="color:var(--text3)">/</span><span id="runtime-badge-max">0</span>
+      <span style="color:var(--border);margin:0 2px">|</span><span id="runtime-badge-speed" style="color:var(--green)">0 KB/s</span>
       <span style="color:var(--border);margin:0 2px">|</span>
-      <div class="aria2-cap-control">
-        <button id="aria2-cap-toggle" class="aria2-cap-toggle" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleAria2SpeedCapMenu(event)" title="Set download speed cap">
-          <span class="dp-speedcap-arrow" aria-hidden="true"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span><span id="aria2-badge-limit">Unlimited</span>
+      <div class="runtime-cap-control">
+        <button id="runtime-cap-toggle" class="runtime-cap-toggle" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleSpeedCapMenu(event)" title="Set download speed cap">
+          <span class="dp-speedcap-arrow" aria-hidden="true"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span><span id="runtime-badge-limit">Unlimited</span>
         </button>
-        <div id="aria2-cap-menu" class="aria2-cap-menu" role="menu" hidden>
-          <div class="aria2-cap-title">Download speed cap</div>
-          <div class="aria2-cap-options">
-            <button type="button" data-cap-bps="0" onclick="applyAria2TopbarSpeedCap(0)">Unlimited</button>
-            <button type="button" data-cap-bps="1048576" onclick="applyAria2TopbarSpeedCap(1048576)">1 MB/s</button>
-            <button type="button" data-cap-bps="5242880" onclick="applyAria2TopbarSpeedCap(5242880)">5 MB/s</button>
-            <button type="button" data-cap-bps="10485760" onclick="applyAria2TopbarSpeedCap(10485760)">10 MB/s</button>
-            <button type="button" data-cap-bps="20971520" onclick="applyAria2TopbarSpeedCap(20971520)">20 MB/s</button>
-            <button type="button" data-cap-bps="31457280" onclick="applyAria2TopbarSpeedCap(31457280)">30 MB/s</button>
-            <button type="button" data-cap-bps="52428800" onclick="applyAria2TopbarSpeedCap(52428800)">50 MB/s</button>
-            <button type="button" data-cap-bps="104857600" onclick="applyAria2TopbarSpeedCap(104857600)">100 MB/s</button>
+        <div id="runtime-cap-menu" class="runtime-cap-menu" role="menu" hidden>
+          <div class="runtime-cap-title">Download speed cap</div>
+          <div class="runtime-cap-options">
+            <button type="button" data-cap-bps="0" onclick="applyTopbarSpeedCap(0)">Unlimited</button>
+            <button type="button" data-cap-bps="1048576" onclick="applyTopbarSpeedCap(1048576)">1 MB/s</button>
+            <button type="button" data-cap-bps="5242880" onclick="applyTopbarSpeedCap(5242880)">5 MB/s</button>
+            <button type="button" data-cap-bps="10485760" onclick="applyTopbarSpeedCap(10485760)">10 MB/s</button>
+            <button type="button" data-cap-bps="20971520" onclick="applyTopbarSpeedCap(20971520)">20 MB/s</button>
+            <button type="button" data-cap-bps="31457280" onclick="applyTopbarSpeedCap(31457280)">30 MB/s</button>
+            <button type="button" data-cap-bps="52428800" onclick="applyTopbarSpeedCap(52428800)">50 MB/s</button>
+            <button type="button" data-cap-bps="104857600" onclick="applyTopbarSpeedCap(104857600)">100 MB/s</button>
           </div>
-          <div class="aria2-cap-custom">
-            <label for="aria2-cap-custom-mbps">Custom cap (MB/s)</label>
+          <div class="runtime-cap-custom">
+            <label for="runtime-cap-custom-mbps">Custom cap (MB/s)</label>
             <div>
-              <input id="aria2-cap-custom-mbps" type="number" min="0" step="0.1" inputmode="decimal" placeholder="MB/s" onkeydown="if(event.key==='Enter')applyAria2TopbarCustomSpeedCap()">
-              <button type="button" class="btn btn-primary btn-sm" onclick="applyAria2TopbarCustomSpeedCap()">Set Custom</button>
+              <input id="runtime-cap-custom-mbps" type="number" min="0" step="0.1" inputmode="decimal" placeholder="MB/s" onkeydown="if(event.key==='Enter')applyTopbarCustomSpeedCap()">
+              <button type="button" class="btn btn-primary btn-sm" onclick="applyTopbarCustomSpeedCap()">Set Custom</button>
             </div>
           </div>
         </div>

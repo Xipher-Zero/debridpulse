@@ -11,7 +11,9 @@
   const SOURCE_LABELS = Object.freeze({
     direct_link: 'Debrid Link',
     manual: 'Magnet Link',
-    manual_file: 'Torrent File',
+    // Grouped BY CHANNEL: no request kind is available in this aggregate, so
+    // it names the channel rather than asserting what the upload contained.
+    manual_file: 'Uploaded File',
     alldebrid_existing: 'AllDebrid Import',
     import_existing: 'AllDebrid Import',
     api: 'API Submission',

@@ -265,7 +265,10 @@ class NotificationTests(unittest.IsolatedAsyncioTestCase):
         field_names = [f["name"] for f in captured_fields]
         self.assertIn("Source", field_names)
         source_field = next(f for f in captured_fields if f["name"] == "Source")
-        self.assertIn("torrent file", source_field["value"].lower())
+        # DP 1.0.13 work item H: this aggregate names the submission CHANNEL.
+        # It has no access to the canonical request kind, so it must not assert
+        # that an uploaded file was a torrent.
+        self.assertIn("uploaded file", source_field["value"].lower())
 
     async def test_deduplication_suppresses_duplicate_within_window(self):
         """Same message within deduplication window is suppressed."""

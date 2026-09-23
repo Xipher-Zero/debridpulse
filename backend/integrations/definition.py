@@ -112,6 +112,15 @@ class IntegrationPresentation:
     display_order: int = 100
     status_group: Optional[str] = None
     status_group_label: Optional[str] = None
+    # Which acquisition tier this integration belongs to, and the operator-facing
+    # heading for it. Neutral, integration-owned, and deliberately NOT derivable
+    # from ``premium``: a named premium account service and an aggregate premium
+    # acquisition family are both premium, and the status panel must still tell
+    # them apart. A renderer groups by these; it never names an integration.
+    # Tier ORDER is not declared here -- it falls out of ``display_order``, so
+    # there is exactly one ordering authority.
+    status_tier: Optional[str] = None
+    status_tier_label: Optional[str] = None
 
     def public(self) -> dict:
         return {
@@ -122,6 +131,8 @@ class IntegrationPresentation:
             "display_order": self.display_order,
             "status_group": self.status_group,
             "status_group_label": self.status_group_label,
+            "status_tier": self.status_tier,
+            "status_tier_label": self.status_tier_label,
         }
 
 

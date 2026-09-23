@@ -59,7 +59,9 @@ def test_settings_page_is_authoritative_clean_room_owner() -> None:
     assert "window.DPSettingsModal = Object.freeze" not in settings
     assert "window.DPSettingsModal.confirm(" in settings
     assert "window.DPSettingsModal.open(" in picker
-    assert "window.DPSettingsModal = Object.freeze({open, confirm});" in read("ui-settings-modal.js")
+    # DP 1.0.13 work item B: the canonical owner gained the missing
+    # single-text-field dialog shape rather than a second modal owner.
+    assert "window.DPSettingsModal = Object.freeze({open, confirm, prompt});" in read("ui-settings-modal.js")
     assert "window.loadSettings = load;" in settings
     assert "view.innerHTML =" in settings
     assert "request('GET', '/settings'" in settings
@@ -211,7 +213,9 @@ def test_topbar_concurrency_is_rendered_by_the_canonical_owner_with_no_wrapper_r
         assert "ui-topbar-concurrency" not in text and "DPTopbarConcurrency" not in text, path.name
         assert "syncConfiguredConcurrency" not in text, path.name
     app = _source_without_comments("app.js")
-    assert app.count("function updateAria2TopbarBadge(") == 1
+    # DP 1.0.13 work item G renamed the owner off the executor it no longer
+    # belongs to; there is still exactly one of it.
+    assert app.count("function updateRuntimeStatusBadge(") == 1
     assert "window.DPProcessingPresentation.configuredMaxConcurrency()" in app
     processing = _source_without_comments("ui-processing-presentation.js")
     assert "transfer_policy?.max_concurrent_executions" in processing

@@ -36,7 +36,7 @@ async function topbarOrder(page) {
   return page.locator('#topbar').evaluate(topbar => Array.from(topbar.children)
     .map(node => {
       if (node.id === 'topbar-actions') return 'global-actions';
-      if (node.id === 'aria2-speed-badge') return 'engine-widget';
+      if (node.id === 'runtime-speed-badge') return 'engine-widget';
       if (node.classList && node.classList.contains('topbar-theme-control')) return 'theme-control';
       return null;
     })
@@ -46,14 +46,14 @@ async function topbarOrder(page) {
 async function assertTopbarGeometry(page, width) {
   await page.setViewportSize({width, height:900});
   await expect(page.locator('#topbar-actions')).toBeVisible();
-  await expect(page.locator('#aria2-speed-badge')).toBeVisible();
+  await expect(page.locator('#runtime-speed-badge')).toBeVisible();
   await expect(page.locator('.topbar-theme-control')).toBeVisible();
 
   expect(await topbarOrder(page)).toEqual(['global-actions', 'engine-widget', 'theme-control']);
 
   const heading = await page.locator('.dp-page-heading').boundingBox();
   const actions = await page.locator('#topbar-actions').boundingBox();
-  const engine = await page.locator('#aria2-speed-badge').boundingBox();
+  const engine = await page.locator('#runtime-speed-badge').boundingBox();
   const theme = await page.locator('.topbar-theme-control').boundingBox();
   const topbar = await page.locator('#topbar').boundingBox();
 

@@ -57,7 +57,7 @@ async function assertHeaderOnlyCards(page) {
     await expect(card).toHaveClass(/dp-settings-direct-source-card/);
     await expect(card.locator(':scope > .card-body')).toHaveCount(0);
     await expect(card.locator(':scope > *')).toHaveCount(1);
-    await expect(card.locator('.dp-settings-provider-disclosure')).toHaveCount(0);
+    await expect(card.locator('.dp-settings-disclosure')).toHaveCount(0);
     const header = card.locator(':scope > .card-header');
     await expect(header.locator('.card-title')).toHaveText(title);
     await expect(header.locator('.dp-settings-provider-header-copy')).toHaveText(copy);

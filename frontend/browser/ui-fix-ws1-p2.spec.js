@@ -51,8 +51,10 @@ function fixture(base, {adEnabled = true, adConfigured = false, httpEnabled = tr
     options: {},
   };
   // The fixture owns its whole provider universe (AllDebrid, General Downloads
-  // and explicit extras); later live providers such as FTP & SFTP are not inherited.
+  // and explicit extras); later live providers such as FTP & SFTP and Usenet
+  // are not inherited.
   delete result.integrations.general_ftp;
+  delete result.integrations.usenet;
   Object.assign(result.integrations, clone(extraProviders));
   result.full_sync_interval_minutes ??= 5;
   return result;
@@ -123,7 +125,7 @@ async function openSources(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toBeVisible();
-  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-disclosure')).toHaveCount(1);
+  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-disclosure')).toHaveCount(1);
 }
 
 async function applySettings(page) {
@@ -204,7 +206,7 @@ test('WS1-P2 premium card implements the exact persisted four-state matrix', asy
     await openSources(page);
     const card = page.locator('.dp-settings-provider-card--alldebrid');
     const body = card.locator(':scope > .card-body');
-    const disclosure = card.locator('.dp-settings-provider-disclosure');
+    const disclosure = card.locator('.dp-settings-disclosure');
     const status = card.locator('.dp-settings-provider-config-status');
     await expect(disclosure).toHaveAttribute('aria-expanded', item.expanded ? 'true' : 'false');
     if (item.expanded) await expect(body).toBeVisible(); else await expect(body).toBeHidden();
@@ -222,9 +224,9 @@ test('WS1-P2 premium card implements the exact persisted four-state matrix', asy
   await page.reload();
   await openSources(page);
   const card = page.locator('.dp-settings-provider-card--alldebrid');
-  await card.locator('.dp-settings-provider-disclosure').click();
+  await card.locator('.dp-settings-disclosure').click();
   await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
-  await expect(page.locator('.dp-settings-provider-card--general-http .dp-settings-provider-disclosure')).toHaveCount(0);
+  await expect(page.locator('.dp-settings-provider-card--general-http .dp-settings-disclosure')).toHaveCount(0);
 });
 
 test('WS1-P2 disclosure and staged Enable controls remain independent and protect unsaved edits', async ({ page }) => {
@@ -235,7 +237,7 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
 
   let card = page.locator('.dp-settings-provider-card--alldebrid');
   let body = card.locator(':scope > .card-body');
-  let disclosure = card.locator('.dp-settings-provider-disclosure');
+  let disclosure = card.locator('.dp-settings-disclosure');
   let key = card.locator('#dp-settings-field-alldebrid-api-key');
   let status = card.locator('.dp-settings-provider-config-status');
 
@@ -306,7 +308,11 @@ test('WS1-P2 provider header stays centered/non-overlapping and semantic in dark
       });
       const h = node.getBoundingClientRect();
       const s = node.querySelector('.dp-settings-provider-config-status').getBoundingClientRect();
-      return {rectangles, headerCenter:h.left + h.width / 2, statusCenter:s.left + s.width / 2};
+      const copy = node.querySelector('.dp-settings-card-header-center').getBoundingClientRect();
+      const enable = node.querySelector('.dp-settings-integration-header-enable').getBoundingClientRect();
+      return {rectangles, headerCenter:h.left + h.width / 2,
+              copyCenter:copy.left + copy.width / 2,
+              statusLeft:s.left, enableLeft:enable.left, headerRight:h.right};
     });
     for (let i = 0; i < data.rectangles.length; i += 1) {
       for (let j = i + 1; j < data.rectangles.length; j += 1) {
@@ -316,7 +322,15 @@ test('WS1-P2 provider header stays centered/non-overlapping and semantic in dark
         expect(overlapX > 1 && overlapY > 1).toBe(false);
       }
     }
-    if (width > 1180) expect(Math.abs(data.headerCenter - data.statusCenter)).toBeLessThan(2);
+    // DP 1.0.13 work items D and E: the centre region now carries the card's
+    // capability copy, centred against the FULL header, and the configuration
+    // status joined the right-side controls beside Enable -- so the operator
+    // reads what enabling the card does where the header was previously blank.
+    if (width > 1180) {
+      expect(Math.abs(data.headerCenter - data.copyCenter)).toBeLessThan(2);
+      expect(data.statusLeft).toBeGreaterThan(data.headerCenter);
+      expect(data.statusLeft).toBeLessThan(data.enableLeft);
+    }
   };
 
   await assertGeometry(1440);

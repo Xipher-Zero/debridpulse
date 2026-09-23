@@ -462,6 +462,7 @@ class TransferRepository(_CanonicalTransferRepository):
             await self._overlay_candidate_presentation(result, transfer_id)
 
         request_kind = ""
+        request_kinds: list[str] = []
         candidate_source = None
         selected_source = None
         selected_provider = ""
@@ -491,6 +492,23 @@ class TransferRepository(_CanonicalTransferRepository):
                     request_kind = str(codec.request(codec.load(root["payload"])).kind or "").strip().lower()
                 except (TypeError, ValueError, KeyError):
                     request_kind = ""
+
+            # The canonical request kinds of this transfer's ROOT requests.
+            # Derived, never stored a second time: the kind already lives in the
+            # durable request payload, so it survives a restart on its own. It
+            # is the fact that separates the submission CHANNEL (torrents.source
+            # -- how the operator handed the work over) from what was actually
+            # submitted, which is what "Submitted As" has to report. A transfer
+            # may legitimately own several root requests, so this is the DISTINCT
+            # set rather than the first row's kind.
+            kind_rows = await db.fetchall(
+                """SELECT DISTINCT LOWER(COALESCE(json_extract(payload, '$.kind'), '')) AS kind
+                     FROM transfer_requests
+                    WHERE transfer_id=? AND parent_id IS NULL""",
+                (transfer_id,),
+            )
+            request_kinds = sorted({str(row.get("kind") or "").strip()
+                                    for row in kind_rows} - {""})
 
             pause_row = await db.fetchone(
                 "SELECT paused FROM transfer_pause_intents WHERE torrent_id=?", (transfer_id,)
@@ -727,6 +745,7 @@ class TransferRepository(_CanonicalTransferRepository):
                 if item.get("presentation_status") != "downloading":
                     item["download_speed"] = 0
 
+        result["request_kinds"] = request_kinds
         result["current_source_identity"] = public_source_identity(request_kind, candidate_source)
         if _candidate_source(selected_source) is not None:
             result["current_source_identity"] = public_source_identity(request_kind, selected_source)

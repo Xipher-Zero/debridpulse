@@ -95,7 +95,8 @@ def _source_label(source: str) -> str:
     """Maps internal source identifiers to readable labels."""
     return {
         "manual":             "Manual (UI)",
-        "manual_file":        "Torrent file (UI)",
+        # Channel only: this label has no access to the canonical request kind.
+        "manual_file":        "Uploaded file (UI)",
         "direct_link":        "Direct link (UI)",
         "inventory": "Provider inventory",
         "api":                "API",

@@ -20,7 +20,7 @@ SERVER_NOT_FOUND = "server_not_found"
 # never reassigned; `password` is governed by the secret rule below.
 MUTABLE_FIELDS = frozenset({
     "host", "port", "ssl", "username", "password", "connections", "priority",
-    "enabled", "display_name",
+    "articles_per_request", "timeout_seconds", "enabled", "display_name",
 })
 
 

@@ -139,6 +139,100 @@
   min-height: 50px;
 }
 
+/* ── The ONE canonical Settings card header ──────────────────────────────
+   Three regions: the title group (title + its disclosure chip), the centred
+   flavour copy, and the right-side operational controls. The outer tracks are
+   equal `1fr`s, so the centre region's midpoint is the HEADER's midpoint for
+   any title or control width -- a flex remainder could only centre the copy
+   inside whatever the title happened to leave over, which made the apparent
+   centre move with the title's length. */
+#view-settings .card-header.dp-settings-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+#view-settings .dp-settings-card-header > .dp-settings-card-title-group {
+  min-width: 0;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The shared card material gives .card-title `flex: 1`; inside the title group
+   that would push the chip to the far edge, which is exactly the placement
+   this correction removes. */
+#view-settings .dp-settings-card-title-group > .card-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-card-header > .dp-settings-card-header-center {
+  min-width: 0;
+  justify-self: center;
+  text-align: center;
+}
+
+#view-settings .dp-settings-card-header > .dp-settings-card-header-controls {
+  min-width: 0;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── The ONE canonical Settings disclosure chip ──────────────────────────
+   Rendered by ui-settings-page.js `settingsDisclosure()` and used identically
+   by Sources & Providers cards and Downloads -> Executor Tuning cards. The two
+   earlier implementations (a ghost chip pinned beside Enable, and a naked
+   chevron) are gone, not aliased. */
+#view-settings .dp-settings-disclosure {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dp-text-muted);
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+
+#view-settings .dp-settings-disclosure:hover {
+  border-color: var(--dp-border-default);
+  background: var(--dp-surface-2);
+  color: var(--dp-text-primary);
+}
+
+#view-settings .dp-settings-disclosure:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: 2px;
+}
+
+#view-settings .dp-settings-disclosure > span {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform .15s ease;
+}
+
+#view-settings .dp-settings-disclosure[aria-expanded="true"] > span {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-settings .dp-settings-disclosure,
+  #view-settings .dp-settings-disclosure > span {
+    transition: none;
+  }
+}
+
 #view-settings .dp-settings-copy {
   margin: 0 0 14px;
   color: var(--dp-text-muted);
@@ -387,9 +481,6 @@
 }
 
 #view-settings .dp-settings-inline-check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
   margin-top: 8px;
 }
 
@@ -728,18 +819,11 @@
 #view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
 #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
 
-/* Direct Sources: every source is one compact header-only card -- title left,
-   explanation true-centered on the card, Enable right. Equal outer columns keep
-   the copy centered whatever the title and control widths. */
+/* Direct Sources are header-only cards; the canonical three-region header owns
+   their layout, so only the seam treatment is card-specific here. */
 #view-settings .dp-settings-direct-source-card > .card-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 16px;
   border-bottom-color: transparent;
 }
-#view-settings .dp-settings-direct-source-card > .card-header > .card-title { justify-self: start; }
-#view-settings .dp-settings-direct-source-card > .card-header > .dp-settings-integration-header-enable { justify-self: end; }
 #view-settings .dp-settings-provider-header-copy {
   min-width: 0;
   margin: 0;
@@ -750,13 +834,17 @@
   line-height: 1.45;
 }
 @media (max-width:700px) {
-  #view-settings .dp-settings-provider-card > .card-header { gap:10px; }
   #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
-  /* Narrow: the copy wraps beneath title + Enable, still inside the header. */
-  #view-settings .dp-settings-direct-source-card > .card-header { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
-  #view-settings .dp-settings-direct-source-card > .card-header > .card-title { grid-column: 1; grid-row: 1; }
-  #view-settings .dp-settings-direct-source-card > .card-header > .dp-settings-integration-header-enable { grid-column: 2; grid-row: 1; }
-  #view-settings .dp-settings-direct-source-card .dp-settings-provider-header-copy {
+  /* Narrow: the copy wraps beneath the title group and the controls, still
+     inside the same canonical header. */
+  #view-settings .card-header.dp-settings-card-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    row-gap: 4px;
+  }
+  #view-settings .dp-settings-card-header > .dp-settings-card-title-group { grid-column: 1; grid-row: 1; }
+  #view-settings .dp-settings-card-header > .dp-settings-card-header-controls { grid-column: 2; grid-row: 1; }
+  #view-settings .dp-settings-card-header > .dp-settings-card-header-center {
     grid-column: 1 / -1; grid-row: 2; justify-self: start; text-align: left;
   }
 }

@@ -229,7 +229,7 @@ body.light .logo-name span { color: #7c3aed; }
   gap: 9px;
 }
 #topbar-actions .btn,
-#aria2-speed-badge,
+#runtime-speed-badge,
 #update-badge {
   height: 37px;
   min-height: 37px;
@@ -247,7 +247,7 @@ body.light .logo-name span { color: #7c3aed; }
 #btn-resume-paused {
   border-color: rgba(139, 92, 246, .28) !important;
 }
-#aria2-speed-badge {
+#runtime-speed-badge {
   margin-top: 6px;
   padding: 0 12px !important;
   color: #bec3da !important;
@@ -337,7 +337,7 @@ body.light .conn-row { color: #515772; }
 body.light #page-title { color: #171a2c; }
 body.light .dp-page-subtitle { color: #707691; }
 body.light #topbar-actions .btn,
-body.light #aria2-speed-badge,
+body.light #runtime-speed-badge,
 body.light #update-badge,
 body.light .theme-toggle {
   background: rgba(255,255,255,.90) !important;
@@ -376,7 +376,7 @@ body.light .theme-toggle {
   #page-title::after { display: none; }
   .dp-page-subtitle { margin-top: 6px; font-size: 11.5px; }
   #topbar-actions { position: absolute; top: 91px; right: 14px; }
-  #aria2-speed-badge { display: none !important; }
+  #runtime-speed-badge { display: none !important; }
   .sidebar-theme-control.topbar-theme-control {
     width: 36px !important;
     min-width: 36px !important;

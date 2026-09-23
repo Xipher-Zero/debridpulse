@@ -56,14 +56,6 @@
   margin: 0;
 }
 
-/* Match the established Sources / Downloads field sandwich: label and helper
-   copy share the input's 3px content datum, including wrapped helper lines. */
-#view-settings [data-panel="maintenance"] .dp-settings-field > .form-label,
-#view-settings [data-panel="maintenance"] .dp-settings-field > .form-hint {
-  position: relative;
-  inset-inline-start: 3px;
-}
-
 #view-settings .dp-settings-backups-field-grid .form-label {
   display: block;
   margin-bottom: 7px;

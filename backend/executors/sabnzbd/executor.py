@@ -37,7 +37,8 @@ from transfers.errors import Category, Domain, Retryability, Stage, TransferErro
 from transfers.models import (
     ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutorCapabilities, ExecutorClaim,
-    ExecutorHealth, ExecutorRuntimeCapability, ExecutorRuntimeControlResult, IntegrationDescriptor,
+    ExecutorHealth, ExecutorRuntimeCapability, ExecutorRuntimeControlResult, ExecutorThroughput,
+    IntegrationDescriptor,
     MaterializationKind, MaterializationResult, MaterializedEntry,
 )
 
@@ -72,6 +73,10 @@ class SabnzbdExecutor:
     capabilities = ExecutorCapabilities(
         per_execution_pause=True,
         aggregate_bandwidth_ceiling=True,
+        # The service measures throughput for itself as a whole and publishes
+        # no per-job rate, so this executor reports the neutral executor-level
+        # figure rather than letting core invent one per execution.
+        aggregate_throughput=True,
         materialization_kinds=frozenset({MaterializationKind.COLLECTION}),
     )
 
@@ -484,6 +489,17 @@ class SabnzbdExecutor:
         # The aggregate ceiling is enforceable exactly while the service answers.
         return ExecutorHealth(True, ready,
                               frozenset({ExecutorRuntimeCapability.AGGREGATE_BANDWIDTH_CEILING}))
+
+    async def aggregate_download_throughput(self) -> ExecutorThroughput:
+        """The one rate this executor can truthfully measure: its own.
+
+        An unreachable or unusable service is UNKNOWN, never its last value:
+        the operator must not be shown a speed that is no longer happening.
+        """
+        try:
+            return ExecutorThroughput(await self.client.download_throughput(), True)
+        except (SabTransportError, SabApiError):
+            return ExecutorThroughput(0, False)
 
     async def set_bandwidth_ceiling(self, bytes_per_second: int) -> ExecutorRuntimeControlResult:
         """Enforce the core-assigned share as the service's global download

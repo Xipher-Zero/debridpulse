@@ -22,6 +22,23 @@ const collection = page => page.locator('[data-usenet-collection]');
 const serverCards = page => collection(page).locator('[data-usenet-server-id]');
 const addTile = page => collection(page).locator('[data-usenet-action="add"]');
 const field = (card, name) => card.locator(`[data-usenet-field="${name}"]`);
+/* DP 1.0.13 work item F moved the per-server acquisition controls -- Connections,
+ * Priority, Articles per Request and Server Timeout -- into one compact Advanced
+ * disclosure so the normal card stays short. */
+async function rename(page, card, value) {
+  await card.locator('[data-usenet-action="rename"]').click();
+  const dialog = page.locator('.dp-modal-overlay .dp-modal-dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.locator('.dp-modal-field .input').fill(value);
+  await dialog.locator('[data-modal-accept]').click();
+  await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
+}
+
+async function openAdvanced(card) {
+  const toggle = card.locator('[data-usenet-advanced-toggle]');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(card.locator('[data-usenet-field="connections"]')).toBeVisible();
+}
 // The SSL control is a styled toggle: its checkbox is visually hidden, so the
 // operator clicks the surrounding label, exactly as this does.
 async function setSsl(card, on) {
@@ -156,6 +173,7 @@ test('saving one card never persists another card unsaved edits', async ({page})
   // Type into BETA but never save it, then save ALPHA.
   await field(beta, 'host').fill('news.beta-UNSAVED.net');
   await field(beta, 'username').fill('UNSAVED');
+  await openAdvanced(alpha);
   await field(alpha, 'connections').fill('12');
   await alpha.locator('[data-usenet-action="save"]').click();
 
@@ -219,22 +237,24 @@ test('the display name derives from Host and a manual override survives Host edi
   await field(card, 'host').fill('news.derived.net');
   await expect(card.locator('[data-usenet-display-name]')).toHaveText('news.derived.net');
 
-  page.once('dialog', dialog => dialog.accept('Primary feed'));
-  await card.locator('[data-usenet-action="rename"]').click();
+  // DP 1.0.13 work item B: renaming uses the canonical application dialog, so
+  // there is no browser-native prompt to answer.
+  await rename(page, card, 'Primary feed');
   await expect(card.locator('[data-usenet-display-name]')).toHaveText('Primary feed');
   await field(card, 'host').fill('news.changed.net');
   await expect(card.locator('[data-usenet-display-name]')).toHaveText('Primary feed');
 
   // Clearing the override returns to derived behaviour.
-  page.once('dialog', dialog => dialog.accept(''));
-  await card.locator('[data-usenet-action="rename"]').click();
+  await rename(page, card, '');
   await expect(card.locator('[data-usenet-display-name]')).toHaveText('news.changed.net');
 });
 
 test('a server card exposes no API-key field', async ({page}) => {
   await addTile(page).click();
   const card = serverCards(page).last();
-  for (const name of ['host', 'port', 'ssl', 'username', 'password', 'connections', 'priority']) {
+  await openAdvanced(card);
+  for (const name of ['host', 'port', 'ssl', 'username', 'password', 'connections', 'priority',
+                      'articles_per_request', 'timeout_seconds']) {
     await expect(field(card, name)).toHaveCount(1);
   }
   await expect(card.locator('[data-usenet-field="api_key"]')).toHaveCount(0);

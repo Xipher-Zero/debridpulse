@@ -354,7 +354,7 @@ function rowMarkup(t) {
     <td class="sz dp-downloads-provider-cell">
       <span class="dp-downloads-provider-block">
         <span class="dp-downloads-provider-line">${sourceMarkup}${providerChip(t)}${fileSelectionMarkup}${groupMarkup}</span>
-        <span class="dp-transfer-source-label">${sourceLabel(t.source)}</span>
+        <span class="dp-transfer-source-label">${sourceLabel(t.source, t.request_kinds)}</span>
       </span>
       ${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}
     </td>
@@ -522,7 +522,14 @@ async function bulkAction(action, button) {
   }
 }
 async function setLabel(id) {
-  const label = prompt('Label (leave empty to clear):') ?? null;
+  // The canonical application dialog owner, never a browser-native prompt.
+  // Semantics are unchanged: cancel is a no-op, blank clears the label.
+  const label = await window.DPSettingsModal.prompt({
+    title: 'Set Label',
+    label: 'Label',
+    hint: 'Leave empty to clear the label.',
+    acceptLabel: 'Save',
+  });
   if (label === null) return;
   try {
     await api('PUT', `/torrents/${id}/label`, {label: label.trim(), priority: 0});

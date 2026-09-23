@@ -21,5 +21,7 @@ definition = IntegrationDefinition(
         display_order=110,
         status_group="direct_sources",
         status_group_label="General Sources",
+        status_tier="general_family",
+        status_tier_label="General",
     ),
 )

@@ -84,86 +84,10 @@
   display: block !important;
 }
 
-#view-settings .dp-settings-provider-header-controls {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  justify-self: stretch;
-  gap: 8px;
-}
-
-#view-settings .dp-settings-provider-disclosure {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--dp-text-muted);
-  cursor: pointer;
-  transition: color .15s ease, border-color .15s ease, background .15s ease;
-}
-
-#view-settings .dp-settings-provider-disclosure:hover {
-  border-color: var(--dp-border-default);
-  background: var(--dp-surface-2);
-  color: var(--dp-text-primary);
-}
-
-#view-settings .dp-settings-provider-disclosure:focus-visible {
-  outline: 2px solid var(--dp-accent-purple-bright);
-  outline-offset: 2px;
-}
-
-#view-settings .dp-settings-provider-disclosure > span {
-  display: block;
-  font-size: 22px;
-  line-height: 1;
-  transform: rotate(0deg);
-  transition: transform .15s ease;
-}
-
-#view-settings .dp-settings-provider-disclosure[aria-expanded="true"] > span {
-  transform: rotate(90deg);
-}
-
 #view-settings .dp-settings-provider-card > .card-body[hidden] {
   display: none !important;
 }
 
 #view-settings .dp-settings-provider-card--collapsed > .card-header {
   border-bottom-color: transparent;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #view-settings .dp-settings-provider-disclosure,
-  #view-settings .dp-settings-provider-disclosure > span {
-    transition: none;
-  }
-}
-
-/* The AllDebrid card is currently the only premium-flagged provider; its
-   header becomes a 3-column grid (title / config-status / header-controls)
-   at desktop widths once ui-settings-page.js has rendered the status badge
-   and header-controls wrapper described above. */
-@media (min-width: 1181px) {
-  #view-settings .dp-settings-provider-card--alldebrid > .card-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    align-items: center;
-    gap: 12px;
-  }
-  #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-provider-config-status {
-    grid-column: 2;
-    justify-self: center;
-    text-align: center;
-  }
-  #view-settings .dp-settings-provider-card--alldebrid > .card-header > .dp-settings-provider-header-controls {
-    grid-column: 3;
-    justify-self: end;
-  }
 }

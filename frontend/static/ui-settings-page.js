@@ -415,6 +415,22 @@
       </label>`;
   }
 
+  /* The ONE canonical Settings disclosure control.
+   *
+   * Sources & Providers cards and Downloads -> Executor Tuning cards had two
+   * independently styled disclosures in two different places (a ghost chip at
+   * the far right beside Enable, and a naked chevron beside the title). This
+   * is the single component both now render: a compact ghost chip sitting
+   * immediately after the card title, so the control reads as belonging to the
+   * title while the operational controls stay independent on the right. The
+   * card header itself is never clickable. */
+  function settingsDisclosure(bodyId, expanded, subject) {
+    const label = `${expanded ? 'Collapse' : 'Expand'} ${subject}`;
+    return `<button type="button" class="dp-settings-disclosure" data-disclosure-subject="${html(subject)}"
+            aria-controls="${html(bodyId)}" aria-expanded="${expanded}" title="${html(label)}"
+            aria-label="${html(label)}"><span aria-hidden="true">&rsaquo;</span></button>`;
+  }
+
   // Provider card: the title (with its premium mark), the configuration status,
   // the collapse control and the Enable toggle are all part of the card's own
   // markup. Behavior (collapse / status refresh) is bound by bindEvents().
@@ -436,29 +452,22 @@
     const titleMarkup = titlePrefix
       ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>${crown}</span>`
       : `<span class="card-title">${html(title)}${crown}</span>`;
-    if (!premium) {
-      const copy = headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : '';
-      return `
-      <section class="card dp-settings-card dp-large-panel-surface ${className}" data-provider-configured="${configured}">
-        <div class="card-header">
-          ${titleMarkup}
-          ${copy}
-          ${enable}
-        </div>${headerOnly ? '' : `
-        <div class="card-body">${body}</div>`}
-      </section>`;
-    }
-    const status = providerStatus(enabled, configured);
     const bodyId = `dp-settings-provider-body-${safe}`;
-    const label = enabled ? 'Collapse provider configuration' : 'Expand provider configuration';
+    // headerOnly renders the whole card as its header (Direct Sources): no
+    // body, therefore no disclosure and no configuration-status region.
+    const disclosure = headerOnly ? '' : settingsDisclosure(bodyId, enabled, 'provider configuration');
+    const status = headerOnly ? null : providerStatus(enabled, configured);
+    const collapsed = !headerOnly && !enabled;
     return `
-      <section class="card dp-settings-card dp-large-panel-surface ${className}${enabled ? '' : ' dp-settings-provider-card--collapsed'}" data-provider-configured="${configured}">
-        <div class="card-header">
-          ${titleMarkup}
-          <div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>
-          <div class="dp-settings-provider-header-controls"><button type="button" class="dp-settings-provider-disclosure" aria-controls="${bodyId}" aria-expanded="${enabled}" title="${label}" aria-label="${label}"><span aria-hidden="true">›</span></button>${enable}</div>
-        </div>
-        <div class="card-body" id="${bodyId}"${enabled ? '' : ' hidden'}>${body}</div>
+      <section class="card dp-settings-card dp-large-panel-surface ${className}${collapsed ? ' dp-settings-provider-card--collapsed' : ''}" data-provider-configured="${configured}">
+        <div class="card-header dp-settings-card-header">
+          <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
+          <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : ''}</div>
+          <div class="dp-settings-card-header-controls">${status
+            ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>`
+            : ''}${enable}</div>
+        </div>${headerOnly ? '' : `
+        <div class="card-body" id="${bodyId}"${enabled ? '' : ' hidden'}>${body}</div>`}
       </section>`;
   }
 
@@ -469,6 +478,7 @@
   // this renders the collection's initial state and its containers exactly once.
 
   function usenetServerCard(server, index) {
+    const advancedId = `dp-usenet-advanced-${String(server.id || `new-${index}`).replace(/[^a-z0-9_-]/gi, '-')}`;
     const derived = String(server.host || '').trim();
     const override = String(server.display_name || '').trim();
     const name = override || derived || 'New server';
@@ -516,28 +526,52 @@
                    autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
           </label>
         </div>${configured ? `
-        <label class="dp-usenet-clear-password">
+        <label class="dp-settings-inline-check dp-usenet-clear-password">
           <input type="checkbox" data-usenet-clear-password>
           <span>Clear the stored password for this server</span>
         </label>` : ''}
-        <div class="dp-usenet-row dp-usenet-row--tuning">
-          <label class="dp-usenet-field">
-            <span class="form-label">Connections</span>
-            <input class="input" type="number" min="0" max="500" data-usenet-field="connections"
-                   value="${html(String(server.connections ?? 8))}">
-          </label>
-          <label class="dp-usenet-field">
-            <span class="form-label">Priority</span>
-            <input class="input" type="number" min="0" max="99" data-usenet-field="priority"
-                   value="${html(String(server.priority ?? 0))}">
-          </label>
+        <div class="dp-usenet-advanced" data-usenet-advanced>
+          <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
+                  aria-controls="${advancedId}" aria-expanded="false"
+                  title="Show advanced acquisition settings"
+                  aria-label="Show advanced acquisition settings">
+            <span class="dp-usenet-advanced-label">Advanced</span>
+            <span class="dp-usenet-advanced-chevron" aria-hidden="true">&rsaquo;</span>
+          </button>
+          <div class="dp-usenet-advanced-body" id="${advancedId}" hidden>
+            <div class="dp-usenet-row dp-usenet-row--tuning">
+              <label class="dp-usenet-field">
+                <span class="form-label">Connections</span>
+                <input class="input" type="number" min="1" max="500" data-usenet-field="connections"
+                       value="${html(String(server.connections ?? 8))}">
+              </label>
+              <label class="dp-usenet-field">
+                <span class="form-label">Priority</span>
+                <input class="input" type="number" min="0" max="99" data-usenet-field="priority"
+                       value="${html(String(server.priority ?? 0))}">
+              </label>
+            </div>
+            <p class="dp-usenet-priority-hint">Lower values have priority.</p>
+            <div class="dp-usenet-row dp-usenet-row--tuning">
+              <label class="dp-usenet-field">
+                <span class="form-label">Articles per Request</span>
+                <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request"
+                       value="${html(String(server.articles_per_request ?? 2))}">
+              </label>
+              <label class="dp-usenet-field">
+                <span class="form-label">Server Timeout (seconds)</span>
+                <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds"
+                       value="${html(String(server.timeout_seconds ?? 60))}">
+              </label>
+            </div>
+            <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
+          </div>
         </div>
         <div class="dp-usenet-actions">
           <button type="button" class="btn btn-sm" data-usenet-action="save">Save</button>
           <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
           <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
         </div>
-        <p class="dp-usenet-priority-hint">Lower values have priority.</p>
         <p class="dp-usenet-server-status" role="status" aria-live="polite" data-usenet-status hidden></p>
       </div>`;
   }
@@ -606,6 +640,7 @@
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
       displayName: 'AllDebrid',
+      headerCopy: 'Resolve supported links and torrents through your AllDebrid account.',
     });
 
     const generalHttpCard = providerCard('general_http', 'HTTP & HTTPS', '', generalHttp, {
@@ -628,6 +663,7 @@
     const usenetCard = providerCard('usenet', 'Usenet', usenetBody(s, usenet), usenet, {
       className: 'dp-settings-provider-card dp-settings-provider-card--usenet',
       displayName: 'Usenet',
+      headerCopy: 'Download NZB content from configured Usenet news servers.',
     });
 
     // Usenet is the first card under External Providers, above AllDebrid.
@@ -691,14 +727,12 @@
     const bodyId = `dp-executor-tuning-${id}`;
     return `
       <section class="card dp-settings-card dp-executor-tuning-card" data-executor-tuning="${html(id)}">
-        <div class="card-header dp-executor-tuning-header">
-          <span class="dp-executor-tuning-title">
+        <div class="card-header dp-settings-card-header">
+          <span class="dp-settings-card-title-group">
             <span class="card-title">${html(label)}</span>
-            <button type="button" class="dp-executor-tuning-disclosure" aria-controls="${bodyId}"
-                    aria-expanded="false" title="Expand ${html(label)} tuning"
-                    aria-label="Expand ${html(label)} tuning"><span aria-hidden="true">›</span></button>
+            ${settingsDisclosure(bodyId, false, `${label} tuning`)}
           </span>
-          <div class="dp-settings-card-header-center dp-executor-tuning-copy">${html(copy)}</div>
+          <div class="dp-settings-card-header-center">${html(copy)}</div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
       </section>`;
@@ -743,21 +777,38 @@
   }
 
   function usenetTuning(s) {
-    // Deliberately sparse: no native Usenet-service setting earned a place here.
-    // Queue depth and acquisition concurrency are excluded on purpose -- global
-    // admission belongs to Maximum Concurrent Downloads above.
+    // Executor-wide acquisition behaviour only. Global admission (Maximum
+    // Concurrent Downloads) and the global download speed cap stay where they
+    // already live -- neither is duplicated here -- and nothing about unpacking
+    // or folder layout belongs here at all: DebridPulse owns both.
     const options = usenetOf(s);
     return `
       <div class="dp-settings-engine-tuning-grid">
+        ${input('usenet_article_cache_megabytes', 'Article Cache Limit (MB)',
+          options.article_cache_megabytes ?? 1024, {
+          type: 'number', min: 0, max: 4096,
+          hint: 'Memory DebridPulse may use to hold downloaded article data before it is written to disk. Set to 0 to disable the cache.'
+        })}
+        ${input('usenet_max_acquisition_retries', 'Maximum Retries',
+          options.max_acquisition_retries ?? 3, {
+          type: 'number', min: 2, max: 25,
+          hint: 'How many times DebridPulse retries a single article on a news server before giving up on that server. This is Usenet acquisition retry only; it is not the DebridPulse download retry count under Download Safety &amp; Recovery.'
+        })}
         ${input('usenet_operation_timeout_seconds', 'Request Timeout (seconds)',
-          options.operation_timeout_seconds ?? 15, {
+          options.operation_timeout_seconds ?? 30, {
           type: 'number', min: 5, max: 300,
           hint: 'How long DebridPulse waits for the Usenet download service to answer a request.'
         })}
+        ${tuningToggle(
+          'usenet_direct_write',
+          'Direct Write',
+          'Write article data straight to the destination file instead of buffering it in memory first. Reduces disk I/O when articles arrive in order.',
+          options.direct_write !== false
+        )}
       </div>
       <p class="dp-settings-tuning-footer">
-        Acquisition tuning such as connections and server priority belongs to each
-        news server under Sources &amp; Providers.
+        Per-server acquisition tuning belongs to each news server under
+        Sources &amp; Providers.
       </p>`;
   }
 
@@ -1555,39 +1606,93 @@
   }
 
   function snapshotProviderControls(view) {
-    view.querySelectorAll('.dp-settings-provider-disclosure').forEach(button => {
+    view.querySelectorAll('.dp-settings-provider-card .dp-settings-disclosure').forEach(button => {
       const card = button.closest('.dp-settings-provider-card');
       if (card) providerBaselines.set(card, providerControls(card).map(el => [el, controlSignature(el)]));
     });
   }
 
-  function setProviderExpanded(card, expanded) {
-    const body = card.querySelector(':scope > .card-body');
-    const button = card.querySelector('.dp-settings-provider-disclosure');
-    if (!body || !button) return;
-    body.hidden = !expanded;
-    card.classList.toggle('dp-settings-provider-card--collapsed', !expanded);
-    const label = expanded ? 'Collapse provider configuration' : 'Expand provider configuration';
+  /* The ONE disclosure behaviour, shared by every canonical disclosure chip.
+   * The body is addressed through aria-controls, so the same code serves a
+   * provider card and an executor-tuning card without knowing either. */
+  function setDisclosureExpanded(button, expanded) {
+    if (!button) return;
+    const body = document.getElementById(button.getAttribute('aria-controls'));
+    if (body) body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    const label = `${expanded ? 'Collapse' : 'Expand'} ${button.dataset.disclosureSubject || 'section'}`;
     button.title = label;
     button.setAttribute('aria-label', label);
+    button.closest('.dp-settings-provider-card')
+      ?.classList.toggle('dp-settings-provider-card--collapsed', !expanded);
   }
 
-  function providerEnableChanged(input) {
-    const card = input.closest('.dp-settings-provider-card');
-    if (!card || !card.querySelector('.dp-settings-provider-disclosure')) return;
-    const baseline = providerBaselines.get(card) || [];
-    const dirty = baseline.some(([el, value]) => el.isConnected && controlSignature(el) !== value);
-    if (input.checked) setProviderExpanded(card, true);
-    else if (!dirty) setProviderExpanded(card, false);
-    const entry = state.settings?.integrations?.[input.dataset.integrationEnabled] || {};
-    const status = providerStatus(input.checked, !!entry.configured);
+  /* Render one integration card's presentation from COMMITTED canonical state.
+   * Never from the operator's click: the visible toggle must not be able to
+   * report a participation state the server has not accepted. */
+  function renderIntegrationState(card, identity) {
+    const entry = state.settings?.integrations?.[identity] || {};
+    const enabled = entry.enabled !== false;
+    const input = card.querySelector(`[data-integration-enabled="${identity}"]`);
+    if (input) input.checked = enabled;
+    const disclosure = card.querySelector('.dp-settings-disclosure');
+    if (disclosure) {
+      const baseline = providerBaselines.get(card) || [];
+      const dirty = baseline.some(([el, value]) => el.isConnected && controlSignature(el) !== value);
+      if (enabled) setDisclosureExpanded(disclosure, true);
+      else if (!dirty) setDisclosureExpanded(disclosure, false);
+    }
+    const status = providerStatus(enabled, !!entry.configured);
     const node = card.querySelector('.dp-settings-provider-config-status');
     if (node) {
       node.textContent = status.text;
       node.dataset.tone = status.tone;
       node.hidden = !status.text;
     }
+  }
+
+  /* The ONE immediate canonical operational control.
+   *
+   * An integration/source Enable toggle is operational state, not a deferred
+   * form field: it decides whether that integration participates at all and
+   * whether its managed lifecycle component has to be running. Leaving it in
+   * the page-level Apply Settings write let the visible toggle read ON while
+   * `integrations.<id>.enabled` stayed false, which is exactly the divergence
+   * that made an enabled Usenet integration report an unreachable service.
+   *
+   * It persists through the existing generic integration-configuration
+   * mutation -- no second enable endpoint, no per-integration bypass -- and the
+   * identity comes from the control itself, so every toggle of this class
+   * shares one path. Ordinary settings fields stay deferred. */
+  async function providerEnableChanged(input) {
+    const identity = input.dataset.integrationEnabled;
+    const card = input.closest('.dp-settings-provider-card');
+    if (!identity || !card) return;
+    const desired = input.checked;
+    input.disabled = true;
+    try {
+      const result = await request(
+        'PATCH', `/integrations/${encodeURIComponent(identity)}/configuration`,
+        {enabled: desired}, 15000);
+      adoptIntegration(identity, result);
+      renderIntegrationState(card, identity);
+      const committed = state.settings?.integrations?.[identity]?.enabled !== false;
+      notify(`${integrationDisplayName(card, identity)} ${committed ? 'enabled' : 'disabled'}`, 'success');
+    } catch (error) {
+      // Nothing optimistic is left lying: the control and the card return to
+      // the canonical namespace the server last confirmed.
+      renderIntegrationState(card, identity);
+      notify(error.message, 'error');
+    } finally {
+      input.disabled = false;
+    }
+    try { window.DPProviderStatus?.refresh(); } catch (_) {}
+  }
+
+  function integrationDisplayName(card, identity) {
+    return card.querySelector('.card-title .dp-settings-card-title-text')?.textContent?.trim()
+      || card.querySelector('.card-title')?.textContent?.trim()
+      || identity;
   }
 
   function bindEvents(view) {
@@ -1613,32 +1718,17 @@
     });
 
     view.addEventListener('change', event => {
-      if (event.target.matches('[data-integration-enabled]')) providerEnableChanged(event.target);
+      if (event.target.matches('[data-integration-enabled]')) void providerEnableChanged(event.target);
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
     });
 
     view.addEventListener('click', event => {
-      const tuning = event.target.closest('.dp-executor-tuning-disclosure');
-      if (tuning) {
-        event.preventDefault();
-        const expanded = tuning.getAttribute('aria-expanded') === 'true';
-        const body = document.getElementById(tuning.getAttribute('aria-controls'));
-        tuning.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-        const label = tuning.closest('.dp-executor-tuning-card')
-          ?.querySelector('.card-title')?.textContent?.trim() || 'tuning';
-        const action = `${expanded ? 'Expand' : 'Collapse'} ${label} tuning`;
-        tuning.setAttribute('title', action);
-        tuning.setAttribute('aria-label', action);
-        if (body) body.hidden = expanded;
-        return;
-      }
-      const disclosure = event.target.closest('.dp-settings-provider-disclosure');
+      const disclosure = event.target.closest('.dp-settings-disclosure');
       if (disclosure) {
         event.preventDefault();
-        const card = disclosure.closest('.dp-settings-provider-card');
-        setProviderExpanded(card, disclosure.getAttribute('aria-expanded') !== 'true');
+        setDisclosureExpanded(disclosure, disclosure.getAttribute('aria-expanded') !== 'true');
         return;
       }
       const tab = event.target.closest('.dp-settings-tabs [data-tab]');
@@ -1755,18 +1845,19 @@
     };
   }
 
+  // Participation is NOT part of this payload: the header Enable toggle is an
+  // immediate canonical operational control with its own committed write
+  // (providerEnableChanged), and a second deferred writer would let a stale
+  // page snapshot overwrite it.
   function allDebridConfigurationPayload() {
     const current = allDebridOf(state.settings);
-    const enabled = root()?.querySelector('[data-integration-enabled="alldebrid"]');
-    const payload = {
+    return {
       options: {
         api_key: valueOf('alldebrid_api_key'),
         rate_limit_per_minute: intOf('alldebrid_rate_limit_per_minute', current.rate_limit_per_minute ?? 60),
       },
       clear_secrets: scopedClears('alldebrid'),
     };
-    if (enabled) payload.enabled = !!enabled.checked;
-    return payload;
   }
 
   function usenetConfigurationPayload() {
@@ -1775,15 +1866,19 @@
     // the operator just saved. One namespace, one writer per field. There is no
     // service address or credential here: the acquisition service is internal.
     const current = usenetOf(state.settings);
-    const enabled = root()?.querySelector('[data-integration-enabled="usenet"]');
-    const payload = {
+    // Participation has its own immediate canonical write; see
+    // allDebridConfigurationPayload.
+    return {
       options: {
         operation_timeout_seconds: intOf('usenet_operation_timeout_seconds',
           current.operation_timeout_seconds ?? 30),
+        article_cache_megabytes: intOf('usenet_article_cache_megabytes',
+          current.article_cache_megabytes ?? 1024),
+        direct_write: boolOf('usenet_direct_write'),
+        max_acquisition_retries: intOf('usenet_max_acquisition_retries',
+          current.max_acquisition_retries ?? 3),
       },
     };
-    if (enabled) payload.enabled = !!enabled.checked;
-    return payload;
   }
 
   function transferPolicyPayload() {
@@ -1867,13 +1962,8 @@
     adoptIntegration('aria2', await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000));
     adoptIntegration('alldebrid', await request('PATCH', '/integrations/alldebrid/configuration', allDebridConfigurationPayload(), 15000));
     adoptIntegration('usenet', await request('PATCH', '/integrations/usenet/configuration', usenetConfigurationPayload(), 15000));
-    // Direct Sources carry only their own generic Enable; each persists independently.
-    for (const identity of ['general_http', 'general_ftp']) {
-      const enabled = root()?.querySelector(`[data-integration-enabled="${identity}"]`);
-      if (enabled && !!enabled.checked !== (state.settings?.integrations?.[identity]?.enabled !== false)) {
-        adoptIntegration(identity, await request('PATCH', `/integrations/${identity}/configuration`, {enabled: !!enabled.checked}, 15000));
-      }
-    }
+    // Direct Sources carry only their own generic Enable, which is an immediate
+    // canonical operational control -- nothing about them is deferred to here.
     adoptTransferPolicy(await request('PATCH', '/transfer-policy', transferPolicyPayload(), 15000));
     const result = await request('PUT', '/settings', nonAuthPayload(), 15000);
     syncGlobalSettings(result);
@@ -1883,7 +1973,7 @@
     }
     if (!quiet) notify('Settings saved', 'success');
     try { if (typeof checkConnections === 'function') checkConnections(); } catch (_) {}
-    try { if (typeof loadAria2SpeedLimit === 'function') loadAria2SpeedLimit(); } catch (_) {}
+    try { if (typeof loadRuntimeStatus === 'function') loadRuntimeStatus(); } catch (_) {}
     return result;
   }
 

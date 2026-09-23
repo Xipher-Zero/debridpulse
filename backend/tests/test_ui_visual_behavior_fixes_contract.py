@@ -16,6 +16,6 @@ def test_aria2_topbar_first_paint_is_owned_by_shell_markup() -> None:
 
     assert "/ui-topbar-first-paint.css" not in entry
     assert not (STATIC / "ui-topbar-first-paint.css").exists()
-    assert 'id="aria2-speed-badge"' in index
-    assert 'id="aria2-badge-active">0</span>' in index
-    assert 'id="aria2-badge-max">0</span>' in index
+    assert 'id="runtime-speed-badge"' in index
+    assert 'id="runtime-badge-active">0</span>' in index
+    assert 'id="runtime-badge-max">0</span>' in index

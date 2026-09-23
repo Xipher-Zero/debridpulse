@@ -47,6 +47,10 @@ def _application(current, *, validate_configuration=None, aria2_admin=None):
         integration_admin=lambda _identity: admin,
         # Namespaces with an integration-owned configuration applier drive it
         # from the save path; this double owns none.
+        # DP 1.0.13 work item A: a canonical configuration mutation wakes the
+        # neutral lifecycle/routing maintenance that has to act on it, so an
+        # operator-visible control is immediate rather than cadence-bound.
+        notify_applicability_changed=lambda _identity: None,
         apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=validate_configuration or AsyncMock(),
         execution_runtime_limits=AsyncMock(side_effect=lambda: {

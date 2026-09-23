@@ -176,7 +176,7 @@ test('desktop structured toast stays in the topbar and resize recomputes a short
     [
       document.getElementById('update-badge'),
       document.getElementById('topbar-actions'),
-      document.getElementById('aria2-speed-badge'),
+      document.getElementById('runtime-speed-badge'),
       document.querySelector('.topbar-theme-control'),
     ].filter(Boolean).forEach(item => {
       const style = getComputedStyle(item);

@@ -9,7 +9,8 @@ from transfers.applicability import (
 )
 from transfers.contracts import (
     ApplicabilitySource, CandidateRefresh, CandidateSampling, CandidateSamplingContinuation, Cleanup, Executor,
-    ExecutorAcquisitionGate, ExecutorBandwidthControl, ExecutorInputContinuation, ExecutorInputRecovery,
+    ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
+    ExecutorInputRecovery,
     ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource, ResourceLookup,
     Manifest,
 )
@@ -35,6 +36,7 @@ _EXECUTOR_CAPABILITIES = {
     "per_execution_pause": (PauseResume,),
     "acquisition_gate": (ExecutorAcquisitionGate,),
     "aggregate_bandwidth_ceiling": (ExecutorBandwidthControl,),
+    "aggregate_throughput": (ExecutorAggregateThroughput,),
     "native_assisted_retry": (ExecutorNativeRetry,),
     "transient_input": (ExecutorInputContinuation, ExecutorInputRecovery),
 }

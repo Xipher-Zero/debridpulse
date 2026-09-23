@@ -44,7 +44,12 @@ def _application():
         configuration_admission=lambda: _open(),
         configure=MagicMock(),
         reconcile_executions=AsyncMock(),
-        integration_admin=lambda _identity: admin, apply_integration_configuration=AsyncMock(return_value=None),
+        integration_admin=lambda _identity: admin,
+        # DP 1.0.13 work item A: a canonical configuration mutation wakes the
+        # neutral lifecycle/routing maintenance that has to act on it, so an
+        # operator-visible control is immediate rather than cadence-bound.
+        notify_applicability_changed=lambda _identity: None,
+        apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=AsyncMock(),
     )
 

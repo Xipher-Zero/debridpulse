@@ -315,6 +315,21 @@ body.light .dp-modal-dialog {
   display: none;
 }
 
+/* The canonical single-text-field dialog body (DPSettingsModal.prompt): the
+   same field material Settings uses, inside the shared dialog shell. */
+.dp-modal-field {
+  display: block;
+}
+
+.dp-modal-field > .form-label {
+  display: block;
+  margin-bottom: 7px;
+}
+
+.dp-modal-field > .input {
+  width: 100%;
+}
+
 .dp-modal-typed .input {
   width: 100%;
 }

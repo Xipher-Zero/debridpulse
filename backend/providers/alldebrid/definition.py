@@ -59,5 +59,7 @@ definition = IntegrationDefinition(
         premium=True,
         status_endpoint="/integration-status/alldebrid",
         display_order=10,
+        status_tier="premium_service",
+        status_tier_label="Premium Services",
     ),
 )

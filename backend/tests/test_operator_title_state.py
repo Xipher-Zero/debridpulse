@@ -36,11 +36,11 @@ def test_operator_title_retains_last_progress_when_handoff_has_no_progress_sampl
 
 def test_custom_speed_cap_handler_is_unchanged():
     """DP 1.0.12 UI Finishing (Correction 4): the button's onclick handler
-    (still applyAria2TopbarCustomSpeedCap) is unchanged; only its visible
+    (still applyTopbarCustomSpeedCap) is unchanged; only its visible
     label moved from the ambiguous "Apply" to "Set Custom"."""
     html = (STATIC / "index.html").read_text(encoding="utf-8")
 
     assert (
         '<button type="button" class="btn btn-primary btn-sm" '
-        'onclick="applyAria2TopbarCustomSpeedCap()">Set Custom</button>'
+        'onclick="applyTopbarCustomSpeedCap()">Set Custom</button>'
     ) in html

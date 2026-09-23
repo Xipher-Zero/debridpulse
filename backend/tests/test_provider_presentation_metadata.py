@@ -22,6 +22,11 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         "display_order": 10,
         "status_group": None,
         "status_group_label": None,
+        # DP 1.0.13 work item L: the neutral acquisition-tier classification the
+        # Provider Status hierarchy is driven by. Integration-owned, so the
+        # renderer never names an integration.
+        "status_tier": "premium_service",
+        "status_tier_label": "Premium Services",
     }
     assert alldebrid["options"]["api_key"] == ""
     assert alldebrid["options"]["api_key_configured"] is False
@@ -37,6 +42,8 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         "display_order": 100,
         "status_group": "direct_sources",
         "status_group_label": "General Sources",
+        "status_tier": "general_family",
+        "status_tier_label": "General",
     }
 
 

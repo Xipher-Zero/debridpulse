@@ -74,6 +74,10 @@ function integratedSettings(base) {
     },
     options: {},
   };
+  // This fixture owns its whole provider universe (AllDebrid and General
+  // Downloads); providers added to the live tree later are not inherited.
+  delete settings.integrations.general_ftp;
+  delete settings.integrations.usenet;
   settings.full_sync_interval_minutes ??= 5;
   return settings;
 }
@@ -162,7 +166,7 @@ async function topbarOrder(page) {
   return page.locator('#topbar').evaluate(topbar => Array.from(topbar.children)
     .map(node => {
       if (node.id === 'topbar-actions') return 'global-actions';
-      if (node.id === 'aria2-speed-badge') return 'engine-widget';
+      if (node.id === 'runtime-speed-badge') return 'engine-widget';
       if (node.classList?.contains('topbar-theme-control')) return 'theme-control';
       return null;
     })
@@ -206,7 +210,7 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
 
   expect(await topbarOrder(page)).toEqual(['global-actions', 'engine-widget', 'theme-control']);
   const theme = await page.locator('.topbar-theme-control').boundingBox();
-  const engine = await page.locator('#aria2-speed-badge').boundingBox();
+  const engine = await page.locator('#runtime-speed-badge').boundingBox();
   expect(theme).not.toBeNull();
   expect(engine).not.toBeNull();
   expect(engine.x + engine.width).toBeLessThanOrEqual(theme.x + 1);
@@ -226,7 +230,7 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   const card = page.locator('.dp-settings-provider-card--alldebrid');
   await expect(card).toBeVisible();
-  await expect(card.locator('.dp-settings-provider-disclosure')).toHaveAttribute('aria-expanded', 'false');
+  await expect(card.locator('.dp-settings-disclosure')).toHaveAttribute('aria-expanded', 'false');
   await expect(card.locator(':scope > .card-body')).toBeHidden();
   await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Provider configured');
   await expect(card.locator('.dp-settings-provider-config-status')).toHaveAttribute('data-tone', 'info');

@@ -236,48 +236,48 @@ body.light .dp-dropdown-menu {
 
 /* The speed-cap control is a richer popover rather than a simple select. Its
    local wrapper must not become the positioning containing block; the existing
-   positioned #aria2-speed-badge owns the popover anchor so right:0 means the
+   positioned #runtime-speed-badge owns the popover anchor so right:0 means the
    complete operational widget's right edge, not the inner cap button. */
-.aria2-cap-control { position: relative; display: inline-flex; align-items: center; }
-#aria2-speed-badge .aria2-cap-control {
+.runtime-cap-control { position: relative; display: inline-flex; align-items: center; }
+#runtime-speed-badge .runtime-cap-control {
   position: static;
 }
-.aria2-cap-toggle {
+.runtime-cap-toggle {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 1px 3px; border: 0; border-radius: 4px;
   background: transparent; color: var(--text2); font: inherit;
   cursor: pointer; white-space: nowrap;
 }
-.aria2-cap-toggle:hover,
-.aria2-cap-toggle[aria-expanded="true"] { background: var(--surface3); color: var(--accent); }
-.aria2-cap-menu[hidden] { display: none; }
-.aria2-cap-title {
+.runtime-cap-toggle:hover,
+.runtime-cap-toggle[aria-expanded="true"] { background: var(--surface3); color: var(--accent); }
+.runtime-cap-menu[hidden] { display: none; }
+.runtime-cap-title {
   margin-bottom: 9px; font-size: 11px; font-weight: 700;
   color: var(--text2); text-transform: uppercase; letter-spacing: .06em;
 }
-.aria2-cap-options { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.aria2-cap-options button {
+.runtime-cap-options { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.runtime-cap-options button {
   padding: 7px 8px; border: 1px solid var(--border);
   border-radius: 7px; background: var(--surface2); color: var(--text2);
   font: inherit; cursor: pointer;
 }
-.aria2-cap-options button.active {
+.runtime-cap-options button.active {
   border-color: var(--accent); background: rgba(var(--accent-rgb),.12); color: var(--accent);
 }
-.aria2-cap-custom {
+.runtime-cap-custom {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
   text-align: left;
 }
-.aria2-cap-custom label { display: block; margin-bottom: 5px; color: var(--text2); font-size: 11px; }
-.aria2-cap-custom > div { display: flex; gap: 6px; }
-.aria2-cap-custom input {
+.runtime-cap-custom label { display: block; margin-bottom: 5px; color: var(--text2); font-size: 11px; }
+.runtime-cap-custom > div { display: flex; gap: 6px; }
+.runtime-cap-custom input {
   min-width: 0; flex: 1; padding: 6px 7px;
   border: 1px solid var(--border); border-radius: 7px;
   background: var(--surface2); color: var(--text); font: inherit;
 }
-.aria2-cap-custom small { display: block; margin-top: 5px; color: var(--text3); font-size: 10px; }
+.runtime-cap-custom small { display: block; margin-top: 5px; color: var(--text3); font-size: 10px; }
 
-.aria2-cap-menu {
+.runtime-cap-menu {
   position: absolute;
   top: calc(100% + 10px);
   right: 0 !important;
@@ -306,7 +306,7 @@ body.light .dp-dropdown-menu {
   box-shadow: var(--dp-shadow-raised), 0 3px 9px rgba(20,18,36,.16);
 }
 
-body.light .aria2-cap-menu {
+body.light .runtime-cap-menu {
   border-color: color-mix(in srgb, var(--dp-border-strong) 82%, var(--dp-accent-purple) 18%);
   background:
     radial-gradient(ellipse 108% 88% at 92% 96%,

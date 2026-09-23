@@ -128,7 +128,7 @@ def test_breakdowns_keep_reviewed_labels_adaptive_top_ten_and_two_column_behavio
     view = statistics_view()
     for heading in ("Download Status", "File Status", "Monitor Levels", "Top Sources"):
         assert heading in view
-    for label in ("Completed", "Deleted", "Error", "Missing", "Duplicate", "Info", "Warning", "Debrid Link", "Torrent File", "Magnet Link", "Unknown"):
+    for label in ("Completed", "Deleted", "Error", "Missing", "Duplicate", "Info", "Warning", "Debrid Link", "Uploaded File", "Magnet Link", "Unknown"):
         assert label in source
     assert "MAX_VISIBLE = 10" in source
     assert "TWO_COLUMN_THRESHOLD = 6" in source

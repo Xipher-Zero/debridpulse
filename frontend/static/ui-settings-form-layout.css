@@ -69,6 +69,46 @@
   }
 }
 
+/* ── The ONE canonical Settings field datum ───────────────────────────────
+   Inside a field, the label, its control and its helper copy all begin at the
+   SAME inline edge -- the control's OUTER BOX.
+
+   Earlier passes approximated the control's inner TEXT edge instead, nudging
+   labels and hints 3px inward with `position: relative; inset-inline-start: 3px`
+   declared separately for Sources, Downloads, Extraction, Notifications,
+   Maintenance and three Authentication card families. Six copies of one
+   decision meant any field that did not receive a copy -- the Usenet news
+   server cards -- sat visibly left of every other Settings label, which is the
+   broken vertical edge this replaces. The datum is declared here, once, and
+   nowhere else. */
+#view-settings .dp-settings-field > .form-label,
+#view-settings .dp-settings-field > .form-hint,
+#view-settings .dp-usenet-field > .form-label,
+#view-settings .dp-usenet-field > .form-hint {
+  position: static;
+  inset-inline-start: auto;
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+}
+
+/* ── The ONE canonical single-line Settings checkbox row ──────────────────
+   `align-items: center` on a flex row centres the label's LINE BOX, and a line
+   box is not symmetric about the glyphs inside it -- the control therefore sat
+   visibly above the text it labels, and no `line-height` could correct it
+   (leading is distributed symmetrically about the same centre).
+
+   `vertical-align: middle` aligns the control's centre to the parent font's own
+   `baseline + x-height/2`: the optical centre of the label text, derived from
+   the rendered font's metrics rather than from a measured pixel offset. */
+.dp-settings-inline-check {
+  display: block;
+}
+
+.dp-settings-inline-check > input[type="checkbox"] {
+  vertical-align: middle;
+  margin: 0 8px 0 0;
+}
+
 /* ── Generic form field/toggle material (DP 1.0.12 canonical flattening:
    migrated from the retired ui-legacy-foundation.css) ───────────────────── */
 .form-label { font-size: 11px; font-weight: 600; color: var(--text2); letter-spacing: .04em; }

@@ -69,10 +69,10 @@ def test_dropdown_contract_has_keyboard_and_escape_navigation():
 
 def test_speed_cap_rich_popover_anchors_to_complete_operational_widget():
     css = read("ui-dropdown-contract.css")
-    assert "#aria2-speed-badge .aria2-cap-control" in css
-    speed_anchor = css.split("#aria2-speed-badge .aria2-cap-control", 1)[1].split("}", 1)[0]
+    assert "#runtime-speed-badge .runtime-cap-control" in css
+    speed_anchor = css.split("#runtime-speed-badge .runtime-cap-control", 1)[1].split("}", 1)[0]
     assert "position: static;" in speed_anchor
-    assert ".aria2-cap-menu" in css
+    assert ".runtime-cap-menu" in css
     assert "right: 0 !important;" in css
 
 
@@ -83,4 +83,4 @@ def test_open_dropdown_surface_uses_shared_depth_language_in_both_themes():
     assert "var(--dp-panel-surface)" in menu
     assert "var(--dp-shadow-raised)" in menu
     assert "body.light .dp-dropdown-menu" in css
-    assert "body.light .aria2-cap-menu" in css
+    assert "body.light .runtime-cap-menu" in css

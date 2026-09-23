@@ -512,8 +512,8 @@ body.light .dash-kpi-strip {
 body.light :is(.dp-field, .input),
 body.light select.input,
 body.light textarea.input,
-body.light .aria2-cap-options button,
-body.light .aria2-cap-custom input { background: #f6f8fb; }
+body.light .runtime-cap-options button,
+body.light .runtime-cap-custom input { background: #f6f8fb; }
 body.light thead th { background: #f1f4f8; }
 
 /* Base (non-.t-table) table element defaults, migrated from the retired

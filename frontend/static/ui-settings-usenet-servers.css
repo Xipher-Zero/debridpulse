@@ -75,6 +75,64 @@
 .dp-usenet-field--wide { flex: 1 1 100%; }
 .dp-usenet-field .input { width: 100%; box-sizing: border-box; }
 
+/* Per-server Advanced: a compact local disclosure that keeps the normal card
+   short. Connections and Priority live HERE, beside the other per-server
+   acquisition controls, rather than being repeated on the compact card. */
+.dp-usenet-advanced {
+  margin: 4px 0 2px;
+  border-top: 1px solid var(--dp-divider, var(--border));
+  padding-top: 8px;
+}
+
+.dp-usenet-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--dp-text-muted, var(--text3));
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.dp-usenet-advanced-toggle:hover { color: var(--dp-text-primary, var(--text)); }
+
+.dp-usenet-advanced-toggle:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright, var(--accent));
+  outline-offset: 2px;
+  border-radius: var(--dp-radius-xs, 4px);
+}
+
+.dp-usenet-advanced-chevron {
+  display: inline-block;
+  font-size: 1.05rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform .15s ease;
+}
+
+.dp-usenet-advanced-toggle[aria-expanded="true"] .dp-usenet-advanced-chevron {
+  transform: rotate(90deg);
+}
+
+.dp-usenet-advanced-body { margin-top: 8px; }
+.dp-usenet-advanced-body[hidden] { display: none !important; }
+
+.dp-usenet-advanced-hint {
+  margin: 6px 0 0;
+  font-size: .78rem;
+  line-height: 1.4;
+  opacity: .7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-usenet-advanced-chevron { transition: none; }
+}
+
 .dp-usenet-actions {
   display: flex;
   justify-content: center;
@@ -89,11 +147,10 @@
   opacity: .7;
 }
 
-/* Erasing a stored credential is an explicit, deliberate act. */
+/* Erasing a stored credential is an explicit, deliberate act. The row's
+   geometry belongs to the canonical Settings checkbox row
+   (.dp-settings-inline-check); only its placement and weight are card-local. */
 .dp-usenet-clear-password {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin: 2px 0 10px;
   font-size: .82rem;
   opacity: .85;
@@ -129,34 +186,12 @@
 .dp-usenet-add-glyph { width: 28px; height: 28px; opacity: .85; }
 .dp-usenet-add-label { font-weight: 600; }
 
-/* --- Executor Tuning child cards ---------------------------------------- */
+/* --- Executor Tuning child cards ----------------------------------------
+   Structure, the disclosure chip and the centred header copy all belong to the
+   canonical Settings card header in ui-settings-page.css. Only the tuning
+   card's own copy treatment is card-specific. */
 
-.dp-executor-tuning-header { align-items: center; }
-
-/* The disclosure sits immediately beside the label, never at the far edge. */
-.dp-executor-tuning-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-}
-
-.dp-executor-tuning-disclosure {
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: inherit;
-  font-size: 1.1rem;
-  line-height: 1;
-  padding: 2px 4px;
-  transition: transform .15s ease;
-}
-
-.dp-executor-tuning-disclosure[aria-expanded="true"] { transform: rotate(90deg); }
-
-.dp-executor-tuning-copy {
-  flex: 1 1 auto;
-  text-align: center;
+#view-settings .dp-executor-tuning-card > .card-header > .dp-settings-card-header-center {
   font-size: .88rem;
   opacity: .75;
 }
@@ -170,5 +205,4 @@
 @media (max-width: 720px) {
   .dp-usenet-server, .dp-usenet-add { max-width: none; min-width: 0; flex-basis: 100%; }
   .dp-usenet-row { flex-wrap: wrap; }
-  .dp-executor-tuning-copy { text-align: left; }
 }

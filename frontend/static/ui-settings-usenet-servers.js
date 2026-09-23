@@ -40,6 +40,11 @@
       // and Enable is the control for switching a server off.
       connections: Math.min(500, Math.max(1, Number(fieldValue(card, 'connections')) || 8)),
       priority: Number(fieldValue(card, 'priority') || 0),
+      // Per-server acquisition tuning. The bounds mirror the canonical model,
+      // which is itself never wider than what the download service accepts, so
+      // a saved value can never be silently rewritten underneath the operator.
+      articles_per_request: Math.min(20, Math.max(1, Number(fieldValue(card, 'articles_per_request')) || 2)),
+      timeout_seconds: Math.min(240, Math.max(20, Number(fieldValue(card, 'timeout_seconds')) || 60)),
       enabled: true,
       display_name: card.dataset.usenetNameOverride === '1'
         ? String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim()
@@ -92,6 +97,9 @@
    * the card is first saved. It never invents an id locally. */
   function blankCard() {
     const wrapper = document.createElement('div');
+    // A brand-new card has no canonical id yet, so its Advanced region gets a
+    // locally unique one; the backend mints the record id on first Save.
+    const advancedId = `dp-usenet-advanced-new-${(blankCard.sequence = (blankCard.sequence || 0) + 1)}`;
     wrapper.innerHTML = `
       <div class="dp-usenet-server" data-usenet-server-id="" data-usenet-password-configured="0"
            data-usenet-name-override="0">
@@ -133,22 +141,48 @@
                    autocomplete="off" placeholder="Password">
           </label>
         </div>
-        <div class="dp-usenet-row dp-usenet-row--tuning">
-          <label class="dp-usenet-field">
-            <span class="form-label">Connections</span>
-            <input class="input" type="number" min="1" max="500" data-usenet-field="connections" value="8">
-          </label>
-          <label class="dp-usenet-field">
-            <span class="form-label">Priority</span>
-            <input class="input" type="number" min="0" max="99" data-usenet-field="priority" value="0">
-          </label>
+        <div class="dp-usenet-advanced" data-usenet-advanced>
+          <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
+                  aria-controls="${advancedId}" aria-expanded="false"
+                  title="Show advanced acquisition settings"
+                  aria-label="Show advanced acquisition settings">
+            <span class="dp-usenet-advanced-label">Advanced</span>
+            <span class="dp-usenet-advanced-chevron" aria-hidden="true">&rsaquo;</span>
+          </button>
+          <div class="dp-usenet-advanced-body" id="${advancedId}" hidden>
+            <div class="dp-usenet-row dp-usenet-row--tuning">
+              <label class="dp-usenet-field">
+                <span class="form-label">Connections</span>
+                <input class="input" type="number" min="1" max="500" data-usenet-field="connections"
+                       value="8">
+              </label>
+              <label class="dp-usenet-field">
+                <span class="form-label">Priority</span>
+                <input class="input" type="number" min="0" max="99" data-usenet-field="priority"
+                       value="0">
+              </label>
+            </div>
+            <p class="dp-usenet-priority-hint">Lower values have priority.</p>
+            <div class="dp-usenet-row dp-usenet-row--tuning">
+              <label class="dp-usenet-field">
+                <span class="form-label">Articles per Request</span>
+                <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request"
+                       value="2">
+              </label>
+              <label class="dp-usenet-field">
+                <span class="form-label">Server Timeout (seconds)</span>
+                <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds"
+                       value="60">
+              </label>
+            </div>
+            <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
+          </div>
         </div>
         <div class="dp-usenet-actions">
           <button type="button" class="btn btn-sm" data-usenet-action="save">Save</button>
           <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
           <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
         </div>
-        <p class="dp-usenet-priority-hint">Lower values have priority.</p>
         <p class="dp-usenet-server-status" role="status" aria-live="polite" data-usenet-status hidden></p>
       </div>`;
     return wrapper.firstElementChild;
@@ -220,21 +254,53 @@
     }
   }
 
-  function rename(card) {
+  /* The rename dialog is the application's, never the browser's: a native
+   * prompt bypasses the visual, focus and accessibility contract the rest of
+   * Settings honours. Persistence is unchanged -- the name stays card-local UI
+   * state until this card's own Save. */
+  async function rename(card) {
     const label = card.querySelector('[data-usenet-display-name]');
     if (!label) return;
     const derived = String(fieldValue(card, 'host') || '').trim();
+    // Prefill the explicit override ONLY: a host-derived name must never
+    // masquerade as one the operator chose.
     const current = card.dataset.usenetNameOverride === '1' ? label.textContent.trim() : '';
-    const next = window.prompt('Display name (leave blank to use the host)', current);
+    const next = await window.DPSettingsModal.prompt({
+      title: 'Edit Server Name',
+      label: 'Display Name',
+      value: current,
+      hint: 'Leave blank to use the server host.',
+      acceptLabel: 'Save',
+      placeholder: derived,
+    });
     if (next === null) return;
     const trimmed = next.trim();
     card.dataset.usenetNameOverride = trimmed ? '1' : '0';
     label.textContent = trimmed || derived || 'New server';
   }
 
+  /* The per-server Advanced region keeps the normal card compact. It is a
+   * local disclosure inside one server card, not a Settings card header, so it
+   * carries its own compact control rather than the canonical card chip. */
+  function toggleAdvanced(button) {
+    const expanded = button.getAttribute('aria-expanded') === 'true';
+    const body = document.getElementById(button.getAttribute('aria-controls'));
+    if (body) body.hidden = expanded;
+    button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    const label = `${expanded ? 'Show' : 'Hide'} advanced acquisition settings`;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  }
+
   function onClick(event) {
     const host = collection();
     if (!host || !host.contains(event.target)) return;
+    const advanced = event.target.closest('[data-usenet-advanced-toggle]');
+    if (advanced) {
+      event.preventDefault();
+      toggleAdvanced(advanced);
+      return;
+    }
     const action = event.target.closest('[data-usenet-action]');
     if (!action) return;
     const kind = action.dataset.usenetAction;
@@ -255,7 +321,7 @@
     } else if (kind === 'test') {
       void test(host, card);
     } else if (kind === 'rename') {
-      rename(card);
+      void rename(card);
     }
   }
 

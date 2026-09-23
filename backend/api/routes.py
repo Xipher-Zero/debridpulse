@@ -1495,6 +1495,20 @@ async def get_execution_runtime_limits(application: ApplicationService = Depends
     return await application.execution_runtime_limits()
 
 
+@router.get("/execution/runtime-status")
+async def get_execution_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Neutral live runtime status for the operator-facing shell.
+
+    The ONE fact source for the topbar indicator and the browser-tab title:
+    current aggregate download throughput across every acquiring executor,
+    DebridPulse's own execution-admission occupancy, and the configured global
+    download cap. Executor-specific routes remain available as diagnostics;
+    they no longer own generic presentation truth, so a future executor joins
+    by implementing the neutral contracts rather than by adding a branch here.
+    """
+    return {"ok": True, **await application.execution_runtime_status()}
+
+
 @router.patch("/execution/runtime-limits")
 async def patch_execution_runtime_limits(body: dict, application: ApplicationService = Depends(get_application)):
     """Scoped neutral runtime-limit mutation (specification sections 4.4, 9.5,
@@ -1712,6 +1726,17 @@ async def patch_integration_configuration(
             # inside the same lock, through the generic seam. No integration is
             # named: composition discovered which namespaces have appliers.
             applied = await application.apply_integration_configuration(integration_id)
+    # A canonical configuration change can alter which sources are routable and
+    # whether an integration's managed lifecycle component is still required.
+    # Waking the neutral maintenance/resolution signals here is what makes an
+    # operator-visible control IMMEDIATE rather than cadence-bound: before this,
+    # an integration whose enable state had just changed converged only on the
+    # 60 s integration-maintenance tick, so an operator who enabled one saw an
+    # unreachable service for up to a minute. Issued AFTER the
+    # application-operation block so maintenance is never woken into an
+    # admission this request still holds. Neutral: it names no integration and
+    # applies to every namespace.
+    application.notify_applicability_changed(integration_id)
     from integrations.configuration import public_integrations
     public = public_integrations(clean, application.definitions).get(integration_id, {})
     # A save whose native application failed is reported truthfully: the
@@ -2011,7 +2036,10 @@ USENET_NAMESPACE = "usenet"
 
 # DebridPulse's own connection bounds; the floor is 1, not SAB's 0 (see
 # integrations/usenet/definition.py).
-from integrations.usenet.definition import MAX_CONNECTIONS, MIN_CONNECTIONS
+from integrations.usenet.definition import (
+    MAX_ARTICLES_PER_REQUEST, MAX_CONNECTIONS, MAX_SERVER_TIMEOUT_SECONDS,
+    MIN_ARTICLES_PER_REQUEST, MIN_CONNECTIONS, MIN_SERVER_TIMEOUT_SECONDS,
+)
 
 
 class UsenetServerUpdate(BaseModel):
@@ -2024,6 +2052,10 @@ class UsenetServerUpdate(BaseModel):
     password: str | None = None
     connections: int | None = Field(default=None, ge=MIN_CONNECTIONS, le=MAX_CONNECTIONS)
     priority: int | None = Field(default=None, ge=0, le=99)
+    articles_per_request: int | None = Field(default=None, ge=MIN_ARTICLES_PER_REQUEST,
+                                             le=MAX_ARTICLES_PER_REQUEST)
+    timeout_seconds: int | None = Field(default=None, ge=MIN_SERVER_TIMEOUT_SECONDS,
+                                        le=MAX_SERVER_TIMEOUT_SECONDS)
     enabled: bool | None = None
     display_name: str | None = None
     clear_password: bool = False

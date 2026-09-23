@@ -1,14 +1,14 @@
 const { test, expect } = require('@playwright/test');
 
 // Scheduler capacity is universal transfer policy. The topbar denominator is
-// rendered by app.js's updateAria2TopbarBadge() from
+// rendered by app.js's updateRuntimeStatusBadge() from
 // settingsData.transfer_policy.max_concurrent_executions and nothing else: no
 // wrapper runtime, no flat alias, and no value reported by the aria2 daemon.
 
 async function ready(page) {
   await page.setViewportSize({width: 1280, height: 720});
   await page.goto('/');
-  await page.waitForFunction(() => Boolean(window.DPProcessingPresentation && typeof updateAria2TopbarBadge === 'function'));
+  await page.waitForFunction(() => Boolean(window.DPProcessingPresentation && typeof updateRuntimeStatusBadge === 'function'));
 }
 
 async function useSettings(page, {concurrency = 7, limit = 0} = {}) {
@@ -19,35 +19,35 @@ async function useSettings(page, {concurrency = 7, limit = 0} = {}) {
       execution_runtime_limits: {max_download_bytes_per_second: limit},
       paused: false,
     };
-    updateAria2TopbarBadge({active: 3, liveBps: 1048576});
+    updateRuntimeStatusBadge({active: 3, liveBps: 1048576});
   }, {concurrency, limit});
 }
 
-const maxText = page => page.locator('#aria2-badge-max');
+const maxText = page => page.locator('#runtime-badge-max');
 
-test('the retired topbar wrapper runtime is gone and updateAria2TopbarBadge is the app.js function itself', async ({ page }) => {
+test('the retired topbar wrapper runtime is gone and updateRuntimeStatusBadge is the app.js function itself', async ({ page }) => {
   await ready(page);
   await expect(page.locator('script[src*="ui-topbar-concurrency"]')).toHaveCount(0);
   expect((await page.request.get('/ui-topbar-concurrency.js')).status()).not.toBe(200);
   const shape = await page.evaluate(() => ({
     wrapperGlobal: typeof window.DPTopbarConcurrency,
-    source: Function.prototype.toString.call(window.updateAria2TopbarBadge).slice(0, 44),
-    sameBinding: window.updateAria2TopbarBadge === updateAria2TopbarBadge,
+    source: Function.prototype.toString.call(window.updateRuntimeStatusBadge).slice(0, 44),
+    sameBinding: window.updateRuntimeStatusBadge === updateRuntimeStatusBadge,
   }));
   expect(shape.wrapperGlobal).toBe('undefined');
-  expect(shape.source).toContain('function updateAria2TopbarBadge(patch)');
+  expect(shape.source).toContain('function updateRuntimeStatusBadge(patch)');
   expect(shape.sameBinding).toBe(true);
 });
 
 test('denominator is transfer_policy.max_concurrent_executions', async ({ page }) => {
     await ready(page);
     await useSettings(page, {concurrency: 7});
-    await expect(page.locator('#aria2-badge-active')).toHaveText('3');
+    await expect(page.locator('#runtime-badge-active')).toHaveText('3');
     await expect(maxText(page)).toHaveText('7');
 
     const visible = await page.evaluate(() => {
-      const max = document.getElementById('aria2-badge-max');
-      const badge = document.getElementById('aria2-speed-badge');
+      const max = document.getElementById('runtime-badge-max');
+      const badge = document.getElementById('runtime-speed-badge');
       return {
         fontSize: parseFloat(getComputedStyle(max).fontSize),
         pseudo: getComputedStyle(max, '::after').content,
@@ -60,7 +60,7 @@ test('denominator is transfer_policy.max_concurrent_executions', async ({ page }
 
     // The runtime keeps display authority: nothing re-shows a badge app.js hid.
     const hidden = await page.evaluate(() => {
-      const badge = document.getElementById('aria2-speed-badge');
+      const badge = document.getElementById('runtime-speed-badge');
       badge.style.display = 'none';
       return getComputedStyle(badge).display;
     });
@@ -70,27 +70,31 @@ test('denominator is transfer_policy.max_concurrent_executions', async ({ page }
 test('a stale or native maximum in a badge patch cannot replace scheduler capacity', async ({ page }) => {
   await ready(page);
   await useSettings(page, {concurrency: 7});
-  await page.evaluate(() => updateAria2TopbarBadge({maxDl: 3}));           // the retired stale-fallback shape
+  await page.evaluate(() => updateRuntimeStatusBadge({maxDl: 3}));           // the retired stale-fallback shape
   await expect(maxText(page)).toHaveText('7');
-  await page.evaluate(() => updateAria2TopbarBadge({maxDl: 99}));          // a native aria2 value
+  await page.evaluate(() => updateRuntimeStatusBadge({maxDl: 99}));          // a native aria2 value
   await expect(maxText(page)).toHaveText('7');
 });
 
-test('the aria2 global-options response cannot override universal scheduler capacity', async ({ page }) => {
+test('the neutral runtime-status response cannot override universal scheduler capacity', async ({ page }) => {
+  // DP 1.0.13 work item G: the indicator no longer polls an executor at all.
+  // The denominator still comes from canonical transfer policy, so even a
+  // runtime-status payload claiming otherwise cannot replace it.
   await ready(page);
   await useSettings(page, {concurrency: 7});
-  await page.route('**/api/aria2/global-options', route => route.fulfill({
+  await page.route('**/api/execution/runtime-status', route => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ok: true, max_download_speed: 0, max_upload_speed: 0, max_concurrent_downloads: 2}),
+    body: JSON.stringify({ok: true, download_bytes_per_second: 0, active_execution_slots: 2,
+                          max_download_bytes_per_second: 0, max_concurrent_downloads: 2}),
   }));
-  await page.evaluate(() => loadAria2SpeedLimit());
+  await page.evaluate(() => loadRuntimeStatus());
   await expect(maxText(page)).toHaveText('7');
   expect(await page.evaluate(() => settingsData.transfer_policy.max_concurrent_executions)).toBe(7);
 });
 
 test('an unknown capacity renders a dash instead of a manufactured default', async ({ page }) => {
   await ready(page);
-  await page.evaluate(() => { settingsData = {}; updateAria2TopbarBadge({active: 1}); });
+  await page.evaluate(() => { settingsData = {}; updateRuntimeStatusBadge({active: 1}); });
   await expect(maxText(page)).toHaveText('—');
 });
 
@@ -104,7 +108,7 @@ test('no flat alias is read or written when the operator applies a bandwidth cap
       ok: true, configured: {max_download_bytes_per_second: 2097152},
       effective: {max_download_bytes_per_second: 2097152}, last_apply_error: null})});
   });
-  const applied = await page.evaluate(() => _setAria2Speed(2097152));
+  const applied = await page.evaluate(() => _setDownloadSpeedCap(2097152));
   expect(applied).toBe(true);
   expect(patched).toEqual({max_download_bytes_per_second: 2097152});
   const state = await page.evaluate(() => ({
@@ -154,7 +158,7 @@ test('saving Settings adopts the canonical policy and never writes a flat alias 
   await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').fill('5');
   // Advanced direct-transfer tuning now lives in the collapsed "Direct
   // Transfers" child card of the Executor Tuning master card.
-  await page.locator('#view-settings [data-executor-tuning="direct"] .dp-executor-tuning-disclosure').click();
+  await page.locator('#view-settings [data-executor-tuning="direct"] .dp-settings-disclosure').click();
   await page.locator('#view-settings [data-setting="aria2_split"]').fill('8');
   await page.locator('#view-settings button[data-action="save"]:visible').first().click();
 
@@ -173,6 +177,6 @@ test('saving Settings adopts the canonical policy and never writes a flat alias 
   }
   // The canonical cache carries the accepted value, and the topbar renders it.
   await expect.poll(() => page.evaluate(() => settingsData.transfer_policy.max_concurrent_executions)).toBe(5);
-  await page.evaluate(() => updateAria2TopbarBadge({}));
+  await page.evaluate(() => updateRuntimeStatusBadge({}));
   await expect(maxText(page)).toHaveText('5');
 });

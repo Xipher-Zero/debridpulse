@@ -506,6 +506,7 @@ class ExecutorCapabilities:
     per_execution_pause: bool = False
     acquisition_gate: bool = False
     aggregate_bandwidth_ceiling: bool = False
+    aggregate_throughput: bool = False
     native_assisted_retry: bool = False
     transient_input: bool = False
     materialization_kinds: frozenset[MaterializationKind] = frozenset({MaterializationKind.FILE})
@@ -531,6 +532,20 @@ class ExecutorHealth:
     ready: bool
     available_runtime_capabilities: frozenset[ExecutorRuntimeCapability] = frozenset()
     error: NormalizedError | None = None
+
+
+@dataclass(frozen=True)
+class ExecutorThroughput:
+    """One instantaneous acquisition rate measured for a whole executor.
+
+    Reported only by an executor whose measurement has no finer granularity
+    than itself, so core can never be tempted to split one figure across
+    executions or to add it to per-execution rates. ``observed`` is False
+    whenever no current measurement exists -- an unreachable executor is
+    unknown, never its last value.
+    """
+    bytes_per_second: int = 0
+    observed: bool = False
 
 
 @dataclass(frozen=True)

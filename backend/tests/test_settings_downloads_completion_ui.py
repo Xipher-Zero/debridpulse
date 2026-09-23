@@ -132,12 +132,18 @@ def test_alldebrid_additional_settings_matches_three_over_two_inverted_pyramid()
     assert "grid-column: 4 / span 2;" in css
 
 
-def test_sources_and_downloads_shift_complete_copy_blocks_not_first_lines():
-    css = read("ui-settings-downloads-completion.css")
+def test_sources_and_downloads_use_the_one_canonical_field_datum():
+    """DP 1.0.13 work item J: no panel carries its own label/hint offset.
 
-    assert '[data-panel="sources"] .dp-settings-field > .form-label' in css
-    assert '[data-panel="downloads"] .dp-settings-field > .form-label' in css
-    assert '[data-panel="sources"] .dp-settings-alldebrid-key-meta > .form-hint:first-child' in css
-    assert "position: relative;" in css
-    assert "inset-inline-start: 3px;" in css
-    assert "padding-inline-start: 6px;" not in css
+    This layer previously declared the shared "3px content datum" for Sources,
+    Downloads and Extraction; five other files declared their own copies, and
+    the Usenet server cards received none, which is exactly why their labels
+    read as sitting left of every other Settings label. One owner now.
+    """
+    css = read("ui-settings-downloads-completion.css")
+    assert "inset-inline-start" not in css
+    form_layout = read("ui-settings-form-layout.css")
+    assert "#view-settings .dp-settings-field > .form-label" in form_layout
+    assert "#view-settings .dp-usenet-field > .form-label" in form_layout
+    assert "margin-inline-start: 0" in form_layout
+    assert "padding-inline-start: 0" in form_layout

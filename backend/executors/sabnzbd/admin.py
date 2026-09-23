@@ -35,7 +35,42 @@ MISC_SECTION = "misc"
 # Non-secret server fields DebridPulse can compare against SAB's readback.
 # `password` is deliberately absent: SAB returns a constant mask for it, so
 # password drift is not detectable (an accepted, reported limitation).
-COMPARABLE_SERVER_FIELDS = ("host", "port", "ssl", "connections", "priority", "enable")
+COMPARABLE_SERVER_FIELDS = ("host", "port", "ssl", "connections", "priority",
+                            "pipelining_requests", "timeout", "enable")
+
+# Executor-wide acquisition tuning: DebridPulse canonical field -> the native
+# key that carries it. Characterized against the bundled SABnzbd 5.1.3; every
+# one of them applies live, none needs a restart. The DebridPulse canonical
+# field names the SEMANTIC; the native key never leaves this module.
+_CACHE_LIMIT_KEY = "cache_limit"
+_DIRECT_WRITE_KEY = "direct_write"
+_ACQUISITION_RETRIES_KEY = "max_art_tries"
+
+_UNIT_MULTIPLIERS = {"K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
+
+
+def _native_bytes(value) -> int:
+    """One native K/M/G/T size string as bytes.
+
+    The native side stores the article-cache limit verbatim, so "1G" and
+    "1024M" are the same desired state expressed two ways. Drift detection
+    compares the MEANING, never the spelling.
+    """
+    text = str(value or "").strip().upper()
+    if not text:
+        return 0
+    multiplier = _UNIT_MULTIPLIERS.get(text[-1:], 1)
+    if multiplier != 1:
+        text = text[:-1]
+    try:
+        return max(0, int(float(text or 0) * multiplier))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _native_bool(value) -> bool:
+    """A native boolean readback, which arrives as a JSON bool or as 0/1."""
+    return value in (1, True, "1", "True", "true")
 
 
 def derived_display_name(server) -> str:
@@ -222,6 +257,15 @@ class SabnzbdAdministration:
                 False, "the service did not accept the required working-path topology",
                 tuple(failures))
         try:
+            # Executor-wide acquisition tuning is pushed BEFORE the servers, so
+            # the drift check below is only ever evaluated against the whole
+            # desired state rather than a half-applied one.
+            await self.apply_tuning()
+        except (SabTransportError, SabApiError) as exc:
+            failures.append("tuning")
+            return ConfigurationApplication(False, f"acquisition tuning failed: {exc}",
+                                            tuple(failures))
+        try:
             await self.apply_servers()
         except (SabTransportError, SabApiError) as exc:
             failures.append("servers")
@@ -308,6 +352,23 @@ class SabnzbdAdministration:
                                      value=topology.complete_root(self.download_root))
         return await self._topology_matches()
 
+    async def apply_tuning(self) -> None:
+        """Push the canonical executor-wide acquisition tuning. One way, never back.
+
+        Every value here is a DebridPulse-owned canonical field projected onto
+        the native key that carries it; nothing native is ever read back into
+        the canonical namespace. The service applies all three live.
+        """
+        options = self.options
+        megabytes = max(0, int(getattr(options, "article_cache_megabytes", 0) or 0))
+        # The native side takes a K/M/G string; "0" means no article cache.
+        await self.client.set_config(MISC_SECTION, _CACHE_LIMIT_KEY,
+                                     value=f"{megabytes}M" if megabytes else "0")
+        await self.client.set_config(MISC_SECTION, _DIRECT_WRITE_KEY,
+                                     value=1 if getattr(options, "direct_write", True) else 0)
+        await self.client.set_config(MISC_SECTION, _ACQUISITION_RETRIES_KEY,
+                                     value=int(getattr(options, "max_acquisition_retries", 3) or 3))
+
     async def apply_servers(self) -> None:
         """Push the canonical desired server set to SAB. One way, never back."""
         desired = list(getattr(self.options, "servers", []) or [])
@@ -320,6 +381,8 @@ class SabnzbdAdministration:
                 host=server.host, port=server.port, ssl=1 if server.ssl else 0,
                 username=server.username, password=server.password,
                 connections=server.connections, priority=server.priority,
+                pipelining_requests=server.articles_per_request,
+                timeout=server.timeout_seconds,
                 enable=1 if server.enabled else 0,
                 displayname=derived_display_name(server),
             )
@@ -372,13 +435,17 @@ class SabnzbdAdministration:
             desired = {
                 "host": str(server.host or "").lower(), "port": int(server.port),
                 "ssl": 1 if server.ssl else 0, "connections": int(server.connections),
-                "priority": int(server.priority), "enable": 1 if server.enabled else 0,
+                "priority": int(server.priority),
+                "pipelining_requests": int(server.articles_per_request),
+                "timeout": int(server.timeout_seconds),
+                "enable": 1 if server.enabled else 0,
             }
             for field in COMPARABLE_SERVER_FIELDS:
                 native = entry.get(field)
                 if field in ("ssl", "enable"):
                     native = 1 if native in (1, True, "1") else 0
-                elif field in ("port", "connections", "priority"):
+                elif field in ("port", "connections", "priority",
+                               "pipelining_requests", "timeout"):
                     try:
                         native = int(native)
                     except (TypeError, ValueError):
@@ -402,6 +469,22 @@ class SabnzbdAdministration:
             if actual and Path(actual) != Path(want):
                 # An out-of-band path change breaks the DP topology invariant.
                 differences.append(f"misc.{key}")
+
+        # Executor-wide acquisition tuning. Names only, never values -- and the
+        # article cache is compared by MEANING, so an equivalent native unit
+        # spelling is not reported as drift.
+        options = self.options
+        desired_cache = max(0, int(getattr(options, "article_cache_megabytes", 0) or 0)) * 1024 ** 2
+        if _native_bytes(misc.get(_CACHE_LIMIT_KEY)) != desired_cache:
+            differences.append(f"misc.{_CACHE_LIMIT_KEY}")
+        if _native_bool(misc.get(_DIRECT_WRITE_KEY)) is not bool(getattr(options, "direct_write", True)):
+            differences.append(f"misc.{_DIRECT_WRITE_KEY}")
+        try:
+            native_retries = int(misc.get(_ACQUISITION_RETRIES_KEY))
+        except (TypeError, ValueError):
+            native_retries = -1
+        if native_retries != int(getattr(options, "max_acquisition_retries", 3) or 3):
+            differences.append(f"misc.{_ACQUISITION_RETRIES_KEY}")
         return DriftReport(True, tuple(differences))
 
     # --- readiness -------------------------------------------------------

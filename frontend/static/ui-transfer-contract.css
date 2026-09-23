@@ -251,7 +251,15 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-detail-route-body { padding:10px 14px 12px; }
 .dp-detail-route-list { display:grid; gap:7px; }
 .dp-detail-route-row {
-  display:grid; grid-template-columns:28px minmax(70px,auto) minmax(0,1fr) auto auto; align-items:center; gap:10px; min-width:0;
+  /* The URL/identity column keeps every flexible pixel; provenance and status
+     stay content-sized, so no fixed column is reserved to fake alignment.
+     --dp-route-provenance-gap is the ONE explicit constant separating the
+     provenance from the route status: it is a fixed distance, so no status
+     label length can close it or push the provenance around. */
+  --dp-route-column-gap: 10px;
+  --dp-route-provenance-gap: 22px;
+  display:grid; grid-template-columns:28px minmax(70px,auto) minmax(0,1fr) auto auto; align-items:center;
+  column-gap: var(--dp-route-column-gap); row-gap: 0; min-width:0;
   padding:7px 9px; border:1px solid var(--dp-divider, var(--border)); border-radius:8px;
   background:color-mix(in srgb, var(--dp-text-primary, var(--text)) 2%, transparent);
 }
@@ -261,14 +269,20 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   color:var(--dp-text-muted, var(--text3)); font-size:10px;
 }
-.dp-detail-route-outcome { color:var(--dp-text-muted, var(--text3)); font-size:10px; font-weight:650; text-align:right; white-space:nowrap; }
+.dp-detail-route-outcome {
+  color:var(--dp-text-muted, var(--text3)); font-size:10px; font-weight:650; text-align:right; white-space:nowrap;
+  margin-inline-start: calc(var(--dp-route-provenance-gap) - var(--dp-route-column-gap));
+}
 .dp-detail-route-outcome[data-route-outcome="completed"], .dp-detail-route-outcome[data-route-outcome="succeeded"] { color:var(--dp-state-success, var(--green)); }
 .dp-detail-route-outcome[data-route-outcome="failed"] { color:var(--dp-state-error, var(--red)); }
 .dp-detail-route-outcome[data-route-outcome="cancelled"], .dp-detail-route-outcome[data-route-outcome="unverified"] { color:var(--dp-state-caution, var(--yellow)); }
 /* Column 4 of "# | Provider | URL | Origin | Status". Origin sits between the
    URL and the route outcome, so it reads as provenance rather than as part of
    the status; the gap keeps the two from visually merging. */
-.dp-detail-route-relation { color:var(--dp-text-muted, var(--text3)); font-size:10px; text-align:left; white-space:nowrap; }
+.dp-detail-route-relation {
+  color:var(--dp-text-muted, var(--text3)); font-size:10px; white-space:nowrap;
+  text-align: right; justify-self: end;
+}
 .dp-detail-route-relation:empty { display:none; }
 .dp-detail-route-empty { color:var(--dp-text-muted, var(--text3)); font-size:11px; line-height:1.45; }
 .dp-detail-advanced { margin-top:10px; border-top:1px solid var(--dp-divider, var(--border)); }
@@ -279,6 +293,11 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-detail-advanced-grid strong { min-width:0; overflow-wrap:anywhere; color:var(--dp-text-secondary, var(--text2)); font-weight:600; }
 @media (max-width:700px) {
   .dp-detail-route-row { grid-template-columns:24px minmax(0,1fr); }
-  .dp-detail-route-identity, .dp-detail-route-outcome, .dp-detail-route-relation { grid-column:2; text-align:left; white-space:normal; overflow-wrap:anywhere; }
+  .dp-detail-route-identity, .dp-detail-route-outcome, .dp-detail-route-relation {
+    grid-column:2; text-align:left; justify-self:start; white-space:normal; overflow-wrap:anywhere;
+  }
+  /* Stacked: the rows sit under one another, so the horizontal separation the
+     desktop row declares has nothing to separate. */
+  .dp-detail-route-outcome { margin-inline-start: 0; }
   .dp-detail-advanced-grid > div { grid-template-columns:1fr; gap:2px; }
 }

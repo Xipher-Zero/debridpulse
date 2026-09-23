@@ -215,6 +215,28 @@ class SabnzbdClient:
         slots = self._slots(section, "history")
         return SabSnapshot(tuple(slots), _reported_total(section, len(slots)) <= len(slots))
 
+    async def download_throughput(self) -> int:
+        """Current SERVICE-WIDE download rate, in bytes per second.
+
+        Characterized against SABnzbd 5.1.3: ``build_queue()`` publishes one
+        meter for the whole service (``kbpersec``, KiB/s, from a single global
+        byte-per-second meter) and NO per-slot rate at all -- a slot's
+        ``timeleft`` is itself derived from that same global figure. There is
+        therefore nothing per job to read, and splitting the global figure
+        across jobs would be an invention rather than a measurement.
+
+        Because the service is DebridPulse-private -- loopback only, never
+        published, and every server it did not declare is deleted -- everything
+        this meter counts is DebridPulse-owned acquisition.
+
+        Units are normalized HERE, once, at the native boundary.
+        """
+        section = self._section(await self._call({"mode": "queue", "limit": 0}), "queue")
+        try:
+            return max(0, int(float(section.get("kbpersec") or 0) * 1024))
+        except (TypeError, ValueError) as exc:
+            raise SabApiError("SAB did not report a usable throughput figure") from exc
+
     async def queue_slots(self, search: str | None = None) -> list[dict]:
         """A narrow search, used only for correlation-token reconciliation."""
         params: dict[str, Any] = {"mode": "queue", "limit": SNAPSHOT_LIMIT}

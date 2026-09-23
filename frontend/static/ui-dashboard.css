@@ -1167,7 +1167,7 @@ body.light #topbar-actions #btn-resume-paused.btn {
     0 5px 11px -8px rgba(30,104,72,.22) !important;
 }
 
-#aria2-speed-badge {
+#runtime-speed-badge {
   background:
     linear-gradient(180deg, rgba(255,255,255,.045), transparent 38%),
     linear-gradient(145deg, rgba(18,23,52,.96), rgba(12,17,42,.94) 54%, rgba(9,13,34,.97)) !important;
@@ -1178,7 +1178,7 @@ body.light #topbar-actions #btn-resume-paused.btn {
     -5px 7px 14px -9px rgba(0,0,15,.42),
     0 5px 11px -8px rgba(0,0,12,.28) !important;
 }
-body.light #aria2-speed-badge {
+body.light #runtime-speed-badge {
   background:
     linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.48) 32%, transparent 42%),
     linear-gradient(145deg, #ffffff 0%, #fafafe 54%, #f2f1f8 100%) !important;
@@ -1215,9 +1215,9 @@ body.light .theme-toggle {
 
 /* Speed cap hover is deliberately text-only. No surface, border, or color
    transformation is permitted in either theme. */
-#aria2-cap-toggle,
-#aria2-cap-toggle:hover,
-#aria2-cap-toggle[aria-expanded="true"] {
+#runtime-cap-toggle,
+#runtime-cap-toggle:hover,
+#runtime-cap-toggle[aria-expanded="true"] {
   background: transparent !important;
   border-color: transparent !important;
   color: inherit !important;
@@ -1225,8 +1225,8 @@ body.light .theme-toggle {
   filter: none !important;
   transform: none !important;
 }
-#aria2-cap-toggle:hover,
-#aria2-cap-toggle[aria-expanded="true"] {
+#runtime-cap-toggle:hover,
+#runtime-cap-toggle[aria-expanded="true"] {
   font-weight: 800 !important;
 }
 
@@ -1612,7 +1612,7 @@ body.light .nav-item.active::after {
 
 /* The live speed remains semantically green, but light-mode contrast needs to
    be substantially stronger than the generic success green on white. */
-body.light #aria2-badge-speed {
+body.light #runtime-badge-speed {
   color: #087a46 !important;
   font-weight: 700 !important;
 }

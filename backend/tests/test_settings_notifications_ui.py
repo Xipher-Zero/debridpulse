@@ -64,9 +64,10 @@ def test_discord_notification_event_copy_and_row_grouping_are_locked():
 def test_discord_delivery_fields_share_control_datum_and_preserve_inverted_pyramid():
     css = source(STYLE)
 
+    # DP 1.0.13 work item J: the field datum has ONE owner
+    # (ui-settings-form-layout.css); this panel declares no offset of its own.
     assert '[data-panel="notifications"] .dp-settings-field > .form-label' in css
-    assert '[data-panel="notifications"] .dp-settings-field > .form-hint' in css
-    assert "inset-inline-start: 3px;" in css
+    assert "inset-inline-start" not in css
 
     assert ".dp-settings-notifications-identity-row" in css
     assert "grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr) auto;" in css

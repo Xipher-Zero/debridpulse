@@ -70,7 +70,7 @@ function renderTopbarActions() {
   }
 
   window.DPProcessingPresentation?.syncPauseUi?.();
-  updateAria2TopbarBadge({});
+  updateRuntimeStatusBadge({});
 }
 
 // ── Nav ────────────────────────────────────────────────────────────────────
@@ -187,17 +187,42 @@ function escapeHtmlStrings(value) {
   return typeof value === 'string' ? esc(value) : value;
 }
 
-function sourceLabel(source) {
+// What the operator submitted, as two separate facts.
+//
+// `source` is the submission CHANNEL -- how the work was handed over. The
+// canonical request KIND is what was actually submitted, and it lives in the
+// durable root requests, which both the Details projection and the bounded
+// Downloads projection surface as `request_kinds`.
+//
+// Before NZB, an uploaded file was always a torrent, so the channel
+// `manual_file` could stand in for the kind. It cannot any more: reading the
+// channel alone reported a completed NZB transfer as a torrent file. Nothing
+// here consults provider identity -- a Usenet-resolved torrent is still a
+// torrent, and an AllDebrid-resolved posting is still an NZB.
+const UPLOADED_FILE_LABELS = Object.freeze({
+  torrent: 'Torrent file',
+  torrent_file: 'Torrent file',
+  file: 'Torrent file',
+  nzb: 'NZB file',
+});
+
+function sourceLabel(source, requestKinds) {
   const labels = {
     direct_link: 'Direct link',
     manual: 'Magnet link',
-    manual_file: 'Torrent file',
     alldebrid_existing: 'Provider inventory',
     import_existing: 'Provider inventory',
     inventory: 'Provider inventory',
     api: 'API'
   };
   const key = String(source || '').trim();
+  if (key === 'manual_file') {
+    const kinds = Array.isArray(requestKinds) ? requestKinds : [];
+    // One unambiguous kind names itself; anything mixed or unrecognised falls
+    // back to the truthful channel, never to a guess.
+    if (kinds.length === 1 && UPLOADED_FILE_LABELS[kinds[0]]) return UPLOADED_FILE_LABELS[kinds[0]];
+    return 'Uploaded file';
+  }
   return labels[key] || esc(key) || '—';
 }
 
@@ -657,7 +682,7 @@ function renderOperatorTitle() {
     return;
   }
 
-  const liveBps = (_aria2BadgeState && Number(_aria2BadgeState.liveBps)) || 0;
+  const liveBps = (_runtimeStatusState && Number(_runtimeStatusState.liveBps)) || 0;
   const speed = fmtTransferRate(Math.max(0, liveBps), 100).replace(/\s+/g, '');
   document.title = `DP | ${speed} (${_operatorTitleState.progress}%)`;
 }
@@ -976,8 +1001,11 @@ async function loadStats() {
       const active = s.active_operations ?? s.active_downloads ?? 0;
       const nb = document.getElementById('nb-active');
       if (nb) { nb.textContent = active; nb.style.display = active > 0 ? '' : 'none'; }
-      // Topbar aria2 badge: active download count (if aria2 badge visible)
-      updateAria2TopbarBadge({active: s.active_downloads||0});
+      // The topbar's active count is NOT written here: it has exactly one
+      // writer, the neutral runtime-status poll, whose number is DebridPulse's
+      // canonical execution-admission occupancy rather than this aggregate
+      // lifecycle count. Two writers for one visible fact is how the indicator
+      // could disagree with itself.
       // ── DB info + dot ──────────────────────────────────────────────────
       // Database status remains in the persistent lower-left status rail.
       setDot('db', 'ok', 'DB: SQLite');
@@ -1327,7 +1355,7 @@ async function pauseT(id, button) {
 
   try {
     await api('POST',`/torrents/${id}/pause`);
-    toast('aria2 queue paused','warn');
+    toast('Transfer paused','warn');
     loadTorrents();
     loadStats();
     loadRecent();
@@ -1351,7 +1379,7 @@ async function resumeT(id, button) {
       renderTopbarActions();
     }
 
-    toast('aria2 queue resumed','success');
+    toast('Transfer resumed','success');
     loadTorrents();
     loadStats();
     loadRecent();
@@ -1476,7 +1504,7 @@ async function showDetail(id) {
         <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
         <div><div class="dk">Progress</div><div class="dv">${(t.progress||0).toFixed(1)}%</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
-        <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source)}</div></div>
+        <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>
         <div><div class="dk">Completed</div><div class="dv">${fmtDate(t.completed_at)}</div></div>
         <div class="dp-detail-original-resource" style="grid-column:1/-1"><div class="dk">Original Resource</div><div class="dv">${esc(t.original_resource || '—')}</div></div>
@@ -1596,19 +1624,15 @@ function updateThemeToggle(isLight) {
   window.DPIcons.renderThemeGlyph(!!isLight);
 }
 document.addEventListener('DOMContentLoaded', () => {
+  loadRuntimeStatus().catch(()=>{});
   setInterval(function() {
-    if (settingsData) {
-      loadAria2Runtime().catch(()=>{});
-    }
-  }, 5000);
-  setInterval(function() {
-    loadAria2TopbarStat().catch(()=>{});
+    loadRuntimeStatus().catch(()=>{});
   }, 1000);
   document.addEventListener('click', function(event) {
-    if (!event.target.closest('.aria2-cap-control')) closeAria2SpeedCapMenu();
+    if (!event.target.closest('.runtime-cap-control')) closeSpeedCapMenu();
   });
   document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape') closeAria2SpeedCapMenu();
+    if (event.key === 'Escape') closeSpeedCapMenu();
   });
   window.addEventListener('resize', function() {
     clearTimeout(_dashboardRecentResizeTimer);
@@ -1626,27 +1650,6 @@ document.addEventListener('DOMContentLoaded', () => {
   updateThemeToggle(isLight);
   document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
 });
-
-
-// ── aria2 runtime badge ─────────────────────────────────────────────────────
-
-async function loadAria2Runtime() {
-  const data = await api('GET', '/aria2/runtime');
-  const badge = document.getElementById('aria2-speed-badge');
-  if (badge) {
-    if (!data.running) {
-      badge.style.display = 'none';
-    } else {
-      badge.style.display = 'flex';
-      updateAria2TopbarBadge({
-        active: Number(data.active) || 0,
-        liveBps: Number(data.download_speed) || 0,
-      });
-      loadAria2SpeedLimit().catch(function(){});
-    }
-  }
-  return data;
-}
 
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -1918,21 +1921,9 @@ async function loadAria2Runtime() {
 })();
 
 
-// ── Speed Limit ───────────────────────────────────────────────────────────────
+// ── Download speed cap ────────────────────────────────────────────────────────
 
-async function loadAria2SpeedLimit() {
-  try {
-    var data = await api('GET', '/aria2/global-options', null, 10000);
-    // The native effective cap is what this badge displays. Scheduler capacity
-    // is universal transfer policy and is never taken from an aria2 response.
-    updateAria2TopbarBadge({limitBps: parseInt(data.max_download_speed || 0)});
-  } catch (e) { /* aria2 not connected — silently ignore */ }
-}
-
-async function _setAria2Speed(bps) {
-  var st = document.getElementById('aria2-speed-status');
-
-  if (st) { st.style.color='var(--text2)'; st.textContent='Applying…'; }
+async function _setDownloadSpeedCap(bps) {
   try {
     // DP 1.0.12 canonical architecture correction: the neutral runtime-limit
     // surface, not the aria2-specific route, is the write authority for live
@@ -1946,55 +1937,58 @@ async function _setAria2Speed(bps) {
       settingsData.execution_runtime_limits = Object.assign({}, settingsData.execution_runtime_limits,
         {max_download_bytes_per_second: bps});
     }
-    if (st) { st.style.color='var(--green)'; st.textContent = bps > 0 ? 'Set: ' + fmtSpeedCap(bps) : 'Unlimited'; }
-    setTimeout(function(){ if(st) st.style.color='var(--text2)'; }, 3000);
-    updateAria2TopbarBadge({limitBps: bps});
+    updateRuntimeStatusBadge({limitBps: bps});
     return true;
   } catch(e) {
-    if (st) { st.style.color='var(--red)'; st.textContent='Error: '+e.message; }
     toast('Speed limit error: '+e.message, 'error');
     return false;
   }
 }
 
-// Update Downloads badge from loadStats
-
-// Topbar badge: live active count, speed cap, and max concurrent
-var _aria2BadgeState = {
+// ── Neutral runtime status (topbar indicator + browser tab) ──────────────────
+//
+// ONE state object, ONE writer, ONE neutral backend fact. The topbar and the
+// browser-tab title both read `_runtimeStatusState`, so they can never disagree,
+// and nothing here polls an executor: `/execution/runtime-status` aggregates
+// every currently acquiring executor through the core throughput owner. A
+// future executor contributes by implementing the neutral executor contracts,
+// without either of these surfaces changing.
+var _runtimeStatusState = {
   active: 0,
   limitBps: 0,
   liveBps: 0,
 };
-var _aria2TopbarStatBusy = false;
+var _runtimeStatusBusy = false;
 
-async function loadAria2TopbarStat() {
-  if (_aria2TopbarStatBusy || !settingsData) return;
-  _aria2TopbarStatBusy = true;
+async function loadRuntimeStatus() {
+  if (_runtimeStatusBusy) return;
+  _runtimeStatusBusy = true;
   try {
-    const data = await api('GET', '/aria2/global-stat', null, 3000);
-    updateAria2TopbarBadge({
-      active: Number(data.active) || 0,
-      liveBps: Number(data.download_speed) || 0,
+    const data = await api('GET', '/execution/runtime-status', null, 3000);
+    updateRuntimeStatusBadge({
+      // DebridPulse's own execution-admission occupancy, never a native queue count.
+      active: Number(data.active_execution_slots) || 0,
+      liveBps: Number(data.download_bytes_per_second) || 0,
+      limitBps: Number(data.max_download_bytes_per_second) || 0,
     });
   } finally {
-    _aria2TopbarStatBusy = false;
+    _runtimeStatusBusy = false;
   }
 }
 
-function updateAria2TopbarBadge(patch) {
-  Object.assign(_aria2BadgeState, patch);
-  var s = _aria2BadgeState;
-  var topBadge = document.getElementById('aria2-speed-badge');
-  var elActive = document.getElementById('aria2-badge-active');
-  var elMax    = document.getElementById('aria2-badge-max');
-  var elSpeed  = document.getElementById('aria2-badge-speed');
-  var elLimit  = document.getElementById('aria2-badge-limit');
-  var toggle   = document.getElementById('aria2-cap-toggle');
+function updateRuntimeStatusBadge(patch) {
+  Object.assign(_runtimeStatusState, patch);
+  var s = _runtimeStatusState;
+  var topBadge = document.getElementById('runtime-speed-badge');
+  var elActive = document.getElementById('runtime-badge-active');
+  var elMax    = document.getElementById('runtime-badge-max');
+  var elSpeed  = document.getElementById('runtime-badge-speed');
+  var elLimit  = document.getElementById('runtime-badge-limit');
   if (!topBadge) return;
 
   if (elActive) elActive.textContent = s.active;
   // The denominator is DebridPulse scheduler capacity: the canonical
-  // transfer policy, never a value reported by the aria2 daemon.
+  // transfer policy, never a value reported by any download engine.
   var maxDl = window.DPProcessingPresentation
     ? window.DPProcessingPresentation.configuredMaxConcurrency() : null;
   if (elMax)    elMax.textContent    = maxDl || '—';
@@ -2006,7 +2000,7 @@ function updateAria2TopbarBadge(patch) {
 
   renderOperatorTitle();
 
-  document.querySelectorAll('#aria2-cap-menu [data-cap-bps]').forEach(function(button) {
+  document.querySelectorAll('#runtime-cap-menu [data-cap-bps]').forEach(function(button) {
     button.classList.toggle(
       'active',
       Number(button.dataset.capBps) === Number(s.limitBps || 0)
@@ -2014,41 +2008,41 @@ function updateAria2TopbarBadge(patch) {
   });
 }
 
-function toggleAria2SpeedCapMenu(event) {
+function toggleSpeedCapMenu(event) {
   if (event) event.stopPropagation();
-  var menu = document.getElementById('aria2-cap-menu');
-  var toggle = document.getElementById('aria2-cap-toggle');
+  var menu = document.getElementById('runtime-cap-menu');
+  var toggle = document.getElementById('runtime-cap-toggle');
   if (!menu || !toggle) return;
   var opening = menu.hidden;
   menu.hidden = !opening;
   toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
   if (opening) {
-    var custom = document.getElementById('aria2-cap-custom-mbps');
-    if (custom && _aria2BadgeState.limitBps > 0) {
-      custom.value = (_aria2BadgeState.limitBps / 1048576).toFixed(1).replace(/\.0$/, '');
+    var custom = document.getElementById('runtime-cap-custom-mbps');
+    if (custom && _runtimeStatusState.limitBps > 0) {
+      custom.value = (_runtimeStatusState.limitBps / 1048576).toFixed(1).replace(/\.0$/, '');
     }
   }
 }
 
-function closeAria2SpeedCapMenu() {
-  var menu = document.getElementById('aria2-cap-menu');
-  var toggle = document.getElementById('aria2-cap-toggle');
+function closeSpeedCapMenu() {
+  var menu = document.getElementById('runtime-cap-menu');
+  var toggle = document.getElementById('runtime-cap-toggle');
   if (menu) menu.hidden = true;
   if (toggle) toggle.setAttribute('aria-expanded', 'false');
 }
 
-async function applyAria2TopbarSpeedCap(bps) {
-  var applied = await _setAria2Speed(Math.max(0, Number(bps) || 0));
-  if (applied) closeAria2SpeedCapMenu();
+async function applyTopbarSpeedCap(bps) {
+  var applied = await _setDownloadSpeedCap(Math.max(0, Number(bps) || 0));
+  if (applied) closeSpeedCapMenu();
 }
 
-async function applyAria2TopbarCustomSpeedCap() {
-  var input = document.getElementById('aria2-cap-custom-mbps');
+async function applyTopbarCustomSpeedCap() {
+  var input = document.getElementById('runtime-cap-custom-mbps');
   var raw = input ? input.value.trim() : '';
   var mbps = raw === '' ? NaN : Number(raw);
   if (!Number.isFinite(mbps) || mbps < 0) {
     toast('Enter a speed cap of 0 MB/s or greater', 'error');
     return;
   }
-  await applyAria2TopbarSpeedCap(Math.round(mbps * 1048576));
+  await applyTopbarSpeedCap(Math.round(mbps * 1048576));
 }

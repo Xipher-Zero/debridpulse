@@ -52,6 +52,14 @@ class FakeSab:
     drop_next_response: bool = False
     speedlimit_abs: int = 0
     bandwidth_max: str = ""
+    # Executor-wide acquisition tuning, with the native defaults and the native
+    # clamping characterized against SABnzbd 5.1.3.
+    cache_limit: str = "1G"
+    direct_write: int = 1
+    max_art_tries: int = 3
+    # The one service-wide download meter SAB publishes (queue.kbpersec). There
+    # is deliberately no per-slot rate: the real service has none.
+    download_bytes_per_second: int = 0
     # When set, a bulk snapshot reports FEWER slots than exist, exactly as a
     # paginated SAB listing would. Absence must never be inferred from one.
     truncate_queue_to: int | None = None
@@ -103,22 +111,47 @@ class FakeSab:
     async def get_config(self, section: str) -> dict:
         self._guard()
         if section == "misc":
-            return {"misc": {"download_dir": self.download_dir, "complete_dir": self.complete_dir}}
+            return {"misc": {
+                "download_dir": self.download_dir, "complete_dir": self.complete_dir,
+                "cache_limit": self.cache_limit,
+                # Real SAB answers this one as a JSON bool, not 0/1.
+                "direct_write": bool(self.direct_write),
+                "max_art_tries": self.max_art_tries,
+            }}
         if section == "servers":
             return {"servers": list(self.servers.values())}
         return {}
 
+    # Native per-option clamping, exactly as characterized (values outside the
+    # declared range are silently corrected rather than refused).
+    _SERVER_CLAMPS = {"timeout": (20, 240), "pipelining_requests": (1, 20),
+                      "connections": (0, 500), "priority": (0, 99)}
+
     async def set_config(self, section: str, keyword: str, **values) -> dict:
         self._guard()
         if section == "misc":
-            if self.refuse_path_changes:
+            if self.refuse_path_changes and keyword in ("download_dir", "complete_dir"):
                 return {"misc": {keyword: getattr(self, keyword, "")}}
-            setattr(self, keyword, values.get("value", ""))
+            value = values.get("value", "")
+            if keyword == "max_art_tries":
+                value = max(2, int(value))          # OptionNumber minval=2
+            elif keyword == "direct_write":
+                value = 1 if value in (1, True, "1") else 0
+            setattr(self, keyword, value)
             return {"misc": {keyword: getattr(self, keyword, "")}}
         entry = dict(self.servers.get(keyword) or {})
-        entry.update({"name": keyword, **values})
+        clamped = dict(values)
+        for field, (low, high) in self._SERVER_CLAMPS.items():
+            if field in clamped:
+                clamped[field] = max(low, min(high, int(clamped[field])))
+        entry.update({"name": keyword, **clamped})
         self.servers[keyword] = entry
         return {"servers": list(self.servers.values())}
+
+    async def download_throughput(self) -> int:
+        """One service-wide instantaneous rate, in bytes/second."""
+        self._guard()
+        return max(0, int(self.download_bytes_per_second))
 
     async def del_config(self, section: str, keyword: str):
         self._guard()

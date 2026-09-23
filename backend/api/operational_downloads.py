@@ -179,6 +179,7 @@ EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
 _SOURCE_PROJECTION_FIELDS = (
     "_source_request_payload",
+    "_root_request_kinds",
     "_delivered_candidate_source",
     "_active_candidate_source",
     "_route_candidate_summary",
@@ -190,6 +191,17 @@ def _decode_projection_value(value, default=None):
         return codec.load(value, default)
     except (TypeError, ValueError, KeyError):
         return default
+
+
+def _bounded_request_kinds(row) -> list[str]:
+    """The distinct canonical root request kinds carried by one bounded row.
+
+    Separates the submission CHANNEL (``source``) from what was actually
+    submitted, which is what "Submitted As" reports. Derived from the durable
+    request payload the projection already reads; never a second stored field.
+    """
+    raw = str(row.get("_root_request_kinds") or "")
+    return sorted({part.strip().lower() for part in raw.split(",")} - {""})
 
 
 def _bounded_source_identity(row) -> dict[str, str]:
@@ -652,6 +664,22 @@ async def list_operational_torrents(
             )
             WHERE row_number = 1
         ),
+        root_request_kinds AS (
+            -- The canonical request kinds of each transfer's ROOT requests, as
+            -- one bounded aggregate over the page (never a per-row query). The
+            -- kind lives in the durable request payload, so nothing is stored
+            -- twice and nothing needs a migration; this only surfaces it. It is
+            -- the DISTINCT set because one transfer may legitimately own more
+            -- than one root request.
+            SELECT
+                r.transfer_id,
+                GROUP_CONCAT(DISTINCT LOWER(COALESCE(json_extract(r.payload, '$.kind'), ''))) AS kinds
+            FROM transfer_requests r
+            JOIN page
+              ON page.id = r.transfer_id
+            WHERE r.parent_id IS NULL
+            GROUP BY r.transfer_id
+        ),
         request_failures AS (
             SELECT
                 r.transfer_id,
@@ -1108,6 +1136,7 @@ async def list_operational_torrents(
             CASE WHEN input_challenge.transfer_id IS NOT NULL THEN 1 ELSE 0 END AS _has_input_challenge,
             COALESCE(pause_intent.paused, 0) AS _paused_intent,
             root_request.payload AS _source_request_payload,
+            root_request_kinds.kinds AS _root_request_kinds,
             delivered_source.candidate_source AS _delivered_candidate_source,
             active_source.candidate_source AS _active_candidate_source,
             latest_route.candidate_summary AS _route_candidate_summary,
@@ -1140,6 +1169,8 @@ async def list_operational_torrents(
           ON active_source.transfer_id = t.id
         LEFT JOIN root_request
           ON root_request.transfer_id = t.id
+        LEFT JOIN root_request_kinds
+          ON root_request_kinds.transfer_id = t.id
         LEFT JOIN request_failures
           ON request_failures.transfer_id = t.id
         LEFT JOIN group_common_sources
@@ -1237,10 +1268,12 @@ async def list_operational_torrents(
             candidate_action_scope = "none"
             candidate_action_count = 0
             candidate_action_artifact_id = None
+        request_kinds = _bounded_request_kinds(projected)
         for field in _SOURCE_PROJECTION_FIELDS:
             projected.pop(field, None)
         item = _public_transfer_presentation(projected, application.definitions)
         item["current_source_identity"] = source_identity
+        item["request_kinds"] = request_kinds
         # Transfer-level common-source MEMBERSHIP summary. ``common_candidate_count``
         # is the number of canonical hosts common to every current authoritative
         # artifact of the transfer — the raw intersection, independent of

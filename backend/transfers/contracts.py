@@ -8,7 +8,8 @@ from transfers.input_required import SubmittedInput
 from transfers.models import (
     CleanupDirective, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
-    ExecutorHealth, ExecutorRuntimeControlResult, HealthObservation, InputRequirement, IntegrationDescriptor,
+    ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
+    IntegrationDescriptor,
     ProviderObservation, ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
     TransferOutcome, TransferRequest, SourceEntry, ArtifactFingerprint,
 )
@@ -160,6 +161,21 @@ class ExecutorBandwidthControl(Protocol):
     unlimited) bounds the aggregate DP-owned acquisition of this executor."""
 
     async def set_bandwidth_ceiling(self, bytes_per_second: int) -> ExecutorRuntimeControlResult: ...
+
+
+@runtime_checkable
+class ExecutorAggregateThroughput(Protocol):
+    """``capabilities.aggregate_throughput``: this executor measures download
+    throughput only for itself as a whole.
+
+    Declared only when the implementation genuinely cannot report a truthful
+    rate per execution. Core then counts this ONE value for the executor and
+    never adds any per-execution progress rate from it, so the same throughput
+    can never be counted twice. Every other executor contributes the sum of the
+    per-execution rates it already reports through ``TransferProgress``.
+    """
+
+    async def aggregate_download_throughput(self) -> ExecutorThroughput: ...
 
 
 @runtime_checkable

@@ -41,8 +41,58 @@
 - Provider-wide evidence conformance: AllDebrid keeps its resolver-attested identity fast path and its
   provider-issued delivery links never become operator challenges; General HTTP and FTP & SFTP stay
   resolution-only. A future provider over an existing transport needs no equivalence change.
+- **One neutral live download-throughput fact.** The topbar speed indicator and the browser-tab title
+  read the same value from one DebridPulse-owned aggregate that covers every executor currently
+  acquiring, through a new executor-neutral runtime-status surface. Previously both read aria2's own
+  global statistics, so a Usenet download that was visibly progressing still showed `0 KB/s`. An
+  executor whose service measures throughput only for itself as a whole reports that single figure
+  and is counted exactly once; every other executor contributes its per-download rates. The reading
+  settles to zero when nothing is being acquired, and a paused, finished or unreachable executor never
+  leaves a stale speed behind. The topbar's active count is now DebridPulse's own execution-admission
+  occupancy rather than a native queue count, and the speed cap it shows comes from the same runtime
+  policy that applies it. aria2's own diagnostic endpoints are unchanged.
+- **High-value Usenet tuning.** Settings → Downloads → Executor Tuning → Usenet adds Article Cache
+  Limit, Direct Write and Maximum Retries beside the existing Request Timeout. Maximum Retries is
+  news-server acquisition retry only — it is not the DebridPulse download retry count. Each news
+  server under Sources & Providers gains a compact **Advanced** section holding Connections, Priority,
+  Articles per Request and Server Timeout; Connections and Priority moved there rather than being
+  duplicated. Every value lives in the one `integrations.usenet` namespace and is applied one way to
+  the download service, which never writes back. Bandwidth, download concurrency, unpacking and folder
+  layout are deliberately absent: DebridPulse already owns each of them.
+- Provider/source cards say what enabling them does. Usenet: "Download NZB content from configured
+  Usenet news servers." AllDebrid: "Resolve supported links and torrents through your AllDebrid
+  account."
 
 ### Changed
+
+- **Enable/Disable toggles are immediate operational controls.** Turning a source or provider on or off
+  in Sources & Providers now takes effect at once and the control shows the state the server accepted.
+  Previously the toggle looked switched while the saved state stayed unchanged until Apply Settings was
+  pressed, so an apparently enabled Usenet integration reported an unreachable download service. A
+  failed change restores the real state and reports the error. Ordinary settings fields still apply
+  with Apply Settings, and a news server still saves with its own Save.
+- **"Submitted As" reports what was actually submitted.** An uploaded `.nzb` now reads `NZB file`
+  instead of `Torrent file`; an uploaded `.torrent` is unchanged. The label comes from the durable
+  request record, never from which provider handled the transfer, and nothing new is stored. Statistics
+  and Discord notifications, which group by how work arrived rather than by what it was, now say
+  `Uploaded File`.
+- **Provider Status is organised by acquisition tier** — Premium Services, then Premium, then General.
+  AllDebrid keeps its health and subscription detail; Usenet appears once as a family and never lists
+  individual news servers; General Sources stays one row. The grouping and order come from each
+  integration's own presentation metadata.
+- Renaming a Usenet news server opens the application's own dialog instead of a browser prompt, with
+  the same behaviour: the field holds the explicit name only, blank restores the name derived from the
+  host, Enter accepts, Escape cancels, and the name still saves with the card. No browser-native
+  prompt, alert or confirm remains anywhere in the interface.
+- Every expandable Settings card uses one disclosure control, placed immediately after the card title
+  in both Sources & Providers and Downloads → Executor Tuning. Card headers centre their explanatory
+  text against the whole header, so it no longer shifts with the length of the title.
+- Settings field labels line up exactly with their control, everywhere. The small per-panel offsets
+  that six separate stylesheets applied — and that the Usenet server cards never received — are
+  replaced by one shared rule. The "Clear the stored password for this server" checkbox is centred on
+  its label text using the font's own metrics.
+- Route History gives the address column all the room it can and keeps one fixed gap between a route's
+  origin and its status, so a longer or shorter status no longer crowds or shifts the line.
 
 - Candidates carry a typed `accepted_input_methods` capability. HTTP & HTTPS migrated to it; candidates
   persisted with the former opaque context entry are decoded once into the typed field.

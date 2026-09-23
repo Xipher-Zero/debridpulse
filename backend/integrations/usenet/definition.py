@@ -57,6 +57,28 @@ MIN_PRIORITY, MAX_PRIORITY = 0, 99
 # SAB sorts servers ascending by priority: 0 is the highest priority.
 PRIORITY_HELP = "Lower values have priority."
 
+# Acquisition tuning bounds, each characterized against the bundled SABnzbd
+# 5.1.3 (source tree plus live probes). DebridPulse's range is never WIDER than
+# the native one, so a persisted canonical value can never be silently rewritten
+# by the service into something the operator did not choose.
+#
+#   article cache   `misc.cache_limit`, an OptionStr in K/M/G notation with no
+#                   range of its own; the running cache is clamped to
+#                   min(value, 4 GiB on 64-bit, available memory). 0 = no cache.
+#   direct write    `misc.direct_write`, OptionBool, native default True.
+#   acquisition     `misc.max_art_tries`, OptionNumber, default 3, native
+#   retries         minval 2 (a smaller request is clamped up), no maxval.
+#   articles/req    `servers.<id>.pipelining_requests`, default 2, clamps 1..20.
+#   server timeout  `servers.<id>.timeout` seconds, default 60, clamps 20..240.
+#
+# All of them apply live: cache_limit and direct_write through registered
+# option callbacks, max_art_tries because it is read per attempt, and the
+# per-server values because a server write re-initialises that server.
+MIN_ARTICLE_CACHE_MB, MAX_ARTICLE_CACHE_MB = 0, 4096
+MIN_ACQUISITION_RETRIES, MAX_ACQUISITION_RETRIES = 2, 25
+MIN_ARTICLES_PER_REQUEST, MAX_ARTICLES_PER_REQUEST = 1, 20
+MIN_SERVER_TIMEOUT_SECONDS, MAX_SERVER_TIMEOUT_SECONDS = 20, 240
+
 
 def _new_server_id() -> str:
     return uuid4().hex
@@ -81,6 +103,13 @@ class UsenetServer(BaseModel):
     password: str = Field(default="", repr=False)
     connections: int = Field(default=8, ge=MIN_CONNECTIONS, le=MAX_CONNECTIONS)
     priority: int = Field(default=0, ge=MIN_PRIORITY, le=MAX_PRIORITY)
+    # How many articles are requested from this server without waiting for each
+    # reply, and how long this server may take to answer before the connection
+    # is treated as failed. Both are per-server acquisition behaviour.
+    articles_per_request: int = Field(default=2, ge=MIN_ARTICLES_PER_REQUEST,
+                                      le=MAX_ARTICLES_PER_REQUEST)
+    timeout_seconds: int = Field(default=60, ge=MIN_SERVER_TIMEOUT_SECONDS,
+                                 le=MAX_SERVER_TIMEOUT_SECONDS)
     enabled: bool = True
     # Operator-facing display name. Empty means "derive from host"; a non-empty
     # value is an explicit override that survives later host edits.
@@ -95,8 +124,19 @@ class UsenetOptions(BaseModel):
     DebridPulse-owned; its endpoint and control-plane key are runtime state,
     never settings, so there is nothing here for an operator to point at.
     """
-    # --- executor tuning (the ONE DP-owned knob) ---
+    # --- DebridPulse -> acquisition-service communication ---
+    # How long DebridPulse waits for its own download service to answer. This is
+    # a service-communication timeout, never a news-server timeout.
     operation_timeout_seconds: int = Field(default=30, ge=5, le=300)
+    # --- executor-wide acquisition tuning ---
+    article_cache_megabytes: int = Field(default=1024, ge=MIN_ARTICLE_CACHE_MB,
+                                         le=MAX_ARTICLE_CACHE_MB)
+    direct_write: bool = True
+    # Native news-server acquisition retry per article. Emphatically NOT the
+    # DebridPulse transfer retry count, core recovery attempts, or a provider
+    # retry count -- those are universal transfer policy and live elsewhere.
+    max_acquisition_retries: int = Field(default=3, ge=MIN_ACQUISITION_RETRIES,
+                                         le=MAX_ACQUISITION_RETRIES)
     # --- NNTP server collection ---
     servers: list[UsenetServer] = Field(default_factory=list)
 
@@ -189,6 +229,13 @@ definition = IntegrationDefinition(
         # A real readiness check: an enabled-but-unconfigured Usenet integration
         # must never render as ready, which a static status could not express.
         status_endpoint="/integration-status/usenet",
-        display_order=5,
+        # Usenet is an aggregate premium acquisition FAMILY, not a named premium
+        # account service: the operator configures news servers, and the panel
+        # reports one Usenet readiness for all of them.
+        status_tier="premium_family",
+        status_tier_label="Premium",
+        # Ordered after the named premium services and before the general
+        # families; tier order is derived from this, so nothing else declares it.
+        display_order=20,
     ),
 )

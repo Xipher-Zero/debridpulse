@@ -415,30 +415,30 @@ test('Download speed custom cap reads Set Custom and still applies on Enter and 
  const bodies=[];
  // DP 1.0.12 canonical architecture correction: the neutral runtime-limit
  // surface, not the aria2-specific route, is the write authority for live
- // bandwidth (specification section 9.6) -- see app.js `_setAria2Speed`.
+ // bandwidth (specification section 9.6) -- see app.js `_setDownloadSpeedCap`.
  await page.route('**/api/execution/runtime-limits',route=>{
   if(route.request().method()!=='PATCH')return route.continue();
   bodies.push(route.request().postDataJSON());
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,configured:{max_download_bytes_per_second:route.request().postDataJSON().max_download_bytes_per_second},effective:{max_download_bytes_per_second:route.request().postDataJSON().max_download_bytes_per_second},last_apply_error:null})});
  });
  await ready(page);
- await page.evaluate(()=>{document.getElementById('aria2-cap-menu').hidden=false;});
- const button=page.locator('.aria2-cap-custom button');
+ await page.evaluate(()=>{document.getElementById('runtime-cap-menu').hidden=false;});
+ const button=page.locator('.runtime-cap-custom button');
  await expect(button).toHaveText('Set Custom');
- const input=page.locator('#aria2-cap-custom-mbps');
+ const input=page.locator('#runtime-cap-custom-mbps');
  await input.fill('7');
  await input.press('Enter');
  await expect.poll(()=>bodies.length).toBe(1);
  expect(bodies[0].max_download_bytes_per_second).toBe(Math.round(7*1048576));
  // A successful apply closes the menu (existing behavior) -- reopen it.
- await page.evaluate(()=>{document.getElementById('aria2-cap-menu').hidden=false;});
+ await page.evaluate(()=>{document.getElementById('runtime-cap-menu').hidden=false;});
  await input.fill('12');
  await button.click();
  await expect.poll(()=>bodies.length).toBe(2);
  expect(bodies[1].max_download_bytes_per_second).toBe(Math.round(12*1048576));
  // Presets still apply immediately.
- await page.evaluate(()=>{document.getElementById('aria2-cap-menu').hidden=false;});
- await page.locator('.aria2-cap-options button', {hasText:'1 MB/s'}).click();
+ await page.evaluate(()=>{document.getElementById('runtime-cap-menu').hidden=false;});
+ await page.locator('.runtime-cap-options button', {hasText:'1 MB/s'}).click();
  await expect.poll(()=>bodies.length).toBe(3);
  expect(bodies[2].max_download_bytes_per_second).toBe(1048576);
 });

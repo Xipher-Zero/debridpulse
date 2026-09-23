@@ -109,3 +109,23 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
   justify-content: center !important;
   align-items: center !important;
 }
+
+/* Provider Status tiers: an acquisition-family heading above the rows that
+   belong to it. Classification and ordering are integration-owned presentation
+   metadata; this only paints the heading. */
+.sidebar-footer .dp-provider-status-tier + .dp-provider-status-tier {
+  margin-top: 8px;
+}
+
+.sidebar-footer .dp-provider-status-tier-label {
+  margin: 0 0 3px;
+  color: var(--text3);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+body.light .sidebar-footer .dp-provider-status-tier-label {
+  color: var(--text2);
+}

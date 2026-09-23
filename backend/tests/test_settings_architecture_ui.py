@@ -468,7 +468,11 @@ def test_modal_shell_has_exactly_one_owner_and_one_global_assignment():
     owner = source(MODAL_JS)
     exported = re.search(r"window\.DPSettingsModal = Object\.freeze\(\{([^}]*)\}\);", owner)
     assert exported, "the canonical global must be one frozen API"
-    assert {name.strip() for name in exported.group(1).split(",") if name.strip()} == {"open", "confirm"}
+    # DP 1.0.13 work item B: the ONE owner exposes the three dialog shapes the
+    # application needs -- the generic shell, a confirmation, and a single
+    # text field. A browser-native prompt() is not an option, and a second
+    # implementation would be a second owner.
+    assert {name.strip() for name in exported.group(1).split(",") if name.strip()} == {"open", "confirm", "prompt"}
     # No other read/rebind of the global inside the owner (no self-wrapping, no late replacement).
     assert owner.count("DPSettingsModal") == 1
 

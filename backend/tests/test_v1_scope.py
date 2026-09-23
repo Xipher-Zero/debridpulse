@@ -287,25 +287,29 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     assert "return '<1 KB/s'" in frontend
     assert "return 'Unlimited'" in frontend
     assert "const units = ['KB', 'MB', 'GB', 'TB']" in frontend
-    assert '<span id="aria2-badge-limit">Unlimited</span>' in index
+    assert '<span id="runtime-badge-limit">Unlimited</span>' in index
 
-    runtime_handler = frontend.split("async function loadAria2Runtime()", 1)[1].split(
-        "async function aria2RuntimeAction", 1
+    # DP 1.0.13 work item G: the topbar indicator is executor-NEUTRAL. It reads
+    # one application-owned fact that aggregates every acquiring executor, so
+    # the human download units below are proven against that owner rather than
+    # against one daemon's global-stat response.
+    runtime_handler = frontend.split("async function loadRuntimeStatus()", 1)[1].split(
+        "function updateRuntimeStatusBadge(", 1
     )[0]
-    assert "active: Number(data.active) || 0" in runtime_handler
-    assert "liveBps: Number(data.download_speed) || 0" in runtime_handler
-    assert "api('GET', '/aria2/global-stat', null, 3000)" in frontend
+    assert "active: Number(data.active_execution_slots) || 0" in runtime_handler
+    assert "liveBps: Number(data.download_bytes_per_second) || 0" in runtime_handler
+    assert "api('GET', '/execution/runtime-status', null, 3000)" in frontend
     assert "}, 1000);" in frontend
-    assert "_aria2TopbarStatBusy" in frontend
-    assert 'id="aria2-badge-limit"' in index
-    assert 'id="aria2-cap-menu"' in index
-    assert 'id="aria2-cap-custom-mbps"' in index
+    assert "_runtimeStatusBusy" in frontend
+    assert 'id="runtime-badge-limit"' in index
+    assert 'id="runtime-cap-menu"' in index
+    assert 'id="runtime-cap-custom-mbps"' in index
     assert "Custom cap (MB/s)" in index
-    assert "applyAria2TopbarSpeedCap(104857600)" in index
+    assert "applyTopbarSpeedCap(104857600)" in index
     assert "Math.round(mbps * 1048576)" in frontend
-    assert "updateAria2TopbarBadge({limitBps: bps})" in frontend
-    assert ".aria2-cap-menu" in styles
-    assert ".aria2-cap-options" in styles
+    assert "updateRuntimeStatusBadge({limitBps: bps})" in frontend
+    assert ".runtime-cap-menu" in styles
+    assert ".runtime-cap-options" in styles
 
     assert "async def get_global_stat(self)" in aria2_service
     assert 'return {"ok": True, **await application.integration_admin("aria2").get_global_stat()}' in routes

@@ -194,6 +194,28 @@ class ApplicationService:
             "last_apply_error": status.last_apply_error,
         }
 
+    async def execution_runtime_status(self) -> dict:
+        """The neutral live runtime facts the operator-facing shell consumes.
+
+        Every value is a read PROJECTION of exactly one existing owner -- none
+        of them is a second authority, and none of them is executor-specific:
+
+        * ``download_bytes_per_second`` -- the core throughput meter, which
+          aggregates every currently acquiring executor through one counting
+          rule and settles to 0 when nothing is measurable;
+        * ``active_execution_slots`` -- the canonical execution-admission
+          occupancy, never a native queue count;
+        * ``max_download_bytes_per_second`` -- the configured value held by the
+          core runtime-limit owner that ``PATCH /execution/runtime-limits``
+          writes.
+        """
+        engine = self.engine
+        return {
+            "download_bytes_per_second": int(engine.throughput.current()),
+            "active_execution_slots": int(await self.repository.occupied_execution_slots(engine.clock())),
+            "max_download_bytes_per_second": int(engine.runtime.configured),
+        }
+
     async def apply_integration_configuration(self, namespace: str):
         """Drive the integration-owned application of one canonical namespace.
 

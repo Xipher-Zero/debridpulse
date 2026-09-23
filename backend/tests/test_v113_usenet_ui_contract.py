@@ -47,16 +47,18 @@ def test_usenet_is_the_first_card_under_external_providers():
 def test_disabled_usenet_renders_collapsed_and_enabling_auto_expands():
     """Both behaviors come from the ONE shared provider-card owner.
 
-    `providerCard` renders a premium card collapsed while disabled, and
-    `providerEnableChanged` expands it as soon as the toggle is checked -- the
-    toggle is never silently reverted.
+    `providerCard` renders an expandable card collapsed while disabled, and the
+    card's presentation follows the COMMITTED enable state -- DP 1.0.13 work
+    item A made the toggle an immediate canonical operational control, so the
+    expansion follows what the server accepted, not the operator's click.
     """
     card = SETTINGS[SETTINGS.index("function providerCard("):SETTINGS.index("function sourcesPanel(")]
     assert "dp-settings-provider-card--collapsed" in card
     assert "${enabled ? '' : ' hidden'}" in card
-    behavior = SETTINGS[SETTINGS.index("function providerEnableChanged("):
-                        SETTINGS.index("function bindEvents", SETTINGS.index("function providerEnableChanged("))]
-    assert "if (input.checked) setProviderExpanded(card, true);" in behavior
+    behavior = SETTINGS[SETTINGS.index("function renderIntegrationState("):
+                        SETTINGS.index("function bindEvents", SETTINGS.index("function renderIntegrationState("))]
+    assert "if (enabled) setDisclosureExpanded(disclosure, true);" in behavior
+    assert "state.settings?.integrations?.[identity]" in behavior
     # Usenet opts into that premium card shape.
     from integrations.usenet.definition import definition as usenet
     assert usenet.presentation.premium is True
@@ -228,20 +230,31 @@ def test_executor_tuning_has_direct_transfers_and_usenet_children():
 def test_child_tuning_cards_default_collapsed_with_the_control_beside_the_label():
     block = SETTINGS[SETTINGS.index("function executorTuningCard("):
                      SETTINGS.index("function directTransfersTuning(")]
-    assert 'aria-expanded="false"' in block
     assert "<div class=\"card-body\" id=\"${bodyId}\" hidden>" in block
-    # The disclosure lives inside the title group, not at the far edge.
-    assert block.index("dp-executor-tuning-disclosure") > block.index("dp-executor-tuning-title")
-    assert block.index("dp-executor-tuning-disclosure") < block.index("dp-executor-tuning-copy")
+    # DP 1.0.13 work item C: ONE canonical disclosure component, rendered by
+    # settingsDisclosure() inside the title group -- after the title, before
+    # the centred copy, never at the far edge beside the operational controls.
+    assert block.index("card-title") < block.index("settingsDisclosure(")
+    assert block.index("settingsDisclosure(") < block.index("dp-settings-card-header-center")
+    component = SETTINGS[SETTINGS.index("function settingsDisclosure("):
+                         SETTINGS.index("function providerStatus(")]
+    assert 'aria-expanded="${expanded}"' in component
 
 
 def test_tuning_headers_have_centred_neutral_explanatory_text():
     panel = downloads_panel()
     assert "Tuning for HTTP(S), FTP/SFTP and other direct transfers." in panel
     assert "Tuning for Usenet download behavior." in panel
-    css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
-    copy = css[css.index(".dp-executor-tuning-copy {"):]
-    assert "text-align: center" in copy
+    # DP 1.0.13 work item E: the copy is centred against the FULL header by the
+    # canonical three-region Settings card header, not against a flex remainder.
+    css = (STATIC / "ui-settings-page.css").read_text(encoding="utf-8")
+    header = css[css.index("#view-settings .card-header.dp-settings-card-header"):]
+    header = header[:header.index("}") + 1]
+    assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)" in header
+    centre = css[css.index("#view-settings .dp-settings-card-header > .dp-settings-card-header-center"):]
+    centre = centre[:centre.index("}") + 1]
+    assert "justify-self: center" in centre
+    assert "text-align: center" in centre
 
 
 def test_direct_transfers_keeps_every_existing_advanced_control():
@@ -264,7 +277,15 @@ def test_usenet_tuning_exposes_no_queue_or_concurrency_setting():
     controls = set(re.findall(r"input\('([a-z0-9_]+)'", block))
     controls |= set(re.findall(r"tuningToggle\(\s*'([a-z0-9_]+)'", block))
     controls |= set(re.findall(r"selectField\('([a-z0-9_]+)'", block))
-    assert controls == {"usenet_operation_timeout_seconds"}
+    # DP 1.0.13 work item F widened this card to the approved acquisition
+    # controls. What it may NEVER hold is a second owner for something
+    # DebridPulse already owns globally.
+    assert controls == {
+        "usenet_operation_timeout_seconds",
+        "usenet_article_cache_megabytes",
+        "usenet_direct_write",
+        "usenet_max_acquisition_retries",
+    }
     for forbidden in ("queue", "max_active", "concurrent", "bandwidth", "speedlimit", "unpack"):
         assert not any(forbidden in name for name in controls)
 

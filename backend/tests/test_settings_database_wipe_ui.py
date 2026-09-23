@@ -79,13 +79,19 @@ def test_backups_retention_fields_use_requested_titles_and_flavor_copy():
         assert flavor in js
 
 
-def test_backups_retention_field_text_uses_shared_three_pixel_input_datum():
-    css = source(STYLE)
+def test_backups_retention_field_text_uses_the_one_canonical_field_datum():
+    """DP 1.0.13 work item J: the field datum is declared ONCE.
 
-    assert '[data-panel="maintenance"] .dp-settings-field > .form-label' in css
-    assert '[data-panel="maintenance"] .dp-settings-field > .form-hint' in css
-    assert "position: relative;" in css
-    assert "inset-inline-start: 3px;" in css
+    The label, the control and the helper copy start at the same inline edge --
+    the control's outer box -- and that rule lives in the canonical Settings
+    form-layout owner. This panel declared its own 3px copy of it, which is the
+    duplication the correction removed; it must not reappear here.
+    """
+    css = source(STYLE)
+    assert "inset-inline-start" not in css
+    form_layout = (STATIC / "ui-settings-form-layout.css").read_text(encoding="utf-8")
+    assert "#view-settings .dp-settings-field > .form-label" in form_layout
+    assert "margin-inline-start: 0" in form_layout
 
 
 def test_run_backup_now_uses_scoped_success_semantics_and_list_remains_unchanged():
