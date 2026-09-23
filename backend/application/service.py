@@ -21,12 +21,19 @@ from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
     extract_hash_from_torrent, normalize_direct_links,
 )
+from transfers.staged_input import StagedInputError
 from transfers.storage import StorageDomain
 
 
 class ApplicationService:
-    def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, capacity=None):
+    def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, capacity=None,
+                 staged_input=None):
         self.engine = engine
+        # The one owner of durable, large submitted request input. Held here
+        # because it is an application resource, not a provider's or an
+        # executor's: the edge stages into it, both of them only read from it,
+        # and its reclamation is driven from application maintenance.
+        self.staged_input = staged_input
         self.repository = engine.repository
         self._configure = configure
         self.lifecycle = tuple(lifecycle)
@@ -307,14 +314,42 @@ class ApplicationService:
         Usenet provider owns NZB validation and normalization, and does it
         during resolution like every other provider. This only refuses an empty
         upload, which needs no format knowledge. Routing stays with core.
+
+        ``data`` is either the manifest bytes or an async iterable of byte
+        chunks. A stream is staged straight through to durable storage and the
+        request carries the reference, so a large manifest is never assembled
+        in memory here or persisted into the request row.
         """
-        payload = bytes(data or b"")
-        if not payload:
-            raise ValueError("NZB file is empty")
         name = str(filename or "").rsplit(".", 1)[0] or "usenet-download"
+        if isinstance(data, (bytes, bytearray)):
+            payload = bytes(data)
+            if not payload:
+                raise ValueError("NZB file is empty")
+        else:
+            if self.staged_input is None:
+                raise ValueError("Durable input storage is unavailable")
+            try:
+                payload = await self.staged_input.stage(data)
+            except StagedInputError as exc:
+                raise ValueError(str(exc)) from None
         return await self.submit(
             (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
             name=name, source=source)
+
+    async def reclaim_staged_input(self) -> int:
+        """Reclaim every staged input no live request still references.
+
+        The single cleanup owner for every terminal path -- success, permanent
+        failure, cancellation, deletion, retry -- and for a crash that staged an
+        input before any transfer owned it. Survivors are derived from the
+        durable reference set rather than from per-path callbacks, which is what
+        makes it impossible either to miss a path or to reclaim an input that is
+        still needed.
+        """
+        if self.staged_input is None:
+            return 0
+        referenced = await self.repository.referenced_staged_inputs()
+        return self.staged_input.sweep(referenced)
 
     async def submit_links(self, links):
         # DP 1.0.12 corrective: one Quick Add batch is one user submission

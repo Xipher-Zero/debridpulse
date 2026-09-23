@@ -1,5 +1,6 @@
 """Production integration composition. Concrete imports terminate here."""
 from dataclasses import replace
+from pathlib import Path
 
 from application.consolidation_events import ConsolidationEvents
 from application.service import ApplicationService
@@ -15,6 +16,7 @@ from transfers.convergence_engine import TransferEngine
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.recovery_repository import TransferRepository
+from transfers.staged_input import StagedInputStore
 from transfers.storage import DiskCapacity, register_storage_health
 
 
@@ -47,7 +49,8 @@ def configure(application):
     application.definitions = definitions
     registry = IntegrationRegistry()
     register(registry, settings, IntegrationEnvironment(application.repository, settings.download_folder,
-                                                        commands=application))
+                                                        commands=application,
+                                                        staged_input=application.staged_input))
     application.engine.registry = registry
     application.engine.root = settings.download_folder
     policy = settings.transfer_policy
@@ -120,6 +123,13 @@ def configure(application):
     application.observability = Observability(application.repository, application.consolidation_events)
 
 
+def staged_input_root(settings) -> str:
+    """Where durable submitted input lives: beside the database, not the
+    download folder. It is application state, never operator-visible material."""
+    from db.database import DB_PATH
+    return str(Path(DB_PATH).parent / "staged-input")
+
+
 def compose():
     settings = get_settings()
     repository = TransferRepository()
@@ -128,7 +138,8 @@ def compose():
     # The canonical owner announces a committed attachment through an injected
     # callback; nothing wraps or proxies it.
     engine.canonical.on_attached = consolidation_events.stage
-    service = ApplicationService(engine, configure=configure)
+    service = ApplicationService(engine, configure=configure,
+                                 staged_input=StagedInputStore(staged_input_root(settings)))
     service.consolidation_events = consolidation_events
     configure(service)
     return service

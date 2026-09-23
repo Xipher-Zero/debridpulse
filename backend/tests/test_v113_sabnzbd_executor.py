@@ -15,7 +15,7 @@ from transfers.models import (
     MaterializationKind, MaterializationPlan, TransferCandidate,
 )
 
-from sab_fakes import FakeSab, SabTransportError  # noqa: F401
+from sab_fakes import FakeSab, SabTransportError, staged_context, staged_store  # noqa: F401
 
 
 @pytest.fixture
@@ -39,14 +39,16 @@ def build(sab, *, root):
     async def authorize(handle, action):
         return True
 
-    return SabnzbdExecutor(sab, configuration, authorize)
+    return SabnzbdExecutor(sab, configuration, authorize,
+        staged_input=staged_store(),
+    )
 
 
 def subject_for(name="posted", kind="nzb"):
     candidate = TransferCandidate(
         name=name, endpoints=(), provider_id="usenet",
         materialization=MaterializationKind.COLLECTION, request_kind=kind,
-        context={"nzb_base64": base64.b64encode(b"<nzb/>").decode("ascii")},
+        context=staged_context(),
     )
     return ExecutionSubject.of(candidate)
 

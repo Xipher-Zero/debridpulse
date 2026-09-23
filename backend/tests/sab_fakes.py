@@ -1,19 +1,55 @@
 """Deterministic in-memory stand-in for the SABnzbd HTTP API.
 
-Models exactly the semantics characterized against a real SABnzbd 5.1.3 at
-Gate 1: client-supplied ``nzbname`` persists as queue ``filename`` and history
-``name``; submission returns a server-minted ``nzo_id``; duplicate submission
-creates a SECOND independent job; a control acknowledgement is NOT truth; a
-transport failure is distinguishable from a valid "absent" answer.
+Models exactly the semantics characterized against a real SABnzbd 5.1.3:
+
+* client-supplied ``nzbname`` becomes the job's ``final_name``; the QUEUE
+  publishes it as slot ``filename`` and nothing else -- a real queue slot has
+  no ``name`` key, no ``nzb_name`` and no custom metadata -- while the HISTORY
+  publishes ``name`` (the same value) plus ``nzb_name`` (the uploaded file's
+  name, which is never queue-visible and never searchable);
+* queue and history search both match the job name alone;
+* ``mode=queue&name=rename`` changes the job name only, immediately, and
+  answers ``{"status": false}`` for an id that is not in the queue;
+* submission returns a server-minted ``nzo_id``; duplicate submission creates a
+  SECOND independent job; a control acknowledgement is NOT truth; a transport
+  failure is distinguishable from a valid "absent" answer.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import tempfile
 import uuid
 
 
 # The fake models the REAL client contract, including its two failure classes.
-from executors.sabnzbd.client import SabApiError, SabTransportError  # noqa: F401
+from executors.sabnzbd.client import (  # noqa: F401
+    NATIVE_PRIORITY_PAUSED, SabApiError, SabTransportError,
+)
+from transfers.staged_input import StagedInputStore
+
+_STAGED_STORE: StagedInputStore | None = None
+
+
+def staged_store() -> StagedInputStore:
+    """The neutral durable-input owner these tests hand to an executor.
+
+    One per test process: a staged reference is only meaningful against the
+    store that minted it, so sharing one keeps a candidate built by one helper
+    readable by an executor built by another.
+    """
+    global _STAGED_STORE
+    if _STAGED_STORE is None:
+        _STAGED_STORE = StagedInputStore(tempfile.mkdtemp(prefix="dp-staged-"))
+    return _STAGED_STORE
+
+
+def staged_context(payload: bytes = b"<nzb/>") -> dict:
+    """A candidate context carrying a real durable reference to ``payload``.
+
+    The bytes are genuinely staged, so integrity verification, streaming
+    submission and reclamation all behave exactly as they do in production.
+    """
+    return {"staged_input": staged_store().stage_bytes(payload).as_context()}
 
 
 @dataclass
@@ -28,15 +64,30 @@ class FakeJob:
     fail_message: str = ""
     bytes: int = 0
     pp: str = "R"
+    # The uploaded multipart file name. Retained by the service, surfaced ONLY
+    # in history, and never searchable -- so it can never carry correlation
+    # through the queue phase.
+    nzb_name: str = ""
 
-    def slot(self) -> dict:
-        """Exactly the shape SAB's JSON API returns for a queue/history slot."""
+    def _common(self) -> dict:
         return {
-            "nzo_id": self.nzo_id, "name": self.name, "filename": self.name,
-            "status": self.status, "mb": f"{self.mb:.2f}", "mbleft": f"{self.mbleft:.2f}",
+            "nzo_id": self.nzo_id, "status": self.status,
+            "mb": f"{self.mb:.2f}", "mbleft": f"{self.mbleft:.2f}",
             "storage": self.storage, "path": self.path,
             "fail_message": self.fail_message, "bytes": self.bytes, "pp": self.pp,
         }
+
+    def queue_slot(self) -> dict:
+        """A real queue slot: the job name appears as ``filename``, alone."""
+        return {**self._common(), "filename": self.name}
+
+    def history_slot(self) -> dict:
+        """A real history slot: ``name`` plus the uploaded file's ``nzb_name``."""
+        return {**self._common(), "name": self.name, "nzb_name": self.nzb_name}
+
+    # Retained for callers that predate the queue/history split.
+    def slot(self) -> dict:
+        return self.queue_slot()
 
 
 @dataclass
@@ -66,6 +117,20 @@ class FakeSab:
     truncate_history_to: int | None = None
     # Models the native refusal to move working paths while it is busy.
     refuse_path_changes: bool = False
+    # Every job-name search the executor performed, in order.
+    searches: list = field(default_factory=list)
+    # Every (nzo_id, new_name) rename the executor issued, in order.
+    renames: list = field(default_factory=list)
+    # Makes rename answer ``{"status": false}``, as the real service does for a
+    # job that is no longer in the queue.
+    refuse_renames: bool = False
+    # (nzo_id, job name) for every job the native worker was allowed to run.
+    acquired_under_name: list = field(default_factory=list)
+    # Models elapsed time inside a lost/ambiguous acknowledgement: the service
+    # keeps working while the caller is still waiting for an answer it will
+    # never get. This is the condition the submission fence exists to survive,
+    # so a test that never exercises it proves nothing.
+    worker_runs_during_ambiguity: bool = False
 
     # --- transport -------------------------------------------------------
     def _guard(self):
@@ -79,21 +144,39 @@ class FakeSab:
         self._guard()
         return "5.1.3"
 
-    async def addfile(self, data: bytes, *, nzbname: str, pp: int, priority: int = -100):
+    async def addfile(self, data, *, job_name: str, pp: int, priority: int = -100,
+                      upload_filename: str = ""):
         self._guard()
-        job = FakeJob(uuid.uuid4().hex, nzbname, pp=("R" if pp == 1 else str(pp)))
+        data = data.read() if hasattr(data, "read") else data
+        # Priority -2 is "paused on arrival": the real service creates the job
+        # but its downloader never picks it up until something resumes it.
+        job = FakeJob(uuid.uuid4().hex, job_name, pp=("R" if pp == 1 else str(pp)),
+                      status=("Paused" if priority == NATIVE_PRIORITY_PAUSED else "Downloading"),
+                      nzb_name=upload_filename or f"{job_name}.nzb")
         # Real SAB has NO dedupe: a repeat submission is a second job.
         self.queue[job.nzo_id] = job
-        self.submissions.append((nzbname, bytes(data)))
+        self.submissions.append((job_name, bytes(data)))
         if self.drop_next_response:
             self.drop_next_response = False
+            if self.worker_runs_during_ambiguity:
+                # The answer is already lost; the service does not wait for it.
+                self.run_native_worker()
             raise SabTransportError("response lost after submission reached SAB")
         return job.nzo_id
+
+    async def rename(self, nzo_id: str, name: str) -> bool:
+        """Change a QUEUED job's name. False once it has left the queue."""
+        self._guard()
+        self.renames.append((nzo_id, name))
+        if self.refuse_renames or nzo_id not in self.queue:
+            return False
+        self.queue[nzo_id].name = name
+        return True
 
     async def queue_snapshot(self, limit: int = 500):
         from executors.sabnzbd.client import SabSnapshot
         self._guard()
-        slots = [j.slot() for j in self.queue.values()]
+        slots = [j.queue_slot() for j in self.queue.values()]
         total = len(slots)
         if self.truncate_queue_to is not None:
             slots = slots[: self.truncate_queue_to]
@@ -102,7 +185,7 @@ class FakeSab:
     async def history_snapshot(self, limit: int = 500):
         from executors.sabnzbd.client import SabSnapshot
         self._guard()
-        slots = [j.slot() for j in self.history.values()]
+        slots = [j.history_slot() for j in self.history.values()]
         total = len(slots)
         if self.truncate_history_to is not None:
             slots = slots[: self.truncate_history_to]
@@ -176,11 +259,17 @@ class FakeSab:
 
     async def queue_slots(self, search: str | None = None):
         self._guard()
-        return [j.slot() for j in self.queue.values() if search is None or search in j.name]
+        if search is not None:
+            self.searches.append(search)
+        return [j.queue_slot() for j in self.queue.values()
+                if search is None or search in j.name]
 
     async def history_slots(self, search: str | None = None, nzo_id: str | None = None):
         self._guard()
-        return [j.slot() for j in self.history.values()
+        if search is not None:
+            self.searches.append(search)
+        # Search matches the job name only: ``nzb_name`` is not searchable.
+        return [j.history_slot() for j in self.history.values()
                 if (search is None or search in j.name) and (nzo_id is None or j.nzo_id == nzo_id)]
 
     async def pause(self, nzo_id):
@@ -201,6 +290,29 @@ class FakeSab:
         self._guard()
         self.queue.pop(nzo_id, None)
         return {"status": True}
+
+    # --- the native worker ------------------------------------------------
+    def run_native_worker(self, *, member="b082fa0beaa644d3aa01045d5b8d0b36.mp4"):
+        """Let the service do what it would do, to every job it may run.
+
+        Models the two behaviours this fence exists to survive: a job that is
+        NOT paused makes progress without waiting for DebridPulse, and its
+        post-processing renames an obfuscated member to the JOB name -- which
+        is SABnzbd 5.1.3's ``deobfuscate(nzo, files, nzo.final_name)``.
+
+        Every run is recorded with the name the job carried at the time, so a
+        test can assert that acquisition never happened under a name it must
+        never have happened under.
+        """
+        ran = []
+        for nzo_id, job in list(self.queue.items()):
+            if job.status == "Paused":
+                continue
+            self.acquired_under_name.append((nzo_id, job.name))
+            extension = member.rsplit(".", 1)[-1]
+            self.finish(nzo_id, files=((f"{job.name}.{extension}", 4096), ("rename.par2", 512)))
+            ran.append(nzo_id)
+        return ran
 
     # --- test drivers ----------------------------------------------------
     def finish(self, nzo_id, *, root=None, files=(("payload.bin", 1024),)):

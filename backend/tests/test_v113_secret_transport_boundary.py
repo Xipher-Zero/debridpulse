@@ -163,7 +163,7 @@ async def test_the_credential_actually_travels_in_the_body():
 @pytest.mark.asyncio
 async def test_addfile_still_submits_its_payload_in_a_multipart_body():
     sab = client()
-    await sab.addfile(b"<nzb/>", nzbname="dp-token")
+    await sab.addfile(b"<nzb/>", job_name="dp-token")
     method, url, data = RecordingSession.calls[-1]
     assert method == "POST" and "?" not in url
     assert API_KEY_SENTINEL not in url

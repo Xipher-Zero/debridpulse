@@ -8,7 +8,7 @@ Two safety properties dominate the design, both grounded in characterization
 against a real SABnzbd 5.1.3:
 
 * **A lost start acknowledgement never resubmits.** ``prepare()`` mints a
-  durable correlation token which ``start()`` submits as SAB's ``nzbname``.
+  durable correlation token which ``start()`` submits as the native job name.
   SAB persists it as the queue ``filename`` and the history ``name``, so an
   ambiguous submission is reconciled by searching for that token. Duplicate
   submission is proven to create a second independent job, so blind retry is
@@ -16,10 +16,45 @@ against a real SABnzbd 5.1.3:
 * **Unreachability is never absence.** Only a valid SAB answer that omits the
   job from BOTH queue and history proves ``ABSENT``; a transport or API error
   is always ``UNKNOWN``.
+
+Naming is separated from correlation in TIME, because SABnzbd 5.1.3 leaves no
+other way. Characterized against the bundled service: a queue slot publishes
+exactly one DebridPulse-settable string, the job name, and queue search matches
+that name alone -- the uploaded file's name survives only into history, where it
+is neither visible in the queue nor searchable, and no custom metadata field
+exists. So the correlation token can only occupy the job name, and only while
+the submission is still unproven. The moment the native id is bound the job is
+renamed to the candidate's release name, and it carries that name for the rest
+of its life.
+
+This matters because post-processing calls ``deobfuscate(nzo, files,
+nzo.final_name)``: an obfuscated dominant member, and its lookalikes, are
+renamed to the JOB name. Running the bundled module against a token-named job
+reproduced the production defect exactly -- ``dp-9ce15fce994c527f7712b4c4.mp4``
+beside an untouched ``rename.par2``. Giving SAB the release name instead is the
+whole correction; DebridPulse renames nothing afterwards and reconstructs no
+collection from any single member.
+
+Separating the two names in time is not sufficient on its own, because the job
+exists and is named with the token from the instant it is created. If it were
+allowed to run in that window -- which is precisely the lost-acknowledgement
+window the correlation machinery exists to survive -- a small posting could
+finish and be post-processed under the token, reach history, and become
+permanently contaminated: the service can only rename a job that is still
+queued. So the handoff is a fence, and the invariant is absolute:
+
+    No native job may acquire or post-process while its name is the
+    DebridPulse correlation token.
+
+Every job is therefore created PAUSED, and the ``RESUME`` control is withheld
+until the job is bound AND provably carries its release name. This adds no
+second pause owner: core remains the only pause/resume authority, and this
+executor merely declines to offer a job as resumable before it is safe to run.
+A rename that is refused, lost or unobservable simply leaves the job paused for
+the existing observation machinery to converge.
 """
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
@@ -27,15 +62,17 @@ from typing import Awaitable, Callable
 
 from executors.sabnzbd import topology
 from executors.sabnzbd.client import (
-    NATIVE_PRIORITY_DEFAULT, NATIVE_PRIORITY_PAUSED, PP_REPAIR_ONLY, SabApiError, SabTransportError,
+    NATIVE_PRIORITY_PAUSED, PP_REPAIR_ONLY, SabApiError, SabTransportError,
 )
 from executors.sabnzbd.translation import (
     EXECUTOR_ID, failure, native_activity, native_failure, native_progress, native_state, sanitize,
     unreachable,
 )
 from transfers.errors import Category, Domain, Retryability, Stage, TransferError
+from transfers.filesystem import safe_name
+from transfers.staged_input import StagedInputError, StagedPayload
 from transfers.models import (
-    ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
+    ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutorCapabilities, ExecutorClaim,
     ExecutorHealth, ExecutorRuntimeCapability, ExecutorRuntimeControlResult, ExecutorThroughput,
     IntegrationDescriptor,
@@ -45,8 +82,14 @@ from transfers.models import (
 # The canonical request class this executor delivers. Executor-private: core
 # never routes by it, it only asks ``claim()``.
 SUPPORTED_REQUEST_KIND = "nzb"
-# Where the provider parked the neutral, non-secret posted manifest.
-CONTEXT_MANIFEST = "nzb_base64"
+# Where the provider parked its durable reference to the submitted manifest.
+# A reference, never the manifest: the bytes live in the neutral staged-input
+# owner and are streamed from there, so neither the candidate row nor this
+# executor ever holds a whole large posting in memory.
+CONTEXT_STAGED_INPUT = "staged_input"
+# The longest native job name DebridPulse will assign. SAB sanitizes a job name
+# into a folder name, and a release name is the only thing that belongs here.
+_MAXIMUM_DISPLAY_NAME = 200
 # Below this, SABnzbd parses the figure as a percentage rather than a byte rate
 # (characterized against 5.1.3), so an absolute ceiling cannot be expressed.
 _MINIMUM_EXPRESSIBLE_CEILING = 101
@@ -81,10 +124,14 @@ class SabnzbdExecutor:
     )
 
     def __init__(self, client, configuration: SabnzbdConfiguration,
-                 authorize: Callable[[ExecutionHandle, str], Awaitable[bool]]):
+                 authorize: Callable[[ExecutionHandle, str], Awaitable[bool]],
+                 staged_input=None):
         self.client = client
         self.configuration = configuration
         self.authorize = authorize
+        # The neutral durable-input owner. Borrowed to READ the submitted
+        # manifest; this executor owns none of its lifecycle.
+        self.staged_input = staged_input
 
     # --- pure contract ---------------------------------------------------
 
@@ -95,10 +142,18 @@ class SabnzbdExecutor:
     def footprint(self, work) -> ExecutionFootprint:
         """This attempt's own native transient trees, named exactly.
 
-        The service scratch for one job lives under the hidden working area and
-        is keyed by that job's attempt-unique correlation token, so core can
-        reason about ownership, pre-existing material and cleanup for THIS
-        attempt without ever touching another attempt's.
+        The service creates one job's incomplete tree from the name the job was
+        submitted with -- this attempt's correlation token -- and, characterized
+        against SABnzbd 5.1.3, a later rename does NOT move it. So that tree is
+        exactly nameable for THIS attempt, and core can reason about ownership,
+        pre-existing material and cleanup without ever touching another
+        attempt's.
+
+        The completed tree is deliberately NOT declared. Its name is derived at
+        post-processing time from the job's release name and uniquified by the
+        service, so DebridPulse cannot name it in advance. Declaring a path that
+        is merely plausible would be worse than declaring none: possession of a
+        finished payload is taken from the location SAB itself reports.
 
         Before core has allocated an attempt there is nothing to report: the
         attempt's directories cannot exist yet.
@@ -106,11 +161,9 @@ class SabnzbdExecutor:
         attempt_id = getattr(work, "attempt_id", None)
         if not attempt_id:
             return ExecutionFootprint()
-        token = self._token_for(attempt_id)
         return ExecutionFootprint(transient_trees=(
             str(Path(self.configuration.working_directory)
-                / topology.INCOMPLETE_DIRECTORY_NAME / token),
-            str(Path(self.configuration.complete_directory) / token),
+                / topology.INCOMPLETE_DIRECTORY_NAME / self._token_for(attempt_id)),
         ))
 
     def _plan_root(self, request: ExecutionRequest) -> Path:
@@ -133,6 +186,18 @@ class SabnzbdExecutor:
         """
         return "dp-" + hashlib.sha256(str(attempt_id).encode()).hexdigest()[:24]
 
+    @staticmethod
+    def _display_for(request: ExecutionRequest) -> str:
+        """The human name this job should carry natively.
+
+        Taken from the canonical candidate name, which is already an edge fact
+        here -- core gains no naming field for a native service's benefit. It is
+        sanitized as a folder name because SAB makes it one, and it is never
+        compared, searched or used to identify anything.
+        """
+        candidate = request.work.subject.candidate
+        return safe_name(str(getattr(candidate, "name", "") or ""))[:_MAXIMUM_DISPLAY_NAME]
+
     def prepare(self, request: ExecutionRequest) -> ExecutionHandle:
         """Allocate the durable correlation only. NO native call happens here.
 
@@ -144,8 +209,15 @@ class SabnzbdExecutor:
         if not request.attempt_id:
             raise TransferError(failure(Category.INVALID_REQUEST, stage=Stage.QUEUE,
                                         domain=Domain.REQUEST))
-        return ExecutionHandle(self.descriptor.id, request.attempt_id,
-                               {"token": self._token_for(request.attempt_id), "root": str(root)})
+        return ExecutionHandle(self.descriptor.id, request.attempt_id, {
+            "token": self._token_for(request.attempt_id),
+            "root": str(root),
+            # The release name to give the native job. Executor-private
+            # bookkeeping, recorded here so a restart can still finish naming a
+            # job it had already bound. It is never identity: nothing matches,
+            # searches or reconciles on it.
+            "display": self._display_for(request),
+        })
 
     # --- helpers ---------------------------------------------------------
 
@@ -175,14 +247,15 @@ class SabnzbdExecutor:
         if action != "observe" and not await self.authorize(handle, action):
             raise TransferError(failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE))
 
-    def _manifest(self, request: ExecutionRequest) -> bytes:
-        raw = (request.work.subject.candidate.context or {}).get(CONTEXT_MANIFEST)
-        if not isinstance(raw, str) or not raw:
+    def _staged(self, request: ExecutionRequest) -> StagedPayload:
+        """This execution's durable input reference, as the provider left it."""
+        raw = (request.work.subject.candidate.context or {}).get(CONTEXT_STAGED_INPUT)
+        if self.staged_input is None:
             raise TransferError(failure(Category.INVALID_REQUEST, stage=Stage.QUEUE,
                                         domain=Domain.REQUEST))
         try:
-            return base64.b64decode(raw, validate=True)
-        except Exception as exc:
+            return StagedPayload.from_context(raw)
+        except StagedInputError as exc:
             raise TransferError(failure(Category.INVALID_REQUEST, stage=Stage.QUEUE,
                                         domain=Domain.REQUEST)) from exc
 
@@ -192,11 +265,18 @@ class SabnzbdExecutor:
         ``None`` means a VALID SAB answer that contains the job in neither
         queue nor history -- the only evidence of genuine absence. Transport
         and API errors propagate; they are never absence.
+
+        The narrowing search is by NAME only while the job is still unbound,
+        because the token is the job's name only in that window. Once the
+        native id is bound it is the identity, and the job has been renamed to
+        its release name -- so searching for the token then would prove
+        "absent" about a job that is present.
         """
-        for slot in await self.client.queue_slots(search=token or None):
+        search = None if nzo_id else (token or None)
+        for slot in await self.client.queue_slots(search=search):
             if self._matches(slot, token, nzo_id):
                 return slot, False
-        history = await self.client.history_slots(search=token or None,
+        history = await self.client.history_slots(search=search,
                                                   nzo_id=nzo_id or None)
         for slot in history:
             if self._matches(slot, token, nzo_id):
@@ -220,32 +300,108 @@ class SabnzbdExecutor:
             if self.prepare(request) != handle:
                 raise TransferError(failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE))
             token = self._token(handle)
-            payload = self._manifest(request)
+            staged = self._staged(request)
         except TransferError as exc:
             return ExecutionObservation(handle, ExecutionState.FAILED, error=exc.error)
 
         try:
-            nzo_id = await self.client.addfile(
-                payload, nzbname=token, pp=PP_REPAIR_ONLY,
-                priority=NATIVE_PRIORITY_PAUSED if request.paused else NATIVE_PRIORITY_DEFAULT,
-            )
+            # The staged input is proven intact BEFORE a byte of it is sent, so
+            # altered or truncated input is never submitted, and it is streamed
+            # rather than read whole -- a manifest can be hundreds of megabytes.
+            with self.staged_input.opened(staged) as manifest:
+                # ALWAYS paused on arrival, whatever core intends. The job is
+                # created carrying the correlation token, and nothing may run
+                # under that name -- including during an acknowledgement this
+                # call never receives.
+                nzo_id = await self.client.addfile(
+                    manifest, job_name=token, pp=PP_REPAIR_ONLY,
+                    priority=NATIVE_PRIORITY_PAUSED,
+                )
+        except StagedInputError as exc:
+            # Nothing was submitted: the input could not be proven.
+            return ExecutionObservation(handle, ExecutionState.FAILED, error=failure(
+                Category.INVALID_REQUEST, stage=Stage.QUEUE, domain=Domain.REQUEST,
+                diagnostic=sanitize(str(exc), secrets)))
         except (SabTransportError, SabApiError) as exc:
             # The submission may or may not have reached SAB. Reconcile by the
             # durable correlation token; NEVER submit a second time.
-            return await self._reconcile_ambiguous_start(handle, sanitize(str(exc), secrets))
+            return await self._reconcile_ambiguous_start(handle, sanitize(str(exc), secrets),
+                                                         paused=request.paused)
         except Exception as exc:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                                         error=unreachable(sanitize(str(exc), secrets)))
-        bound = self._bind(handle, nzo_id)
-        return ExecutionObservation(
-            bound,
-            ExecutionState.PAUSED if request.paused else ExecutionState.QUEUED,
-            activity=ExecutionActivity(bandwidth_reservation_required=True),
-            controls=frozenset({ExecutionControl.RESUME if request.paused else ExecutionControl.PAUSE}),
-        )
+        return await self._establish_native_name(self._bind(handle, nzo_id),
+                                                 paused=request.paused)
 
-    async def _reconcile_ambiguous_start(self, handle: ExecutionHandle,
-                                         diagnostic: str) -> ExecutionObservation:
+    async def _establish_native_name(self, handle: ExecutionHandle, *,
+                                     paused: bool) -> ExecutionObservation:
+        """Complete the submission: name the bound job, then release the fence.
+
+        This runs inside ``start()``, before core has accepted the native
+        binding, so it reads and controls the job through the native boundary
+        directly rather than through the authorized observation path -- the
+        authorization for this work is the one ``start`` already took, and the
+        bound handle is not yet the one core holds.
+
+        The job was created paused and carries the correlation token. It is
+        renamed, and resumed ONLY when the rename is observed to have taken and
+        core's canonical lifecycle says this execution should be running.
+        Naming that cannot be completed or proven is not an error: the job
+        stays paused under the token, which is exactly where it is safe, and
+        the next observation converges it.
+        """
+        token = self._token(handle)
+        display = str(handle.correlation.get("display") or "")
+        nzo_id = self._nzo(handle)
+        try:
+            located = await self._locate(token, nzo_id)
+            if located is None:
+                return ExecutionObservation(handle, ExecutionState.ABSENT)
+            slot, in_history = located
+            native_name = await self._converge_display_name(handle, slot, in_history)
+            if not paused and not in_history and display and native_name == display:
+                # Named, and core wants it running: release the fence.
+                await self.client.resume(nzo_id)
+                located = await self._locate(token, nzo_id)
+                if located is None:
+                    return ExecutionObservation(handle, ExecutionState.ABSENT)
+                slot, in_history = located
+            return self._observation(handle, slot, in_history, native_name)
+        except (SabTransportError, SabApiError) as exc:
+            # The job exists and is paused under the token. Uncertain, safe.
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN,
+                                        error=unreachable(sanitize(str(exc), self._secrets())))
+
+    async def _converge_display_name(self, handle: ExecutionHandle, slot,
+                                     in_history: bool) -> str:
+        """Ensure a queued job carries its release name; report the name it has.
+
+        An acknowledgement is not truth, and DebridPulse may have stopped
+        between binding a job and naming it. Observation is where that is
+        noticed, and renaming is only possible while the job is still queued.
+        A job already carrying its release name, or one renamed to something
+        else entirely, is left alone.
+
+        The returned name is what the caller must judge the fence by, so a
+        rename that has just succeeded does not cost the job another cycle
+        paused.
+        """
+        observed = str(_get(slot, "filename") or _get(slot, "name") or "")
+        if in_history or observed != self._token(handle):
+            return observed
+        display = str(handle.correlation.get("display") or "")
+        nzo_id = self._nzo(handle)
+        if not display or not nzo_id:
+            return observed
+        try:
+            renamed = await self.client.rename(nzo_id, display)
+        except Exception:
+            # Uncertain, like every other unacknowledged native call here.
+            return observed
+        return display if renamed else observed
+
+    async def _reconcile_ambiguous_start(self, handle: ExecutionHandle, diagnostic: str, *,
+                                         paused: bool) -> ExecutionObservation:
         """Resolve a lost/ambiguous submission acknowledgement without resubmitting."""
         try:
             located = await self._locate(self._token(handle))
@@ -256,7 +412,11 @@ class SabnzbdExecutor:
             # core keeps ownership and no duplicate job is ever created here.
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=unreachable(diagnostic))
         slot, in_history = located
-        return self._observation(self._bind(handle, str(_get(slot, "nzo_id") or "")), slot, in_history)
+        # The job landed after all. It is paused under the correlation token,
+        # so it has acquired nothing; finish the submission exactly as the
+        # acknowledged path does.
+        return await self._establish_native_name(
+            self._bind(handle, str(_get(slot, "nzo_id") or "")), paused=paused)
 
     # --- observation -----------------------------------------------------
 
@@ -300,7 +460,8 @@ class SabnzbdExecutor:
                 for item in permitted:
                     slot = located.get(self._key(item))
                     results.append(self._observation(self._bind(item, str(_get(slot, "nzo_id") or "")),
-                                                     slot, False)
+                                                     slot, False,
+                                                     str(_get(slot, "filename") or _get(slot, "name") or ""))
                                    if slot is not None else
                                    ExecutionObservation(item, ExecutionState.UNKNOWN, error=error))
                 return ExecutionSnapshot(tuple(results))
@@ -320,8 +481,9 @@ class SabnzbdExecutor:
                         error=unreachable("SAB listing was not authoritative")))
                 continue
             slot, in_history = found if isinstance(found, tuple) else (found, False)
-            results.append(self._observation(self._bind(item, str(_get(slot, "nzo_id") or "")),
-                                             slot, in_history))
+            bound = self._bind(item, str(_get(slot, "nzo_id") or ""))
+            native_name = await self._converge_display_name(bound, slot, in_history)
+            results.append(self._observation(bound, slot, in_history, native_name))
         return ExecutionSnapshot(tuple(results))
 
     @staticmethod
@@ -359,14 +521,22 @@ class SabnzbdExecutor:
             # A VALID answer that omits the job from queue AND history.
             return ExecutionObservation(self._bound_or_self(handle), ExecutionState.ABSENT)
         slot, in_history = located
-        return self._observation(self._bind(handle, str(_get(slot, "nzo_id") or "")), slot, in_history)
+        bound = self._bind(handle, str(_get(slot, "nzo_id") or ""))
+        native_name = await self._converge_display_name(bound, slot, in_history)
+        return self._observation(bound, slot, in_history, native_name)
 
     @staticmethod
     def _bound_or_self(handle: ExecutionHandle) -> ExecutionHandle:
         return handle
 
-    def _observation(self, handle: ExecutionHandle, slot, in_history: bool) -> ExecutionObservation:
+    def _observation(self, handle: ExecutionHandle, slot, in_history: bool,
+                     native_name: str = "") -> ExecutionObservation:
         status = str(_get(slot, "status") or "")
+        # THE FENCE. A job still carrying the correlation token has not been
+        # named yet, and nothing may run under that name, so it is not offered
+        # as resumable. Core is still the only pause/resume authority -- it
+        # simply has nothing to act on until naming is established.
+        fenced = not in_history and native_name == self._token(handle)
         state = native_state(status, in_history=in_history)
         secrets = self._secrets()
         if state == ExecutionState.FAILED:
@@ -378,7 +548,7 @@ class SabnzbdExecutor:
         if state != ExecutionState.SUCCEEDED:
             controls = frozenset()
             if state == ExecutionState.PAUSED:
-                controls = frozenset({ExecutionControl.RESUME})
+                controls = frozenset() if fenced else frozenset({ExecutionControl.RESUME})
             elif state in {ExecutionState.QUEUED, ExecutionState.RUNNING}:
                 controls = frozenset({ExecutionControl.PAUSE})
             return ExecutionObservation(handle, state, progress=native_progress(slot),
@@ -386,18 +556,27 @@ class SabnzbdExecutor:
         return self._succeeded(handle, slot)
 
     def _succeeded(self, handle: ExecutionHandle, slot) -> ExecutionObservation:
-        """Deliver the repaired payload into the core plan root and report it."""
-        token = self._token(handle)
+        """Deliver the repaired payload into the core plan root and report it.
+
+        The payload is located SOLELY from the position SAB reports for this
+        job. The completed directory is named from the job's release name and
+        uniquified by the service, so no path DebridPulse could compose from its
+        own correlation token would be right -- and an output path was never a
+        safe way to identify anything. A report DebridPulse cannot contain
+        inside its own working area is uncertainty, never a guess.
+        """
         plan_root = str(handle.correlation.get("root") or "")
-        source = str(Path(self.configuration.complete_directory) / token)
-        # SAB's own reported final location wins when it is inside the working
-        # area (it renames the payload to the job name).
         storage = str(_get(slot, "storage") or "")
-        if storage:
-            reported = Path(storage)
-            parent = reported if reported.is_dir() else reported.parent
-            if topology.contained(self.configuration.working_directory, str(parent)) is not None:
-                source = str(parent)
+        reported = Path(storage) if storage else None
+        parent = (reported if reported is not None and reported.is_dir()
+                  else (reported.parent if reported is not None else None))
+        if parent is None or topology.contained(self.configuration.working_directory,
+                                                str(parent)) is None:
+            return ExecutionObservation(
+                handle, ExecutionState.UNKNOWN,
+                error=failure(Category.MATERIALIZATION_FAILED, stage=Stage.VERIFICATION,
+                              retryability=Retryability.BACKOFF))
+        source = str(parent)
         exact = _int(_get(slot, "bytes"))
         if topology.contained(self.configuration.local_root, plan_root) is None:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
@@ -440,6 +619,10 @@ class SabnzbdExecutor:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
         before = await self._observe(handle)
         if before.state == ExecutionState.UNKNOWN or not before.resumable:
+            return before
+        if resume and ExecutionControl.RESUME not in before.controls:
+            # The fence, honoured even when asked directly: an unnamed job is
+            # never resumed, whoever asks. Observed truth is returned unchanged.
             return before
         nzo_id = self._nzo(before.handle) or self._nzo(handle)
         try:

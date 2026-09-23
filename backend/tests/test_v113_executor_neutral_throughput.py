@@ -18,6 +18,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from sab_fakes import staged_store
+
 from transfers import contracts, models
 from transfers.models import ExecutionActivity, ExecutorCapabilities, TransferProgress
 
@@ -230,7 +232,9 @@ async def test_the_acquisition_executor_reports_unobserved_when_the_service_cann
     from tests.sab_fakes import FakeSab
 
     sab = FakeSab()
-    executor = SabnzbdExecutor(sab, SabnzbdConfiguration("/d", "/d/w", "/d/c"), lambda *a: asyncio.sleep(0, True))
+    executor = SabnzbdExecutor(sab, SabnzbdConfiguration("/d", "/d/w", "/d/c"), lambda *a: asyncio.sleep(0, True),
+        staged_input=staged_store(),
+    )
     sab.download_bytes_per_second = 2048
     assert (await executor.aggregate_download_throughput()) == models.ExecutorThroughput(2048, True)
     sab.reachable = False

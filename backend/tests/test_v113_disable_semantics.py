@@ -225,7 +225,7 @@ async def usenet_core(tmp_path, monkeypatch):
     import db.database as database
     from executors.sabnzbd.executor import SabnzbdConfiguration, SabnzbdExecutor
     from providers.usenet.provider import UsenetProvider
-    from sab_fakes import FakeSab
+    from sab_fakes import FakeSab, staged_store
     from transfers.convergence_engine import TransferEngine
     from transfers.models import TransferRequest
     from transfers.policy import TransferPolicy
@@ -242,12 +242,12 @@ async def usenet_core(tmp_path, monkeypatch):
     sab = FakeSab(complete_dir=str(root / ".dpwork" / "complete"),
                   download_dir=str(root / ".dpwork" / "incomplete"))
     registry = IntegrationRegistry()
-    registry.register_provider(UsenetProvider())
+    registry.register_provider(UsenetProvider(staged_input=staged_store()))
     executor = SabnzbdExecutor(
         sab, SabnzbdConfiguration(local_root=str(root),
                                   working_directory=str(root / ".dpwork"),
                                   complete_directory=str(root / ".dpwork" / "complete")),
-        repository.authorize_execution)
+        repository.authorize_execution, staged_input=staged_store())
     registry.register_executor(executor)
     engine = TransferEngine(repository, registry, download_root=str(root),
                             policy=TransferPolicy(retry_delay=1, adoption_stability_seconds=0,

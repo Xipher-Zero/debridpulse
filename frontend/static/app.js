@@ -1107,7 +1107,12 @@ function openTorrentFilePicker() {
  * submission endpoint; the browser never learns how either is acquired. */
 const TRANSFER_UPLOADS = Object.freeze({
   '.torrent': {endpoint: '/torrents/add-file', label: 'Torrent file', interactive: true},
-  '.nzb':     {endpoint: '/usenet/add-file',   label: 'NZB',          interactive: false},
+  '.nzb':     {endpoint: '/usenet/add-file',   label: 'NZB',          interactive: false,
+               // A posting's manifest is routinely tens or hundreds of
+               // megabytes and is streamed straight to durable storage, so it
+               // is not judged by a metafile's ceiling. This mirrors the one
+               // server-side ceiling (transfers/staged_input.py).
+               maxBytes: 1024 * 1024 * 1024, maxLabel: '1 GB'},
 });
 
 function uploadKindFor(name) {
@@ -1126,8 +1131,9 @@ async function uploadTransferFile(input) {
     input.value = '';
     return;
   }
-  if (file.size > 16 * 1024 * 1024) {
-    toast(`${kind.label} exceeds the 16 MB upload limit`, 'error');
+  const maxBytes = kind.maxBytes || 16 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    toast(`${kind.label} exceeds the ${kind.maxLabel || '16 MB'} upload limit`, 'error');
     input.value = '';
     return;
   }
@@ -1141,7 +1147,11 @@ async function uploadTransferFile(input) {
   if (kind.interactive) form.append('selection_mode', 'interactive');
 
   try {
-    const res = await api('POST', kind.endpoint, form, 60000);
+    // A large posting takes longer to upload than a metafile. The allowance
+    // scales with the file so a slow link is not mistaken for a failure,
+    // never below the ordinary one.
+    const timeout = Math.max(60000, Math.round(file.size / 128));
+    const res = await api('POST', kind.endpoint, form, timeout);
     if (res && res._duplicate && res._duplicate.action === 'skip') {
       toast('Already in queue: ' + (res.name || res._duplicate.reason), 'warn');
     } else if (res && res._duplicate && res._duplicate.action === 'warn') {

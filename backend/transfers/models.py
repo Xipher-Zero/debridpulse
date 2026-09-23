@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from transfers.errors import NormalizedError
 from transfers.size_evidence import positive_size
+from transfers.staged_input import StagedPayload
 
 
 def new_identity() -> str:
@@ -246,7 +247,12 @@ class CancellationInitiator(StrEnum):
 @dataclass(frozen=True)
 class TransferRequest:
     kind: str
-    payload: str | bytes = field(repr=False)
+    # A request's input. Small inputs are carried inline. A large one is carried
+    # as a ``StagedPayload`` -- a durable reference owned by
+    # ``transfers.staged_input`` -- so the bytes never enter request or
+    # candidate JSON. Core neither interprets nor dereferences it; the edge that
+    # produced the input and the edge that consumes it do.
+    payload: "str | bytes | StagedPayload" = field(repr=False)
     name: str = ""
     fingerprint: str = ""
     preferred_provider: str | None = None

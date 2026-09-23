@@ -17,7 +17,7 @@ from transfers.models import (
     MaterializationKind, MaterializationPlan, TransferCandidate,
 )
 
-from sab_fakes import FakeSab
+from sab_fakes import FakeSab, staged_context
 from test_v113_sabnzbd_executor import build, lab, request_for  # noqa: F401
 
 
@@ -108,7 +108,7 @@ async def test_addfile_rejects_a_response_without_a_native_identity():
                  '{"status": false, "nzo_ids": ["x"]}', '{"nzo_ids": [""]}']:
         client = client_returning(200, body)
         with pytest.raises(SabApiError):
-            await client.addfile(b"<nzb/>", nzbname="dp-token")
+            await client.addfile(b"<nzb/>", job_name="dp-token")
 
 
 # --------------------------------------------------------------------------
@@ -223,7 +223,7 @@ def subject_and_plan(root, name="posted"):
     candidate = TransferCandidate(
         name=name, endpoints=(), provider_id="usenet",
         materialization=MaterializationKind.COLLECTION, request_kind="nzb",
-        context={"nzb_base64": base64.b64encode(b"<nzb/>").decode("ascii")})
+        context=staged_context())
     return candidate, MaterializationPlan(MaterializationKind.COLLECTION, f"{root}/{name}")
 
 

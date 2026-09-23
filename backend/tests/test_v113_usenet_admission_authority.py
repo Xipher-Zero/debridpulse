@@ -19,7 +19,7 @@ from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 
-from sab_fakes import FakeSab
+from sab_fakes import FakeSab, staged_store
 
 
 VALID_NZB = b"""<?xml version="1.0" encoding="iso-8859-1" ?>
@@ -52,8 +52,9 @@ async def usenet_core(tmp_path, monkeypatch):
         SabnzbdConfiguration(local_root=str(root), working_directory=str(root / ".dpwork"),
                              complete_directory=str(root / ".dpwork" / "complete")),
         repository.authorize_execution,
+        staged_input=staged_store(),
     )
-    registry.register_provider(UsenetProvider())
+    registry.register_provider(UsenetProvider(staged_input=staged_store()))
     registry.register_executor(executor)
     now = [1000.0]
     policy = TransferPolicy(retry_delay=1, adoption_stability_seconds=0,

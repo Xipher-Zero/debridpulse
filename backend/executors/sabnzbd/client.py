@@ -173,22 +173,28 @@ class SabnzbdClient:
     async def version(self) -> str:
         return str((await self._call({"mode": "version"})).get("version") or "")
 
-    async def addfile(self, payload: bytes, *, nzbname: str, pp: int = PP_REPAIR_ONLY,
-                      priority: int = NATIVE_PRIORITY_DEFAULT) -> str:
-        """Submit NZB bytes and return the server-minted ``nzo_id``.
+    async def addfile(self, source, *, job_name: str, pp: int = PP_REPAIR_ONLY,
+                      priority: int = NATIVE_PRIORITY_DEFAULT,
+                      upload_filename: str = "") -> str:
+        """Submit an NZB and return the server-minted ``nzo_id``.
 
-        ``nzbname`` is the durable DP correlation token: SAB persists it as the
-        queue ``filename`` and the history ``name``, which is what makes a lost
-        acknowledgement recoverable without ever resubmitting.
+        ``source`` is either the manifest bytes or an open binary file. A file
+        is streamed into the multipart body by the transport, so a large
+        manifest is never re-read into one Python object here -- the point of
+        staging it on disk would be lost if this boundary undid it.
+
+        ``job_name`` becomes the job's native name, which is what the caller's
+        naming contract is expressed in. This boundary neither invents it nor
+        interprets it.
         """
         form = aiohttp.FormData()
         form.add_field("mode", "addfile")
         form.add_field("output", "json")
         form.add_field("apikey", self.endpoint.api_key)
-        form.add_field("nzbname", nzbname)
+        form.add_field("nzbname", job_name)
         form.add_field("pp", str(int(pp)))
         form.add_field("priority", str(int(priority)))
-        form.add_field("nzbfile", payload, filename=f"{nzbname}.nzb",
+        form.add_field("nzbfile", source, filename=upload_filename or f"{job_name}.nzb",
                        content_type="application/x-nzb")
         # Every field travels in the multipart body, exactly as the control
         # calls travel in their form body.
@@ -197,6 +203,24 @@ class SabnzbdClient:
         if not result.get("status") or not ids or not str(ids[0]).strip():
             raise SabApiError("SAB did not return a native job identity")
         return str(ids[0])
+
+    async def rename(self, nzo_id: str, name: str) -> bool:
+        """Set a queued job's native name. Returns whether SAB accepted it.
+
+        Characterized against SABnzbd 5.1.3: this changes ``final_name`` alone
+        -- the job's incomplete working folder keeps the name it was created
+        with -- takes effect immediately, is persisted across a service
+        restart, and answers ``status: false`` for a job that is no longer in
+        the queue. A refusal is therefore reported, never assumed.
+        """
+        try:
+            result = await self._call({"mode": "queue", "name": "rename",
+                                       "value": nzo_id, "value2": name})
+        except SabApiError:
+            # SAB reports a refused rename as ``status: false``, which the
+            # decoder raises. That is a refusal, not a transport failure.
+            return False
+        return bool(result.get("status", True))
 
     async def queue_snapshot(self, limit: int = SNAPSHOT_LIMIT) -> SabSnapshot:
         """One authoritative bulk view of the native queue.

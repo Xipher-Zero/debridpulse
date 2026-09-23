@@ -2264,6 +2264,35 @@ class TransferRepository:
             )
         return int((live_row or {}).get("n") or 0) + int((reserved_row or {}).get("n") or 0)
 
+    async def referenced_staged_inputs(self) -> set[str]:
+        """Every staged-input identity a live transfer still depends on.
+
+        "Live" is the same predicate execution admission uses: a transfer that
+        is completed, consolidated, cancelled or deleted can no longer be
+        resolved or executed, so its submitted input is no longer needed --
+        while a transfer that may still retry keeps its input, because a retry
+        submits the original bytes again.
+
+        This is the survivor set for the one staged-input sweep. Deriving it
+        from the durable rows is what lets a single owner cover every terminal
+        path, including a crash, without a per-path callback that could be
+        forgotten.
+        """
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT r.payload FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                   WHERE t.status NOT IN ('completed','consolidated','deleted','cancelled')
+                   AND r.payload LIKE '%"$staged"%'""")
+        referenced: set[str] = set()
+        for row in rows or ():
+            payload = codec.load(row["payload"], {})
+            staged = (payload or {}).get("payload")
+            if isinstance(staged, dict) and isinstance(staged.get("$staged"), dict):
+                identity = staged["$staged"].get("id")
+                if identity:
+                    referenced.add(str(identity))
+        return referenced
+
     async def continuation_reservation(self, artifact_id: int) -> float | None:
         """Current raw reservation expiry for one artifact, or None. Test/
         provenance introspection only -- admission gates use

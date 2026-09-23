@@ -636,6 +636,11 @@ async def add_magnet(body: dict, application: ApplicationService = Depends(get_a
         raise HTTPException(502, _sanitize_error(exc))
 
 
+# How much of a streamed upload is read at a time. Bounded, so a large upload
+# costs one chunk of memory rather than its whole size.
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
 @router.post("/torrents/add-file")
 async def add_torrent_file(
     file: UploadFile = File(...),
@@ -688,29 +693,38 @@ async def add_usenet_file(
 ):
     """Upload an .nzb posting for DebridPulse to acquire.
 
-    The route does nothing but hand the bytes to the canonical submission
-    seam: the Usenet provider validates and normalizes them and universal core
+    The route does nothing but hand the upload to the canonical submission
+    seam: the Usenet provider validates and normalizes it and universal core
     chooses the executor. Nothing here knows how acquisition is performed.
+
+    The bytes are handed over as a STREAM, not a buffer. A real posting's
+    manifest is routinely tens or hundreds of megabytes -- reading one into a
+    single object here would cost multiples of its size in memory before the
+    application had even seen it -- so the route reads it in chunks and the
+    staged-input owner writes it through. The route is not the persistence
+    owner and holds no ceiling of its own: the one ceiling belongs to that
+    owner and is enforced as the stream is written.
     """
-    max_bytes = 16 * 1024 * 1024
     filename = Path(file.filename or "upload.nzb").name
     if not filename.lower().endswith(".nzb"):
         raise HTTPException(400, "An .nzb file is required")
+
+    async def chunks():
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                return
+            yield chunk
+
     try:
-        data = await file.read(max_bytes + 1)
-    finally:
-        await file.close()
-    if not data:
-        raise HTTPException(400, "NZB file is empty")
-    if len(data) > max_bytes:
-        raise HTTPException(413, "NZB file exceeds the 16 MB upload limit")
-    try:
-        return public_payload(await application.submit_nzb(data, filename, source="manual_file"))
+        return public_payload(await application.submit_nzb(chunks(), filename, source="manual_file"))
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc)) from None
     except Exception as exc:
         logger.exception("add_usenet_file failed: %s", _sanitize_error(exc))
         raise HTTPException(502, _sanitize_error(exc))
+    finally:
+        await file.close()
 
 
 @router.post("/links/add")

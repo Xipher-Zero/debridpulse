@@ -9,6 +9,7 @@ from typing import Mapping
 
 from transfers.errors import NormalizedError
 from transfers.input_required import SubmittedInput
+from transfers.staged_input import StagedPayload
 from transfers.models import (
     ArtifactFingerprint, CachePresence, DeliveryKind, Endpoint, ExecutionHandle, FingerprintKind, InputMethod,
     IntegrityMetadata, MaterializationKind, MaterializationResult, MaterializedEntry, Ownership, ProviderResource,
@@ -23,6 +24,9 @@ def _value(value):
         return _value(value.as_dict(diagnostics=True))
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, StagedPayload):
+        # A durable reference, not the payload: three scalars, always bounded.
+        return {"$staged": value.as_context()}
     if isinstance(value, bytes):
         return {"$bytes": base64.b64encode(value).decode("ascii")}
     if is_dataclass(value):
@@ -45,7 +49,9 @@ def load(value: str | None, default=None):
 def request(value: dict) -> TransferRequest:
     data = dict(value)
     payload = data["payload"]
-    if isinstance(payload, dict) and "$bytes" in payload:
+    if isinstance(payload, dict) and "$staged" in payload:
+        data["payload"] = StagedPayload.from_context(payload["$staged"])
+    elif isinstance(payload, dict) and "$bytes" in payload:
         data["payload"] = base64.b64decode(payload["$bytes"], validate=True)
     return TransferRequest(**data)
 

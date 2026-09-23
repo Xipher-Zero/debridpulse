@@ -176,7 +176,7 @@ def build(options: UsenetOptions, environment):
     from executors.sabnzbd import runtime as service_runtime, topology
     from providers.usenet.provider import UsenetProvider
 
-    provider = UsenetProvider()
+    provider = UsenetProvider(staged_input=environment.staged_input)
     root = environment.download_root
     service_runtime.runtime.configure(service_runtime.UsenetRuntimeConfiguration(
         download_root=root,
@@ -197,6 +197,7 @@ def build(options: UsenetOptions, environment):
             secrets=(service_runtime.internal_api_key(),),
         ),
         environment.repository.authorize_execution,
+        staged_input=environment.staged_input,
     )
     # The administration surface is BOTH the configuration applier and the
     # managed lifecycle component; composition discovers each generically.

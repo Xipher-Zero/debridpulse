@@ -240,6 +240,31 @@ async def events_ttl_loop() -> None:
         await asyncio.sleep(86400)  # run once every 24 hours
 
 
+async def staged_input_reclaim_loop() -> None:
+    """Reclaim durable submitted input that no live transfer still references.
+
+    The one cleanup owner for staged input. It runs periodically rather than on
+    each terminal transition because a callback per terminal path can be
+    forgotten, and because the path that most needs covering -- a crash between
+    staging an upload and the transfer that owns it becoming durable -- has no
+    callback at all. Survivors are derived from the durable rows, so nothing
+    still needed is ever reclaimed.
+    """
+    await asyncio.sleep(300)  # let startup settle before the first sweep
+    while True:
+        if _application_storage_ready():
+            try:
+                reclaimed = await application.reclaim_staged_input()
+                if reclaimed:
+                    logger.info("staged_input_reclaim_loop: reclaimed %d staged input(s)",
+                                reclaimed)
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning("staged_input_reclaim_loop error: %s", sanitize_exception(exc))
+        await asyncio.sleep(3600)
+
+
 async def disk_guard_loop():
     """Periodically refresh both storage domains, including hard faults at threshold zero."""
     await asyncio.sleep(10)  # brief startup delay
@@ -282,6 +307,7 @@ async def start_scheduler(service=None):
     _tasks.append(asyncio.create_task(stats_report_loop()))
     _tasks.append(asyncio.create_task(update_check_loop()))
     _tasks.append(asyncio.create_task(events_ttl_loop()))
+    _tasks.append(asyncio.create_task(staged_input_reclaim_loop()))
     _tasks.append(asyncio.create_task(disk_guard_loop()))
     logger.info("Scheduler started")
 

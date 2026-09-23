@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from sab_fakes import staged_store
+
 from transfers.errors import TransferError
 from transfers.models import (
     Capability, ExecutionSubject, MaterializationKind, ResourceState, TransferRequest,
@@ -32,7 +34,7 @@ VALID_NZB = b"""<?xml version="1.0" encoding="iso-8859-1" ?>
 
 def build_provider():
     from providers.usenet.provider import UsenetProvider
-    return UsenetProvider()
+    return UsenetProvider(staged_input=staged_store())
 
 
 def test_descriptor_declares_resolution_and_the_canonical_nzb_kind():

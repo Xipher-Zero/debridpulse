@@ -19,6 +19,10 @@ class IntegrationEnvironment:
     # Neutral application commands (pause/resume/cancel) an integration-owned
     # administration surface may forward operator intent to.
     commands: object = None
+    # The neutral durable-input owner (``transfers.staged_input``). An
+    # integration whose request class carries a large submitted payload borrows
+    # it to READ that payload; it owns no part of its lifecycle.
+    staged_input: object = None
 
 
 @runtime_checkable

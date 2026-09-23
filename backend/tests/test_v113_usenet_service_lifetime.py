@@ -53,7 +53,7 @@ class FakeRuntime:
 
 def admin_for(*, enabled, live_work=frozenset(), runtime=None, applied=None):
     from integrations.usenet.definition import UsenetOptions, UsenetServer
-    from sab_fakes import FakeSab
+    from sab_fakes import FakeSab, staged_store
 
     runtime = runtime or FakeRuntime()
     options = UsenetOptions(servers=[UsenetServer(host="news.a.net")])
@@ -191,7 +191,7 @@ async def test_an_unanswerable_durable_question_keeps_the_service_available():
 async def test_observation_of_a_durable_execution_survives_disabling(tmp_path, monkeypatch):
     """A disabled integration's durable execution is still observable."""
     from executors.sabnzbd.executor import SabnzbdConfiguration, SabnzbdExecutor
-    from sab_fakes import FakeSab
+    from sab_fakes import FakeSab, staged_store
     from test_v113_sabnzbd_executor import request_for
 
     root = tmp_path / "download"
@@ -205,7 +205,8 @@ async def test_observation_of_a_durable_execution_survives_disabling(tmp_path, m
 
     executor = SabnzbdExecutor(sab, SabnzbdConfiguration(
         local_root=str(root), working_directory=str(root / ".dpwork"),
-        complete_directory=str(root / ".dpwork" / "complete")), authorize)
+        complete_directory=str(root / ".dpwork" / "complete")), authorize,
+        staged_input=staged_store())
 
     request = request_for(str(root))
     bound = (await executor.start(request, executor.prepare(request))).handle

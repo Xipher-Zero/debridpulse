@@ -73,7 +73,7 @@ async def test_the_first_dispatch_sees_the_attempts_transient_trees(tmp_path, mo
     """The FIRST footprint of a new attempt must already name its trees."""
     from executors.sabnzbd.executor import SabnzbdConfiguration, SabnzbdExecutor
     from providers.usenet.provider import UsenetProvider
-    from sab_fakes import FakeSab
+    from sab_fakes import FakeSab, staged_store, staged_context
     from transfers.convergence_engine import TransferEngine
     from transfers.policy import TransferPolicy
     from transfers.recovery_repository import TransferRepository
@@ -97,7 +97,7 @@ async def test_the_first_dispatch_sees_the_attempts_transient_trees(tmp_path, mo
             return result
 
     registry = IntegrationRegistry()
-    registry.register_provider(UsenetProvider())
+    registry.register_provider(UsenetProvider(staged_input=staged_store()))
     registry.register_executor(RecordingExecutor(
         sab, SabnzbdConfiguration(local_root=str(root),
                                   working_directory=str(root / ".dpwork"),
@@ -127,6 +127,7 @@ async def test_the_first_dispatch_sees_the_attempts_transient_trees(tmp_path, mo
 async def test_plan_validation_receives_the_attempt_trees(tmp_path, monkeypatch):
     """`validate_plan`/`material_initially_absent` must see the real trees."""
     from executors.sabnzbd.executor import SabnzbdConfiguration, SabnzbdExecutor
+    from sab_fakes import staged_context, staged_store
     from transfers.filesystem import material_initially_absent, validate_plan
 
     root = tmp_path / "payloads"
@@ -139,11 +140,12 @@ async def test_plan_validation_receives_the_attempt_trees(tmp_path, monkeypatch)
     executor = SabnzbdExecutor(
         SimpleNamespace(), SabnzbdConfiguration(
             local_root=str(root), working_directory=str(root / ".dpwork"),
-            complete_directory=str(root / ".dpwork" / "complete")), authorize)
+            complete_directory=str(root / ".dpwork" / "complete")), authorize,
+        staged_input=staged_store())
     candidate = TransferCandidate(
         name="posted", endpoints=(), request_kind="nzb",
         materialization=MaterializationKind.COLLECTION,
-        context={"nzb_base64": base64.b64encode(VALID_NZB).decode()})
+        context=staged_context(VALID_NZB))
     plan = MaterializationPlan(MaterializationKind.COLLECTION, str(root / "posted"))
     work = ExecutionWork(ExecutionSubject.of(candidate), plan, "attempt-Z")
 

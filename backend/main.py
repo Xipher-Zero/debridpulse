@@ -30,6 +30,7 @@ from core.branding import APP_METADATA_TITLE, APP_NAME, APP_SHORT_NAME
 from core.config import get_settings as _get_log_settings
 from core.logging_utils import configure_logging, log_startup_banner, sanitize_exception, sanitize_log_value
 from core.scheduler import start_scheduler, stop_scheduler
+from transfers.staged_input import MAX_STAGED_INPUT_BYTES
 from core.version import read_version
 from db.database import DatabaseMaintenanceActive
 from application.dependencies import get_application
@@ -146,6 +147,11 @@ class _RequestBodyTooLarge(Exception):
     pass
 
 
+# The one streamed-upload path, and the one ceiling that governs it. Both come
+# from their canonical owners rather than being restated as constants here.
+STAGED_UPLOAD_PATH = "/api/usenet/add-file"
+
+
 class RequestBodyLimitMiddleware:
     def __init__(self, app: ASGIApp, max_bytes: int):
         self.app = app
@@ -161,6 +167,14 @@ class RequestBodyLimitMiddleware:
         path = str(scope.get("path") or "")
         if scope.get("path") == "/login":
             limit = min(self.max_bytes, 64 * 1024)
+        elif path == STAGED_UPLOAD_PATH:
+            # The one streamed upload seam. Its body is never buffered by the
+            # application -- it is written through to durable storage as it
+            # arrives -- so the general ceiling, which exists to bound parsed
+            # request bodies, would only forbid legitimate large input. The
+            # real ceiling belongs to the staged-input owner and is enforced
+            # while writing.
+            limit = MAX_STAGED_INPUT_BYTES
         elif path in {
             "/api/settings",
             "/api/settings/validate-alldebrid",
