@@ -43,6 +43,7 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # dropped in that same change rather than carried forward indefinitely.
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
+      'path-include=/usr/share/doc/unrar/copyright' \
       'path-include=/usr/share/doc/7zip-rar/unRarLicense.txt' \
       > /etc/dpkg/dpkg.cfg.d/zz-debridpulse-license-notices && \
     sed -ri 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources && \
@@ -57,6 +58,8 @@ RUN printf '%s\n' \
     curl \
     gosu \
     zstd \
+    par2 \
+    unrar \
     7zip \
     7zip-rar && \
     rm -rf /var/lib/apt/lists/*
@@ -66,8 +69,39 @@ RUN printf '%s\n' \
 # refuse to install anything whose downloaded artifact does not match one of
 # the recorded hashes for every package in the closure, including transitive
 # dependencies.
+#
+# This is the ONE Python install transaction in the image. The bundled Usenet
+# acquisition service runs on this same interpreter, so its runtime closure is
+# part of this lock (see the Usenet section of requirements.in) rather than a
+# second install: a second transaction would escape --require-hashes and would
+# be free to replace packages this one already selected.
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
+
+# `par2` performs the posting's verification/repair. `unrar` is present only
+# because the service refuses to start acquiring without it ("Essential modules
+# are missing"); it is never invoked for DebridPulse work, which is always
+# submitted repair-only and runs with the service's own unpackers disabled --
+# DebridPulse owns archive extraction.
+# The Usenet acquisition service (SABnzbd) is bundled as a DebridPulse-private
+# component: it binds loopback only, its port is never published, and its web
+# application is never exposed or proxied. Operators configure Usenet, never
+# this service. The version is pinned and its checksum verified.
+# 5.1.3 is the version characterized and qualified for this release; the
+# checksum is verified before anything is unpacked. Only the source tree is
+# unpacked here -- its Python dependencies were already installed, hashed, by
+# the single locked transaction above, so this step installs nothing.
+ARG USENET_SERVICE_VERSION=5.1.3
+ARG USENET_SERVICE_SHA256=12a01e30ce166297a375ffc3a761f98bf7d93260e040391497f643f8a3525fed
+RUN set -eux; \
+    curl -fsSL -o /tmp/usenet-service.tar.gz \
+      "https://github.com/sabnzbd/sabnzbd/releases/download/${USENET_SERVICE_VERSION}/SABnzbd-${USENET_SERVICE_VERSION}-src.tar.gz"; \
+    echo "${USENET_SERVICE_SHA256}  /tmp/usenet-service.tar.gz" | sha256sum -c -; \
+    mkdir -p /app/usenet; \
+    tar -xzf /tmp/usenet-service.tar.gz --strip-components=1 -C /app/usenet; \
+    rm -f /tmp/usenet-service.tar.gz; \
+    test -f /app/usenet/SABnzbd.py; \
+    python -c "import sabctools, cheroot, cherrypy, feedparser, configobj, apprise, guessit, puremagic, portend, rarfile"
 
 # App
 COPY backend/ /app/
@@ -123,7 +157,7 @@ RUN chmod +x /entrypoint.sh
 
 # Directories - owned by 99:100 by default
 # Override at runtime via PUID / PGID environment variables
-RUN mkdir -p /app/data /app/config /download && \
+RUN mkdir -p /app/data /app/data/usenet /app/config /download && \
     chown -R 99:100 /app /download
 
 EXPOSE 8080

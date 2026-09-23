@@ -132,7 +132,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         from transfers.settings import TransferSettings
         current = routes.AppSettings(transfer_policy=TransferSettings(max_concurrent_executions=1))
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock(), apply_memory_tuning=AsyncMock())
-        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, definitions=(), application_operation=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
+        application = SimpleNamespace(integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(), application_operation=lambda: _fake_db_context(None), configure=MagicMock(), reconcile_executions=AsyncMock())
 
         def fake_save(cfg):
             saved["cfg"] = cfg
@@ -180,7 +180,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         current = routes.AppSettings()
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
         application = SimpleNamespace(
-            integration_admin=lambda _: fake_aria2, definitions=(aria2_definition,),
+            integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(aria2_definition,),
             application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
             reconcile_executions=AsyncMock(), validate_configuration=AsyncMock(),
         )
@@ -221,7 +221,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
             apply_memory_tuning=AsyncMock(side_effect=RuntimeError("daemon unreachable")),
         )
         application = SimpleNamespace(
-            integration_admin=lambda _: fake_aria2, definitions=(),
+            integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(),
             application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
             reconcile_executions=AsyncMock(),
         )

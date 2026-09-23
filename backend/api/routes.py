@@ -681,6 +681,38 @@ async def add_torrent_file(
         raise HTTPException(502, _sanitize_error(exc))
 
 
+@router.post("/usenet/add-file")
+async def add_usenet_file(
+    file: UploadFile = File(...),
+    application: ApplicationService = Depends(get_application),
+):
+    """Upload an .nzb posting for DebridPulse to acquire.
+
+    The route does nothing but hand the bytes to the canonical submission
+    seam: the Usenet provider validates and normalizes them and universal core
+    chooses the executor. Nothing here knows how acquisition is performed.
+    """
+    max_bytes = 16 * 1024 * 1024
+    filename = Path(file.filename or "upload.nzb").name
+    if not filename.lower().endswith(".nzb"):
+        raise HTTPException(400, "An .nzb file is required")
+    try:
+        data = await file.read(max_bytes + 1)
+    finally:
+        await file.close()
+    if not data:
+        raise HTTPException(400, "NZB file is empty")
+    if len(data) > max_bytes:
+        raise HTTPException(413, "NZB file exceeds the 16 MB upload limit")
+    try:
+        return public_payload(await application.submit_nzb(data, filename, source="manual_file"))
+    except ValueError as exc:
+        raise HTTPException(400, _sanitize_error(exc)) from None
+    except Exception as exc:
+        logger.exception("add_usenet_file failed: %s", _sanitize_error(exc))
+        raise HTTPException(502, _sanitize_error(exc))
+
+
 @router.post("/links/add")
 async def add_debrid_links(body: dict, application: ApplicationService = Depends(get_application)):
     """Submit one or more ordinary hoster URLs as a tracked transfer batch."""
@@ -1676,9 +1708,16 @@ async def patch_integration_configuration(
             application.configure()
             if integration_id == "aria2":
                 await _apply_aria2_settings(application)
+            # An integration that owns external configuration applies it here,
+            # inside the same lock, through the generic seam. No integration is
+            # named: composition discovered which namespaces have appliers.
+            applied = await application.apply_integration_configuration(integration_id)
     from integrations.configuration import public_integrations
     public = public_integrations(clean, application.definitions).get(integration_id, {})
-    return {"ok": True, **public}
+    # A save whose native application failed is reported truthfully: the
+    # canonical namespace is saved (it is the desired state) but the operator is
+    # never told the service is configured when it is not.
+    return {"ok": True, **public, **({"native": applied.public()} if applied is not None else {})}
 
 
 @router.get("/stats/comprehensive")
@@ -1958,3 +1997,129 @@ async def cleanup_alldebrid_orphans_endpoint( application: ApplicationService = 
     async with application.application_operation():
         await application.engine.cleanup_pending()
     return {"ok": True}
+
+
+# --- Usenet news-server mutation ---------------------------------------------
+#
+# Per-server Save/Add/Remove against the ONE canonical `integrations.usenet`
+# namespace. These are settings MUTATIONS, so they live here beside the other
+# scoped configuration writes and run under the same configuration write lock;
+# the transient (non-persisting) Test route stays in the validation module.
+
+USENET_NAMESPACE = "usenet"
+
+
+# DebridPulse's own connection bounds; the floor is 1, not SAB's 0 (see
+# integrations/usenet/definition.py).
+from integrations.usenet.definition import MAX_CONNECTIONS, MIN_CONNECTIONS
+
+
+class UsenetServerUpdate(BaseModel):
+    """One server card's own values. Absent fields are left untouched, and a
+    blank password keeps the stored one unless ``clear_password`` is set."""
+    host: str | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
+    ssl: bool | None = None
+    username: str | None = None
+    password: str | None = None
+    connections: int | None = Field(default=None, ge=MIN_CONNECTIONS, le=MAX_CONNECTIONS)
+    priority: int | None = Field(default=None, ge=0, le=99)
+    enabled: bool | None = None
+    display_name: str | None = None
+    clear_password: bool = False
+
+    def values(self) -> dict:
+        return self.model_dump(exclude_none=True, exclude={"clear_password"})
+
+
+async def _mutate_usenet_servers(application: ApplicationService, mutate):
+    """Apply one per-server mutation to the ONE canonical namespace.
+
+    Load -> mutate -> validate -> save -> reconfigure -> apply natively, all
+    inside the existing configuration write lock, exactly like every other
+    settings mutation. ``mutate`` receives the current options and returns
+    ``(new_options, payload)``.
+    """
+    from core.config import config_write_lock, get_settings, load_settings, save_settings, apply_settings
+    from integrations.configuration import normalize_settings, public_integrations
+    from integrations.definition import IntegrationSettings
+    from integrations.usenet.definition import UsenetOptions
+    from integrations.usenet.servers import ServerMutationError
+
+    async with application.application_operation():
+        async with config_write_lock():
+            previous = get_settings()
+            current = load_settings()
+            entry = current.integrations.get(USENET_NAMESPACE)
+            stored = entry.options if isinstance(entry, IntegrationSettings) else {}
+            try:
+                updated, payload = mutate(UsenetOptions(**(stored or {})))
+            except ServerMutationError as exc:
+                raise HTTPException(404, "Unknown Usenet server") from None
+            except ValueError as exc:
+                raise HTTPException(400, _sanitize_error(exc)) from None
+            current.integrations = {**current.integrations, USENET_NAMESPACE: IntegrationSettings(
+                enabled=(entry.enabled if isinstance(entry, IntegrationSettings) else False),
+                priority=(entry.priority if isinstance(entry, IntegrationSettings) else 0),
+                options=updated.model_dump(),
+            )}
+            clean = normalize_settings(current, application.definitions, previous=previous)
+            # The SAME canonical ownership fence every other settings mutation
+            # passes through: a server change that could abandon owned native
+            # work is refused here, not re-implemented in Usenet code.
+            try:
+                await application.validate_configuration(previous, clean)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            save_settings(clean)
+            apply_settings(clean)
+            application.configure()
+            applied = await application.apply_integration_configuration(USENET_NAMESPACE)
+    public = public_integrations(clean, application.definitions).get(USENET_NAMESPACE, {})
+    return {"ok": True, **payload, "servers": public.get("options", {}).get("servers", []),
+            **({"native": applied.public()} if applied is not None else {})}
+
+
+@router.post("/usenet/servers")
+async def create_usenet_server(payload: UsenetServerUpdate,
+                               application: ApplicationService = Depends(get_application)):
+    """Add one news server. Every existing server is left byte-identical."""
+    from integrations.usenet.servers import create_server
+
+    def mutate(options):
+        updated, created = create_server(options, payload.values(),
+                                         clear_password=payload.clear_password)
+        return updated, {"server_id": created.id}
+
+    return await _mutate_usenet_servers(application, mutate)
+
+
+@router.put("/usenet/servers/{server_id}")
+async def update_usenet_server(server_id: str, payload: UsenetServerUpdate,
+                               application: ApplicationService = Depends(get_application)):
+    """Save exactly one server card.
+
+    Only this record changes: unsaved edits on other cards are never persisted,
+    and a blank password keeps this server's stored credential unless the
+    operator explicitly cleared it.
+    """
+    from integrations.usenet.servers import merge_server
+
+    def mutate(options):
+        return (merge_server(options, server_id, payload.values(),
+                             clear_password=payload.clear_password),
+                {"server_id": server_id})
+
+    return await _mutate_usenet_servers(application, mutate)
+
+
+@router.delete("/usenet/servers/{server_id}")
+async def delete_usenet_server(server_id: str,
+                               application: ApplicationService = Depends(get_application)):
+    """Remove exactly one server, preserving every survivor's credential."""
+    from integrations.usenet.servers import remove_server
+
+    def mutate(options):
+        return remove_server(options, server_id), {"server_id": server_id, "removed": True}
+
+    return await _mutate_usenet_servers(application, mutate)

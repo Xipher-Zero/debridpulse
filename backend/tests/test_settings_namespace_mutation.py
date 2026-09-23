@@ -45,6 +45,9 @@ def _application(current, *, validate_configuration=None, aria2_admin=None):
         configure=MockConfigure(),
         reconcile_executions=AsyncMock(),
         integration_admin=lambda _identity: admin,
+        # Namespaces with an integration-owned configuration applier drive it
+        # from the save path; this double owns none.
+        apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=validate_configuration or AsyncMock(),
         execution_runtime_limits=AsyncMock(side_effect=lambda: {
             "ok": True, "configured": {}, "effective": {}, "last_apply_error": None}),

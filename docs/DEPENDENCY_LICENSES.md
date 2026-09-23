@@ -1,6 +1,6 @@
 # Runtime dependency license inventory
 
-> **Scope:** This is the dependency/license inventory for **final v1.0.12** — the Universal Transfer Core release with the AllDebrid and General HTTP(S) providers and the aria2 executor. It is the v1.0.12 dependency/license closure. The `1.0.13` expansion work (FTP, SFTP, SCP, rsync, WebDAV, NZB/SAB, additional debrid providers, additional executor implementations) must trigger a fresh third-party/license review if it adds libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
+> **Scope:** This is the dependency/license inventory for the current `1.0.13` development tree — the Universal Transfer Core with the AllDebrid, General HTTP(S), FTP/SFTP and Usenet providers, the aria2 executor and the bundled Usenet acquisition service. Further `1.0.13` expansion work (SCP, rsync, WebDAV, additional debrid providers, additional executor implementations) must trigger a fresh third-party/license review if it adds libraries, executors, protocol dependencies, copied/derived code, or other attribution obligations.
 This inventory covers every Python package pinned in
 `backend/requirements.txt`. Package names and versions are enforced by
 `backend/tests/test_license_policy.py`; a dependency change must update both
@@ -15,38 +15,75 @@ the lock file and `licenses/python-runtime.json`.
 | annotated-doc | 0.0.4 | MIT |
 | annotated-types | 0.7.0 | MIT |
 | anyio | 4.14.2 | MIT |
+| apprise | 1.12.0 | BSD-2-Clause |
 | argon2-cffi | 25.1.0 | MIT |
 | argon2-cffi-bindings | 26.1.0 | MIT; vendored Argon2/BLAKE2 components are CC0-1.0 |
 | asyncssh | 2.24.0 | EPL-2.0 OR GPL-2.0-or-later (used under GPL-2.0-or-later) |
 | attrs | 26.1.0 | MIT |
 | authlib | 1.7.2 | BSD-3-Clause |
+| babelfish | 0.6.1 | BSD-3-Clause |
 | bencode2 | 0.3.33 | MIT ([bundled notice](../licenses/bencode2-MIT.txt)) |
 | certifi | 2026.7.22 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
+| charset-normalizer | 3.5.1 | MIT |
+| cheroot | 11.1.2 | BSD-3-Clause |
+| cherrypy | 18.10.0 | BSD-3-Clause |
 | click | 8.3.3 | BSD-3-Clause |
+| configobj | 5.0.9 | BSD-3-Clause |
 | cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause |
+| ct3 | 3.4.0.post5 | MIT |
 | fastapi | 0.141.1 | MIT |
+| feedparser | 6.0.12 | BSD-2-Clause |
 | frozenlist | 1.8.0 | Apache-2.0 |
 | google-re2 | 1.1.20251105 | BSD-3-Clause |
+| guessit | 4.1.0 | LGPL-3.0-or-later (bundled service dependency; see the copyleft review below) |
 | h11 | 0.16.0 | MIT |
+| hachoir | 3.3.0 | GPL-2.0-only (bundled service dependency; see the copyleft review below) |
 | httpcore | 1.0.9 | BSD-3-Clause |
 | httptools | 0.8.0 | MIT |
 | httpx | 0.28.1 | BSD-3-Clause |
 | idna | 3.15 | BSD-3-Clause |
+| jaraco-classes | 3.4.0 | MIT |
+| jaraco-collections | 5.0.0 | MIT |
+| jaraco-context | 4.3.0 | MIT |
+| jaraco-functools | 4.6.0 | MIT |
+| jaraco-text | 3.8.1 | MIT |
 | joserfc | 1.7.4 | BSD-3-Clause |
+| markdown | 3.10.3 | BSD-3-Clause |
+| more-itertools | 11.1.0 | MIT |
 | multidict | 6.7.1 | Apache-2.0 |
+| oauthlib | 3.3.1 | BSD-3-Clause |
+| orjson | 3.11.9 | MPL-2.0 AND (Apache-2.0 OR MIT) |
+| portend | 3.2.1 | MIT |
 | prometheus-client | 0.26.0 | Apache-2.0 AND BSD-2-Clause |
 | propcache | 0.5.2 | Apache-2.0 |
+| puremagic | 2.2.0 | MIT |
 | pycparser | 3.0 | BSD-3-Clause |
 | pydantic | 2.13.4 | MIT |
 | pydantic-core | 2.46.4 | MIT |
+| pysocks | 1.7.1 | BSD-3-Clause |
+| python-dateutil | 2.9.0.post0 | Apache-2.0 AND BSD-3-Clause |
 | python-multipart | 0.0.32 | Apache-2.0 |
+| pytz | 2026.2 | MIT |
+| pyyaml | 6.0.3 | MIT |
+| rarfile | 4.3 | ISC |
+| rebulk | 6.0.1 | MIT |
+| requests | 2.34.2 | Apache-2.0 |
+| requests-oauthlib | 2.0.0 | ISC |
+| sabctools | 9.6.3 | GPL-2.0-or-later (bundled service dependency; see the copyleft review below) |
+| setuptools | 84.0.0 | MIT |
+| sgmllib3k | 1.0.0 | BSD (variant unspecified upstream) AND PSF-2.0 (derived from CPython sgmllib) ([bundled notice](../licenses/sgmllib3k-BSD.txt)) |
+| six | 1.17.0 | MIT |
 | starlette | 1.3.1 | BSD-3-Clause |
+| tempora | 5.8.1 | MIT |
 | typing-extensions | 4.15.0 | PSF-2.0 |
 | typing-inspection | 0.4.2 | MIT |
+| ujson | 5.13.0 | BSD-3-Clause AND TCL |
+| urllib3 | 2.8.0 | MIT |
 | uvicorn | 0.52.4 | BSD-3-Clause |
 | uvloop | 0.22.1 | MIT OR Apache-2.0 |
 | yarl | 1.23.0 | Apache-2.0 |
+| zc-lockfile | 4.0 | ZPL-2.1 |
 
 The 1.0.6 native-authentication work directly depends on `argon2-cffi` for
 Argon2id local-password verification, `authlib` for OpenID Connect/JWT protocol
@@ -64,6 +101,50 @@ reviewed copyleft runtime dependency named in `backend/tests/test_license_policy
 Their transitive cryptographic/HTTP dependencies are included in the table and
 machine-readable runtime manifest above. Package/license pairs are cross-checked
 against the corresponding upstream/PyPI metadata when the lock is generated.
+
+## Copyleft review — the facts, and what still needs project/licence review
+
+DebridPulse 1.0.13 bundles the Usenet acquisition service (SABnzbd 5.1.3,
+GPL-2.0-or-later) inside the image, so that service's Python runtime closure is
+part of the shipped runtime and appears in the table above. Three of those
+packages are copyleft. **DebridPulse imports none of them; it reaches the
+service over a private loopback HTTP API.**
+
+| Package | Licence | Why it ships | Obligation |
+|---|---|---|---|
+| sabctools | GPL-2.0-or-later | The service's own yEnc/NNTP helper. | Same licence as this project. Corresponding source offer applies. |
+| hachoir | GPL-2.0-only | **Required.** A hard, unguarded top-level import in the service's `sabnzbd/misc.py`; with it removed the service does not start (`ModuleNotFoundError` before `sabnzbd/__init__.py` finishes loading). It is therefore required by the supported acquisition + PAR2-repair path, not merely present in upstream's broad requirements file. | Corresponding source offer applies. GPL-2.0-**only**, so it does not permit relicensing to GPL-3.0. |
+| guessit | LGPL-3.0-or-later | The service's release-name parser, imported by its sorting/post-processing modules. | Corresponding source offer applies. LGPL-3.0 is incompatible with GPL-2.0-**only**. |
+
+### What this project has established, and what it has not
+
+Established by engineering characterization:
+
+- exactly which copyleft packages ship, at which versions, under which declared
+  licence expressions (the table above and `licenses/python-runtime.json`);
+- that DebridPulse's own code links to none of them;
+- that `hachoir` and `guessit` are load-bearing for the bundled service rather
+  than optional extras;
+- that the same closure is what upstream SABnzbd already distributes, so
+  bundling it does not assemble a combination that did not previously exist.
+
+**Not established here:** whether the combined work may be distributed on these
+terms. The relevant question — DebridPulse is GPL-2.0-**or-later**, so a
+distribution under GPL-3.0-or-later terms would accommodate guessit's LGPL-3.0,
+while hachoir is GPL-2.0-**only** — is a licensing judgment about the combined
+work, not an engineering fact, and **requires project/licence review before
+release**. Nothing in this repository should be read as that review having
+happened, and no statement here is legal advice.
+
+Two further packages carry weak/file-level copyleft that imposes no obligation
+on the combined work: `orjson` (MPL-2.0 AND (Apache-2.0 OR MIT)) and `certifi`
+(MPL-2.0). Both ship unmodified.
+
+Deliberately excluded from the shipped closure, and therefore absent from the
+table above: the service's own test tooling (pytest, selenium, black, tavern,
+flask, lxml and friends), its win32/darwin-only packages, and `notify2` — the
+bundled service is headless and private, DebridPulse owns notifications, and
+`notify2` publishes no licence expression.
 
 ## Container components
 

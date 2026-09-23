@@ -56,14 +56,14 @@ def test_integration_definition_is_an_independent_direct_sources_provider() -> N
     assert presentation.status_name == "FTP & SFTP"
     assert presentation.static_status == "healthy"
     assert presentation.status_group == "direct_sources"
-    assert presentation.status_group_label == "Direct Sources"
+    assert presentation.status_group_label == "General Sources"
     assert presentation.display_order == 110
     http = next(item for item in definitions if item.id == "general_http")
     assert http.presentation.display_order < presentation.display_order
 
 
 def test_catalog_registers_general_ftp_alongside_the_existing_integrations() -> None:
-    assert [item.id for item in definitions] == ["alldebrid", "general_http", "general_ftp", "aria2"]
+    assert [item.id for item in definitions] == ["alldebrid", "usenet", "general_http", "general_ftp", "aria2"]
 
 
 # ── 2. Resolution ─────────────────────────────────────────────────────────────

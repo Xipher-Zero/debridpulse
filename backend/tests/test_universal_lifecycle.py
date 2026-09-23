@@ -662,7 +662,9 @@ async def test_prepared_attempt_survives_crash_before_external_contact(canonical
     record = (await core.repository.requests(transfer.id))[0]
     await core.engine._resolve(record)
     artifact = (await core.repository.artifacts(transfer.id))[0]
-    request = ExecutionRequest(core.engine._work(artifact, artifact.candidates[0]), "crash-before-start")
+    request = ExecutionRequest(
+        core.engine._work(artifact, artifact.candidates[0], "crash-before-start"),
+        "crash-before-start")
     handle = core.executor.prepare(request)
     assert await core.repository.prepare_execution(artifact, handle)
     await core.engine.tick()

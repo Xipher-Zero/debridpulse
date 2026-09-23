@@ -49,10 +49,10 @@ function listFixture(overrides = {}) {
 
 test('Sources & Providers exposes canonical AllDebrid and General HTTP enable controls without HTTP tuning', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
-  await expect(page.locator('.dp-settings-debrid-services')).toContainText('Debrid Services');
+  await expect(page.locator('.dp-settings-debrid-services')).toContainText('External Providers');
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toContainText('AllDebrid');
   await expect(integrationControl(page, 'alldebrid')).toBeVisible();
-  await expect(page.locator('.dp-settings-general-sources')).toContainText('Direct Sources');
+  await expect(page.locator('.dp-settings-general-sources')).toContainText('General Sources');
   const httpCard = page.locator('.dp-settings-provider-card--general-http');
   await expect(httpCard).toContainText('HTTP & HTTPS');
   await expect(httpCard).toContainText('Direct downloads from standard HTTP and HTTPS URLs.');

@@ -150,7 +150,13 @@ def normalize_settings(settings, definitions, *, previous=None):
             elif not options.get(secret) and old_options.get(secret):
                 options[secret] = old_options[secret]
         validated = definition.options_model(**options).model_dump()
-        enabled = older.enabled if isinstance(older, IntegrationSettings) and "enabled" not in entry.model_fields_set else entry.enabled
+        if "enabled" in entry.model_fields_set:
+            enabled = entry.enabled
+        elif isinstance(older, IntegrationSettings):
+            enabled = older.enabled
+        else:
+            # Never decided before: the integration's own opt-in default wins.
+            enabled = definition.default_enabled
         priority = older.priority if isinstance(older, IntegrationSettings) and "priority" not in entry.model_fields_set else entry.priority
         namespaces[definition.id] = IntegrationSettings(enabled=enabled, priority=priority, options=validated)
     return settings.model_copy(update={

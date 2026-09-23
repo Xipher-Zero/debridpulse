@@ -49,7 +49,7 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p><b>DebridPulse is the application you use to submit, route, track, and manage downloads.</b> The current provider layer includes <b>AllDebrid</b> for magnets, torrent files, and HTTP/HTTPS hosts that AllDebrid currently supports, plus the generic <b>HTTP &amp; HTTPS</b> and <b>FTP &amp; SFTP</b> Direct Sources for ordinary direct downloads. A separate component called <b>aria2</b> performs the physical transfer and writes files to your storage.</p>
+          <p><b>DebridPulse is the application you use to submit, route, track, and manage downloads.</b> The current provider layer includes <b>AllDebrid</b> for magnets, torrent files, and HTTP/HTTPS hosts that AllDebrid currently supports, plus the generic <b>HTTP &amp; HTTPS</b> and <b>FTP &amp; SFTP</b> General Sources for ordinary direct downloads, and <b>Usenet</b> for NZB downloads. A separate component called <b>aria2</b> performs the physical transfer and writes files to your storage.</p>
           <p>DebridPulse runs and manages aria2 for you, so there is no separate download engine to install or connect. An AllDebrid API key is required for AllDebrid routes, while generic HTTP/HTTPS direct downloads use the separate HTTP &amp; HTTPS provider when it is enabled.</p>
         </div>
 
@@ -71,7 +71,7 @@
         <div class="dp-help-steps">
           ${step(1, 'Connect your AllDebrid account', `
             <div class="dp-help-prose">
-              <p>Open <b>Settings → Sources &amp; Providers</b>, then find <b>Debrid Services → AllDebrid</b>.</p>
+              <p>Open <b>Settings → Sources &amp; Providers</b>, then find <b>External Providers → AllDebrid</b>.</p>
               <p>DebridPulse connects to AllDebrid using an <b>API key</b>. An API key is a private credential that lets DebridPulse use your AllDebrid account without storing your AllDebrid username and password. You can get your key from <a href="https://alldebrid.com/apikeys" target="_blank" rel="noopener">AllDebrid's API key page</a>.</p>
               <p>Paste the key into <b>API Key</b>, then click <b>Apply Settings</b>. Once a key is stored, leaving the field blank during a later settings change keeps the existing key unless you explicitly choose to clear it.</p>
               <p>The <b>Additional Settings</b> area contains provider polling, synchronization, rate-limit, and retry controls. The defaults are appropriate for a normal installation, so you do not need to change them just to get started.</p>
@@ -167,7 +167,7 @@
 
         <div class="dp-help-pipeline">
           ${pipeline('1. Intake', 'DebridPulse accepts the HTTP/HTTPS, FTP or SFTP link, magnet, or .torrent file and creates tracked work before provider or download-engine activity begins.')}
-          ${pipeline('2. Provider resolution', 'DebridPulse selects the current eligible provider. AllDebrid may unlock/process a supported source; the HTTP & HTTPS and FTP & SFTP Direct Sources produce a direct candidate for an ordinary resource.')}
+          ${pipeline('2. Provider resolution', 'DebridPulse selects the current eligible provider. AllDebrid may unlock/process a supported source; the HTTP & HTTPS and FTP & SFTP General Sources produce a direct candidate for an ordinary resource.')}
           ${pipeline('3. Transfer planning', 'DebridPulse turns the provider result into the files it should deliver, reconciles duplicates, and can keep verified alternate mirror links available as standby sources.')}
           ${pipeline('4. aria2 delivery', 'The aria2 engine DebridPulse runs downloads the prepared HTTP/HTTPS, FTP or SFTP file links to the configured storage.', 'active')}
           ${pipeline('5. Verification and finish', 'DebridPulse reconciles the physical result, preserves useful history, and marks the logical download complete only when its required local work is satisfied.', 'success')}

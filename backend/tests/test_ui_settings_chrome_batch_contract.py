@@ -139,7 +139,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('Debrid Services', provider," in sources
+    assert "groupCard('External Providers', usenetCard + provider," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-provider-recovery-card" not in sources

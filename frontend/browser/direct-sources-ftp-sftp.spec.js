@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-// DP 1.0.13: Direct Sources exposes two equal, header-only provider cards
+// DP 1.0.13: General Sources exposes two equal, header-only provider cards
 // (HTTP & HTTPS, FTP & SFTP) through the one shared providerCard() owner, and
 // the one INPUT_REQUIRED modal owner presents the neutral server-identity
 // challenge. The backend is the authority for every persisted toggle.
@@ -46,7 +46,7 @@ const CARDS = [
 
 async function assertHeaderOnlyCards(page) {
   const group = page.locator('.dp-settings-general-sources');
-  await expect(group).toContainText('Direct Sources');
+  await expect(group).toContainText('General Sources');
   await expect(group.locator('.dp-settings-provider-card')).toHaveCount(2);
   const order = await group.locator('.dp-settings-provider-card .card-title').allTextContents();
   expect(order.map(text => text.trim())).toEqual(['HTTP & HTTPS', 'FTP & SFTP']);
@@ -81,7 +81,7 @@ async function assertHeaderOnlyCards(page) {
   expect(Math.abs(heights[0] - heights[1])).toBeLessThanOrEqual(1);
 }
 
-test('Direct Sources renders two equal header-only cards with truly centered copy in dark and light themes', async ({ page }) => {
+test('General Sources renders two equal header-only cards with truly centered copy in dark and light themes', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await page.goto('/'); await openSettings(page);

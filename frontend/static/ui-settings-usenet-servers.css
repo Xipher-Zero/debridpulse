@@ -1,0 +1,174 @@
+/* Usenet news-server collection and Executor Tuning child cards.
+ * Visual material only -- structure is owned by ui-settings-page.js and
+ * behavior by ui-settings-usenet-servers.js. */
+
+.dp-usenet-service-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+/* Servers pack left and wrap; the Add tile always trails the last server. */
+.dp-usenet-servers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dp-usenet-server,
+.dp-usenet-add {
+  flex: 1 1 320px;
+  min-width: 280px;
+  max-width: 420px;
+  box-sizing: border-box;
+  border: 1px solid var(--dp-border, rgba(255, 255, 255, .12));
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--dp-surface-2, rgba(255, 255, 255, .03));
+}
+
+.dp-usenet-server-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.dp-usenet-server-name {
+  font-weight: 600;
+  font-size: 1.02rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.dp-usenet-name-edit { padding: 2px 6px; line-height: 1; }
+.dp-usenet-name-edit img { width: 14px; height: 14px; display: block; }
+
+.dp-usenet-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* Host + Port + SSL share one row, vertically centred as a group. */
+.dp-usenet-row--host { align-items: center; }
+.dp-usenet-row--host .dp-usenet-field--host { flex: 1 1 auto; min-width: 0; }
+.dp-usenet-row--host .dp-usenet-field--port { flex: 0 0 5.5rem; }
+.dp-usenet-field--port .input { text-align: center; }
+.dp-usenet-ssl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Connections + Priority share one row. */
+.dp-usenet-row--tuning { align-items: center; }
+.dp-usenet-row--tuning .dp-usenet-field { flex: 1 1 0; }
+
+.dp-usenet-field { display: flex; flex-direction: column; gap: 4px; }
+.dp-usenet-field--wide { flex: 1 1 100%; }
+.dp-usenet-field .input { width: 100%; box-sizing: border-box; }
+
+.dp-usenet-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dp-usenet-priority-hint {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: .82rem;
+  opacity: .7;
+}
+
+/* Erasing a stored credential is an explicit, deliberate act. */
+.dp-usenet-clear-password {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 10px;
+  font-size: .82rem;
+  opacity: .85;
+}
+
+.dp-usenet-server-status { margin: 8px 0 0; text-align: center; font-size: .85rem; }
+.dp-usenet-server-status[data-tone="ok"] { color: var(--dp-ok, #4ade80); }
+.dp-usenet-server-status[data-tone="error"] { color: var(--dp-error, #f87171); }
+
+/* The Add tile matches a populated card's footprint and centres its
+ * plus + label as one group, vertically and horizontally. */
+.dp-usenet-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  cursor: pointer;
+  border-style: dashed;
+  color: inherit;
+  font: inherit;
+}
+
+.dp-usenet-add:hover { background: var(--dp-surface-3, rgba(255, 255, 255, .06)); }
+
+.dp-usenet-add-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dp-usenet-add-glyph { width: 28px; height: 28px; opacity: .85; }
+.dp-usenet-add-label { font-weight: 600; }
+
+/* --- Executor Tuning child cards ---------------------------------------- */
+
+.dp-executor-tuning-header { align-items: center; }
+
+/* The disclosure sits immediately beside the label, never at the far edge. */
+.dp-executor-tuning-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.dp-executor-tuning-disclosure {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  transition: transform .15s ease;
+}
+
+.dp-executor-tuning-disclosure[aria-expanded="true"] { transform: rotate(90deg); }
+
+.dp-executor-tuning-copy {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: .88rem;
+  opacity: .75;
+}
+
+.dp-settings-tuning-footer {
+  margin: 10px 0 0;
+  font-size: .82rem;
+  opacity: .7;
+}
+
+@media (max-width: 720px) {
+  .dp-usenet-server, .dp-usenet-add { max-width: none; min-width: 0; flex-basis: 100%; }
+  .dp-usenet-row { flex-wrap: wrap; }
+  .dp-executor-tuning-copy { text-align: left; }
+}

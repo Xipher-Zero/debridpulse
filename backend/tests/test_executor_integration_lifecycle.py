@@ -54,7 +54,7 @@ async def test_managed_executor_lifecycle_is_discovered_generically():
     registry.register_executor(LedgerExecutor(_allow, identity="unmanaged"))
     assert isinstance(managed, ManagedIntegration) and isinstance(managed, AdministeredIntegration)
     assert isinstance(managed.lifecycle, IntegrationLifecycle)
-    lifecycle, admins = composition.integration_surfaces(registry)
+    lifecycle, admins, _appliers = composition.integration_surfaces(registry)
     assert lifecycle == (managed.lifecycle,)
     assert admins == {"ledger-copy": managed.administration}
 
@@ -67,7 +67,7 @@ async def test_adding_fake_managed_executor_requires_no_application_composition_
     log = []
     registry = IntegrationRegistry()
     registry.register_executor(ManagedLedger(_allow, log, identity="brand-new-managed"))
-    lifecycle, admins = composition.integration_surfaces(registry)
+    lifecycle, admins, _appliers = composition.integration_surfaces(registry)
     assert len(lifecycle) == 1 and set(admins) == {"brand-new-managed"}
 
 

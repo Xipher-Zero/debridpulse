@@ -157,7 +157,7 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('Debrid Services', provider," in sources
+    assert "groupCard('External Providers', usenetCard + provider," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
@@ -188,7 +188,9 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
     ):
         assert key in sources
 
-    downloads = runtime[runtime.index("function downloadsPanel"):runtime.index("function extractionPanel")]
+    # The Downloads section is assembled from the Executor Tuning helpers plus
+    # downloadsPanel, so the inventory slice starts at the first of them.
+    downloads = runtime[runtime.index("function executorTuningCard"):runtime.index("function extractionPanel")]
     for key in (
         "download_folder",
         "aria2_max_active_downloads",

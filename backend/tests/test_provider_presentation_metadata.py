@@ -36,7 +36,7 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         "static_status": "healthy",
         "display_order": 100,
         "status_group": "direct_sources",
-        "status_group_label": "Direct Sources",
+        "status_group_label": "General Sources",
     }
 
 

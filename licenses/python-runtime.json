@@ -38,6 +38,11 @@
       "license": "MIT"
     },
     {
+      "name": "apprise",
+      "version": "1.12.0",
+      "license": "BSD-2-Clause"
+    },
+    {
       "name": "argon2-cffi",
       "version": "25.1.0",
       "license": "MIT"
@@ -63,6 +68,11 @@
       "license": "BSD-3-Clause"
     },
     {
+      "name": "babelfish",
+      "version": "0.6.1",
+      "license": "BSD-3-Clause"
+    },
+    {
       "name": "bencode2",
       "version": "0.3.33",
       "license": "MIT"
@@ -78,8 +88,28 @@
       "license": "MIT-0"
     },
     {
+      "name": "charset-normalizer",
+      "version": "3.5.1",
+      "license": "MIT"
+    },
+    {
+      "name": "cheroot",
+      "version": "11.1.2",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "cherrypy",
+      "version": "18.10.0",
+      "license": "BSD-3-Clause"
+    },
+    {
       "name": "click",
       "version": "8.3.3",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "configobj",
+      "version": "5.0.9",
       "license": "BSD-3-Clause"
     },
     {
@@ -88,9 +118,19 @@
       "license": "Apache-2.0 OR BSD-3-Clause"
     },
     {
+      "name": "ct3",
+      "version": "3.4.0.post5",
+      "license": "MIT"
+    },
+    {
       "name": "fastapi",
       "version": "0.141.1",
       "license": "MIT"
+    },
+    {
+      "name": "feedparser",
+      "version": "6.0.12",
+      "license": "BSD-2-Clause"
     },
     {
       "name": "frozenlist",
@@ -103,9 +143,19 @@
       "license": "BSD-3-Clause"
     },
     {
+      "name": "guessit",
+      "version": "4.1.0",
+      "license": "LGPL-3.0-or-later"
+    },
+    {
       "name": "h11",
       "version": "0.16.0",
       "license": "MIT"
+    },
+    {
+      "name": "hachoir",
+      "version": "3.3.0",
+      "license": "GPL-2.0-only"
     },
     {
       "name": "httpcore",
@@ -128,14 +178,64 @@
       "license": "BSD-3-Clause"
     },
     {
+      "name": "jaraco-classes",
+      "version": "3.4.0",
+      "license": "MIT"
+    },
+    {
+      "name": "jaraco-collections",
+      "version": "5.0.0",
+      "license": "MIT"
+    },
+    {
+      "name": "jaraco-context",
+      "version": "4.3.0",
+      "license": "MIT"
+    },
+    {
+      "name": "jaraco-functools",
+      "version": "4.6.0",
+      "license": "MIT"
+    },
+    {
+      "name": "jaraco-text",
+      "version": "3.8.1",
+      "license": "MIT"
+    },
+    {
       "name": "joserfc",
       "version": "1.7.4",
       "license": "BSD-3-Clause"
     },
     {
+      "name": "markdown",
+      "version": "3.10.3",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "more-itertools",
+      "version": "11.1.0",
+      "license": "MIT"
+    },
+    {
       "name": "multidict",
       "version": "6.7.1",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "oauthlib",
+      "version": "3.3.1",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "orjson",
+      "version": "3.11.9",
+      "license": "MPL-2.0 AND (Apache-2.0 OR MIT)"
+    },
+    {
+      "name": "portend",
+      "version": "3.2.1",
+      "license": "MIT"
     },
     {
       "name": "prometheus-client",
@@ -146,6 +246,11 @@
       "name": "propcache",
       "version": "0.5.2",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "puremagic",
+      "version": "2.2.0",
+      "license": "MIT"
     },
     {
       "name": "pycparser",
@@ -163,14 +268,79 @@
       "license": "MIT"
     },
     {
+      "name": "pysocks",
+      "version": "1.7.1",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "python-dateutil",
+      "version": "2.9.0.post0",
+      "license": "Apache-2.0 AND BSD-3-Clause"
+    },
+    {
       "name": "python-multipart",
       "version": "0.0.32",
       "license": "Apache-2.0"
     },
     {
+      "name": "pytz",
+      "version": "2026.2",
+      "license": "MIT"
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "license": "MIT"
+    },
+    {
+      "name": "rarfile",
+      "version": "4.3",
+      "license": "ISC"
+    },
+    {
+      "name": "rebulk",
+      "version": "6.0.1",
+      "license": "MIT"
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "requests-oauthlib",
+      "version": "2.0.0",
+      "license": "ISC"
+    },
+    {
+      "name": "sabctools",
+      "version": "9.6.3",
+      "license": "GPL-2.0-or-later"
+    },
+    {
+      "name": "setuptools",
+      "version": "84.0.0",
+      "license": "MIT"
+    },
+    {
+      "name": "sgmllib3k",
+      "version": "1.0.0",
+      "license": "BSD (variant unspecified upstream) AND PSF-2.0 (derived from CPython sgmllib)"
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "license": "MIT"
+    },
+    {
       "name": "starlette",
       "version": "1.3.1",
       "license": "BSD-3-Clause"
+    },
+    {
+      "name": "tempora",
+      "version": "5.8.1",
+      "license": "MIT"
     },
     {
       "name": "typing-extensions",
@@ -180,6 +350,16 @@
     {
       "name": "typing-inspection",
       "version": "0.4.2",
+      "license": "MIT"
+    },
+    {
+      "name": "ujson",
+      "version": "5.13.0",
+      "license": "BSD-3-Clause AND TCL"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
       "license": "MIT"
     },
     {
@@ -196,6 +376,11 @@
       "name": "yarl",
       "version": "1.23.0",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "zc-lockfile",
+      "version": "4.0",
+      "license": "ZPL-2.1"
     }
   ]
 }

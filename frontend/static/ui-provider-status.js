@@ -19,7 +19,10 @@
     const integrations = settings?.integrations;
     if (!integrations || typeof integrations !== 'object') return null;
     return Object.entries(integrations)
-      .filter(([, integration]) => integration.kind === 'provider' && String(integration.presentation?.status_name || '').trim())
+      // A paired provider+executor integration (one canonical enable state)
+      // still presents as one provider family in this panel.
+      .filter(([, integration]) => (integration.kind === 'provider' || integration.kind === 'provider_executor')
+        && String(integration.presentation?.status_name || '').trim())
       .map(([id, integration]) => {
         const presentation = integration.presentation;
         return {

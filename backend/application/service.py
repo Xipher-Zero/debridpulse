@@ -31,6 +31,9 @@ class ApplicationService:
         self._configure = configure
         self.lifecycle = tuple(lifecycle)
         self.admins = admins or {}
+        # Canonical-namespace -> integration-owned configuration appliers,
+        # discovered generically by composition.
+        self.configuration_appliers = {}
         self._admission = ApplicationMaintenanceGate()
         self.capacity = capacity
         self.observability = None
@@ -134,7 +137,7 @@ class ApplicationService:
             old = previous.integrations[definition.id].options
             new = current.integrations[definition.id].options
             if any(old.get(key) != new.get(key) for key in definition.ownership_fields):
-                if await self.repository.has_integration_references(definition.id):
+                if await self.repository.has_integration_references(definition.owned_identities):
                     raise ValueError(f"Finish or remove existing {definition.name} resources before changing its connection")
         download_folder_changed = previous.download_folder != current.download_folder
         if download_folder_changed and await self.repository.has_integration_references():
@@ -190,6 +193,29 @@ class ApplicationService:
             "effective": {"max_download_bytes_per_second": status.effective},
             "last_apply_error": status.last_apply_error,
         }
+
+    async def apply_integration_configuration(self, namespace: str):
+        """Drive the integration-owned application of one canonical namespace.
+
+        The ONE path from a persisted configuration mutation to the native
+        integration service's own configuration transaction. Such a service is
+        external to the transfer core's implementation, yet inside DebridPulse
+        product ownership -- DebridPulse may run it, own its whole
+        configuration and never expose it -- so it is named for what it is
+        rather than as somebody else's endpoint. Returns ``None`` when the
+        namespace has no applier, so callers can stay integration-neutral.
+        """
+        appliers = (self.configuration_appliers or {}).get(str(namespace)) or ()
+        if not appliers:
+            return None
+        from integrations.definition import ConfigurationApplication
+        results = [await applier.apply_configuration() for applier in appliers]
+        failed = [item for item in results if not item.ok]
+        if not failed:
+            return ConfigurationApplication(True, "configuration applied")
+        return ConfigurationApplication(
+            False, "; ".join(item.detail for item in failed if item.detail),
+            tuple(name for item in failed for name in item.failures))
 
     def integration_admin(self, identity):
         try:
@@ -250,6 +276,22 @@ class ApplicationService:
         return await self.submit(
             (TransferRequest("torrent", data, name=filename, fingerprint=fingerprint,
                              selection_mode=selection_mode),),
+            name=name, source=source)
+
+    async def submit_nzb(self, data, filename, *, source="manual_file"):
+        """Admit one uploaded NZB through the canonical submission seam.
+
+        The application layer deliberately does not interpret the posting: the
+        Usenet provider owns NZB validation and normalization, and does it
+        during resolution like every other provider. This only refuses an empty
+        upload, which needs no format knowledge. Routing stays with core.
+        """
+        payload = bytes(data or b"")
+        if not payload:
+            raise ValueError("NZB file is empty")
+        name = str(filename or "").rsplit(".", 1)[0] or "usenet-download"
+        return await self.submit(
+            (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
             name=name, source=source)
 
     async def submit_links(self, links):

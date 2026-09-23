@@ -220,7 +220,20 @@ async def test_pause_fences_stale_recovery_claim_and_preserves_target(runtime):
 
 
 @pytest.mark.asyncio
-async def test_provider_disable_reenable_reuses_same_execution_and_lifecycle_wait(runtime):
+async def test_provider_disable_reenable_keeps_the_same_in_flight_execution(runtime):
+    """1.0.13 Gate-9 rev-6: disabling a provider does not park work already
+    being delivered.
+
+    This used to assert the artifact moved to ``recovery_wait`` with
+    ``quiescence_reason == "provider_disabled"``. An artifact that holds a live
+    execution needs nothing further FROM A PROVIDER -- its candidate is already
+    resolved and its executor is delivering -- so administrative disablement
+    has nothing legitimate to park, and parking it is what prevented an
+    execution from ever finishing while disabled. Provider disablement still
+    parks work that genuinely needs a provider; see
+    ``test_provider_disable_during_backoff_preserves_retry_eligibility``, which
+    covers an artifact with no execution to continue.
+    """
     repository, _registry, provider, executor, engine, _now = runtime
     transfer, artifact = await start_transfer(runtime)
     original = artifact.execution
@@ -228,21 +241,19 @@ async def test_provider_disable_reenable_reuses_same_execution_and_lifecycle_wai
 
     provider.descriptor = replace(provider.descriptor, enabled=False)
     await engine.reconcile_executions()
-    parked = (await repository.artifacts(transfer.id))[0]
-    context = await repository.recovery_context(parked.id)
-    assert parked.execution == original
-    assert parked.state == "recovery_wait"
-    assert context["quiescence_reason"] == "provider_disabled"
-    assert await repository.recovery_budget(parked.id) == (0, 0)
+    current = (await repository.artifacts(transfer.id))[0]
+    assert current.execution == original, "the same execution, untouched"
+    assert current.state == "downloading", f"in-flight delivery must continue; got {current.state}"
+    assert await repository.recovery_budget(current.id) == (0, 0), "no budget consumed"
 
     provider.descriptor = replace(provider.descriptor, enabled=True)
     await engine.reconcile_executions()
     resumed = (await repository.artifacts(transfer.id))[0]
-    context = await repository.recovery_context(resumed.id)
     assert resumed.execution == original
     assert resumed.state == "downloading"
-    assert len([call for call in executor.calls if call[0] == "start"]) == start_calls
-    assert context["last_applied_trigger"] == RecoveryTrigger.PROVIDER_RECOVERY.value
+    assert len([call for call in executor.calls if call[0] == "start"]) == start_calls, (
+        "re-enabling must not start anything new"
+    )
 
 
 @pytest.mark.asyncio

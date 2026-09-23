@@ -44,7 +44,7 @@ def _application():
         configuration_admission=lambda: _open(),
         configure=MagicMock(),
         reconcile_executions=AsyncMock(),
-        integration_admin=lambda _identity: admin,
+        integration_admin=lambda _identity: admin, apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=AsyncMock(),
     )
 

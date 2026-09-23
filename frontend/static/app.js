@@ -1075,17 +1075,31 @@ function openTorrentFilePicker() {
   input.click();
 }
 
-async function uploadTorrentFile(input) {
+/* One picker, two posting formats. The extension chooses the canonical
+ * submission endpoint; the browser never learns how either is acquired. */
+const TRANSFER_UPLOADS = Object.freeze({
+  '.torrent': {endpoint: '/torrents/add-file', label: 'Torrent file', interactive: true},
+  '.nzb':     {endpoint: '/usenet/add-file',   label: 'NZB',          interactive: false},
+});
+
+function uploadKindFor(name) {
+  const lower = String(name || '').toLowerCase();
+  const key = Object.keys(TRANSFER_UPLOADS).find(ext => lower.endsWith(ext));
+  return key ? TRANSFER_UPLOADS[key] : null;
+}
+
+async function uploadTransferFile(input) {
   const file = input && input.files ? input.files[0] : null;
   if (!file) return;
 
-  if (!file.name.toLowerCase().endsWith('.torrent')) {
-    toast('Choose a .torrent file', 'error');
+  const kind = uploadKindFor(file.name);
+  if (!kind) {
+    toast('Choose a .torrent or .nzb file', 'error');
     input.value = '';
     return;
   }
   if (file.size > 16 * 1024 * 1024) {
-    toast('Torrent file exceeds the 16 MB upload limit', 'error');
+    toast(`${kind.label} exceeds the 16 MB upload limit`, 'error');
     input.value = '';
     return;
   }
@@ -1095,18 +1109,19 @@ async function uploadTorrentFile(input) {
   // The built-in browser is an interactive client: opt every torrent/magnet
   // submission into the interactive file-selection lifecycle. Historical /
   // headless callers that omit this keep the ALL default (correction §6).
-  form.append('selection_mode', 'interactive');
+  // A posting is acquired whole, so it has no per-file selection step.
+  if (kind.interactive) form.append('selection_mode', 'interactive');
 
   try {
-    const res = await api('POST', '/torrents/add-file', form, 60000);
+    const res = await api('POST', kind.endpoint, form, 60000);
     if (res && res._duplicate && res._duplicate.action === 'skip') {
       toast('Already in queue: ' + (res.name || res._duplicate.reason), 'warn');
     } else if (res && res._duplicate && res._duplicate.action === 'warn') {
-      toast('Torrent file added (possible duplicate)', 'warn');
+      toast(`${kind.label} added (possible duplicate)`, 'warn');
     } else if (res && res._deferred) {
-      toast('Torrent file added · processing is paused', 'success');
+      toast(`${kind.label} added · processing is paused`, 'success');
     } else {
-      toast('Torrent file added!', 'success');
+      toast(`${kind.label} added!`, 'success');
     }
     loadStats();
     loadRecent();

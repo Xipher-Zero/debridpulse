@@ -116,13 +116,23 @@ def test_oci_metadata_describes_current_two_provider_architecture_and_retains_li
     assert "Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution" not in dockerfile
 
 
-def test_dependency_license_inventory_is_final_1_0_12_closure_and_requires_reaudit_in_1_0_13():
+def test_dependency_license_inventory_states_its_closure_and_requires_reaudit_on_expansion():
+    """The inventory must name the tree it is the closure FOR, and must keep
+    demanding a fresh review for work that adds dependencies.
+
+    It was pinned to "final v1.0.12" through that release. 1.0.13 bundles the
+    Usenet acquisition service, whose Python runtime closure is now part of the
+    shipped image and appears in the table, so the inventory is no longer the
+    v1.0.12 closure and must not claim to be -- a stale scope line is exactly
+    how an un-reviewed dependency ships unnoticed."""
     licenses = _text("docs/DEPENDENCY_LICENSES.md")
-    assert "inventory for **final v1.0.12**" in licenses
-    assert "v1.0.12 dependency/license closure" in licenses
+    assert "inventory for the current `1.0.13` development tree" in licenses
+    assert "inventory for **final v1.0.12**" not in licenses
     assert "not the final eventual v1.0.12 dependency/license closure" not in licenses
     assert "`1.0.13` expansion work" in licenses
     assert "must trigger a fresh third-party/license review" in licenses
+    # ...and the review that admitted the bundled service's copyleft packages.
+    assert "## Copyleft review" in licenses
 
 
 def test_notice_preserves_legal_attribution_without_obsolete_single_provider_product_framing():

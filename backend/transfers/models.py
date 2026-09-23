@@ -472,9 +472,21 @@ class MaterializationPlan:
 
 @dataclass(frozen=True)
 class ExecutionWork:
-    """A subject after core allocated its materialization boundary."""
+    """A subject after core allocated its materialization boundary.
+
+    ``attempt_id`` is the durable execution attempt this work belongs to, when
+    core has allocated one. It exists so an executor whose native transient
+    material is scoped to a single attempt can name that material accurately in
+    ``footprint()``; without it such an executor could only report material
+    shared between attempts, and cleaning one attempt would destroy another's.
+
+    ``None`` means core has not allocated an attempt yet, which is not a gap:
+    before an attempt exists, that attempt's transient material cannot exist
+    either, so there is nothing for it to report.
+    """
     subject: ExecutionSubject
     materialization: MaterializationPlan
+    attempt_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -564,6 +576,14 @@ class ExecutionRequest:
     work: ExecutionWork
     attempt_id: str
     paused: bool = False
+
+    def __post_init__(self):
+        # One attempt identity, never two. Once a request exists its attempt is
+        # allocated, so work that names a different attempt -- or none at all --
+        # would make ``footprint()`` and ``start()`` disagree about which
+        # attempt's native material is being planned.
+        if self.work.attempt_id != self.attempt_id:
+            raise ValueError("Execution work must belong to this execution attempt")
 
 
 @dataclass(frozen=True)

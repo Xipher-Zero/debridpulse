@@ -51,7 +51,7 @@ def test_presentation_identity_and_direct_source_group_are_provider_owned():
     assert 'status_endpoint="/integration-status/alldebrid"' in ALLDEBRID_DEF
     assert 'status_name="HTTP & HTTPS"' in GENERAL_DEF
     assert 'status_group="direct_sources"' in GENERAL_DEF
-    assert 'status_group_label="Direct Sources"' in GENERAL_DEF
+    assert 'status_group_label="General Sources"' in GENERAL_DEF
     assert 'static_status="healthy"' in GENERAL_DEF
 
 

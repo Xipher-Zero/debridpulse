@@ -7,7 +7,8 @@ from core.config import get_settings, apply_settings
 from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
 from integrations.definition import (
-    AdministeredIntegration, IntegrationEnvironment, IntegrationLifecycle, ManagedIntegration,
+    AdministeredIntegration, ConfigurableIntegration, IntegrationEnvironment, IntegrationLifecycle,
+    ManagedIntegration,
 )
 from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.convergence_engine import TransferEngine
@@ -17,17 +18,27 @@ from transfers.recovery_repository import TransferRepository
 from transfers.storage import DiskCapacity, register_storage_health
 
 
-def integration_surfaces(registry) -> tuple[tuple, dict]:
-    """Generic discovery of integration-owned lifecycle components and
-    administration surfaces -- the one seam through which a managed
-    integration participates in the application lifecycle. No integration is
-    named here; adding one needs no composition change."""
+def integration_surfaces(registry) -> tuple[tuple, dict, dict]:
+    """Generic discovery of integration-owned lifecycle components,
+    administration surfaces and configuration appliers -- the one seam through
+    which an integration participates in the application lifecycle. No
+    integration is named here; adding one needs no composition change.
+
+    Appliers are grouped by the canonical settings namespace each one declares,
+    so a configuration mutation can drive exactly the implementations that own
+    that namespace.
+    """
     implementations = (*registry.providers.values(), *registry.executors.values())
     lifecycle = tuple(item.lifecycle for item in implementations
                       if isinstance(item, ManagedIntegration) and isinstance(item.lifecycle, IntegrationLifecycle))
     admins = {item.descriptor.id: item.administration for item in implementations
               if isinstance(item, AdministeredIntegration)}
-    return lifecycle, admins
+    appliers: dict[str, list] = {}
+    for item in implementations:
+        surface = item.administration if isinstance(item, AdministeredIntegration) else item
+        if isinstance(surface, ConfigurableIntegration):
+            appliers.setdefault(str(surface.configuration_namespace), []).append(surface)
+    return lifecycle, admins, appliers
 
 
 def configure(application):
@@ -80,8 +91,9 @@ def configure(application):
     # executors receive only the ceiling that owner assigns them.
     limits = settings.execution_runtime_limits or ExecutionRuntimeLimits()
     application.engine.configure_runtime_limits(limits.max_download_bytes_per_second)
-    integration_lifecycle, admins = integration_surfaces(registry)
+    integration_lifecycle, admins, appliers = integration_surfaces(registry)
     application.admins = admins
+    application.configuration_appliers = appliers
     runtime_state = getattr(application, "runtime_state", None)
     if runtime_state is None:
         runtime_state = ProviderRuntimeStateStore()

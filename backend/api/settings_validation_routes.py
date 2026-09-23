@@ -571,3 +571,88 @@ async def send_stats_report_from_draft(payload: StatisticsReportDraftRequest):
         raise
     except Exception as exc:
         raise HTTPException(502, _safe_failure(exc)) from exc
+
+
+# --- Usenet (SAB-backed) integration surfaces --------------------------------
+#
+# The Usenet integration is one canonical integration owning both a provider and
+# an executor, so every surface below reads and writes exactly one namespace:
+# ``integrations.usenet``. There is no second settings owner and no second
+# enable state.
+
+
+# DebridPulse's own connection bounds; the floor is 1, not SAB's 0 (see
+# integrations/usenet/definition.py).
+from integrations.usenet.definition import MAX_CONNECTIONS, MIN_CONNECTIONS
+
+
+class UsenetServerDraft(BaseModel):
+    """A prospective NNTP server, tested WITHOUT being persisted."""
+    host: str = ""
+    port: int = Field(default=563, ge=1, le=65535)
+    ssl: bool = True
+    username: str = ""
+    password: str = ""
+    connections: int = Field(default=8, ge=MIN_CONNECTIONS, le=MAX_CONNECTIONS)
+    # The canonical server whose stored password a blank value should reuse.
+    server_id: str | None = None
+
+
+USENET_NAMESPACE = "usenet"
+
+
+def _usenet_admin(application: ApplicationService):
+    try:
+        return application.integration_admin("sabnzbd")
+    except ValueError:
+        raise HTTPException(503, "The Usenet integration is not available") from None
+
+
+@router.get("/integration-status/usenet")
+async def get_usenet_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Readiness for the neutral provider-status surface.
+
+    Enabled-but-unconfigured is a legitimate configuration state and is
+    reported as such -- never as ready.
+    """
+    entry = (get_settings().integrations or {}).get("usenet")
+    if entry is not None and not getattr(entry, "enabled", True):
+        return {"state": "disabled", "configured": False}
+    return await _usenet_admin(application).status()
+
+
+@router.post("/usenet/servers/test")
+async def test_usenet_server(payload: UsenetServerDraft,
+                             application: ApplicationService = Depends(get_application)):
+    """Validate an edited-but-unsaved server against SAB, with no persistence."""
+    if not payload.host.strip():
+        raise HTTPException(400, "A server host is required")
+    admin = _usenet_admin(application)
+    password = payload.password
+    if not password and payload.server_id:
+        # The existing UI contract: a blank secret means "keep the stored one".
+        from integrations.usenet.servers import find_server
+        existing = find_server(admin.options, payload.server_id)
+        if existing is not None:
+            password = existing.password
+    try:
+        return await admin.test_server(
+            host=payload.host.strip(), port=payload.port, ssl=payload.ssl,
+            username=payload.username, password=password, connections=payload.connections,
+        )
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from exc
+
+
+@router.get("/usenet/drift")
+async def get_usenet_configuration_drift(application: ApplicationService = Depends(get_application)):
+    """Report SAB-side configuration drift. Detection only.
+
+    Nothing here imports SAB state as canonical DebridPulse configuration and
+    nothing reconciles continuously; a drifted field is reported by name so the
+    operator can decide to re-apply.
+    """
+    try:
+        return (await _usenet_admin(application).drift()).public()
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from exc

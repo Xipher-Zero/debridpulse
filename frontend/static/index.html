@@ -237,7 +237,7 @@
         <div class="card-header">
           <div class="card-title" data-dp-structural-title="1">
             <img src="/icons/dp/card-link.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg">
-            <span class="dp-card-heading-copy"><span>Quick Add</span><span class="dp-card-subtitle">Add links, magnets, or torrent files to the queue.</span></span>
+            <span class="dp-card-heading-copy"><span>Quick Add</span><span class="dp-card-subtitle">Add links, magnets, torrent or NZB files to the queue.</span></span>
           </div>
           <div class="dp-global-pause-center"><div class="dp-global-pause-title"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg><span>PROCESSING PAUSED</span></div><div class="dp-global-pause-copy">New downloads can still be added. They will remain queued until processing is resumed.</div></div>
           <div class="dp-card-header-actions">
@@ -247,7 +247,7 @@
         <div style="padding:12px 16px">
           <div class="direct-link-entry">
             <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="https://example-hoster.com/file/…&#10;magnet:?xt=urn:btih:…" oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
-            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit links and magnets for provider routing; when empty, choose a .torrent file">Add</button></span>
+            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit links and magnets for provider routing; when empty, choose a .torrent or .nzb file">Add</button></span>
           </div>
         </div>
       </div>
@@ -443,7 +443,7 @@
 
 <div id="toasts"></div>
 
-<input id="torrent-file-input" type="file" accept=".torrent,application/x-bittorrent" hidden onchange="uploadTorrentFile(this)">
+<input id="torrent-file-input" type="file" accept=".torrent,.nzb,application/x-bittorrent,application/x-nzb" hidden onchange="uploadTransferFile(this)">
 
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
@@ -477,6 +477,7 @@
 <script src="/ui-settings-page.js?v=4" defer></script>
 <script src="/ui-settings-directory-picker.js?v=1" defer></script>
 <script src="/ui-settings-aria2-live.js?v=4" defer></script>
+<script src="/ui-settings-usenet-servers.js?v=1" defer></script>
 <div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version">v…</div>
 <div id="mobile-overlay" onclick="closeSidebar()"></div>
 </body>

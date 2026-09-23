@@ -63,6 +63,44 @@ class _Step:
     retirement_reason: str | None = None
 
 
+# An artifact whose execution is live is being delivered right now by its bound
+# executor; the provider's contribution (resolving the candidate) is already
+# behind it. These are the canonical in-flight artifact states.
+_DELIVERY_UNDERWAY_STATES = frozenset({"queued", "downloading", "unknown", "verifying", "paused"})
+
+
+def _provider_continuation_required(artifact) -> bool:
+    """Whether this artifact still needs work FROM A PROVIDER.
+
+    Administrative disablement may park a provider continuation, but only a
+    continuation that is genuinely still required. Two cases need nothing
+    further from a provider, and both are read from canonical facts rather
+    than from a new durable field:
+
+    * the logical delivery obligation is already durably SATISFIED -- the
+      artifact is ``completed``, the same fact parent aggregation itself votes
+      on (``_repository_base.aggregate_lifecycle`` discharges a logical slot on
+      ``item.state == "completed"``);
+    * delivery is already UNDERWAY -- the artifact holds a live execution bound
+      to an executor, so the candidate is resolved and the provider has nothing
+      left to contribute to it.
+
+    Everything else -- no execution to continue, a failed execution needing a
+    fresh candidate, a refresh -- genuinely needs a provider, and stays parked
+    while the integration is disabled.
+
+    Routing eligibility and delivery truth are separate facts: this predicate
+    decides only whether a provider is still NEEDED, never whether one may be
+    newly selected. `claimants()`, `provider_for()` and new-work eligibility
+    are untouched.
+    """
+    if getattr(artifact, "state", "") == "completed":
+        return False
+    if getattr(artifact, "execution", None) is not None and artifact.state in _DELIVERY_UNDERWAY_STATES:
+        return False
+    return True
+
+
 class TransferEngine(_QualifiedTransferEngine):
     """Single production owner for every recovery trigger and the durable
     recovery-execution/lifecycle-convergence coordinator (DP 1.0.12 leveling
@@ -439,7 +477,7 @@ class TransferEngine(_QualifiedTransferEngine):
             ):
                 return self._CLAIM_LOST
             return self._RETIRED
-        executor = self.registry.executors.get(artifact.execution.executor_id)
+        executor = self.registry.executor_for_handle(artifact.execution)
         if executor is None:
             # Cannot confirm the native writer stopped without an executor;
             # preserve the association/fence rather than detach blind.
@@ -912,7 +950,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 claim, current, reason=reason, wake=wake, retry_at=retry_at,
             )
 
-        executor = self.registry.executors.get(current.execution.executor_id)
+        executor = self.registry.executor_for_handle(current.execution)
         if executor is None:
             return await self.repository.record_recovery_quiescence(
                 claim,
@@ -1008,7 +1046,7 @@ class TransferEngine(_QualifiedTransferEngine):
         if current is None:
             return False
         if current.execution is not None:
-            executor = self.registry.executors.get(current.execution.executor_id)
+            executor = self.registry.executor_for_handle(current.execution)
             observed = None
             if executor is not None:
                 if not await self.repository.recovery_claim_current(claim, now=self.clock()):
@@ -1121,7 +1159,7 @@ class TransferEngine(_QualifiedTransferEngine):
 
         if transfer.paused and trigger != RecoveryTrigger.RESUME:
             if current.execution is not None:
-                executor = self.registry.executors.get(current.execution.executor_id)
+                executor = self.registry.executor_for_handle(current.execution)
                 if executor is not None:
                     await self._converge_execution(current, executor)
             return current, error, observed, _Step(
@@ -1146,7 +1184,7 @@ class TransferEngine(_QualifiedTransferEngine):
         retirement_reason = None
         factual_terminal_error = False
         if current.execution is not None:
-            executor = self.registry.executors.get(current.execution.executor_id)
+            executor = self.registry.executor_for_handle(current.execution)
             if executor is not None:
                 if observed is None:
                     observed = await self._observe_execution(executor, current.execution)
@@ -1713,7 +1751,7 @@ class TransferEngine(_QualifiedTransferEngine):
                                 return False
                             artifact = current
                         candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-                        executor = self.registry.executors.get(artifact.execution.executor_id) if artifact.execution else None
+                        executor = self.registry.executor_for_handle(artifact.execution) if artifact.execution else None
                         if executor is None and artifact.execution is not None:
                             return False
                         observation = None
@@ -2019,7 +2057,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 elif reason == "executor_unavailable":
                     if (
                         artifact.execution is not None
-                        and self.registry.executors.get(artifact.execution.executor_id) is not None
+                        and self.registry.executor_for_handle(artifact.execution) is not None
                     ) or (
                         artifact.execution is None
                         and candidate is not None
@@ -2086,15 +2124,34 @@ class TransferEngine(_QualifiedTransferEngine):
         observations = observations or {}
         for artifact in artifacts:
             candidate = self._candidate(artifact)
+            # Routing eligibility and already-satisfied delivery truth are
+            # SEPARATE facts. Every gate below parks a CONTINUATION -- work
+            # this artifact still needs from a provider, an executor or a
+            # newer materialization generation. An artifact that is already
+            # durably satisfied needs none of them: its logical delivery
+            # obligation is discharged, the canonical material exists, and the
+            # only thing left is for the parent to be told. Gating it would
+            # make an administrative Enable toggle a veto on terminalizing
+            # work that is already done -- and, because every gate below
+            # ``continue``s, it would also skip the one tick-path call to
+            # ``_aggregate`` at the end of the base implementation, which is
+            # exactly how a completed artifact left its parent stuck.
+            # ``_provider_continuation_required`` is built from the same
+            # canonical facts parent aggregation itself votes on; nothing new
+            # is invented here. It scopes ONLY the provider gate: the executor
+            # and materialization-admission gates below are execution-authority
+            # questions, not provider-continuation ones, and a live execution
+            # must keep answering them (generation-A/B fencing in particular).
             if artifact.execution is not None:
-                if candidate is not None and not self._candidate_provider_enabled(candidate):
+                if (candidate is not None and _provider_continuation_required(artifact)
+                        and not self._candidate_provider_enabled(candidate)):
                     await self.recover_artifact(
                         artifact,
                         trigger=RecoveryTrigger.AUTO_RETRY,
                         error=self._provider_wait_error(candidate),
                     )
                     continue
-                if self.registry.executors.get(artifact.execution.executor_id) is None:
+                if self.registry.executor_for_handle(artifact.execution) is None:
                     await self.recover_artifact(
                         artifact,
                         trigger=RecoveryTrigger.AUTO_RETRY,
@@ -2110,10 +2167,15 @@ class TransferEngine(_QualifiedTransferEngine):
                 # never revalidated against a newer materialization
                 # generation and can keep writing indefinitely after
                 # generation B becomes authoritative.
-                admission = await self.repository.materialization_authorization(artifact)
-                if admission.kind != MaterializationAdmissionKind.PROCEED:
-                    await self._reconcile_unauthorized_existing_execution(artifact)
-                    continue
+                # A satisfied artifact is not a candidate for re-admission:
+                # its material already exists and the only step left is the
+                # parent being told, so it must reach the aggregation at the
+                # end of the base implementation rather than being gated here.
+                if artifact.state != "completed":
+                    admission = await self.repository.materialization_authorization(artifact)
+                    if admission.kind != MaterializationAdmissionKind.PROCEED:
+                        await self._reconcile_unauthorized_existing_execution(artifact)
+                        continue
             await super()._process_executions(
                 transfer_id,
                 (artifact,),
@@ -2208,7 +2270,7 @@ class TransferEngine(_QualifiedTransferEngine):
             # acquisition for global pause even where one execution cannot be
             # paused individually right now; it never proves full quiescence.
             covered = globally_paused and artifact.execution.executor_id in self._acquisition_gated
-            executor = self.registry.executors.get(artifact.execution.executor_id)
+            executor = self.registry.executor_for_handle(artifact.execution)
             if executor is None or not executor.capabilities.per_execution_pause:
                 if not covered:
                     errors.append(self._error(

@@ -187,7 +187,7 @@ def test_import_existing_backend_capability_and_direct_source_metadata_remain() 
     assert "btn-import-existing" not in read("ui-processing-presentation.js")
     assert "importExisting" not in read("app.js")
     assert 'status_group="direct_sources"' in definition
-    assert 'status_group_label="Direct Sources"' in definition
+    assert 'status_group_label="General Sources"' in definition
 
 
 # ── Universal file-selection modal ownership (specification section 62) ──────

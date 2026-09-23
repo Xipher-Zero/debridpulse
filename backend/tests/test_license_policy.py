@@ -66,11 +66,25 @@ def test_human_runtime_license_inventory_covers_machine_manifest_exact_versions(
         )
 
 
-# Copyleft runtime dependencies admitted only after an explicit license review,
-# pinned to the exact reviewed license expression. asyncssh (DP 1.0.13 SFTP
+# Copyleft runtime dependencies that are KNOWN AND RECORDED, each pinned to the
+# exact licence expression it was inventoried under. asyncssh (DP 1.0.13 SFTP
 # evidence) is dual-licensed and used under GPL-2.0-or-later, the project's own
-# license; see docs/DEPENDENCY_LICENSES.md.
-_REVIEWED_COPYLEFT = {"asyncssh": "EPL-2.0 OR GPL-2.0-or-later"}
+# licence. sabctools, hachoir and guessit arrive with the bundled Usenet
+# acquisition service (SABnzbd, itself GPL-2.0-or-later): DebridPulse imports
+# none of them and reaches that service over a private loopback HTTP API.
+#
+# This list is an inventory control, NOT a legal conclusion: it records what
+# ships so that a silent upstream relicense fails this test instead of shipping
+# unnoticed. Whether the combined work may be distributed on these terms is a
+# project/licence judgment that lives in the copyleft section of
+# docs/DEPENDENCY_LICENSES.md and is explicitly marked as still requiring
+# review.
+_REVIEWED_COPYLEFT = {
+    "asyncssh": "EPL-2.0 OR GPL-2.0-or-later",
+    "sabctools": "GPL-2.0-or-later",
+    "hachoir": "GPL-2.0-only",
+    "guessit": "LGPL-3.0-or-later",
+}
 
 
 def test_runtime_inventory_has_no_unknown_or_unreviewed_copyleft_license():
@@ -109,6 +123,9 @@ def test_installed_runtime_packages_retain_license_or_notice_files():
     manifest = _runtime_license_manifest()
     explicit_notices = {
         "bencode2": REPO_ROOT / "licenses/bencode2-MIT.txt",
+        # Ships no license file at all; the upstream statement and the CPython
+        # provenance are reproduced in the bundled notice instead.
+        "sgmllib3k": REPO_ROOT / "licenses/sgmllib3k-BSD.txt",
     }
 
     for item in manifest["packages"]:

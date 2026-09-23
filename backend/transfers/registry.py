@@ -279,3 +279,24 @@ class IntegrationRegistry:
                 retryability=Retryability.NEVER,
             ))
         return matches[0]
+
+    def executor_for_handle(self, handle) -> Executor | None:
+        """The ONE bound-execution seam: which executor owns work that ALREADY
+        exists.
+
+        Deliberately NOT ``claimants``. That router selects NEW work and
+        therefore excludes disabled and unhealthy executors. An execution that
+        is already durable is not new work -- it is bound to the executor named
+        in its handle, and only that executor can observe, control, recover or
+        cancel it. Resolving it through the claim router instead would make an
+        integration's enabled toggle, or a transient health blip, silently
+        strand executions that are mid-flight.
+
+        Disabling an integration therefore means "no NEW participation"; it
+        never cancels an owned execution, never implies pause intent, and never
+        hides the owner. Returns ``None`` only when no such executor is
+        registered at all, which callers treat as an ownership fault rather
+        than as absence of work.
+        """
+        identity = getattr(handle, "executor_id", None) or ""
+        return self.executors.get(identity)

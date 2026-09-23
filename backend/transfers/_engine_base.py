@@ -706,7 +706,9 @@ class TransferEngine:
             observations = {}
             reservation_facts = {}
             for executor_id, handles in grouped.items():
-                executor = self.registry.executors.get(executor_id)
+                # Batched observation of work that already exists: resolved
+                # through the bound-execution seam, never the claim router.
+                executor = self.registry.executor_for_handle(handles[0])
                 if executor is None:
                     continue
                 snapshot = await self._observe_batch(executor, tuple(handles))
@@ -813,10 +815,18 @@ class TransferEngine:
         return TransferOutcome(OutcomeKind.FAILURE, observed.error or NormalizedError(
             Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.CLEANUP, retryability=Retryability.BACKOFF))
 
-    def _work(self, artifact: Artifact, candidate: TransferCandidate) -> ExecutionWork:
-        """Core output policy for one artifact's selected subject."""
+    def _work(self, artifact: Artifact, candidate: TransferCandidate,
+              attempt_id: str | None = None) -> ExecutionWork:
+        """Core output policy for one artifact's selected subject.
+
+        The artifact's durable attempt is carried when it has one, so an
+        executor can name attempt-scoped native transient material.
+        """
+        if attempt_id is None and artifact.execution is not None:
+            attempt_id = artifact.execution.attempt_id
         return ExecutionWork(ExecutionSubject.of(candidate),
-                             materialization_plan(self.root, artifact.target, candidate.materialization))
+                             materialization_plan(self.root, artifact.target, candidate.materialization),
+                             attempt_id)
 
     def _footprint(self, executor, work: ExecutionWork) -> ExecutionFootprint:
         footprint = executor.footprint(work)
@@ -833,7 +843,7 @@ class TransferEngine:
         if candidate is None:
             return executor, None, None
         if executor is None:
-            executor = (self.registry.executors.get(artifact.execution.executor_id) if artifact.execution
+            executor = (self.registry.executor_for_handle(artifact.execution) if artifact.execution
                         else self.registry.executor_for_subject(ExecutionSubject.of(candidate)))
         if executor is None:
             return None, None, None
@@ -986,7 +996,7 @@ class TransferEngine:
                 break
             try:
                 if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
-                    executor = self.registry.executors.get(artifact.execution.executor_id)
+                    executor = self.registry.executor_for_handle(artifact.execution)
                     if executor is None:
                         error = self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RECONCILIATION, domain=Domain.REQUEST, retryability=Retryability.NEVER)
                         await self.repository.artifact_state(artifact.id, "error", error=error)
@@ -1385,7 +1395,14 @@ class TransferEngine:
                 return
             candidate = artifact.candidates[artifact.selected]
             executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
-            work = self._work(artifact, candidate)
+            # The attempt identity is allocated FIRST so the work, its
+            # footprint, the request, prepare() and the durable prepared
+            # execution are all the same attempt. An executor whose native
+            # transient material is attempt-scoped can therefore name it from
+            # the very first evaluation, and the admission/materialization
+            # checks below see those real paths rather than an empty set.
+            attempt_id = artifact.execution.attempt_id if artifact.execution else new_identity()
+            work = self._work(artifact, candidate, attempt_id)
             footprint = self._footprint(executor, work)
             if await adoptable_material(work.materialization, footprint, artifact.expected_bytes, candidate.integrity,
                                         delay=self.policy.adoption_stability_seconds):
@@ -1396,7 +1413,7 @@ class TransferEngine:
                     retryability=Retryability.AFTER_RERESOLUTION)
                 await self._schedule_refresh(artifact, error)
                 return
-            request = ExecutionRequest(work, new_identity())
+            request = ExecutionRequest(work, attempt_id)
             prepared = executor.prepare(request)
             if isinstance(prepared, InputRequirement):
                 if not executor.capabilities.transient_input:
@@ -1539,7 +1556,9 @@ class TransferEngine:
             # one INPUT_REQUIRED lifecycle if the new claimant needs input).
             await self._retire_executor_challenge(challenge, artifact)
             return
-        work = self._work(artifact, candidate)
+        # The challenge's operation IS this continuation's attempt, so the work
+        # names it explicitly rather than inheriting the artifact's current one.
+        work = self._work(artifact, candidate, challenge.operation_id)
         request = ExecutionRequest(work, challenge.operation_id)
         submitted = None
 
@@ -1635,7 +1654,7 @@ class TransferEngine:
         await self.challenges.clear(challenge)
         await self.inputs.clear(challenge.id)
         if artifact.execution is not None:
-            owner = self.registry.executors.get(artifact.execution.executor_id)
+            owner = self.registry.executor_for_handle(artifact.execution)
             if owner is None:
                 return
             observed = await self._observe_execution(owner, artifact.execution)
@@ -1871,7 +1890,7 @@ class TransferEngine:
         if artifact is None:
             raise KeyError(artifact_id)
         if artifact.execution:
-            executor = self.registry.executors[artifact.execution.executor_id]
+            executor = self.registry.executor_for_handle(artifact.execution)
             stopped = await self._cancel_execution(executor, artifact.execution)
             await self.repository.execution(stopped)
             await self.repository.outcome(transfer_id, self._cancellation_outcome(stopped),
@@ -1954,7 +1973,7 @@ class TransferEngine:
             ):
                 continue
 
-            executor = self.registry.executors.get(handle.executor_id)
+            executor = self.registry.executor_for_handle(handle)
             if executor is None:
                 error = self._error(
                     Category.UNSUPPORTED_CAPABILITY, Stage.CLEANUP, domain=Domain.CLEANUP,

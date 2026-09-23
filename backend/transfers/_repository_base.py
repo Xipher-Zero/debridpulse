@@ -554,14 +554,27 @@ def _project_route_history(route_attempts, requests, *, lineage_attempts=()):
 
 class TransferRepository:
     async def has_integration_references(self, identity=None):
-        """Connection changes cannot abandon live jobs or unresolved resources."""
+        """Connection changes cannot abandon live jobs or unresolved resources.
+
+        ``identity`` may be one identity or a collection of them. A paired
+        integration owns several durable identities (its provider's and its
+        executor's), and work recorded under ANY of them is a reference to that
+        integration's configuration.
+        """
+        identities = ([] if identity is None else
+                      [identity] if isinstance(identity, str) else sorted(identity))
         async with get_db() as db:
-            params = () if identity is None else (identity,)
-            executor_filter = "" if identity is None else " AND executor_id=?"
-            provider_filter = "" if identity is None else " AND provider_id=?"
-            if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','running','paused','unknown')" + executor_filter + " LIMIT 1", params):
+            if not identities:
+                if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','running','paused','unknown') LIMIT 1", ()):
+                    return True
+                return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent' LIMIT 1", ()))
+            placeholders = ",".join("?" for _ in identities)
+            params = tuple(identities)
+            if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','running','paused','unknown')"
+                                 f" AND executor_id IN ({placeholders}) LIMIT 1", params):
                 return True
-            return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent'" + provider_filter + " LIMIT 1", params))
+            return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent'"
+                                          f" AND provider_id IN ({placeholders}) LIMIT 1", params))
 
     async def pending_events(self):
         async with get_db() as db:

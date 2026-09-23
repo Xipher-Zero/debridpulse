@@ -223,12 +223,20 @@ async def test_pause_during_backoff_and_resume_preserve_blocker_truth(runtime):
 
 @pytest.mark.asyncio
 async def test_provider_disable_reenable_never_fabricates_attention_or_budget(runtime):
-    repository, _registry, provider, _executor, engine, _now = runtime
+    """1.0.13 Gate-9 rev-6: a RUNNING artifact keeps reporting that it is
+    running when its provider is disabled.
+
+    It previously reported ``waiting_for_provider``. Nothing is waiting for a
+    provider: the candidate is resolved and the executor is delivering. The
+    invariants this test exists for -- no fabricated attention, no recovery
+    budget consumed -- are unchanged.
+    """
+    repository, _registry, provider, artifact_executor, engine, _now = runtime
     transfer, artifact = await running(runtime)
     provider.descriptor = replace(provider.descriptor, enabled=False)
     await engine.reconcile_executions()
     waiting = await repository.presentation(transfer.id)
-    assert waiting["presentation_status"] == "waiting_for_provider"
+    assert waiting["presentation_status"] != "waiting_for_provider"
     assert waiting["attention_required"] is False
     assert await repository.recovery_budget(artifact.id) == (0, 0)
     provider.descriptor = replace(provider.descriptor, enabled=True)

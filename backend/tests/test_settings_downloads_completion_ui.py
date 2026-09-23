@@ -89,9 +89,9 @@ def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
         "Stalled Download Timeout (hours)",
         "How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.",
         "Download Error Retries",
-        "How many times DebridPulse retries a download after aria2 reports an error. Set to 0 to disable automatic retries.",
+        "How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.",
         "Retry Delay (seconds)",
-        "How long DebridPulse waits before retrying a download after an aria2 error. Set to 0 to retry immediately.",
+        "How long DebridPulse waits before retrying a download after an error. Set to 0 to retry immediately.",
     )
     for text in expected:
         assert text in runtime

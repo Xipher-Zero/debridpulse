@@ -38,6 +38,56 @@ class ManagedIntegration(Protocol):
     lifecycle: IntegrationLifecycle
 
 
+@dataclass(frozen=True)
+class ConfigurationApplication:
+    """Outcome of applying canonical configuration to a native integration
+    service.
+
+    ``ok`` is proven truth, never optimism: a save whose native application did
+    not land must report ``False`` so the operator is not told the service is
+    configured when it is not.
+    """
+    ok: bool
+    detail: str = ""
+    failures: tuple[str, ...] = ()
+
+    def public(self) -> dict:
+        return {"applied": self.ok, "detail": self.detail, "failures": list(self.failures)}
+
+
+@runtime_checkable
+class ConfigurableIntegration(Protocol):
+    """An integration whose canonical configuration must be pushed to its own
+    out-of-core implementation before the integration is operational.
+
+    "Out-of-core" is about the transfer core, not about ownership: such a
+    service may be an operator-run endpoint or one DebridPulse bundles, starts
+    and owns outright. The seam is identical either way, which is why nothing
+    here names a service or assumes who runs it.
+
+    Discovered generically by composition, exactly like the lifecycle and
+    administration seams: the canonical namespace an implementation applies is
+    named by the implementation itself, never by composition or the API.
+
+    The invariant is ONE-WAY AUTHORITY, not operator-only invocation:
+
+        DebridPulse canonical desired state -> native integration service
+
+    and never the reverse. Service-side state is never imported back as
+    canonical configuration, and this is not a synchronization loop.
+
+    Application may be driven by EITHER an explicit canonical configuration
+    mutation OR lifecycle convergence after the native service starts or
+    restarts -- a service that came up with none of the canonical state must
+    be given it, or it would run on stale or empty configuration until an
+    operator happened to save again.
+    """
+
+    configuration_namespace: str
+
+    async def apply_configuration(self) -> ConfigurationApplication: ...
+
+
 @runtime_checkable
 class AdministeredIntegration(Protocol):
     """An integration implementation exposing its own administration surface
@@ -91,24 +141,70 @@ class IntegrationDefinition:
     legacy_upgrade: Optional[Callable[[dict, dict], dict]] = None
     ownership_fields: frozenset[str] = frozenset()
     required_options: frozenset[str] = frozenset()
+    # Whether this integration participates before an operator has ever said
+    # so. An integration that requires explicit opt-in declares ``False``; it
+    # applies only when neither persisted state nor the request sets ``enabled``.
+    default_enabled: bool = True
+    # Every durable provider/executor identity this configuration owner covers.
+    # A paired integration registers more than one implementation, so its
+    # configuration owns more than one durable identity; leaving this empty
+    # means the integration owns exactly its own id.
+    durable_identities: frozenset[str] = frozenset()
     presentation: IntegrationPresentation = IntegrationPresentation()
 
+    @property
+    def owned_identities(self) -> frozenset[str]:
+        """The identities configuration-ownership checks must fence against.
+
+        Work is durably recorded under a provider id OR an executor id, so a
+        paired integration whose executor carries a different identity would
+        otherwise have its live executions invisible to the fence.
+        """
+        return self.durable_identities or frozenset({self.id})
+
     def build(self, settings: IntegrationSettings, environment: IntegrationEnvironment):
-        implementation = self.factory(self.options_model(**settings.options), environment)
-        implementation.descriptor = replace(implementation.descriptor,
-            enabled=implementation.descriptor.enabled and settings.enabled, priority=settings.priority)
-        return implementation
+        """Construct this integration's implementation(s) from one namespace.
+
+        A ``provider_executor`` integration is one product whose provider and
+        executor halves are governed by a SINGLE canonical enabled state --
+        there is no second boolean to keep synchronized. Its factory returns a
+        tuple and the same ``enabled``/``priority`` is applied to every half.
+        """
+        built = self.factory(self.options_model(**settings.options), environment)
+        implementations = built if isinstance(built, tuple) else (built,)
+        for implementation in implementations:
+            implementation.descriptor = replace(implementation.descriptor,
+                enabled=implementation.descriptor.enabled and settings.enabled, priority=settings.priority)
+        return built
 
     def public_options(self, options: dict):
-        result = self.options_model(**options).model_dump()
+        """Safe public projection of a namespace.
+
+        An options model that owns nested secrets (for example a collection of
+        credentialed servers) declares its own ``public()`` projection; models
+        without one keep the plain dump. Top-level ``secret_fields`` are then
+        redacted either way, so a secret can never reach a public surface.
+        """
+        model = self.options_model(**options)
+        projector = getattr(model, "public", None)
+        result = projector() if callable(projector) else model.model_dump()
         for key in self.secret_fields:
             result[key + "_configured"] = bool(result.get(key))
             result[key] = ""
         return result
 
     def configured(self, options: dict) -> bool:
-        """Return persisted configuration presence without exposing secret data."""
-        validated = self.options_model(**options).model_dump()
+        """Return persisted configuration presence without exposing secret data.
+
+        An options model whose "configured" meaning is richer than "these
+        fields are non-empty" -- for example one that needs at least one usable
+        member of a collection -- declares its own ``configured()`` predicate.
+        """
+        model = self.options_model(**options)
+        predicate = getattr(model, "configured", None)
+        if callable(predicate):
+            return bool(predicate())
+        validated = model.model_dump()
         for key in self.required_options:
             value = validated.get(key)
             if isinstance(value, str):

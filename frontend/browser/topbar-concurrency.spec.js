@@ -152,7 +152,9 @@ test('saving Settings adopts the canonical policy and never writes a flat alias 
   }
   await expect(downloads.locator('[data-download-path-mode], [data-builtin-only-tuning], [data-clear-secret^="aria2"]')).toHaveCount(0);
   await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').fill('5');
-  await page.locator('#view-settings summary:has-text("Additional Engine Tuning")').click();
+  // Advanced direct-transfer tuning now lives in the collapsed "Direct
+  // Transfers" child card of the Executor Tuning master card.
+  await page.locator('#view-settings [data-executor-tuning="direct"] .dp-executor-tuning-disclosure').click();
   await page.locator('#view-settings [data-setting="aria2_split"]').fill('8');
   await page.locator('#view-settings button[data-action="save"]:visible').first().click();
 

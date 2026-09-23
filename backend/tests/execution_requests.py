@@ -11,4 +11,5 @@ def file_request(candidate, target, attempt_id, *, root=None, paused=False) -> E
     ``root`` (default: the target's directory)."""
     base = Path(root) if root is not None else Path(target).parent
     plan = MaterializationPlan(MaterializationKind.FILE, str(base.resolve()), str(target))
-    return ExecutionRequest(ExecutionWork(ExecutionSubject.of(candidate), plan), attempt_id, paused)
+    return ExecutionRequest(ExecutionWork(ExecutionSubject.of(candidate), plan, attempt_id),
+                            attempt_id, paused)

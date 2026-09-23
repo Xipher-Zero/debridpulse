@@ -3,8 +3,9 @@ from executors.aria2.definition import definition as aria2
 from providers.alldebrid.definition import definition as alldebrid
 from providers.general_ftp.definition import definition as general_ftp
 from providers.general_http.definition import definition as general_http
+from integrations.usenet.definition import definition as usenet
 
-definitions = (alldebrid, general_http, general_ftp, aria2)
+definitions = (alldebrid, usenet, general_http, general_ftp, aria2)
 
 
 def register(registry, settings, environment, selected=definitions):
@@ -15,5 +16,10 @@ def register(registry, settings, environment, selected=definitions):
             registry.register_provider(implementation)
         elif definition.kind == "executor":
             registry.register_executor(implementation)
+        elif definition.kind == "provider_executor":
+            # One integration, one canonical enabled state, both halves.
+            provider, executor = implementation
+            registry.register_provider(provider)
+            registry.register_executor(executor)
         else:
             raise ValueError("Unsupported integration definition kind")

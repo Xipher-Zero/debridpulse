@@ -20,6 +20,6 @@ definition = IntegrationDefinition(
         static_status="healthy",
         display_order=100,
         status_group="direct_sources",
-        status_group_label="Direct Sources",
+        status_group_label="General Sources",
     ),
 )

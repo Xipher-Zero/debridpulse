@@ -243,7 +243,7 @@ async def activate_candidate(
     old_owned = False
     retirement = "not_needed"
     if artifact.execution is not None:
-        old_executor = engine.registry.executors.get(artifact.execution.executor_id)
+        old_executor = engine.registry.executor_for_handle(artifact.execution)
         if old_executor is None:
             return await _record(
                 ActivationResult(

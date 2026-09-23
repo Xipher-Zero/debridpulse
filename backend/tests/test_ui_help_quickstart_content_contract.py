@@ -33,7 +33,7 @@ def test_quick_start_uses_current_ui_names_and_first_download_flow():
 
     required_current_ui = (
         "Settings → Sources &amp; Providers",
-        "Debrid Services → AllDebrid",
+        "External Providers → AllDebrid",
         "Apply Settings",
         "Settings → Downloads → Download Engine",
         "Download Folder",

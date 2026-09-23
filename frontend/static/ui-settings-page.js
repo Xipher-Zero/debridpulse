@@ -55,6 +55,7 @@
   const aria2Of = s => s?.integrations?.aria2?.options || {};
   const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
   const policyOf = s => s?.transfer_policy || {};
+  const usenetOf = s => s?.integrations?.usenet?.options || {};
   // A form control whose stored value is an integration-owned secret is
   // written, and cleared, through that integration's own scoped surface.
   const INTEGRATION_SECRET_CONTROLS = Object.freeze({
@@ -275,7 +276,7 @@
 
   // Inner-card title icons, keyed by the card's title.
   const CARD_ICONS = Object.freeze({
-    'Download Engine': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
+    'Global Download Settings': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
     'Download Safety & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
     'Download Engine State': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
     'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
@@ -461,6 +462,109 @@
       </section>`;
   }
 
+
+  // --- Usenet ---------------------------------------------------------------
+  // Markup owner only. The dynamic server collection's BEHAVIOR (add / remove /
+  // save / test / derived display name) belongs to ui-settings-usenet-servers.js;
+  // this renders the collection's initial state and its containers exactly once.
+
+  function usenetServerCard(server, index) {
+    const derived = String(server.host || '').trim();
+    const override = String(server.display_name || '').trim();
+    const name = override || derived || 'New server';
+    const configured = !!server.password_configured;
+    return `
+      <div class="dp-usenet-server" data-usenet-server-id="${html(server.id || '')}"
+           data-usenet-password-configured="${server.password_configured ? '1' : '0'}"
+           data-usenet-name-override="${override ? '1' : '0'}">
+        <div class="dp-usenet-server-head">
+          <span class="dp-usenet-server-name" data-usenet-display-name>${html(name)}</span>
+          <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
+                  title="Edit display name" aria-label="Edit display name for ${html(name)}">
+            <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
+          </button>
+        </div>
+        <div class="dp-usenet-row dp-usenet-row--host">
+          <label class="dp-usenet-field dp-usenet-field--host">
+            <span class="form-label">Host</span>
+            <input class="input" type="text" data-usenet-field="host" value="${html(server.host || '')}"
+                   autocomplete="off" placeholder="news.example.com">
+          </label>
+          <label class="dp-usenet-field dp-usenet-field--port">
+            <span class="form-label">Port</span>
+            <input class="input" type="number" min="1" max="65535" data-usenet-field="port"
+                   value="${html(String(server.port ?? 563))}">
+          </label>
+          <label class="dp-usenet-ssl toggle-row">
+            <span class="tl">SSL</span>
+            <span class="toggle">
+              <input type="checkbox" data-usenet-field="ssl" ${checked(server.ssl !== false)}>
+              <span class="ttrack"></span>
+            </span>
+          </label>
+        </div>
+        <div class="dp-usenet-row">
+          <label class="dp-usenet-field dp-usenet-field--wide">
+            <span class="form-label">Username</span>
+            <input class="input" type="text" data-usenet-field="username" value="${html(server.username || '')}" autocomplete="off">
+          </label>
+        </div>
+        <div class="dp-usenet-row">
+          <label class="dp-usenet-field dp-usenet-field--wide">
+            <span class="form-label">Password</span>
+            <input class="input" type="password" data-usenet-field="password" value=""
+                   autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
+          </label>
+        </div>${configured ? `
+        <label class="dp-usenet-clear-password">
+          <input type="checkbox" data-usenet-clear-password>
+          <span>Clear the stored password for this server</span>
+        </label>` : ''}
+        <div class="dp-usenet-row dp-usenet-row--tuning">
+          <label class="dp-usenet-field">
+            <span class="form-label">Connections</span>
+            <input class="input" type="number" min="0" max="500" data-usenet-field="connections"
+                   value="${html(String(server.connections ?? 8))}">
+          </label>
+          <label class="dp-usenet-field">
+            <span class="form-label">Priority</span>
+            <input class="input" type="number" min="0" max="99" data-usenet-field="priority"
+                   value="${html(String(server.priority ?? 0))}">
+          </label>
+        </div>
+        <div class="dp-usenet-actions">
+          <button type="button" class="btn btn-sm" data-usenet-action="save">Save</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
+          <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
+        </div>
+        <p class="dp-usenet-priority-hint">Lower values have priority.</p>
+        <p class="dp-usenet-server-status" role="status" aria-live="polite" data-usenet-status hidden></p>
+      </div>`;
+  }
+
+  function usenetAddTile() {
+    return `
+      <button type="button" class="dp-usenet-add" data-usenet-action="add" aria-label="Add Server">
+        <span class="dp-usenet-add-inner">
+          <img class="dp-usenet-add-glyph" src="/icons/lucide/plus.svg" alt="" aria-hidden="true">
+          <span class="dp-usenet-add-label">Add Server</span>
+        </span>
+      </button>`;
+  }
+
+  function usenetBody(s, entry) {
+    const options = usenetOf(s);
+    const servers = Array.isArray(options.servers) ? options.servers : [];
+    // Usenet acquisition runs inside DebridPulse, so there is no service
+    // address or key to configure -- only the news servers to acquire from.
+    return `
+      <p class="dp-settings-copy">Add the news servers DebridPulse should download from.</p>
+      <div class="dp-usenet-servers" data-usenet-collection>
+        ${servers.map(usenetServerCard).join('')}
+        ${usenetAddTile()}
+      </div>`;
+  }
+
   function sourcesPanel(s) {
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
@@ -517,13 +621,23 @@
       headerOnly: true,
     });
 
-    const debridServices = groupCard('Debrid Services', provider, {
+    // Absent means OFF for Usenet: it participates only once an operator turns
+    // it on. Without this, providerCard's "absent == enabled" default would
+    // render the toggle checked and a Save would persist enabled: true.
+    const usenet = integrations.usenet || {enabled: false};
+    const usenetCard = providerCard('usenet', 'Usenet', usenetBody(s, usenet), usenet, {
+      className: 'dp-settings-provider-card dp-settings-provider-card--usenet',
+      displayName: 'Usenet',
+    });
+
+    // Usenet is the first card under External Providers, above AllDebrid.
+    const externalProviders = groupCard('External Providers', usenetCard + provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
-    const generalSources = groupCard(generalHttp.presentation?.status_group_label || 'Direct Sources', generalHttpCard + generalFtpCard, {
+    const generalSources = groupCard(generalHttp.presentation?.status_group_label || 'General Sources', generalHttpCard + generalFtpCard, {
       className: 'dp-settings-source-group dp-settings-general-sources',
     });
-    return debridServices + generalSources;
+    return externalProviders + generalSources;
   }
 
   const ARIA2_LIVE_FILTERS = Object.freeze([['all', 'All'], ['active', 'Active'], ['waiting', 'Waiting'], ['paused', 'Paused'], ['stopped', 'Stopped']]);
@@ -567,11 +681,90 @@
       </section>`;
   }
 
-  function downloadsPanel(s) {
+  // --- Downloads ------------------------------------------------------------
+  // Three top-level master cards: Global Download Settings, Executor Tuning
+  // (one collapsed child card per executor/capability domain) and the existing
+  // Download Safety and Recovery. Operator-facing labels name capabilities,
+  // never daemon implementations.
+
+  function executorTuningCard(id, label, copy, body) {
+    const bodyId = `dp-executor-tuning-${id}`;
+    return `
+      <section class="card dp-settings-card dp-executor-tuning-card" data-executor-tuning="${html(id)}">
+        <div class="card-header dp-executor-tuning-header">
+          <span class="dp-executor-tuning-title">
+            <span class="card-title">${html(label)}</span>
+            <button type="button" class="dp-executor-tuning-disclosure" aria-controls="${bodyId}"
+                    aria-expanded="false" title="Expand ${html(label)} tuning"
+                    aria-label="Expand ${html(label)} tuning"><span aria-hidden="true">›</span></button>
+          </span>
+          <div class="dp-settings-card-header-center dp-executor-tuning-copy">${html(copy)}</div>
+        </div>
+        <div class="card-body" id="${bodyId}" hidden>${body}</div>
+      </section>`;
+  }
+
+  function directTransfersTuning(s) {
     const aria2 = aria2Of(s);
+    return `
+      <div class="dp-settings-engine-tuning-grid">
+        ${tuningToggle(
+          'aria2_continue_downloads',
+          'Continue Partial Downloads',
+          'Resume existing partial files when possible instead of restarting them from the beginning.',
+          aria2.continue_downloads !== false
+        )}
+        ${input('aria2_split', 'Segments per File', aria2.split ?? 16, {
+          type: 'number', min: 1, max: 64,
+          hint: 'Controls how many parallel segments a single file can use. Actual connections may be limited by the server and split-size settings.'
+        })}
+        ${input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
+          type: 'number', min: 1, max: 32,
+          hint: 'Maximum number of connections a single download can open to the same server.'
+        })}
+        ${input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
+          hint: 'Controls how small file sections can become when a download is split. Larger values create fewer parallel segments.'
+        })}
+        ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
+          hint: 'Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit.'
+        })}
+        ${input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
+          hint: 'Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
+        })}
+      </div>
+      <div class="dp-settings-engine-file-allocation">
+        ${selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
+          ['trunc', 'Truncate'],
+          ['falloc', 'Fallocate'],
+          ['prealloc', 'Preallocate'],
+          ['none', 'None'],
+        ], 'Controls how disk space is prepared for new files.')}
+      </div>`;
+  }
+
+  function usenetTuning(s) {
+    // Deliberately sparse: no native Usenet-service setting earned a place here.
+    // Queue depth and acquisition concurrency are excluded on purpose -- global
+    // admission belongs to Maximum Concurrent Downloads above.
+    const options = usenetOf(s);
+    return `
+      <div class="dp-settings-engine-tuning-grid">
+        ${input('usenet_operation_timeout_seconds', 'Request Timeout (seconds)',
+          options.operation_timeout_seconds ?? 15, {
+          type: 'number', min: 5, max: 300,
+          hint: 'How long DebridPulse waits for the Usenet download service to answer a request.'
+        })}
+      </div>
+      <p class="dp-settings-tuning-footer">
+        Acquisition tuning such as connections and server priority belongs to each
+        news server under Sources &amp; Providers.
+      </p>`;
+  }
+
+  function downloadsPanel(s) {
     const policy = policyOf(s);
-    const engineCopy = 'DebridPulse runs aria2 for you and writes every download to the Download Folder.';
-    const delivery = card('Download Engine', `
+    const globalCopy = 'Where DebridPulse saves downloads and how many it runs at once.';
+    const delivery = card('Global Download Settings', `
       <div class="dp-settings-download-engine-row">
         <div class="dp-settings-download-path-stack">
           ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
@@ -587,53 +780,18 @@
           })}
         </div>
       </div>
-      <details class="dp-settings-additional dp-settings-engine-tuning">
-        <summary><span>Additional Engine Tuning</span></summary>
-        <div class="dp-settings-additional-body">
-          <!-- Specification section 9.9: continue/split/connections/min-split
-               are applied per job (executors/aria2/executor.py
-               Aria2Executor._options()); lowest-speed-limit, disk cache and file
-               allocation are daemon global options
-               (executors/aria2/runtime.py build_aria2_global_options()). -->
-          <div class="dp-settings-engine-tuning-grid">
-            ${tuningToggle(
-              'aria2_continue_downloads',
-              'Continue Partial Downloads',
-              'Resume existing partial files when possible instead of restarting them from the beginning.',
-              aria2.continue_downloads !== false
-            )}
-            ${input('aria2_split', 'Segments per File', aria2.split ?? 16, {
-              type: 'number', min: 1, max: 64,
-              hint: 'Controls how many parallel segments aria2 can use for a single file. Actual connections may be limited by the server and split-size settings.'
-            })}
-            ${input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
-              type: 'number', min: 1, max: 32,
-              hint: 'Maximum number of connections a single download can open to the same server.'
-            })}
-            ${input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
-              hint: 'Controls how small file sections can become when aria2 splits a download. Larger values create fewer parallel segments.'
-            })}
-            ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
-              hint: 'Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.'
-            })}
-            ${input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
-              hint: 'Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
-            })}
-          </div>
-          <div class="dp-settings-engine-file-allocation">
-            ${selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
-              ['trunc', 'Truncate'],
-              ['falloc', 'Fallocate'],
-              ['prealloc', 'Preallocate'],
-              ['none', 'None'],
-            ], 'Controls how aria2 prepares disk space for new files.')}
-          </div>
-        </div>
-      </details>
     `, {
       className: 'dp-settings-download-engine-card',
       wrapTitle: true,
-      headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(engineCopy)}</span>`,
+      headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(globalCopy)}</span>`,
+    });
+
+    const tuning = groupCard('Executor Tuning',
+      executorTuningCard('direct', 'Direct Transfers',
+        'Tuning for HTTP(S), FTP/SFTP and other direct transfers.', directTransfersTuning(s)) +
+      executorTuningCard('usenet', 'Usenet',
+        'Tuning for Usenet download behavior.', usenetTuning(s)), {
+      className: 'dp-settings-source-group dp-executor-tuning-group',
     });
 
     const recovery = card('Download Safety & Recovery', `
@@ -651,15 +809,15 @@
       })}
       ${input('aria2_error_retry_count', 'Download Error Retries', policy.execution_retry_count ?? 3, {
         type: 'number', min: 0, max: 20,
-        hint: 'How many times DebridPulse retries a download after aria2 reports an error. Set to 0 to disable automatic retries.'
+        hint: 'How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.'
       })}
       ${input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
         type: 'number', min: 0, max: 3600,
-        hint: 'How long DebridPulse waits before retrying a download after an aria2 error. Set to 0 to retry immediately.'
+        hint: 'How long DebridPulse waits before retrying a download after an error. Set to 0 to retry immediately.'
       })}
     `, {className: 'dp-settings-download-recovery-card'});
 
-    return delivery + recovery + aria2LiveCard();
+    return delivery + tuning + recovery + aria2LiveCard();
   }
 
   function extractionPanel(s) {
@@ -1462,6 +1620,20 @@
     });
 
     view.addEventListener('click', event => {
+      const tuning = event.target.closest('.dp-executor-tuning-disclosure');
+      if (tuning) {
+        event.preventDefault();
+        const expanded = tuning.getAttribute('aria-expanded') === 'true';
+        const body = document.getElementById(tuning.getAttribute('aria-controls'));
+        tuning.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        const label = tuning.closest('.dp-executor-tuning-card')
+          ?.querySelector('.card-title')?.textContent?.trim() || 'tuning';
+        const action = `${expanded ? 'Expand' : 'Collapse'} ${label} tuning`;
+        tuning.setAttribute('title', action);
+        tuning.setAttribute('aria-label', action);
+        if (body) body.hidden = expanded;
+        return;
+      }
       const disclosure = event.target.closest('.dp-settings-provider-disclosure');
       if (disclosure) {
         event.preventDefault();
@@ -1597,6 +1769,23 @@
     return payload;
   }
 
+  function usenetConfigurationPayload() {
+    // The server collection is deliberately absent: ui-settings-usenet-servers.js
+    // is its sole writer, so a stale page snapshot can never overwrite a server
+    // the operator just saved. One namespace, one writer per field. There is no
+    // service address or credential here: the acquisition service is internal.
+    const current = usenetOf(state.settings);
+    const enabled = root()?.querySelector('[data-integration-enabled="usenet"]');
+    const payload = {
+      options: {
+        operation_timeout_seconds: intOf('usenet_operation_timeout_seconds',
+          current.operation_timeout_seconds ?? 30),
+      },
+    };
+    if (enabled) payload.enabled = !!enabled.checked;
+    return payload;
+  }
+
   function transferPolicyPayload() {
     const current = policyOf(state.settings);
     return {
@@ -1677,6 +1866,7 @@
     const active = state.activeTab;
     adoptIntegration('aria2', await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000));
     adoptIntegration('alldebrid', await request('PATCH', '/integrations/alldebrid/configuration', allDebridConfigurationPayload(), 15000));
+    adoptIntegration('usenet', await request('PATCH', '/integrations/usenet/configuration', usenetConfigurationPayload(), 15000));
     // Direct Sources carry only their own generic Enable; each persists independently.
     for (const identity of ['general_http', 'general_ftp']) {
       const enabled = root()?.querySelector(`[data-integration-enabled="${identity}"]`);

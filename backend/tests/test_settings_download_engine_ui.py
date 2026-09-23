@@ -15,8 +15,14 @@ def source(path: Path) -> str:
 
 
 def downloads_runtime() -> str:
+    """The whole Downloads section.
+
+    After the 1.0.13 reorganization the section is built from several bounded
+    helpers (``executorTuningCard``, ``directTransfersTuning``, ``usenetTuning``)
+    plus ``downloadsPanel`` itself, so the slice starts at the first of them.
+    """
     runtime = source(SETTINGS_PAGE_JS)
-    return runtime[runtime.index("function downloadsPanel"):runtime.index("function extractionPanel")]
+    return runtime[runtime.index("function executorTuningCard"):runtime.index("function extractionPanel")]
 
 
 def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
@@ -24,15 +30,17 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     css = source(SETTINGS_PAGE_CSS)
     chrome = source(SETTINGS_CHROME_CSS)
 
-    assert "card('Download Engine'" in downloads
+    assert "card('Global Download Settings'" in downloads
     assert "aria2 Delivery" not in downloads
+    # Operator-facing tuning labels name capabilities, never daemons.
+    assert "card('Download Engine'" not in downloads
     # The card's icon is its CARD_ICONS entry; no separate legacy icon is emitted.
     assert "wrapTitle: true" in downloads
     assert "dp-settings-download-engine-icon" not in downloads
-    assert "'Download Engine': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
+    assert "'Global Download Settings': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
-    assert "DebridPulse runs aria2 for you and writes every download to the Download Folder." in downloads
+    assert "Where DebridPulse saves downloads and how many it runs at once." in downloads
     assert "dp-settings-download-engine-copy" not in downloads
     # One engine: the header carries no selector action.
     assert "action:" not in downloads
@@ -61,8 +69,12 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "Browse server directories for Download Folder" in downloads
     assert "Where DebridPulse saves downloads." in downloads
     assert "Maximum number of downloads DebridPulse can run at the same time." in downloads
-    # No topology control exists, visible or hidden.
-    assert " hidden" not in downloads and "'hidden'" not in downloads
+    # No topology control exists, visible or hidden, in the global card.
+    # (Collapsed Executor Tuning child cards legitimately use `hidden`, so the
+    # check is scoped to the Global Download Settings card it is about.)
+    global_card = downloads[downloads.index("card('Global Download Settings'"):
+                            downloads.index("const tuning = groupCard('Executor Tuning'")]
+    assert " hidden" not in global_card and "'hidden'" not in global_card
     for absent in ("aria2_mode", "aria2_url", "aria2_secret", "aria2_download_path",
                    "data-download-path-mode", "data-builtin-only-tuning", "External aria2", "External RPC",
                    "external aria2", "Built-in", "builtIn"):
@@ -106,19 +118,21 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     downloads = downloads_runtime()
     css = source(SETTINGS_PAGE_CSS)
 
-    assert '<details class="dp-settings-additional dp-settings-engine-tuning">' in downloads
-    assert '<summary><span>Additional Engine Tuning</span></summary>' in downloads
+    # Advanced direct-transfer tuning now lives in the collapsed
+    # "Direct Transfers" child card of the Executor Tuning master card.
+    assert "executorTuningCard('direct', 'Direct Transfers'" in downloads
+    assert "function directTransfersTuning(s)" in downloads
     assert "dp-settings-engine-tuning-grid" in downloads
     assert "dp-settings-engine-file-allocation" in downloads
 
     required_copy = (
-        "Stops a slow HTTP/HTTPS/FTP connection when its speed falls at or below this value. Set to 0 to disable the limit.",
+        "Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit.",
         "Resume existing partial files when possible instead of restarting them from the beginning.",
-        "Controls how many parallel segments aria2 can use for a single file. Actual connections may be limited by the server and split-size settings.",
+        "Controls how many parallel segments a single file can use. Actual connections may be limited by the server and split-size settings.",
         "Maximum number of connections a single download can open to the same server.",
-        "Controls how small file sections can become when aria2 splits a download. Larger values create fewer parallel segments.",
-        "Amount of memory aria2 can use as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.",
-        "Controls how aria2 prepares disk space for new files.",
+        "Controls how small file sections can become when a download is split. Larger values create fewer parallel segments.",
+        "Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.",
+        "Controls how disk space is prepared for new files.",
     )
     for text in required_copy:
         assert text in downloads

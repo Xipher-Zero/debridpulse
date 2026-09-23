@@ -62,6 +62,81 @@ def test_runtime_requirements_are_hash_pinned_for_every_package():
         assert window, f"requirements.txt package at line {index + 1} has no --hash entries: {lines[index]!r}"
 
 
+# --- the bundled Usenet acquisition service (1.0.13) ----------------------
+#
+# The service runs on the image's own interpreter, so its Python runtime
+# closure is part of the shipped runtime and must obey the same lock policy.
+# A second install transaction would escape --require-hashes AND be free to
+# replace packages the locked one already selected, leaving two contradictory
+# package authorities in one environment.
+
+_REQUIREMENTS_IN = (ROOT / "backend" / "requirements.in").read_text()
+
+# What the service actually needs at runtime on Linux, and what it must never
+# drag into the shipped image. Both taken from SABnzbd-5.1.3/requirements.txt.
+_SERVICE_RUNTIME_PACKAGES = (
+    "sabctools", "cheroot", "cherrypy", "feedparser", "configobj", "apprise",
+    "guessit", "rebulk", "babelfish", "rarfile", "puremagic", "portend",
+    "tempora", "zc-lockfile", "ct3", "sgmllib3k", "hachoir", "ujson", "orjson",
+)
+_SERVICE_TEST_ONLY_PACKAGES = (
+    "selenium", "tavern", "tavalidate", "pyfakefs", "flaky", "pytest-httpbin",
+    "pytest-httpserver", "black", "flask", "werkzeug", "xmltodict",
+)
+
+
+def _locked_packages(text):
+    return {m.group(1).lower() for m in re.finditer(r"^([A-Za-z0-9_.\-]+)==", text, re.M)}
+
+
+def test_the_image_runs_exactly_one_python_install_transaction():
+    """One lock, one install. Two would be two package authorities."""
+    installs = re.findall(r"pip install[^\n\\]*", _DOCKERFILE)
+    real = [i for i in installs if "--dry-run" not in i]
+    assert len(real) == 1, f"expected exactly one pip install transaction, found: {real}"
+    assert "--require-hashes" in real[0]
+
+
+def test_the_image_never_installs_the_services_own_requirements_file():
+    """That file is unhashed, and it also carries the service's test tooling."""
+    assert not re.search(r"pip install[^\n]*/app/usenet/requirements\.txt", _DOCKERFILE)
+    assert not re.search(r"pip install(?![^\n]*--require-hashes)", _DOCKERFILE)
+
+
+def test_the_service_runtime_closure_is_in_the_shipped_lock():
+    locked = _locked_packages(_REQUIREMENTS)
+    missing = [name for name in _SERVICE_RUNTIME_PACKAGES if name not in locked]
+    assert not missing, f"the bundled service needs these at runtime, unlocked: {missing}"
+
+
+def test_the_service_test_tooling_is_not_shipped_in_the_runtime_lock():
+    locked = _locked_packages(_REQUIREMENTS)
+    shipped = [name for name in _SERVICE_TEST_ONLY_PACKAGES if name in locked]
+    assert not shipped, f"test-only packages leaked into the runtime image: {shipped}"
+
+
+def test_the_service_runtime_closure_is_declared_in_the_canonical_input():
+    """Not merely resolved by accident: the canonical input names them, so a
+    later recompile cannot quietly drop the service's dependencies."""
+    declared = _locked_packages(_REQUIREMENTS_IN)
+    for name in ("sabctools", "cherrypy", "feedparser", "configobj", "apprise"):
+        assert name in declared, f"{name} is not declared in requirements.in"
+
+
+def test_the_service_source_tarball_stays_checksum_pinned():
+    assert re.search(r"^ARG USENET_SERVICE_VERSION=\d+\.\d+\.\d+$", _DOCKERFILE, re.M)
+    assert re.search(r"^ARG USENET_SERVICE_SHA256=[0-9a-f]{64}$", _DOCKERFILE, re.M)
+    assert "sha256sum -c -" in _DOCKERFILE
+
+
+def test_the_repair_and_licensing_material_is_retained():
+    """par2 does the posting's verification/repair; unrar is required for the
+    service to start acquiring, and its licence file must ship with it."""
+    assert re.search(r"^\s*par2 \\$", _DOCKERFILE, re.M)
+    assert re.search(r"^\s*unrar \\$", _DOCKERFILE, re.M)
+    assert "path-include=/usr/share/doc/unrar/copyright" in _DOCKERFILE
+
+
 def test_supply_chain_policy_document_exists_and_states_the_authority_contract():
     assert "authoritative release artifact" in _POLICY.lower()
     assert "manifest" in _POLICY.lower() and "digest" in _POLICY.lower()
